@@ -5,7 +5,6 @@ use std::cmp::min;
 use std::collections::BTreeSet;
 use std::ffi::CString;
 use std::fmt;
-use std::mem::size_of;
 use std::rc::Rc;
 
 use byteorder::{ByteOrder, LittleEndian};
@@ -79,12 +78,12 @@ impl MemoryWrite<u64> for Memory {
 
 impl MemoryWrite<&[u8]> for Memory {
     fn writeat(&mut self, address: Vaddr, data: &[u8]) -> u64 {
-        self.write_intern(address, data);
+        self.write_internal(address, data);
         return data.len().try_into().unwrap();
     }
     fn writeto(&mut self, address: Vaddr, data: &[u8]) -> u64 {
         let len = data.len().try_into().unwrap();
-        self.write_intern(address - len, data);
+        self.write_internal(address - len, data);
         return len;
     }
 }
@@ -131,7 +130,7 @@ impl MemoryWrite<&[u64]> for Memory {
         let mut d: Vec<u8> = vec!(0; data.len() * 8);
         LittleEndian::write_u64_into(&data, &mut d);
         let len = d.len().try_into().unwrap();
-        self.write_intern(address - len, &d);
+        self.write_internal(address - len, &d);
         return len;
     }
 }
@@ -191,7 +190,7 @@ impl<'a> Memory {
         Ok(RefMut::map(region.as_mut_slice(), |slice| &mut slice[offset..offset + size]))
     }
 
-    fn write_intern(&mut self, address: Vaddr, data: &[u8]) {
+    fn write_internal(&mut self, address: Vaddr, data: &[u8]) {
         let mut memory = self.access_mem_mut(address, data.len()).unwrap();
         memory.copy_from_slice(data);
     }
@@ -203,8 +202,8 @@ impl<'a> Memory {
             panic!("not implemented");
         }
         self.fixed_mapping(start, size, perms, cpu)?;
-        self.write_intern(vm_range.start, data);
-        return Ok(());
+        self.write_internal(vm_range.start, data);
+        Ok(())
     }
 
     pub fn mmap<'b, CpuT: CPU<'b>>(&mut self, address: u64, size: u64, perms: Permission, cpu: &mut CpuT) -> Result<u64, MappingError> {
