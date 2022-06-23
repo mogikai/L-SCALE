@@ -328,7 +328,7 @@ impl LinuxKernel {
                 !0
             }
             0x1002 => { //ARCH_SET_FS
-                let fsbytes = self.memory.read_intern(addr, 8).unwrap();
+                let fsbytes = self.memory.read_internal(addr, 8).unwrap();
                 let fs = LittleEndian::read_u64(&fsbytes);
                 cpu.reg_write(RegisterX86::FS_BASE.into(), fs).unwrap();
                 0
@@ -342,7 +342,7 @@ impl LinuxKernel {
         if fd != 1 && fd != 2 {
             return !0;
         }
-        let data = self.memory.read_intern(buf, size).unwrap();
+        let data = self.memory.read_internal(buf, size as usize).unwrap();
         trace!("write: {}", String::from_utf8_lossy(&data));
         data.len().try_into().unwrap()
     }
@@ -353,12 +353,12 @@ impl LinuxKernel {
             return !0;
         }
         let mut ret = 0;
-        let iovec = self.memory.read_intern(iovec_ptr, iovcnt * 16).unwrap();
+        let iovec = self.memory.read_internal(iovec_ptr, (iovcnt * 16) as usize).unwrap();
         let mut out_str = "writev: ".to_owned();
         for i in 0..iovcnt as usize {
             let ptr = LittleEndian::read_u64(&iovec[(i * 16)..((i * 16) + 8)]);
-            let size = LittleEndian::read_u64(&iovec[i * 16 + 8..i * 16 + 16]);
-            let data = self.memory.read_intern(ptr, size).unwrap();
+            let size = LittleEndian::read_u64(&iovec[i * 16 + 8..i * 16 + 16]) as usize;
+            let data = self.memory.read_internal(ptr, size).unwrap();
             ret += data.len();
             out_str.push_str(String::from_utf8_lossy(&data).as_ref());
         }

@@ -2,14 +2,14 @@ use core::ops::Range;
 use std::cell::{Ref, RefCell, RefMut};
 use std::cmp::{max, Ordering};
 use std::cmp::min;
-use std::collections::Bound::Excluded;
 use std::collections::BTreeSet;
 use std::ffi::CString;
 use std::fmt;
-use std::ops::Deref;
+use std::mem::size_of;
 use std::rc::Rc;
 
 use byteorder::{ByteOrder, LittleEndian};
+use goblin::pe::import::Bitfield;
 
 use crate::emulator::abstractions::cpu::{CPU, Permission, Vaddr};
 
@@ -17,21 +17,21 @@ const MASK4K: u64 = 4 * (1 << 10) - 1;
 
 pub struct Memory {
     mappings: BTreeSet<Region>,
-    heap: u64,
-    _stack: u64,
-    mapbase: u64,
+    heap: Vaddr,
+    _stack: Vaddr,
+    mapbase: Vaddr,
 }
 
-fn align4k_up(address: u64) -> u64 {
-    return (address + MASK4K) & !MASK4K;
+fn align4k_up(address: Vaddr) -> Vaddr {
+    (address + MASK4K) & !MASK4K
 }
 
-fn align4k_down(address: u64) -> u64 {
-    return address & !MASK4K;
+fn align4k_down(address: Vaddr) -> Vaddr {
+    address & !MASK4K
 }
 
-fn is4kaligned(address: u64) -> bool {
-    return (address & MASK4K) == 0;
+fn is4kaligned(address: Vaddr) -> bool {
+    (address & MASK4K) == 0
 }
 
 #[derive(Debug)]
@@ -47,8 +47,8 @@ pub enum UnmapError {
 }
 
 pub trait MemoryWrite<T> {
-    fn writeat(&mut self, address: u64, data: T) -> u64;
-    fn writeto(&mut self, address: u64, data: T) -> u64;
+    fn writeat(&mut self, address: Vaddr, data: T) -> u64;
+    fn writeto(&mut self, address: Vaddr, data: T) -> u64;
 }
 
 #[macro_export]
@@ -65,24 +65,24 @@ macro_rules! push_stack {
 }
 
 impl MemoryWrite<u64> for Memory {
-    fn writeat(&mut self, address: u64, data: u64) -> u64 {
-        let mut buf: Vec<u8> = vec![0; 8];
-        LittleEndian::write_u64(&mut buf, data);
-        return self.writeat(address, &buf);
+    fn writeat(&mut self, address: Vaddr, data: u64) -> u64 {
+        let mut buffer = self.access_mem_mut(address, u64::size_of()).unwrap();
+        LittleEndian::write_u64(&mut *buffer, data);
+        buffer.len() as u64
     }
-    fn writeto(&mut self, address: u64, data: u64) -> u64 {
+    fn writeto(&mut self, address: Vaddr, data: u64) -> u64 {
         let mut buf: Vec<u8> = vec![0; 8];
         LittleEndian::write_u64(&mut buf, data);
-        return self.writeto(address, &buf);
+        self.writeto(address, &buf)
     }
 }
 
 impl MemoryWrite<&[u8]> for Memory {
-    fn writeat(&mut self, address: u64, data: &[u8]) -> u64 {
+    fn writeat(&mut self, address: Vaddr, data: &[u8]) -> u64 {
         self.write_intern(address, data);
         return data.len().try_into().unwrap();
     }
-    fn writeto(&mut self, address: u64, data: &[u8]) -> u64 {
+    fn writeto(&mut self, address: Vaddr, data: &[u8]) -> u64 {
         let len = data.len().try_into().unwrap();
         self.write_intern(address - len, data);
         return len;
@@ -90,16 +90,19 @@ impl MemoryWrite<&[u8]> for Memory {
 }
 
 impl MemoryWrite<&[(u64, u64)]> for Memory {
-    fn writeat(&mut self, address: u64, data: &[(u64, u64)]) -> u64 {
-        let d: Vec<u64> = data.iter().fold(Vec::new(), |mut v, (a, b)| {
-            v.push(*a);
-            v.push(*b);
-            v
-        });
-        return self.writeat(address, &d);
+    fn writeat(&mut self, address: Vaddr, data: &[(u64, u64)]) -> u64 {
+        let mut buffer = self.access_mem_mut(address, data.len() * 8).unwrap();
+        let mut pos = 0;
+        for (i1, i2) in data {
+            LittleEndian::write_u64(&mut buffer[pos..pos + 8], *i1);
+            pos += 8;
+            LittleEndian::write_u64(&mut buffer[pos..pos + 8], *i2);
+            pos += 8;
+        }
+        buffer.len() as u64
     }
 
-    fn writeto(&mut self, address: u64, data: &[(u64, u64)]) -> u64 {
+    fn writeto(&mut self, address: Vaddr, data: &[(u64, u64)]) -> u64 {
         let d: Vec<u64> = data.iter().fold(Vec::new(), |mut v, (a, b)| {
             v.push(*a);
             v.push(*b);
@@ -110,22 +113,21 @@ impl MemoryWrite<&[(u64, u64)]> for Memory {
 }
 
 impl MemoryWrite<&Vec<(u64, u64)>> for Memory {
-    fn writeat(&mut self, address: u64, data: &Vec<(u64, u64)>) -> u64 {
+    fn writeat(&mut self, address: Vaddr, data: &Vec<(u64, u64)>) -> u64 {
         return self.writeat(address, data.as_slice());
     }
-    fn writeto(&mut self, address: u64, data: &Vec<(u64, u64)>) -> u64 {
+    fn writeto(&mut self, address: Vaddr, data: &Vec<(u64, u64)>) -> u64 {
         return self.writeto(address, data.as_slice());
     }
 }
 
 impl MemoryWrite<&[u64]> for Memory {
-    fn writeat(&mut self, address: u64, data: &[u64]) -> u64 {
-        let mut d: Vec<u8> = Vec::with_capacity(data.len() * 8);
-        LittleEndian::write_u64_into(&data, &mut d);
-        self.write_intern(address, &d);
-        return d.len().try_into().unwrap();
+    fn writeat(&mut self, address: Vaddr, data: &[u64]) -> u64 {
+        let mut buffer = self.access_mem_mut(address, data.len() * 8).unwrap();
+        LittleEndian::write_u64_into(data, &mut *buffer);
+        buffer.len() as u64
     }
-    fn writeto(&mut self, address: u64, data: &[u64]) -> u64 {
+    fn writeto(&mut self, address: Vaddr, data: &[u64]) -> u64 {
         let mut d: Vec<u8> = vec!(0; data.len() * 8);
         LittleEndian::write_u64_into(&data, &mut d);
         let len = d.len().try_into().unwrap();
@@ -135,41 +137,27 @@ impl MemoryWrite<&[u64]> for Memory {
 }
 
 impl MemoryWrite<&Vec<u64>> for Memory {
-    fn writeat(&mut self, address: u64, data: &Vec<u64>) -> u64 {
-        return self.writeat(address, data.as_slice());
-    }
-    fn writeto(&mut self, address: u64, data: &Vec<u64>) -> u64 {
-        return self.writeto(address, data.as_slice());
-    }
+    fn writeat(&mut self, address: Vaddr, data: &Vec<u64>) -> u64 { self.writeat(address, data.as_slice()) }
+    fn writeto(&mut self, address: Vaddr, data: &Vec<u64>) -> u64 { self.writeto(address, data.as_slice()) }
 }
 
 impl MemoryWrite<&Vec<u8>> for Memory {
-    fn writeat(&mut self, address: u64, data: &Vec<u8>) -> u64 {
-        return self.writeat(address, data.as_slice());
-    }
-    fn writeto(&mut self, address: u64, data: &Vec<u8>) -> u64 {
-        return self.writeto(address, data.as_slice());
-    }
+    fn writeat(&mut self, address: Vaddr, data: &Vec<u8>) -> u64 { self.writeat(address, data.as_slice()) }
+    fn writeto(&mut self, address: Vaddr, data: &Vec<u8>) -> u64 { self.writeto(address, data.as_slice()) }
 }
 
 impl MemoryWrite<Ref<'_, [u8]>> for Memory {
-    fn writeat(&mut self, address: u64, data: Ref<'_, [u8]>) -> u64 {
-        let d: &[u8] = data.deref();
-        return self.writeat(address, d);
-    }
-    fn writeto(&mut self, address: u64, data: Ref<'_, [u8]>) -> u64 {
-        let d: &[u8] = data.deref();
-        return self.writeto(address, d);
-    }
+    fn writeat(&mut self, address: Vaddr, data: Ref<'_, [u8]>) -> u64 { self.writeat(address, &*data) }
+    fn writeto(&mut self, address: Vaddr, data: Ref<'_, [u8]>) -> u64 { self.writeto(address, &*data) }
 }
 
 impl MemoryWrite<&str> for Memory {
-    fn writeat(&mut self, address: u64, data: &str) -> u64 {
+    fn writeat(&mut self, address: Vaddr, data: &str) -> u64 {
         let v: Vec<u8> = data.as_bytes().to_vec();
         let d: CString = unsafe { CString::from_vec_unchecked(v) };
         return self.writeat(address, d.as_bytes_with_nul());
     }
-    fn writeto(&mut self, address: u64, data: &str) -> u64 {
+    fn writeto(&mut self, address: Vaddr, data: &str) -> u64 {
         let v: Vec<u8> = data.as_bytes().to_vec();
         let d: CString = unsafe { CString::from_vec_unchecked(v) };
         return self.writeto(address, d.as_bytes_with_nul());
@@ -182,23 +170,29 @@ pub enum ReadError {
 }
 
 impl<'a> Memory {
-    pub fn new(stackbase: u64, heapbase: u64) -> Memory {
-        let map: BTreeSet<Region> = BTreeSet::new();
-        return Memory { mappings: map, heap: heapbase, _stack: stackbase, mapbase: 0x100000 };
+    pub fn new(stackbase: Vaddr, heapbase: Vaddr) -> Memory {
+        Memory {
+            mappings: BTreeSet::new(),
+            heap: heapbase,
+            _stack: stackbase,
+            mapbase: 0x100000,
+        }
     }
 
-    pub fn read_intern(&self, address: u64, size: u64) -> Result<Ref<[u8]>, ReadError> {
+    pub fn read_internal(&self, address: u64, size: usize) -> Result<Ref<[u8]>, ReadError> {
         let region = self.get_region(address).ok_or(ReadError::NotMapped)?;
-        let d = Ref::map(region.as_slice(), |d| &d[(address - region.vaddr).try_into().unwrap()..]);
-        let size = min(d.len(), size.try_into().unwrap());
-        return Ok(Ref::map(d, |d| &d[..size]));
+        let offset = (address - region.vaddr) as usize;
+        Ok(Ref::map(region.as_slice(), |d| &d[offset..min(offset + size, region.size as usize)]))
     }
 
-    fn write_intern(&self, address: u64, data: &[u8]) {
-        let region = self.get_region(address).unwrap();
-        let offset = (address - region.vaddr).try_into().unwrap();
-        let r = Range { start: offset, end: offset + data.len() };
-        let mut memory: RefMut<'_, [u8]> = RefMut::map(region.as_mut_slice(), |d| &mut d[r]);
+    fn access_mem_mut(&mut self, address: Vaddr, size: usize) -> Result<RefMut<[u8]>, ReadError> {
+        let region = self.get_region(address).ok_or(ReadError::NotMapped)?;
+        let offset = (address - region.vaddr) as usize;
+        Ok(RefMut::map(region.as_mut_slice(), |slice| &mut slice[offset..offset + size]))
+    }
+
+    fn write_intern(&mut self, address: Vaddr, data: &[u8]) {
+        let mut memory = self.access_mem_mut(address, data.len()).unwrap();
         memory.copy_from_slice(data);
     }
 
@@ -221,12 +215,7 @@ impl<'a> Memory {
         if size == 0 {
             return Err(MappingError::Zero);
         }
-        if address == 0 {
-            return self.new_mapping(size, perms, cpu);
-        } else if self.get_region(address).is_some() || self.get_region(address + size - 1).is_some() {
-            return Err(MappingError::AlreadyMapped);
-        }
-        return self.fixed_mapping(address, size, perms, cpu);
+        self.fixed_mapping(self.find_space_for_region(address, size), size, perms, cpu)
     }
 
     pub fn realloc_heap<'b, CpuT: CPU<'b>>(&mut self, addr: u64, cpu: &mut CpuT) {
@@ -244,15 +233,9 @@ impl<'a> Memory {
 
     pub fn heapend(&self) -> u64 {
         match self.get_region(self.heap) {
-            Some(r) => self.heap + r.size,
+            Some(r) => self.heap + r.size as u64,
             None => self.heap,
         }
-    }
-
-    fn new_mapping<'b, CpuT: CPU<'b>>(&mut self, size: u64, perms: Permission, cpu: &mut CpuT) -> Result<u64, MappingError> {
-        let address = self.find_free(0, size);
-        self.fixed_mapping(address, size, perms, cpu)?;
-        return Ok(address);
     }
 
     fn fixed_mapping<'b, CpuT: CPU<'b>>(&mut self, address: Vaddr, size: u64, perms: Permission, cpu: &mut CpuT) -> Result<u64, MappingError> {
@@ -271,12 +254,11 @@ impl<'a> Memory {
     fn map_internal<'b, CpuT: CPU<'b>>(&self, address: u64, region: &Region, cpu: &mut CpuT) {
         let mut mem = region.data.borrow_mut(); //TODO fix offset
         let ptr: *mut u8 = mem.as_mut_ptr();
-        let size = region.size.try_into().unwrap();
-        if region.offset + region.size > mem.len().try_into().unwrap() {
+        if region.offset + region.size > mem.len() as u64 {
             panic!("bla");
         }
 
-        unsafe { cpu.mem_map_ptr(address, size, region.perms, ptr as _).expect("Mapping error"); };
+        unsafe { cpu.mem_map_ptr(address, region.size as usize, region.perms, ptr as _).expect("Mapping error"); };
     }
 
     /// Gets a reference to the region containing the supplied address.
@@ -324,7 +306,7 @@ impl<'a> Memory {
         // TODO: I believe the unmapping should be done after the cutout. Also, the cutout process is probably incorrect
         for vaddr in mappings.iter() {
             let region = self.mappings.take(vaddr).expect("Bug in memory mapping!");
-            let regions = region.cutout(*vaddr, address, size);
+            let regions = region.cutout(address, size);
             self.mappings.extend(regions);
         }
         Ok(())
@@ -335,40 +317,28 @@ impl<'a> Memory {
         cpu.mem_unmap(vaddr, size.try_into().unwrap()).expect("Failed to unmap");
     }
 
-    pub fn find_free(&self, hint: Vaddr, size: u64) -> u64 {
-        // let mut hint = max(hint, self.mapbase);
-        // for region in self.mappings.range(hint..) {
-        //     if region.contains(hint) || region.contains(hint + size) {
-        //         hint = region.vaddr + region.size;
-        //     } else {
-        //         break;
-        //     }
-        // }
-        // return hint;
-        let mut h: u64 = max(hint, self.mapbase);
-        for region in self.mappings.iter() {
-            if h > region.vaddr {
-                continue;
+    pub fn find_space_for_region(&self, hint: Vaddr, size: u64) -> u64 {
+        let mut hint = max(hint, self.mapbase);
+        for region in self.mappings.range(hint..) {
+            if region.contains(hint) || region.contains(hint + size - 1) {
+                hint = region.vaddr + region.size as Vaddr;
+            } else {
+                break;
             }
-            if h + size >= region.vaddr {
-                h = region.vaddr + region.size;
-                continue;
-            }
-            break;
         }
-        h
+        hint
     }
 
-    pub fn protect<'b, CpuT: CPU<'b>>(&mut self, start: u64, size: u64, perms: Permission, cpu: &mut CpuT) {
+    pub fn protect<'b, CpuT: CPU<'b>>(&mut self, start: Vaddr, size: u64, perms: Permission, cpu: &mut CpuT) {
         let region = self.get_region(start).unwrap();
         if region.vaddr != start || size != region.size {
-            if start + size > region.vaddr + region.size {
+            if start + size > region.vaddr + region.size as Vaddr {
                 error!("mprotect more then one region");
                 panic!("not implemented yet");
             }
             let vaddr = region.vaddr;
             let region = self.mappings.take(&vaddr).unwrap();
-            let (regions, mut r) = region.split(region.vaddr, start, size);
+            let (regions, mut r) = region.split(start, size);
             r.perms = perms;
             self.mappings.extend(regions);
             self.unmap_intern(start, size, cpu);
@@ -386,7 +356,7 @@ macro_rules! read_osstring {
             use std::ffi::OsString;
             use std::os::unix::ffi::OsStringExt;
 			//todo better define path_max
-			let d = $mem.read_intern($addr, 4096).unwrap();
+			let d = $mem.read_internal($addr, 4096).unwrap();
 			//todo better check for \0 byte existens
 			let s = d.split(|c| *c == 0).next().unwrap();
 			let r: Result<OsString, ReadError> = Ok(OsString::from_vec(s.to_vec()));
@@ -441,27 +411,50 @@ impl fmt::Debug for Region {
 
 impl Region {
     fn new(data: Rc<RefCell<Vec<u8>>>, vaddr: Vaddr, perms: Permission) -> Region {
-        let len = data.borrow().len();
-        Region { data, offset: 0, vaddr, size: len as u64, perms }
-    }
-
-    fn contains(&self, address: Vaddr) -> bool { address >= self.vaddr && address < self.vaddr + self.size }
-
-    fn end(&self) -> Vaddr { self.vaddr + self.size }
-
-    fn split(&self, vaddr: Vaddr, address: u64, size: u64) -> (Vec<Region>, Region) {
-        //TODO better checks
-        let n = Region { data: self.data.clone(), offset: self.offset + address - vaddr, vaddr: self.vaddr, size, perms: self.perms };
-        let ret = self.cutout(vaddr, address, size);
-        (ret, n)
-    }
-    fn cutout(&self, vaddr: Vaddr, address: u64, size: u64) -> Vec<Region> {
-        let mut ret: Vec<Region> = Vec::new();
-        if vaddr < address {
-            ret.push(Region { data: self.data.clone(), size: address - vaddr, offset: self.offset, perms: self.perms, vaddr });
+        let size = data.borrow().len() as u64;
+        Region {
+            data,
+            offset: 0,
+            vaddr,
+            size,
+            perms,
         }
-        if address + size < vaddr + self.size {
-            ret.push(Region { data: self.data.clone(), size: vaddr + self.size - address - size, offset: self.offset + (address - vaddr) + size, perms: self.perms, vaddr: address + size });
+    }
+
+    fn contains(&self, address: Vaddr) -> bool { address >= self.vaddr && address < self.vaddr + self.size as Vaddr }
+
+    fn end(&self) -> Vaddr { self.vaddr + self.size as Vaddr }
+
+    fn split(&self, address: Vaddr, size: u64) -> (Vec<Region>, Region) {
+        //TODO better checks
+        let n = Region {
+            data: self.data.clone(),
+            offset: self.offset + address - self.vaddr,
+            vaddr: self.vaddr,
+            size,
+            perms: self.perms,
+        };
+        (self.cutout(address, size), n)
+    }
+    fn cutout(&self, address: Vaddr, size: u64) -> Vec<Region> {
+        let mut ret: Vec<Region> = Vec::new();
+        if self.vaddr < address {
+            ret.push(Region {
+                data: self.data.clone(),
+                size: address - self.vaddr,
+                offset: self.offset,
+                perms: self.perms,
+                vaddr: self.vaddr,
+            });
+        }
+        if address + size < self.vaddr + self.size as Vaddr {
+            ret.push(Region {
+                data: self.data.clone(),
+                size: self.vaddr + self.size - address - size,
+                offset: self.offset + (address - self.vaddr) + size,
+                perms: self.perms,
+                vaddr: address + size,
+            });
         }
         ret
     }
