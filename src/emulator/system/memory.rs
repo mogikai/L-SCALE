@@ -5,20 +5,22 @@ use std::cmp::min;
 use std::collections::BTreeSet;
 use std::ffi::CString;
 use std::fmt;
+use std::marker::PhantomData;
 use std::rc::Rc;
 
-use byteorder::{ByteOrder, LittleEndian};
+use byteorder::ByteOrder;
 use goblin::pe::import::Bitfield;
 
 use crate::emulator::abstractions::cpu::{CPU, Permission, Vaddr};
 
 const MASK4K: u64 = 4 * (1 << 10) - 1;
 
-pub struct Memory {
+pub struct Memory<Endianness: ByteOrder> {
     mappings: BTreeSet<Region>,
     heap: Vaddr,
     _stack: Vaddr,
     mapbase: Vaddr,
+    _endian: PhantomData<Endianness>
 }
 
 fn align4k_up(address: Vaddr) -> Vaddr {
@@ -63,39 +65,39 @@ macro_rules! push_stack {
 	}
 }
 
-impl MemoryWrite<u64> for Memory {
+impl<Endianness: ByteOrder> MemoryWrite<u64> for Memory<Endianness> {
     fn writeat(&mut self, address: Vaddr, data: u64) -> u64 {
         let mut buffer = self.access_mem_mut(address, u64::size_of()).unwrap();
-        LittleEndian::write_u64(&mut *buffer, data);
+        Endianness::write_u64(&mut *buffer, data);
         buffer.len() as u64
     }
     fn writeto(&mut self, address: Vaddr, data: u64) -> u64 {
         let mut buf: Vec<u8> = vec![0; 8];
-        LittleEndian::write_u64(&mut buf, data);
+        Endianness::write_u64(&mut buf, data);
         self.writeto(address, &buf)
     }
 }
 
-impl MemoryWrite<&[u8]> for Memory {
+impl<Endianness: ByteOrder> MemoryWrite<&[u8]> for Memory<Endianness> {
     fn writeat(&mut self, address: Vaddr, data: &[u8]) -> u64 {
         self.write_internal(address, data);
-        return data.len().try_into().unwrap();
+        data.len() as u64
     }
     fn writeto(&mut self, address: Vaddr, data: &[u8]) -> u64 {
         let len = data.len().try_into().unwrap();
         self.write_internal(address - len, data);
-        return len;
+        len
     }
 }
 
-impl MemoryWrite<&[(u64, u64)]> for Memory {
+impl<Endianness: ByteOrder> MemoryWrite<&[(u64, u64)]> for Memory<Endianness> {
     fn writeat(&mut self, address: Vaddr, data: &[(u64, u64)]) -> u64 {
-        let mut buffer = self.access_mem_mut(address, data.len() * 8).unwrap();
+        let mut buffer = self.access_mem_mut(address, data.len() * 2 * 8).unwrap();
         let mut pos = 0;
         for (i1, i2) in data {
-            LittleEndian::write_u64(&mut buffer[pos..pos + 8], *i1);
+            Endianness::write_u64(&mut buffer[pos..pos + 8], *i1);
             pos += 8;
-            LittleEndian::write_u64(&mut buffer[pos..pos + 8], *i2);
+            Endianness::write_u64(&mut buffer[pos..pos + 8], *i2);
             pos += 8;
         }
         buffer.len() as u64
@@ -111,7 +113,7 @@ impl MemoryWrite<&[(u64, u64)]> for Memory {
     }
 }
 
-impl MemoryWrite<&Vec<(u64, u64)>> for Memory {
+impl<Endianness: ByteOrder> MemoryWrite<&Vec<(u64, u64)>> for Memory<Endianness> {
     fn writeat(&mut self, address: Vaddr, data: &Vec<(u64, u64)>) -> u64 {
         return self.writeat(address, data.as_slice());
     }
@@ -120,37 +122,37 @@ impl MemoryWrite<&Vec<(u64, u64)>> for Memory {
     }
 }
 
-impl MemoryWrite<&[u64]> for Memory {
+impl<Endianness: ByteOrder> MemoryWrite<&[u64]> for Memory<Endianness> {
     fn writeat(&mut self, address: Vaddr, data: &[u64]) -> u64 {
         let mut buffer = self.access_mem_mut(address, data.len() * 8).unwrap();
-        LittleEndian::write_u64_into(data, &mut *buffer);
+        Endianness::write_u64_into(data, &mut *buffer);
         buffer.len() as u64
     }
     fn writeto(&mut self, address: Vaddr, data: &[u64]) -> u64 {
         let mut d: Vec<u8> = vec!(0; data.len() * 8);
-        LittleEndian::write_u64_into(&data, &mut d);
+        Endianness::write_u64_into(&data, &mut d);
         let len = d.len().try_into().unwrap();
         self.write_internal(address - len, &d);
         return len;
     }
 }
 
-impl MemoryWrite<&Vec<u64>> for Memory {
+impl<Endianness: ByteOrder> MemoryWrite<&Vec<u64>> for Memory<Endianness> {
     fn writeat(&mut self, address: Vaddr, data: &Vec<u64>) -> u64 { self.writeat(address, data.as_slice()) }
     fn writeto(&mut self, address: Vaddr, data: &Vec<u64>) -> u64 { self.writeto(address, data.as_slice()) }
 }
 
-impl MemoryWrite<&Vec<u8>> for Memory {
+impl<Endianness: ByteOrder> MemoryWrite<&Vec<u8>> for Memory<Endianness> {
     fn writeat(&mut self, address: Vaddr, data: &Vec<u8>) -> u64 { self.writeat(address, data.as_slice()) }
     fn writeto(&mut self, address: Vaddr, data: &Vec<u8>) -> u64 { self.writeto(address, data.as_slice()) }
 }
 
-impl MemoryWrite<Ref<'_, [u8]>> for Memory {
+impl<Endianness: ByteOrder> MemoryWrite<Ref<'_, [u8]>> for Memory<Endianness> {
     fn writeat(&mut self, address: Vaddr, data: Ref<'_, [u8]>) -> u64 { self.writeat(address, &*data) }
     fn writeto(&mut self, address: Vaddr, data: Ref<'_, [u8]>) -> u64 { self.writeto(address, &*data) }
 }
 
-impl MemoryWrite<&str> for Memory {
+impl<Endianness: ByteOrder> MemoryWrite<&str> for Memory<Endianness> {
     fn writeat(&mut self, address: Vaddr, data: &str) -> u64 {
         let v: Vec<u8> = data.as_bytes().to_vec();
         let d: CString = unsafe { CString::from_vec_unchecked(v) };
@@ -168,13 +170,14 @@ pub enum ReadError {
     NotMapped,
 }
 
-impl<'a> Memory {
-    pub fn new(stackbase: Vaddr, heapbase: Vaddr) -> Memory {
+impl<'a, Endianness: ByteOrder> Memory<Endianness> {
+    pub fn new(stackbase: Vaddr, heapbase: Vaddr) -> Memory<Endianness> {
         Memory {
             mappings: BTreeSet::new(),
             heap: heapbase,
             _stack: stackbase,
             mapbase: 0x100000,
+            _endian: PhantomData
         }
     }
 

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use byteorder::{ByteOrder, LittleEndian};
+use byteorder::ByteOrder;
 
 use crate::read_osstring;
 
@@ -300,19 +300,19 @@ impl From<CPUError> for LinuxKernelError {
     }
 }
 
-pub struct LinuxKernel {
-    memory: Memory,
+pub struct LinuxKernel<Endianness: ByteOrder> {
+    memory: Memory<Endianness>,
     filesystem: Filesystem,
     descriptors: HashMap<u64, Box<dyn Handle>>,
 }
 
-impl LinuxKernel {
-    pub fn new(memory: Memory, filesystem: Filesystem) -> LinuxKernel {
+impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
+    pub fn new(memory: Memory<Endianness>, filesystem: Filesystem) -> LinuxKernel<Endianness> {
         LinuxKernel { memory, filesystem, descriptors: HashMap::new() }
     }
 
-    pub fn memory(&self) -> &Memory { &self.memory }
-    pub fn memory_mut(&mut self) -> &mut Memory { &mut self.memory }
+    pub fn memory(&self) -> &Memory<Endianness> { &self.memory }
+    pub fn memory_mut(&mut self) -> &mut Memory<Endianness> { &mut self.memory }
     pub fn filesystem(&self) -> &Filesystem { &self.filesystem }
     pub fn filesystem_mut(&mut self) -> &mut Filesystem { &mut self.filesystem }
 
@@ -329,7 +329,7 @@ impl LinuxKernel {
             }
             0x1002 => { //ARCH_SET_FS
                 let fsbytes = self.memory.read_internal(addr, 8).unwrap();
-                let fs = LittleEndian::read_u64(&fsbytes);
+                let fs = Endianness::read_u64(&fsbytes);
                 cpu.reg_write(RegisterX86::FS_BASE.into(), fs).unwrap();
                 0
             }
@@ -356,8 +356,8 @@ impl LinuxKernel {
         let iovec = self.memory.read_internal(iovec_ptr, (iovcnt * 16) as usize).unwrap();
         let mut out_str = "writev: ".to_owned();
         for i in 0..iovcnt as usize {
-            let ptr = LittleEndian::read_u64(&iovec[(i * 16)..((i * 16) + 8)]);
-            let size = LittleEndian::read_u64(&iovec[i * 16 + 8..i * 16 + 16]) as usize;
+            let ptr = Endianness::read_u64(&iovec[(i * 16)..((i * 16) + 8)]);
+            let size = Endianness::read_u64(&iovec[i * 16 + 8..i * 16 + 16]) as usize;
             let data = self.memory.read_internal(ptr, size).unwrap();
             ret += data.len();
             out_str.push_str(String::from_utf8_lossy(&data).as_ref());
@@ -368,7 +368,7 @@ impl LinuxKernel {
     pub fn openat<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, _dfd: u64, filename: u64, _flags: u64, _mode: u64) -> u64 {
         let fname = read_osstring!(self.memory, filename).unwrap();
         let p = Path::new(&fname);
-        let file = self.filesystem.get(&p);
+        let file = self.filesystem.get(p);
         if let Some(file) = file {
             let fd: u64 = *self.descriptors.keys().max().unwrap_or(&2) + 1;
             self.descriptors.insert(fd, Box::new(OpenFile::new(file)));

@@ -6,10 +6,11 @@ use std::rc::Rc;
 use std::thread::sleep;
 use std::time::Duration;
 
+use byteorder::ByteOrder;
 use linux_libc_auxv::AuxVarType;
 use num_enum::FromPrimitive;
-use crate::emulator::abstractions::cpu::{CPU, CPUError, Permission, RegisterX86, Vaddr};
 
+use crate::emulator::abstractions::cpu::{CPU, CPUError, Permission, RegisterX86, Vaddr};
 use crate::emulator::abstractions::emulator::{Emulator, StopReason};
 use crate::emulator::platform::linux::kernel::LinuxKernel;
 use crate::emulator::system::filesystem::Filesystem;
@@ -22,11 +23,11 @@ pub enum CreationError {
     Unknown,
 }
 
-pub struct LinuxX86<'a, CpuT> where CpuT: CPU<'a> {
+pub struct LinuxX86<'a, CpuT, Endianness> where CpuT: CPU<'a>, Endianness: ByteOrder {
     binary_path: PathBuf,
     cpu: Rc<RefCell<CpuT>>,
-    kernel: Rc<RefCell<LinuxKernel>>,
-    phantom: PhantomData<&'a CpuT>
+    kernel: Rc<RefCell<LinuxKernel<Endianness>>>,
+    phantom: PhantomData<&'a CpuT>,
 }
 
 impl From<CPUError> for StopReason {
@@ -35,7 +36,7 @@ impl From<CPUError> for StopReason {
     }
 }
 
-impl<'a, CpuT> Emulator for LinuxX86<'a, CpuT> where CpuT: CPU<'a> {
+impl<'a, CpuT, Endianness> Emulator for LinuxX86<'a, CpuT, Endianness> where CpuT: CPU<'a>, Endianness: ByteOrder {
     fn run(&mut self) -> Result<(), StopReason> {
         self.cpu.borrow_mut().emulate(None, None, None)?;
         Ok(())
@@ -121,26 +122,29 @@ enum SYSCALL {
     NONE = !0,
 }
 
-fn syscall<'a, CpuT: CPU<'a>>(cpu: &mut CpuT, kernel: &mut LinuxKernel) {
+fn syscall<'a, CpuT: CPU<'a>, Endianness: ByteOrder>(cpu: &mut CpuT, kernel: &mut LinuxKernel<Endianness>) {
     let rax = cpu.reg_read(RegisterX86::RAX.into()).unwrap();
     trace!("SYSCALL: {:?}", SYSCALL::from(rax));
     let rax = match SYSCALL::from(rax) {
-        SYSCALL::READ => { do_syscall!(3, cpu, kernel::read) },
-        SYSCALL::WRITE => { do_syscall!(3, cpu, kernel::write) },
-        SYSCALL::CLOSE => { do_syscall!(1, cpu, kernel::close) },
-        SYSCALL::STAT => { do_syscall!(2, cpu, kernel::stat) },
-        SYSCALL::FSTAT => { do_syscall!(2, cpu, kernel::fstat) },
-        SYSCALL::MMAP => { do_syscall!(6, cpu, kernel::mmap) },
-        SYSCALL::MPROTECT => { do_syscall!(3, cpu, kernel::mprotect) },
-        SYSCALL::BRK => { do_syscall!(1, cpu, kernel::brk) },
-        SYSCALL::PREAD64 => { do_syscall!(4, cpu, kernel::pread64) },
-        SYSCALL::WRITEV => { do_syscall!(3, cpu, kernel::writev) },
-        SYSCALL::ACCESS => { do_syscall!(2, cpu, kernel::access) },
-        SYSCALL::GETPID => { do_syscall!(0, cpu, kernel::getpid) },
-        SYSCALL::UNAME => { do_syscall!(1, cpu, kernel::uname) },
-        SYSCALL::ARCH_PRCTL => { do_syscall!(2, cpu, kernel::arch_prctl) },
-        SYSCALL::OPENAT => { do_syscall!(4, cpu, kernel::openat) },
-        SYSCALL::NONE => { trace!("unknown(rax: {})", rax); !0 },
+        SYSCALL::READ => { do_syscall!(3, cpu, kernel::read) }
+        SYSCALL::WRITE => { do_syscall!(3, cpu, kernel::write) }
+        SYSCALL::CLOSE => { do_syscall!(1, cpu, kernel::close) }
+        SYSCALL::STAT => { do_syscall!(2, cpu, kernel::stat) }
+        SYSCALL::FSTAT => { do_syscall!(2, cpu, kernel::fstat) }
+        SYSCALL::MMAP => { do_syscall!(6, cpu, kernel::mmap) }
+        SYSCALL::MPROTECT => { do_syscall!(3, cpu, kernel::mprotect) }
+        SYSCALL::BRK => { do_syscall!(1, cpu, kernel::brk) }
+        SYSCALL::PREAD64 => { do_syscall!(4, cpu, kernel::pread64) }
+        SYSCALL::WRITEV => { do_syscall!(3, cpu, kernel::writev) }
+        SYSCALL::ACCESS => { do_syscall!(2, cpu, kernel::access) }
+        SYSCALL::GETPID => { do_syscall!(0, cpu, kernel::getpid) }
+        SYSCALL::UNAME => { do_syscall!(1, cpu, kernel::uname) }
+        SYSCALL::ARCH_PRCTL => { do_syscall!(2, cpu, kernel::arch_prctl) }
+        SYSCALL::OPENAT => { do_syscall!(4, cpu, kernel::openat) }
+        SYSCALL::NONE => {
+            trace!("unknown(rax: {})", rax);
+            !0
+        }
     };
     trace!("-> 0x{:X}", rax);
     cpu.reg_write(RegisterX86::RAX.into(), rax).unwrap();
@@ -171,8 +175,8 @@ fn getperms(ph: &goblin::elf::program_header::ProgramHeader) -> Permission {
     return perms;
 }
 
-impl<'a, CpuT> LinuxX86<'a, CpuT> where CpuT: CPU<'a> {
-    pub fn new(filesystem: Filesystem, memory: Memory, cpu: Rc<RefCell<CpuT>>, binary_path: PathBuf) -> Result<LinuxX86<'a, CpuT>, CreationError> {
+impl<'a, CpuT, Endianness> LinuxX86<'a, CpuT, Endianness> where CpuT: CPU<'a>, Endianness: ByteOrder + 'a {
+    pub fn new(filesystem: Filesystem, memory: Memory<Endianness>, cpu: Rc<RefCell<CpuT>>, binary_path: PathBuf) -> Result<LinuxX86<'a, CpuT, Endianness>, CreationError> {
         let kernel = Rc::new(RefCell::new(LinuxKernel::new(memory, filesystem)));
         let mut emu = LinuxX86 { binary_path, cpu, kernel: kernel.clone(), phantom: Default::default() };
         {
