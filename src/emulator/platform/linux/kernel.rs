@@ -1,9 +1,11 @@
+use std::{fs, io};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use byteorder::ByteOrder;
+use linux_libc_auxv::AuxVarType;
 
-use crate::emulator::abstractions::cpu::{CPU, CPUError, RegisterX86, Vaddr};
+use crate::emulator::abstractions::cpu::{CPU, CPUError, Permission, RegisterX86, Vaddr};
 use crate::emulator::abstractions::handles::{Handle, IOErr};
 use crate::emulator::platform::linux::filedescriptors::OpenFile;
 use crate::emulator::system::default_handles;
@@ -447,6 +449,72 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
         LinuxKernel { memory, filesystem, handles }
     }
 
+    pub fn load_binary<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, binary_path: &Path) -> Result<(), LinuxKernelError> {
+        let root_dir = self.filesystem.root();
+        let buffer = fs::read(getpath(root_dir, binary_path).unwrap()).unwrap();
+        let elf = goblin::elf::Elf::parse(&buffer).unwrap();
+        let interpreter_path = getpath(root_dir, Path::new(elf.interpreter.unwrap())).unwrap();
+        let buffer = fs::read(&interpreter_path).unwrap();
+        let interpreter = goblin::elf::Elf::parse(&buffer).unwrap();
+        cpu.reg_write(RegisterX86::RIP.into(), interpreter.entry).unwrap();
+        //TODO iterator
+        for ph in interpreter.program_headers {
+            if ph.p_type == goblin::elf::program_header::PT_LOAD {
+                let perms = getperms(&ph);
+                if ph.p_offset + ph.p_filesz > buffer.len().try_into().unwrap() {
+                    return Err(LinuxKernelError::ENOEXEC);
+                }
+                let data: &[u8] = &buffer[ph.file_range()];
+                let vm_range = ph.p_vaddr..(ph.p_vaddr + ph.p_memsz);
+                info!("vm_range   0x{:X}..0x{:X}", vm_range.start, vm_range.end);
+                info!("file_range 0x{:X}..0x{:X}", ph.file_range().start, ph.file_range().end);
+                self.memory.map_data(data, vm_range, perms, &mut *cpu).unwrap();
+            }
+        }
+        self.memory.map_data(&[0; 4096 * 4], (0x4000000000000000 - (4096 * 4))..0x4000000000000000, Permission::READ | Permission::WRITE, &mut *cpu).unwrap();
+        self.initstack(cpu, binary_path, interpreter_path.as_path(), interpreter.entry)
+    }
+
+    fn initstack<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, binary_path: &Path, interpreter_path: &Path, entrypoint: Vaddr) -> Result<(), LinuxKernelError> {
+        info!("Initializing stack");
+        cpu.reg_write(RegisterX86::RSP.into(), 0x4000000000000000).expect("failed to write RSP");
+        let mem = &mut self.memory;
+        let mut env: Vec<u64> = Vec::new();
+        let mut argv: Vec<u64> = Vec::new();
+        let mut aux: Vec<(u64, u64)> = Vec::new();
+        crate::push_stack!(mem, 0u64, RegisterX86::RSP.into(), cpu);
+        env.push(crate::push_stack!(mem, "SHELL=/bin/sh", RegisterX86::RSP.into(), cpu));
+        env.push(crate::push_stack!(mem, "LD_DEBUG=all", RegisterX86::RSP.into(), cpu));
+        env.push(0);
+        argv.push(2);
+        argv.push(crate::push_stack!(mem, interpreter_path.to_str().unwrap(), RegisterX86::RSP.into(), cpu));
+        argv.push(crate::push_stack!(mem, binary_path.to_str().unwrap(), RegisterX86::RSP.into(), cpu));
+        argv.push(0);
+        aux.push((AuxVarType::Pagesz as u64, 4096));
+        aux.push((AuxVarType::HwCap as u64, 0xbfebfbff));
+        aux.push((AuxVarType::Uid as u64, 1));
+        aux.push((AuxVarType::Gid as u64, 1));
+        aux.push((AuxVarType::EUid as u64, 1));
+        aux.push((AuxVarType::EGid as u64, 1));
+        aux.push((AuxVarType::Platform as u64, crate::push_stack!(mem, "x86_64", RegisterX86::RSP.into(), cpu)));
+        aux.push((AuxVarType::Entry as u64, entrypoint));
+        aux.push((AuxVarType::Phdr as u64, 56));
+        aux.push((AuxVarType::Phent as u64, 11));
+        aux.push((AuxVarType::Secure as u64, 0));
+        aux.push((0, 0));
+
+        // align stack
+        let rsp = cpu.reg_read(RegisterX86::RSP.into()).expect("error can't read RSP");
+        if (rsp & !0xf) != rsp {
+            cpu.reg_write(RegisterX86::RSP.into(), rsp & !0xf).unwrap();
+        }
+
+        crate::push_stack!(mem, &aux, RegisterX86::RSP.into(), cpu);
+        crate::push_stack!(mem, &env, RegisterX86::RSP.into(), cpu);
+        crate::push_stack!(mem, &argv, RegisterX86::RSP.into(), cpu);
+        Ok(())
+    }
+
     pub fn memory(&self) -> &Memory<Endianness> { &self.memory }
     pub fn memory_mut(&mut self) -> &mut Memory<Endianness> { &mut self.memory }
     pub fn filesystem(&self) -> &Filesystem { &self.filesystem }
@@ -627,4 +695,30 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
         self.memory.protect(start, len, prot.try_into().unwrap(), cpu);
         0
     }
+}
+
+
+fn getpath(dir: &Path, file: &Path) -> Result<PathBuf, io::Error> {
+    let p = if file.is_absolute() {
+        file.strip_prefix("/").unwrap()
+    } else {
+        file
+    };
+    let dir = dir.canonicalize()?;
+    let p = dir.join(p).canonicalize()?;
+    if p.starts_with(dir) { Ok(p) } else { Err(io::ErrorKind::NotFound.into()) }
+}
+
+fn getperms(ph: &goblin::elf::program_header::ProgramHeader) -> Permission {
+    let mut perms = Permission::NONE;
+    if ph.is_read() {
+        perms |= Permission::READ;
+    }
+    if ph.is_write() {
+        perms |= Permission::WRITE;
+    }
+    if ph.is_executable() {
+        perms |= Permission::EXEC;
+    }
+    perms
 }
