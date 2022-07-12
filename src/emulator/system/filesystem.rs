@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use byteorder::{ByteOrder, LittleEndian};
 
-use crate::emulator::abstractions::descriptors::IOErr;
+use crate::emulator::abstractions::handles::IOErr;
 
 #[derive(Debug, Clone)]
 pub struct File {

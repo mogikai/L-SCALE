@@ -22,5 +22,5 @@ pub trait Handle {
     /// returns: A reference to the data that is accessed by the pread call
     fn pread(&self, offset: u64, length: u64) -> Result<&[u8], IOErr>;
 
-    fn write(&mut self, data: &[u8]) -> Result<(), IOErr>;
+    fn write(&mut self, data: &[u8]) -> Result<usize, IOErr>;
 }

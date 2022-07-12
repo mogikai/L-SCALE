@@ -1,6 +1,6 @@
 use std::cmp::min;
 
-use crate::emulator::abstractions::descriptors::{Handle, IOErr};
+use crate::emulator::abstractions::handles::{Handle, IOErr};
 use crate::emulator::system::filesystem::FSEntry;
 
 #[derive(Debug, Clone)]
@@ -36,7 +36,7 @@ impl Handle for OpenFile {
         }
     }
 
-    fn write(&mut self, data: &[u8]) -> Result<(), IOErr> {
+    fn write(&mut self, data: &[u8]) -> Result<usize, IOErr> {
         todo!()
     }
 }

@@ -2,6 +2,8 @@ pub mod emulator;
 pub mod fuzzer;
 
 #[macro_use] extern crate log;
+extern crate core;
+
 use static_assertions::assert_eq_size;
 
 // This library emulates 64 bit targets and thus requires usize to be 64 bits
