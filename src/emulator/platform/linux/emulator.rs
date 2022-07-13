@@ -147,9 +147,9 @@ fn syscall<'a, CpuT: CPU<'a>, Endianness: ByteOrder>(cpu: &mut CpuT, kernel: &mu
 
 impl<'a, CpuT, Endianness> LinuxX86<'a, CpuT, Endianness>
     where CpuT: CPU<'a>, Endianness: ByteOrder + 'a {
-    pub fn new(filesystem: Filesystem, memory: Memory<Endianness>, cpu: Rc<RefCell<CpuT>>, binary_path: PathBuf) -> Result<LinuxX86<'a, CpuT, Endianness>, CreationError> {
-        let kernel = Rc::new(RefCell::new(LinuxKernel::new(memory, filesystem)));
+    pub fn new(kernel: Rc<RefCell<LinuxKernel<Endianness>>>, cpu: Rc<RefCell<CpuT>>, binary_path: PathBuf) -> Result<LinuxX86<'a, CpuT, Endianness>, CreationError> {
         let emu = LinuxX86 { binary_path, cpu, kernel: kernel.clone(), phantom: Default::default() };
+        kernel.borrow_mut().add_stdio_handles();
 
         let mut cpu = emu.cpu.borrow_mut();
         kernel.borrow_mut().load_binary(&mut *cpu,emu.binary_path.as_path()).unwrap();

@@ -1,5 +1,6 @@
 use std::{fs, io};
-use std::collections::HashMap;
+use std::collections::hash_map::Keys;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 
 use byteorder::ByteOrder;
@@ -18,6 +19,350 @@ const MAP_ANONYMOUS: u64 = 0x20;
 const MAP_PRIVATE: u64 = 0x2;
 const MAP_FIXED: u64 = 0x10;
 const MAP_DENYWRITE: u64 = 0x0800;
+
+struct HandleMap {
+    handles: HashMap<u64, Box<dyn Handle>>,
+    replacement_handles: HashMap<u64, VecDeque<Box<dyn Handle>>>,
+}
+
+impl HandleMap {
+    fn new() -> Self {
+        Self { handles: HashMap::new(), replacement_handles: HashMap::new() }
+    }
+}
+
+impl HandleMap {
+    /// This function is used to add a replacement handle that is inserted instead of the actual handle
+    /// for the first call that is associated with the supplied fd. If multiple replacements are added
+    /// for the same fd, they will be used subsequently for each new insert that happens after the fd
+    /// was closed, i.e. after it was removed
+    /// # Arguments
+    ///
+    /// * `fd`: The fd the replacement is associated with.
+    /// * `handle`: The replacement handle.
+    ///
+    /// returns: ()
+    fn add_replacement_handle(&mut self, fd: u64, handle: Box<dyn Handle>) {
+        let handles = self.replacement_handles.entry(fd).or_default();
+        handles.push_front(handle);
+    }
+
+    fn insert(&mut self, fd: u64, handle: Box<dyn Handle>) -> Option<Box<dyn Handle>> {
+        // Insert the handle if no replacement exists. Otherwise insert the replacement
+        self.handles.insert(fd, self.replacement_handles.entry(fd).or_default().pop_back().unwrap_or(handle))
+    }
+
+    fn get_mut(&mut self, fd: &u64) -> Option<&mut Box<dyn Handle>> {
+        self.handles.get_mut(fd)
+    }
+
+    fn keys(&self) -> Keys<u64, Box<dyn Handle>> {
+        self.handles.keys()
+    }
+
+    fn get(&self, fd: &u64) -> Option<&Box<dyn Handle>> {
+        self.handles.get(fd)
+    }
+
+    fn remove(&mut self, fd: &u64) -> Option<Box<dyn Handle>> {
+        self.handles.remove(fd)
+    }
+}
+
+pub struct LinuxKernel<Endianness: ByteOrder> {
+    memory: Memory<Endianness>,
+    filesystem: Filesystem,
+    handles: HandleMap,
+}
+
+impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
+    pub fn new(memory: Memory<Endianness>, filesystem: Filesystem) -> LinuxKernel<Endianness> {
+        LinuxKernel { memory, filesystem, handles: HandleMap::new() }
+    }
+
+    pub fn load_binary<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, binary_path: &Path) -> Result<(), LinuxKernelError> {
+        let root_dir = self.filesystem.root();
+        let buffer = fs::read(getpath(root_dir, binary_path).unwrap()).unwrap();
+        let elf = goblin::elf::Elf::parse(&buffer).unwrap();
+        let interpreter_path = getpath(root_dir, Path::new(elf.interpreter.unwrap())).unwrap();
+        let buffer = fs::read(&interpreter_path).unwrap();
+        let interpreter = goblin::elf::Elf::parse(&buffer).unwrap();
+        cpu.reg_write(RegisterX86::RIP.into(), interpreter.entry).unwrap();
+        //TODO iterator
+        for ph in interpreter.program_headers {
+            if ph.p_type == goblin::elf::program_header::PT_LOAD {
+                let perms = getperms(&ph);
+                if ph.p_offset + ph.p_filesz > buffer.len().try_into().unwrap() {
+                    return Err(LinuxKernelError::ENOEXEC);
+                }
+                let data: &[u8] = &buffer[ph.file_range()];
+                let vm_range = ph.p_vaddr..(ph.p_vaddr + ph.p_memsz);
+                info!("vm_range   0x{:X}..0x{:X}", vm_range.start, vm_range.end);
+                info!("file_range 0x{:X}..0x{:X}", ph.file_range().start, ph.file_range().end);
+                self.memory.map_data(data, vm_range, perms, &mut *cpu).unwrap();
+            }
+        }
+        self.memory.map_data(&[0; 4096 * 4], (0x4000000000000000 - (4096 * 4))..0x4000000000000000, Permission::READ | Permission::WRITE, &mut *cpu).unwrap();
+        self.initstack(cpu, binary_path, interpreter_path.as_path(), interpreter.entry)
+    }
+
+    fn initstack<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, binary_path: &Path, interpreter_path: &Path, entrypoint: Vaddr) -> Result<(), LinuxKernelError> {
+        info!("Initializing stack");
+        cpu.reg_write(RegisterX86::RSP.into(), 0x4000000000000000).expect("failed to write RSP");
+        let mem = &mut self.memory;
+        let mut env: Vec<u64> = Vec::new();
+        let mut argv: Vec<u64> = Vec::new();
+        let mut aux: Vec<(u64, u64)> = Vec::new();
+        crate::push_stack!(mem, 0u64, RegisterX86::RSP.into(), cpu);
+        env.push(crate::push_stack!(mem, "SHELL=/bin/sh", RegisterX86::RSP.into(), cpu));
+        env.push(crate::push_stack!(mem, "LD_DEBUG=all", RegisterX86::RSP.into(), cpu));
+        env.push(0);
+        argv.push(2);
+        argv.push(crate::push_stack!(mem, interpreter_path.to_str().unwrap(), RegisterX86::RSP.into(), cpu));
+        argv.push(crate::push_stack!(mem, binary_path.to_str().unwrap(), RegisterX86::RSP.into(), cpu));
+        argv.push(0);
+        aux.push((AuxVarType::Pagesz as u64, 4096));
+        aux.push((AuxVarType::HwCap as u64, 0xbfebfbff));
+        aux.push((AuxVarType::Uid as u64, 1));
+        aux.push((AuxVarType::Gid as u64, 1));
+        aux.push((AuxVarType::EUid as u64, 1));
+        aux.push((AuxVarType::EGid as u64, 1));
+        aux.push((AuxVarType::Platform as u64, crate::push_stack!(mem, "x86_64", RegisterX86::RSP.into(), cpu)));
+        aux.push((AuxVarType::Entry as u64, entrypoint));
+        aux.push((AuxVarType::Phdr as u64, 56));
+        aux.push((AuxVarType::Phent as u64, 11));
+        aux.push((AuxVarType::Secure as u64, 0));
+        aux.push((0, 0));
+
+        // align stack
+        let rsp = cpu.reg_read(RegisterX86::RSP.into()).expect("error can't read RSP");
+        if (rsp & !0xf) != rsp {
+            cpu.reg_write(RegisterX86::RSP.into(), rsp & !0xf).unwrap();
+        }
+
+        crate::push_stack!(mem, &aux, RegisterX86::RSP.into(), cpu);
+        crate::push_stack!(mem, &env, RegisterX86::RSP.into(), cpu);
+        crate::push_stack!(mem, &argv, RegisterX86::RSP.into(), cpu);
+        Ok(())
+    }
+
+    pub fn add_stdio_handles(&mut self) {
+        self.handles.insert(0, Box::new(default_handles::ReadOnly::new()));
+        self.handles.insert(1, Box::new(default_handles::WriteOnly::new()));
+        self.handles.insert(2, Box::new(default_handles::WriteOnly::new()));
+    }
+
+    pub fn add_replacement_handle(&mut self, fd: u64, handle: Box<dyn Handle>) {
+        self.handles.add_replacement_handle(fd, handle);
+    }
+
+    pub fn memory(&self) -> &Memory<Endianness> { &self.memory }
+    pub fn memory_mut(&mut self) -> &mut Memory<Endianness> { &mut self.memory }
+    pub fn filesystem(&self) -> &Filesystem { &self.filesystem }
+    pub fn filesystem_mut(&mut self) -> &mut Filesystem { &mut self.filesystem }
+
+    pub fn brk<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, addr: u64) -> u64 {
+        if addr != 0 {
+            self.memory.realloc_heap(addr, cpu);
+        }
+        self.memory.heapend()
+    }
+    pub fn arch_prctl<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, code: u64, addr: u64) -> u64 {
+        match code {
+            0x1001 => { //ARCH_SET_GS
+                !0
+            }
+            0x1002 => { //ARCH_SET_FS
+                let fsbytes = self.memory.read_internal(addr, 8).unwrap();
+                let fs = Endianness::read_u64(&fsbytes);
+                cpu.reg_write(RegisterX86::FS_BASE.into(), fs).unwrap();
+                0
+            }
+            0x1003 => !0, //ARCH_GET_FS
+            0x1004 => !0, //ARCH_GET_GS
+            _ => !0,
+        }
+    }
+    pub fn write<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, fd: u64, buf: u64, size: u64) -> u64 {
+        self.handles.get_mut(&fd).map_or(!0, |handle| {
+            let data = self.memory.read_internal(buf, size as usize).unwrap();
+            handle.write(&*data).unwrap_or(!0).try_into().unwrap()
+        })
+    }
+
+    pub fn writev<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, fd: u64, iovec_ptr: Vaddr, iovcnt: u64) -> u64 {
+        self.handles.get_mut(&fd).map_or(!0, |handle| {
+            let mut ret = 0;
+            let iovec = self.memory.read_internal(iovec_ptr, (iovcnt * 16) as usize).unwrap();
+            for i in 0..iovcnt as usize {
+                let ptr = Endianness::read_u64(&iovec[(i * 16)..((i * 16) + 8)]);
+                let size = Endianness::read_u64(&iovec[i * 16 + 8..i * 16 + 16]) as usize;
+                let data = self.memory.read_internal(ptr, size).unwrap();
+                match handle.write(data.as_ref()) {
+                    Ok(written) => {
+                        ret += written;
+                        // Early return if not all bytes were written. We need to stop writing in this case
+                        if written != data.len() { return ret.try_into().unwrap(); };
+                    }
+                    Err(_e) => return !0,
+                };
+            }
+            ret.try_into().unwrap()
+        })
+    }
+    pub fn openat<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, _dfd: u64, filename: u64, _flags: u64, _mode: u64) -> u64 {
+        let fname = read_osstring!(self.memory, filename).unwrap();
+        let p = Path::new(&fname);
+        let file = self.filesystem.get(p);
+        if let Some(file) = file {
+            let fd: u64 = *self.handles.keys().max().unwrap_or(&2) + 1;
+            self.handles.insert(fd, Box::new(OpenFile::new(file)));
+            return fd;
+        }
+        !0
+    }
+    pub fn read<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, fd: u64, buf: u64, count: u64) -> u64 {
+        if let Some(f) = self.handles.get_mut(&fd) {
+            self.memory.writeat(buf, f.read(count).unwrap())
+        } else {
+            !0
+        }
+    }
+    pub fn getpid<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT) -> u64 {
+        // TODO: Implement multi threading / processing
+        1
+    }
+    fn mmap_anon<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, addr: Vaddr, length: u64, prot: u64, flags: u64) -> Result<u64, LinuxKernelError> {
+        let addr = if (flags & MAP_FIXED) != 0 {
+            if let Err(e) = self.memory.unmap(addr, length, cpu) {
+                return Ok(match e {
+                    memory::UnmapError::NotAligned => !0,
+                    memory::UnmapError::ZeroSize => !0,
+                });
+            }
+            addr
+        } else {
+            //self.memory.find_free(addr, length)
+            addr
+        };
+        let addr = match self.memory.mmap(addr, length, prot.try_into()?, cpu) {
+            Ok(addr) => addr,
+            Err(e) => {
+                println!("mmap error {:?}", e);
+                return Ok(!0);
+            }
+        };
+        Ok(addr)
+    }
+    fn mmap_private<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, addr: u64, length: u64, prot: u64, flags: u64, fd: u64, offset: u64) -> u64 {
+        if fd >= 1 << 31 {
+            return !0;
+        }
+        let addr = self.mmap_anon(cpu, addr, length, prot, flags).unwrap();
+        if addr == !0 {
+            return !0;
+        }
+        let f = match self.handles.get(&fd) {
+            Some(f) => f,
+            _ => return !0,
+        };
+        let data = match f.pread(offset, length) {
+            Ok(d) => d,
+            _ => return !0,
+        };
+        self.memory.writeat(addr, data);
+        addr
+    }
+    pub fn mmap<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, addr: Vaddr, length: u64, prot: u64, flags: u64, fd: u64, offset: u64) -> u64 {
+        if (flags & !(MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED | MAP_DENYWRITE)) != 0 {
+            return !0;
+        }
+        if (flags & MAP_ANONYMOUS) != 0 {
+            return self.mmap_anon(cpu, addr, length, prot, flags).unwrap();
+        }
+        if (flags & MAP_PRIVATE) != 0 {
+            return self.mmap_private(cpu, addr, length, prot, flags, fd, offset);
+        }
+        !0
+    }
+    pub fn close<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, fd: u64) -> u64 {
+        self.handles.remove(&fd);
+        0
+    }
+    pub fn uname<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, buf: u64) -> u64 {
+        //TODO check if address is mapped and has space for struct new_utsname
+        self.memory.writeat(buf + 0 * 65, "Linux");
+        self.memory.writeat(buf + 1 * 65, "ILT792");
+        self.memory.writeat(buf + 2 * 65, "5.4.0-110-generic");
+        self.memory.writeat(buf + 3 * 65, "#124-Ubuntu SMP Thu Apr 14 19:46:19 UTC 2022");
+        self.memory.writeat(buf + 4 * 65, "x86_64");
+        self.memory.writeat(buf + 5 * 65, "(none)");
+        0
+    }
+    pub fn access<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, _filename: u64, _mode: u64) -> u64 {
+        !0
+    }
+    pub fn fstat<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, fd: u64, statbuf: Vaddr) -> u64 {
+        let file = self.handles.get_mut(&fd);
+        match file {
+            Some(f) => {
+                self.memory.writeat(statbuf, &f.stat());
+                return 0;
+            }
+            None => {}
+        }
+        !0
+    }
+    pub fn stat<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, filename: u64, statbuf: Vaddr) -> u64 {
+        let fname = read_osstring!(self.memory, filename).unwrap();
+        match self.filesystem.stat(Path::new(&fname)) {
+            Ok(s) => {
+                self.memory.writeat(statbuf, &s);
+                0
+            }
+            Err(_) => !0,
+        }
+    }
+    pub fn pread64<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, fd: u64, buf: u64, count: u64, pos: u64) -> u64 {
+        let file = self.handles.get_mut(&fd);
+        if let Some(f) = file {
+            let d = f.pread(pos, count).unwrap();
+            self.memory.writeat(buf, d)
+        } else {
+            !0
+        }
+    }
+    pub fn mprotect<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, start: u64, len: u64, prot: u64) -> u64 {
+        self.memory.protect(start, len, prot.try_into().unwrap(), cpu);
+        0
+    }
+}
+
+
+fn getpath(dir: &Path, file: &Path) -> Result<PathBuf, io::Error> {
+    let p = if file.is_absolute() {
+        file.strip_prefix("/").unwrap()
+    } else {
+        file
+    };
+    let dir = dir.canonicalize()?;
+    let p = dir.join(p).canonicalize()?;
+    if p.starts_with(dir) { Ok(p) } else { Err(io::ErrorKind::NotFound.into()) }
+}
+
+fn getperms(ph: &goblin::elf::program_header::ProgramHeader) -> Permission {
+    let mut perms = Permission::NONE;
+    if ph.is_read() {
+        perms |= Permission::READ;
+    }
+    if ph.is_write() {
+        perms |= Permission::WRITE;
+    }
+    if ph.is_executable() {
+        perms |= Permission::EXEC;
+    }
+    perms
+}
 
 #[derive(Debug)]
 pub enum LinuxKernelError {
@@ -432,293 +777,4 @@ impl From<CPUError> for LinuxKernelError {
     fn from(_: CPUError) -> Self {
         LinuxKernelError::EINVAL
     }
-}
-
-pub struct LinuxKernel<Endianness: ByteOrder> {
-    memory: Memory<Endianness>,
-    filesystem: Filesystem,
-    handles: HashMap<u64, Box<dyn Handle>>,
-}
-
-impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
-    pub fn new(memory: Memory<Endianness>, filesystem: Filesystem) -> LinuxKernel<Endianness> {
-        let mut handles: HashMap<u64, Box<dyn Handle>> = HashMap::new();
-        handles.insert(0, Box::new(default_handles::WriteOnly {}));
-        handles.insert(1, Box::new(default_handles::WriteOnly {}));
-        handles.insert(2, Box::new(default_handles::WriteOnly {}));
-        LinuxKernel { memory, filesystem, handles }
-    }
-
-    pub fn load_binary<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, binary_path: &Path) -> Result<(), LinuxKernelError> {
-        let root_dir = self.filesystem.root();
-        let buffer = fs::read(getpath(root_dir, binary_path).unwrap()).unwrap();
-        let elf = goblin::elf::Elf::parse(&buffer).unwrap();
-        let interpreter_path = getpath(root_dir, Path::new(elf.interpreter.unwrap())).unwrap();
-        let buffer = fs::read(&interpreter_path).unwrap();
-        let interpreter = goblin::elf::Elf::parse(&buffer).unwrap();
-        cpu.reg_write(RegisterX86::RIP.into(), interpreter.entry).unwrap();
-        //TODO iterator
-        for ph in interpreter.program_headers {
-            if ph.p_type == goblin::elf::program_header::PT_LOAD {
-                let perms = getperms(&ph);
-                if ph.p_offset + ph.p_filesz > buffer.len().try_into().unwrap() {
-                    return Err(LinuxKernelError::ENOEXEC);
-                }
-                let data: &[u8] = &buffer[ph.file_range()];
-                let vm_range = ph.p_vaddr..(ph.p_vaddr + ph.p_memsz);
-                info!("vm_range   0x{:X}..0x{:X}", vm_range.start, vm_range.end);
-                info!("file_range 0x{:X}..0x{:X}", ph.file_range().start, ph.file_range().end);
-                self.memory.map_data(data, vm_range, perms, &mut *cpu).unwrap();
-            }
-        }
-        self.memory.map_data(&[0; 4096 * 4], (0x4000000000000000 - (4096 * 4))..0x4000000000000000, Permission::READ | Permission::WRITE, &mut *cpu).unwrap();
-        self.initstack(cpu, binary_path, interpreter_path.as_path(), interpreter.entry)
-    }
-
-    fn initstack<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, binary_path: &Path, interpreter_path: &Path, entrypoint: Vaddr) -> Result<(), LinuxKernelError> {
-        info!("Initializing stack");
-        cpu.reg_write(RegisterX86::RSP.into(), 0x4000000000000000).expect("failed to write RSP");
-        let mem = &mut self.memory;
-        let mut env: Vec<u64> = Vec::new();
-        let mut argv: Vec<u64> = Vec::new();
-        let mut aux: Vec<(u64, u64)> = Vec::new();
-        crate::push_stack!(mem, 0u64, RegisterX86::RSP.into(), cpu);
-        env.push(crate::push_stack!(mem, "SHELL=/bin/sh", RegisterX86::RSP.into(), cpu));
-        env.push(crate::push_stack!(mem, "LD_DEBUG=all", RegisterX86::RSP.into(), cpu));
-        env.push(0);
-        argv.push(2);
-        argv.push(crate::push_stack!(mem, interpreter_path.to_str().unwrap(), RegisterX86::RSP.into(), cpu));
-        argv.push(crate::push_stack!(mem, binary_path.to_str().unwrap(), RegisterX86::RSP.into(), cpu));
-        argv.push(0);
-        aux.push((AuxVarType::Pagesz as u64, 4096));
-        aux.push((AuxVarType::HwCap as u64, 0xbfebfbff));
-        aux.push((AuxVarType::Uid as u64, 1));
-        aux.push((AuxVarType::Gid as u64, 1));
-        aux.push((AuxVarType::EUid as u64, 1));
-        aux.push((AuxVarType::EGid as u64, 1));
-        aux.push((AuxVarType::Platform as u64, crate::push_stack!(mem, "x86_64", RegisterX86::RSP.into(), cpu)));
-        aux.push((AuxVarType::Entry as u64, entrypoint));
-        aux.push((AuxVarType::Phdr as u64, 56));
-        aux.push((AuxVarType::Phent as u64, 11));
-        aux.push((AuxVarType::Secure as u64, 0));
-        aux.push((0, 0));
-
-        // align stack
-        let rsp = cpu.reg_read(RegisterX86::RSP.into()).expect("error can't read RSP");
-        if (rsp & !0xf) != rsp {
-            cpu.reg_write(RegisterX86::RSP.into(), rsp & !0xf).unwrap();
-        }
-
-        crate::push_stack!(mem, &aux, RegisterX86::RSP.into(), cpu);
-        crate::push_stack!(mem, &env, RegisterX86::RSP.into(), cpu);
-        crate::push_stack!(mem, &argv, RegisterX86::RSP.into(), cpu);
-        Ok(())
-    }
-
-    pub fn memory(&self) -> &Memory<Endianness> { &self.memory }
-    pub fn memory_mut(&mut self) -> &mut Memory<Endianness> { &mut self.memory }
-    pub fn filesystem(&self) -> &Filesystem { &self.filesystem }
-    pub fn filesystem_mut(&mut self) -> &mut Filesystem { &mut self.filesystem }
-
-    pub fn brk<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, addr: u64) -> u64 {
-        if addr != 0 {
-            self.memory.realloc_heap(addr, cpu);
-        }
-        self.memory.heapend()
-    }
-    pub fn arch_prctl<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, code: u64, addr: u64) -> u64 {
-        match code {
-            0x1001 => { //ARCH_SET_GS
-                !0
-            }
-            0x1002 => { //ARCH_SET_FS
-                let fsbytes = self.memory.read_internal(addr, 8).unwrap();
-                let fs = Endianness::read_u64(&fsbytes);
-                cpu.reg_write(RegisterX86::FS_BASE.into(), fs).unwrap();
-                0
-            }
-            0x1003 => !0, //ARCH_GET_FS
-            0x1004 => !0, //ARCH_GET_GS
-            _ => !0,
-        }
-    }
-    pub fn write<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, fd: u64, buf: u64, size: u64) -> u64 {
-        self.handles.get_mut(&fd).map_or(!0, |handle| {
-            let data = self.memory.read_internal(buf, size as usize).unwrap();
-            handle.write(&*data).unwrap_or(!0).try_into().unwrap()
-        })
-    }
-
-    pub fn writev<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, fd: u64, iovec_ptr: Vaddr, iovcnt: u64) -> u64 {
-        self.handles.get_mut(&fd).map_or(!0, |handle| {
-            let mut ret = 0;
-            let iovec = self.memory.read_internal(iovec_ptr, (iovcnt * 16) as usize).unwrap();
-            for i in 0..iovcnt as usize {
-                let ptr = Endianness::read_u64(&iovec[(i * 16)..((i * 16) + 8)]);
-                let size = Endianness::read_u64(&iovec[i * 16 + 8..i * 16 + 16]) as usize;
-                let data = self.memory.read_internal(ptr, size).unwrap();
-                match handle.write(data.as_ref()) {
-                    Ok(written) => {
-                        ret += written;
-                        // Early return if not all bytes were written. We need to stop writing in this case
-                        if written != data.len() { return ret.try_into().unwrap(); };
-                    }
-                    Err(_e) => return !0,
-                };
-            }
-            ret.try_into().unwrap()
-        })
-    }
-    pub fn openat<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, _dfd: u64, filename: u64, _flags: u64, _mode: u64) -> u64 {
-        let fname = read_osstring!(self.memory, filename).unwrap();
-        let p = Path::new(&fname);
-        let file = self.filesystem.get(p);
-        if let Some(file) = file {
-            let fd: u64 = *self.handles.keys().max().unwrap_or(&2) + 1;
-            self.handles.insert(fd, Box::new(OpenFile::new(file)));
-            return fd;
-        }
-        !0
-    }
-    pub fn read<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, fd: u64, buf: u64, count: u64) -> u64 {
-        if let Some(f) = self.handles.get_mut(&fd) {
-            self.memory.writeat(buf, f.read(count).unwrap())
-        } else {
-            !0
-        }
-    }
-    pub fn getpid<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT) -> u64 {
-        // TODO: Implement multi threading / processing
-        1
-    }
-    fn mmap_anon<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, addr: Vaddr, length: u64, prot: u64, flags: u64) -> Result<u64, LinuxKernelError> {
-        let addr = if (flags & MAP_FIXED) != 0 {
-            if let Err(e) = self.memory.unmap(addr, length, cpu) {
-                return Ok(match e {
-                    memory::UnmapError::NotAligned => !0,
-                    memory::UnmapError::ZeroSize => !0,
-                });
-            }
-            addr
-        } else {
-            //self.memory.find_free(addr, length)
-            addr
-        };
-        let addr = match self.memory.mmap(addr, length, prot.try_into()?, cpu) {
-            Ok(addr) => addr,
-            Err(e) => {
-                println!("mmap error {:?}", e);
-                return Ok(!0);
-            }
-        };
-        Ok(addr)
-    }
-    fn mmap_private<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, addr: u64, length: u64, prot: u64, flags: u64, fd: u64, offset: u64) -> u64 {
-        if fd >= 1 << 31 {
-            return !0;
-        }
-        let addr = self.mmap_anon(cpu, addr, length, prot, flags).unwrap();
-        if addr == !0 {
-            return !0;
-        }
-        let f = match self.handles.get(&fd) {
-            Some(f) => f,
-            _ => return !0,
-        };
-        let data = match f.pread(offset, length) {
-            Ok(d) => d,
-            _ => return !0,
-        };
-        self.memory.writeat(addr, data);
-        addr
-    }
-    pub fn mmap<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, addr: Vaddr, length: u64, prot: u64, flags: u64, fd: u64, offset: u64) -> u64 {
-        if (flags & !(MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED | MAP_DENYWRITE)) != 0 {
-            return !0;
-        }
-        if (flags & MAP_ANONYMOUS) != 0 {
-            return self.mmap_anon(cpu, addr, length, prot, flags).unwrap();
-        }
-        if (flags & MAP_PRIVATE) != 0 {
-            return self.mmap_private(cpu, addr, length, prot, flags, fd, offset);
-        }
-        !0
-    }
-    pub fn close<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, fd: u64) -> u64 {
-        self.handles.remove(&fd);
-        0
-    }
-    pub fn uname<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, buf: u64) -> u64 {
-        //TODO check if address is mapped and has space for struct new_utsname
-        self.memory.writeat(buf + 0 * 65, "Linux");
-        self.memory.writeat(buf + 1 * 65, "ILT792");
-        self.memory.writeat(buf + 2 * 65, "5.4.0-110-generic");
-        self.memory.writeat(buf + 3 * 65, "#124-Ubuntu SMP Thu Apr 14 19:46:19 UTC 2022");
-        self.memory.writeat(buf + 4 * 65, "x86_64");
-        self.memory.writeat(buf + 5 * 65, "(none)");
-        0
-    }
-    pub fn access<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, _filename: u64, _mode: u64) -> u64 {
-        !0
-    }
-    pub fn fstat<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, fd: u64, statbuf: Vaddr) -> u64 {
-        let file = self.handles.get_mut(&fd);
-        match file {
-            Some(f) => {
-                self.memory.writeat(statbuf, &f.stat());
-                return 0;
-            }
-            None => {}
-        }
-        !0
-    }
-    pub fn stat<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, filename: u64, statbuf: Vaddr) -> u64 {
-        let fname = read_osstring!(self.memory, filename).unwrap();
-        match self.filesystem.stat(Path::new(&fname)) {
-            Ok(s) => {
-                self.memory.writeat(statbuf, &s);
-                0
-            }
-            Err(_) => !0,
-        }
-    }
-    pub fn pread64<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, fd: u64, buf: u64, count: u64, pos: u64) -> u64 {
-        let file = self.handles.get_mut(&fd);
-        if let Some(f) = file {
-            let d = f.pread(pos, count).unwrap();
-            self.memory.writeat(buf, d)
-        } else {
-            !0
-        }
-    }
-    pub fn mprotect<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, start: u64, len: u64, prot: u64) -> u64 {
-        self.memory.protect(start, len, prot.try_into().unwrap(), cpu);
-        0
-    }
-}
-
-
-fn getpath(dir: &Path, file: &Path) -> Result<PathBuf, io::Error> {
-    let p = if file.is_absolute() {
-        file.strip_prefix("/").unwrap()
-    } else {
-        file
-    };
-    let dir = dir.canonicalize()?;
-    let p = dir.join(p).canonicalize()?;
-    if p.starts_with(dir) { Ok(p) } else { Err(io::ErrorKind::NotFound.into()) }
-}
-
-fn getperms(ph: &goblin::elf::program_header::ProgramHeader) -> Permission {
-    let mut perms = Permission::NONE;
-    if ph.is_read() {
-        perms |= Permission::READ;
-    }
-    if ph.is_write() {
-        perms |= Permission::WRITE;
-    }
-    if ph.is_executable() {
-        perms |= Permission::EXEC;
-    }
-    perms
 }
