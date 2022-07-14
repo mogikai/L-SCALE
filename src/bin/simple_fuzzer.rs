@@ -20,6 +20,6 @@ fn main() {
     let kernel = Rc::new(RefCell::new(LinuxKernel::new(memory, filesystem)));
     let demo_handle = Box::new(ReadOnly::from(vec![b'x', b'y', b'z', b'x', b'y', b'z', b'\n']));
     kernel.borrow_mut().add_replacement_handle(0, demo_handle);
-    let mut emu = LinuxX86::new(kernel, cpu, PathBuf::from("/home/mark/main")).unwrap();
+    let mut emu = LinuxX86::new(kernel, cpu, PathBuf::from("/home/mark/server")).unwrap();
     emu.run().unwrap();
 }

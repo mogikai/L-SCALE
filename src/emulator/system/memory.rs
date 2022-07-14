@@ -249,18 +249,18 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         let region = Region::new(data, address, perms);
         self.mappings.insert(region);
         let r = self.mappings.get(&address).unwrap();
-        self.map_internal(address, r, cpu);
+        self.map_internal(r, cpu);
         Ok(address)
     }
 
-    fn map_internal<'b, CpuT: CPU<'b>>(&self, address: u64, region: &Region, cpu: &mut CpuT) {
-        let mut mem = region.data.borrow_mut(); //TODO fix offset
-        let ptr: *mut u8 = mem.as_mut_ptr();
-        if region.offset + region.size > mem.len() as u64 {
+    fn map_internal<'b, CpuT: CPU<'b>>(&self, region: &Region, cpu: &mut CpuT) {
+        let mut mem = region.data.borrow_mut();
+        let ptr: *mut u8 = unsafe { mem.as_mut_ptr().offset(region.offset as isize) };
+        if region.size > mem.len() as u64 {
             panic!("bla");
         }
 
-        unsafe { cpu.mem_map_ptr(address, region.size as usize, region.perms, ptr as _).expect("Mapping error"); };
+        unsafe { cpu.mem_map_ptr(region.vaddr, region.size as usize, region.perms, ptr as _).expect("Mapping error"); };
     }
 
     /// Gets a reference to the region containing the supplied address.
@@ -344,7 +344,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
             r.perms = perms;
             self.mappings.extend(regions);
             self.unmap_intern(start, size, cpu);
-            self.map_internal(region.vaddr, &r, cpu);
+            self.map_internal(&r, cpu);
             self.mappings.insert(r);
         }
     }
@@ -432,7 +432,7 @@ impl Region {
         let n = Region {
             data: self.data.clone(),
             offset: self.offset + address - self.vaddr,
-            vaddr: self.vaddr,
+            vaddr: address,
             size,
             perms: self.perms,
         };
