@@ -22,6 +22,7 @@ pub trait CPU<'a> {
     ///          In most cases such an error will correspond to a segfault.
     fn emulate(&mut self, stop: Option<Vaddr>, timeout: Option<Duration>, instruction_count: Option<usize>) -> Result<(), CPUError>;
     fn add_syscall_hook(&mut self, start: Vaddr, end: Vaddr, syscall: Box<dyn FnMut(&mut Self) + 'a>);
+    fn add_unmapped_mem_hook(&mut self, start: Vaddr, end: Vaddr, hook: Box<dyn FnMut(&mut Self, MemoryAction, u64, usize, i64) -> bool + 'a>);
     unsafe fn mem_map_ptr(&mut self, address: Vaddr, size: usize, perms: Permission, ptr: u64) -> Result<(), CPUError>;
     fn mem_unmap(&mut self, address: Vaddr, size: usize) -> Result<(), CPUError>;
     fn reg_write(&mut self, register: Register, value: u64) -> Result<(), CPUError>;
@@ -50,6 +51,20 @@ impl From<TryFromIntError> for CPUError {
     fn from(_: TryFromIntError) -> Self {
         CPUError::InvalidPermission
     }
+}
+
+#[derive(Debug)]
+pub enum MemoryAction {
+    READ,
+    WRITE,
+    FETCH,
+    READ_UNMAPPED,
+    WRITE_UNMAPPED,
+    FETCH_UNMAPPED,
+    WRITE_PROT,
+    READ_PROT,
+    FETCH_PROT,
+    READ_AFTER,
 }
 
 pub enum Arch {

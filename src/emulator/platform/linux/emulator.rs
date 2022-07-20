@@ -6,11 +6,9 @@ use std::rc::Rc;
 use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
 
-use crate::emulator::abstractions::cpu::{CPU, CPUError, RegisterX86, Vaddr};
+use crate::emulator::abstractions::cpu::{CPU, CPUError, RegisterX86};
 use crate::emulator::abstractions::emulator::{Emulator, StopReason};
 use crate::emulator::platform::linux::kernel::LinuxKernel;
-use crate::emulator::system::filesystem::Filesystem;
-use crate::emulator::system::memory::Memory;
 
 #[derive(Debug)]
 pub enum CreationError {
@@ -39,47 +37,47 @@ impl<'a, CpuT, Endianness> Emulator for LinuxX86<'a, CpuT, Endianness> where Cpu
 }
 
 macro_rules! do_syscall {
-	(0, $uc:ident, $name:ident::$fun:ident) => {
+	(0, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {
 		{
-			trace!("() ");
+			$debug_str = format!("() ");
 			$name.$fun($uc)
 		}
 	};
-	(1, $uc:ident, $name:ident::$fun:ident) => {
+	(1, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {
 		{
 			let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
-			trace!("(0x{:X}) ", rdi);
+			$debug_str = format!("(0x{:X}) ", rdi);
 			$name.$fun($uc, rdi)
 		}
 	};
-	(2, $uc:ident, $name:ident::$fun:ident) => {
+	(2, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {
 		{
 			let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
 			let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
-			trace!("(0x{:X}, 0x{:X}) ", rdi, rsi);
+			$debug_str = format!("(0x{:X}, 0x{:X}) ", rdi, rsi);
 			$name.$fun($uc, rdi, rsi)
 		}
 	};
-	(3, $uc:ident, $name:ident::$fun:ident) => {
+	(3, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {
 		{
 			let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
 			let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
 			let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
-			trace!("(0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx);
+			$debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx);
 			$name.$fun($uc, rdi, rsi, rdx)
 		}
 	};
-	(4, $uc:ident, $name:ident::$fun:ident) => {
+	(4, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {
 		{
 			let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
 			let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
 			let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
 			let r10 = $uc.reg_read(RegisterX86::R10.into()).unwrap();
-			trace!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10);
+			$debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10);
 			$name.$fun($uc, rdi, rsi, rdx, r10)
 		}
 	};
-	(6, $uc:ident, $name:ident::$fun:ident) => {
+	(6, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {
 		{
 			let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
 			let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
@@ -87,7 +85,7 @@ macro_rules! do_syscall {
 			let r10 = $uc.reg_read(RegisterX86::R10.into()).unwrap();
 			let r8 = $uc.reg_read(RegisterX86::R8.into()).unwrap();
 			let r9 = $uc.reg_read(RegisterX86::R9.into()).unwrap();
-			trace!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10, r8, r9);
+			$debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10, r8, r9);
 			$name.$fun($uc, rdi, rsi, rdx, r10, r8, r9)
 		}
 	}
@@ -111,7 +109,9 @@ enum SYSCALL {
     ACCESS = 21,
     GETPID = 39,
     UNAME = 63,
+    GETTIMEOFDAY = 96,
     ARCH_PRCTL = 158,
+    CLOCK_GETTIME = 228,
     OPENAT = 257,
     #[default]
     NONE = !0,
@@ -119,29 +119,32 @@ enum SYSCALL {
 
 fn syscall<'a, CpuT: CPU<'a>, Endianness: ByteOrder>(cpu: &mut CpuT, kernel: &mut LinuxKernel<Endianness>) {
     let rax = cpu.reg_read(RegisterX86::RAX.into()).unwrap();
-    trace!("SYSCALL: {:?}", SYSCALL::from(rax));
+    let mut debug_str = String::new();
+    let syscall = SYSCALL::from(rax);
     let rax = match SYSCALL::from(rax) {
-        SYSCALL::READ => { do_syscall!(3, cpu, kernel::read) }
-        SYSCALL::WRITE => { do_syscall!(3, cpu, kernel::write) }
-        SYSCALL::CLOSE => { do_syscall!(1, cpu, kernel::close) }
-        SYSCALL::STAT => { do_syscall!(2, cpu, kernel::stat) }
-        SYSCALL::FSTAT => { do_syscall!(2, cpu, kernel::fstat) }
-        SYSCALL::MMAP => { do_syscall!(6, cpu, kernel::mmap) }
-        SYSCALL::MPROTECT => { do_syscall!(3, cpu, kernel::mprotect) }
-        SYSCALL::BRK => { do_syscall!(1, cpu, kernel::brk) }
-        SYSCALL::PREAD64 => { do_syscall!(4, cpu, kernel::pread64) }
-        SYSCALL::WRITEV => { do_syscall!(3, cpu, kernel::writev) }
-        SYSCALL::ACCESS => { do_syscall!(2, cpu, kernel::access) }
-        SYSCALL::GETPID => { do_syscall!(0, cpu, kernel::getpid) }
-        SYSCALL::UNAME => { do_syscall!(1, cpu, kernel::uname) }
-        SYSCALL::ARCH_PRCTL => { do_syscall!(2, cpu, kernel::arch_prctl) }
-        SYSCALL::OPENAT => { do_syscall!(4, cpu, kernel::openat) }
+        SYSCALL::READ => { do_syscall!(3, cpu, kernel::read, debug_str) }
+        SYSCALL::WRITE => { do_syscall!(3, cpu, kernel::write, debug_str) }
+        SYSCALL::CLOSE => { do_syscall!(1, cpu, kernel::close, debug_str) }
+        SYSCALL::STAT => { do_syscall!(2, cpu, kernel::stat, debug_str) }
+        SYSCALL::FSTAT => { do_syscall!(2, cpu, kernel::fstat, debug_str) }
+        SYSCALL::MMAP => { do_syscall!(6, cpu, kernel::mmap, debug_str) }
+        SYSCALL::MPROTECT => { do_syscall!(3, cpu, kernel::mprotect, debug_str) }
+        SYSCALL::BRK => { do_syscall!(1, cpu, kernel::brk, debug_str) }
+        SYSCALL::PREAD64 => { do_syscall!(4, cpu, kernel::pread64, debug_str) }
+        SYSCALL::WRITEV => { do_syscall!(3, cpu, kernel::writev, debug_str) }
+        SYSCALL::ACCESS => { do_syscall!(2, cpu, kernel::access, debug_str) }
+        SYSCALL::GETPID => { do_syscall!(0, cpu, kernel::getpid, debug_str) }
+        SYSCALL::UNAME => { do_syscall!(1, cpu, kernel::uname, debug_str) }
+        SYSCALL::GETTIMEOFDAY => { do_syscall!(2, cpu, kernel::gettimeofday, debug_str) }
+        SYSCALL::ARCH_PRCTL => { do_syscall!(2, cpu, kernel::arch_prctl, debug_str) }
+        SYSCALL::CLOCK_GETTIME => {todo!()}
+        SYSCALL::OPENAT => { do_syscall!(4, cpu, kernel::openat, debug_str) }
         SYSCALL::NONE => {
-            trace!("unknown(rax: {})", rax);
+            debug_str = format!("(rax: {})", rax);
             !0
         }
     };
-    trace!("-> 0x{:X}", rax);
+    trace!("SYSCALL: {:?} {} -> 0x{:X}", syscall, debug_str, rax);
     cpu.reg_write(RegisterX86::RAX.into(), rax).unwrap();
 }
 
@@ -152,7 +155,7 @@ impl<'a, CpuT, Endianness> LinuxX86<'a, CpuT, Endianness>
         kernel.borrow_mut().add_stdio_handles();
 
         let mut cpu = emu.cpu.borrow_mut();
-        kernel.borrow_mut().load_binary(&mut *cpu,emu.binary_path.as_path()).unwrap();
+        kernel.borrow_mut().load_binary(&mut *cpu, emu.binary_path.as_path()).unwrap();
 
         let cb = move |cpu: &mut CpuT| {
             let mut kernel = kernel.borrow_mut();
