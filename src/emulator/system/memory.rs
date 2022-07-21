@@ -11,7 +11,7 @@ use std::rc::Rc;
 use byteorder::ByteOrder;
 use goblin::pe::import::Bitfield;
 
-use crate::emulator::abstractions::cpu::{CPU, Permission, Vaddr};
+use crate::emulator::abstractions::cpu::{MMU, Permission, Vaddr};
 
 const MASK4K: u64 = 4 * (1 << 10) - 1;
 
@@ -242,7 +242,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         memory.copy_from_slice(data);
     }
 
-    pub fn map_data<'b, CpuT: CPU<'b>>(&mut self, data: &[u8], vm_range: Range<u64>, perms: Permission, cpu: &mut CpuT) -> Result<(), MappingError> {
+    pub fn map_data(&mut self, data: &[u8], vm_range: Range<u64>, perms: Permission, cpu: &mut impl MMU) -> Result<(), MappingError> {
         let start = align4k_down(vm_range.start);
         let size = align4k_up(vm_range.end) - start;
         if self.get_region(start).is_some() || self.get_region(start + size).is_some() {
@@ -253,7 +253,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         Ok(())
     }
 
-    pub fn mmap<'b, CpuT: CPU<'b>>(&mut self, address: u64, size: u64, perms: Permission, cpu: &mut CpuT) -> Result<u64, MappingError> {
+    pub fn mmap(&mut self, address: u64, size: u64, perms: Permission, cpu: &mut impl MMU) -> Result<u64, MappingError> {
         let size = align4k_up(size);
         if !is4kaligned(address) {
             return Err(MappingError::NotAligned);
@@ -264,7 +264,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         self.fixed_mapping(self.find_space_for_region(address, size), size, perms, cpu)
     }
 
-    pub fn realloc_heap<'b, CpuT: CPU<'b>>(&mut self, addr: u64, cpu: &mut CpuT) {
+    pub fn realloc_heap(&mut self, addr: u64, cpu: &mut impl MMU) {
         if !is4kaligned(addr) || addr < self.heap || addr > self.heap + 100 * 1024 * 1024 { //todo better implement max heapsize
             return;
         }
@@ -284,7 +284,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         }
     }
 
-    fn fixed_mapping<'b, CpuT: CPU<'b>>(&mut self, address: Vaddr, size: u64, perms: Permission, cpu: &mut CpuT) -> Result<u64, MappingError> {
+    fn fixed_mapping(&mut self, address: Vaddr, size: u64, perms: Permission, cpu: &mut impl MMU) -> Result<u64, MappingError> {
         //TODO argscheck
         info!("fixed mapping address: 0x{:X}", address);
         let region = Region::new(size, address, perms);
@@ -294,7 +294,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         Ok(address)
     }
 
-    fn map_internal<'b, CpuT: CPU<'b>>(&self, region: &Region, cpu: &mut CpuT) {
+    fn map_internal(&self, region: &Region, cpu: &mut impl MMU) {
         let mut mem = region.data.borrow_mut();
         let ptr: *mut u8 = unsafe { mem.as_mut_ptr().offset(region.offset as isize) };
         if region.size > mem.len() as u64 {
@@ -322,7 +322,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         )
     }
 
-    fn resize_region<'b, CpuT: CPU<'b>>(&mut self, address: Vaddr, size: usize, cpu: &mut CpuT) -> Result<(), MappingError> {
+    fn resize_region(&mut self, address: Vaddr, size: usize, cpu: &mut impl MMU) -> Result<(), MappingError> {
         let region = self.mappings.take(&address).ok_or(MappingError::NotMapped)?;
         self.unmap_intern(&region, cpu);
         let region = region.resize(size);
@@ -331,7 +331,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         Ok(())
     }
 
-    pub fn unmap<'b, CpuT: CPU<'b>>(&mut self, address: Vaddr, size: u64, cpu: &mut CpuT) -> Result<(), UnmapError> {
+    pub fn unmap(&mut self, address: Vaddr, size: u64, cpu: &mut impl MMU) -> Result<(), UnmapError> {
         if !is4kaligned(address) {
             return Err(UnmapError::NotAligned);
         }
@@ -362,12 +362,12 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         Ok(())
     }
 
-    fn unmap_intern<'b, CpuT: CPU<'b>>(&self, region: &Region, cpu: &mut CpuT) {
+    fn unmap_intern(&self, region: &Region, cpu: &mut impl MMU) {
         info!("unmap: vaddr: 0x{:X}, size: 0x{:X}", region.vaddr, region.size);
         cpu.mem_unmap(region.vaddr, region.size.try_into().unwrap()).expect("Failed to unmap");
     }
 
-    fn update_mapping<'b, CpuT: CPU<'b>>(&self, region: &Region, cpu: &mut CpuT) {
+    fn update_mapping(&self, region: &Region, cpu: &mut impl MMU) {
         self.unmap_intern(region, cpu);
         self.map_internal(region, cpu);
     }
@@ -384,7 +384,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         hint
     }
 
-    pub fn protect<'b, CpuT: CPU<'b>>(&mut self, start: Vaddr, size: u64, perms: Permission, cpu: &mut CpuT) {
+    pub fn protect(&mut self, start: Vaddr, size: u64, perms: Permission, cpu: &mut impl MMU) {
         let region = self.get_region(start).unwrap();
         if region.vaddr != start || size != region.size {
             if start + size > region.vaddr + region.size as Vaddr {

@@ -6,7 +6,7 @@ use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, IntelFormatter};
 use unicorn_engine::{InsnSysX86, RegisterX86, Unicorn};
 use unicorn_engine::unicorn_const::{Arch, HookType, MemType, Mode, Permission, uc_error};
 
-use crate::emulator::abstractions::cpu::{CPU, CPUError, MemoryAction, Register, Vaddr};
+use crate::emulator::abstractions::cpu::{CPU, CPUError, Hooks, MemoryAction, MMU, Register, Vaddr};
 use crate::emulator::abstractions::cpu;
 
 impl From<uc_error> for CPUError {
@@ -93,13 +93,35 @@ impl<'a> UCWrapper<'a> {
     }
 }
 
-impl<'a> CPU<'a> for UCWrapper<'a> {
+impl CPU for UCWrapper<'_> {
     fn emulate(&mut self, stop: Option<Vaddr>, timeout: Option<Duration>, instruction_count: Option<usize>) -> Result<(), CPUError> {
         let rip = self.uc().reg_read(RegisterX86::RIP)?;
         let timeout: u64 = if let Some(timeout) = timeout { timeout.as_micros().try_into()? } else { 0u64 };
         Ok(self.uc_mut().emu_start(rip, stop.unwrap_or(0), timeout, instruction_count.unwrap_or(0))?)
     }
 
+    fn reg_write(&mut self, register: Register, value: u64) -> Result<(), CPUError> {
+        let register = RegisterX86::try_from(register)?;
+        Ok(self.uc_mut().reg_write(register, value)?)
+    }
+
+    fn reg_read(&self, register: Register) -> Result<u64, CPUError> {
+        let register = RegisterX86::try_from(register)?;
+        Ok(self.uc().reg_read(register)?)
+    }
+}
+
+impl MMU for UCWrapper<'_> {
+    unsafe fn mem_map_ptr(&mut self, address: Vaddr, size: usize, perms: cpu::Permission, ptr: u64) -> Result<(), CPUError> {
+        Ok(self.uc_mut().mem_map_ptr(address, size, perms.try_into()?, ptr as _)?)
+    }
+
+    fn mem_unmap(&mut self, address: Vaddr, size: usize) -> Result<(), CPUError> {
+        Ok(self.uc_mut().mem_unmap(address, size)?)
+    }
+}
+
+impl<'a> Hooks<'a> for UCWrapper<'a>{
     fn add_syscall_hook(&mut self, start: Vaddr, end: Vaddr, mut hook: Box<dyn FnMut(&mut Self) + 'a>) {
         // The trampoline takes ownership of the hook. The trampoline is then owned by the unicorn instance for as long
         // as the UCWrapper instance is alive.
@@ -120,24 +142,6 @@ impl<'a> CPU<'a> for UCWrapper<'a> {
             hook(data, MemoryAction::from(mem_type), address, size, value)
         };
         let _hook = self.uc_mut().add_mem_hook(HookType::MEM_UNMAPPED, start, end, trampoline).unwrap();
-    }
-
-    unsafe fn mem_map_ptr(&mut self, address: Vaddr, size: usize, perms: cpu::Permission, ptr: u64) -> Result<(), CPUError> {
-        Ok(self.uc_mut().mem_map_ptr(address, size, perms.try_into()?, ptr as _)?)
-    }
-
-    fn mem_unmap(&mut self, address: Vaddr, size: usize) -> Result<(), CPUError> {
-        Ok(self.uc_mut().mem_unmap(address, size)?)
-    }
-
-    fn reg_write(&mut self, register: Register, value: u64) -> Result<(), CPUError> {
-        let register = RegisterX86::try_from(register)?;
-        Ok(self.uc_mut().reg_write(register, value)?)
-    }
-
-    fn reg_read(&self, register: Register) -> Result<u64, CPUError> {
-        let register = RegisterX86::try_from(register)?;
-        Ok(self.uc().reg_read(register)?)
     }
 }
 

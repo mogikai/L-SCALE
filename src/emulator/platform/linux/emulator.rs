@@ -6,7 +6,7 @@ use std::rc::Rc;
 use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
 
-use crate::emulator::abstractions::cpu::{CPU, CPUError, RegisterX86};
+use crate::emulator::abstractions::cpu::{CPU, CPUError, Hooks, MMU, RegisterX86};
 use crate::emulator::abstractions::emulator::{Emulator, StopReason};
 use crate::emulator::platform::linux::kernel::LinuxKernel;
 
@@ -16,7 +16,7 @@ pub enum CreationError {
     Unknown,
 }
 
-pub struct LinuxX86<'a, CpuT, Endianness> where CpuT: CPU<'a>, Endianness: ByteOrder {
+pub struct LinuxX86<'a, CpuT, Endianness> where CpuT: CPU + MMU + Hooks<'a>, Endianness: ByteOrder {
     binary_path: PathBuf,
     cpu: Rc<RefCell<CpuT>>,
     kernel: Rc<RefCell<LinuxKernel<Endianness>>>,
@@ -29,7 +29,7 @@ impl From<CPUError> for StopReason {
     }
 }
 
-impl<'a, CpuT, Endianness> Emulator for LinuxX86<'a, CpuT, Endianness> where CpuT: CPU<'a>, Endianness: ByteOrder {
+impl<'a, CpuT, Endianness> Emulator for LinuxX86<'a, CpuT, Endianness> where CpuT: CPU + MMU + Hooks<'a>, Endianness: ByteOrder {
     fn run(&mut self) -> Result<(), StopReason> {
         self.cpu.borrow_mut().emulate(None, None, None)?;
         Ok(())
@@ -117,7 +117,7 @@ enum SYSCALL {
     NONE = !0,
 }
 
-fn syscall<'a, CpuT: CPU<'a>, Endianness: ByteOrder>(cpu: &mut CpuT, kernel: &mut LinuxKernel<Endianness>) {
+fn syscall<Endianness: ByteOrder>(cpu: &mut (impl CPU + MMU), kernel: &mut LinuxKernel<Endianness>) {
     let rax = cpu.reg_read(RegisterX86::RAX.into()).unwrap();
     let mut debug_str = String::new();
     let syscall = SYSCALL::from(rax);
@@ -137,7 +137,7 @@ fn syscall<'a, CpuT: CPU<'a>, Endianness: ByteOrder>(cpu: &mut CpuT, kernel: &mu
         SYSCALL::UNAME => { do_syscall!(1, cpu, kernel::uname, debug_str) }
         SYSCALL::GETTIMEOFDAY => { do_syscall!(2, cpu, kernel::gettimeofday, debug_str) }
         SYSCALL::ARCH_PRCTL => { do_syscall!(2, cpu, kernel::arch_prctl, debug_str) }
-        SYSCALL::CLOCK_GETTIME => {todo!()}
+        SYSCALL::CLOCK_GETTIME => {!0}
         SYSCALL::OPENAT => { do_syscall!(4, cpu, kernel::openat, debug_str) }
         SYSCALL::NONE => {
             debug_str = format!("(rax: {})", rax);
@@ -149,7 +149,7 @@ fn syscall<'a, CpuT: CPU<'a>, Endianness: ByteOrder>(cpu: &mut CpuT, kernel: &mu
 }
 
 impl<'a, CpuT, Endianness> LinuxX86<'a, CpuT, Endianness>
-    where CpuT: CPU<'a>, Endianness: ByteOrder + 'a {
+    where CpuT: CPU + MMU + Hooks<'a>, Endianness: ByteOrder + 'a {
     pub fn new(kernel: Rc<RefCell<LinuxKernel<Endianness>>>, cpu: Rc<RefCell<CpuT>>, binary_path: PathBuf) -> Result<LinuxX86<'a, CpuT, Endianness>, CreationError> {
         let emu = LinuxX86 { binary_path, cpu, kernel: kernel.clone(), phantom: Default::default() };
         kernel.borrow_mut().add_stdio_handles();

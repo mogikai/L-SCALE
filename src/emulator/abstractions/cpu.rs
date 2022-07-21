@@ -12,7 +12,7 @@ pub enum CPUError {
 
 pub type Vaddr = u64;
 
-pub trait CPU<'a> {
+pub trait CPU {
     /// # Arguments
     /// * `stop`: A virtual address to stop execution at. If zero is passed as address, the emulation will not stop.
     /// * `timeout`: The emulation will stop after the supplied duration.
@@ -21,12 +21,18 @@ pub trait CPU<'a> {
     /// returns: A CPUError if an error occurred during emulation.
     ///          In most cases such an error will correspond to a segfault.
     fn emulate(&mut self, stop: Option<Vaddr>, timeout: Option<Duration>, instruction_count: Option<usize>) -> Result<(), CPUError>;
-    fn add_syscall_hook(&mut self, start: Vaddr, end: Vaddr, syscall: Box<dyn FnMut(&mut Self) + 'a>);
-    fn add_unmapped_mem_hook(&mut self, start: Vaddr, end: Vaddr, hook: Box<dyn FnMut(&mut Self, MemoryAction, u64, usize, i64) -> bool + 'a>);
-    unsafe fn mem_map_ptr(&mut self, address: Vaddr, size: usize, perms: Permission, ptr: u64) -> Result<(), CPUError>;
-    fn mem_unmap(&mut self, address: Vaddr, size: usize) -> Result<(), CPUError>;
     fn reg_write(&mut self, register: Register, value: u64) -> Result<(), CPUError>;
     fn reg_read(&self, register: Register) -> Result<u64, CPUError>;
+}
+
+pub trait MMU {
+    unsafe fn mem_map_ptr(&mut self, address: Vaddr, size: usize, perms: Permission, ptr: u64) -> Result<(), CPUError>;
+    fn mem_unmap(&mut self, address: Vaddr, size: usize) -> Result<(), CPUError>;
+}
+
+pub trait Hooks<'a> {
+    fn add_syscall_hook(&mut self, start: Vaddr, end: Vaddr, syscall: Box<dyn FnMut(&mut Self) + 'a>);
+    fn add_unmapped_mem_hook(&mut self, start: Vaddr, end: Vaddr, hook: Box<dyn FnMut(&mut Self, MemoryAction, u64, usize, i64) -> bool + 'a>);
 }
 
 bitflags! {

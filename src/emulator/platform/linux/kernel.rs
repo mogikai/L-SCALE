@@ -7,7 +7,7 @@ use byteorder::ByteOrder;
 use libc;
 use linux_libc_auxv::AuxVarType;
 
-use crate::emulator::abstractions::cpu::{CPU, CPUError, Permission, RegisterX86, Vaddr};
+use crate::emulator::abstractions::cpu::{CPU, CPUError, MMU, Permission, RegisterX86, Vaddr};
 use crate::emulator::abstractions::handles::{Handle, IOErr};
 use crate::emulator::platform::linux::filedescriptors::OpenFile;
 use crate::emulator::system::default_handles;
@@ -81,7 +81,7 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
         LinuxKernel { memory, filesystem, handles: HandleMap::new() }
     }
 
-    pub fn load_binary<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, binary_path: &Path) -> Result<(), LinuxKernelError> {
+    pub fn load_binary(&mut self, cpu: &mut (impl CPU + MMU), binary_path: &Path) -> Result<(), LinuxKernelError> {
         let root_dir = self.filesystem.root();
         let buffer = fs::read(getpath(root_dir, binary_path).unwrap()).unwrap();
         let elf = goblin::elf::Elf::parse(&buffer).unwrap();
@@ -107,7 +107,7 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
         self.initstack(cpu, binary_path, interpreter_path.as_path(), interpreter.entry)
     }
 
-    fn initstack<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, binary_path: &Path, interpreter_path: &Path, entrypoint: Vaddr) -> Result<(), LinuxKernelError> {
+    fn initstack(&mut self, cpu: &mut impl CPU, binary_path: &Path, interpreter_path: &Path, entrypoint: Vaddr) -> Result<(), LinuxKernelError> {
         info!("Initializing stack");
         cpu.reg_write(RegisterX86::RSP.into(), 0x4000000000000000).expect("failed to write RSP");
         let mem = &mut self.memory;
@@ -162,13 +162,13 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
     pub fn filesystem(&self) -> &Filesystem { &self.filesystem }
     pub fn filesystem_mut(&mut self) -> &mut Filesystem { &mut self.filesystem }
 
-    pub fn brk<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, addr: u64) -> u64 {
+    pub fn brk(&mut self, cpu: &mut impl MMU, addr: u64) -> u64 {
         if addr != 0 {
             self.memory.realloc_heap(addr, cpu);
         }
         self.memory.heapend()
     }
-    pub fn arch_prctl<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, code: u64, addr: u64) -> u64 {
+    pub fn arch_prctl(&mut self, cpu: &mut impl CPU, code: u64, addr: u64) -> u64 {
         match code {
             0x1001 => { //ARCH_SET_GS
                 !0
@@ -184,14 +184,14 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
             _ => !0,
         }
     }
-    pub fn write<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, fd: u64, buf: u64, size: u64) -> u64 {
+    pub fn write(&mut self, _: &mut impl CPU, fd: u64, buf: u64, size: u64) -> u64 {
         self.handles.get_mut(&fd).map_or(!0, |handle| {
             let data = self.memory.read_internal(buf, size as usize).unwrap();
             handle.write(&*data).unwrap_or(!0).try_into().unwrap()
         })
     }
 
-    pub fn writev<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, fd: u64, iovec_ptr: Vaddr, iovcnt: u64) -> u64 {
+    pub fn writev(&mut self, _: &mut impl CPU, fd: u64, iovec_ptr: Vaddr, iovcnt: u64) -> u64 {
         self.handles.get_mut(&fd).map_or(!0, |handle| {
             let mut ret = 0;
             let iovec = self.memory.read_internal(iovec_ptr, (iovcnt * 16) as usize).unwrap();
@@ -211,7 +211,7 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
             ret.try_into().unwrap()
         })
     }
-    pub fn openat<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, _dfd: u64, filename: u64, _flags: u64, _mode: u64) -> u64 {
+    pub fn openat(&mut self, _: &mut impl CPU, _dfd: u64, filename: u64, _flags: u64, _mode: u64) -> u64 {
         let fname = read_osstring!(self.memory, filename).unwrap();
         let p = Path::new(&fname);
         let file = self.filesystem.get(p);
@@ -222,18 +222,18 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
         }
         !0
     }
-    pub fn read<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, fd: u64, buf: u64, count: u64) -> u64 {
+    pub fn read(&mut self, _: &mut impl CPU, fd: u64, buf: u64, count: u64) -> u64 {
         if let Some(f) = self.handles.get_mut(&fd) {
             self.memory.write(buf, f.read(count).unwrap())
         } else {
             !0
         }
     }
-    pub fn getpid<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT) -> u64 {
+    pub fn getpid(&mut self, _: &mut impl CPU) -> u64 {
         // TODO: Implement multi threading / processing
         1
     }
-    fn mmap_anon<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, addr: Vaddr, length: u64, prot: u64, flags: u64) -> Result<u64, LinuxKernelError> {
+    fn mmap_anon(&mut self, cpu: &mut impl MMU, addr: Vaddr, length: u64, prot: u64, flags: u64) -> Result<u64, LinuxKernelError> {
         let addr = if (flags & MAP_FIXED) != 0 {
             if let Err(e) = self.memory.unmap(addr, length, cpu) {
                 return Ok(match e {
@@ -255,7 +255,7 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
         };
         Ok(addr)
     }
-    fn mmap_private<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, addr: u64, length: u64, prot: u64, flags: u64, fd: u64, offset: u64) -> u64 {
+    fn mmap_private(&mut self, cpu: &mut impl MMU, addr: u64, length: u64, prot: u64, flags: u64, fd: u64, offset: u64) -> u64 {
         if fd >= 1 << 31 {
             return !0;
         }
@@ -274,7 +274,7 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
         self.memory.write(addr, data);
         addr
     }
-    pub fn mmap<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, addr: Vaddr, length: u64, prot: u64, flags: u64, fd: u64, offset: u64) -> u64 {
+    pub fn mmap(&mut self, cpu: &mut impl MMU, addr: Vaddr, length: u64, prot: u64, flags: u64, fd: u64, offset: u64) -> u64 {
         if (flags & !(MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED | MAP_DENYWRITE)) != 0 {
             return !0;
         }
@@ -286,11 +286,11 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
         }
         !0
     }
-    pub fn close<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, fd: u64) -> u64 {
+    pub fn close(&mut self, _: &mut impl CPU, fd: u64) -> u64 {
         self.handles.remove(&fd);
         0
     }
-    pub fn uname<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, buf: u64) -> u64 {
+    pub fn uname(&mut self, _: &mut impl CPU, buf: u64) -> u64 {
         //TODO check if address is mapped and has space for struct new_utsname
         self.memory.write(buf + 0 * 65, "Linux");
         self.memory.write(buf + 1 * 65, "ILT792");
@@ -300,7 +300,7 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
         self.memory.write(buf + 5 * 65, "(none)");
         0
     }
-    pub fn gettimeofday<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, tv: Vaddr, tz: Vaddr) -> u64 {
+    pub fn gettimeofday(&mut self, _: &mut impl CPU, tv: Vaddr, tz: Vaddr) -> u64 {
         if tv == 0 {
             return LinuxKernelError::EINVAL.into();
         }
@@ -311,10 +311,10 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
         self.memory.write_struct(tv, timeval).unwrap();
         0
     }
-    pub fn access<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, _filename: u64, _mode: u64) -> u64 {
+    pub fn access(&mut self, _: &mut impl CPU, _filename: u64, _mode: u64) -> u64 {
         !0
     }
-    pub fn fstat<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, fd: u64, statbuf: Vaddr) -> u64 {
+    pub fn fstat(&mut self, _: &mut impl CPU, fd: u64, statbuf: Vaddr) -> u64 {
         let file = self.handles.get_mut(&fd);
         match file {
             Some(f) => {
@@ -325,7 +325,7 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
         }
         !0
     }
-    pub fn stat<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, filename: u64, statbuf: Vaddr) -> u64 {
+    pub fn stat(&mut self, _: &mut impl CPU, filename: u64, statbuf: Vaddr) -> u64 {
         let fname = read_osstring!(self.memory, filename).unwrap();
         match self.filesystem.stat(Path::new(&fname)) {
             Ok(s) => {
@@ -335,7 +335,7 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
             Err(_) => !0,
         }
     }
-    pub fn pread64<'a, CpuT: CPU<'a>>(&mut self, _: &mut CpuT, fd: u64, buf: u64, count: u64, pos: u64) -> u64 {
+    pub fn pread64(&mut self, _: &mut impl CPU, fd: u64, buf: u64, count: u64, pos: u64) -> u64 {
         let file = self.handles.get_mut(&fd);
         if let Some(f) = file {
             let d = f.pread(pos, count).unwrap();
@@ -344,7 +344,7 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
             !0
         }
     }
-    pub fn mprotect<'a, CpuT: CPU<'a>>(&mut self, cpu: &mut CpuT, start: u64, len: u64, prot: u64) -> u64 {
+    pub fn mprotect(&mut self, cpu: &mut impl MMU, start: u64, len: u64, prot: u64) -> u64 {
         self.memory.protect(start, len, prot.try_into().unwrap(), cpu);
         0
     }
