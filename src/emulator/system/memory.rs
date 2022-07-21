@@ -11,14 +11,13 @@ use std::rc::Rc;
 use byteorder::ByteOrder;
 use goblin::pe::import::Bitfield;
 
-use crate::emulator::abstractions::cpu::{MMU, Permission, Vaddr};
+use crate::emulator::abstractions::cpu::{Hooks, MMU, Permission, Vaddr};
 
 const MASK4K: u64 = 4 * (1 << 10) - 1;
 
 pub struct Memory<Endianness: ByteOrder> {
     mappings: BTreeSet<Region>,
     heap: Vaddr,
-    _stack: Vaddr,
     mapbase: Vaddr,
     _endian: PhantomData<Endianness>,
 }
@@ -180,14 +179,24 @@ pub enum ReadError {
 }
 
 impl<'a, Endianness: ByteOrder> Memory<Endianness> {
-    pub fn new(stackbase: Vaddr, heapbase: Vaddr) -> Memory<Endianness> {
-        Memory {
+    pub fn new<'b>(cpu: &mut (impl MMU + Hooks<'b>), stack_base: Vaddr, stack_size: usize, heap_base: Vaddr) -> Memory<Endianness> {
+        let mut mem = Memory {
             mappings: BTreeSet::new(),
-            heap: heapbase,
-            _stack: stackbase,
+            heap: heap_base,
             mapbase: 0x100000,
             _endian: PhantomData,
-        }
+        };
+        mem.map_data(&vec![0; stack_size], (0x4000000000000000 - (stack_size as Vaddr))..0x4000000000000000, Permission::READ | Permission::WRITE, cpu).unwrap();
+        cpu.add_unmapped_mem_hook(1, 0, Box::new(move |_, action, addr, size, _| {
+            if ((0x4000000000000000 - ((stack_size + 0x10000) as Vaddr))..0x4000000000000000).contains(&addr) {
+                trace!("STACK OVERFLOW!");
+                // TODO: We want to log the stack overflow in some kind of facility such that the fuzzer can
+                // TODO: use this information in a meaningful way
+            }
+            trace!("{:?} on {:#X} with size {} ", action, addr, size);
+            false
+        }));
+        mem
     }
 
     pub fn write_struct<T>(&self, addr: Vaddr, val: T) -> Result<(), ReadError> {
@@ -242,11 +251,14 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         memory.copy_from_slice(data);
     }
 
-    pub fn map_data(&mut self, data: &[u8], vm_range: Range<u64>, perms: Permission, cpu: &mut impl MMU) -> Result<(), MappingError> {
+    pub fn map_data(&mut self, data: &[u8], vm_range: Range<Vaddr>, perms: Permission, cpu: &mut impl MMU) -> Result<(), MappingError> {
         let start = align4k_down(vm_range.start);
         let size = align4k_up(vm_range.end) - start;
+        if data.len() > size as usize {
+            todo!()
+        }
         if self.get_region(start).is_some() || self.get_region(start + size).is_some() {
-            panic!("not implemented");
+            todo!()
         }
         self.fixed_mapping(start, size, perms, cpu)?;
         self.write_internal(vm_range.start, data);
@@ -319,6 +331,18 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
                 } else {
                     None
                 })
+        )
+    }
+
+    fn get_region_range(&self, vaddr_range: &Range<Vaddr>) -> Option<&Region> {
+        self.mappings.get(&vaddr_range.start).or_else(||
+            self.mappings.range(..vaddr_range.start).next_back().and_then(|region|
+                if region.contains(vaddr_range) {
+                    Some(region)
+                } else {
+                    None
+                }
+            )
         )
     }
 
@@ -485,15 +509,13 @@ impl Region {
         } else {
             data.len() - (self.size as usize - size)
         };
-        data.resize(new_size, 0); // TODO: implement traps for invalid ptr reads maybe
+        data.resize(new_size, b'A'); // TODO: implement traps for invalid ptr reads maybe
         drop(data);
         Self {
             size: size as u64,
             ..self
         }
     }
-
-    fn contains(&self, address: Vaddr) -> bool { address >= self.vaddr && address < self.vaddr + self.size as Vaddr }
 
     fn end(&self) -> Vaddr { self.vaddr + self.size as Vaddr }
 
@@ -538,3 +560,18 @@ impl Region {
     }
 }
 
+pub trait Contains<T> {
+    fn contains(&self, val: T) -> bool;
+}
+
+impl Contains<Vaddr> for Region {
+    fn contains(&self, address: Vaddr) -> bool {
+        address >= self.vaddr && address < self.vaddr + self.size as Vaddr
+    }
+}
+
+impl Contains<&Range<Vaddr>> for Region {
+    fn contains(&self, vadd_range: &Range<Vaddr>) -> bool {
+        self.contains(vadd_range.start) && self.contains(vadd_range.end)
+    }
+}

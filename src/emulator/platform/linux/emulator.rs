@@ -137,7 +137,7 @@ fn syscall<Endianness: ByteOrder>(cpu: &mut (impl CPU + MMU), kernel: &mut Linux
         SYSCALL::UNAME => { do_syscall!(1, cpu, kernel::uname, debug_str) }
         SYSCALL::GETTIMEOFDAY => { do_syscall!(2, cpu, kernel::gettimeofday, debug_str) }
         SYSCALL::ARCH_PRCTL => { do_syscall!(2, cpu, kernel::arch_prctl, debug_str) }
-        SYSCALL::CLOCK_GETTIME => {!0}
+        SYSCALL::CLOCK_GETTIME => { do_syscall!(2, cpu, kernel::clock_gettime, debug_str) }
         SYSCALL::OPENAT => { do_syscall!(4, cpu, kernel::openat, debug_str) }
         SYSCALL::NONE => {
             debug_str = format!("(rax: {})", rax);

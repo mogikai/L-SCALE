@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use byteorder::ByteOrder;
 use libc;
+use libc::timespec;
 use linux_libc_auxv::AuxVarType;
 
 use crate::emulator::abstractions::cpu::{CPU, CPUError, MMU, Permission, RegisterX86, Vaddr};
@@ -103,7 +104,6 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
                 self.memory.map_data(data, vm_range, perms, &mut *cpu).unwrap();
             }
         }
-        self.memory.map_data(&[0; 4096 * 4], (0x4000000000000000 - (4096 * 4))..0x4000000000000000, Permission::READ | Permission::WRITE, &mut *cpu).unwrap();
         self.initstack(cpu, binary_path, interpreter_path.as_path(), interpreter.entry)
     }
 
@@ -184,6 +184,14 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
             _ => !0,
         }
     }
+
+    pub fn clock_gettime(&mut self, cpu: &mut impl MMU, clk_id: u64, tp: Vaddr) -> u64 {
+        let ts = timespec { tv_sec: 0, tv_nsec: 0 };
+        self.memory.write_struct(tp, ts).unwrap();
+        // TODO: Implement actual timer
+        0
+    }
+
     pub fn write(&mut self, _: &mut impl CPU, fd: u64, buf: u64, size: u64) -> u64 {
         self.handles.get_mut(&fd).map_or(!0, |handle| {
             let data = self.memory.read_internal(buf, size as usize).unwrap();
@@ -308,6 +316,7 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
             todo!("Timezone not implemented yet")
         }
         let timeval = libc::timeval { tv_sec: 0, tv_usec: 0 };
+        // TODO: Implement actual timer
         self.memory.write_struct(tv, timeval).unwrap();
         0
     }
