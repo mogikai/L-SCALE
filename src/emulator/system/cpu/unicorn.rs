@@ -138,10 +138,16 @@ impl<'a> Hooks<'a> for UCWrapper<'a>{
 
     fn add_unmapped_mem_hook(&mut self, start: Vaddr, end: Vaddr, mut hook: Box<dyn FnMut(&mut Self, MemoryAction, u64, usize, i64) -> bool + 'a>) {
         let trampoline = move |uc: &mut Unicorn<*mut UCWrapper<'a>>, mem_type, address, size, value| {
-            let data = unsafe { &mut **uc.get_data_mut() };
-            hook(data, MemoryAction::from(mem_type), address, size, value)
+            hook(unsafe { &mut **uc.get_data_mut() }, MemoryAction::from(mem_type), address, size, value)
         };
         let _hook = self.uc_mut().add_mem_hook(HookType::MEM_UNMAPPED, start, end, trampoline).unwrap();
+    }
+
+    fn add_block_hook(&mut self, mut hook: Box<dyn FnMut(&mut Self, u64, u32) + 'a>) {
+        let trampoline = move |uc: &mut Unicorn<*mut UCWrapper<'a>>, a, b| {
+            hook(unsafe { &mut **uc.get_data_mut() }, a, b)
+        };
+        let _hook = self.uc_mut().add_block_hook(trampoline);
     }
 }
 
