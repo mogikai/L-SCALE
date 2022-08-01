@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::collections::hash_map::Keys;
 use std::path::{Path, PathBuf};
+use std::marker::PhantomData;
 use std::rc::Rc;
 
 use byteorder::ByteOrder;
@@ -17,6 +18,8 @@ use crate::emulator::system::default_handles;
 use crate::emulator::system::filesystem::Filesystem;
 use crate::emulator::system::memory::{MappingError, Memory, MemoryWrite};
 use crate::read_osstring;
+use crate::emulator::platform::linux::signals::{SignalAction, SignalHandler, SignalMaskFlags};
+use crate::emulator::platform::linux::architecture::Architecture;
 
 const MAP_ANONYMOUS: u64 = 0x20;
 const MAP_PRIVATE: u64 = 0x2;
@@ -72,15 +75,20 @@ impl HandleMap {
     }
 }
 
-pub struct LinuxKernel<Endianness: ByteOrder> {
+/* eventuell nach task umbenennen */
+pub struct LinuxKernel<Endianness: ByteOrder, Arch: Architecture> {
     memory: Memory<Endianness>,
     filesystem: Rc<RefCell<Filesystem>>,
     handles: HandleMap,
+    clear_child_tid: Option<Vaddr>,
+    robust_list_head: Option<Vaddr>,
+    signalhandler: SignalHandler<Arch::SignalFlags>,
+    _arch: PhantomData<Arch>,
 }
 
-impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
-    pub fn new(memory: Memory<Endianness>, filesystem: Rc<RefCell<Filesystem>>) -> LinuxKernel<Endianness> {
-        LinuxKernel { memory, filesystem, handles: HandleMap::new() }
+impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
+    pub fn new(memory: Memory<Endianness>, filesystem: Rc<RefCell<Filesystem>>) -> Self {
+        LinuxKernel { memory, filesystem, handles: HandleMap::new(), clear_child_tid: None, robust_list_head: None, signalhandler: SignalHandler::new(), _arch: PhantomData }
     }
 
     pub fn load_binary(&mut self, cpu: &mut (impl CPU + MMU), binary_path: &Path) -> Result<(), LinuxKernelError> {
@@ -220,6 +228,7 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
     }
     pub fn openat(&mut self, _: &mut impl CPU, _dfd: u64, filename: u64, _flags: u64, _mode: u64) -> u64 {
         let fname = read_osstring!(self.memory, filename).unwrap();
+        trace!("openat file: {:?}", fname);
         let p = Path::new(&fname);
         if let Ok(file) = self.filesystem.borrow().resolve_last(p) {
             let fd: u64 = *self.handles.keys().max().unwrap_or(&2) + 1;
@@ -363,6 +372,55 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
     pub fn mprotect(&mut self, cpu: &mut impl MMU, start: u64, len: u64, prot: u64) -> u64 {
         self.memory.protect(start, len, prot.try_into().unwrap(), cpu);
         0
+    }
+    pub fn set_tid_address(&mut self, uc: &mut impl CPU, tidptr: u64) -> u64 {
+        /* todo NULL check */
+        self.clear_child_tid = Some(tidptr);
+        return self.getpid(uc);
+    }
+    pub fn set_robust_list(&mut self, _: &mut impl CPU, robust_list_head: u64, size: u64) -> u64 {
+        /* todo better size check */
+        if size != 24 {
+            trace!("size = {}", size);
+            return !0;
+        }
+        /* todo NULL check */
+        self.robust_list_head = Some(robust_list_head);
+        return 0;
+    }
+    pub fn rt_sigaction(&mut self, _: &mut impl CPU, signum: u64, act_ptr: u64, old_ptr: u64, sigactionsize: u64) -> u64 {
+        let action = match self.memory.access_mem(act_ptr, 32) { //todo make arch dependent
+            Err(_) => return LinuxKernelError::EFAULT.into(),
+            Ok(s) => s,
+        };
+        let action = Arch::read_sigaction(&action);
+        self.signalhandler.insert(signum as u8, action);
+        return 0;
+    }
+    pub fn rt_sigprocmask(&mut self, _: &mut impl CPU, how: u64, new_set: u64, old_set: u64, sigsetsize: u64) -> u64 {
+        if sigsetsize != 8 { //todo architure specific
+            return LinuxKernelError::EINVAL.into();
+        }
+        let oset = self.signalhandler.getmask();
+        if new_set != 0 {
+            let set = match self.memory.access_mem(new_set, sigsetsize as usize) {
+                Err(_) => return LinuxKernelError::EFAULT.into(),
+                Ok(s) => Endianness::read_u64(&s),
+            };
+            let how = match SignalMaskFlags::try_from(how) {
+                Ok(h) => h,
+                Err(e) => return e.into(),
+            };
+            self.signalhandler.setmask(how, set);
+        }
+        if old_set != 0 {
+            let mut old = match self.memory.access_mem_mut(old_set, sigsetsize as usize) {
+                Ok(m) => m,
+                Err(_) => return  LinuxKernelError::EFAULT.into(),
+            };
+            Endianness::write_u64(&mut old, oset);
+        }
+        return 0;
     }
 }
 
