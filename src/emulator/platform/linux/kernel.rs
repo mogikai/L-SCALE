@@ -14,7 +14,7 @@ use crate::emulator::platform::linux::filedescriptors::OpenFile;
 use crate::emulator::system::default_handles;
 use crate::emulator::system::filesystem::Filesystem;
 use crate::emulator::system::memory;
-use crate::emulator::system::memory::{Memory, MemoryWrite};
+use crate::emulator::system::memory::{MappingError, Memory, MemoryWrite};
 use crate::read_osstring;
 
 const MAP_ANONYMOUS: u64 = 0x20;
@@ -244,9 +244,10 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
     fn mmap_anon(&mut self, cpu: &mut impl MMU, addr: Vaddr, length: u64, prot: u64, flags: u64) -> Result<u64, LinuxKernelError> {
         let addr = if (flags & MAP_FIXED) != 0 {
             if let Err(e) = self.memory.unmap(addr, length, cpu) {
-                return Ok(match e {
-                    memory::UnmapError::NotAligned => !0,
-                    memory::UnmapError::ZeroSize => !0,
+                return Err(match e {
+                    MappingError::NotAligned => LinuxKernelError::EINVAL,
+                    MappingError::ZeroSize => LinuxKernelError::EINVAL,
+                    _ => LinuxKernelError::EINVAL
                 });
             }
             addr
@@ -258,7 +259,7 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
             Ok(addr) => addr,
             Err(e) => {
                 println!("mmap error {:?}", e);
-                return Ok(!0);
+                return Err(LinuxKernelError::EINVAL);
             }
         };
         Ok(addr)
@@ -287,7 +288,7 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
             return !0;
         }
         if (flags & MAP_ANONYMOUS) != 0 {
-            return self.mmap_anon(cpu, addr, length, prot, flags).unwrap();
+            return self.mmap_anon(cpu, addr, length, prot, flags).unwrap_or_else(|e| e.into());
         }
         if (flags & MAP_PRIVATE) != 0 {
             return self.mmap_private(cpu, addr, length, prot, flags, fd, offset);

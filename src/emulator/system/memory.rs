@@ -12,6 +12,7 @@ use byteorder::ByteOrder;
 use goblin::pe::import::Bitfield;
 
 use crate::emulator::abstractions::cpu::{Hooks, MMU, Permission, Vaddr};
+use crate::emulator::platform::linux::kernel::LinuxKernelError;
 
 const MASK4K: u64 = 4 * (1 << 10) - 1;
 
@@ -39,12 +40,7 @@ pub enum MappingError {
     AlreadyMapped,
     NotMapped,
     NotAligned,
-    Zero,
-}
-
-pub enum UnmapError {
-    NotAligned,
-    ZeroSize,
+    ZeroSize
 }
 
 pub trait MemoryWrite<T> {
@@ -271,7 +267,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
             return Err(MappingError::NotAligned);
         }
         if size == 0 {
-            return Err(MappingError::Zero);
+            return Err(MappingError::ZeroSize);
         }
         self.fixed_mapping(self.find_space_for_region(address, size), size, perms, cpu)
     }
@@ -355,12 +351,12 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         Ok(())
     }
 
-    pub fn unmap(&mut self, address: Vaddr, size: u64, cpu: &mut impl MMU) -> Result<(), UnmapError> {
+    pub fn unmap(&mut self, address: Vaddr, size: u64, cpu: &mut impl MMU) -> Result<(), MappingError> {
         if !is4kaligned(address) {
-            return Err(UnmapError::NotAligned);
+            return Err(MappingError::NotAligned);
         }
         if size == 0 {
-            return Err(UnmapError::ZeroSize);
+            return Err(MappingError::ZeroSize);
         }
         let size = align4k_up(size);
 
@@ -377,7 +373,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
             .collect::<Vec<_>>();
 
         mappings.iter().for_each(|vaddr| {
-            let region = self.mappings.take(vaddr).expect("Bug in memory mapping!");
+            let region = self.mappings.take(vaddr).unwrap();
             let (front, middle, back) = region.cutout(address, size);
             self.unmap_intern(&middle, cpu);
             front.map(|r| self.mappings.insert(r));
