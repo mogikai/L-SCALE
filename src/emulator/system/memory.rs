@@ -212,13 +212,13 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         Ok(Ref::map(region.as_slice(), |d| &d[offset..min(offset + size, region.size as usize)]))
     }
 
-    fn access_mem(&self, address: Vaddr, size: usize) -> Result<Ref<[u8]>, ReadError> {
+    pub fn access_mem(&self, address: Vaddr, size: usize) -> Result<Ref<[u8]>, ReadError> {
         let region = self.get_region(address).ok_or(ReadError::NotMapped)?;
         let offset = (address - region.vaddr) as usize;
         Ok(Ref::map(region.as_slice(), |slice| &slice[offset..offset + size]))
     }
 
-    fn access_mem_mut(&self, address: Vaddr, size: usize) -> Result<RefMut<[u8]>, ReadError> {
+    pub fn access_mem_mut(&self, address: Vaddr, size: usize) -> Result<RefMut<[u8]>, ReadError> {
         let region = self.get_region(address).ok_or(ReadError::NotMapped)?;
         let offset = (address - region.vaddr) as usize;
         Ok(RefMut::map(region.as_mut_slice(), |slice| &mut slice[offset..offset + size]))
