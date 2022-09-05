@@ -5,8 +5,8 @@ use std::rc::Rc;
 
 use byteorder::LittleEndian;
 use log::{debug, trace};
-use fuzzyemu::emulator::abstractions::cpu::{CPU, MMU, Hooks};
 
+use fuzzyemu::emulator::abstractions::cpu::{CPU, Hooks, MMU};
 use fuzzyemu::emulator::abstractions::emulator::Emulator;
 use fuzzyemu::emulator::platform::linux::emulator::LinuxX86;
 use fuzzyemu::emulator::platform::linux::kernel::LinuxKernel;
@@ -19,7 +19,7 @@ fn main() {
     pretty_env_logger::init();
     let mut blocks = HashMap::<u64, u64>::new();
 
-    let filesystem = Filesystem::new(Path::new("systems/ubuntu2004"));
+    let filesystem = Rc::new(RefCell::new(Filesystem::from_disk(1_073_741_824, Path::new("systems/ubuntu2004")).unwrap()));
     let mut cpu = UCWrapper::new(0);
     let memory = Memory::<LittleEndian>::new(&mut *cpu.borrow_mut(), 0x4000000000000000, 10 * 1024 * 1024, 0x2000000000000000);
     let kernel = Rc::new(RefCell::new(LinuxKernel::new(memory, filesystem)));

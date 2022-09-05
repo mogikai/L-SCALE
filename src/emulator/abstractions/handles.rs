@@ -1,8 +1,14 @@
+use std::io;
+
 #[derive(Debug)]
-pub enum IOErr {
-    EINVAL,
-    EISDIR,
-    ENOENT,
+pub enum FSError {
+    Unknown
+}
+
+impl From<io::Error> for FSError {
+    fn from(_: io::Error) -> Self {
+        FSError::Unknown
+    }
 }
 
 pub trait Handle {
@@ -13,14 +19,14 @@ pub trait Handle {
     /// * `count`: The amount of bytes to read from the current position of the descriptor
     ///
     /// returns: A reference to the data that is accessed by the read call
-    fn read(&mut self, count: u64) -> Result<&[u8], IOErr>;
+    fn read(&mut self, count: u64) -> Result<Vec<u8>, FSError>;
 
     /// # Arguments
     /// * `offset`: The offset to read from
     /// * `length`: The length of the data to be read
     ///
     /// returns: A reference to the data that is accessed by the pread call
-    fn pread(&self, offset: u64, length: u64) -> Result<&[u8], IOErr>;
+    fn pread(&self, offset: u64, length: u64) -> Result<Vec<u8>, FSError>;
 
-    fn write(&mut self, data: &[u8]) -> Result<usize, IOErr>;
+    fn write(&mut self, data: &[u8]) -> Result<usize, FSError>;
 }

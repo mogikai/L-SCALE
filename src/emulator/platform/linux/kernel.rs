@@ -1,7 +1,9 @@
 use std::{fs, io};
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::collections::hash_map::Keys;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use byteorder::ByteOrder;
 use libc;
@@ -9,7 +11,7 @@ use libc::timespec;
 use linux_libc_auxv::AuxVarType;
 
 use crate::emulator::abstractions::cpu::{CPU, CPUError, MMU, Permission, RegisterX86, Vaddr};
-use crate::emulator::abstractions::handles::{Handle, IOErr};
+use crate::emulator::abstractions::handles::{FSError, Handle};
 use crate::emulator::platform::linux::filedescriptors::OpenFile;
 use crate::emulator::system::default_handles;
 use crate::emulator::system::filesystem::Filesystem;
@@ -73,17 +75,18 @@ impl HandleMap {
 
 pub struct LinuxKernel<Endianness: ByteOrder> {
     memory: Memory<Endianness>,
-    filesystem: Filesystem,
+    filesystem: Rc<RefCell<Filesystem>>,
     handles: HandleMap,
 }
 
 impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
-    pub fn new(memory: Memory<Endianness>, filesystem: Filesystem) -> LinuxKernel<Endianness> {
+    pub fn new(memory: Memory<Endianness>, filesystem: Rc<RefCell<Filesystem>>) -> LinuxKernel<Endianness> {
         LinuxKernel { memory, filesystem, handles: HandleMap::new() }
     }
 
     pub fn load_binary(&mut self, cpu: &mut (impl CPU + MMU), binary_path: &Path) -> Result<(), LinuxKernelError> {
-        let root_dir = self.filesystem.root();
+        let fs = self.filesystem.borrow();
+        let root_dir = fs.on_disk_root().unwrap();
         let buffer = fs::read(getpath(root_dir, binary_path).unwrap()).unwrap();
         let elf = goblin::elf::Elf::parse(&buffer).unwrap();
         let interpreter_path = getpath(root_dir, Path::new(elf.interpreter.unwrap())).unwrap();
@@ -104,6 +107,7 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
                 self.memory.map_data(data, vm_range, perms, &mut *cpu).unwrap();
             }
         }
+        drop(fs);
         self.initstack(cpu, binary_path, interpreter_path.as_path(), interpreter.entry)
     }
 
@@ -157,17 +161,13 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
         self.handles.add_replacement_handle(fd, handle);
     }
 
-    pub fn memory(&self) -> &Memory<Endianness> { &self.memory }
-    pub fn memory_mut(&mut self) -> &mut Memory<Endianness> { &mut self.memory }
-    pub fn filesystem(&self) -> &Filesystem { &self.filesystem }
-    pub fn filesystem_mut(&mut self) -> &mut Filesystem { &mut self.filesystem }
-
     pub fn brk(&mut self, cpu: &mut impl MMU, addr: u64) -> u64 {
         if addr != 0 {
             self.memory.realloc_heap(addr, cpu);
         }
         self.memory.heapend()
     }
+
     pub fn arch_prctl(&mut self, cpu: &mut impl CPU, code: u64, addr: u64) -> u64 {
         match code {
             0x1001 => { //ARCH_SET_GS
@@ -222,17 +222,18 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
     pub fn openat(&mut self, _: &mut impl CPU, _dfd: u64, filename: u64, _flags: u64, _mode: u64) -> u64 {
         let fname = read_osstring!(self.memory, filename).unwrap();
         let p = Path::new(&fname);
-        let file = self.filesystem.get(p);
-        if let Some(file) = file {
+        if let Ok(file) = self.filesystem.borrow().resolve_last(p) {
             let fd: u64 = *self.handles.keys().max().unwrap_or(&2) + 1;
-            self.handles.insert(fd, Box::new(OpenFile::new(file)));
+            self.handles.insert(fd, Box::new(OpenFile::new(self.filesystem.clone(), file)));
             return fd;
+        } else {
+            // TODO: Do correct error mapping
+            LinuxKernelError::EINVAL.into()
         }
-        !0
     }
     pub fn read(&mut self, _: &mut impl CPU, fd: u64, buf: u64, count: u64) -> u64 {
         if let Some(f) = self.handles.get_mut(&fd) {
-            self.memory.write(buf, f.read(count).unwrap())
+            self.memory.write(buf, f.read(count).unwrap().as_slice())
         } else {
             !0
         }
@@ -280,7 +281,7 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
             Ok(d) => d,
             _ => return !0,
         };
-        self.memory.write(addr, data);
+        self.memory.write(addr, data.as_slice());
         addr
     }
     pub fn mmap(&mut self, cpu: &mut impl MMU, addr: Vaddr, length: u64, prot: u64, flags: u64, fd: u64, offset: u64) -> u64 {
@@ -337,19 +338,25 @@ impl<Endianness: ByteOrder> LinuxKernel<Endianness> {
     }
     pub fn stat(&mut self, _: &mut impl CPU, filename: u64, statbuf: Vaddr) -> u64 {
         let fname = read_osstring!(self.memory, filename).unwrap();
-        match self.filesystem.stat(Path::new(&fname)) {
-            Ok(s) => {
-                self.memory.write(statbuf, &s);
-                0
+        let file = self.filesystem.borrow().resolve_last(Path::new(&fname));
+        if let Ok(file) = file {
+            match self.filesystem.borrow().stat(file) {
+                Ok(s) => {
+                    let s: Vec<u8> = s.into();
+                    self.memory.write(statbuf, s.as_slice());
+                    0
+                }
+                Err(_) => !0,
             }
-            Err(_) => !0,
+        } else {
+            !0
         }
     }
     pub fn pread64(&mut self, _: &mut impl CPU, fd: u64, buf: u64, count: u64, pos: u64) -> u64 {
         let file = self.handles.get_mut(&fd);
         if let Some(f) = file {
             let d = f.pread(pos, count).unwrap();
-            self.memory.write(buf, d)
+            self.memory.write(buf, d.as_slice())
         } else {
             !0
         }
