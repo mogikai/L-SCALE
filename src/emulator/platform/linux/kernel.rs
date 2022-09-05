@@ -15,7 +15,6 @@ use crate::emulator::abstractions::handles::{FSError, Handle};
 use crate::emulator::platform::linux::filedescriptors::OpenFile;
 use crate::emulator::system::default_handles;
 use crate::emulator::system::filesystem::Filesystem;
-use crate::emulator::system::memory;
 use crate::emulator::system::memory::{MappingError, Memory, MemoryWrite};
 use crate::read_osstring;
 
