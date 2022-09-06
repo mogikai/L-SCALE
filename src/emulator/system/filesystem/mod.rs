@@ -3,8 +3,8 @@
 //! TODO: Improve error handling with more meaningful errors
 //! TODO: Implement update of stat struct.
 //! TODO: Consider memory mapping of files into ram
-use std::fs;
 use std::cmp::min;
+use std::fs;
 use std::fs::read;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -12,8 +12,8 @@ use std::path::{Path, PathBuf};
 use data::{Data, DataSnapMarker};
 use meta_info::{MetaInfo, MetaInfoSnapMarker};
 pub use stat::Stat;
-use crate::emulator::abstractions::errors::GenericError;
 
+use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::handles::FSError;
 use crate::emulator::abstractions::restore::Restore;
 use crate::emulator::abstractions::snapshot::Snapshot;
@@ -69,12 +69,18 @@ impl Filesystem {
         }
     }
 
+    pub fn read_all(&self, file_id: FSEntryId) -> Result<Vec<u8>, FSError> {
+        let size = self.stat(file_id)?.st_size as usize;
+        self.read(file_id, 0, size)
+    }
+
     pub fn read(&self, file_id: FSEntryId, pos: usize, len: usize) -> Result<Vec<u8>, FSError> {
-        if let File { contents, size } = &self.meta_info.most_recent_entry(file_id)?.contents {
-            if pos > *size {
+        let entry = self.meta_info.most_recent_entry(file_id)?;
+        if let File { contents} = &entry.contents {
+            if pos > entry.stat.st_size as usize {
                 return Err(FSError::Unknown);
             }
-            let len = min(len, size - pos);
+            let len = min(len, entry.stat.st_size as usize - pos);
             let mut read = 0;
             let start_block = contents.range(..=pos).last().expect("Must exist since pos < size");
             let mut buffer = Vec::with_capacity(len);
@@ -90,11 +96,13 @@ impl Filesystem {
     }
 
     pub fn write(&mut self, file_id: FSEntryId, pos: usize, data: &[u8]) -> Result<usize, FSError> {
-        if let File { contents, size } = &mut self.meta_info.most_recent_entry_mut(file_id)?.contents {
-            if (pos + data.len()).saturating_sub(*size) > self.max_size - self.current_size {
+        let entry = self.meta_info.most_recent_entry_mut(file_id)?;
+        let size = entry.stat.st_size as usize;
+        if let File { contents} = &mut entry.contents {
+            if (pos + data.len()).saturating_sub(size) > self.max_size - self.current_size {
                 // No space available
-                println!("NO SPACE! remaining: {}, want: {}", self.max_size - self.current_size, (pos + data.len()).saturating_sub(*size));
-                return Err(FSError::Unknown);
+                debug!("NO SPACE! remaining: {}, want: {}", self.max_size - self.current_size, (pos + data.len()).saturating_sub(size));
+                Err(FSError::Unknown)?
             }
 
             let start_block = contents.range(..=pos).last();
@@ -103,8 +111,8 @@ impl Filesystem {
                 if start_block.contains(pos) {
                     for block_start
                     in contents.range(start_block.start..pos + data.len())
-                        .map(|b| b.start)
-                        .collect::<Vec<_>>() {
+                               .map(|b| b.start)
+                               .collect::<Vec<_>>() {
                         written += self.data.write_to_block_cow(pos + written, &data[written..], contents, block_start)?;
                     }
                 }
@@ -116,8 +124,8 @@ impl Filesystem {
                 written = data.len();
             }
 
-            let additional_size = (pos + written).saturating_sub(*size);
-            *size += additional_size;
+            let additional_size = (pos + written).saturating_sub(size);
+            entry.stat.st_size += additional_size as u64;
             self.current_size += additional_size;
 
             Ok(written)
@@ -127,8 +135,10 @@ impl Filesystem {
     }
 
     pub fn truncate(&mut self, file_id: FSEntryId, new_size: usize) -> Result<(), FSError> {
-        let size = if let File { size, .. } = &self.meta_info.most_recent_entry(file_id)?.contents {
-            Ok(*size)
+        let entry = &self.meta_info.most_recent_entry(file_id)?;
+        let size = entry.stat.st_size as usize;
+        let size = if let File { .. } = &entry.contents {
+            Ok(size)
         } else {
             Err(FSError::Unknown)
         }?;
@@ -137,16 +147,19 @@ impl Filesystem {
             let buf = vec![0; new_size - size];
             self.write(file_id, new_size - size, &buf)?;
             Ok(())
-        } else if let File { contents, size } = &mut self.meta_info.most_recent_entry_mut(file_id)?.contents {
-            self.current_size -= *size - new_size;
-            *size = new_size;
-            self.data.save_free_blocks(contents.split_off(&new_size).into_iter());
-            if let Some(block) = contents.iter().last().cloned() {
-                self.data.write_to_block_cow(new_size, vec![0; block.end() - new_size].as_slice(), contents, block.start)?;
-            }
-            Ok(())
         } else {
-            Err(FSError::Unknown)
+            let entry = self.meta_info.most_recent_entry_mut(file_id)?;
+            if let File { contents } = &mut entry.contents {
+                self.current_size -= entry.stat.st_size as usize - new_size;
+                entry.stat.st_size = new_size as u64;
+                self.data.save_free_blocks(contents.split_off(&new_size).into_iter());
+                if let Some(block) = contents.iter().last().cloned() {
+                    self.data.write_to_block_cow(new_size, vec![0; block.end() - new_size].as_slice(), contents, block.start)?;
+                }
+                Ok(())
+            } else {
+                    Err(FSError::Unknown)
+            }
         }
     }
 

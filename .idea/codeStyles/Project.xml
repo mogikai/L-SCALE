@@ -1,5 +1,8 @@
 <component name="ProjectCodeStyleConfiguration">
   <code_scheme name="Project" version="173">
+    <RsCodeStyleSettings>
+      <option name="ALIGN_RET_TYPE" value="false" />
+    </RsCodeStyleSettings>
     <codeStyleSettings language="Rust">
       <option name="RIGHT_MARGIN" value="120" />
       <option name="ALIGN_MULTILINE_CHAINED_METHODS" value="true" />

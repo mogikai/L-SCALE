@@ -39,6 +39,9 @@ fn main() {
     let result = emu.run();
 
     drop(emu);
-    debug!("Unique blocks executed: {:?}", blocks.into_keys().reduce(|acc, _| acc + 1));
+
+    // debug!("Blocks: {:X?}", blocks);
+    debug!("Unique blocks executed: {:?}", blocks.keys().clone().fold(0, |acc, _| acc + 1));
+    debug!("Total blocks executed: {:?}", blocks.into_values().reduce(|acc, b| acc + b).unwrap());
     result.unwrap();
 }

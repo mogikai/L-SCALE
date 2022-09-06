@@ -2,6 +2,7 @@ use std::io;
 
 #[derive(Debug)]
 pub enum FSError {
+    NotFound,
     Unknown
 }
 

@@ -1,9 +1,8 @@
-use std::{fs, io};
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::collections::hash_map::Keys;
 use std::marker::PhantomData;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::rc::Rc;
 
 use byteorder::ByteOrder;
@@ -18,7 +17,7 @@ use crate::emulator::abstractions::restore::Restore;
 use crate::emulator::abstractions::snapshot::Snapshot;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::filedescriptors::OpenFile;
-use crate::emulator::platform::linux::signals::{SignalAction, SignalHandler, SignalMaskFlags};
+use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
 use crate::emulator::system::default_handles;
 use crate::emulator::system::filesystem::Filesystem;
 use crate::emulator::system::memory::{Memory, MemoryError, MemoryWrite};
@@ -96,11 +95,10 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
 
     pub fn load_binary(&mut self, cpu: &mut (impl CPU + MMU), binary_path: &Path) -> Result<(), LinuxKernelError> {
         let fs = self.filesystem.borrow();
-        let root_dir = fs.on_disk_root().unwrap();
-        let buffer = fs::read(getpath(root_dir, binary_path).unwrap()).unwrap();
+        let buffer = fs.read_all(fs.resolve_last(binary_path)?)?;
         let elf = goblin::elf::Elf::parse(&buffer).unwrap();
-        let interpreter_path = getpath(root_dir, Path::new(elf.interpreter.unwrap())).unwrap();
-        let buffer = fs::read(&interpreter_path).unwrap();
+        let interpreter_path = Path::new(elf.interpreter.ok_or(LinuxKernelError::ENOENT)?);
+        let buffer = fs.read_all(fs.resolve_last(interpreter_path)?)?;
         let interpreter = goblin::elf::Elf::parse(&buffer).unwrap();
         cpu.reg_write(RegisterX86::RIP.into(), interpreter.entry).unwrap();
         //TODO iterator
@@ -118,7 +116,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
             }
         }
         drop(fs);
-        self.initstack(cpu, binary_path, interpreter_path.as_path(), interpreter.entry)
+        self.initstack(cpu, binary_path, interpreter_path, interpreter.entry)
     }
 
     fn initstack(&mut self, cpu: &mut impl CPU, binary_path: &Path, interpreter_path: &Path, entrypoint: Vaddr) -> Result<(), LinuxKernelError> {
@@ -353,12 +351,21 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         self.memory.protect(start, len, prot.try_into().unwrap(), cpu);
         Ok(0)
     }
-    pub fn set_tid_address(&mut self, uc: &mut impl CPU, tidptr: u64) -> Result<u64, LinuxKernelError> {
+
+    pub fn set_tid_address(&mut self,
+                           uc: &mut impl CPU,
+                           tidptr: u64)
+        -> Result<u64, LinuxKernelError> {
         /* todo NULL check */
         self.clear_child_tid = Some(tidptr);
-        return self.getpid(uc);
+        self.getpid(uc)
     }
-    pub fn set_robust_list(&mut self, _: &mut impl CPU, robust_list_head: u64, size: u64) -> Result<u64, LinuxKernelError> {
+
+    pub fn set_robust_list(&mut self,
+                           _: &mut impl CPU,
+                           robust_list_head: u64,
+                           size: u64)
+        -> Result<u64, LinuxKernelError> {
         /* todo better size check */
         if size != 24 {
             trace!("size = {}", size);
@@ -368,7 +375,14 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         self.robust_list_head = Some(robust_list_head);
         Ok(0)
     }
-    pub fn rt_sigaction(&mut self, _: &mut impl CPU, signum: u64, act_ptr: u64, old_ptr: u64, sigactionsize: u64) -> Result<u64, LinuxKernelError> {
+
+    pub fn rt_sigaction(&mut self,
+                        _: &mut impl CPU,
+                        signum: u64,
+                        act_ptr: u64,
+                        old_ptr: u64,
+                        sigactionsize: u64)
+        -> Result<u64, LinuxKernelError> {
         let action = self.memory.access_mem(act_ptr, 32)?; //todo make arch dependent
         let action = Arch::read_sigaction(&action);
         self.signalhandler.insert(signum as u8, action);
@@ -408,17 +422,6 @@ impl<Endianness: ByteOrder, Arch: Architecture> Snapshot for LinuxKernel<Endiann
     fn snapshot(&mut self) {
         todo!()
     }
-}
-
-fn getpath(dir: &Path, file: &Path) -> Result<PathBuf, io::Error> {
-    let p = if file.is_absolute() {
-        file.strip_prefix("/").unwrap()
-    } else {
-        file
-    };
-    let dir = dir.canonicalize()?;
-    let p = dir.join(p).canonicalize()?;
-    if p.starts_with(dir) { Ok(p) } else { Err(io::ErrorKind::NotFound.into()) }
 }
 
 fn getperms(ph: &goblin::elf::program_header::ProgramHeader) -> Permission {

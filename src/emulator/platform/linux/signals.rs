@@ -1,7 +1,5 @@
 use std::fmt::Debug;
-use std::collections::HashSet;
 
-use enumset::EnumSet;
 use enumset::EnumSetType;
 
 use crate::emulator::abstractions::cpu::Vaddr;
@@ -17,7 +15,12 @@ pub struct SignalAction<Flags: Debug + Clone + Copy> {
 
 impl<Flags: Debug + Clone + Copy> SignalAction<Flags> {
     pub fn new(callback: Vaddr, restorer: Option<Vaddr>, mask: u64, flags: Flags) -> Self {
-        return SignalAction{handler: callback, restorer: restorer, mask: mask, flags: flags};
+        Self {
+            handler: callback,
+            restorer,
+            mask,
+            flags,
+        }
     }
 }
 
@@ -28,7 +31,10 @@ pub struct SignalHandler<Flags: Debug + Clone + Copy> {
 
 impl<Flags: Debug + Clone + Copy> SignalHandler<Flags> {
     pub fn new() -> Self {
-        return Self{ signals: [None; 64], mask: 0 };
+        Self {
+            signals: [None; 64],
+            mask: 0,
+        }
     }
 
     pub fn insert(&mut self, signal: u8, handler: SignalAction<Flags>) {
@@ -39,13 +45,13 @@ impl<Flags: Debug + Clone + Copy> SignalHandler<Flags> {
     }
     pub fn get(&self, signal: u8) -> Option<SignalAction<Flags>> {
         if signal >= 64 {
-            return None
+            return None;
         }
         if 1 << signal & self.mask != 0 {
             return None;
         }
-        println!("insert signalhandler at signal 0x{:X}", signal);
-        return self.signals[signal as usize];
+        debug!("insert signalhandler at signal 0x{:X}", signal);
+        self.signals[signal as usize]
     }
     pub fn setmask(&mut self, how: SignalMaskFlags, mask: u64) {
         match how {
@@ -55,7 +61,7 @@ impl<Flags: Debug + Clone + Copy> SignalHandler<Flags> {
         }
     }
     pub fn getmask(&self) -> u64 {
-        return self.mask;
+        self.mask
     }
 }
 
@@ -70,10 +76,10 @@ impl TryFrom<u64> for SignalMaskFlags {
     type Error = LinuxKernelError;
     fn try_from(value: u64) -> Result<Self, Self::Error> {
         match value {
-            0 => return Ok(Self::SIG_BLOCK),
-            1 => return Ok(Self::SIG_UNBLOCK),
-            2 => return Ok(Self::SIG_SET),
-            _ => return Err(LinuxKernelError::EINVAL),
+            0 => Ok(Self::SIG_BLOCK),
+            1 => Ok(Self::SIG_UNBLOCK),
+            2 => Ok(Self::SIG_SET),
+            _ => Err(LinuxKernelError::EINVAL),
         }
     }
 }

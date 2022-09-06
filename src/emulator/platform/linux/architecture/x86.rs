@@ -36,11 +36,12 @@ impl Architecture for X86 {
         }
     }
     fn read_sigaction(bytes: &[u8]) -> SignalAction<Self::SignalFlags> {
+        // TODO: Handle invalid access beforehand and return error in trait method
         let sigaction: u64 = LittleEndian::read_u64(&bytes[0..8]);
         let flags: u64 = LittleEndian::read_u64(&bytes[8..16]);
         let restorer: u64 = LittleEndian::read_u64(&bytes[16..24]);
         let mask = LittleEndian::read_u64(&bytes[24..32]);
-        return SignalAction::new(sigaction, Some(restorer), mask, X86SignalFlags::from_bits_truncate(flags));
+        SignalAction::new(sigaction, Some(restorer), mask, X86SignalFlags::from_bits_truncate(flags))
     }
 
 }

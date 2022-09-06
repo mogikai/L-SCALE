@@ -66,7 +66,7 @@ impl MetaInfo {
 
     /// See the public api [Filesystem::create_file](Filesystem::create_file) for documentation.
     pub(super) fn create_file(&mut self, path: &Path, stat: Option<Stat>) -> Result<FSEntryId, FSError> {
-        self.new_entry(path, |name| FSEntry::new(File { contents: BTreeSet::new(), size: 0 }, stat.unwrap_or_default(), name))
+        self.new_entry(path, |name| FSEntry::new(File { contents: BTreeSet::new() }, stat.unwrap_or_default(), name))
     }
 
     /// See the public api [Filesystem::create_dir](Filesystem::create_dir) for documentation.
@@ -239,7 +239,7 @@ impl MetaInfo {
 
 #[derive(Clone, Debug)]
 pub(super) enum FSEntryContent {
-    File { contents: BTreeSet<Block>, size: usize },
+    File { contents: BTreeSet<Block> },
     // Block ids
     Dir { contents: BTreeMap<String, FSEntryId> },
 }
