@@ -8,7 +8,10 @@ use num_enum::FromPrimitive;
 
 use crate::emulator::abstractions::cpu::{CPU, CPUError, Hooks, MMU, RegisterX86};
 use crate::emulator::abstractions::emulator::{Emulator, StopReason};
-use crate::emulator::platform::linux::kernel::LinuxKernel;
+use crate::emulator::abstractions::errors::GenericError;
+use crate::emulator::abstractions::restore::Restore;
+use crate::emulator::abstractions::snapshot::Snapshot;
+use crate::emulator::platform::linux::kernel::{LinuxKernel, LinuxKernelError};
 use crate::emulator::platform::linux::architecture::x86::X86;
 
 #[derive(Debug)]
@@ -22,6 +25,22 @@ pub struct LinuxX86<'a, CpuT, Endianness> where CpuT: CPU + MMU + Hooks<'a>, End
     cpu: Rc<RefCell<CpuT>>,
     kernel: Rc<RefCell<LinuxKernel<Endianness, X86>>>,
     phantom: PhantomData<&'a CpuT>,
+}
+
+impl<'a, CpuT, Endianness> Restore for LinuxX86<'a, CpuT, Endianness> where CpuT: CPU + MMU + Hooks<'a>, Endianness: ByteOrder {
+    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
+        self.kernel.borrow_mut().restore_and_discard()
+    }
+
+    fn restore(&mut self) -> Result<(), GenericError> {
+        self.kernel.borrow_mut().restore()
+    }
+}
+
+impl<'a, CpuT, Endianness> Snapshot for LinuxX86<'a, CpuT, Endianness> where CpuT: CPU + MMU + Hooks<'a>, Endianness: ByteOrder {
+    fn snapshot(&mut self) {
+        self.kernel.borrow_mut().snapshot()
+    }
 }
 
 impl From<CPUError> for StopReason {
@@ -127,7 +146,7 @@ fn syscall<Endianness: ByteOrder>(cpu: &mut (impl CPU + MMU), kernel: &mut Linux
     let mut debug_str = String::new();
     let syscall = SYSCALL::from(rax);
     let mut unknown_syscall = false;
-    let rax = match SYSCALL::from(rax) {
+    let result = match SYSCALL::from(rax) {
         SYSCALL::READ => { do_syscall!(3, cpu, kernel::read, debug_str) }
         SYSCALL::WRITE => { do_syscall!(3, cpu, kernel::write, debug_str) }
         SYSCALL::CLOSE => { do_syscall!(1, cpu, kernel::close, debug_str) }
@@ -152,8 +171,12 @@ fn syscall<Endianness: ByteOrder>(cpu: &mut (impl CPU + MMU), kernel: &mut Linux
         SYSCALL::NONE => {
             debug_str = format!("(rax: {})", rax);
             unknown_syscall = true;
-            !0
+            Err(LinuxKernelError::EINVAL)
         }
+    };
+    let rax = match result {
+        Ok(rax) => rax,
+        Err(e) => e.into(),
     };
     if unknown_syscall {
         error!("SYSCALL: {:?} {} -> 0x{:X}", syscall, debug_str, rax);

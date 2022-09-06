@@ -2,8 +2,8 @@ use std::{fs, io};
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::collections::hash_map::Keys;
-use std::path::{Path, PathBuf};
 use std::marker::PhantomData;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use byteorder::ByteOrder;
@@ -12,14 +12,17 @@ use libc::timespec;
 use linux_libc_auxv::AuxVarType;
 
 use crate::emulator::abstractions::cpu::{CPU, CPUError, MMU, Permission, RegisterX86, Vaddr};
+use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::handles::{FSError, Handle};
+use crate::emulator::abstractions::restore::Restore;
+use crate::emulator::abstractions::snapshot::Snapshot;
+use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::filedescriptors::OpenFile;
+use crate::emulator::platform::linux::signals::{SignalAction, SignalHandler, SignalMaskFlags};
 use crate::emulator::system::default_handles;
 use crate::emulator::system::filesystem::Filesystem;
-use crate::emulator::system::memory::{MappingError, Memory, MemoryWrite};
+use crate::emulator::system::memory::{Memory, MemoryError, MemoryWrite};
 use crate::read_osstring;
-use crate::emulator::platform::linux::signals::{SignalAction, SignalHandler, SignalMaskFlags};
-use crate::emulator::platform::linux::architecture::Architecture;
 
 const MAP_ANONYMOUS: u64 = 0x20;
 const MAP_PRIVATE: u64 = 0x2;
@@ -168,46 +171,46 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         self.handles.add_replacement_handle(fd, handle);
     }
 
-    pub fn brk(&mut self, cpu: &mut impl MMU, addr: u64) -> u64 {
+    pub fn brk(&mut self, cpu: &mut impl MMU, addr: u64) -> Result<u64, LinuxKernelError> {
         if addr != 0 {
             self.memory.realloc_heap(addr, cpu);
         }
-        self.memory.heapend()
+        Ok(self.memory.heapend())
     }
 
-    pub fn arch_prctl(&mut self, cpu: &mut impl CPU, code: u64, addr: u64) -> u64 {
+    pub fn arch_prctl(&mut self, cpu: &mut impl CPU, code: u64, addr: u64) -> Result<u64, LinuxKernelError> {
         match code {
             0x1001 => { //ARCH_SET_GS
-                !0
+                Err(LinuxKernelError::EINVAL)
             }
             0x1002 => { //ARCH_SET_FS
                 let fsbytes = self.memory.read_internal(addr, 8).unwrap();
                 let fs = Endianness::read_u64(&fsbytes);
                 cpu.reg_write(RegisterX86::FS_BASE.into(), fs).unwrap();
-                0
+                Ok(0)
             }
-            0x1003 => !0, //ARCH_GET_FS
-            0x1004 => !0, //ARCH_GET_GS
-            _ => !0,
+            0x1003 => Err(LinuxKernelError::EINVAL), //ARCH_GET_FS
+            0x1004 => Err(LinuxKernelError::EINVAL), //ARCH_GET_GS
+            _ => Err(LinuxKernelError::EINVAL),
         }
     }
 
-    pub fn clock_gettime(&mut self, cpu: &mut impl MMU, clk_id: u64, tp: Vaddr) -> u64 {
+    pub fn clock_gettime(&mut self, cpu: &mut impl MMU, clk_id: u64, tp: Vaddr) -> Result<u64, LinuxKernelError> {
         let ts = timespec { tv_sec: 0, tv_nsec: 0 };
         self.memory.write_struct(tp, ts).unwrap();
         // TODO: Implement actual timer
-        0
+        Ok(0)
     }
 
-    pub fn write(&mut self, _: &mut impl CPU, fd: u64, buf: u64, size: u64) -> u64 {
-        self.handles.get_mut(&fd).map_or(!0, |handle| {
+    pub fn write(&mut self, _: &mut impl CPU, fd: u64, buf: u64, size: u64) -> Result<u64, LinuxKernelError> {
+        self.handles.get_mut(&fd).map_or(Err(LinuxKernelError::EINVAL), |handle| {
             let data = self.memory.read_internal(buf, size as usize).unwrap();
-            handle.write(&*data).unwrap_or(!0).try_into().unwrap()
+            Ok(handle.write(&*data).unwrap_or(!0).try_into().unwrap())
         })
     }
 
-    pub fn writev(&mut self, _: &mut impl CPU, fd: u64, iovec_ptr: Vaddr, iovcnt: u64) -> u64 {
-        self.handles.get_mut(&fd).map_or(!0, |handle| {
+    pub fn writev(&mut self, _: &mut impl CPU, fd: u64, iovec_ptr: Vaddr, iovcnt: u64) -> Result<u64, LinuxKernelError> {
+        self.handles.get_mut(&fd).map_or(Err(LinuxKernelError::EINVAL), |handle| {
             let mut ret = 0;
             let iovec = self.memory.read_internal(iovec_ptr, (iovcnt * 16) as usize).unwrap();
             for i in 0..iovcnt as usize {
@@ -218,47 +221,45 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
                     Ok(written) => {
                         ret += written;
                         // Early return if not all bytes were written. We need to stop writing in this case
-                        if written != data.len() { return ret.try_into().unwrap(); };
+                        if written != data.len() { return Ok(ret.try_into().unwrap()); };
                     }
-                    Err(_e) => return !0,
+                    Err(_e) => return Err(LinuxKernelError::EINVAL),
                 };
             }
-            ret.try_into().unwrap()
+            Ok(ret.try_into().unwrap())
         })
     }
-    pub fn openat(&mut self, _: &mut impl CPU, _dfd: u64, filename: u64, _flags: u64, _mode: u64) -> u64 {
+
+    pub fn openat(&mut self, _: &mut impl CPU, _dfd: u64, filename: u64, _flags: u64, _mode: u64) -> Result<u64, LinuxKernelError> {
         let fname = read_osstring!(self.memory, filename).unwrap();
         trace!("openat file: {:?}", fname);
         let p = Path::new(&fname);
         if let Ok(file) = self.filesystem.borrow().resolve_last(p) {
-            let fd: u64 = *self.handles.keys().max().unwrap_or(&2) + 1;
+            let fd = *self.handles.keys().max().unwrap_or(&2) + 1;
             self.handles.insert(fd, Box::new(OpenFile::new(self.filesystem.clone(), file)));
-            return fd;
+            Ok(fd)
         } else {
             // TODO: Do correct error mapping
-            LinuxKernelError::EINVAL.into()
+            Err(LinuxKernelError::EINVAL)
         }
     }
-    pub fn read(&mut self, _: &mut impl CPU, fd: u64, buf: u64, count: u64) -> u64 {
+
+    pub fn read(&mut self, _: &mut impl CPU, fd: u64, buf: u64, count: u64) -> Result<u64, LinuxKernelError> {
         if let Some(f) = self.handles.get_mut(&fd) {
-            self.memory.write(buf, f.read(count).unwrap().as_slice())
+            Ok(self.memory.write(buf, f.read(count).unwrap().as_slice()))
         } else {
-            !0
+            Err(LinuxKernelError::EINVAL)
         }
     }
-    pub fn getpid(&mut self, _: &mut impl CPU) -> u64 {
+
+    pub fn getpid(&mut self, _: &mut impl CPU) -> Result<u64, LinuxKernelError> {
         // TODO: Implement multi threading / processing
-        1
+        Ok(1)
     }
+
     fn mmap_anon(&mut self, cpu: &mut impl MMU, addr: Vaddr, length: u64, prot: u64, flags: u64) -> Result<u64, LinuxKernelError> {
         let addr = if (flags & MAP_FIXED) != 0 {
-            if let Err(e) = self.memory.unmap(addr, length, cpu) {
-                return Err(match e {
-                    MappingError::NotAligned => LinuxKernelError::EINVAL,
-                    MappingError::ZeroSize => LinuxKernelError::EINVAL,
-                    _ => LinuxKernelError::EINVAL
-                });
-            }
+            self.memory.unmap(addr, length, cpu)?;
             addr
         } else {
             //self.memory.find_free(addr, length)
@@ -273,157 +274,141 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         };
         Ok(addr)
     }
-    fn mmap_private(&mut self, cpu: &mut impl MMU, addr: u64, length: u64, prot: u64, flags: u64, fd: u64, offset: u64) -> u64 {
+
+    fn mmap_private(&mut self, cpu: &mut impl MMU, addr: u64, length: u64, prot: u64, flags: u64, fd: u64, offset: u64) -> Result<u64, LinuxKernelError> {
         if fd >= 1 << 31 {
-            return !0;
+            Err(LinuxKernelError::EINVAL)?
         }
         let addr = self.mmap_anon(cpu, addr, length, prot, flags).unwrap();
         if addr == !0 {
-            return !0;
+            Err(LinuxKernelError::EINVAL)?
         }
-        let f = match self.handles.get(&fd) {
-            Some(f) => f,
-            _ => return !0,
-        };
-        let data = match f.pread(offset, length) {
-            Ok(d) => d,
-            _ => return !0,
-        };
+        let f = self.handles.get(&fd).ok_or(LinuxKernelError::EINVAL)?;
+        let data = f.pread(offset, length)?;
         self.memory.write(addr, data.as_slice());
-        addr
+        Ok(addr)
     }
-    pub fn mmap(&mut self, cpu: &mut impl MMU, addr: Vaddr, length: u64, prot: u64, flags: u64, fd: u64, offset: u64) -> u64 {
+    pub fn mmap(&mut self, cpu: &mut impl MMU, addr: Vaddr, length: u64, prot: u64, flags: u64, fd: u64, offset: u64) -> Result<u64, LinuxKernelError> {
         if (flags & !(MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED | MAP_DENYWRITE)) != 0 {
-            return !0;
+            Err(LinuxKernelError::EINVAL)?
         }
         if (flags & MAP_ANONYMOUS) != 0 {
-            return self.mmap_anon(cpu, addr, length, prot, flags).unwrap_or_else(|e| e.into());
+            self.mmap_anon(cpu, addr, length, prot, flags)
+        } else if (flags & MAP_PRIVATE) != 0 {
+            self.mmap_private(cpu, addr, length, prot, flags, fd, offset)
+        } else {
+            Err(LinuxKernelError::EINVAL)
         }
-        if (flags & MAP_PRIVATE) != 0 {
-            return self.mmap_private(cpu, addr, length, prot, flags, fd, offset);
-        }
-        !0
     }
-    pub fn close(&mut self, _: &mut impl CPU, fd: u64) -> u64 {
+    pub fn close(&mut self, _: &mut impl CPU, fd: u64) -> Result<u64, LinuxKernelError> {
         self.handles.remove(&fd);
-        0
+        Ok(0)
     }
-    pub fn uname(&mut self, _: &mut impl CPU, buf: u64) -> u64 {
+    pub fn uname(&mut self, _: &mut impl CPU, buf: u64) -> Result<u64, LinuxKernelError> {
         //TODO check if address is mapped and has space for struct new_utsname
-        self.memory.write(buf + 0 * 65, "Linux");
-        self.memory.write(buf + 1 * 65, "ILT792");
+        self.memory.write(buf, "Linux");
+        self.memory.write(buf + 65, "ILT792");
         self.memory.write(buf + 2 * 65, "5.4.0-110-generic");
         self.memory.write(buf + 3 * 65, "#124-Ubuntu SMP Thu Apr 14 19:46:19 UTC 2022");
         self.memory.write(buf + 4 * 65, "x86_64");
         self.memory.write(buf + 5 * 65, "(none)");
-        0
+        Ok(0)
     }
-    pub fn gettimeofday(&mut self, _: &mut impl CPU, tv: Vaddr, tz: Vaddr) -> u64 {
+    pub fn gettimeofday(&mut self, _: &mut impl CPU, tv: Vaddr, tz: Vaddr) -> Result<u64, LinuxKernelError> {
         if tv == 0 {
-            return LinuxKernelError::EINVAL.into();
+            Err(LinuxKernelError::EINVAL)?
         }
         if tz != 0 {
             todo!("Timezone not implemented yet")
         }
         let timeval = libc::timeval { tv_sec: 0, tv_usec: 0 };
         // TODO: Implement actual timer
-        self.memory.write_struct(tv, timeval).unwrap();
-        0
+        self.memory.write_struct(tv, timeval)?;
+        Ok(0)
     }
-    pub fn access(&mut self, _: &mut impl CPU, _filename: u64, _mode: u64) -> u64 {
-        !0
+    pub fn access(&mut self, _: &mut impl CPU, _filename: u64, _mode: u64) -> Result<u64, LinuxKernelError> {
+        Err(LinuxKernelError::EINVAL)
     }
-    pub fn fstat(&mut self, _: &mut impl CPU, fd: u64, statbuf: Vaddr) -> u64 {
+    pub fn fstat(&mut self, _: &mut impl CPU, fd: u64, statbuf: Vaddr) -> Result<u64, LinuxKernelError> {
         let file = self.handles.get_mut(&fd);
-        match file {
-            Some(f) => {
-                self.memory.write(statbuf, &f.stat());
-                return 0;
-            }
-            None => {}
-        }
-        !0
+        file.map_or(Err(LinuxKernelError::EINVAL), |f| {
+            self.memory.write(statbuf, &f.stat());
+            Ok(0)
+        })
     }
-    pub fn stat(&mut self, _: &mut impl CPU, filename: u64, statbuf: Vaddr) -> u64 {
+    pub fn stat(&mut self, _: &mut impl CPU, filename: u64, statbuf: Vaddr) -> Result<u64, LinuxKernelError> {
         let fname = read_osstring!(self.memory, filename).unwrap();
-        let file = self.filesystem.borrow().resolve_last(Path::new(&fname));
-        if let Ok(file) = file {
-            match self.filesystem.borrow().stat(file) {
-                Ok(s) => {
-                    let s: Vec<u8> = s.into();
-                    self.memory.write(statbuf, s.as_slice());
-                    0
-                }
-                Err(_) => !0,
-            }
-        } else {
-            !0
-        }
+        let fs = self.filesystem.borrow();
+        let file = fs.resolve_last(Path::new(&fname))?;
+        let stat = fs.stat(file)?;
+        self.memory.write(statbuf, Vec::from(stat).as_slice());
+        Ok(0)
     }
-    pub fn pread64(&mut self, _: &mut impl CPU, fd: u64, buf: u64, count: u64, pos: u64) -> u64 {
-        let file = self.handles.get_mut(&fd);
-        if let Some(f) = file {
-            let d = f.pread(pos, count).unwrap();
-            self.memory.write(buf, d.as_slice())
-        } else {
-            !0
-        }
+    pub fn pread64(&mut self, _: &mut impl CPU, fd: u64, buf: u64, count: u64, pos: u64) -> Result<u64, LinuxKernelError> {
+        let file = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADF)?;
+        let d = file.pread(pos, count).unwrap();
+        Ok(self.memory.write(buf, d.as_slice()))
     }
-    pub fn mprotect(&mut self, cpu: &mut impl MMU, start: u64, len: u64, prot: u64) -> u64 {
+    pub fn mprotect(&mut self, cpu: &mut impl MMU, start: u64, len: u64, prot: u64) -> Result<u64, LinuxKernelError> {
         self.memory.protect(start, len, prot.try_into().unwrap(), cpu);
-        0
+        Ok(0)
     }
-    pub fn set_tid_address(&mut self, uc: &mut impl CPU, tidptr: u64) -> u64 {
+    pub fn set_tid_address(&mut self, uc: &mut impl CPU, tidptr: u64) -> Result<u64, LinuxKernelError> {
         /* todo NULL check */
         self.clear_child_tid = Some(tidptr);
         return self.getpid(uc);
     }
-    pub fn set_robust_list(&mut self, _: &mut impl CPU, robust_list_head: u64, size: u64) -> u64 {
+    pub fn set_robust_list(&mut self, _: &mut impl CPU, robust_list_head: u64, size: u64) -> Result<u64, LinuxKernelError> {
         /* todo better size check */
         if size != 24 {
             trace!("size = {}", size);
-            return !0;
+            Err(LinuxKernelError::EINVAL)?
         }
         /* todo NULL check */
         self.robust_list_head = Some(robust_list_head);
-        return 0;
+        Ok(0)
     }
-    pub fn rt_sigaction(&mut self, _: &mut impl CPU, signum: u64, act_ptr: u64, old_ptr: u64, sigactionsize: u64) -> u64 {
-        let action = match self.memory.access_mem(act_ptr, 32) { //todo make arch dependent
-            Err(_) => return LinuxKernelError::EFAULT.into(),
-            Ok(s) => s,
-        };
+    pub fn rt_sigaction(&mut self, _: &mut impl CPU, signum: u64, act_ptr: u64, old_ptr: u64, sigactionsize: u64) -> Result<u64, LinuxKernelError> {
+        let action = self.memory.access_mem(act_ptr, 32)?; //todo make arch dependent
         let action = Arch::read_sigaction(&action);
         self.signalhandler.insert(signum as u8, action);
-        return 0;
+        Ok(0)
     }
-    pub fn rt_sigprocmask(&mut self, _: &mut impl CPU, how: u64, new_set: u64, old_set: u64, sigsetsize: u64) -> u64 {
+    pub fn rt_sigprocmask(&mut self, _: &mut impl CPU, how: u64, new_set: u64, old_set: u64, sigsetsize: u64) -> Result<u64, LinuxKernelError> {
         if sigsetsize != 8 { //todo architure specific
-            return LinuxKernelError::EINVAL.into();
+            Err(LinuxKernelError::EINVAL)?
         }
         let oset = self.signalhandler.getmask();
         if new_set != 0 {
-            let set = match self.memory.access_mem(new_set, sigsetsize as usize) {
-                Err(_) => return LinuxKernelError::EFAULT.into(),
-                Ok(s) => Endianness::read_u64(&s),
-            };
-            let how = match SignalMaskFlags::try_from(how) {
-                Ok(h) => h,
-                Err(e) => return e.into(),
-            };
+            let set = self.memory
+                          .access_mem(new_set, sigsetsize as usize)
+                          .map(|s| Endianness::read_u64(&s))?;
+            let how = SignalMaskFlags::try_from(how)?;
             self.signalhandler.setmask(how, set);
         }
         if old_set != 0 {
-            let mut old = match self.memory.access_mem_mut(old_set, sigsetsize as usize) {
-                Ok(m) => m,
-                Err(_) => return  LinuxKernelError::EFAULT.into(),
-            };
+            let mut old = self.memory.access_mem_mut(old_set, sigsetsize as usize)?;
             Endianness::write_u64(&mut old, oset);
         }
-        return 0;
+        Ok(0)
     }
 }
 
+impl<Endianness: ByteOrder, Arch: Architecture> Restore for LinuxKernel<Endianness, Arch> {
+    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
+        todo!()
+    }
+
+    fn restore(&mut self) -> Result<(), GenericError> {
+        todo!()
+    }
+}
+
+impl<Endianness: ByteOrder, Arch: Architecture> Snapshot for LinuxKernel<Endianness, Arch> {
+    fn snapshot(&mut self) {
+        todo!()
+    }
+}
 
 fn getpath(dir: &Path, file: &Path) -> Result<PathBuf, io::Error> {
     let p = if file.is_absolute() {
@@ -739,5 +724,21 @@ impl LinuxKernelError {
 impl From<CPUError> for LinuxKernelError {
     fn from(_: CPUError) -> Self {
         LinuxKernelError::EINVAL
+    }
+}
+
+impl From<FSError> for LinuxKernelError {
+    fn from(_: FSError) -> Self {
+        LinuxKernelError::EINVAL
+    }
+}
+
+impl From<MemoryError> for LinuxKernelError {
+    fn from(me: MemoryError) -> Self {
+        use MemoryError::*;
+        match me {
+            NotMapped => LinuxKernelError::EFAULT,
+            _ => LinuxKernelError::EINVAL,
+        }
     }
 }

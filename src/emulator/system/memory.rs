@@ -36,7 +36,7 @@ fn is4kaligned(address: Vaddr) -> bool {
 }
 
 #[derive(Debug)]
-pub enum MappingError {
+pub enum MemoryError {
     AlreadyMapped,
     NotMapped,
     NotAligned,
@@ -169,11 +169,6 @@ impl<Endianness: ByteOrder> MemoryWrite<&str> for Memory<Endianness> {
     }
 }
 
-#[derive(Debug)]
-pub enum ReadError {
-    NotMapped,
-}
-
 impl<'a, Endianness: ByteOrder> Memory<Endianness> {
     pub fn new<'b>(cpu: &mut (impl MMU + Hooks<'b>), stack_base: Vaddr, stack_size: usize, heap_base: Vaddr) -> Memory<Endianness> {
         let mut mem = Memory {
@@ -195,7 +190,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         mem
     }
 
-    pub fn write_struct<T>(&self, addr: Vaddr, val: T) -> Result<(), ReadError> {
+    pub fn write_struct<T>(&self, addr: Vaddr, val: T) -> Result<(), MemoryError> {
         // TODO: Maybe implement differently for endianness?
         // TODO: Maybe use something like https://docs.rs/zerocopy/latest/zerocopy/trait.AsBytes.html
         // TODO: Do we want to swallow the unsafe here? This is undefined behavior in this case.
@@ -206,25 +201,25 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         Ok(())
     }
 
-    pub fn read_internal(&self, address: u64, size: usize) -> Result<Ref<[u8]>, ReadError> {
-        let region = self.get_region(address).ok_or(ReadError::NotMapped)?;
+    pub fn read_internal(&self, address: u64, size: usize) -> Result<Ref<[u8]>, MemoryError> {
+        let region = self.get_region(address).ok_or(MemoryError::NotMapped)?;
         let offset = (address - region.vaddr) as usize;
         Ok(Ref::map(region.as_slice(), |d| &d[offset..min(offset + size, region.size as usize)]))
     }
 
-    pub fn access_mem(&self, address: Vaddr, size: usize) -> Result<Ref<[u8]>, ReadError> {
-        let region = self.get_region(address).ok_or(ReadError::NotMapped)?;
+    pub fn access_mem(&self, address: Vaddr, size: usize) -> Result<Ref<[u8]>, MemoryError> {
+        let region = self.get_region(address).ok_or(MemoryError::NotMapped)?;
         let offset = (address - region.vaddr) as usize;
         Ok(Ref::map(region.as_slice(), |slice| &slice[offset..offset + size]))
     }
 
-    pub fn access_mem_mut(&self, address: Vaddr, size: usize) -> Result<RefMut<[u8]>, ReadError> {
-        let region = self.get_region(address).ok_or(ReadError::NotMapped)?;
+    pub fn access_mem_mut(&self, address: Vaddr, size: usize) -> Result<RefMut<[u8]>, MemoryError> {
+        let region = self.get_region(address).ok_or(MemoryError::NotMapped)?;
         let offset = (address - region.vaddr) as usize;
         Ok(RefMut::map(region.as_mut_slice(), |slice| &mut slice[offset..offset + size]))
     }
 
-    unsafe fn get_ref<T>(&self, address: Vaddr) -> Result<Ref<T>, ReadError> {
+    unsafe fn get_ref<T>(&self, address: Vaddr) -> Result<Ref<T>, MemoryError> {
         let data = self.access_mem(address, mem::size_of::<T>())?;
         // TODO: What about endianness? Do we really have to consider it?
         Ok(Ref::map(data, |d| {
@@ -233,7 +228,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         }))
     }
 
-    unsafe fn get_ref_mut<T>(&self, address: Vaddr) -> Result<RefMut<T>, ReadError> {
+    unsafe fn get_ref_mut<T>(&self, address: Vaddr) -> Result<RefMut<T>, MemoryError> {
         let data = self.access_mem_mut(address, mem::size_of::<T>())?;
         // TODO: What about endianness? Do we really have to consider it?
         Ok(RefMut::map(data, |d| {
@@ -247,7 +242,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         memory.copy_from_slice(data);
     }
 
-    pub fn map_data(&mut self, data: &[u8], vm_range: Range<Vaddr>, perms: Permission, cpu: &mut impl MMU) -> Result<(), MappingError> {
+    pub fn map_data(&mut self, data: &[u8], vm_range: Range<Vaddr>, perms: Permission, cpu: &mut impl MMU) -> Result<(), MemoryError> {
         let start = align4k_down(vm_range.start);
         let size = align4k_up(vm_range.end) - start;
         if data.len() > size as usize {
@@ -261,13 +256,13 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         Ok(())
     }
 
-    pub fn mmap(&mut self, address: u64, size: u64, perms: Permission, cpu: &mut impl MMU) -> Result<u64, MappingError> {
+    pub fn mmap(&mut self, address: u64, size: u64, perms: Permission, cpu: &mut impl MMU) -> Result<u64, MemoryError> {
         let size = align4k_up(size);
         if !is4kaligned(address) {
-            return Err(MappingError::NotAligned);
+            return Err(MemoryError::NotAligned);
         }
         if size == 0 {
-            return Err(MappingError::ZeroSize);
+            return Err(MemoryError::ZeroSize);
         }
         self.fixed_mapping(self.find_space_for_region(address, size), size, perms, cpu)
     }
@@ -292,7 +287,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         }
     }
 
-    fn fixed_mapping(&mut self, address: Vaddr, size: u64, perms: Permission, cpu: &mut impl MMU) -> Result<u64, MappingError> {
+    fn fixed_mapping(&mut self, address: Vaddr, size: u64, perms: Permission, cpu: &mut impl MMU) -> Result<u64, MemoryError> {
         //TODO argscheck
         info!("fixed mapping address: 0x{:X}", address);
         let region = Region::new(size, address, perms);
@@ -342,8 +337,8 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         )
     }
 
-    fn resize_region(&mut self, address: Vaddr, size: usize, cpu: &mut impl MMU) -> Result<(), MappingError> {
-        let region = self.mappings.take(&address).ok_or(MappingError::NotMapped)?;
+    fn resize_region(&mut self, address: Vaddr, size: usize, cpu: &mut impl MMU) -> Result<(), MemoryError> {
+        let region = self.mappings.take(&address).ok_or(MemoryError::NotMapped)?;
         self.unmap_intern(&region, cpu);
         let region = region.resize(size);
         self.map_internal(&region, cpu);
@@ -351,12 +346,12 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         Ok(())
     }
 
-    pub fn unmap(&mut self, address: Vaddr, size: u64, cpu: &mut impl MMU) -> Result<(), MappingError> {
+    pub fn unmap(&mut self, address: Vaddr, size: u64, cpu: &mut impl MMU) -> Result<(), MemoryError> {
         if !is4kaligned(address) {
-            return Err(MappingError::NotAligned);
+            return Err(MemoryError::NotAligned);
         }
         if size == 0 {
-            return Err(MappingError::ZeroSize);
+            return Err(MemoryError::ZeroSize);
         }
         let size = align4k_up(size);
 
@@ -427,14 +422,14 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
 macro_rules! read_osstring {
 	($mem:expr, $addr:expr) => {
 		{
-            use crate::emulator::system::memory::ReadError;
+            use crate::emulator::system::memory::MemoryError;
             use std::ffi::OsString;
             use std::os::unix::ffi::OsStringExt;
 			//todo better define path_max
 			let d = $mem.read_internal($addr, 4096).unwrap();
 			//todo better check for \0 byte existens
 			let s = d.split(|c| *c == 0).next().unwrap();
-			let r: Result<OsString, ReadError> = Ok(OsString::from_vec(s.to_vec()));
+			let r: Result<OsString, MemoryError> = Ok(OsString::from_vec(s.to_vec()));
 			r
 		}
 	}
