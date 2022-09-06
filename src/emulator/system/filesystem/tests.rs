@@ -3,9 +3,8 @@
 use std::path::Path;
 
 use rand::{RngCore, thread_rng};
-use crate::emulator::abstractions::handles::FSError;
 
-use crate::emulator::system::filesystem::Filesystem;
+use super::*;
 
 #[test]
 fn basic() -> Result<(), FSError> {

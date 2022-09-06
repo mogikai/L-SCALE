@@ -100,6 +100,10 @@ impl CPU for UCWrapper<'_> {
         Ok(self.uc_mut().emu_start(rip, stop.unwrap_or(0), timeout, instruction_count.unwrap_or(0))?)
     }
 
+    fn kill(&mut self) -> Result<(), CPUError> {
+        Ok(self.uc_mut().emu_stop()?)
+    }
+
     fn reg_write(&mut self, register: Register, value: u64) -> Result<(), CPUError> {
         let register = RegisterX86::try_from(register)?;
         Ok(self.uc_mut().reg_write(register, value)?)

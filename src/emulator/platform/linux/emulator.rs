@@ -126,6 +126,7 @@ fn syscall<Endianness: ByteOrder>(cpu: &mut (impl CPU + MMU), kernel: &mut Linux
     let rax = cpu.reg_read(RegisterX86::RAX.into()).unwrap();
     let mut debug_str = String::new();
     let syscall = SYSCALL::from(rax);
+    let mut unknown_syscall = false;
     let rax = match SYSCALL::from(rax) {
         SYSCALL::READ => { do_syscall!(3, cpu, kernel::read, debug_str) }
         SYSCALL::WRITE => { do_syscall!(3, cpu, kernel::write, debug_str) }
@@ -150,10 +151,16 @@ fn syscall<Endianness: ByteOrder>(cpu: &mut (impl CPU + MMU), kernel: &mut Linux
         SYSCALL::SET_ROBUST_LIST => { do_syscall!(2, cpu, kernel::set_robust_list, debug_str) }
         SYSCALL::NONE => {
             debug_str = format!("(rax: {})", rax);
+            unknown_syscall = true;
             !0
         }
     };
-    trace!("SYSCALL: {:?} {} -> 0x{:X}", syscall, debug_str, rax);
+    if unknown_syscall {
+        error!("SYSCALL: {:?} {} -> 0x{:X}", syscall, debug_str, rax);
+        cpu.kill().unwrap();
+    } else {
+        trace!("SYSCALL: {:?} {} -> 0x{:X}", syscall, debug_str, rax);
+    }
     cpu.reg_write(RegisterX86::RAX.into(), rax).unwrap();
 }
 

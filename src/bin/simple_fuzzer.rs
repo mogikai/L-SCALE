@@ -28,16 +28,17 @@ fn main() {
         *blocks.entry(addr).or_insert(0) += 1;
         // TODO: How can we achieve edge coverage? log last modified address?
         // TODO: Is this a performance bottleneck, do we have to use a simpler map?
+        // TODO: It would be possible to
     }));
 
     let mut data = vec![b'A'; 0x01];
     data.extend(vec![b'x', b'y', b'z', b'x', b'y', b'z', b'\n']);
     let demo_handle = Box::new(ReadOnly::from(data));
     kernel.borrow_mut().add_replacement_handle(0, demo_handle);
-    let mut emu = LinuxX86::new(kernel, cpu, PathBuf::from("/home/mark/server_rel")).unwrap();
+    let mut emu = LinuxX86::new(kernel, cpu, PathBuf::from("/home/mark/server_rel2")).unwrap();
     let result = emu.run();
 
     drop(emu);
-    debug!("{:?}", blocks);
+    debug!("Unique blocks executed: {:?}", blocks.into_keys().reduce(|acc, _| acc + 1));
     result.unwrap();
 }

@@ -12,8 +12,11 @@ use std::path::{Path, PathBuf};
 use data::{Data, DataSnapMarker};
 use meta_info::{MetaInfo, MetaInfoSnapMarker};
 pub use stat::Stat;
+use crate::emulator::abstractions::errors::GenericError;
 
 use crate::emulator::abstractions::handles::FSError;
+use crate::emulator::abstractions::restore::Restore;
+use crate::emulator::abstractions::snapshot::Snapshot;
 use crate::emulator::system::filesystem::meta_info::FSEntryContent::File;
 
 mod block;
@@ -192,10 +195,12 @@ impl Filesystem {
     fn print_tree(&self) {
         self.meta_info.print_tree(self.meta_info.root(), None);
     }
+}
 
-    pub fn restore_and_discard(&mut self) -> Result<(), FSError> {
+impl Restore for Filesystem {
+    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
         if self.current_snap == 0 {
-            return Err(FSError::Unknown);
+            Err(FSError::Unknown)?
         }
         let snap_marker = self.snap_markers.pop().expect("Must exist since current_snap > 0");
         self.meta_info.restore_and_discard(snap_marker.meta_info_marker);
@@ -205,9 +210,9 @@ impl Filesystem {
         Ok(())
     }
 
-    pub fn restore(&mut self) -> Result<(), FSError> {
+    fn restore(&mut self) -> Result<(), GenericError> {
         if self.current_snap == 0 {
-            return Err(FSError::Unknown);
+            Err(FSError::Unknown)?
         }
         let snap_marker = self.snap_markers.last().expect("Must exist since current_snap > 0");
         self.meta_info.restore(snap_marker.meta_info_marker);
@@ -215,8 +220,10 @@ impl Filesystem {
         self.current_size = snap_marker.current_size;
         Ok(())
     }
+}
 
-    pub fn snapshot(&mut self) {
+impl Snapshot for Filesystem {
+    fn snapshot(&mut self) {
         assert_eq!(self.snap_markers.len(), self.current_snap);
         self.snap_markers.push(SnapMarker {
             data_marker: self.data.snapshot(),

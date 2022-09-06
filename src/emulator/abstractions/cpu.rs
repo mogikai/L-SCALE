@@ -21,6 +21,7 @@ pub trait CPU {
     /// returns: A CPUError if an error occurred during emulation.
     ///          In most cases such an error will correspond to a segfault.
     fn emulate(&mut self, stop: Option<Vaddr>, timeout: Option<Duration>, instruction_count: Option<usize>) -> Result<(), CPUError>;
+    fn kill(&mut self) -> Result<(), CPUError>;
     fn reg_write(&mut self, register: Register, value: u64) -> Result<(), CPUError>;
     fn reg_read(&self, register: Register) -> Result<u64, CPUError>;
 }
