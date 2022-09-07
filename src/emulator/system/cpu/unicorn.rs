@@ -9,8 +9,7 @@ use unicorn_engine::unicorn_const::{Arch, HookType, MemType, Mode, Permission, u
 use crate::emulator::abstractions::cpu::{CPU, CPUError, Hooks, MemoryAction, MMU, Register, Vaddr};
 use crate::emulator::abstractions::cpu;
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
-use crate::emulator::abstractions::restore::Restore;
-use crate::emulator::abstractions::snapshot::Snapshot;
+use crate::emulator::abstractions::restore::Restorable;
 
 impl From<uc_error> for CPUError {
     fn from(e: uc_error) -> Self {
@@ -96,12 +95,21 @@ impl<'a> UCWrapper<'a> {
     }
 }
 
-impl Restore for UCWrapper<'_> {
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
+impl Restorable for UCWrapper<'_> {
+    fn snapshot(&mut self)
+        -> Result<(), GenericError> {
+        let mut context = self.uc_mut().context_alloc()?;
+        self.uc_mut().context_save(&mut context)?;
+        Ok(())
+    }
+
+    fn restore_and_discard(&mut self)
+        -> Result<(), GenericError> {
         todo!()
     }
 
-    fn restore(&mut self) -> Result<(), GenericError> {
+    fn restore(&mut self)
+        -> Result<(), GenericError> {
         todo!()
     }
 }
@@ -110,14 +118,6 @@ impl From<uc_error>
 for GenericError {
     fn from(e: uc_error) -> Self {
         Self::new(GenericErrorKind::CPUError(CPUError::from(e)), format!("{:?}", e))
-    }
-}
-
-impl Snapshot for UCWrapper<'_> {
-    fn snapshot(&mut self) -> Result<(), GenericError> {
-        let mut context = self.uc_mut().context_alloc()?;
-        self.uc_mut().context_save(&mut context)?;
-        Ok(())
     }
 }
 

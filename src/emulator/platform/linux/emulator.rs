@@ -9,8 +9,7 @@ use num_enum::FromPrimitive;
 use crate::emulator::abstractions::cpu::{CPU, CPUError, Hooks, MMU, RegisterX86};
 use crate::emulator::abstractions::emulator::{Emulator, StopReason};
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::restore::Restore;
-use crate::emulator::abstractions::snapshot::Snapshot;
+use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::architecture::x86::X86;
 use crate::emulator::platform::linux::kernel::{LinuxKernel, LinuxKernelError};
 
@@ -28,9 +27,15 @@ where CpuT: CPU + MMU + Hooks<'a>, Endianness: ByteOrder {
     phantom: PhantomData<&'a CpuT>,
 }
 
-impl<'a, CpuT, Endianness> Restore
+impl<'a, CpuT, Endianness> Restorable
 for LinuxX86<'a, CpuT, Endianness>
 where CpuT: CPU + MMU + Hooks<'a>, Endianness: ByteOrder {
+    fn snapshot(&mut self)
+        -> Result<(), GenericError> {
+        self.kernel.borrow_mut().snapshot()?;
+        self.cpu.borrow_mut().snapshot()
+    }
+
     fn restore_and_discard(&mut self)
         -> Result<(), GenericError> {
         self.kernel.borrow_mut().restore_and_discard()?;
@@ -41,16 +46,6 @@ where CpuT: CPU + MMU + Hooks<'a>, Endianness: ByteOrder {
         -> Result<(), GenericError> {
         self.kernel.borrow_mut().restore()?;
         self.cpu.borrow_mut().restore()
-    }
-}
-
-impl<'a, CpuT, Endianness> Snapshot
-for LinuxX86<'a, CpuT, Endianness>
-where CpuT: CPU + MMU + Hooks<'a>, Endianness: ByteOrder {
-    fn snapshot(&mut self)
-        -> Result<(), GenericError> {
-        self.kernel.borrow_mut().snapshot()?;
-        self.cpu.borrow_mut().snapshot()
     }
 }
 

@@ -2,8 +2,7 @@ use std::num::TryFromIntError;
 use std::time::Duration;
 
 use bitflags::bitflags;
-use crate::emulator::abstractions::restore::Restore;
-use crate::emulator::abstractions::snapshot::Snapshot;
+use crate::emulator::abstractions::restore::Restorable;
 
 #[derive(Debug)]
 pub enum CPUError {
@@ -14,7 +13,7 @@ pub enum CPUError {
 
 pub type Vaddr = u64;
 
-pub trait CPU: Restore + Snapshot {
+pub trait CPU: Restorable {
     /// # Arguments
     /// * `stop`: A virtual address to stop execution at. If zero is passed as address, the emulation will not stop.
     /// * `timeout`: The emulation will stop after the supplied duration.

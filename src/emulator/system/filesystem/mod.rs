@@ -15,8 +15,7 @@ pub use stat::Stat;
 
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::handles::FSError;
-use crate::emulator::abstractions::restore::Restore;
-use crate::emulator::abstractions::snapshot::Snapshot;
+use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::filesystem::meta_info::FSEntryContent::File;
 
 mod block;
@@ -241,8 +240,20 @@ impl Filesystem {
     }
 }
 
-impl Restore
+impl Restorable
 for Filesystem {
+    fn snapshot(&mut self)
+        -> Result<(), GenericError> {
+        assert_eq!(self.snap_markers.len(), self.current_snap);
+        self.snap_markers.push(SnapMarker {
+            data_marker: self.data.snapshot(),
+            meta_info_marker: self.meta_info.snapshot(),
+            current_size: self.current_size,
+        });
+        self.current_snap += 1;
+        Ok(())
+    }
+
     fn restore_and_discard(&mut self)
         -> Result<(), GenericError> {
         if self.current_snap == 0 {
@@ -265,21 +276,6 @@ for Filesystem {
         self.meta_info.restore(snap_marker.meta_info_marker);
         self.data.restore(snap_marker.data_marker);
         self.current_size = snap_marker.current_size;
-        Ok(())
-    }
-}
-
-impl Snapshot
-for Filesystem {
-    fn snapshot(&mut self)
-        -> Result<(), GenericError> {
-        assert_eq!(self.snap_markers.len(), self.current_snap);
-        self.snap_markers.push(SnapMarker {
-            data_marker: self.data.snapshot(),
-            meta_info_marker: self.meta_info.snapshot(),
-            current_size: self.current_size,
-        });
-        self.current_snap += 1;
         Ok(())
     }
 }

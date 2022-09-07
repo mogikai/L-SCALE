@@ -13,8 +13,7 @@ use linux_libc_auxv::AuxVarType;
 use crate::emulator::abstractions::cpu::{CPU, CPUError, MMU, Permission, RegisterX86, Vaddr};
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::handles::{FSError, Handle};
-use crate::emulator::abstractions::restore::Restore;
-use crate::emulator::abstractions::snapshot::Snapshot;
+use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::filedescriptors::OpenFile;
 use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
@@ -428,18 +427,18 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
     }
 }
 
-impl<Endianness: ByteOrder, Arch: Architecture> Restore for LinuxKernel<Endianness, Arch> {
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
-        todo!()
-    }
-
-    fn restore(&mut self) -> Result<(), GenericError> {
-        todo!()
-    }
-}
-
-impl<Endianness: ByteOrder, Arch: Architecture> Snapshot for LinuxKernel<Endianness, Arch> {
+impl<Endianness: ByteOrder, Arch: Architecture> Restorable for LinuxKernel<Endianness, Arch> {
     fn snapshot(&mut self)
+        -> Result<(), GenericError> {
+        todo!()
+    }
+
+    fn restore_and_discard(&mut self)
+        -> Result<(), GenericError> {
+        todo!()
+    }
+
+    fn restore(&mut self)
         -> Result<(), GenericError> {
         todo!()
     }
