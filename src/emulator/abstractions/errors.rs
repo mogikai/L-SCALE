@@ -17,6 +17,15 @@ pub struct GenericError {
     message: String,
 }
 
+impl GenericError {
+    pub fn new(kind: GenericErrorKind, message: String) -> Self {
+        Self {
+            kind,
+            message
+        }
+    }
+}
+
 impl Display for GenericError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "GenericError({}): {}", self.kind, self.message)

@@ -42,7 +42,8 @@ pub struct Filesystem {
 }
 
 impl Filesystem {
-    pub fn new(size: usize) -> Self {
+    pub fn new(size: usize)
+        -> Self {
         Filesystem {
             on_disk_root: None,
             data: Data::new(),
@@ -54,14 +55,17 @@ impl Filesystem {
         }
     }
 
-    pub fn from_disk(size: usize, root: &Path) -> Result<Self, FSError> {
+    pub fn from_disk(size: usize,
+                     root: &Path)
+        -> Result<Self, FSError> {
         let mut fs = Self::new(size);
         fs.on_disk_root = Some(root.to_path_buf());
         load_dir(&mut fs, root, root)?;
         Ok(fs)
     }
 
-    pub fn on_disk_root(&self) -> Option<&Path> {
+    pub fn on_disk_root(&self)
+        -> Option<&Path> {
         if let Some(r) = &self.on_disk_root {
             Some(r.as_path())
         } else {
@@ -69,14 +73,20 @@ impl Filesystem {
         }
     }
 
-    pub fn read_all(&self, file_id: FSEntryId) -> Result<Vec<u8>, FSError> {
+    pub fn read_all(&self,
+                    file_id: FSEntryId)
+        -> Result<Vec<u8>, FSError> {
         let size = self.stat(file_id)?.st_size as usize;
         self.read(file_id, 0, size)
     }
 
-    pub fn read(&self, file_id: FSEntryId, pos: usize, len: usize) -> Result<Vec<u8>, FSError> {
+    pub fn read(&self,
+                file_id: FSEntryId,
+                pos: usize,
+                len: usize)
+        -> Result<Vec<u8>, FSError> {
         let entry = self.meta_info.most_recent_entry(file_id)?;
-        if let File { contents} = &entry.contents {
+        if let File { contents } = &entry.contents {
             if pos > entry.stat.st_size as usize {
                 return Err(FSError::Unknown);
             }
@@ -95,10 +105,14 @@ impl Filesystem {
         }
     }
 
-    pub fn write(&mut self, file_id: FSEntryId, pos: usize, data: &[u8]) -> Result<usize, FSError> {
+    pub fn write(&mut self,
+                 file_id: FSEntryId,
+                 pos: usize,
+                 data: &[u8])
+        -> Result<usize, FSError> {
         let entry = self.meta_info.most_recent_entry_mut(file_id)?;
         let size = entry.stat.st_size as usize;
-        if let File { contents} = &mut entry.contents {
+        if let File { contents } = &mut entry.contents {
             if (pos + data.len()).saturating_sub(size) > self.max_size - self.current_size {
                 // No space available
                 debug!("NO SPACE! remaining: {}, want: {}", self.max_size - self.current_size, (pos + data.len()).saturating_sub(size));
@@ -134,7 +148,10 @@ impl Filesystem {
         }
     }
 
-    pub fn truncate(&mut self, file_id: FSEntryId, new_size: usize) -> Result<(), FSError> {
+    pub fn truncate(&mut self,
+                    file_id: FSEntryId,
+                    new_size: usize)
+        -> Result<(), FSError> {
         let entry = &self.meta_info.most_recent_entry(file_id)?;
         let size = entry.stat.st_size as usize;
         let size = if let File { .. } = &entry.contents {
@@ -158,30 +175,44 @@ impl Filesystem {
                 }
                 Ok(())
             } else {
-                    Err(FSError::Unknown)
+                Err(FSError::Unknown)
             }
         }
     }
 
-    pub fn create_file(&mut self, path: &Path, stat: Option<Stat>) -> Result<FSEntryId, FSError> {
+    pub fn create_file(&mut self,
+                       path: &Path,
+                       stat: Option<Stat>)
+        -> Result<FSEntryId, FSError> {
         self.meta_info.create_file(path, stat)
     }
 
-    pub fn create_file_with_contents(&mut self, path: &Path, data: &[u8], stat: Option<Stat>) -> Result<FSEntryId, FSError> {
+    pub fn create_file_with_contents(&mut self,
+                                     path: &Path,
+                                     data: &[u8],
+                                     stat: Option<Stat>)
+        -> Result<FSEntryId, FSError> {
         let fse_id = self.create_file(path, stat)?;
         self.write(fse_id, 0, data)?;
         Ok(fse_id)
     }
 
-    pub fn create_dir(&mut self, path: &Path, stat: Option<Stat>) -> Result<FSEntryId, FSError> {
+    pub fn create_dir(&mut self,
+                      path: &Path,
+                      stat: Option<Stat>)
+        -> Result<FSEntryId, FSError> {
         self.meta_info.create_dir(path, stat)
     }
 
-    pub fn delete(&mut self, path: &Path) -> Result<(), FSError> {
+    pub fn delete(&mut self,
+                  path: &Path)
+        -> Result<(), FSError> {
         self.meta_info.delete(path)
     }
 
-    pub fn stat(&self, file_id: FSEntryId) -> Result<&Stat, FSError> {
+    pub fn stat(&self,
+                file_id: FSEntryId)
+        -> Result<&Stat, FSError> {
         Ok(&self.meta_info.most_recent_entry(file_id)?.stat)
     }
 
@@ -210,8 +241,10 @@ impl Filesystem {
     }
 }
 
-impl Restore for Filesystem {
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
+impl Restore
+for Filesystem {
+    fn restore_and_discard(&mut self)
+        -> Result<(), GenericError> {
         if self.current_snap == 0 {
             Err(FSError::Unknown)?
         }
@@ -223,7 +256,8 @@ impl Restore for Filesystem {
         Ok(())
     }
 
-    fn restore(&mut self) -> Result<(), GenericError> {
+    fn restore(&mut self)
+        -> Result<(), GenericError> {
         if self.current_snap == 0 {
             Err(FSError::Unknown)?
         }
@@ -235,8 +269,10 @@ impl Restore for Filesystem {
     }
 }
 
-impl Snapshot for Filesystem {
-    fn snapshot(&mut self) {
+impl Snapshot
+for Filesystem {
+    fn snapshot(&mut self)
+        -> Result<(), GenericError> {
         assert_eq!(self.snap_markers.len(), self.current_snap);
         self.snap_markers.push(SnapMarker {
             data_marker: self.data.snapshot(),
@@ -244,10 +280,14 @@ impl Snapshot for Filesystem {
             current_size: self.current_size,
         });
         self.current_snap += 1;
+        Ok(())
     }
 }
 
-fn load_dir(fs: &mut Filesystem, dir: &Path, root: &Path) -> io::Result<()> {
+fn load_dir(fs: &mut Filesystem,
+            dir: &Path,
+            root: &Path)
+    -> io::Result<()> {
     if dir.is_dir() {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;

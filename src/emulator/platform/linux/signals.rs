@@ -39,7 +39,7 @@ impl<Flags: Debug + Clone + Copy> SignalHandler<Flags> {
 
     pub fn insert(&mut self, signal: u8, handler: SignalAction<Flags>) {
         if signal >= 64 {
-            panic!("no sutch signal");
+            panic!("no such signal");
         }
         self.signals[signal as usize] = Some(handler);
     }

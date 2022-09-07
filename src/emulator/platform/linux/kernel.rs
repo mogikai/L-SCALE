@@ -89,11 +89,24 @@ pub struct LinuxKernel<Endianness: ByteOrder, Arch: Architecture> {
 }
 
 impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
-    pub fn new(memory: Memory<Endianness>, filesystem: Rc<RefCell<Filesystem>>) -> Self {
-        LinuxKernel { memory, filesystem, handles: HandleMap::new(), clear_child_tid: None, robust_list_head: None, signalhandler: SignalHandler::new(), _arch: PhantomData }
+    pub fn new(memory: Memory<Endianness>,
+               filesystem: Rc<RefCell<Filesystem>>)
+        -> Self {
+        LinuxKernel {
+            memory,
+            filesystem,
+            handles: HandleMap::new(),
+            clear_child_tid: None,
+            robust_list_head: None,
+            signalhandler: SignalHandler::new(),
+            _arch: PhantomData,
+        }
     }
 
-    pub fn load_binary(&mut self, cpu: &mut (impl CPU + MMU), binary_path: &Path) -> Result<(), LinuxKernelError> {
+    pub fn load_binary(&mut self,
+                       cpu: &mut (impl CPU + MMU),
+                       binary_path: &Path)
+        -> Result<(), LinuxKernelError> {
         let fs = self.filesystem.borrow();
         let buffer = fs.read_all(fs.resolve_last(binary_path)?)?;
         let elf = goblin::elf::Elf::parse(&buffer).unwrap();
@@ -119,7 +132,12 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         self.initstack(cpu, binary_path, interpreter_path, interpreter.entry)
     }
 
-    fn initstack(&mut self, cpu: &mut impl CPU, binary_path: &Path, interpreter_path: &Path, entrypoint: Vaddr) -> Result<(), LinuxKernelError> {
+    fn initstack(&mut self,
+                 cpu: &mut impl CPU,
+                 binary_path: &Path,
+                 interpreter_path: &Path,
+                 entrypoint: Vaddr)
+        -> Result<(), LinuxKernelError> {
         info!("Initializing stack");
         cpu.reg_write(RegisterX86::RSP.into(), 0x4000000000000000).expect("failed to write RSP");
         let mem = &mut self.memory;
@@ -165,7 +183,9 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         self.handles.insert(2, Box::new(default_handles::WriteOnly::new()));
     }
 
-    pub fn add_replacement_handle(&mut self, fd: u64, handle: Box<dyn Handle>) {
+    pub fn add_replacement_handle(&mut self,
+                                  fd: u64,
+                                  handle: Box<dyn Handle>) {
         self.handles.add_replacement_handle(fd, handle);
     }
 
@@ -419,7 +439,8 @@ impl<Endianness: ByteOrder, Arch: Architecture> Restore for LinuxKernel<Endianne
 }
 
 impl<Endianness: ByteOrder, Arch: Architecture> Snapshot for LinuxKernel<Endianness, Arch> {
-    fn snapshot(&mut self) {
+    fn snapshot(&mut self)
+        -> Result<(), GenericError> {
         todo!()
     }
 }

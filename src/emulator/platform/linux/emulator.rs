@@ -11,8 +11,8 @@ use crate::emulator::abstractions::emulator::{Emulator, StopReason};
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::restore::Restore;
 use crate::emulator::abstractions::snapshot::Snapshot;
-use crate::emulator::platform::linux::kernel::{LinuxKernel, LinuxKernelError};
 use crate::emulator::platform::linux::architecture::x86::X86;
+use crate::emulator::platform::linux::kernel::{LinuxKernel, LinuxKernelError};
 
 #[derive(Debug)]
 pub enum CreationError {
@@ -20,37 +20,54 @@ pub enum CreationError {
     Unknown,
 }
 
-pub struct LinuxX86<'a, CpuT, Endianness> where CpuT: CPU + MMU + Hooks<'a>, Endianness: ByteOrder {
+pub struct LinuxX86<'a, CpuT, Endianness>
+where CpuT: CPU + MMU + Hooks<'a>, Endianness: ByteOrder {
     binary_path: PathBuf,
     cpu: Rc<RefCell<CpuT>>,
     kernel: Rc<RefCell<LinuxKernel<Endianness, X86>>>,
     phantom: PhantomData<&'a CpuT>,
 }
 
-impl<'a, CpuT, Endianness> Restore for LinuxX86<'a, CpuT, Endianness> where CpuT: CPU + MMU + Hooks<'a>, Endianness: ByteOrder {
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
-        self.kernel.borrow_mut().restore_and_discard()
+impl<'a, CpuT, Endianness> Restore
+for LinuxX86<'a, CpuT, Endianness>
+where CpuT: CPU + MMU + Hooks<'a>, Endianness: ByteOrder {
+    fn restore_and_discard(&mut self)
+        -> Result<(), GenericError> {
+        self.kernel.borrow_mut().restore_and_discard()?;
+        self.cpu.borrow_mut().restore_and_discard()
     }
 
-    fn restore(&mut self) -> Result<(), GenericError> {
-        self.kernel.borrow_mut().restore()
+    fn restore(&mut self)
+        -> Result<(), GenericError> {
+        self.kernel.borrow_mut().restore()?;
+        self.cpu.borrow_mut().restore()
     }
 }
 
-impl<'a, CpuT, Endianness> Snapshot for LinuxX86<'a, CpuT, Endianness> where CpuT: CPU + MMU + Hooks<'a>, Endianness: ByteOrder {
-    fn snapshot(&mut self) {
-        self.kernel.borrow_mut().snapshot()
+impl<'a, CpuT, Endianness> Snapshot
+for LinuxX86<'a, CpuT, Endianness>
+where CpuT: CPU + MMU + Hooks<'a>, Endianness: ByteOrder {
+    fn snapshot(&mut self)
+        -> Result<(), GenericError> {
+        self.kernel.borrow_mut().snapshot()?;
+        self.cpu.borrow_mut().snapshot()
     }
 }
 
-impl From<CPUError> for StopReason {
-    fn from(_: CPUError) -> Self {
+impl From<CPUError>
+for StopReason {
+    fn from(_: CPUError)
+        -> Self {
         StopReason::Unknown
     }
 }
 
-impl<'a, CpuT, Endianness> Emulator for LinuxX86<'a, CpuT, Endianness> where CpuT: CPU + MMU + Hooks<'a>, Endianness: ByteOrder {
-    fn run(&mut self) -> Result<(), StopReason> {
+impl<'a, CpuT, Endianness> Emulator
+for LinuxX86<'a, CpuT, Endianness>
+where CpuT: CPU + MMU + Hooks<'a>,
+      Endianness: ByteOrder {
+    fn run(&mut self)
+        -> Result<(), StopReason> {
         self.cpu.borrow_mut().emulate(None, None, None)?;
         Ok(())
     }
@@ -141,7 +158,8 @@ enum SYSCALL {
     NONE = !0,
 }
 
-fn syscall<Endianness: ByteOrder>(cpu: &mut (impl CPU + MMU), kernel: &mut LinuxKernel<Endianness, X86>) {
+fn syscall<Endianness: ByteOrder>(cpu: &mut (impl CPU + MMU),
+                                  kernel: &mut LinuxKernel<Endianness, X86>) {
     let rax = cpu.reg_read(RegisterX86::RAX.into()).unwrap();
     let mut debug_str = String::new();
     let syscall = SYSCALL::from(rax);
@@ -188,9 +206,18 @@ fn syscall<Endianness: ByteOrder>(cpu: &mut (impl CPU + MMU), kernel: &mut Linux
 }
 
 impl<'a, CpuT, Endianness> LinuxX86<'a, CpuT, Endianness>
-    where CpuT: CPU + MMU + Hooks<'a>, Endianness: ByteOrder + 'a {
-    pub fn new(kernel: Rc<RefCell<LinuxKernel<Endianness, X86>>>, cpu: Rc<RefCell<CpuT>>, binary_path: PathBuf) -> Result<LinuxX86<'a, CpuT, Endianness>, CreationError> {
-        let emu = LinuxX86 { binary_path, cpu, kernel: kernel.clone(), phantom: Default::default() };
+where CpuT: CPU + MMU + Hooks<'a>,
+      Endianness: ByteOrder + 'a {
+    pub fn new(kernel: Rc<RefCell<LinuxKernel<Endianness, X86>>>,
+               cpu: Rc<RefCell<CpuT>>,
+               binary_path: PathBuf)
+        -> Result<LinuxX86<'a, CpuT, Endianness>, CreationError> {
+        let emu = LinuxX86 {
+            binary_path,
+            cpu,
+            kernel: kernel.clone(),
+            phantom: Default::default(),
+        };
         kernel.borrow_mut().add_stdio_handles();
 
         let mut cpu = emu.cpu.borrow_mut();

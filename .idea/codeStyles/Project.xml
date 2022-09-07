@@ -2,6 +2,8 @@
   <code_scheme name="Project" version="173">
     <RsCodeStyleSettings>
       <option name="ALIGN_RET_TYPE" value="false" />
+      <option name="ALIGN_TYPE_PARAMS" value="true" />
+      <option name="INDENT_WHERE_CLAUSE" value="false" />
     </RsCodeStyleSettings>
     <codeStyleSettings language="Rust">
       <option name="RIGHT_MARGIN" value="120" />

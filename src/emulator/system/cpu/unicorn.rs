@@ -1,13 +1,16 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
-use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, IntelFormatter};
 
-use unicorn_engine::{InsnSysX86, RegisterX86, Unicorn};
+use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, IntelFormatter};
+use unicorn_engine::{Context, InsnSysX86, RegisterX86, Unicorn};
 use unicorn_engine::unicorn_const::{Arch, HookType, MemType, Mode, Permission, uc_error};
 
 use crate::emulator::abstractions::cpu::{CPU, CPUError, Hooks, MemoryAction, MMU, Register, Vaddr};
 use crate::emulator::abstractions::cpu;
+use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
+use crate::emulator::abstractions::restore::Restore;
+use crate::emulator::abstractions::snapshot::Snapshot;
 
 impl From<uc_error> for CPUError {
     fn from(e: uc_error) -> Self {
@@ -93,7 +96,33 @@ impl<'a> UCWrapper<'a> {
     }
 }
 
-impl CPU for UCWrapper<'_> {
+impl Restore for UCWrapper<'_> {
+    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
+        todo!()
+    }
+
+    fn restore(&mut self) -> Result<(), GenericError> {
+        todo!()
+    }
+}
+
+impl From<uc_error>
+for GenericError {
+    fn from(e: uc_error) -> Self {
+        Self::new(GenericErrorKind::CPUError(CPUError::from(e)), format!("{:?}", e))
+    }
+}
+
+impl Snapshot for UCWrapper<'_> {
+    fn snapshot(&mut self) -> Result<(), GenericError> {
+        let mut context = self.uc_mut().context_alloc()?;
+        self.uc_mut().context_save(&mut context)?;
+        Ok(())
+    }
+}
+
+impl CPU
+for UCWrapper<'_> {
     fn emulate(&mut self, stop: Option<Vaddr>, timeout: Option<Duration>, instruction_count: Option<usize>) -> Result<(), CPUError> {
         let rip = self.uc().reg_read(RegisterX86::RIP)?;
         let timeout: u64 = if let Some(timeout) = timeout { timeout.as_micros().try_into()? } else { 0u64 };
@@ -125,7 +154,7 @@ impl MMU for UCWrapper<'_> {
     }
 }
 
-impl<'a> Hooks<'a> for UCWrapper<'a>{
+impl<'a> Hooks<'a> for UCWrapper<'a> {
     fn add_syscall_hook(&mut self, start: Vaddr, end: Vaddr, mut hook: Box<dyn FnMut(&mut Self) + 'a>) {
         // The trampoline takes ownership of the hook. The trampoline is then owned by the unicorn instance for as long
         // as the UCWrapper instance is alive.
