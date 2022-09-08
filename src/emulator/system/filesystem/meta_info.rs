@@ -1,24 +1,24 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
+use byteorder::ByteOrder;
 
-use crate::emulator::abstractions::handles::FSError;
-use crate::emulator::system::filesystem::{ContentId, FSEntryId, SnapId};
+use crate::emulator::system::filesystem::{ContentId, FSEntryId, FSError, SnapId};
 use crate::emulator::system::filesystem::block::Block;
 use crate::emulator::system::filesystem::stat::Stat;
 
 use self::FSEntryContent::{Dir, File};
 
 #[derive(Debug)]
-pub struct MetaInfo {
-    content: Vec<FSEntry>,
+pub struct MetaInfo<Endianness: ByteOrder> {
+    content: Vec<FSEntry<Endianness>>,
     fse_ids: RefCell<Vec<HashMap<FSEntryId, Index>>>,
     next_fse_id: FSEntryId,
     current_snap: usize,
     root_node: FSEntryId,
 }
 
-impl MetaInfo {
+impl<Endianness: ByteOrder> MetaInfo<Endianness> {
     pub(super) fn new() -> Self {
         let mut meta_info = Self {
             content: Vec::new(),
@@ -39,7 +39,7 @@ impl MetaInfo {
     /// and is subsequently inserted into the file systems structures.
     /// If The prefix of the path does not exist, or if the last element
     /// of the path already exists, an error is returned.
-    pub(super) fn new_entry(&mut self, path: &Path, new_entry: impl FnOnce(String) -> FSEntry) -> Result<FSEntryId, FSError> {
+    pub(super) fn new_entry(&mut self, path: &Path, new_entry: impl FnOnce(String) -> FSEntry<Endianness>) -> Result<FSEntryId, FSError> {
         let dir_entry_id = self.resolve_last(path.parent().ok_or(FSError::Unknown)?)?;
         let dir_content_id = self.most_recent_content_id(dir_entry_id)?;
         if let Dir { contents } = &self.get_content_by_id(dir_content_id)?.contents {
@@ -65,12 +65,12 @@ impl MetaInfo {
     }
 
     /// See the public api [Filesystem::create_file](Filesystem::create_file) for documentation.
-    pub(super) fn create_file(&mut self, path: &Path, stat: Option<Stat>) -> Result<FSEntryId, FSError> {
+    pub(super) fn create_file(&mut self, path: &Path, stat: Option<Stat<Endianness>>) -> Result<FSEntryId, FSError> {
         self.new_entry(path, |name| FSEntry::new(File { contents: BTreeSet::new() }, stat.unwrap_or_default(), name))
     }
 
     /// See the public api [Filesystem::create_dir](Filesystem::create_dir) for documentation.
-    pub(super) fn create_dir(&mut self, path: &Path, stat: Option<Stat>) -> Result<FSEntryId, FSError> {
+    pub(super) fn create_dir(&mut self, path: &Path, stat: Option<Stat<Endianness>>) -> Result<FSEntryId, FSError> {
         self.new_entry(path, |name| FSEntry::new(Dir { contents: BTreeMap::new() }, stat.unwrap_or_default(), name))
     }
 
@@ -109,7 +109,7 @@ impl MetaInfo {
         Ok(())
     }
 
-    pub(super) fn add_entry(&mut self, fse_id: FSEntryId, entry: FSEntry) -> Result<(), FSError> {
+    pub(super) fn add_entry(&mut self, fse_id: FSEntryId, entry: FSEntry<Endianness>) -> Result<(), FSError> {
         self.content.push(entry);
         let result = self.fse_ids.borrow_mut()[self.current_snap].insert(fse_id, Index::new(self.content.len() - 1, self.current_snap));
         if let Some(result) = result {
@@ -174,7 +174,7 @@ impl MetaInfo {
     /// Returns the most recent entry mutably. If the entry is historical, a new copy is created and inserted,
     /// such that the entry may be modified in the context of the current snapshot.
     ///
-    pub(super) fn most_recent_entry_mut(&mut self, fse_id: FSEntryId) -> Result<&mut FSEntry, FSError> {
+    pub(super) fn most_recent_entry_mut(&mut self, fse_id: FSEntryId) -> Result<&mut FSEntry<Endianness>, FSError> {
         let historical_index = self.most_recent_historical_index(fse_id)?.historical_or(FSError::Unknown)?;
         if historical_index.snap_id < self.current_snap {
             // Historical. Cannot modify. Need to clone first.
@@ -187,16 +187,16 @@ impl MetaInfo {
         }
     }
 
-    pub(super) fn most_recent_entry(&self, index: FSEntryId) -> Result<&FSEntry, FSError> {
+    pub(super) fn most_recent_entry(&self, index: FSEntryId) -> Result<&FSEntry<Endianness>, FSError> {
         Ok(self.content.get(self.most_recent_content_id(index)?).expect("The id must be valid"))
     }
 
-    fn most_recent_entry_and_snap_id(&self, index: FSEntryId) -> Result<(&FSEntry, SnapId), FSError> {
+    fn most_recent_entry_and_snap_id(&self, index: FSEntryId) -> Result<(&FSEntry<Endianness>, SnapId), FSError> {
         let historical_index = self.most_recent_historical_index(index)?.historical_or(FSError::Unknown)?;
         Ok((self.content.get(historical_index.content_id).expect("The id must be valid"), historical_index.snap_id))
     }
 
-    fn get_content_by_id(&self, content_id: ContentId) -> Result<&FSEntry, FSError> {
+    fn get_content_by_id(&self, content_id: ContentId) -> Result<&FSEntry<Endianness>, FSError> {
         self.content.get(content_id).ok_or(FSError::Unknown)
     }
 
@@ -245,14 +245,14 @@ pub(super) enum FSEntryContent {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct FSEntry {
+pub(super) struct FSEntry<Endianness: ByteOrder> {
     pub(super) contents: FSEntryContent,
-    pub(super) stat: Stat,
+    pub(super) stat: Stat<Endianness>,
     pub(super) name: String,
 }
 
-impl FSEntry {
-    fn new(contents: FSEntryContent, stat: Stat, name: String) -> Self {
+impl<Endianness: ByteOrder> FSEntry<Endianness> {
+    fn new(contents: FSEntryContent, stat: Stat<Endianness>, name: String) -> Self {
         FSEntry {
             contents,
             stat,

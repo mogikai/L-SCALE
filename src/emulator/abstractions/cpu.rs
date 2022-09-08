@@ -4,7 +4,7 @@ use std::time::Duration;
 use bitflags::bitflags;
 use crate::emulator::abstractions::restore::Restorable;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum CPUError {
     InvalidArch,
     InvalidPermission,

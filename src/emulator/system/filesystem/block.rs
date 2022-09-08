@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
-use crate::emulator::abstractions::handles::FSError;
 use crate::emulator::system::filesystem;
-use crate::emulator::system::filesystem::SnapId;
+use crate::emulator::system::filesystem::{FSError, SnapId};
 
 #[derive(Eq, Copy, Clone, Debug)]
 pub(super) struct Block {

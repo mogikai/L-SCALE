@@ -12,11 +12,12 @@ use byteorder::ByteOrder;
 use goblin::pe::import::Bitfield;
 
 use crate::emulator::abstractions::cpu::{Hooks, MMU, Permission, Vaddr};
-use crate::emulator::platform::linux::kernel::LinuxKernelError;
 
 const MASK4K: u64 = 4 * (1 << 10) - 1;
 
 pub struct Memory<Endianness: ByteOrder> {
+    stack_base: Vaddr,
+    stack_size: usize,
     mappings: BTreeSet<Region>,
     heap: Vaddr,
     mapbase: Vaddr,
@@ -37,10 +38,11 @@ fn is4kaligned(address: Vaddr) -> bool {
 
 #[derive(Debug)]
 pub enum MemoryError {
+    ConversionError,
     AlreadyMapped,
     NotMapped,
     NotAligned,
-    ZeroSize
+    ZeroSize,
 }
 
 pub trait MemoryWrite<T> {
@@ -169,17 +171,24 @@ impl<Endianness: ByteOrder> MemoryWrite<&str> for Memory<Endianness> {
     }
 }
 
+pub trait WriteToMemory<Endianness: ByteOrder> {
+    fn write_to_memory(&self, data: &mut [u8]) -> Result<(), MemoryError>;
+    fn required_size(&self) -> usize;
+}
+
 impl<'a, Endianness: ByteOrder> Memory<Endianness> {
     pub fn new<'b>(cpu: &mut (impl MMU + Hooks<'b>), stack_base: Vaddr, stack_size: usize, heap_base: Vaddr) -> Memory<Endianness> {
         let mut mem = Memory {
+            stack_base,
+            stack_size,
             mappings: BTreeSet::new(),
             heap: heap_base,
             mapbase: 0x100000,
             _endian: PhantomData,
         };
-        mem.map_data(&vec![0; stack_size], (0x4000000000000000 - (stack_size as Vaddr))..0x4000000000000000, Permission::READ | Permission::WRITE, cpu).unwrap();
+        mem.map_data(&vec![0; stack_size], (stack_base - (stack_size as Vaddr))..stack_base, Permission::READ | Permission::WRITE, cpu).unwrap();
         cpu.add_unmapped_mem_hook(1, 0, Box::new(move |_, action, addr, size, _| {
-            if ((0x4000000000000000 - ((stack_size + 0x10000) as Vaddr))..0x4000000000000000).contains(&addr) {
+            if ((stack_base - ((stack_size + 0x10000) as Vaddr))..stack_base).contains(&addr) {
                 trace!("STACK OVERFLOW!");
                 // TODO: We want to log the stack overflow in some kind of facility such that the fuzzer can
                 // TODO: use this information in a meaningful way
@@ -190,21 +199,31 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         mem
     }
 
-    pub fn write_struct<T>(&self, addr: Vaddr, val: T) -> Result<(), MemoryError> {
-        // TODO: Maybe implement differently for endianness?
-        // TODO: Maybe use something like https://docs.rs/zerocopy/latest/zerocopy/trait.AsBytes.html
-        // TODO: Do we want to swallow the unsafe here? This is undefined behavior in this case.
-        // TODO: If we propagate this outward, then syscalls could make at least some guarantees.
-        // TODO: Also, we should probably do some invalid memory access handling to find bugs in the target.
-        let mut mem: RefMut<T> = unsafe { self.get_ref_mut(addr) }?;
-        *mem = val;
-        Ok(())
+    pub fn stack_size(&self)
+        -> usize {
+        self.stack_size
+    }
+
+    pub fn write_direct<T>(&self,
+                           addr: Vaddr,
+                           val: T)
+        -> Result<(), MemoryError>
+    where T: WriteToMemory<Endianness> {
+        val.write_to_memory(&mut *self.access_mem_mut(addr, val.required_size())?)
     }
 
     pub fn read_internal(&self, address: u64, size: usize) -> Result<Ref<[u8]>, MemoryError> {
         let region = self.get_region(address).ok_or(MemoryError::NotMapped)?;
         let offset = (address - region.vaddr) as usize;
         Ok(Ref::map(region.as_slice(), |d| &d[offset..min(offset + size, region.size as usize)]))
+    }
+
+    pub fn read_struct<T>(&self,
+                          address: Vaddr)
+        -> Result<T, MemoryError>
+    where T: for<'b> TryFrom<&'b [u8]> {
+        let mem = self.access_mem(address, mem::size_of::<T>())?;
+        T::try_from(mem.as_ref()).or(Err(MemoryError::ConversionError))
     }
 
     pub fn access_mem(&self, address: Vaddr, size: usize) -> Result<Ref<[u8]>, MemoryError> {
@@ -361,11 +380,11 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         // Iterate backwards from the last known region to contain the unmapped region.
         // This way we can stop iterating once the front of the region to unmap is passed.
         let mappings = self.mappings
-            .range(..address + size)
-            .rev()
-            .take_while(|r| address < r.end())
-            .map(|r| r.vaddr)
-            .collect::<Vec<_>>();
+                           .range(..address + size)
+                           .rev()
+                           .take_while(|r| address < r.end())
+                           .map(|r| r.vaddr)
+                           .collect::<Vec<_>>();
 
         mappings.iter().for_each(|vaddr| {
             let region = self.mappings.take(vaddr).unwrap();
@@ -511,7 +530,7 @@ impl Region {
     fn end(&self) -> Vaddr { self.vaddr + self.size as Vaddr }
 
     fn cutout(self, address: Vaddr, size: u64) -> (Option<Region>, Region, Option<Region>) {
-        if address > self.end() {panic!("Address out of range")}
+        if address > self.end() { panic!("Address out of range") }
         let front = if self.vaddr < address {
             Some(Region {
                 data: self.data.clone(),

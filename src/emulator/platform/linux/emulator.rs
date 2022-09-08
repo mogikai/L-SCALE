@@ -135,6 +135,7 @@ enum SYSCALL {
     FSTAT = 5,
     MMAP = 9,
     MPROTECT = 10,
+    MUNMAP = 11,
     BRK = 12,
     RT_SIGACTION = 13,
     RT_SIGPROCMASK = 14,
@@ -145,43 +146,49 @@ enum SYSCALL {
     UNAME = 63,
     GETTIMEOFDAY = 96,
     ARCH_PRCTL = 158,
+    TIME= 201,
     SET_TID_ADDRESS = 218,
     CLOCK_GETTIME = 228,
     OPENAT = 257,
     SET_ROBUST_LIST = 273,
+    PRLIMIT64 = 302,
     #[default]
     NONE = !0,
 }
 
-fn syscall<Endianness: ByteOrder>(cpu: &mut (impl CPU + MMU),
+fn syscall<Endianness: ByteOrder + 'static>(cpu: &mut (impl CPU + MMU),
                                   kernel: &mut LinuxKernel<Endianness, X86>) {
     let rax = cpu.reg_read(RegisterX86::RAX.into()).unwrap();
     let mut debug_str = String::new();
     let syscall = SYSCALL::from(rax);
     let mut unknown_syscall = false;
+    use SYSCALL::*;
     let result = match SYSCALL::from(rax) {
-        SYSCALL::READ => { do_syscall!(3, cpu, kernel::read, debug_str) }
-        SYSCALL::WRITE => { do_syscall!(3, cpu, kernel::write, debug_str) }
-        SYSCALL::CLOSE => { do_syscall!(1, cpu, kernel::close, debug_str) }
-        SYSCALL::STAT => { do_syscall!(2, cpu, kernel::stat, debug_str) }
-        SYSCALL::FSTAT => { do_syscall!(2, cpu, kernel::fstat, debug_str) }
-        SYSCALL::MMAP => { do_syscall!(6, cpu, kernel::mmap, debug_str) }
-        SYSCALL::MPROTECT => { do_syscall!(3, cpu, kernel::mprotect, debug_str) }
-        SYSCALL::BRK => { do_syscall!(1, cpu, kernel::brk, debug_str) }
-        SYSCALL::RT_SIGACTION => { do_syscall!(4, cpu, kernel::rt_sigaction, debug_str) }
-        SYSCALL::RT_SIGPROCMASK => { do_syscall!(4, cpu, kernel::rt_sigprocmask, debug_str) }
-        SYSCALL::PREAD64 => { do_syscall!(4, cpu, kernel::pread64, debug_str) }
-        SYSCALL::WRITEV => { do_syscall!(3, cpu, kernel::writev, debug_str) }
-        SYSCALL::ACCESS => { do_syscall!(2, cpu, kernel::access, debug_str) }
-        SYSCALL::GETPID => { do_syscall!(0, cpu, kernel::getpid, debug_str) }
-        SYSCALL::UNAME => { do_syscall!(1, cpu, kernel::uname, debug_str) }
-        SYSCALL::GETTIMEOFDAY => { do_syscall!(2, cpu, kernel::gettimeofday, debug_str) }
-        SYSCALL::ARCH_PRCTL => { do_syscall!(2, cpu, kernel::arch_prctl, debug_str) }
-        SYSCALL::SET_TID_ADDRESS => { do_syscall!(1, cpu, kernel::set_tid_address, debug_str) }
-        SYSCALL::CLOCK_GETTIME => { do_syscall!(2, cpu, kernel::clock_gettime, debug_str) }
-        SYSCALL::OPENAT => { do_syscall!(4, cpu, kernel::openat, debug_str) }
-        SYSCALL::SET_ROBUST_LIST => { do_syscall!(2, cpu, kernel::set_robust_list, debug_str) }
-        SYSCALL::NONE => {
+        READ => { do_syscall!(3, cpu, kernel::read, debug_str) }
+        WRITE => { do_syscall!(3, cpu, kernel::write, debug_str) }
+        CLOSE => { do_syscall!(1, cpu, kernel::close, debug_str) }
+        STAT => { do_syscall!(2, cpu, kernel::stat, debug_str) }
+        FSTAT => { do_syscall!(2, cpu, kernel::fstat, debug_str) }
+        MMAP => { do_syscall!(6, cpu, kernel::mmap, debug_str) }
+        MPROTECT => { do_syscall!(3, cpu, kernel::mprotect, debug_str) }
+        MUNMAP => { do_syscall!(2, cpu, kernel::munmap, debug_str) }
+        BRK => { do_syscall!(1, cpu, kernel::brk, debug_str) }
+        RT_SIGACTION => { do_syscall!(4, cpu, kernel::rt_sigaction, debug_str) }
+        RT_SIGPROCMASK => { do_syscall!(4, cpu, kernel::rt_sigprocmask, debug_str) }
+        PREAD64 => { do_syscall!(4, cpu, kernel::pread64, debug_str) }
+        WRITEV => { do_syscall!(3, cpu, kernel::writev, debug_str) }
+        ACCESS => { do_syscall!(2, cpu, kernel::access, debug_str) }
+        GETPID => { do_syscall!(0, cpu, kernel::getpid, debug_str) }
+        UNAME => { do_syscall!(1, cpu, kernel::uname, debug_str) }
+        GETTIMEOFDAY => { do_syscall!(2, cpu, kernel::gettimeofday, debug_str) }
+        ARCH_PRCTL => { do_syscall!(2, cpu, kernel::arch_prctl, debug_str) }
+        TIME => { do_syscall!(1, cpu, kernel::time, debug_str) }
+        SET_TID_ADDRESS => { do_syscall!(1, cpu, kernel::set_tid_address, debug_str) }
+        CLOCK_GETTIME => { do_syscall!(2, cpu, kernel::clock_gettime, debug_str) }
+        OPENAT => { do_syscall!(4, cpu, kernel::openat, debug_str) }
+        SET_ROBUST_LIST => { do_syscall!(2, cpu, kernel::set_robust_list, debug_str) }
+        PRLIMIT64 => { do_syscall!(4, cpu, kernel::prlimit64, debug_str) }
+        NONE => {
             debug_str = format!("(rax: {})", rax);
             unknown_syscall = true;
             Err(LinuxKernelError::EINVAL)
@@ -202,7 +209,7 @@ fn syscall<Endianness: ByteOrder>(cpu: &mut (impl CPU + MMU),
 
 impl<'a, CpuT, Endianness> LinuxX86<'a, CpuT, Endianness>
 where CpuT: CPU + MMU + Hooks<'a>,
-      Endianness: ByteOrder + 'a {
+      Endianness: ByteOrder + 'static {
     pub fn new(kernel: Rc<RefCell<LinuxKernel<Endianness, X86>>>,
                cpu: Rc<RefCell<CpuT>>,
                binary_path: PathBuf)
@@ -217,10 +224,13 @@ where CpuT: CPU + MMU + Hooks<'a>,
 
         let mut cpu = emu.cpu.borrow_mut();
         kernel.borrow_mut().load_binary(&mut *cpu, emu.binary_path.as_path()).unwrap();
+        let kernel_copy = kernel.clone();
+        cpu.add_block_hook(Box::new(move |_, addr, instrs| {
+            kernel_copy.borrow_mut().do_timestep(instrs);
+        }));
 
         let cb = move |cpu: &mut CpuT| {
-            let mut kernel = kernel.borrow_mut();
-            syscall(cpu, &mut *kernel);
+            syscall(cpu, &mut *kernel.borrow_mut());
         };
         cpu.add_syscall_hook(1, 0, Box::new(cb));
         drop(cpu);

@@ -1,65 +1,104 @@
+use std::cell::{Ref, RefCell};
 use std::cmp::min;
 
-use crate::emulator::abstractions::handles::{Handle, FSError};
+use byteorder::ByteOrder;
+
+use crate::emulator::abstractions::errors::GenericError;
+use crate::emulator::abstractions::handles::Handle;
 use crate::emulator::system::filesystem::Stat;
 
-pub struct WriteOnly {}
+pub struct
+WriteOnly<Endianness: ByteOrder> {
+    stat: RefCell<Stat<Endianness>>,
+}
 
-impl WriteOnly {
+impl<Endianness: ByteOrder>
+WriteOnly<Endianness> {
     pub(crate) fn new() -> Self {
-        Self {}
+        Self {
+            stat: Default::default()
+        }
     }
 }
 
-impl Handle for WriteOnly {
-    fn stat(&self) -> Vec<u8> {
-        Stat::default().into()
+impl<Endianness: ByteOrder>
+Handle<Endianness> for WriteOnly<Endianness> {
+    fn stat(
+        &self
+    ) -> Result<Ref<Stat<Endianness>>, GenericError> {
+        Ok(self.stat.borrow())
     }
 
-    fn read(&mut self, count: u64) -> Result<Vec<u8>, FSError> {
+    fn read(
+        &mut self,
+        count: u64,
+    ) -> Result<Vec<u8>, GenericError> {
         todo!()
     }
 
-    fn pread(&self, offset: u64, length: u64) -> Result<Vec<u8>, FSError> {
+    fn pread(
+        &self,
+        offset: u64,
+        length: u64,
+    ) -> Result<Vec<u8>, GenericError> {
         todo!()
     }
 
-    fn write(&mut self, data: &[u8]) -> Result<usize, FSError> {
+    fn write(
+        &mut self,
+        data: &[u8],
+    ) -> Result<usize, GenericError> {
         print!("{:}", String::from_utf8_lossy(data));
         Ok(data.len())
     }
 }
 
-pub struct ReadOnly {
+pub struct
+ReadOnly<Endianness: ByteOrder> {
     data: Vec<u8>,
     pos: usize,
+    stat: RefCell<Stat<Endianness>>,
 }
 
-impl ReadOnly {
+impl<Endianness: ByteOrder>
+ReadOnly<Endianness> {
     pub(crate) fn new() -> Self {
-        Self { pos: 0, data: vec![b'a', b'b', b'c', b'd', b'\n'] }
+        Self { pos: 0, data: vec![b'a', b'b', b'c', b'd', b'\n'], stat: Default::default() }
     }
 
     pub fn from(data: Vec<u8>) -> Self {
-        Self { pos: 0, data }
+        Self { pos: 0, data, stat: Default::default() }
     }
 }
 
-impl Handle for ReadOnly {
-    fn stat(&self) -> Vec<u8> {
-        Stat::default().into()
+impl<Endianness: ByteOrder>
+Handle<Endianness> for ReadOnly<Endianness> {
+    fn stat(
+        &self
+    ) -> Result<Ref<Stat<Endianness>>, GenericError> {
+        Ok(self.stat.borrow())
     }
 
-    fn read(&mut self, count: u64) -> Result<Vec<u8>, FSError> {
+    fn read(
+        &mut self,
+        count: u64,
+    ) -> Result<Vec<u8>, GenericError> {
         let upper = min(self.pos + count as usize, self.data.len());
         Ok(self.data[self.pos..upper].to_vec())
     }
 
-    fn pread(&self, offset: u64, length: u64) -> Result<Vec<u8>, FSError> {
+    fn pread(
+        &self,
+        offset: u64,
+        length: u64,
+    ) -> Result<Vec<u8>, GenericError> {
         todo!()
     }
 
-    fn write(&mut self, data: &[u8]) -> Result<usize, FSError> {
+    fn write(
+        &mut self,
+        data: &[u8],
+    ) -> Result<usize, GenericError> {
         todo!()
     }
 }

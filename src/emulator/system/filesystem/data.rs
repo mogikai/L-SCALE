@@ -3,9 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::mem::MaybeUninit;
 use std::ptr;
 
-use crate::emulator::abstractions::handles::FSError;
 use crate::emulator::system::filesystem;
 use crate::emulator::system::filesystem::block::Block;
+use crate::emulator::system::filesystem::FSError;
 
 #[derive(Debug)]
 pub(super) struct Data {

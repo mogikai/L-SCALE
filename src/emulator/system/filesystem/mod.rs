@@ -9,12 +9,13 @@ use std::fs::read;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use byteorder::ByteOrder;
+
 use data::{Data, DataSnapMarker};
 use meta_info::{MetaInfo, MetaInfoSnapMarker};
 pub use stat::Stat;
 
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::handles::FSError;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::filesystem::meta_info::FSEntryContent::File;
 
@@ -25,24 +26,42 @@ mod stat;
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug, Copy, Clone)]
+pub enum FSError {
+    NotFound,
+    Unknown,
+}
+
+impl
+From<io::Error> for FSError {
+    fn from(
+        _: io::Error
+    ) -> Self {
+        FSError::Unknown
+    }
+}
+
 pub type FSEntryId = usize;
 type ContentId = usize;
 type SnapId = usize;
 
 #[derive(Debug)]
-pub struct Filesystem {
+pub struct
+Filesystem<Endianness: ByteOrder> {
     on_disk_root: Option<PathBuf>,
     data: Data,
-    meta_info: MetaInfo,
+    meta_info: MetaInfo<Endianness>,
     snap_markers: Vec<SnapMarker>,
     current_size: usize,
     max_size: usize,
     current_snap: usize,
 }
 
-impl Filesystem {
-    pub fn new(size: usize)
-        -> Self {
+impl<Endianness: ByteOrder>
+Filesystem<Endianness> {
+    pub fn new(
+        size: usize
+    ) -> Self {
         Filesystem {
             on_disk_root: None,
             data: Data::new(),
@@ -54,17 +73,19 @@ impl Filesystem {
         }
     }
 
-    pub fn from_disk(size: usize,
-                     root: &Path)
-        -> Result<Self, FSError> {
+    pub fn from_disk(
+        size: usize,
+        root: &Path,
+    ) -> Result<Self, FSError> {
         let mut fs = Self::new(size);
         fs.on_disk_root = Some(root.to_path_buf());
         load_dir(&mut fs, root, root)?;
         Ok(fs)
     }
 
-    pub fn on_disk_root(&self)
-        -> Option<&Path> {
+    pub fn on_disk_root(
+        &self
+    ) -> Option<&Path> {
         if let Some(r) = &self.on_disk_root {
             Some(r.as_path())
         } else {
@@ -72,18 +93,20 @@ impl Filesystem {
         }
     }
 
-    pub fn read_all(&self,
-                    file_id: FSEntryId)
-        -> Result<Vec<u8>, FSError> {
+    pub fn read_all(
+        &self,
+        file_id: FSEntryId,
+    ) -> Result<Vec<u8>, FSError> {
         let size = self.stat(file_id)?.st_size as usize;
         self.read(file_id, 0, size)
     }
 
-    pub fn read(&self,
-                file_id: FSEntryId,
-                pos: usize,
-                len: usize)
-        -> Result<Vec<u8>, FSError> {
+    pub fn read(
+        &self,
+        file_id: FSEntryId,
+        pos: usize,
+        len: usize,
+    ) -> Result<Vec<u8>, FSError> {
         let entry = self.meta_info.most_recent_entry(file_id)?;
         if let File { contents } = &entry.contents {
             if pos > entry.stat.st_size as usize {
@@ -104,11 +127,12 @@ impl Filesystem {
         }
     }
 
-    pub fn write(&mut self,
-                 file_id: FSEntryId,
-                 pos: usize,
-                 data: &[u8])
-        -> Result<usize, FSError> {
+    pub fn write(
+        &mut self,
+        file_id: FSEntryId,
+        pos: usize,
+        data: &[u8],
+    ) -> Result<usize, FSError> {
         let entry = self.meta_info.most_recent_entry_mut(file_id)?;
         let size = entry.stat.st_size as usize;
         if let File { contents } = &mut entry.contents {
@@ -147,10 +171,11 @@ impl Filesystem {
         }
     }
 
-    pub fn truncate(&mut self,
-                    file_id: FSEntryId,
-                    new_size: usize)
-        -> Result<(), FSError> {
+    pub fn truncate(
+        &mut self,
+        file_id: FSEntryId,
+        new_size: usize,
+    ) -> Result<(), FSError> {
         let entry = &self.meta_info.most_recent_entry(file_id)?;
         let size = entry.stat.st_size as usize;
         let size = if let File { .. } = &entry.contents {
@@ -179,39 +204,44 @@ impl Filesystem {
         }
     }
 
-    pub fn create_file(&mut self,
-                       path: &Path,
-                       stat: Option<Stat>)
-        -> Result<FSEntryId, FSError> {
+    pub fn create_file(
+        &mut self,
+        path: &Path,
+        stat: Option<Stat<Endianness>>,
+    ) -> Result<FSEntryId, FSError> {
         self.meta_info.create_file(path, stat)
     }
 
-    pub fn create_file_with_contents(&mut self,
-                                     path: &Path,
-                                     data: &[u8],
-                                     stat: Option<Stat>)
-        -> Result<FSEntryId, FSError> {
+    pub fn create_file_with_contents(
+        &mut self,
+        path: &Path,
+        data: &[u8],
+        stat: Option<Stat<Endianness>>,
+    ) -> Result<FSEntryId, FSError> {
         let fse_id = self.create_file(path, stat)?;
         self.write(fse_id, 0, data)?;
         Ok(fse_id)
     }
 
-    pub fn create_dir(&mut self,
-                      path: &Path,
-                      stat: Option<Stat>)
-        -> Result<FSEntryId, FSError> {
+    pub fn create_dir(
+        &mut self,
+        path: &Path,
+        stat: Option<Stat<Endianness>>,
+    ) -> Result<FSEntryId, FSError> {
         self.meta_info.create_dir(path, stat)
     }
 
-    pub fn delete(&mut self,
-                  path: &Path)
-        -> Result<(), FSError> {
+    pub fn delete(
+        &mut self,
+        path: &Path,
+    ) -> Result<(), FSError> {
         self.meta_info.delete(path)
     }
 
-    pub fn stat(&self,
-                file_id: FSEntryId)
-        -> Result<&Stat, FSError> {
+    pub fn stat(
+        &self,
+        file_id: FSEntryId,
+    ) -> Result<&Stat<Endianness>, FSError> {
         Ok(&self.meta_info.most_recent_entry(file_id)?.stat)
     }
 
@@ -221,7 +251,10 @@ impl Filesystem {
     /// if the referenced element was deleted in the meantime.
     ///
     /// returns: The FSEntryId of each element in the path if it resolves. Otherwise an Error is returned.
-    pub fn resolve_path(&self, path: &Path) -> Result<Vec<FSEntryId>, FSError> {
+    pub fn resolve_path(
+        &self,
+        path: &Path,
+    ) -> Result<Vec<FSEntryId>, FSError> {
         self.meta_info.resolve_path(path)
     }
 
@@ -231,19 +264,25 @@ impl Filesystem {
     /// if the referenced element was deleted in the meantime.
     ///
     /// returns: The FSEntryId of each element in the path if it resolves. Otherwise an Error is returned.
-    pub fn resolve_last(&self, path: &Path) -> Result<FSEntryId, FSError> {
+    pub fn resolve_last(
+        &self,
+        path: &Path,
+    ) -> Result<FSEntryId, FSError> {
         self.meta_info.resolve_last(path)
     }
 
-    fn print_tree(&self) {
+    fn print_tree(
+        &self
+    ) {
         self.meta_info.print_tree(self.meta_info.root(), None);
     }
 }
 
-impl Restorable
-for Filesystem {
-    fn snapshot(&mut self)
-        -> Result<(), GenericError> {
+impl<Endianness: ByteOrder>
+Restorable for Filesystem<Endianness> {
+    fn snapshot(
+        &mut self
+    ) -> Result<(), GenericError> {
         assert_eq!(self.snap_markers.len(), self.current_snap);
         self.snap_markers.push(SnapMarker {
             data_marker: self.data.snapshot(),
@@ -254,8 +293,9 @@ for Filesystem {
         Ok(())
     }
 
-    fn restore_and_discard(&mut self)
-        -> Result<(), GenericError> {
+    fn restore_and_discard(
+        &mut self
+    ) -> Result<(), GenericError> {
         if self.current_snap == 0 {
             Err(FSError::Unknown)?
         }
@@ -267,8 +307,9 @@ for Filesystem {
         Ok(())
     }
 
-    fn restore(&mut self)
-        -> Result<(), GenericError> {
+    fn restore(
+        &mut self
+    ) -> Result<(), GenericError> {
         if self.current_snap == 0 {
             Err(FSError::Unknown)?
         }
@@ -280,10 +321,11 @@ for Filesystem {
     }
 }
 
-fn load_dir(fs: &mut Filesystem,
-            dir: &Path,
-            root: &Path)
-    -> io::Result<()> {
+fn load_dir<Endianness: ByteOrder>(
+    fs: &mut Filesystem<Endianness>,
+    dir: &Path,
+    root: &Path,
+) -> io::Result<()> {
     if dir.is_dir() {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;

@@ -117,7 +117,7 @@ impl Restorable for UCWrapper<'_> {
 impl From<uc_error>
 for GenericError {
     fn from(e: uc_error) -> Self {
-        Self::new(GenericErrorKind::CPUError(CPUError::from(e)), format!("{:?}", e))
+        Self::new(GenericErrorKind::CPUError(CPUError::from(e)), format!("{:?}", e).as_ref())
     }
 }
 

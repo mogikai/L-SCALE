@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 
 use crate::emulator::abstractions::cpu::CPUError;
-use crate::emulator::abstractions::handles::FSError;
+use crate::emulator::system::filesystem::FSError;
 
 #[derive(Debug)]
 pub enum GenericErrorKind {
@@ -18,11 +18,17 @@ pub struct GenericError {
 }
 
 impl GenericError {
-    pub fn new(kind: GenericErrorKind, message: String) -> Self {
+    pub fn new(kind: GenericErrorKind, message: &str) -> Self {
         Self {
             kind,
-            message
+            message: message.to_string(),
         }
+    }
+
+    pub fn kind(
+        &self
+    ) -> &GenericErrorKind {
+        &self.kind
     }
 }
 

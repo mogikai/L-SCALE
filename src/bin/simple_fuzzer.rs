@@ -20,7 +20,7 @@ fn main() {
     let mut blocks = HashMap::<u64, u64>::new();
 
     let filesystem = Rc::new(RefCell::new(Filesystem::from_disk(1_073_741_824, Path::new("systems/ubuntu2004")).unwrap()));
-    let mut cpu = UCWrapper::new(0);
+    let cpu = UCWrapper::new(0);
     let memory = Memory::<LittleEndian>::new(&mut *cpu.borrow_mut(), 0x4000000000000000, 10 * 1024 * 1024, 0x2000000000000000);
     let kernel = Rc::new(RefCell::new(LinuxKernel::new(memory, filesystem)));
 
