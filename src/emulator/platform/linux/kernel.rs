@@ -24,6 +24,8 @@ use crate::emulator::system::memory::{Encode, Memory, MemoryError, MemoryWrite};
 use crate::read_osstring;
 
 pub mod fs;
+pub mod socket;
+pub mod eventpoll;
 
 const MAP_ANONYMOUS: u64 = 0x20;
 const MAP_PRIVATE: u64 = 0x2;
