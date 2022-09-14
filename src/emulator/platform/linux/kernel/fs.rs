@@ -59,7 +59,7 @@ LinuxKernel<Endianness, Arch> {
                  statbuf: Vaddr)
         -> SyscallResult {
         let file = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADF)?;
-        self.memory.write_direct(statbuf, &*file.stat()?)?;
+        self.memory.write_generic(statbuf, &*file.stat()?)?;
         Ok(0)
     }
 
@@ -71,8 +71,7 @@ LinuxKernel<Endianness, Arch> {
         let fname = read_osstring!(self.memory, filename).unwrap();
         let fs = self.filesystem.borrow();
         let file = fs.resolve_last(Path::new(&fname))?;
-        let stat = fs.stat(file)?;
-        self.memory.write_direct(statbuf, stat)?;
+        self.memory.write_generic(statbuf, fs.stat(file)?)?;
         Ok(0)
     }
 

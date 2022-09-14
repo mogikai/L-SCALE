@@ -1,11 +1,11 @@
-use core::ops::Range;
 use std::{fmt, mem};
 use std::cell::{Ref, RefCell, RefMut};
 use std::cmp::{max, Ordering};
 use std::cmp::min;
-use std::collections::BTreeSet;
+use std::collections::{btree_set, BTreeSet};
 use std::ffi::CString;
 use std::marker::PhantomData;
+use std::ops::Range;
 use std::rc::Rc;
 
 use byteorder::ByteOrder;
@@ -171,9 +171,8 @@ impl<Endianness: ByteOrder> MemoryWrite<&str> for Memory<Endianness> {
     }
 }
 
-pub trait WriteToMemory<Endianness: ByteOrder> {
-    fn write_to_memory(&self, data: &mut [u8]) -> Result<(), MemoryError>;
-    fn required_size(&self) -> usize;
+pub trait Encode<Endianness: ByteOrder> {
+    fn encode(&self) -> Vec<u8>;
 }
 
 impl<'a, Endianness: ByteOrder> Memory<Endianness> {
@@ -204,12 +203,22 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         self.stack_size
     }
 
-    pub fn write_direct<T>(&self,
+    pub fn write_generic<T>(&self,
                            addr: Vaddr,
-                           val: T)
+                           val: &T)
         -> Result<(), MemoryError>
-    where T: WriteToMemory<Endianness> {
-        val.write_to_memory(&mut *self.access_mem_mut(addr, val.required_size())?)
+    where T: Encode<Endianness> {
+        let data = val.encode();
+        let mut start = addr;
+        let end = addr + data.len() as Vaddr;
+        while start < end {
+            let mut buffer = self.access_mem_range_mut(start, end)?;
+            let offset = (start - addr) as usize;
+            let len = buffer.len();
+            buffer.copy_from_slice(&data[offset..offset + len]);
+            start += buffer.len() as Vaddr;
+        }
+        Ok(())
     }
 
     pub fn read_internal(&self, address: u64, size: usize) -> Result<Ref<[u8]>, MemoryError> {
@@ -236,6 +245,16 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         let region = self.get_region(address).ok_or(MemoryError::NotMapped)?;
         let offset = (address - region.vaddr) as usize;
         Ok(RefMut::map(region.as_mut_slice(), |slice| &mut slice[offset..offset + size]))
+    }
+
+    pub fn access_mem_range_mut(&self, start: Vaddr, end: Vaddr) -> Result<RefMut<[u8]>, MemoryError> {
+        if start >= end {
+            Err(MemoryError::NotMapped)?
+        }
+        let region = self.get_region(start).ok_or(MemoryError::NotMapped)?;
+        let start_offset = (start - region.vaddr) as usize;
+        let end_offset = min(end - region.vaddr, region.end() as Vaddr) as usize;
+        Ok(RefMut::map(region.as_mut_slice(), |slice| &mut slice[start_offset..end_offset]))
     }
 
     unsafe fn get_ref<T>(&self, address: Vaddr) -> Result<Ref<T>, MemoryError> {
@@ -344,6 +363,11 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         )
     }
 
+    fn get_regions_range(&self, vaddr_range: Range<Vaddr>) -> Result<btree_set::Range<Region>, MemoryError> {
+        let start_region = self.mappings.range(..vaddr_range.start).next_back().ok_or(MemoryError::NotMapped)?;
+        Ok(self.mappings.range(start_region.vaddr..vaddr_range.end))
+    }
+
     fn get_region_range(&self, vaddr_range: &Range<Vaddr>) -> Option<&Region> {
         self.mappings.get(&vaddr_range.start).or_else(||
             self.mappings.range(..vaddr_range.start).next_back().and_then(|region|
@@ -441,7 +465,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
 macro_rules! read_osstring {
 	($mem:expr, $addr:expr) => {
 		{
-            use crate::emulator::system::memory::MemoryError;
+            use $crate::emulator::system::memory::MemoryError;
             use std::ffi::OsString;
             use std::os::unix::ffi::OsStringExt;
 			//todo better define path_max

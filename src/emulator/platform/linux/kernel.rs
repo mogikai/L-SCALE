@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
 use std::collections::{HashMap, VecDeque};
 use std::collections::hash_map::Keys;
 use std::marker::PhantomData;
@@ -20,7 +20,7 @@ use crate::emulator::platform::linux::filedescriptors::FileHandle;
 use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
 use crate::emulator::system::default_handles;
 use crate::emulator::system::filesystem::{Filesystem, FSError};
-use crate::emulator::system::memory::{Memory, MemoryError, MemoryWrite, WriteToMemory};
+use crate::emulator::system::memory::{Encode, Memory, MemoryError, MemoryWrite};
 use crate::read_osstring;
 
 pub mod fs;
@@ -99,9 +99,10 @@ type SyscallResult = Result<u64, LinuxKernelError>;
 
 impl<Endianness: ByteOrder + 'static, Arch: Architecture>
 LinuxKernel<Endianness, Arch> {
-    pub fn new(memory: Memory<Endianness>,
-               filesystem: Rc<RefCell<Filesystem<Endianness>>>)
-        -> Self {
+    pub fn new(
+        memory: Memory<Endianness>,
+        filesystem: Rc<RefCell<Filesystem<Endianness>>>,
+    ) -> Self {
         LinuxKernel {
             memory,
             filesystem,
@@ -114,10 +115,11 @@ LinuxKernel<Endianness, Arch> {
         }
     }
 
-    pub fn load_binary(&mut self,
-                       cpu: &mut (impl CPU + MMU),
-                       binary_path: &Path)
-        -> Result<(), LinuxKernelError> {
+    pub fn load_binary(
+        &mut self,
+        cpu: &mut (impl CPU + MMU),
+        binary_path: &Path,
+    ) -> Result<(), LinuxKernelError> {
         let fs = self.filesystem.borrow();
         let buffer = fs.read_all(fs.resolve_last(binary_path)?)?;
         let elf = goblin::elf::Elf::parse(&buffer).unwrap();
@@ -143,12 +145,13 @@ LinuxKernel<Endianness, Arch> {
         self.initstack(cpu, binary_path, interpreter_path, interpreter.entry)
     }
 
-    fn initstack(&mut self,
-                 cpu: &mut impl CPU,
-                 binary_path: &Path,
-                 interpreter_path: &Path,
-                 entrypoint: Vaddr)
-        -> Result<(), LinuxKernelError> {
+    fn initstack(
+        &mut self,
+        cpu: &mut impl CPU,
+        binary_path: &Path,
+        interpreter_path: &Path,
+        entrypoint: Vaddr,
+    ) -> Result<(), LinuxKernelError> {
         info!("Initializing stack");
         cpu.reg_write(RegisterX86::RSP.into(), 0x4000000000000000).expect("failed to write RSP");
         let mem = &mut self.memory;
@@ -205,14 +208,23 @@ LinuxKernel<Endianness, Arch> {
         self.handles.insert(2, Box::new(default_handles::WriteOnly::new()));
     }
 
-    pub fn brk(&mut self, cpu: &mut impl MMU, addr: u64) -> SyscallResult {
+    pub fn brk(
+        &mut self,
+        cpu: &mut impl MMU,
+        addr: u64,
+    ) -> SyscallResult {
         if addr != 0 {
             self.memory.realloc_heap(addr, cpu);
         }
         Ok(self.memory.heapend())
     }
 
-    pub fn arch_prctl(&mut self, cpu: &mut impl CPU, code: u64, addr: u64) -> SyscallResult {
+    pub fn arch_prctl(
+        &mut self,
+        cpu: &mut impl CPU,
+        code: u64,
+        addr: u64,
+    ) -> SyscallResult {
         match code {
             0x1001 => { //ARCH_SET_GS
                 Err(LinuxKernelError::EINVAL)
@@ -229,28 +241,46 @@ LinuxKernel<Endianness, Arch> {
         }
     }
 
-    pub fn time(&mut self, cpu: &mut impl MMU, tloc: Vaddr)
-        -> SyscallResult {
-        self.memory.write_direct(tloc, self.system_time.as_secs() as i64)?;
+    pub fn time(
+        &mut self,
+        cpu: &mut impl MMU,
+        tloc: Vaddr,
+    ) -> SyscallResult {
+        self.memory.write_generic(tloc, &(self.system_time.as_secs() as i64))?;
         Ok(0)
     }
 
-    pub fn clock_gettime(&mut self, cpu: &mut impl MMU, clk_id: u64, tp: Vaddr) -> SyscallResult {
+    pub fn clock_gettime(
+        &mut self,
+        cpu: &mut impl MMU,
+        clk_id: u64,
+        tp: Vaddr,
+    ) -> SyscallResult {
         let ts = Timespec::<Endianness> {
             tv_sec: self.system_time.as_secs() as i64,
             tv_nsec: self.system_time.subsec_nanos() as i64,
             _phantom: Default::default(),
         };
-        self.memory.write_direct(tp, ts).unwrap();
+        self.memory.write_generic(tp, &ts).unwrap();
         Ok(0)
     }
 
-    pub fn getpid(&mut self, _: &mut impl CPU) -> SyscallResult {
+    pub fn getpid(
+        &mut self,
+        _: &mut impl CPU,
+    ) -> SyscallResult {
         // TODO: Implement multi threading / processing
         Ok(1)
     }
 
-    fn mmap_anon(&mut self, cpu: &mut impl MMU, addr: Vaddr, length: u64, prot: u64, flags: u64) -> SyscallResult {
+    fn mmap_anon(
+        &mut self,
+        cpu: &mut impl MMU,
+        addr: Vaddr,
+        length: u64,
+        prot: u64,
+        flags: u64,
+    ) -> SyscallResult {
         let addr = if (flags & MAP_FIXED) != 0 {
             self.memory.unmap(addr, length, cpu)?;
             addr
@@ -268,7 +298,16 @@ LinuxKernel<Endianness, Arch> {
         Ok(addr)
     }
 
-    fn mmap_private(&mut self, cpu: &mut impl MMU, addr: u64, length: u64, prot: u64, flags: u64, fd: u64, offset: u64) -> SyscallResult {
+    fn mmap_private(
+        &mut self,
+        cpu: &mut impl MMU,
+        addr: u64,
+        length: u64,
+        prot: u64,
+        flags: u64,
+        fd: u64,
+        offset: u64,
+    ) -> SyscallResult {
         if fd >= 1 << 31 {
             Err(LinuxKernelError::EINVAL)?
         }
@@ -281,15 +320,17 @@ LinuxKernel<Endianness, Arch> {
         self.memory.write(addr, data.as_slice());
         Ok(addr)
     }
-    pub fn mmap(&mut self,
-                cpu: &mut impl MMU,
-                addr: Vaddr,
-                length: u64,
-                prot: u64,
-                flags: u64,
-                fd: u64,
-                offset: u64)
-        -> SyscallResult {
+
+    pub fn mmap(
+        &mut self,
+        cpu: &mut impl MMU,
+        addr: Vaddr,
+        length: u64,
+        prot: u64,
+        flags: u64,
+        fd: u64,
+        offset: u64,
+    ) -> SyscallResult {
         if (flags & !(MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED | MAP_DENYWRITE)) != 0 {
             Err(LinuxKernelError::EINVAL)?
         }
@@ -302,16 +343,21 @@ LinuxKernel<Endianness, Arch> {
         }
     }
 
-    pub fn munmap(&mut self,
-                  cpu: &mut impl MMU,
-                  addr: Vaddr,
-                  len: u64)
-        -> SyscallResult {
+    pub fn munmap(
+        &mut self,
+        cpu: &mut impl MMU,
+        addr: Vaddr,
+        len: u64,
+    ) -> SyscallResult {
         self.memory.unmap(addr, len, cpu)?;
         Ok(0)
     }
 
-    pub fn uname(&mut self, _: &mut impl CPU, buf: u64) -> SyscallResult {
+    pub fn uname(
+        &mut self,
+        _: &mut impl CPU,
+        buf: u64,
+    ) -> SyscallResult {
         //TODO check if address is mapped and has space for struct new_utsname
         self.memory.write(buf, "Linux");
         self.memory.write(buf + 65, "ILT792");
@@ -321,7 +367,13 @@ LinuxKernel<Endianness, Arch> {
         self.memory.write(buf + 5 * 65, "(none)");
         Ok(0)
     }
-    pub fn gettimeofday(&mut self, _: &mut impl CPU, tv: Vaddr, tz: Vaddr) -> SyscallResult {
+
+    pub fn gettimeofday(
+        &mut self,
+        _: &mut impl CPU,
+        tv: Vaddr,
+        tz: Vaddr,
+    ) -> SyscallResult {
         if tv == 0 {
             Err(LinuxKernelError::EINVAL)?
         }
@@ -333,32 +385,46 @@ LinuxKernel<Endianness, Arch> {
             tv_usec: self.system_time.subsec_micros() as i64,
             _phantom: Default::default(),
         };
-        self.memory.write_direct(tv, timeval)?;
+        self.memory.write_generic(tv, &timeval)?;
         Ok(0)
     }
-    pub fn access(&mut self, _: &mut impl CPU, _filename: u64, _mode: u64) -> SyscallResult {
+
+    pub fn access(
+        &mut self,
+        _: &mut impl CPU,
+        _filename: u64,
+        _mode: u64,
+    ) -> SyscallResult {
         Err(LinuxKernelError::EINVAL)
     }
 
-    pub fn mprotect(&mut self, cpu: &mut impl MMU, start: u64, len: u64, prot: u64) -> SyscallResult {
+    pub fn mprotect(
+        &mut self,
+        cpu: &mut impl MMU,
+        start: u64,
+        len: u64,
+        prot: u64,
+    ) -> SyscallResult {
         self.memory.protect(start, len, prot.try_into().unwrap(), cpu);
         Ok(0)
     }
 
-    pub fn set_tid_address(&mut self,
-                           uc: &mut impl CPU,
-                           tidptr: u64)
-        -> SyscallResult {
+    pub fn set_tid_address(
+        &mut self,
+        uc: &mut impl CPU,
+        tidptr: u64,
+    ) -> SyscallResult {
         /* todo NULL check */
         self.clear_child_tid = Some(tidptr);
         self.getpid(uc)
     }
 
-    pub fn set_robust_list(&mut self,
-                           _: &mut impl CPU,
-                           robust_list_head: u64,
-                           size: u64)
-        -> SyscallResult {
+    pub fn set_robust_list(
+        &mut self,
+        _: &mut impl CPU,
+        robust_list_head: u64,
+        size: u64,
+    ) -> SyscallResult {
         /* todo better size check */
         if size != 24 {
             trace!("size = {}", size);
@@ -369,16 +435,16 @@ LinuxKernel<Endianness, Arch> {
         Ok(0)
     }
 
-    pub fn prlimit64(&mut self,
-                     _: &mut impl CPU,
-                     pid: u64,
-                     resource: u64,
-                     new_rlim: Vaddr,
-                     old_rlim: Vaddr)
-        -> SyscallResult {
+    pub fn prlimit64(
+        &mut self,
+        _: &mut impl CPU,
+        pid: u64,
+        resource: u64,
+        new_rlim: Vaddr,
+        old_rlim: Vaddr,
+    ) -> SyscallResult {
         let new_rlim = if new_rlim != 0 { Some(self.memory.read_struct::<Rlimit<Endianness>>(new_rlim)?) } else { None };
-        // let old_rlim = if old_rlim != 0 { Some(self.memory.read_struct::<Rlimit<Endianness>>(old_rlim)?) } else { None };
-        match RLIMIT::from(resource) {
+        let rlimit = match RLIMIT::from(resource) {
             RLIMIT::CPU => todo!(),
             RLIMIT::FSIZE => todo!(),
             RLIMIT::DATA => todo!(),
@@ -386,13 +452,11 @@ LinuxKernel<Endianness, Arch> {
                 if new_rlim.is_some() {
                     todo!("Need to implement setting stack size")
                 }
-                let out = Rlimit::<Endianness> {
+                Rlimit::<Endianness> {
                     rlim_cur: self.memory.stack_size() as u64,
                     rlim_max: self.memory.stack_size() as u64,
                     _phantom: Default::default(),
-                };
-                self.memory.write_direct(old_rlim, out)?;
-                Ok(0)
+                }
             }
             RLIMIT::CORE => todo!(),
             RLIMIT::RSS => todo!(),
@@ -407,22 +471,33 @@ LinuxKernel<Endianness, Arch> {
             RLIMIT::RTPRIO => todo!(),
             RLIMIT::RTTIME => todo!(),
             RLIMIT::INVALID => todo!(),
-        }
+        };
+        self.memory.write_generic(old_rlim, &rlimit)?;
+        Ok(0)
     }
 
-    pub fn rt_sigaction(&mut self,
-                        _: &mut impl CPU,
-                        signum: u64,
-                        act_ptr: u64,
-                        old_ptr: u64,
-                        sigactionsize: u64)
-        -> SyscallResult {
+    pub fn rt_sigaction(
+        &mut self,
+        _: &mut impl CPU,
+        signum: u64,
+        act_ptr: u64,
+        old_ptr: u64,
+        sigactionsize: u64,
+    ) -> SyscallResult {
         let action = self.memory.access_mem(act_ptr, 32)?; //todo make arch dependent
         let action = Arch::read_sigaction(&action);
         self.signalhandler.insert(signum as u8, action);
         Ok(0)
     }
-    pub fn rt_sigprocmask(&mut self, _: &mut impl CPU, how: u64, new_set: u64, old_set: u64, sigsetsize: u64) -> SyscallResult {
+
+    pub fn rt_sigprocmask(
+        &mut self,
+        _: &mut impl CPU,
+        how: u64,
+        new_set: u64,
+        old_set: u64,
+        sigsetsize: u64,
+    ) -> SyscallResult {
         if sigsetsize != 8 { //todo architure specific
             Err(LinuxKernelError::EINVAL)?
         }
@@ -442,18 +517,12 @@ LinuxKernel<Endianness, Arch> {
     }
 }
 
-impl<Endianness: ByteOrder> WriteToMemory<Endianness>
+impl<Endianness: ByteOrder> Encode<Endianness>
 for i64 {
-    fn write_to_memory(
-        &self,
-        data: &mut [u8],
-    ) -> Result<(), MemoryError> {
-        Endianness::write_i64(data, *self);
-        Ok(())
-    }
-
-    fn required_size(&self) -> usize {
-        mem::size_of::<i64>()
+    fn encode(&self) -> Vec<u8> {
+        let mut data = vec![0; mem::size_of::<Self>()];
+        Endianness::write_i64(&mut data[..8], *self);
+        data
     }
 }
 
@@ -463,16 +532,13 @@ pub struct Timeval<Endianness> {
     _phantom: PhantomData<Endianness>,
 }
 
-impl<Endianness: ByteOrder> WriteToMemory<Endianness>
+impl<Endianness: ByteOrder> Encode<Endianness>
 for Timeval<Endianness> {
-    fn write_to_memory(&self, data: &mut [u8]) -> Result<(), MemoryError> {
-        Endianness::write_i64(&mut data[..8], self.tv_sec);
-        Endianness::write_i64(&mut data[8..], self.tv_usec);
-        Ok(())
-    }
-
-    fn required_size(&self) -> usize {
-        mem::size_of::<i64>() * 2
+    fn encode(&self) -> Vec<u8> {
+        let mut d = vec![0; mem::size_of::<Self>()];
+        Endianness::write_i64(&mut d[..8], self.tv_sec);
+        Endianness::write_i64(&mut d[8..], self.tv_usec);
+        d
     }
 }
 
@@ -500,16 +566,13 @@ pub struct Timespec<Endianness: ByteOrder> {
     _phantom: PhantomData<Endianness>,
 }
 
-impl<Endianness: ByteOrder> WriteToMemory<Endianness>
+impl<Endianness: ByteOrder> Encode<Endianness>
 for Timespec<Endianness> {
-    fn write_to_memory(&self, data: &mut [u8]) -> Result<(), MemoryError> {
-        Endianness::write_i64(&mut data[..8], self.tv_sec);
-        Endianness::write_i64(&mut data[8..], self.tv_nsec);
-        Ok(())
-    }
-
-    fn required_size(&self) -> usize {
-        mem::size_of::<i64>() * 2
+    fn encode(&self) -> Vec<u8> {
+        let mut d = vec![0; mem::size_of::<Self>()];
+        Endianness::write_i64(&mut d[..8], self.tv_sec);
+        Endianness::write_i64(&mut d[8..], self.tv_nsec);
+        d
     }
 }
 
@@ -538,16 +601,13 @@ struct Rlimit<Endianness: ByteOrder> {
     _phantom: PhantomData<Endianness>,
 }
 
-impl<Endianness: ByteOrder> WriteToMemory<Endianness>
+impl<Endianness: ByteOrder> Encode<Endianness>
 for Rlimit<Endianness> {
-    fn write_to_memory(&self, data: &mut [u8]) -> Result<(), MemoryError> {
-        Endianness::write_u64(&mut data[..8], self.rlim_cur);
-        Endianness::write_u64(&mut data[8..], self.rlim_max);
-        Ok(())
-    }
-
-    fn required_size(&self) -> usize {
-        mem::size_of::<u64>() * 2
+    fn encode(&self) -> Vec<u8> {
+        let mut d = vec![0; mem::size_of::<Self>()];
+        Endianness::write_u64(&mut d[..8], self.rlim_cur);
+        Endianness::write_u64(&mut d[8..], self.rlim_max);
+        d
     }
 }
 

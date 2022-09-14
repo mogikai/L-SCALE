@@ -1,3 +1,4 @@
+use std::cell::RefMut;
 use std::fs::Metadata;
 use std::marker::PhantomData;
 use std::mem;
@@ -6,7 +7,7 @@ use std::os::linux::fs::MetadataExt;
 
 use byteorder::{ByteOrder, LittleEndian};
 
-use crate::emulator::system::memory::{MemoryError, WriteToMemory};
+use crate::emulator::system::memory::{Encode, MemoryError};
 
 #[derive(Clone, Debug, Default)]
 pub struct Stat<Endianness: ByteOrder> {
@@ -32,7 +33,7 @@ pub struct Stat<Endianness: ByteOrder> {
     _unused1: u64,
     _unused2: u64,
     _unused3: u64,
-    _phantom: PhantomData<Endianness>
+    _phantom: PhantomData<Endianness>,
 }
 
 impl<Endianness: ByteOrder> From<Metadata>
@@ -59,35 +60,32 @@ for Stat<Endianness> {
             _unused1: 0,
             _unused2: 0,
             _unused3: 0,
-            _phantom: Default::default()
+            _phantom: Default::default(),
         }
     }
 }
 
-impl<Endianness: ByteOrder> WriteToMemory<Endianness>
-for &Stat<Endianness> {
-    fn write_to_memory(&self, data: &mut [u8]) -> Result<(), MemoryError> {
-        Endianness::write_u64(&mut data[0..8], self.st_dev);
-        Endianness::write_u64(&mut data[8..16], self.st_ino);
-        Endianness::write_u64(&mut data[16..24], self.st_nlink);
-        Endianness::write_u32(&mut data[24..28], self.st_mode);
-        Endianness::write_u32(&mut data[28..32], self.st_uid);
-        Endianness::write_u32(&mut data[32..36], self.st_gid);
-//		Endianness::write_u32(&mut data[36..40], self._pad0);
-        Endianness::write_u64(&mut data[40..48], self.st_rdev);
-        Endianness::write_u64(&mut data[48..56], self.st_size);
-        Endianness::write_u64(&mut data[56..64], self.st_blksize);
-        Endianness::write_u64(&mut data[64..72], self.st_blocks);
-        Endianness::write_u64(&mut data[72..80], self.st_atime);
-        Endianness::write_u64(&mut data[80..88], self.st_atime_nsec);
-        Endianness::write_u64(&mut data[88..96], self.st_mtime);
-        Endianness::write_u64(&mut data[96..104], self.st_mtime_nsec);
-        Endianness::write_u64(&mut data[104..112], self.st_ctime);
-        Endianness::write_u64(&mut data[112..120], self.st_ctime_nsec);
-        Ok(())
-    }
-
-    fn required_size(&self) -> usize {
-        mem::size_of::<u64>() * 20
+impl<Endianness: ByteOrder> Encode<Endianness>
+for Stat<Endianness> {
+    fn encode(&self)-> Vec<u8> {
+        let mut d = vec![0; size_of::<Self>()];
+        Endianness::write_u64(&mut d[0..8], self.st_dev);
+        Endianness::write_u64(&mut d[8..16], self.st_ino);
+        Endianness::write_u64(&mut d[16..24], self.st_nlink);
+        Endianness::write_u32(&mut d[24..28], self.st_mode);
+        Endianness::write_u32(&mut d[28..32], self.st_uid);
+        Endianness::write_u32(&mut d[32..36], self.st_gid);
+//		Endianness::write_u32(&mut d[36..40], self._pad0);
+        Endianness::write_u64(&mut d[40..48], self.st_rdev);
+        Endianness::write_u64(&mut d[48..56], self.st_size);
+        Endianness::write_u64(&mut d[56..64], self.st_blksize);
+        Endianness::write_u64(&mut d[64..72], self.st_blocks);
+        Endianness::write_u64(&mut d[72..80], self.st_atime);
+        Endianness::write_u64(&mut d[80..88], self.st_atime_nsec);
+        Endianness::write_u64(&mut d[88..96], self.st_mtime);
+        Endianness::write_u64(&mut d[96..104], self.st_mtime_nsec);
+        Endianness::write_u64(&mut d[104..112], self.st_ctime);
+        Endianness::write_u64(&mut d[112..120], self.st_ctime_nsec);
+        d
     }
 }
