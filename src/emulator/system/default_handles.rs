@@ -22,7 +22,9 @@ WriteOnly<Endianness> {
 }
 
 impl<Endianness: ByteOrder>
-Handle<Endianness> for WriteOnly<Endianness> {
+Handle<Endianness> for
+WriteOnly<Endianness> {
+
     fn stat(
         &self
     ) -> Result<Ref<Stat<Endianness>>, GenericError> {
@@ -72,7 +74,9 @@ ReadOnly<Endianness> {
 }
 
 impl<Endianness: ByteOrder>
-Handle<Endianness> for ReadOnly<Endianness> {
+Handle<Endianness> for
+ReadOnly<Endianness> {
+
     fn stat(
         &self
     ) -> Result<Ref<Stat<Endianness>>, GenericError> {

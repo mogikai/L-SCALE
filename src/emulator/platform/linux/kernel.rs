@@ -1,5 +1,5 @@
 use std::cell::{RefCell, RefMut};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::collections::hash_map::Keys;
 use std::marker::PhantomData;
 use std::mem;
@@ -20,7 +20,7 @@ use crate::emulator::platform::linux::filedescriptors::FileHandle;
 use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
 use crate::emulator::system::default_handles;
 use crate::emulator::system::filesystem::{Filesystem, FSError};
-use crate::emulator::system::memory::{Encode, Memory, MemoryError, MemoryWrite};
+use crate::emulator::system::memory::{Decode, Encode, Memory, MemoryError, MemoryWrite};
 use crate::read_osstring;
 
 pub mod fs;
@@ -34,6 +34,7 @@ const MAP_DENYWRITE: u64 = 0x0800;
 
 struct HandleMap<Endianness: ByteOrder> {
     handles: HashMap<u64, Box<dyn Handle<Endianness>>>,
+    free_fds: Vec<u64>,
     replacement_handles: HashMap<u64, VecDeque<Box<dyn Handle<Endianness>>>>,
 }
 
@@ -42,6 +43,7 @@ HandleMap<Endianness> {
     fn new() -> Self {
         Self {
             handles: HashMap::new(),
+            free_fds: Vec::new(),
             replacement_handles: HashMap::new(),
         }
     }
@@ -68,6 +70,16 @@ impl<Endianness: ByteOrder> HandleMap<Endianness> {
         self.handles.insert(fd, self.replacement_handles.entry(fd).or_default().pop_back().unwrap_or(handle))
     }
 
+    fn add(&mut self, handle: Box<dyn Handle<Endianness>>) -> u64 {
+        // Insert the handle if no replacement exists. Otherwise insert the replacement
+        let fd = self.get_free_fd();
+        let old = self.insert(fd, handle);
+        if old.is_some() {
+            panic!("Add must only insert into unused keys");
+        }
+        fd
+    }
+
     fn get_mut(&mut self, fd: &u64) -> Option<&mut Box<dyn Handle<Endianness>>> {
         self.handles.get_mut(fd)
     }
@@ -81,7 +93,18 @@ impl<Endianness: ByteOrder> HandleMap<Endianness> {
     }
 
     fn remove(&mut self, fd: &u64) -> Option<Box<dyn Handle<Endianness>>> {
-        self.handles.remove(fd)
+        let old = self.handles.remove(fd);
+        if old.is_some() { self.free_fds.push(*fd); }
+        old
+    }
+
+    fn get_free_fd(
+        &mut self
+    ) -> u64 {
+        // TODO: Implement max fd handling (e.g. 1024?)
+        self.free_fds.pop().unwrap_or_else(|| {
+            *self.handles.keys().max().unwrap_or(&2) + 1
+        })
     }
 }
 
@@ -445,7 +468,7 @@ LinuxKernel<Endianness, Arch> {
         new_rlim: Vaddr,
         old_rlim: Vaddr,
     ) -> SyscallResult {
-        let new_rlim = if new_rlim != 0 { Some(self.memory.read_struct::<Rlimit<Endianness>>(new_rlim)?) } else { None };
+        let new_rlim = if new_rlim != 0 { Some(self.memory.read_struct::<Rlimit>(new_rlim)?) } else { None };
         let rlimit = match RLIMIT::from(resource) {
             RLIMIT::CPU => todo!(),
             RLIMIT::FSIZE => todo!(),
@@ -454,10 +477,9 @@ LinuxKernel<Endianness, Arch> {
                 if new_rlim.is_some() {
                     todo!("Need to implement setting stack size")
                 }
-                Rlimit::<Endianness> {
+                Rlimit {
                     rlim_cur: self.memory.stack_size() as u64,
                     rlim_max: self.memory.stack_size() as u64,
-                    _phantom: Default::default(),
                 }
             }
             RLIMIT::CORE => todo!(),
@@ -597,14 +619,13 @@ for Timespec<Endianness> {
 }
 
 // TODO: Make types architecture dependant
-struct Rlimit<Endianness: ByteOrder> {
+struct Rlimit {
     rlim_cur: u64,
     rlim_max: u64,
-    _phantom: PhantomData<Endianness>,
 }
 
 impl<Endianness: ByteOrder> Encode<Endianness>
-for Rlimit<Endianness> {
+for Rlimit {
     fn encode(&self) -> Vec<u8> {
         let mut d = vec![0; mem::size_of::<Self>()];
         Endianness::write_u64(&mut d[..8], self.rlim_cur);
@@ -614,20 +635,21 @@ for Rlimit<Endianness> {
 }
 
 // TODO: Write derive macro or something like this to automate the from trait?
-impl<Endianness: ByteOrder> TryFrom<&[u8]>
-for Rlimit<Endianness> {
-    type Error = GenericError;
-
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+impl<Endianness: ByteOrder> Decode<Endianness>
+for Rlimit {
+    fn decode(value: &[u8]) -> Result<Self, MemoryError> {
         if value.len() != mem::size_of::<u64>() * 2 {
-            Err(GenericError::new(GenericErrorKind::Unknown, "Invalid length"))
+            Err(MemoryError::InvalidSize)
         } else {
             Ok(Rlimit {
                 rlim_cur: Endianness::read_u64(&value[..8]),
                 rlim_max: Endianness::read_u64(&value[8..]),
-                _phantom: Default::default(),
             })
         }
+    }
+
+    fn required_mem() -> usize {
+        mem::size_of::<u64>() * 2
     }
 }
 
@@ -999,7 +1021,8 @@ impl From<GenericError> for LinuxKernelError {
         match e.kind() {
             GenericErrorKind::CPUError(e) => (*e).into(),
             GenericErrorKind::FSError(e) => (*e).into(),
-            GenericErrorKind::Unknown => { LinuxKernelError::EINVAL }
+            GenericErrorKind::Unknown => LinuxKernelError::EINVAL,
+            GenericErrorKind::NotImplemented => LinuxKernelError::EINVAL,
         }
     }
 }

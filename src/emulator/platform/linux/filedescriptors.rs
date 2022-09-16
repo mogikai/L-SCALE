@@ -17,7 +17,8 @@ FileHandle<Endianness: ByteOrder> {
 
 //TODO build a trait
 impl<Endianness: ByteOrder>
-Handle<Endianness> for FileHandle<Endianness> {
+Handle<Endianness> for
+FileHandle<Endianness> {
     fn stat(
         &self
     ) -> Result<Ref<Stat<Endianness>>, GenericError> {

@@ -1,6 +1,7 @@
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::cpu::{CPU, Vaddr};
+use crate::emulator::abstractions::handles::Handle;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::kernel::{LinuxKernel, SyscallResult};
 
@@ -53,6 +54,19 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         _: &mut impl CPU,
         flags: u64,
     ) -> SyscallResult {
-        todo!()
+        Ok(self.handles.add(Box::new(Epoll::new())))
     }
+}
+
+struct Epoll {}
+
+impl Epoll {
+    fn new() -> Self {
+        Epoll {}
+    }
+}
+
+impl<Endianness: ByteOrder>
+Handle<Endianness> for
+Epoll {
 }

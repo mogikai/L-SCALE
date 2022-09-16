@@ -86,16 +86,16 @@ LinuxKernel<Endianness, Arch> {
         trace!("openat file: {:?}", fname);
         let p = Path::new(&fname);
         let file = self.filesystem.borrow().resolve_last(p)?;
-        let fd = *self.handles.keys().max().unwrap_or(&2) + 1;
-        self.handles.insert(fd, Box::new(FileHandle::new(self.filesystem.clone(), file)));
-        Ok(fd)
+        Ok(self.handles.add(Box::new(FileHandle::new(self.filesystem.clone(), file))))
     }
 
     pub fn close(&mut self,
                  _: &mut impl CPU,
                  fd: u64)
         -> SyscallResult {
-        self.handles.remove(&fd);
+        if let None = self.handles.remove(&fd) {
+            Err(LinuxKernelError::EBADF)?
+        }
         Ok(0)
     }
 

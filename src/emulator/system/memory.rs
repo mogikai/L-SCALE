@@ -43,6 +43,7 @@ pub enum MemoryError {
     NotMapped,
     NotAligned,
     ZeroSize,
+    InvalidSize,
 }
 
 pub trait MemoryWrite<T> {
@@ -175,6 +176,11 @@ pub trait Encode<Endianness: ByteOrder> {
     fn encode(&self) -> Vec<u8>;
 }
 
+pub trait Decode<Endianness: ByteOrder>: Sized {
+    fn decode(val: &[u8]) -> Result<Self, MemoryError>;
+    fn required_mem() -> usize;
+}
+
 impl<'a, Endianness: ByteOrder> Memory<Endianness> {
     pub fn new<'b>(cpu: &mut (impl MMU + Hooks<'b>), stack_base: Vaddr, stack_size: usize, heap_base: Vaddr) -> Memory<Endianness> {
         let mut mem = Memory {
@@ -204,8 +210,8 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
     }
 
     pub fn write_generic<T>(&self,
-                           addr: Vaddr,
-                           val: &T)
+                            addr: Vaddr,
+                            val: &T)
         -> Result<(), MemoryError>
     where T: Encode<Endianness> {
         let data = val.encode();
@@ -227,24 +233,53 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         Ok(Ref::map(region.as_slice(), |d| &d[offset..min(offset + size, region.size as usize)]))
     }
 
-    pub fn read_struct<T>(&self,
-                          address: Vaddr)
-        -> Result<T, MemoryError>
-    where T: for<'b> TryFrom<&'b [u8]> {
-        let mem = self.access_mem(address, mem::size_of::<T>())?;
-        T::try_from(mem.as_ref()).or(Err(MemoryError::ConversionError))
+    pub fn read_struct<T: Decode<Endianness>>(
+        &self,
+        address: Vaddr,
+    ) -> Result<T, MemoryError> {
+        let mem = self.access_mem_range(address, address + T::required_mem() as Vaddr)?;
+        T::decode(mem.as_ref()).or(Err(MemoryError::ConversionError))
+    }
+
+    /// Reads a struct but the memory supplied to decode is bounded by size
+    pub fn read_struct_bounded<T: Decode<Endianness>>(
+        &self,
+        address: Vaddr,
+        size: usize,
+    ) -> Result<T, MemoryError> {
+        let mem = self.access_mem_range(address, address + T::required_mem() as Vaddr)?;
+        T::decode(&mem[..min(size, T::required_mem())]).or(Err(MemoryError::ConversionError))
+    }
+
+    pub fn read_structs<T: Decode<Endianness>>(
+        &self,
+        address: Vaddr,
+        count: usize,
+    ) -> Result<Vec<T>, MemoryError> {
+        let mut out = Vec::with_capacity(count);
+        let mem = self.access_mem_range(address, address + (count * T::required_mem()) as Vaddr)?;
+        for i in 0..count {
+            out.push(T::decode(&mem[i * T::required_mem()..(i + 1) * T::required_mem()]).or(Err(MemoryError::ConversionError))?);
+        }
+        Ok(out)
     }
 
     pub fn access_mem(&self, address: Vaddr, size: usize) -> Result<Ref<[u8]>, MemoryError> {
-        let region = self.get_region(address).ok_or(MemoryError::NotMapped)?;
-        let offset = (address - region.vaddr) as usize;
-        Ok(Ref::map(region.as_slice(), |slice| &slice[offset..offset + size]))
+        self.access_mem_range(address, address.checked_add(size as Vaddr).ok_or(MemoryError::InvalidSize)?)
     }
 
     pub fn access_mem_mut(&self, address: Vaddr, size: usize) -> Result<RefMut<[u8]>, MemoryError> {
-        let region = self.get_region(address).ok_or(MemoryError::NotMapped)?;
-        let offset = (address - region.vaddr) as usize;
-        Ok(RefMut::map(region.as_mut_slice(), |slice| &mut slice[offset..offset + size]))
+        self.access_mem_range_mut(address, address.checked_add(size as Vaddr).ok_or(MemoryError::InvalidSize)?)
+    }
+
+    pub fn access_mem_range(&self, start: Vaddr, end: Vaddr) -> Result<Ref<[u8]>, MemoryError> {
+        if start >= end {
+            Err(MemoryError::NotMapped)?
+        }
+        let region = self.get_region(start).ok_or(MemoryError::NotMapped)?;
+        let start_offset = (start - region.vaddr) as usize;
+        let end_offset = min(end - region.vaddr, region.end() as Vaddr) as usize;
+        Ok(Ref::map(region.as_slice(), |slice| &slice[start_offset..end_offset]))
     }
 
     pub fn access_mem_range_mut(&self, start: Vaddr, end: Vaddr) -> Result<RefMut<[u8]>, MemoryError> {

@@ -1,10 +1,19 @@
+use std::cmp::min;
+use std::io::SeekFrom::End;
+use std::mem;
+
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::cpu::{CPU, Vaddr};
+use crate::emulator::abstractions::handles::Handle;
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::kernel::{LinuxKernel, SyscallResult};
+use crate::emulator::platform::linux::kernel::{LinuxKernel, LinuxKernelError, SyscallResult};
+use crate::emulator::system::memory::{Decode, MemoryError, MemoryWrite};
+use crate::emulator::system::net::{Sockaddr, SocketDomain, SocketFlags, SocketType};
+use crate::emulator::system::net::netlink::NetlinkSocket;
 
-impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
+impl<Endianness: ByteOrder, Arch: Architecture>
+LinuxKernel<Endianness, Arch> {
     pub fn socket(
         &mut self,
         _: &mut impl CPU,
@@ -12,7 +21,16 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         typ: u64,
         protocol: u64,
     ) -> SyscallResult {
-        todo!()
+        let family = SocketDomain::from(family);
+        let flags = SocketFlags::from(typ);
+        let typ = SocketType::try_from(typ)?;
+        debug!("Creating socket ({:?} {:?})", family, typ);
+        use SocketDomain::*;
+        let socket: Box<dyn Handle<Endianness>> = match family {
+            AF_NETLINK => Box::new(NetlinkSocket::new()),
+            _ => todo!()
+        };
+        Ok(self.handles.add(socket))
     }
 
     pub fn connect(
@@ -42,10 +60,13 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         buff: Vaddr, // void*
         len: u64, // size_t
         flags: u64, // unsigned int
-        addr: Vaddr, // sockaddr*
-        addr_len: u64, // int
+        dest_addr: Vaddr, // sockaddr*
+        dest_addr_len: u64,
     ) -> SyscallResult {
-        todo!()
+        let sockaddr = self.memory.read_struct_bounded::<Sockaddr>(dest_addr, dest_addr_len as usize)?;
+        let buff = self.memory.access_mem(buff, len as usize)?;
+        debug!("Buff: {:?}", &*buff);
+        Ok(self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADFD)?.sendto(&*buff)? as u64)
     }
 
     pub fn recvfrom(
@@ -78,7 +99,18 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         msg: Vaddr, // msghdr*
         flags: u64, // unsigned int
     ) -> SyscallResult {
-        todo!()
+        let msghdr = self.memory.read_struct::<user_msghdr>(msg)?;
+        let addr = self.memory.read_struct::<Sockaddr>(msghdr.msg_name);
+        let iovec = self.memory.read_structs::<iovec>(msghdr.msg_iov, msghdr.msg_iovlen as usize)?;
+        let to_read = iovec.iter().try_fold(0usize, |sum, vec| sum.checked_add(vec.iov_len as usize)).ok_or(LinuxKernelError::EINVAL)?;
+        let data = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADFD)?.recvmsg(to_read)?;
+        let offset = 0;
+        for vec in iovec {
+            let to_write = &data[offset..];
+            let max_len = min(vec.iov_len as usize, to_write.len());
+            self.memory.write(vec.iov_base, &to_write[..max_len]);
+        }
+        Ok(0)
     }
 
     pub fn shutdown(
@@ -97,7 +129,10 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         umyaddr: Vaddr, // sockaddr*
         addrlen: u64,
     ) -> SyscallResult {
-        todo!()
+        let handle = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADF)?;
+        let sockaddr = self.memory.read_struct::<Sockaddr>(umyaddr)?;
+        handle.bind(sockaddr)?;
+        Ok(0)
     }
 
     pub fn listen(
@@ -116,7 +151,9 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         usockaddr: Vaddr, // sockaddr*
         usockaddr_len: Vaddr, // int*
     ) -> SyscallResult {
-        todo!()
+        let sockaddr = self.handles.get(&fd).ok_or(LinuxKernelError::EBADF)?.getsockname()?;
+        self.memory.write_generic(usockaddr, sockaddr)?;
+        Ok(0)
     }
 
     pub fn getpeername(
@@ -196,5 +233,68 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         flags: u64, // unsigned int
     ) -> SyscallResult {
         todo!()
+    }
+}
+
+struct
+user_msghdr {
+    msg_name: Vaddr,
+    /* ptr to socket address structure */ // void*
+    msg_namelen: u64,
+    /* size of socket address structure */
+    msg_iov: Vaddr,
+    /* scatter/gather array */ // iovec*
+    msg_iovlen: u64,
+    /* # elements in msg_iov */
+    msg_control: Vaddr,
+    /* ancillary data */ // void*
+    msg_controllen: u64,
+    /* ancillary data buffer length */
+    msg_flags: u32,
+    /* flags on received message */
+}
+
+impl<Endianness: ByteOrder>
+Decode<Endianness> for
+user_msghdr {
+    fn decode(val: &[u8]) -> Result<Self, MemoryError> {
+        Ok(Self {
+            msg_name: Endianness::read_u64(&val[..8]),
+            msg_namelen: Endianness::read_u64(&val[8..16]),
+            msg_iov: Endianness::read_u64(&val[16..24]),
+            msg_iovlen: Endianness::read_u64(&val[24..32]),
+            msg_control: Endianness::read_u64(&val[32..40]),
+            msg_controllen: Endianness::read_u64(&val[40..48]),
+            msg_flags: Endianness::read_u32(&val[48..52]),
+        })
+    }
+
+    fn required_mem() -> usize {
+        3 * mem::size_of::<Vaddr>()
+            + 3 * mem::size_of::<u64>()
+            + mem::size_of::<u32>()
+    }
+}
+
+struct
+iovec {
+    iov_base: Vaddr,
+    /* BSD uses caddr_t (1003.1g requires void *) */ // void*
+    iov_len: u64,
+    /* Must be size_t (1003.1g) */
+}
+
+impl<Endianness: ByteOrder>
+Decode<Endianness> for
+iovec {
+    fn decode(val: &[u8]) -> Result<Self, MemoryError> {
+        Ok(Self {
+            iov_base: Endianness::read_u64(&val[..8]),
+            iov_len: Endianness::read_u64(&val[8..16]),
+        })
+    }
+
+    fn required_mem() -> usize {
+        mem::size_of::<Vaddr>() + mem::size_of::<u64>()
     }
 }

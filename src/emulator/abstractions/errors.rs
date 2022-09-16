@@ -8,6 +8,7 @@ use crate::emulator::system::filesystem::FSError;
 pub enum GenericErrorKind {
     CPUError(CPUError),
     FSError(FSError),
+    NotImplemented,
     Unknown,
 }
 
