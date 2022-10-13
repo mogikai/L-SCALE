@@ -8,10 +8,11 @@ use std::marker::PhantomData;
 use std::ops::Range;
 use std::rc::Rc;
 
+use bitflags::bitflags;
 use byteorder::ByteOrder;
 use goblin::pe::import::Bitfield;
 
-use crate::emulator::abstractions::cpu::{Hooks, MMU, Permission, Vaddr};
+use crate::emulator::abstractions::cpu::{CPU, Hooks, MMU, Permission, Vaddr};
 
 const MASK4K: u64 = 4 * (1 << 10) - 1;
 
@@ -36,7 +37,7 @@ fn is4kaligned(address: Vaddr) -> bool {
     (address & MASK4K) == 0
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum MemoryError {
     ConversionError,
     AlreadyMapped,
@@ -172,13 +173,83 @@ impl<Endianness: ByteOrder> MemoryWrite<&str> for Memory<Endianness> {
     }
 }
 
-pub trait Encode<Endianness: ByteOrder> {
+pub trait Encode<Endianness: ByteOrder>: Sized {
     fn encode(&self) -> Vec<u8>;
+}
+
+pub struct
+Encoder<Endianness: ByteOrder> {
+    output: Vec<u8>,
+    _phantom: PhantomData<Endianness>,
+}
+
+impl<Endianness: ByteOrder> Encoder<Endianness> {
+    pub
+    fn new() -> Encoder<Endianness> {
+        Encoder {
+            output: vec![],
+            _phantom: Default::default(),
+        }
+    }
+
+    pub
+    fn encode<T: Encode<Endianness>>(
+        mut self,
+        data: &T
+    ) -> Self {
+        self.output.extend(data.encode());
+        self
+    }
+
+    pub
+    fn encode_front<T: Encode<Endianness>>(
+        mut self,
+        data: &T
+    ) -> Self {
+        let mut bytes = data.encode();
+        mem::swap(&mut bytes, &mut self.output);
+        self.output.extend(bytes);
+        self
+    }
+
+    pub
+    fn encode_with<F>(
+        mut self,
+        encode: F,
+    ) -> Self
+    where F: Fn(Self) -> Self {
+        encode(self)
+    }
+
+    pub
+    fn finalize(self) -> Vec<u8> {
+        self.output
+    }
+
+    pub
+    fn encoded_length(
+        &self
+    ) -> usize {
+        self.output.len()
+    }
+}
+
+impl<Endianness: ByteOrder>
+Encode<Endianness> for
+&[u8] {
+    fn encode(&self) -> Vec<u8> {
+        self.to_vec()
+    }
 }
 
 pub trait Decode<Endianness: ByteOrder>: Sized {
     fn decode(val: &[u8]) -> Result<Self, MemoryError>;
-    fn required_mem() -> usize;
+}
+
+pub trait RequiredMem: Sized {
+    fn required_mem() -> usize {
+        mem::size_of::<Self>()
+    }
 }
 
 impl<'a, Endianness: ByteOrder> Memory<Endianness> {
@@ -204,15 +275,18 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         mem
     }
 
-    pub fn stack_size(&self)
-        -> usize {
+    pub fn stack_size(
+        &self
+    ) -> usize {
         self.stack_size
     }
 
-    pub fn write_generic<T>(&self,
-                            addr: Vaddr,
-                            val: &T)
-        -> Result<(), MemoryError>
+    pub
+    fn write_generic<T>(
+        &self,
+        addr: Vaddr,
+        val: &T,
+    ) -> Result<(), MemoryError>
     where T: Encode<Endianness> {
         let data = val.encode();
         let mut start = addr;
@@ -233,7 +307,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         Ok(Ref::map(region.as_slice(), |d| &d[offset..min(offset + size, region.size as usize)]))
     }
 
-    pub fn read_struct<T: Decode<Endianness>>(
+    pub fn read_struct<T: Decode<Endianness> + RequiredMem>(
         &self,
         address: Vaddr,
     ) -> Result<T, MemoryError> {
@@ -242,7 +316,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
     }
 
     /// Reads a struct but the memory supplied to decode is bounded by size
-    pub fn read_struct_bounded<T: Decode<Endianness>>(
+    pub fn read_struct_bounded<T: Decode<Endianness> + RequiredMem>(
         &self,
         address: Vaddr,
         size: usize,
@@ -251,7 +325,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         T::decode(&mem[..min(size, T::required_mem())]).or(Err(MemoryError::ConversionError))
     }
 
-    pub fn read_structs<T: Decode<Endianness>>(
+    pub fn read_structs<T: Decode<Endianness> + RequiredMem>(
         &self,
         address: Vaddr,
         count: usize,
@@ -283,7 +357,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
     }
 
     pub fn access_mem_range_mut(&self, start: Vaddr, end: Vaddr) -> Result<RefMut<[u8]>, MemoryError> {
-        if start >= end {
+        if start > end {
             Err(MemoryError::NotMapped)?
         }
         let region = self.get_region(start).ok_or(MemoryError::NotMapped)?;
@@ -312,6 +386,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
 
     fn write_internal(&mut self, address: Vaddr, data: &[u8]) {
         let mut memory = self.access_mem_mut(address, data.len()).unwrap();
+        // TODO: Pass memory errors outwards so that they can be handled by the emulator
         memory.copy_from_slice(data);
     }
 
@@ -327,6 +402,31 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         self.fixed_mapping(start, size, perms, cpu)?;
         self.write_internal(vm_range.start, data);
         Ok(())
+    }
+
+    pub
+    fn remap(
+        &mut self,
+        old_addr: Vaddr,
+        old_len: u64,
+        new_addr: Vaddr,
+        new_len: u64,
+        flags: MREMAP_FLAGS,
+        cpu: &mut impl MMU,
+    ) -> Result<u64, MemoryError> {
+        let region = self.mappings.take(&old_addr).ok_or(MemoryError::NotMapped)?;
+        self.unmap_internal(&region, cpu);
+        let mut region = region.resize(new_len as usize);
+        if flags.contains(MREMAP_FLAGS::MREMAP_MAYMOVE) {
+            region.vaddr = self.find_space_for_region(region.vaddr, region.size);
+            self.map_internal(&region, cpu);
+            let new_addr = region.vaddr;
+            self.mappings.insert(region);
+            todo!()
+            // Ok(new_addr)
+        } else {
+            todo!("Implement remap without MAYMOVE")
+        }
     }
 
     pub fn mmap(&mut self, address: u64, size: u64, perms: Permission, cpu: &mut impl MMU) -> Result<u64, MemoryError> {
@@ -417,7 +517,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
 
     fn resize_region(&mut self, address: Vaddr, size: usize, cpu: &mut impl MMU) -> Result<(), MemoryError> {
         let region = self.mappings.take(&address).ok_or(MemoryError::NotMapped)?;
-        self.unmap_intern(&region, cpu);
+        self.unmap_internal(&region, cpu);
         let region = region.resize(size);
         self.map_internal(&region, cpu);
         self.mappings.insert(region);
@@ -448,20 +548,20 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         mappings.iter().for_each(|vaddr| {
             let region = self.mappings.take(vaddr).unwrap();
             let (front, middle, back) = region.cutout(address, size);
-            self.unmap_intern(&middle, cpu);
+            self.unmap_internal(&middle, cpu);
             front.map(|r| self.mappings.insert(r));
             back.map(|r| self.mappings.insert(r));
         });
         Ok(())
     }
 
-    fn unmap_intern(&self, region: &Region, cpu: &mut impl MMU) {
+    fn unmap_internal(&self, region: &Region, cpu: &mut impl MMU) {
         info!("unmap: vaddr: 0x{:X}, size: 0x{:X}", region.vaddr, region.size);
         cpu.mem_unmap(region.vaddr, region.size.try_into().unwrap()).expect("Failed to unmap");
     }
 
     fn update_mapping(&self, region: &Region, cpu: &mut impl MMU) {
-        self.unmap_intern(region, cpu);
+        self.unmap_internal(region, cpu);
         self.map_internal(region, cpu);
     }
 
@@ -493,6 +593,15 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
             self.update_mapping(&middle, cpu);
             self.mappings.insert(middle);
         }
+    }
+}
+
+bitflags! {
+    pub struct
+    MREMAP_FLAGS: u64 {
+        const MREMAP_MAYMOVE = 1;
+        const MREMAP_FIXED = 2;
+        const MREMAP_DONTUNMAP = 4;
     }
 }
 

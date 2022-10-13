@@ -1,5 +1,4 @@
 use std::cmp::min;
-use std::io::SeekFrom::End;
 use std::mem;
 
 use byteorder::ByteOrder;
@@ -8,9 +7,8 @@ use crate::emulator::abstractions::cpu::{CPU, Vaddr};
 use crate::emulator::abstractions::handles::Handle;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::kernel::{LinuxKernel, LinuxKernelError, SyscallResult};
-use crate::emulator::system::memory::{Decode, MemoryError, MemoryWrite};
-use crate::emulator::system::net::{Sockaddr, SocketDomain, SocketFlags, SocketType};
-use crate::emulator::system::net::netlink::NetlinkSocket;
+use crate::emulator::system::memory::{Decode, MemoryError, MemoryWrite, RequiredMem};
+use crate::emulator::system::net::{netlink, Sockaddr, SocketDomain, SocketFlags, SocketType};
 
 impl<Endianness: ByteOrder, Arch: Architecture>
 LinuxKernel<Endianness, Arch> {
@@ -27,7 +25,7 @@ LinuxKernel<Endianness, Arch> {
         debug!("Creating socket ({:?} {:?})", family, typ);
         use SocketDomain::*;
         let socket: Box<dyn Handle<Endianness>> = match family {
-            AF_NETLINK => Box::new(NetlinkSocket::new()),
+            AF_NETLINK => netlink::from_protocol(protocol)?,
             _ => todo!()
         };
         Ok(self.handles.add(socket))
@@ -104,13 +102,16 @@ LinuxKernel<Endianness, Arch> {
         let iovec = self.memory.read_structs::<iovec>(msghdr.msg_iov, msghdr.msg_iovlen as usize)?;
         let to_read = iovec.iter().try_fold(0usize, |sum, vec| sum.checked_add(vec.iov_len as usize)).ok_or(LinuxKernelError::EINVAL)?;
         let data = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADFD)?.recvmsg(to_read)?;
-        let offset = 0;
+        let mut offset = 0;
         for vec in iovec {
             let to_write = &data[offset..];
             let max_len = min(vec.iov_len as usize, to_write.len());
-            self.memory.write(vec.iov_base, &to_write[..max_len]);
+            offset += self.memory.write(vec.iov_base, &to_write[..max_len]) as usize;
+            if max_len < vec.iov_len as usize {
+                break
+            }
         }
-        Ok(0)
+        Ok(offset as u64)
     }
 
     pub fn shutdown(
@@ -124,13 +125,18 @@ LinuxKernel<Endianness, Arch> {
 
     pub fn bind(
         &mut self,
-        _: &mut impl CPU,
+        cpu: &mut impl CPU,
         fd: u64,
         umyaddr: Vaddr, // sockaddr*
         addrlen: u64,
     ) -> SyscallResult {
         let handle = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADF)?;
-        let sockaddr = self.memory.read_struct::<Sockaddr>(umyaddr)?;
+        let mut sockaddr = self.memory.read_struct::<Sockaddr>(umyaddr)?;
+        if let Sockaddr::NL { nl_pad, nl_pid, nl_groups } = &mut sockaddr {
+            if *nl_pid == 0 {
+                *nl_pid = self.pid;
+            }
+        }
         handle.bind(sockaddr)?;
         Ok(0)
     }
@@ -236,6 +242,7 @@ LinuxKernel<Endianness, Arch> {
     }
 }
 
+#[repr(C)]
 struct
 user_msghdr {
     msg_name: Vaddr,
@@ -257,7 +264,9 @@ user_msghdr {
 impl<Endianness: ByteOrder>
 Decode<Endianness> for
 user_msghdr {
-    fn decode(val: &[u8]) -> Result<Self, MemoryError> {
+    fn decode(
+        val: &[u8]
+    ) -> Result<Self, MemoryError> {
         Ok(Self {
             msg_name: Endianness::read_u64(&val[..8]),
             msg_namelen: Endianness::read_u64(&val[8..16]),
@@ -268,14 +277,13 @@ user_msghdr {
             msg_flags: Endianness::read_u32(&val[48..52]),
         })
     }
-
-    fn required_mem() -> usize {
-        3 * mem::size_of::<Vaddr>()
-            + 3 * mem::size_of::<u64>()
-            + mem::size_of::<u32>()
-    }
 }
 
+impl
+RequiredMem for
+user_msghdr {}
+
+#[repr(C)]
 struct
 iovec {
     iov_base: Vaddr,
@@ -287,14 +295,16 @@ iovec {
 impl<Endianness: ByteOrder>
 Decode<Endianness> for
 iovec {
-    fn decode(val: &[u8]) -> Result<Self, MemoryError> {
+    fn decode(
+        val: &[u8]
+    ) -> Result<Self, MemoryError> {
         Ok(Self {
             iov_base: Endianness::read_u64(&val[..8]),
             iov_len: Endianness::read_u64(&val[8..16]),
         })
     }
-
-    fn required_mem() -> usize {
-        mem::size_of::<Vaddr>() + mem::size_of::<u64>()
-    }
 }
+
+impl
+RequiredMem for
+iovec {}

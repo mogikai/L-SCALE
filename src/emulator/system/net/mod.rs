@@ -3,7 +3,7 @@ use num_enum::FromPrimitive;
 
 use crate::emulator::abstractions::handles::Handle;
 use crate::emulator::platform::linux::kernel::LinuxKernelError;
-use crate::emulator::system::memory::{Decode, Encode, MemoryError};
+use crate::emulator::system::memory::{Decode, Encode, MemoryError, RequiredMem};
 
 pub mod netlink;
 
@@ -22,6 +22,7 @@ Handle<Endianness> for
 Socket {
 }
 
+#[derive(Copy, Clone)]
 pub enum
 Sockaddr {
     IN { sin_port: u16, sin_addr: u32 },
@@ -48,7 +49,11 @@ Sockaddr {
             _ => Err(MemoryError::ConversionError)?,
         })
     }
+}
 
+impl
+RequiredMem for
+Sockaddr {
     fn required_mem() -> usize {
         128 // Defined in kernel
     }
@@ -58,7 +63,17 @@ impl<Endianness: ByteOrder>
 Encode<Endianness> for
 Sockaddr {
     fn encode(&self) -> Vec<u8> {
-        let out = vec![0; 128];
+        let mut out = vec![0; 128];
+        use Sockaddr::*;
+        match self {
+            NL { nl_pad, nl_pid, nl_groups } => {
+                Endianness::write_u16(&mut out[..2], SocketDomain::AF_NETLINK as u16);
+                Endianness::write_u16(&mut out[2..4], *nl_pad);
+                Endianness::write_u32(&mut out[4..8], *nl_pid);
+                Endianness::write_u32(&mut out[8..12], *nl_groups);
+            },
+            _ => todo!(),
+        }
         out
     }
 }
@@ -112,7 +127,7 @@ SocketType {
 
     fn try_from(value: u64) -> Result<Self, Self::Error> {
         use SocketType::*;
-        Ok(match value & 0xFFF {
+        Ok(match value & 0xFF {
             1 => SOCK_STREAM,
             2 => SOCK_DGRAM,
             3 => SOCK_RAW,

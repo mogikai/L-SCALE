@@ -1,80 +1,42 @@
-use std::collections::VecDeque;
 use std::mem;
 
+use bitflags::bitflags;
 use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
 
-use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
+use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::handles::Handle;
-use crate::emulator::system::memory::{Decode, MemoryError};
-use crate::emulator::system::net::Sockaddr;
+use crate::emulator::system::memory::{Decode, Encode, MemoryError, RequiredMem};
+use crate::emulator::system::net::netlink::rtnetlink::{RTNetlinkMessageType, RTNetlinkSocket};
 
-pub struct
-NetlinkSocket {
-    sockaddr: Option<Sockaddr>,
-    messages: VecDeque<Vec<u8>>,
-}
+pub mod rtnetlink;
 
 
 // TODO: Make global netlink handler that is referenced by netlink sockets.
 //       Each kernel(task) will have access to the handler.
 
-impl
-NetlinkSocket {
-    pub
-    fn new() -> Self {
-        Self {
-            sockaddr: None,
-            messages: VecDeque::new(),
-        }
-    }
-}
-
-impl<Endianness: ByteOrder>
-Handle<Endianness> for
-NetlinkSocket {
-    fn bind(
-        &mut self,
-        sockaddr: Sockaddr,
-    ) -> Result<(), GenericError> {
-        // TODO: What needs to be done here?
-        self.sockaddr = Some(sockaddr);
-        Ok(())
-    }
-
-    fn getsockname(
-        &self
-    ) -> Result<&Sockaddr, GenericError> {
-        match &self.sockaddr {
-            Some(s) => Ok(s),
-            None => Err(GenericError::new(GenericErrorKind::Unknown, ""))
-        }
-    }
-
-    fn sendto(
-        &mut self,
-        data: &[u8],
-    ) -> Result<usize, GenericError> {
-        debug!("sendto: {:?}", <nlmsghdr as Decode::<Endianness>>::decode(data));
-        Ok(data.len())
-    }
-
-    fn recvmsg(
-        &mut self,
-        len: usize,
-    ) -> Result<Vec<u8>, GenericError> {
-        // TODO: EAGAIN?
-        self.messages.pop_back().ok_or_else(|| GenericError::new(GenericErrorKind::Unknown, ""))
-    }
+pub
+fn from_protocol<Endianness: ByteOrder>(protocol: u64) -> Result<Box<dyn Handle<Endianness>>, GenericError> {
+    use NetlinkFamily::*;
+    Ok(match NetlinkFamily::from(protocol) {
+        NETLINK_ROUTE => Box::new(RTNetlinkSocket::new()),
+        _ => todo!(),
+    })
 }
 
 #[derive(Debug)]
+#[repr(C)]
 struct nlmsghdr {
-    nlmsg_len: u32,    /* Length of message including header */
-    nlmsg_type: u16,   /* Type of message content */
-    nlmsg_flags: u16,  /* Additional flags */
-    nlmsg_seq: u32,    /* Sequence number */
-    nlmsg_pid: u32,    /* Sender port ID */
+    nlmsg_len: u32,
+    /* Length of message including header */
+    nlmsg_type: RTNetlinkMessageType,
+    /* Type of message content */
+    nlmsg_flags: NetlinkMessageFlags,
+    /* Additional flags */
+    nlmsg_seq: u32,
+    /* Sequence number */
+    nlmsg_pid: u32,
+    /* Sender port ID */
 }
 
 impl<Endianness: ByteOrder>
@@ -83,15 +45,61 @@ nlmsghdr {
     fn decode(val: &[u8]) -> Result<Self, MemoryError> {
         Ok(Self {
             nlmsg_len: Endianness::read_u32(&val[..4]),
-            nlmsg_type: Endianness::read_u16(&val[4..6]),
-            nlmsg_flags: Endianness::read_u16(&val[6..8]),
+            nlmsg_type: RTNetlinkMessageType::from(Endianness::read_u16(&val[4..6])),
+            nlmsg_flags: NetlinkMessageFlags::from_bits(Endianness::read_u16(&val[6..8])).ok_or(MemoryError::ConversionError)?,
             nlmsg_seq: Endianness::read_u32(&val[8..12]),
             nlmsg_pid: Endianness::read_u32(&val[12..]),
         })
     }
+}
 
-    fn required_mem() -> usize {
-        3 * mem::size_of::<u32>() + 2 * mem::size_of::<u16>()
+impl
+RequiredMem for
+nlmsghdr {}
+
+impl<Endianness: ByteOrder>
+Encode<Endianness> for
+nlmsghdr {
+    fn encode(&self) -> Vec<u8> {
+        let mut out = vec![0; mem::size_of::<Self>()];
+        Endianness::write_u32(&mut out[..4], self.nlmsg_len);
+        Endianness::write_u16(&mut out[4..6], self.nlmsg_type.into());
+        Endianness::write_u16(&mut out[6..8], self.nlmsg_flags.bits);
+        Endianness::write_u32(&mut out[8..12], self.nlmsg_seq);
+        Endianness::write_u32(&mut out[12..], self.nlmsg_pid);
+        out
+    }
+}
+
+bitflags! {
+    struct
+    NetlinkMessageFlags: u16 {
+        const NLM_F_REQUEST         = 0x01;	    /* It is request message. 	*/
+        const NLM_F_MULTI           = 0x02;	    /* Multipart message, terminated by NLMSG_DONE */
+        const NLM_F_ACK             = 0x04;	    /* Reply with ack, with zero or error code */
+        const NLM_F_ECHO            = 0x08;	    /* Echo this request 		*/
+        const NLM_F_DUMP_INTR       = 0x10;	    /* Dump was inconsistent due to sequence change */
+        const NLM_F_DUMP_FILTERED   = 0x20;	    /* Dump was filtered as requested */
+
+        /* Modifiers to GET request */
+        const NLM_GET_F_ROOT        = 0x100;	/* specify tree	root	*/
+        const NLM_GET_F_MATCH       = 0x200;	/* return all matching	*/
+        const NLM_GET_F_ATOMIC      = 0x400;	/* atomic GET		*/
+        const NLM_GET_F_DUMP        = Self::NLM_GET_F_ROOT.bits | Self::NLM_GET_F_MATCH.bits;
+
+        /* Modifiers to NEW request */
+        const NLM_NEW_F_REPLACE     = 0x100;	/* Override existing		*/
+        const NLM_NEW_F_EXCL        = 0x200;	/* Do not touch, if it exists	*/
+        const NLM_NEW_F_CREATE      = 0x400;	/* Create, if it does not exist	*/
+        const NLM_NEW_F_APPEND      = 0x800;	/* Add to end of list		*/
+
+        /* Modifiers to DELETE request */
+        const NLM_DELETE_F_NONREC    = 0x100;	/* Do not delete recursively	*/
+        const NLM_DELETE_F_BULK      = 0x200;	/* Delete multiple objects	*/
+
+        /* Flags for ACK message */
+        const NLM_ACK_F_CAPPED       = 0x100;	/* request was capped */
+        const NLM_ACK_F_ACK_TLVS     = 0x200;	/* extended ACK TVLs were included */
     }
 }
 

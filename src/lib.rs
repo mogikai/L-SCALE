@@ -1,3 +1,5 @@
+#![feature(let_else)]
+
 pub mod emulator;
 pub mod fuzzer;
 

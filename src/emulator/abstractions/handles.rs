@@ -6,7 +6,8 @@ use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::system::filesystem::Stat;
 use crate::emulator::system::net::Sockaddr;
 
-pub trait Handle<Endianness: ByteOrder> {
+pub trait
+Handle<Endianness: ByteOrder> {
     /// returns: The stat vector of the handle this method is called on
     fn stat(
         &self

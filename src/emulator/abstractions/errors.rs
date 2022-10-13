@@ -3,23 +3,31 @@ use std::fmt::{Debug, Display, Formatter};
 
 use crate::emulator::abstractions::cpu::CPUError;
 use crate::emulator::system::filesystem::FSError;
+use crate::emulator::system::memory::MemoryError;
 
 #[derive(Debug)]
-pub enum GenericErrorKind {
+pub enum
+GenericErrorKind {
     CPUError(CPUError),
     FSError(FSError),
+    MemoryError(MemoryError),
     NotImplemented,
     Unknown,
 }
 
 #[derive(Debug)]
-pub struct GenericError {
+pub struct
+GenericError {
     kind: GenericErrorKind,
     message: String,
 }
 
 impl GenericError {
-    pub fn new(kind: GenericErrorKind, message: &str) -> Self {
+    pub
+    fn new(
+        kind: GenericErrorKind,
+        message: &str,
+    ) -> Self {
         Self {
             kind,
             message: message.to_string(),
@@ -34,13 +42,19 @@ impl GenericError {
 }
 
 impl Display for GenericError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
         write!(f, "GenericError({}): {}", self.kind, self.message)
     }
 }
 
 impl Display for GenericErrorKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
         write!(f, "{:?}", self)
     }
 }
@@ -48,13 +62,34 @@ impl Display for GenericErrorKind {
 impl Error for GenericError {}
 
 impl From<FSError> for GenericError {
-    fn from(e: FSError) -> Self {
-        Self { kind: GenericErrorKind::FSError(e), message: "".to_string() }
+    fn from(
+        e: FSError
+    ) -> Self {
+        Self {
+            kind: GenericErrorKind::FSError(e),
+            message: "".to_string(),
+        }
     }
 }
 
 impl From<CPUError> for GenericError {
-    fn from(e: CPUError) -> Self {
-        Self { kind: GenericErrorKind::CPUError(e), message: "".to_string() }
+    fn from(
+        e: CPUError
+    ) -> Self {
+        Self {
+            kind: GenericErrorKind::CPUError(e),
+            message: "".to_string(),
+        }
+    }
+}
+
+impl From<MemoryError> for GenericError {
+    fn from(
+        e: MemoryError
+    ) -> Self {
+        Self {
+            kind: GenericErrorKind::MemoryError(e),
+            message: "".to_string(),
+        }
     }
 }

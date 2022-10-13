@@ -20,7 +20,7 @@ use crate::emulator::platform::linux::filedescriptors::FileHandle;
 use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
 use crate::emulator::system::default_handles;
 use crate::emulator::system::filesystem::{Filesystem, FSError};
-use crate::emulator::system::memory::{Decode, Encode, Memory, MemoryError, MemoryWrite};
+use crate::emulator::system::memory::{Decode, Encode, Memory, MemoryError, MemoryWrite, MREMAP_FLAGS, RequiredMem};
 use crate::read_osstring;
 
 pub mod fs;
@@ -117,6 +117,7 @@ pub struct LinuxKernel<Endianness: ByteOrder, Arch: Architecture> {
     robust_list_head: Option<Vaddr>,
     signalhandler: SignalHandler<Arch::SignalFlags>,
     system_time: Duration,
+    pid: u32,
     _arch: PhantomData<Arch>,
 }
 
@@ -136,6 +137,7 @@ LinuxKernel<Endianness, Arch> {
             robust_list_head: None,
             signalhandler: SignalHandler::new(),
             system_time: Duration::from_nanos(1662647309301240322),
+            pid: 1337,
             _arch: PhantomData,
         }
     }
@@ -295,7 +297,7 @@ LinuxKernel<Endianness, Arch> {
         _: &mut impl CPU,
     ) -> SyscallResult {
         // TODO: Implement multi threading / processing
-        Ok(1)
+        Ok(self.pid as u64)
     }
 
     fn mmap_anon(
@@ -421,6 +423,19 @@ LinuxKernel<Endianness, Arch> {
         _mode: u64,
     ) -> SyscallResult {
         Err(LinuxKernelError::EINVAL)
+    }
+
+    pub
+    fn mremap(
+        &mut self,
+        cpu: &mut impl MMU,
+        old_addr: Vaddr,
+        old_len: u64,
+        new_len: u64,
+        flags: u64,
+        new_addr: Vaddr
+    ) -> SyscallResult {
+        Ok(self.memory.remap(old_addr, old_len, new_addr, new_len, MREMAP_FLAGS::from_bits(flags).ok_or(LinuxKernelError::EINVAL)?, cpu)?)
     }
 
     pub fn mprotect(
@@ -619,13 +634,16 @@ for Timespec<Endianness> {
 }
 
 // TODO: Make types architecture dependant
-struct Rlimit {
+#[repr(C)]
+struct
+Rlimit {
     rlim_cur: u64,
     rlim_max: u64,
 }
 
-impl<Endianness: ByteOrder> Encode<Endianness>
-for Rlimit {
+impl<Endianness: ByteOrder>
+Encode<Endianness> for
+Rlimit {
     fn encode(&self) -> Vec<u8> {
         let mut d = vec![0; mem::size_of::<Self>()];
         Endianness::write_u64(&mut d[..8], self.rlim_cur);
@@ -635,10 +653,11 @@ for Rlimit {
 }
 
 // TODO: Write derive macro or something like this to automate the from trait?
-impl<Endianness: ByteOrder> Decode<Endianness>
-for Rlimit {
+impl<Endianness: ByteOrder>
+Decode<Endianness> for
+Rlimit {
     fn decode(value: &[u8]) -> Result<Self, MemoryError> {
-        if value.len() != mem::size_of::<u64>() * 2 {
+        if value.len() != mem::size_of::<Rlimit>() {
             Err(MemoryError::InvalidSize)
         } else {
             Ok(Rlimit {
@@ -647,11 +666,11 @@ for Rlimit {
             })
         }
     }
-
-    fn required_mem() -> usize {
-        mem::size_of::<u64>() * 2
-    }
 }
+
+impl
+RequiredMem for
+Rlimit {}
 
 #[repr(u64)]
 #[derive(FromPrimitive)]
@@ -1021,6 +1040,7 @@ impl From<GenericError> for LinuxKernelError {
         match e.kind() {
             GenericErrorKind::CPUError(e) => (*e).into(),
             GenericErrorKind::FSError(e) => (*e).into(),
+            GenericErrorKind::MemoryError(e) => (*e).into(),
             GenericErrorKind::Unknown => LinuxKernelError::EINVAL,
             GenericErrorKind::NotImplemented => LinuxKernelError::EINVAL,
         }
