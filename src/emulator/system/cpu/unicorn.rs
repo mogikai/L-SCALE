@@ -1,3 +1,4 @@
+use std::arch::x86_64;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -71,6 +72,14 @@ fn _code_hook<'a>(uc: &mut Unicorn<'a, *mut UCWrapper<'_>>, address: u64, size: 
             }
         }
         println!(" {}", output);
+        // let rax: u64 = uc.reg_read(unicorn_engine::RegisterX86::RAX).unwrap();
+        // let rbx: u64 = uc.reg_read(unicorn_engine::RegisterX86::RBX).unwrap();
+        // let rcx: u64 = uc.reg_read(unicorn_engine::RegisterX86::RCX).unwrap();
+        // let rdx: u64 = uc.reg_read(unicorn_engine::RegisterX86::RDX).unwrap();
+        // println!("RAX: {rax:x}");
+        // println!("RBX: {rbx:x}");
+        // println!("RCX: {rcx:x}");
+        // println!("RDX: {rdx:x}");
     }
 }
 

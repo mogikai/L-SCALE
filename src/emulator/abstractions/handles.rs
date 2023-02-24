@@ -6,14 +6,12 @@ use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::system::filesystem::Stat;
 use crate::emulator::system::net::Sockaddr;
 
-pub trait
-Handle<Endianness: ByteOrder> {
+pub trait Handle<Endianness: ByteOrder> {
+    fn read_ready(&self) -> bool { todo!() }
+    fn write_ready(&self) -> bool { todo!() }
+
     /// returns: The stat vector of the handle this method is called on
-    fn stat(
-        &self
-    ) -> Result<Ref<Stat<Endianness>>, GenericError> {
-        todo!()
-    }
+    fn stat(&self) -> Result<Ref<Stat<Endianness>>, GenericError> { todo!() }
 
     /// # Arguments
     /// * `count`: The amount of bytes to read from the current position of the descriptor
@@ -53,11 +51,7 @@ Handle<Endianness: ByteOrder> {
         todo!()
     }
 
-    fn getsockname(
-        &self,
-    ) -> Result<&Sockaddr, GenericError> {
-        todo!()
-    }
+    fn getsockname(&self) -> Result<&Sockaddr, GenericError> { todo!() }
 
     fn sendto(
         &mut self,
@@ -72,4 +66,8 @@ Handle<Endianness: ByteOrder> {
     ) -> Result<Vec<u8>, GenericError> {
         todo!()
     }
+
+    fn connect(&mut self) -> Result<(), GenericError> { todo!() }
+
+    fn setsockopt(&mut self) -> Result<(), GenericError> { todo!() }
 }

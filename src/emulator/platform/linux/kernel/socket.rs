@@ -3,15 +3,15 @@ use std::mem;
 
 use byteorder::ByteOrder;
 
-use crate::emulator::abstractions::cpu::{CPU, Vaddr};
+use crate::emulator::abstractions::cpu::{Vaddr, CPU};
 use crate::emulator::abstractions::handles::Handle;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::kernel::{LinuxKernel, LinuxKernelError, SyscallResult};
 use crate::emulator::system::memory::{Decode, MemoryError, MemoryWrite, RequiredMem};
-use crate::emulator::system::net::{netlink, Sockaddr, SocketDomain, SocketFlags, SocketType};
+use crate::emulator::system::net::unix::UnixSocket;
+use crate::emulator::system::net::{inet6, netlink, Sockaddr, SocketDomain, SocketFlags, SocketType};
 
-impl<Endianness: ByteOrder, Arch: Architecture>
-LinuxKernel<Endianness, Arch> {
+impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
     pub fn socket(
         &mut self,
         _: &mut impl CPU,
@@ -26,7 +26,9 @@ LinuxKernel<Endianness, Arch> {
         use SocketDomain::*;
         let socket: Box<dyn Handle<Endianness>> = match family {
             AF_NETLINK => netlink::from_protocol(protocol)?,
-            _ => todo!()
+            AF_UNIX => Box::new(UnixSocket::new()),
+            AF_INET6 => inet6::from_type(typ)?,
+            _ => todo!(),
         };
         Ok(self.handles.add(socket))
     }
@@ -38,7 +40,8 @@ LinuxKernel<Endianness, Arch> {
         uservaddr: Vaddr,
         addrlen: u64,
     ) -> SyscallResult {
-        todo!()
+        self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADFD)?.connect()?;
+        Ok(0)
     }
 
     pub fn accept(
@@ -46,7 +49,7 @@ LinuxKernel<Endianness, Arch> {
         _: &mut impl CPU,
         fd: u64,
         upeer_sockaddr: Vaddr, // sockaddr*
-        upeer_addrlen: Vaddr, // int*
+        upeer_addrlen: Vaddr,  // int*
     ) -> SyscallResult {
         todo!()
     }
@@ -55,9 +58,9 @@ LinuxKernel<Endianness, Arch> {
         &mut self,
         _: &mut impl CPU,
         fd: u64,
-        buff: Vaddr, // void*
-        len: u64, // size_t
-        flags: u64, // unsigned int
+        buff: Vaddr,      // void*
+        len: u64,         // size_t
+        flags: u64,       // unsigned int
         dest_addr: Vaddr, // sockaddr*
         dest_addr_len: u64,
     ) -> SyscallResult {
@@ -71,10 +74,10 @@ LinuxKernel<Endianness, Arch> {
         &mut self,
         _: &mut impl CPU,
         fd: u64,
-        ubuf: Vaddr, // void*
-        size: u64, // size_t
-        flags: u64, // unsigned int
-        addr: Vaddr, // sockaddr*
+        ubuf: Vaddr,     // void*
+        size: u64,       // size_t
+        flags: u64,      // unsigned int
+        addr: Vaddr,     // sockaddr*
         addr_len: Vaddr, // int*
     ) -> SyscallResult {
         todo!()
@@ -100,7 +103,10 @@ LinuxKernel<Endianness, Arch> {
         let msghdr = self.memory.read_struct::<user_msghdr>(msg)?;
         let addr = self.memory.read_struct::<Sockaddr>(msghdr.msg_name);
         let iovec = self.memory.read_structs::<iovec>(msghdr.msg_iov, msghdr.msg_iovlen as usize)?;
-        let to_read = iovec.iter().try_fold(0usize, |sum, vec| sum.checked_add(vec.iov_len as usize)).ok_or(LinuxKernelError::EINVAL)?;
+        let to_read = iovec
+            .iter()
+            .try_fold(0usize, |sum, vec| sum.checked_add(vec.iov_len as usize))
+            .ok_or(LinuxKernelError::EINVAL)?;
         let data = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADFD)?.recvmsg(to_read)?;
         let mut offset = 0;
         for vec in iovec {
@@ -108,7 +114,7 @@ LinuxKernel<Endianness, Arch> {
             let max_len = min(vec.iov_len as usize, to_write.len());
             offset += self.memory.write(vec.iov_base, &to_write[..max_len]) as usize;
             if max_len < vec.iov_len as usize {
-                break
+                break;
             }
         }
         Ok(offset as u64)
@@ -132,7 +138,7 @@ LinuxKernel<Endianness, Arch> {
     ) -> SyscallResult {
         let handle = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADF)?;
         let mut sockaddr = self.memory.read_struct::<Sockaddr>(umyaddr)?;
-        if let Sockaddr::NL { nl_pad, nl_pid, nl_groups } = &mut sockaddr {
+        if let Sockaddr::NL { nl_pid, .. } = &mut sockaddr {
             if *nl_pid == 0 {
                 *nl_pid = self.pid;
             }
@@ -147,17 +153,18 @@ LinuxKernel<Endianness, Arch> {
         fd: u64,
         backlog: u64,
     ) -> SyscallResult {
-        todo!()
+        error!("TODO: Listen only has a dummy implementation for now!");
+        Ok(0)
     }
 
     pub fn getsockname(
         &mut self,
         _: &mut impl CPU,
         fd: u64,
-        usockaddr: Vaddr, // sockaddr*
+        usockaddr: Vaddr,     // sockaddr*
         usockaddr_len: Vaddr, // int*
     ) -> SyscallResult {
-        let sockaddr = self.handles.get(&fd).ok_or(LinuxKernelError::EBADF)?.getsockname()?;
+        let sockaddr = self.handles.get(&fd).ok_or(LinuxKernelError::EBADFD)?.getsockname()?;
         self.memory.write_generic(usockaddr, sockaddr)?;
         Ok(0)
     }
@@ -166,7 +173,7 @@ LinuxKernel<Endianness, Arch> {
         &mut self,
         _: &mut impl CPU,
         fd: u64,
-        usockaddr: Vaddr, // sockaddr*
+        usockaddr: Vaddr,     // sockaddr*
         usockaddr_len: Vaddr, // int*
     ) -> SyscallResult {
         todo!()
@@ -192,7 +199,10 @@ LinuxKernel<Endianness, Arch> {
         optval: Vaddr, // char*
         optlen: u64,
     ) -> SyscallResult {
-        todo!()
+        let opt_data = self.memory.read_mem(optval, optlen as usize)?;
+        // TODO: Handle sockopts correctly
+        self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADFD)?.setsockopt()?;
+        Ok(0)
     }
 
     pub fn getsockopt(
@@ -212,7 +222,7 @@ LinuxKernel<Endianness, Arch> {
         _: &mut impl CPU,
         fd: u64,
         upeer_sockaddr: Vaddr, // sockaddr*
-        upeer_addrlen: Vaddr, // int*
+        upeer_addrlen: Vaddr,  // int*
         flags: u64,
     ) -> SyscallResult {
         todo!()
@@ -222,9 +232,9 @@ LinuxKernel<Endianness, Arch> {
         &mut self,
         _: &mut impl CPU,
         fd: u64,
-        mmsg: Vaddr, // mmsghdr*
-        vlen: u64, // unsigned int
-        flags: u64, // unsigned int
+        mmsg: Vaddr,    // mmsghdr*
+        vlen: u64,      // unsigned int
+        flags: u64,     // unsigned int
         timeout: Vaddr, // timespec*
     ) -> SyscallResult {
         todo!()
@@ -235,16 +245,15 @@ LinuxKernel<Endianness, Arch> {
         _: &mut impl CPU,
         fd: u64,
         mmsg: Vaddr, // mmsghdr*
-        vlen: u64, // unsigned int
-        flags: u64, // unsigned int
+        vlen: u64,   // unsigned int
+        flags: u64,  // unsigned int
     ) -> SyscallResult {
         todo!()
     }
 }
 
 #[repr(C)]
-struct
-user_msghdr {
+struct user_msghdr {
     msg_name: Vaddr,
     /* ptr to socket address structure */ // void*
     msg_namelen: u64,
@@ -261,12 +270,8 @@ user_msghdr {
     /* flags on received message */
 }
 
-impl<Endianness: ByteOrder>
-Decode<Endianness> for
-user_msghdr {
-    fn decode(
-        val: &[u8]
-    ) -> Result<Self, MemoryError> {
+impl<Endianness: ByteOrder> Decode<Endianness> for user_msghdr {
+    fn decode(val: &[u8]) -> Result<Self, MemoryError> {
         Ok(Self {
             msg_name: Endianness::read_u64(&val[..8]),
             msg_namelen: Endianness::read_u64(&val[8..16]),
@@ -279,25 +284,18 @@ user_msghdr {
     }
 }
 
-impl
-RequiredMem for
-user_msghdr {}
+impl RequiredMem for user_msghdr {}
 
 #[repr(C)]
-struct
-iovec {
+struct iovec {
     iov_base: Vaddr,
     /* BSD uses caddr_t (1003.1g requires void *) */ // void*
     iov_len: u64,
     /* Must be size_t (1003.1g) */
 }
 
-impl<Endianness: ByteOrder>
-Decode<Endianness> for
-iovec {
-    fn decode(
-        val: &[u8]
-    ) -> Result<Self, MemoryError> {
+impl<Endianness: ByteOrder> Decode<Endianness> for iovec {
+    fn decode(val: &[u8]) -> Result<Self, MemoryError> {
         Ok(Self {
             iov_base: Endianness::read_u64(&val[..8]),
             iov_len: Endianness::read_u64(&val[8..16]),
@@ -305,6 +303,4 @@ iovec {
     }
 }
 
-impl
-RequiredMem for
-iovec {}
+impl RequiredMem for iovec {}

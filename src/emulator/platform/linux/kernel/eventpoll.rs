@@ -33,7 +33,8 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         fd: u64,
         event: Vaddr, // epoll_event*
     ) -> SyscallResult {
-        todo!()
+        error!("TODO: Implement epoll_ctl. Need to add fds to interest list");
+        Ok(0)
     }
 
     pub fn epoll_pwait(

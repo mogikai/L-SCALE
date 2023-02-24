@@ -1,3 +1,4 @@
+use bitflags::bitflags;
 use byteorder::ByteOrder;
 
 use crate::emulator::platform::linux::kernel::*;
@@ -12,8 +13,8 @@ LinuxKernel<Endianness, Arch> {
         size: u64,
     ) -> SyscallResult {
         self.handles.get_mut(&fd).map_or(Err(LinuxKernelError::EINVAL), |handle| {
-            let data = self.memory.read_internal(buf, size as usize).unwrap();
-            Ok(handle.write(&*data).unwrap_or(!0).try_into().unwrap())
+            let data = self.memory.access_mem(buf, size as usize).unwrap();
+            Ok(handle.write(&data).unwrap_or(!0).try_into().unwrap())
         })
     }
 
@@ -26,11 +27,11 @@ LinuxKernel<Endianness, Arch> {
     ) -> SyscallResult {
         self.handles.get_mut(&fd).map_or(Err(LinuxKernelError::EINVAL), |handle| {
             let mut ret = 0;
-            let iovec = self.memory.read_internal(iovec_ptr, (iovcnt * 16) as usize).unwrap();
+            let iovec = self.memory.access_mem(iovec_ptr, (iovcnt * 16) as usize).unwrap();
             for i in 0..iovcnt as usize {
                 let ptr = Endianness::read_u64(&iovec[(i * 16)..((i * 16) + 8)]);
                 let size = Endianness::read_u64(&iovec[i * 16 + 8..i * 16 + 16]) as usize;
-                let data = self.memory.read_internal(ptr, size)?;
+                let data = self.memory.access_mem(ptr, size)?;
                 let written = handle.write(data.as_ref())?;
                 ret += written;
                 // Early return if not all bytes were written. We need to stop writing in this case
@@ -87,6 +88,7 @@ LinuxKernel<Endianness, Arch> {
         statbuf: Vaddr,
     ) -> SyscallResult {
         let fname = read_osstring!(self.memory, filename).unwrap();
+        trace!("stat file {:?}", fname);
         let fs = self.filesystem.borrow();
         let file = fs.resolve_last(Path::new(&fname))?;
         self.memory.write_generic(statbuf, fs.stat(file)?)?;
@@ -109,12 +111,45 @@ LinuxKernel<Endianness, Arch> {
         Ok(self.handles.add(Box::new(FileHandle::new(self.filesystem.clone(), file))))
     }
 
+    pub fn statfs(
+        &mut self,
+        _: &mut impl CPU,
+        path: Vaddr,
+        buf: Vaddr,
+    ) -> SyscallResult {
+        todo!()
+    }
+
+    pub
+    fn newfstatat(
+        &mut self,
+        _: &mut impl CPU,
+        dfd: u64,
+        filename: Vaddr,
+        statbuf: Vaddr,
+        flag: u64,
+    ) -> SyscallResult {
+        let flags = at_flags::from_bits(flag).ok_or(LinuxKernelError::EINVAL)?;
+        if flags.contains(at_flags::AT_EMPTY_PATH)  {
+            let file = self.handles.get(&dfd).ok_or(LinuxKernelError::EBADFD)?;
+            self.memory.write_generic(statbuf, &*file.stat()?)?;
+            Ok(0)
+        } else {
+            let filename = read_osstring!(self.memory, filename).unwrap();
+            debug!("newfstatat: {filename:?}");
+            let fs = self.filesystem.borrow_mut();
+            let entry = fs.resolve_last(Path::new(&filename))?;
+            self.memory.write_generic(statbuf, fs.stat(entry)?)?;
+            Ok(0)
+        }
+    }
+
     pub fn close(
         &mut self,
         _: &mut impl CPU,
         fd: u64,
     ) -> SyscallResult {
-        if let None = self.handles.remove(&fd) {
+        if self.handles.remove(&fd).is_none() {
             Err(LinuxKernelError::EBADF)?
         }
         Ok(0)
@@ -126,5 +161,25 @@ LinuxKernel<Endianness, Arch> {
         handle: Box<dyn Handle<Endianness>>,
     ) {
         self.handles.add_replacement_handle(fd, handle);
+    }
+}
+
+
+const AT_FDCWD: u64 = -100i32 as u64;	/* Special value used to indicate the *at functions should use the current working directory. */
+
+bitflags! {
+    pub struct
+    at_flags: u64 {
+        const AT_SYMLINK_NOFOLLOW =	0x100;	/* Do not follow symbolic links.  */
+        const AT_REMOVEDIR =		0x200;	/* Remove directory instead of unlinking file.  */
+        const AT_SYMLINK_FOLLOW =	0x400;	/* Follow symbolic links.  */
+        const AT_NO_AUTOMOUNT =	0x800;	/* Suppress terminal automount traversal.  */
+        const AT_EMPTY_PATH =		0x1000;	/* Allow empty relative pathname.  */
+        const AT_STATX_SYNC_TYPE =	0x6000;
+        const AT_STATX_SYNC_AS_STAT =	0x0000;
+        const AT_STATX_FORCE_SYNC =	0x2000;
+        const AT_STATX_DONT_SYNC =	0x4000;
+        const AT_RECURSIVE =		0x8000;	/* Apply to the entire subtree.  */
+        const AT_EACCESS =		0x200;	/* Test access permitted for effective IDs, not real IDs.  */
     }
 }

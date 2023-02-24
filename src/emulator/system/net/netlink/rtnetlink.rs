@@ -3,8 +3,6 @@ use std::mem;
 
 use bitflags::bitflags;
 use byteorder::ByteOrder;
-use goblin::container::Endian;
-use libc::IFA_F_PERMANENT;
 use num_enum::{FromPrimitive, IntoPrimitive};
 
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};

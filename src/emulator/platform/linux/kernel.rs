@@ -2,7 +2,7 @@ use std::cell::{RefCell, RefMut};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::collections::hash_map::Keys;
 use std::marker::PhantomData;
-use std::mem;
+use std::{mem, result};
 use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
@@ -61,9 +61,13 @@ impl<Endianness: ByteOrder> HandleMap<Endianness> {
     ///
     /// returns: ()
     fn add_replacement_handle(&mut self, fd: u64, handle: Box<dyn Handle<Endianness>>) {
+        // TODO: We need to be able to skip handles and only replace later ones
         let handles = self.replacement_handles.entry(fd).or_default();
         handles.push_front(handle);
     }
+
+    // TODO: Need to implement dup. We will most likely have to move to RC or a different datastructure that can store
+    //       references to its own members
 
     fn insert(&mut self, fd: u64, handle: Box<dyn Handle<Endianness>>) -> Option<Box<dyn Handle<Endianness>>> {
         // Insert the handle if no replacement exists. Otherwise insert the replacement
@@ -146,6 +150,8 @@ LinuxKernel<Endianness, Arch> {
         &mut self,
         cpu: &mut (impl CPU + MMU),
         binary_path: &Path,
+        binary_args: &[&str],
+        binary_env: &[&str],
     ) -> Result<(), LinuxKernelError> {
         let fs = self.filesystem.borrow();
         let buffer = fs.read_all(fs.resolve_last(binary_path)?)?;
@@ -169,30 +175,50 @@ LinuxKernel<Endianness, Arch> {
             }
         }
         drop(fs);
-        self.initstack(cpu, binary_path, interpreter_path, interpreter.entry)
+        self.initstack(cpu, binary_path, binary_args, binary_env, interpreter_path, interpreter.entry)
     }
 
     fn initstack(
         &mut self,
         cpu: &mut impl CPU,
         binary_path: &Path,
+        binary_args: &[&str],
+        binary_env: &[&str],
         interpreter_path: &Path,
         entrypoint: Vaddr,
     ) -> Result<(), LinuxKernelError> {
+
+        let mut argv_strings = vec![interpreter_path.to_str().unwrap(), binary_path.to_str().unwrap()];
+        argv_strings.extend_from_slice(binary_args);
+
         info!("Initializing stack");
         cpu.reg_write(RegisterX86::RSP.into(), 0x4000000000000000).expect("failed to write RSP");
         let mem = &mut self.memory;
-        let mut env: Vec<u64> = Vec::new();
-        let mut argv: Vec<u64> = Vec::new();
         let mut aux: Vec<(u64, u64)> = Vec::new();
-        crate::push_stack!(mem, 0u64, RegisterX86::RSP.into(), cpu);
-        env.push(crate::push_stack!(mem, "SHELL=/bin/sh", RegisterX86::RSP.into(), cpu));
-        // env.push(crate::push_stack!(mem, "LD_DEBUG=all", RegisterX86::RSP.into(), cpu));
-        env.push(0);
-        argv.push(2);
-        argv.push(crate::push_stack!(mem, interpreter_path.to_str().unwrap(), RegisterX86::RSP.into(), cpu));
-        argv.push(crate::push_stack!(mem, binary_path.to_str().unwrap(), RegisterX86::RSP.into(), cpu));
-        argv.push(0);
+
+        crate::push_stack!(mem, 0u64, RegisterX86::RSP.into(), cpu); // Stack end marker
+
+        // Push env strings. Pointers are saved in a null terminated env array.
+        let env = {
+            let mut env  = Vec::<u64>::new();
+            for &env_str in binary_env {
+                env.push(crate::push_stack!(mem, env_str, RegisterX86::RSP.into(), cpu));
+            }
+            env.push(0); // End of array nullptr
+            env
+        };
+
+        // Push argv strings. Pointers are saved in a null terminated argv array, prefixed with the length (argc).
+        let argv = {
+            let mut argv = Vec::<u64>::new();
+            argv.push(argv_strings.len() as u64);
+            for arg in argv_strings {
+                argv.push(crate::push_stack!(mem, arg, RegisterX86::RSP.into(), cpu));
+            }
+            argv.push(0); // End of array nullptr
+            argv
+        };
+
         aux.push((AuxVarType::Pagesz as u64, 4096));
         aux.push((AuxVarType::HwCap as u64, 0xbfebfbff));
         aux.push((AuxVarType::Uid as u64, 1));
@@ -215,6 +241,11 @@ LinuxKernel<Endianness, Arch> {
         crate::push_stack!(mem, &aux, RegisterX86::RSP.into(), cpu);
         crate::push_stack!(mem, &env, RegisterX86::RSP.into(), cpu);
         crate::push_stack!(mem, &argv, RegisterX86::RSP.into(), cpu);
+
+        let rsp = cpu.reg_read(RegisterX86::RSP.into())?;
+        println!("Stack dump:\n");
+        hexdump::hexdump(mem.read_mem(rsp, (mem.stack_base() - rsp) as usize).unwrap().as_slice());
+
         Ok(())
     }
 
@@ -257,7 +288,7 @@ LinuxKernel<Endianness, Arch> {
                 Err(LinuxKernelError::EINVAL)
             }
             0x1002 => { //ARCH_SET_FS
-                let fsbytes = self.memory.read_internal(addr, 8).unwrap();
+                let fsbytes = self.memory.access_mem(addr, 8).unwrap();
                 let fs = Endianness::read_u64(&fsbytes);
                 cpu.reg_write(RegisterX86::FS_BASE.into(), fs).unwrap();
                 Ok(0)
@@ -266,6 +297,14 @@ LinuxKernel<Endianness, Arch> {
             0x1004 => Err(LinuxKernelError::EINVAL), //ARCH_GET_GS
             _ => Err(LinuxKernelError::EINVAL),
         }
+    }
+
+    pub fn gettid(
+        &mut self,
+        _: &mut impl CPU,
+    ) -> SyscallResult {
+        // TODO: Handle tid separately once threads are implemented
+        Ok(self.pid.into())
     }
 
     pub fn time(
@@ -395,6 +434,19 @@ LinuxKernel<Endianness, Arch> {
         Ok(0)
     }
 
+    pub fn fcntl(
+        &mut self,
+        _: &mut impl CPU,
+        fd: u64,
+        cmd: u64,
+        arg: u64,
+    ) -> SyscallResult {
+        // TODO: Implement correctly
+        warn!("FCNTL not implemented fully yet");
+        self.handles.get_mut(&fd);
+        Ok(2)
+    }
+
     pub fn gettimeofday(
         &mut self,
         _: &mut impl CPU,
@@ -433,7 +485,7 @@ LinuxKernel<Endianness, Arch> {
         old_len: u64,
         new_len: u64,
         flags: u64,
-        new_addr: Vaddr
+        new_addr: Vaddr,
     ) -> SyscallResult {
         Ok(self.memory.remap(old_addr, old_len, new_addr, new_len, MREMAP_FLAGS::from_bits(flags).ok_or(LinuxKernelError::EINVAL)?, cpu)?)
     }
@@ -459,6 +511,21 @@ LinuxKernel<Endianness, Arch> {
         self.getpid(uc)
     }
 
+    pub fn fadvise64(
+        &mut self,
+        uc: &mut impl CPU,
+        fd: u64,
+        offset: u64,
+        len: u64,
+        advice: u64
+    ) -> SyscallResult {
+        // TODO: Maybe do some implementation.
+        //       For now this suffices, since
+        //       it is only non-binding advice
+        //       for the kernel
+        Ok(0)
+    }
+
     pub fn set_robust_list(
         &mut self,
         _: &mut impl CPU,
@@ -473,6 +540,17 @@ LinuxKernel<Endianness, Arch> {
         /* todo NULL check */
         self.robust_list_head = Some(robust_list_head);
         Ok(0)
+    }
+
+    pub fn signalfd4(
+        &mut self,
+        _: &mut impl CPU,
+        fd: u64,
+        mask: Vaddr,
+        flags: u64,
+        sizemask: u64,
+    ) -> SyscallResult {
+        todo!()
     }
 
     pub fn prlimit64(
@@ -553,6 +631,43 @@ LinuxKernel<Endianness, Arch> {
             Endianness::write_u64(&mut old, oset);
         }
         Ok(0)
+    }
+
+    pub fn ioctl(
+        &mut self,
+        _:&mut impl CPU,
+        fd: u64,
+        request: u64,
+        data: Vaddr,
+    ) -> SyscallResult {
+        // TODO: Implement correctly
+        Err(LinuxKernelError::ENOSYS)
+    }
+
+    pub fn getrandom(
+        &mut self,
+        _: &mut impl CPU,
+        buf: Vaddr,
+        buflen: u64,
+        flags: u64,
+    ) -> SyscallResult {
+        // TODO: Get random data from !deterministic! source controlled by user (the fuzzer)
+        //       Random sources are also a form of input to the SUT
+        let data = vec![0u8; buflen as usize];
+        self.memory.write(buf, &data);
+        Ok(buflen)
+    }
+
+    pub fn rseq(
+        &mut self,
+        _: &mut impl CPU,
+        rseq: Vaddr,
+        rseq_len: u64,
+        flags: u64,
+        sig: u64,
+    ) -> SyscallResult {
+        // TODO: Implement rseq https://git.kernel.org/pub/scm/libs/librseq/librseq.git/tree/doc/man/rseq.2
+        Err(LinuxKernelError::ENOSYS)
     }
 }
 
@@ -727,7 +842,7 @@ fn getperms(ph: &goblin::elf::program_header::ProgramHeader) -> Permission {
     perms
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[repr(i64)]
 pub enum LinuxKernelError {
     EPERM = -1,
@@ -876,139 +991,142 @@ impl LinuxKernelError {
     // Operation not supported
     pub const EDEADLOCK: Self = Self::EDEADLK; // Resource deadlock avoided
 
-    fn describe(&self) -> &str {
+    pub
+    fn describe(
+        &self
+    ) -> &str {
         match self {
-            LinuxKernelError::EPERM => "Operation not permitted",
-            LinuxKernelError::ENOENT => "No such file or directory",
-            LinuxKernelError::ESRCH => "No such process",
-            LinuxKernelError::EINTR => "Interrupted system call",
-            LinuxKernelError::EIO => "Input/output error",
-            LinuxKernelError::ENXIO => "No such device or address",
-            LinuxKernelError::E2BIG => "Argument list too long",
-            LinuxKernelError::ENOEXEC => "Exec format error",
-            LinuxKernelError::EBADF => "Bad file descriptor",
-            LinuxKernelError::ECHILD => "No child processes",
-            LinuxKernelError::EAGAIN => "Resource temporarily unavailable",
-            LinuxKernelError::ENOMEM => "Cannot allocate memory",
-            LinuxKernelError::EACCES => "Permission denied",
-            LinuxKernelError::EFAULT => "Bad address",
-            LinuxKernelError::ENOTBLK => "Block device required",
-            LinuxKernelError::EBUSY => "Device or resource busy",
-            LinuxKernelError::EEXIST => "File exists",
-            LinuxKernelError::EXDEV => "Invalid cross-device link",
-            LinuxKernelError::ENODEV => "No such device",
-            LinuxKernelError::ENOTDIR => "Not a directory",
-            LinuxKernelError::EISDIR => "Is a directory",
-            LinuxKernelError::EINVAL => "Invalid argument",
-            LinuxKernelError::ENFILE => "Too many open files in system",
-            LinuxKernelError::EMFILE => "Too many open files",
-            LinuxKernelError::ENOTTY => "Inappropriate ioctl for device",
-            LinuxKernelError::ETXTBSY => "Text file busy",
-            LinuxKernelError::EFBIG => "File too large",
-            LinuxKernelError::ENOSPC => "No space left on device",
-            LinuxKernelError::ESPIPE => "Illegal seek",
-            LinuxKernelError::EROFS => "Read-only file system",
-            LinuxKernelError::EMLINK => "Too many links",
-            LinuxKernelError::EPIPE => "Broken pipe",
-            LinuxKernelError::EDOM => "Numerical argument out of domain",
-            LinuxKernelError::ERANGE => "Numerical result out of range",
-            LinuxKernelError::EDEADLK => "Resource deadlock avoided",
-            LinuxKernelError::ENAMETOOLONG => "File name too long",
-            LinuxKernelError::ENOLCK => "No locks available",
-            LinuxKernelError::ENOSYS => "Function not implemented",
-            LinuxKernelError::ENOTEMPTY => "Directory not empty",
-            LinuxKernelError::ELOOP => "Too many levels of symbolic links",
-            LinuxKernelError::ENOMSG => "No message of desired type",
-            LinuxKernelError::EIDRM => "Identifier removed",
-            LinuxKernelError::ECHRNG => "Channel number out of range",
-            LinuxKernelError::EL2NSYNC => "Level 2 not synchronized",
-            LinuxKernelError::EL3HLT => "Level 3 halted",
-            LinuxKernelError::EL3RST => "Level 3 reset",
-            LinuxKernelError::ELNRNG => "Link number out of range",
-            LinuxKernelError::EUNATCH => "Protocol driver not attached",
-            LinuxKernelError::ENOCSI => "No CSI structure available",
-            LinuxKernelError::EL2HLT => "Level 2 halted",
-            LinuxKernelError::EBADE => "Invalid exchange",
-            LinuxKernelError::EBADR => "Invalid request descriptor",
-            LinuxKernelError::EXFULL => "Exchange full",
-            LinuxKernelError::ENOANO => "No anode",
-            LinuxKernelError::EBADRQC => "Invalid request code",
-            LinuxKernelError::EBADSLT => "Invalid slot",
-            LinuxKernelError::EBFONT => "Bad font file format",
-            LinuxKernelError::ENOSTR => "Device not a stream",
-            LinuxKernelError::ENODATA => "No data available",
-            LinuxKernelError::ETIME => "Timer expired",
-            LinuxKernelError::ENOSR => "Out of streams resources",
-            LinuxKernelError::ENONET => "Machine is not on the network",
-            LinuxKernelError::ENOPKG => "Package not installed",
-            LinuxKernelError::EREMOTE => "Object is remote",
-            LinuxKernelError::ENOLINK => "Link has been severed",
-            LinuxKernelError::EADV => "Advertise error",
-            LinuxKernelError::ESRMNT => "Srmount error",
-            LinuxKernelError::ECOMM => "Communication error on send",
-            LinuxKernelError::EPROTO => "Protocol error",
-            LinuxKernelError::EMULTIHOP => "Multihop attempted",
-            LinuxKernelError::EDOTDOT => "RFS specific error",
-            LinuxKernelError::EBADMSG => "Bad message",
-            LinuxKernelError::EOVERFLOW => "Value too large for defined data type",
-            LinuxKernelError::ENOTUNIQ => "Name not unique on network",
-            LinuxKernelError::EBADFD => "File descriptor in bad state",
-            LinuxKernelError::EREMCHG => "Remote address changed",
-            LinuxKernelError::ELIBACC => "Can not access a needed shared library",
-            LinuxKernelError::ELIBBAD => "Accessing a corrupted shared library",
-            LinuxKernelError::ELIBSCN => ".lib section in a.out corrupted",
-            LinuxKernelError::ELIBMAX => "Attempting to link in too many shared libraries",
-            LinuxKernelError::ELIBEXEC => "Cannot exec a shared library directly",
-            LinuxKernelError::EILSEQ => "Invalid or incomplete multibyte or wide character",
-            LinuxKernelError::ERESTART => "Interrupted system call should be restarted",
-            LinuxKernelError::ESTRPIPE => "Streams pipe error",
-            LinuxKernelError::EUSERS => "Too many users",
-            LinuxKernelError::ENOTSOCK => "Socket operation on non-socket",
-            LinuxKernelError::EDESTADDRREQ => "Destination address required",
-            LinuxKernelError::EMSGSIZE => "Message too long",
-            LinuxKernelError::EPROTOTYPE => "Protocol wrong type for socket",
-            LinuxKernelError::ENOPROTOOPT => "Protocol not available",
-            LinuxKernelError::EPROTONOSUPPORT => "Protocol not supported",
-            LinuxKernelError::ESOCKTNOSUPPORT => "Socket type not supported",
-            LinuxKernelError::EOPNOTSUPP => "Operation not supported",
-            LinuxKernelError::EPFNOSUPPORT => "Protocol family not supported",
-            LinuxKernelError::EAFNOSUPPORT => "Address family not supported by protocol",
-            LinuxKernelError::EADDRINUSE => "Address already in use",
-            LinuxKernelError::EADDRNOTAVAIL => "Cannot assign requested address",
-            LinuxKernelError::ENETDOWN => "Network is down",
-            LinuxKernelError::ENETUNREACH => "Network is unreachable",
-            LinuxKernelError::ENETRESET => "Network dropped connection on reset",
-            LinuxKernelError::ECONNABORTED => "Software caused connection abort",
-            LinuxKernelError::ECONNRESET => "Connection reset by peer",
-            LinuxKernelError::ENOBUFS => "No buffer space available",
-            LinuxKernelError::EISCONN => "Transport endpoint is already connected",
-            LinuxKernelError::ENOTCONN => "Transport endpoint is not connected",
-            LinuxKernelError::ESHUTDOWN => "Cannot send after transport endpoint shutdown",
-            LinuxKernelError::ETOOMANYREFS => "Too many references: cannot splice",
-            LinuxKernelError::ETIMEDOUT => "Connection timed out",
-            LinuxKernelError::ECONNREFUSED => "Connection refused",
-            LinuxKernelError::EHOSTDOWN => "Host is down",
-            LinuxKernelError::EHOSTUNREACH => "No route to host",
-            LinuxKernelError::EALREADY => "Operation already in progress",
-            LinuxKernelError::EINPROGRESS => "Operation now in progress",
-            LinuxKernelError::ESTALE => "Stale file handle",
-            LinuxKernelError::EUCLEAN => "Structure needs cleaning",
-            LinuxKernelError::ENOTNAM => "Not a XENIX named type file",
-            LinuxKernelError::ENAVAIL => "No XENIX semaphores available",
-            LinuxKernelError::EISNAM => "Is a named type file",
-            LinuxKernelError::EREMOTEIO => "Remote I/O error",
-            LinuxKernelError::EDQUOT => "Disk quota exceeded",
-            LinuxKernelError::ENOMEDIUM => "No medium found",
-            LinuxKernelError::EMEDIUMTYPE => "Wrong medium type",
-            LinuxKernelError::ECANCELED => "Operation canceled",
-            LinuxKernelError::ENOKEY => "Required key not available",
-            LinuxKernelError::EKEYEXPIRED => "Key has expired",
-            LinuxKernelError::EKEYREVOKED => "Key has been revoked",
-            LinuxKernelError::EKEYREJECTED => "Key was rejected by service",
-            LinuxKernelError::EOWNERDEAD => "Owner died",
-            LinuxKernelError::ENOTRECOVERABLE => "State not recoverable",
-            LinuxKernelError::ERFKILL => "Operation not possible due to RF-kill",
-            LinuxKernelError::EHWPOISON => "Memory page has hardware error",
+            LinuxKernelError::EPERM => "EPERM: Operation not permitted",
+            LinuxKernelError::ENOENT => "ENOENT: No such file or directory",
+            LinuxKernelError::ESRCH => "ESRCH: No such process",
+            LinuxKernelError::EINTR => "EINTR: Interrupted system call",
+            LinuxKernelError::EIO => "EIO: Input/output error",
+            LinuxKernelError::ENXIO => "ENXIO: No such device or address",
+            LinuxKernelError::E2BIG => "E2BIG: Argument list too long",
+            LinuxKernelError::ENOEXEC => "ENOEXEC: Exec format error",
+            LinuxKernelError::EBADF => "EBADF: Bad file descriptor",
+            LinuxKernelError::ECHILD => "ECHILD: No child processes",
+            LinuxKernelError::EAGAIN => "EAGAIN: Resource temporarily unavailable",
+            LinuxKernelError::ENOMEM => "ENOMEM: Cannot allocate memory",
+            LinuxKernelError::EACCES => "EACCES: Permission denied",
+            LinuxKernelError::EFAULT => "EFAULT: Bad address",
+            LinuxKernelError::ENOTBLK => "ENOTBLK: Block device required",
+            LinuxKernelError::EBUSY => "EBUSY: Device or resource busy",
+            LinuxKernelError::EEXIST => "EEXIST: File exists",
+            LinuxKernelError::EXDEV => "EXDEV: Invalid cross-device link",
+            LinuxKernelError::ENODEV => "ENODEV: No such device",
+            LinuxKernelError::ENOTDIR => "ENOTDIR: Not a directory",
+            LinuxKernelError::EISDIR => "EISDIR: Is a directory",
+            LinuxKernelError::EINVAL => "EINVAL: Invalid argument",
+            LinuxKernelError::ENFILE => "ENFILE: Too many open files in system",
+            LinuxKernelError::EMFILE => "EMFILE: Too many open files",
+            LinuxKernelError::ENOTTY => "ENOTTY: Inappropriate ioctl for device",
+            LinuxKernelError::ETXTBSY => "ETXTBSY: Text file busy",
+            LinuxKernelError::EFBIG => "EFBIG: File too large",
+            LinuxKernelError::ENOSPC => "ENOSPC: No space left on device",
+            LinuxKernelError::ESPIPE => "ESPIPE: Illegal seek",
+            LinuxKernelError::EROFS => "EROFS: Read-only file system",
+            LinuxKernelError::EMLINK => "EMLINK: Too many links",
+            LinuxKernelError::EPIPE => "EPIPE: Broken pipe",
+            LinuxKernelError::EDOM => "EDOM: Numerical argument out of domain",
+            LinuxKernelError::ERANGE => "ERANGE: Numerical result out of range",
+            LinuxKernelError::EDEADLK => "EDEADLK: Resource deadlock avoided",
+            LinuxKernelError::ENAMETOOLONG => "ENAMETOOLONG: File name too long",
+            LinuxKernelError::ENOLCK => "ENOLCK: No locks available",
+            LinuxKernelError::ENOSYS => "ENOSYS: Function not implemented",
+            LinuxKernelError::ENOTEMPTY => "ENOTEMPTY: Directory not empty",
+            LinuxKernelError::ELOOP => "ELOOP: Too many levels of symbolic links",
+            LinuxKernelError::ENOMSG => "ENOMSG: No message of desired type",
+            LinuxKernelError::EIDRM => "EIDRM: Identifier removed",
+            LinuxKernelError::ECHRNG => "ECHRNG: Channel number out of range",
+            LinuxKernelError::EL2NSYNC => "EL2NSYNC: Level 2 not synchronized",
+            LinuxKernelError::EL3HLT => "EL3HLT: Level 3 halted",
+            LinuxKernelError::EL3RST => "EL3RST: Level 3 reset",
+            LinuxKernelError::ELNRNG => "ELNRNG: Link number out of range",
+            LinuxKernelError::EUNATCH => "EUNATCH: Protocol driver not attached",
+            LinuxKernelError::ENOCSI => "ENOCSI: No CSI structure available",
+            LinuxKernelError::EL2HLT => "EL2HLT: Level 2 halted",
+            LinuxKernelError::EBADE => "EBADE: Invalid exchange",
+            LinuxKernelError::EBADR => "EBADR: Invalid request descriptor",
+            LinuxKernelError::EXFULL => "EXFULL: Exchange full",
+            LinuxKernelError::ENOANO => "ENOANO: No anode",
+            LinuxKernelError::EBADRQC => "EBADRQC: Invalid request code",
+            LinuxKernelError::EBADSLT => "EBADSLT: Invalid slot",
+            LinuxKernelError::EBFONT => "EBFONT: Bad font file format",
+            LinuxKernelError::ENOSTR => "ENOSTR: Device not a stream",
+            LinuxKernelError::ENODATA => "ENODATA: No data available",
+            LinuxKernelError::ETIME => "ETIME: Timer expired",
+            LinuxKernelError::ENOSR => "ENOSR: Out of streams resources",
+            LinuxKernelError::ENONET => "ENONET: Machine is not on the network",
+            LinuxKernelError::ENOPKG => "ENOPKG: Package not installed",
+            LinuxKernelError::EREMOTE => "EREMOTE: Object is remote",
+            LinuxKernelError::ENOLINK => "ENOLINK: Link has been severed",
+            LinuxKernelError::EADV => "EADV: Advertise error",
+            LinuxKernelError::ESRMNT => "ESRMNT: Srmount error",
+            LinuxKernelError::ECOMM => "ECOMM: Communication error on send",
+            LinuxKernelError::EPROTO => "EPROTO: Protocol error",
+            LinuxKernelError::EMULTIHOP => "EMULTIHOP: Multihop attempted",
+            LinuxKernelError::EDOTDOT => "EDOTDOT: RFS specific error",
+            LinuxKernelError::EBADMSG => "EBADMSG: Bad message",
+            LinuxKernelError::EOVERFLOW => "EOVERFLOW: Value too large for defined data type",
+            LinuxKernelError::ENOTUNIQ => "ENOTUNIQ: Name not unique on network",
+            LinuxKernelError::EBADFD => "EBADFD: File descriptor in bad state",
+            LinuxKernelError::EREMCHG => "EREMCHG: Remote address changed",
+            LinuxKernelError::ELIBACC => "ELIBACC: Can not access a needed shared library",
+            LinuxKernelError::ELIBBAD => "ELIBBAD: Accessing a corrupted shared library",
+            LinuxKernelError::ELIBSCN => "ELIBSCN: .lib section in a.out corrupted",
+            LinuxKernelError::ELIBMAX => "ELIBMAX: Attempting to link in too many shared libraries",
+            LinuxKernelError::ELIBEXEC => "ELIBEXEC: Cannot exec a shared library directly",
+            LinuxKernelError::EILSEQ => "EILSEQ: Invalid or incomplete multibyte or wide character",
+            LinuxKernelError::ERESTART => "ERESTART: Interrupted system call should be restarted",
+            LinuxKernelError::ESTRPIPE => "ESTRPIPE: Streams pipe error",
+            LinuxKernelError::EUSERS => "EUSERS: Too many users",
+            LinuxKernelError::ENOTSOCK => "ENOTSOCK: Socket operation on non-socket",
+            LinuxKernelError::EDESTADDRREQ => "EDESTADDRREQ: Destination address required",
+            LinuxKernelError::EMSGSIZE => "EMSGSIZE: Message too long",
+            LinuxKernelError::EPROTOTYPE => "EPROTOTYPE: Protocol wrong type for socket",
+            LinuxKernelError::ENOPROTOOPT => "ENOPROTOOPT: Protocol not available",
+            LinuxKernelError::EPROTONOSUPPORT => "EPROTONOSUPPORT: Protocol not supported",
+            LinuxKernelError::ESOCKTNOSUPPORT => "ESOCKTNOSUPPORT: Socket type not supported",
+            LinuxKernelError::EOPNOTSUPP => "EOPNOTSUPP: Operation not supported",
+            LinuxKernelError::EPFNOSUPPORT => "EPFNOSUPPORT: Protocol family not supported",
+            LinuxKernelError::EAFNOSUPPORT => "EAFNOSUPPORT: Address family not supported by protocol",
+            LinuxKernelError::EADDRINUSE => "EADDRINUSE: Address already in use",
+            LinuxKernelError::EADDRNOTAVAIL => "EADDRNOTAVAIL: Cannot assign requested address",
+            LinuxKernelError::ENETDOWN => "ENETDOWN: Network is down",
+            LinuxKernelError::ENETUNREACH => "ENETUNREACH: Network is unreachable",
+            LinuxKernelError::ENETRESET => "ENETRESET: Network dropped connection on reset",
+            LinuxKernelError::ECONNABORTED => "ECONNABORTED: Software caused connection abort",
+            LinuxKernelError::ECONNRESET => "ECONNRESET: Connection reset by peer",
+            LinuxKernelError::ENOBUFS => "ENOBUFS: No buffer space available",
+            LinuxKernelError::EISCONN => "EISCONN: Transport endpoint is already connected",
+            LinuxKernelError::ENOTCONN => "ENOTCONN: Transport endpoint is not connected",
+            LinuxKernelError::ESHUTDOWN => "ESHUTDOWN: Cannot send after transport endpoint shutdown",
+            LinuxKernelError::ETOOMANYREFS => "ETOOMANYREFS: Too many references: cannot splice",
+            LinuxKernelError::ETIMEDOUT => "ETIMEDOUT: Connection timed out",
+            LinuxKernelError::ECONNREFUSED => "ECONNREFUSED: Connection refused",
+            LinuxKernelError::EHOSTDOWN => "EHOSTDOWN: Host is down",
+            LinuxKernelError::EHOSTUNREACH => "EHOSTUNREACH: No route to host",
+            LinuxKernelError::EALREADY => "EALREADY: Operation already in progress",
+            LinuxKernelError::EINPROGRESS => "EINPROGRESS: Operation now in progress",
+            LinuxKernelError::ESTALE => "ESTALE: Stale file handle",
+            LinuxKernelError::EUCLEAN => "EUCLEAN: Structure needs cleaning",
+            LinuxKernelError::ENOTNAM => "ENOTNAM: Not a XENIX named type file",
+            LinuxKernelError::ENAVAIL => "ENAVAIL: No XENIX semaphores available",
+            LinuxKernelError::EISNAM => "EISNAM: Is a named type file",
+            LinuxKernelError::EREMOTEIO => "EREMOTEIO: Remote I/O error",
+            LinuxKernelError::EDQUOT => "EDQUOT: Disk quota exceeded",
+            LinuxKernelError::ENOMEDIUM => "ENOMEDIUM: No medium found",
+            LinuxKernelError::EMEDIUMTYPE => "EMEDIUMTYPE: Wrong medium type",
+            LinuxKernelError::ECANCELED => "ECANCELED: Operation canceled",
+            LinuxKernelError::ENOKEY => "ENOKEY: Required key not available",
+            LinuxKernelError::EKEYEXPIRED => "EKEYEXPIRED: Key has expired",
+            LinuxKernelError::EKEYREVOKED => "EKEYREVOKED: Key has been revoked",
+            LinuxKernelError::EKEYREJECTED => "EKEYREJECTED: Key was rejected by service",
+            LinuxKernelError::EOWNERDEAD => "EOWNERDEAD: Owner died",
+            LinuxKernelError::ENOTRECOVERABLE => "ENOTRECOVERABLE: State not recoverable",
+            LinuxKernelError::ERFKILL => "ERFKILL: Operation not possible due to RF-kill",
+            LinuxKernelError::EHWPOISON => "EHWPOISON: Memory page has hardware error",
         }
     }
 }
@@ -1020,8 +1138,11 @@ impl From<CPUError> for LinuxKernelError {
 }
 
 impl From<FSError> for LinuxKernelError {
-    fn from(_: FSError) -> Self {
-        LinuxKernelError::EINVAL
+    fn from(e: FSError) -> Self {
+        match e {
+            FSError::NotFound => LinuxKernelError::ENOENT,
+            _ => LinuxKernelError::EINVAL
+        }
     }
 }
 

@@ -27,6 +27,7 @@ mod stat;
 mod tests;
 
 #[derive(Debug, Copy, Clone)]
+#[non_exhaustive]
 pub enum FSError {
     NotFound,
     Unknown,
@@ -255,20 +256,20 @@ Filesystem<Endianness> {
         &self,
         path: &Path,
     ) -> Result<Vec<FSEntryId>, FSError> {
-        self.meta_info.resolve_path(path)
+        self.meta_info.resolve_path(None, path)
     }
 
-    /// This function resolves the supplied path to a list of FSEntryId. After the lookup,
-    /// the file or dirs in the path can be directly referenced by using the returned FSEntryIds.
+    /// This function resolves the supplied path to an FSEntryId. After the lookup,
+    /// the file or dir at the end of the path can be directly referenced by using the returned FSEntryIds.
     /// The FSEntryIds are valid for as long as the elements exist and will result in an error
     /// if the referenced element was deleted in the meantime.
     ///
-    /// returns: The FSEntryId of each element in the path if it resolves. Otherwise an Error is returned.
+    /// returns: The FSEntryId of the last element in the path if it resolves. Otherwise an Error is returned.
     pub fn resolve_last(
         &self,
         path: &Path,
     ) -> Result<FSEntryId, FSError> {
-        self.meta_info.resolve_last(path)
+        self.meta_info.resolve_last(None, path)
     }
 
     fn print_tree(
@@ -332,12 +333,12 @@ fn load_dir<Endianness: ByteOrder>(
             let path = entry.path();
             let stat = entry.metadata().unwrap();
             if path.is_dir() {
-                fs.create_dir(&*Path::new("/").join(path.strip_prefix(root).unwrap()), Some(stat.into())).unwrap();
+                fs.create_dir(&Path::new("/").join(path.strip_prefix(root).unwrap()), Some(stat.into())).unwrap();
                 load_dir(fs, &path, root)?;
                 // FSEntry::DirEntry(Dir {}, Stats::from(stats))
             } else {
                 let data = read(entry.path())?;
-                fs.create_file_with_contents(&*Path::new("/").join(path.strip_prefix(root).unwrap()), data.as_slice(), Some(stat.into())).unwrap();
+                fs.create_file_with_contents(&Path::new("/").join(path.strip_prefix(root).unwrap()), data.as_slice(), Some(stat.into())).unwrap();
                 // FSEntry::FileEntry(File::new(&path), Stats::from(stats))
             };
             // println!("{:?}", Path::new("/").join(path.strip_prefix(root).unwrap().to_path_buf()));

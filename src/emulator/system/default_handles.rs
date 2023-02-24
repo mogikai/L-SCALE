@@ -65,7 +65,7 @@ ReadOnly<Endianness: ByteOrder> {
 impl<Endianness: ByteOrder>
 ReadOnly<Endianness> {
     pub(crate) fn new() -> Self {
-        Self { pos: 0, data: vec![b'a', b'b', b'c', b'd', b'\n'], stat: Default::default() }
+        Self { pos: 0, data: vec![], stat: Default::default() }
     }
 
     pub fn from(data: Vec<u8>) -> Self {
@@ -88,7 +88,9 @@ ReadOnly<Endianness> {
         count: u64,
     ) -> Result<Vec<u8>, GenericError> {
         let upper = min(self.pos + count as usize, self.data.len());
-        Ok(self.data[self.pos..upper].to_vec())
+        let result = self.data[self.pos..upper].to_vec();
+        self.pos += result.len();
+        Ok(result)
     }
 
     fn pread(
