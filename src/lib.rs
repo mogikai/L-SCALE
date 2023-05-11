@@ -1,7 +1,12 @@
+#![feature(try_blocks)]
+#![feature(map_try_insert)]
+
 pub mod emulator;
 pub mod fuzzer;
 
-#[macro_use] extern crate log;
+
+#[macro_use]
+extern crate log;
 extern crate core;
 
 use static_assertions::assert_eq_size;

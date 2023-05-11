@@ -1,17 +1,23 @@
+pub mod address;
+
 use std::num::TryFromIntError;
 use std::time::Duration;
 
-use bitflags::bitflags;
+use generational_arena::Index;
+use address::EVAddr;
+
+use crate::emulator::abstractions::emulator::StopReason;
 use crate::emulator::abstractions::restore::Restorable;
 
 #[derive(Debug, Copy, Clone)]
 pub enum CPUError {
     InvalidArch,
     InvalidPermission,
+    Stopped(StopReason),
     Unknown,
 }
 
-pub type Vaddr = u64;
+pub type ContextHandle = Index;
 
 pub trait CPU: Restorable {
     /// # Arguments
@@ -21,59 +27,46 @@ pub trait CPU: Restorable {
     ///
     /// returns: A CPUError if an error occurred during emulation.
     ///          In most cases such an error will correspond to a segfault.
-    fn emulate(&mut self, stop: Option<Vaddr>, timeout: Option<Duration>, instruction_count: Option<usize>) -> Result<(), CPUError>;
-    fn kill(&mut self) -> Result<(), CPUError>;
-    fn reg_write(&mut self, register: Register, value: u64) -> Result<(), CPUError>;
-    fn reg_read(&self, register: Register) -> Result<u64, CPUError>;
-}
+    fn emulate(
+        &mut self,
+        stop: Option<EVAddr>,
+        timeout: Option<Duration>,
+        instruction_count: Option<usize>,
+    ) -> Result<(), CPUError>;
 
-pub trait MMU {
-    unsafe fn mem_map_ptr(&mut self, address: Vaddr, size: usize, perms: Permission, ptr: u64) -> Result<(), CPUError>;
-    fn mem_unmap(&mut self, address: Vaddr, size: usize) -> Result<(), CPUError>;
-}
+    fn stop(
+        &mut self,
+        stop_reason: StopReason,
+    ) -> Result<(), CPUError>;
 
-pub trait Hooks<'a> {
-    fn add_syscall_hook(&mut self, start: Vaddr, end: Vaddr, syscall: Box<dyn FnMut(&mut Self) + 'a>);
-    fn add_unmapped_mem_hook(&mut self, start: Vaddr, end: Vaddr, hook: Box<dyn FnMut(&mut Self, MemoryAction, u64, usize, i64) -> bool + 'a>);
-    fn add_block_hook(&mut self, hook: Box<dyn FnMut(&mut Self, u64, u32) + 'a>);
-}
+    fn reg_write(
+        &mut self,
+        register: Register,
+        value: u64,
+    ) -> Result<(), CPUError>;
 
-bitflags! {
-pub struct Permission : u32 {
-        const NONE = 0;
-        const READ = 1;
-        const WRITE = 2;
-        const EXEC = 4;
-        const ALL = Self::READ.bits | Self::WRITE.bits | Self::EXEC.bits;
-    }
-}
+    fn reg_read(
+        &self,
+        register: Register,
+    ) -> Result<u64, CPUError>;
 
-impl TryFrom<u64> for Permission {
-    type Error = CPUError;
+    fn create_context(&mut self) -> Result<ContextHandle, CPUError>;
 
-    fn try_from(perm: u64) -> Result<Permission, CPUError> {
-        Permission::from_bits(u32::try_from(perm)?).ok_or(CPUError::InvalidPermission)
-    }
+    fn save_context(
+        &mut self,
+        context_handle: ContextHandle,
+    ) -> Result<(), CPUError>;
+
+    fn restore_context(
+        &mut self,
+        context_handle: ContextHandle,
+    ) -> Result<(), CPUError>;
 }
 
 impl From<TryFromIntError> for CPUError {
     fn from(_: TryFromIntError) -> Self {
         CPUError::InvalidPermission
     }
-}
-
-#[derive(Debug)]
-pub enum MemoryAction {
-    READ,
-    WRITE,
-    FETCH,
-    READ_UNMAPPED,
-    WRITE_UNMAPPED,
-    FETCH_UNMAPPED,
-    WRITE_PROT,
-    READ_PROT,
-    FETCH_PROT,
-    READ_AFTER,
 }
 
 pub enum Arch {
@@ -89,6 +82,7 @@ pub enum Arch {
     MAX,
 }
 
+#[derive(Copy, Clone)]
 pub enum Register {
     X86(RegisterX86),
     RISCV(RegisterRISCV),
@@ -106,6 +100,7 @@ impl From<RegisterRISCV> for Register {
     }
 }
 
+#[derive(Copy, Clone)]
 pub enum RegisterX86 {
     INVALID,
     AH,
@@ -349,6 +344,7 @@ pub enum RegisterX86 {
     ENDING,
 }
 
+#[derive(Copy, Clone)]
 pub enum RegisterRISCV {
     INVALID,
     X0,

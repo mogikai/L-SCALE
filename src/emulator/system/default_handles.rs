@@ -7,29 +7,20 @@ use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::handles::Handle;
 use crate::emulator::system::filesystem::Stat;
 
-pub struct
-WriteOnly<Endianness: ByteOrder> {
+pub struct WriteOnly<Endianness: ByteOrder> {
     stat: RefCell<Stat<Endianness>>,
 }
 
-impl<Endianness: ByteOrder>
-WriteOnly<Endianness> {
+impl<Endianness: ByteOrder> WriteOnly<Endianness> {
     pub(crate) fn new() -> Self {
         Self {
-            stat: Default::default()
+            stat: Default::default(),
         }
     }
 }
 
-impl<Endianness: ByteOrder>
-Handle<Endianness> for
-WriteOnly<Endianness> {
-
-    fn stat(
-        &self
-    ) -> Result<Ref<Stat<Endianness>>, GenericError> {
-        Ok(self.stat.borrow())
-    }
+impl<Endianness: ByteOrder> Handle<Endianness> for WriteOnly<Endianness> {
+    fn stat(&self) -> Result<Ref<Stat<Endianness>>, GenericError> { Ok(self.stat.borrow()) }
 
     fn read(
         &mut self,
@@ -55,33 +46,32 @@ WriteOnly<Endianness> {
     }
 }
 
-pub struct
-ReadOnly<Endianness: ByteOrder> {
+pub struct ReadOnly<Endianness: ByteOrder> {
     data: Vec<u8>,
     pos: usize,
     stat: RefCell<Stat<Endianness>>,
 }
 
-impl<Endianness: ByteOrder>
-ReadOnly<Endianness> {
+impl<Endianness: ByteOrder> ReadOnly<Endianness> {
     pub(crate) fn new() -> Self {
-        Self { pos: 0, data: vec![], stat: Default::default() }
+        Self {
+            pos: 0,
+            data: vec![],
+            stat: Default::default(),
+        }
     }
 
     pub fn from(data: Vec<u8>) -> Self {
-        Self { pos: 0, data, stat: Default::default() }
+        Self {
+            pos: 0,
+            data,
+            stat: Default::default(),
+        }
     }
 }
 
-impl<Endianness: ByteOrder>
-Handle<Endianness> for
-ReadOnly<Endianness> {
-
-    fn stat(
-        &self
-    ) -> Result<Ref<Stat<Endianness>>, GenericError> {
-        Ok(self.stat.borrow())
-    }
+impl<Endianness: ByteOrder> Handle<Endianness> for ReadOnly<Endianness> {
+    fn stat(&self) -> Result<Ref<Stat<Endianness>>, GenericError> { Ok(self.stat.borrow()) }
 
     fn read(
         &mut self,

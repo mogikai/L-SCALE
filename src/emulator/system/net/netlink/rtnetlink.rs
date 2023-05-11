@@ -7,22 +7,22 @@ use num_enum::{FromPrimitive, IntoPrimitive};
 
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::handles::Handle;
-use crate::emulator::system::memory::{Decode, Encode, Encoder, MemoryError, RequiredMem};
-use crate::emulator::system::net::netlink::{NetlinkMessageFlags, nlmsghdr};
-use crate::emulator::system::net::netlink::rtnetlink::nla_type::{IFA_ADDRESS, IFA_BROADCAST, IFA_FLAGS, IFA_LABEL, IFA_LOCAL};
+use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, Encoder, RequiredMem};
+use crate::emulator::abstractions::mmu::MemoryError;
+use crate::emulator::system::net::netlink::rtnetlink::nla_type::{
+    IFA_ADDRESS, IFA_BROADCAST, IFA_FLAGS, IFA_LABEL, IFA_LOCAL,
+};
+use crate::emulator::system::net::netlink::{nlmsghdr, NetlinkMessageFlags};
 use crate::emulator::system::net::Sockaddr;
 use crate::emulator::system::net::SocketDomain::{AF_INET, AF_INET6};
 
-pub struct
-RTNetlinkSocket {
+pub struct RTNetlinkSocket {
     sockaddr: Option<Sockaddr>,
     messages: VecDeque<Vec<u8>>,
 }
 
-impl
-RTNetlinkSocket {
-    pub
-    fn new() -> Self {
+impl RTNetlinkSocket {
+    pub fn new() -> Self {
         Self {
             sockaddr: None,
             messages: Default::default(),
@@ -30,9 +30,7 @@ RTNetlinkSocket {
     }
 }
 
-impl<Endianness: ByteOrder>
-Handle<Endianness> for
-RTNetlinkSocket {
+impl<Endianness: ByteOrder> Handle<Endianness> for RTNetlinkSocket {
     fn bind(
         &mut self,
         sockaddr: Sockaddr,
@@ -42,12 +40,10 @@ RTNetlinkSocket {
         Ok(())
     }
 
-    fn getsockname(
-        &self
-    ) -> Result<&Sockaddr, GenericError> {
+    fn getsockname(&self) -> Result<&Sockaddr, GenericError> {
         match &self.sockaddr {
             Some(s) => Ok(s),
-            None => Err(GenericError::new(GenericErrorKind::Unknown, ""))
+            None => Err(GenericError::new(GenericErrorKind::Unknown, "")),
         }
     }
 
@@ -55,11 +51,11 @@ RTNetlinkSocket {
         &mut self,
         data: &[u8],
     ) -> Result<usize, GenericError> {
-        let hdr = <nlmsghdr as Decode::<Endianness>>::decode(data)?;
+        let hdr = <nlmsghdr as Decode<Endianness>>::decode(data)?;
         let payload = &data[mem::size_of::<nlmsghdr>()..];
         match hdr.nlmsg_type {
             RTNetlinkMessageType::RTM_GETADDR => {}
-            _ => todo!("Only RTM_GETADDR supported currently")
+            _ => todo!("Only RTM_GETADDR supported currently"),
         }
         // TODO: How to handle this correctly? For now we just hard code a response according to strace of the example
         //       The payload is only 4 bytes, but the ifaddrmsg struct is 8 bytes long. Why is this the case?
@@ -83,8 +79,20 @@ RTNetlinkSocket {
             .encode_with(|encoder| encode_attr(encoder, IFA_ADDRESS, &[127, 0, 0, 1]))
             .encode_with(|encoder| encode_attr(encoder, IFA_LOCAL, &[127, 0, 0, 1]))
             .encode_with(|encoder| encode_attr(encoder, IFA_LABEL, "lo\0".as_bytes()))
-            .encode_with(|encoder| encode_attr(encoder, IFA_FLAGS, <_ as Encode<Endianness>>::encode(&ifa_flags::IFA_F_PERMANENT).as_slice()))
-            .encode(&[20u8, 0, 6, 0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xf0, 0x00, 0x00, 0x00, 0xf0, 0x00, 0x00, 0x00].as_slice());
+            .encode_with(|encoder| {
+                encode_attr(
+                    encoder,
+                    IFA_FLAGS,
+                    <_ as Encode<Endianness>>::encode(&ifa_flags::IFA_F_PERMANENT).as_slice(),
+                )
+            })
+            .encode(
+                &[
+                    20u8, 0, 6, 0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xf0, 0x00, 0x00, 0x00, 0xf0, 0x00,
+                    0x00, 0x00,
+                ]
+                .as_slice(),
+            );
 
         let hdr = nlmsghdr {
             nlmsg_len: (nlmsghdr::required_mem() + msg.encoded_length()) as u32,
@@ -109,8 +117,19 @@ RTNetlinkSocket {
             .encode_with(|encoder| encode_attr(encoder, IFA_LOCAL, &[192, 168, 178, 30]))
             .encode_with(|encoder| encode_attr(encoder, IFA_BROADCAST, &[192, 168, 178, 255]))
             .encode_with(|encoder| encode_attr(encoder, IFA_LABEL, "wlp7s0\0".as_bytes()))
-            .encode_with(|encoder| encode_attr(encoder, IFA_FLAGS, <_ as Encode<Endianness>>::encode(&ifa_flags::IFA_F_NOPREFIXROUTE).as_slice()))
-            .encode(&[20u8, 0, 6, 0, 100, 250, 12, 0, 100, 250, 12, 0, 126, 3, 0, 0, 89, 96, 20, 0].as_slice());
+            .encode_with(|encoder| {
+                encode_attr(
+                    encoder,
+                    IFA_FLAGS,
+                    <_ as Encode<Endianness>>::encode(&ifa_flags::IFA_F_NOPREFIXROUTE).as_slice(),
+                )
+            })
+            .encode(
+                &[
+                    20u8, 0, 6, 0, 100, 250, 12, 0, 100, 250, 12, 0, 126, 3, 0, 0, 89, 96, 20, 0,
+                ]
+                .as_slice(),
+            );
 
         let hdr = nlmsghdr {
             nlmsg_len: (nlmsghdr::required_mem() + msg.encoded_length()) as u32,
@@ -133,8 +152,20 @@ RTNetlinkSocket {
                 ifa_index: 1,
             })
             .encode_with(|encoder| encode_attr(encoder, IFA_ADDRESS, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]))
-            .encode(&[20u8, 0, 6, 0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xf0, 0x00, 0x00, 0x00, 0xf0, 0x00, 0x00, 0x00].as_slice())
-            .encode_with(|encoder| encode_attr(encoder, IFA_FLAGS, <_ as Encode<Endianness>>::encode(&ifa_flags::IFA_F_PERMANENT).as_slice()));
+            .encode(
+                &[
+                    20u8, 0, 6, 0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xf0, 0x00, 0x00, 0x00, 0xf0, 0x00,
+                    0x00, 0x00,
+                ]
+                .as_slice(),
+            )
+            .encode_with(|encoder| {
+                encode_attr(
+                    encoder,
+                    IFA_FLAGS,
+                    <_ as Encode<Endianness>>::encode(&ifa_flags::IFA_F_PERMANENT).as_slice(),
+                )
+            });
 
         let hdr = nlmsghdr {
             nlmsg_len: (nlmsghdr::required_mem() + msg.encoded_length()) as u32,
@@ -154,9 +185,22 @@ RTNetlinkSocket {
                 ifa_scope: 0,
                 ifa_index: 4,
             })
-            .encode_with(|encoder| encode_attr(encoder, IFA_ADDRESS, &[32, 3, 0, 201, 127, 31, 25, 0, 211, 3, 223, 122, 219, 62, 235, 176]))
-            .encode(&[20u8, 0, 6, 0, 100, 250, 12, 0, 100, 250, 12, 0, 126, 3, 0, 0, 89, 96, 20, 0].as_slice())
-            .encode_with(|encoder| encode_attr(encoder, IFA_FLAGS, <_ as Encode<Endianness>>::encode(&ifa_flags::IFA_F_SECONDARY).as_slice()));
+            .encode_with(|encoder| {
+                encode_attr(encoder, IFA_ADDRESS, &[32, 3, 0, 201, 127, 31, 25, 0, 211, 3, 223, 122, 219, 62, 235, 176])
+            })
+            .encode(
+                &[
+                    20u8, 0, 6, 0, 100, 250, 12, 0, 100, 250, 12, 0, 126, 3, 0, 0, 89, 96, 20, 0,
+                ]
+                .as_slice(),
+            )
+            .encode_with(|encoder| {
+                encode_attr(
+                    encoder,
+                    IFA_FLAGS,
+                    <_ as Encode<Endianness>>::encode(&ifa_flags::IFA_F_SECONDARY).as_slice(),
+                )
+            });
 
         let hdr = nlmsghdr {
             nlmsg_len: (nlmsghdr::required_mem() + msg.encoded_length()) as u32,
@@ -176,9 +220,25 @@ RTNetlinkSocket {
                 ifa_scope: 0,
                 ifa_index: 4,
             })
-            .encode_with(|encoder| encode_attr(encoder, IFA_ADDRESS, &[32, 3, 0, 201, 127, 31, 25, 0, 15, 71, 61, 94, 29, 8, 104, 180]))
-            .encode(&[20u8, 0, 6, 0, 100, 250, 12, 0, 100, 250, 12, 0, 126, 3, 0, 0, 89, 96, 20, 0].as_slice())
-            .encode_with(|encoder| encode_attr(encoder, IFA_FLAGS, <_ as Encode<Endianness>>::encode(&(ifa_flags::IFA_F_MANAGETEMPADDR | ifa_flags::IFA_F_NOPREFIXROUTE)).as_slice()));
+            .encode_with(|encoder| {
+                encode_attr(encoder, IFA_ADDRESS, &[32, 3, 0, 201, 127, 31, 25, 0, 15, 71, 61, 94, 29, 8, 104, 180])
+            })
+            .encode(
+                &[
+                    20u8, 0, 6, 0, 100, 250, 12, 0, 100, 250, 12, 0, 126, 3, 0, 0, 89, 96, 20, 0,
+                ]
+                .as_slice(),
+            )
+            .encode_with(|encoder| {
+                encode_attr(
+                    encoder,
+                    IFA_FLAGS,
+                    <_ as Encode<Endianness>>::encode(
+                        &(ifa_flags::IFA_F_MANAGETEMPADDR | ifa_flags::IFA_F_NOPREFIXROUTE),
+                    )
+                    .as_slice(),
+                )
+            });
 
         let hdr = nlmsghdr {
             nlmsg_len: (nlmsghdr::required_mem() + msg.encoded_length()) as u32,
@@ -198,9 +258,23 @@ RTNetlinkSocket {
                 ifa_scope: 253,
                 ifa_index: 4,
             })
-            .encode_with(|encoder| encode_attr(encoder, IFA_ADDRESS, &[254, 128, 0, 0, 0, 0, 0, 0, 173, 11, 58, 69, 177, 184, 112, 232]))
-            .encode(&[20u8, 0, 6, 0, 100, 250, 12, 0, 100, 250, 12, 0, 126, 3, 0, 0, 89, 96, 20, 0].as_slice())
-            .encode_with(|encoder| encode_attr(encoder, IFA_FLAGS, <_ as Encode<Endianness>>::encode(&(ifa_flags::IFA_F_PERMANENT | ifa_flags::IFA_F_NOPREFIXROUTE)).as_slice()));
+            .encode_with(|encoder| {
+                encode_attr(encoder, IFA_ADDRESS, &[254, 128, 0, 0, 0, 0, 0, 0, 173, 11, 58, 69, 177, 184, 112, 232])
+            })
+            .encode(
+                &[
+                    20u8, 0, 6, 0, 100, 250, 12, 0, 100, 250, 12, 0, 126, 3, 0, 0, 89, 96, 20, 0,
+                ]
+                .as_slice(),
+            )
+            .encode_with(|encoder| {
+                encode_attr(
+                    encoder,
+                    IFA_FLAGS,
+                    <_ as Encode<Endianness>>::encode(&(ifa_flags::IFA_F_PERMANENT | ifa_flags::IFA_F_NOPREFIXROUTE))
+                        .as_slice(),
+                )
+            });
 
         let hdr = nlmsghdr {
             nlmsg_len: (nlmsghdr::required_mem() + msg.encoded_length()) as u32,
@@ -253,10 +327,7 @@ fn encode_attr<Endianness: ByteOrder>(
         nla_len: attr_size as u16,
         nla_type: typ,
     };
-    encoder
-        .encode(&attr)
-        .encode(&payload)
-        .encode(&vec![0; align(attr_size) - attr_size].as_slice())
+    encoder.encode(&attr).encode(&payload).encode(&vec![0; align(attr_size) - attr_size].as_slice())
 }
 
 fn align(size: usize) -> usize {
@@ -284,17 +355,16 @@ pub enum nla_type {
 }
 
 #[repr(C)]
-struct
-nlattr {
+struct nlattr {
     nla_len: u16,
     nla_type: nla_type,
 }
 
-impl<Endianness: ByteOrder>
-Encode<Endianness> for
-nlattr {
+impl RequiredMem for nlattr {}
+
+impl<Endianness: ByteOrder> Encode<Endianness> for nlattr {
     fn encode(&self) -> Vec<u8> {
-        let mut out = vec![0; mem::size_of::<Self>()];
+        let mut out = vec![0; Self::required_mem()];
         Endianness::write_u16(&mut out[..2], self.nla_len);
         Endianness::write_u16(&mut out[2..], self.nla_type as u16);
         out
@@ -319,19 +389,18 @@ bitflags! {
     }
 }
 
-impl<Endianness: ByteOrder>
-Encode<Endianness> for
-ifa_flags {
+impl RequiredMem for ifa_flags {}
+
+impl<Endianness: ByteOrder> Encode<Endianness> for ifa_flags {
     fn encode(&self) -> Vec<u8> {
-        let mut out = vec![0; 4];
+        let mut out = vec![0; Self::required_mem()];
         Endianness::write_u32(out.as_mut_slice(), self.bits);
         out
     }
 }
 
 #[repr(C)]
-struct
-ifaddrmsg {
+struct ifaddrmsg {
     ifa_family: u8,
     ifa_prefixlen: u8,
     ifa_flags: u8,
@@ -339,9 +408,7 @@ ifaddrmsg {
     ifa_index: u32,
 }
 
-impl<Endianness: ByteOrder>
-Decode<Endianness> for
-ifaddrmsg {
+impl<Endianness: ByteOrder> Decode<Endianness> for ifaddrmsg {
     fn decode(val: &[u8]) -> Result<Self, MemoryError> {
         Ok(Self {
             ifa_family: val[0],
@@ -353,9 +420,7 @@ ifaddrmsg {
     }
 }
 
-impl<Endianness: ByteOrder>
-Encode<Endianness> for
-ifaddrmsg {
+impl<Endianness: ByteOrder> Encode<Endianness> for ifaddrmsg {
     fn encode(&self) -> Vec<u8> {
         let mut out = vec![0; mem::size_of::<ifaddrmsg>()];
         out[0] = self.ifa_family;
@@ -367,107 +432,104 @@ ifaddrmsg {
     }
 }
 
-impl
-RequiredMem for
-ifaddrmsg {}
+impl RequiredMem for ifaddrmsg {}
 
 #[repr(u16)]
 #[allow(non_camel_case_types)]
 #[derive(Debug, FromPrimitive, IntoPrimitive, Copy, Clone)]
-pub enum
-RTNetlinkMessageType {
-    NLMSG_NOOP = 0x1,
-    NLMSG_ERROR = 0x2,
-    NLMSG_DONE = 0x3,
-    NLMSG_OVERRUN = 0x4,
+pub enum RTNetlinkMessageType {
+    NLMSG_NOOP           = 0x1,
+    NLMSG_ERROR          = 0x2,
+    NLMSG_DONE           = 0x3,
+    NLMSG_OVERRUN        = 0x4,
 
-    RTM_NEWLINK = 16,
+    RTM_NEWLINK          = 16,
     RTM_DELLINK,
     RTM_GETLINK,
     RTM_SETLINK,
 
-    RTM_NEWADDR = 20,
+    RTM_NEWADDR          = 20,
     RTM_DELADDR,
     RTM_GETADDR,
 
-    RTM_NEWROUTE = 24,
+    RTM_NEWROUTE         = 24,
     RTM_DELROUTE,
     RTM_GETROUTE,
 
-    RTM_NEWNEIGH = 28,
+    RTM_NEWNEIGH         = 28,
     RTM_DELNEIGH,
     RTM_GETNEIGH,
 
-    RTM_NEWRULE = 32,
+    RTM_NEWRULE          = 32,
     RTM_DELRULE,
     RTM_GETRULE,
 
-    RTM_NEWQDISC = 36,
+    RTM_NEWQDISC         = 36,
     RTM_DELQDISC,
     RTM_GETQDISC,
 
-    RTM_NEWTCLASS = 40,
+    RTM_NEWTCLASS        = 40,
     RTM_DELTCLASS,
     RTM_GETTCLASS,
 
-    RTM_NEWTFILTER = 44,
+    RTM_NEWTFILTER       = 44,
     RTM_DELTFILTER,
     RTM_GETTFILTER,
 
-    RTM_NEWACTION = 48,
+    RTM_NEWACTION        = 48,
     RTM_DELACTION,
     RTM_GETACTION,
 
-    RTM_NEWPREFIX = 52,
+    RTM_NEWPREFIX        = 52,
 
-    RTM_GETMULTICAST = 58,
+    RTM_GETMULTICAST     = 58,
 
-    RTM_GETANYCAST = 62,
+    RTM_GETANYCAST       = 62,
 
-    RTM_NEWNEIGHTBL = 64,
-    RTM_GETNEIGHTBL = 66,
+    RTM_NEWNEIGHTBL      = 64,
+    RTM_GETNEIGHTBL      = 66,
     RTM_SETNEIGHTBL,
 
-    RTM_NEWNDUSEROPT = 68,
+    RTM_NEWNDUSEROPT     = 68,
 
-    RTM_NEWADDRLABEL = 72,
+    RTM_NEWADDRLABEL     = 72,
     RTM_DELADDRLABEL,
     RTM_GETADDRLABEL,
 
-    RTM_GETDCB = 78,
+    RTM_GETDCB           = 78,
     RTM_SETDCB,
 
-    RTM_NEWNETCONF = 80,
+    RTM_NEWNETCONF       = 80,
     RTM_DELNETCONF,
-    RTM_GETNETCONF = 82,
+    RTM_GETNETCONF       = 82,
 
-    RTM_NEWMDB = 84,
-    RTM_DELMDB = 85,
-    RTM_GETMDB = 86,
+    RTM_NEWMDB           = 84,
+    RTM_DELMDB           = 85,
+    RTM_GETMDB           = 86,
 
-    RTM_NEWNSID = 88,
-    RTM_DELNSID = 89,
-    RTM_GETNSID = 90,
+    RTM_NEWNSID          = 88,
+    RTM_DELNSID          = 89,
+    RTM_GETNSID          = 90,
 
-    RTM_NEWSTATS = 92,
-    RTM_GETSTATS = 94,
+    RTM_NEWSTATS         = 92,
+    RTM_GETSTATS         = 94,
     RTM_SETSTATS,
 
-    RTM_NEWCACHEREPORT = 96,
+    RTM_NEWCACHEREPORT   = 96,
 
-    RTM_NEWCHAIN = 100,
+    RTM_NEWCHAIN         = 100,
     RTM_DELCHAIN,
     RTM_GETCHAIN,
 
-    RTM_NEWNEXTHOP = 104,
+    RTM_NEWNEXTHOP       = 104,
     RTM_DELNEXTHOP,
     RTM_GETNEXTHOP,
 
-    RTM_NEWLINKPROP = 108,
+    RTM_NEWLINKPROP      = 108,
     RTM_DELLINKPROP,
     RTM_GETLINKPROP,
 
-    RTM_NEWVLAN = 112,
+    RTM_NEWVLAN          = 112,
     RTM_DELVLAN,
     RTM_GETVLAN,
 
@@ -475,10 +537,10 @@ RTNetlinkMessageType {
     RTM_DELNEXTHOPBUCKET,
     RTM_GETNEXTHOPBUCKET,
 
-    RTM_NEWTUNNEL = 120,
+    RTM_NEWTUNNEL        = 120,
     RTM_DELTUNNEL,
     RTM_GETTUNNEL,
 
     #[default]
-    INVALID = !0,
+    INVALID              = !0,
 }

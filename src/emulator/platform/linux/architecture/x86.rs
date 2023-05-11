@@ -1,10 +1,10 @@
 use bitflags::bitflags;
-use enumset::EnumSet;
 use byteorder::{ByteOrder, LittleEndian};
+use enumset::EnumSet;
 
-use crate::emulator::platform::linux::signals::{Signal, SignalAction};
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::kernel::LinuxKernelError;
+use crate::emulator::platform::linux::signals::{Signal, SignalAction};
 
 pub enum X86 {}
 
@@ -43,5 +43,4 @@ impl Architecture for X86 {
         let mask = LittleEndian::read_u64(&bytes[24..32]);
         SignalAction::new(sigaction, Some(restorer), mask, X86SignalFlags::from_bits_truncate(flags))
     }
-
 }

@@ -1,9 +1,9 @@
+use byteorder::LittleEndian;
 /// Unit tests for file system module
 /// TODO: Write more sensible tests
 use std::path::Path;
-use byteorder::LittleEndian;
 
-use rand::{RngCore, thread_rng};
+use rand::{thread_rng, RngCore};
 
 use super::*;
 
@@ -104,7 +104,10 @@ fn load_file_contents() -> Result<(), GenericError> {
 
 #[test]
 fn load_fs() -> Result<(), FSError> {
-    let fs = Filesystem::<LittleEndian>::from_disk(1_073_741_824, Path::new("/home/mark/projects/fraunhofer/fuzzing/prototypes/ffs"))?;
+    let fs = Filesystem::<LittleEndian>::from_disk(
+        1_073_741_824,
+        Path::new("/home/mark/projects/fraunhofer/fuzzing/prototypes/ffs"),
+    )?;
     // fs.print_tree();
     let lib_id = fs.resolve_last(Path::new("/src/lib.rs"))?;
     let data = fs.read(lib_id, 0, 100000)?;

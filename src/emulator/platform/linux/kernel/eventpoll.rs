@@ -1,6 +1,7 @@
 use byteorder::ByteOrder;
 
-use crate::emulator::abstractions::cpu::{CPU, Vaddr};
+use crate::emulator::abstractions::cpu::CPU;
+use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::handles::Handle;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::kernel::{LinuxKernel, SyscallResult};
@@ -18,7 +19,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         &mut self,
         _: &mut impl CPU,
         epfd: u64,
-        events: Vaddr, // epoll_event*
+        events: EVAddr, // epoll_event*
         maxevents: u64,
         timeout: u64,
     ) -> SyscallResult {
@@ -31,7 +32,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         epfd: u64,
         op: u64,
         fd: u64,
-        event: Vaddr, // epoll_event*
+        event: EVAddr, // epoll_event*
     ) -> SyscallResult {
         error!("TODO: Implement epoll_ctl. Need to add fds to interest list");
         Ok(0)
@@ -41,10 +42,10 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         &mut self,
         _: &mut impl CPU,
         epfd: u64,
-        events: Vaddr, // epoll_event*
+        events: EVAddr, // epoll_event*
         maxevents: u64,
         timeout: u64,
-        sigmask: Vaddr, // sigset_t*
+        sigmask: EVAddr, // sigset_t*
         sigsetsize: u64,
     ) -> SyscallResult {
         todo!()
@@ -62,12 +63,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
 struct Epoll {}
 
 impl Epoll {
-    fn new() -> Self {
-        Epoll {}
-    }
+    fn new() -> Self { Epoll {} }
 }
 
-impl<Endianness: ByteOrder>
-Handle<Endianness> for
-Epoll {
-}
+impl<Endianness: ByteOrder> Handle<Endianness> for Epoll {}

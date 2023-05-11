@@ -23,7 +23,13 @@ impl Data {
         }
     }
 
-    pub(super) fn write_to_block_cow(&mut self, pos: usize, data: &[u8], contents: &mut BTreeSet<Block>, block_start: usize) -> Result<usize, FSError> {
+    pub(super) fn write_to_block_cow(
+        &mut self,
+        pos: usize,
+        data: &[u8],
+        contents: &mut BTreeSet<Block>,
+        block_start: usize,
+    ) -> Result<usize, FSError> {
         let block = contents.take(&block_start).expect("The block_starts were constructed beforehand and must exist");
         // We can now split the block if COW is necessary, or modify directly and reinsert
         let block = if block.snap_id < self.current_snap {
@@ -47,8 +53,7 @@ impl Data {
         assert!(block.contains(pos));
         let block_offset = block.data_offset + (pos - block.start);
         let amount = min(block.end() - pos, data.len());
-        self.data[block_offset..block_offset + amount]
-            .copy_from_slice(&data[..amount]);
+        self.data[block_offset..block_offset + amount].copy_from_slice(&data[..amount]);
 
         contents.insert(block);
         Ok(amount)
@@ -57,7 +62,12 @@ impl Data {
     /// Inserts a new block at the end of the existing blocks and writes data into the block.
     /// If pos is after the end of the last block, the area in between will be allocated for
     /// this block and filled with zeros. This guarantees that blocks are always continuous.
-    pub(super) fn new_block(&mut self, pos: usize, contents: &mut BTreeSet<Block>, data: &[u8]) -> Result<(), FSError> {
+    pub(super) fn new_block(
+        &mut self,
+        pos: usize,
+        contents: &mut BTreeSet<Block>,
+        data: &[u8],
+    ) -> Result<(), FSError> {
         // TODO: First search for unused existing blocks
         let last_block_end = contents.iter().last().map_or(0, |b| b.end());
         assert!(pos >= last_block_end);
@@ -73,22 +83,32 @@ impl Data {
 
     /// Attempts to read as much data as possible from the supplied block at position pos
     ///
-    pub(super) fn read_block(&self, pos: usize, block: &Block, buffer: &mut [MaybeUninit<u8>]) -> Result<usize, FSError> {
+    pub(super) fn read_block(
+        &self,
+        pos: usize,
+        block: &Block,
+        buffer: &mut [MaybeUninit<u8>],
+    ) -> Result<usize, FSError> {
         if !block.contains(pos) {
             return Err(FSError::Unknown);
         }
         let to_read = min(buffer.len(), block.end() - pos);
         let offset = block.data_offset + (pos - block.start);
         unsafe {
-            ptr::copy_nonoverlapping(self.data[offset..offset + to_read].as_ptr(),
-                                     buffer[..to_read].as_mut_ptr().cast(),
-                                     to_read)
+            ptr::copy_nonoverlapping(
+                self.data[offset..offset + to_read].as_ptr(),
+                buffer[..to_read].as_mut_ptr().cast(),
+                to_read,
+            )
         };
         // buffer[..to_read].copy_from_slice(&self.data[offset..offset + to_read]);
         Ok(to_read)
     }
 
-    pub(super) fn save_free_blocks(&mut self, blocks: impl ExactSizeIterator<Item=Block>) {
+    pub(super) fn save_free_blocks(
+        &mut self,
+        blocks: impl ExactSizeIterator<Item = Block>,
+    ) {
         self.free_blocks.reserve(blocks.len());
         blocks.for_each(|b| {
             // We only want to save blocks that are used in the current snapshot.
@@ -98,12 +118,18 @@ impl Data {
             }
         });
     }
-    pub(super) fn restore_and_discard(&mut self, snap_marker: DataSnapMarker) {
+    pub(super) fn restore_and_discard(
+        &mut self,
+        snap_marker: DataSnapMarker,
+    ) {
         self.restore(snap_marker);
         self.current_snap -= 1;
     }
 
-    pub(super) fn restore(&mut self, snap_marker: DataSnapMarker) {
+    pub(super) fn restore(
+        &mut self,
+        snap_marker: DataSnapMarker,
+    ) {
         self.free_blocks.truncate(self.current_snap);
         self.free_blocks.push(BTreeMap::new());
         self.data.truncate(snap_marker.data_marker);

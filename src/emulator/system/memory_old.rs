@@ -11,34 +11,17 @@ use bitflags::bitflags;
 use byteorder::ByteOrder;
 use goblin::pe::import::Bitfield;
 
-use crate::emulator::abstractions::cpu::{Hooks, Permission, Vaddr, MMU};
-
-const MASK4K: u64 = 4 * (1 << 10) - 1;
+use crate::emulator::abstractions::cpu::EVAddr;
 
 pub struct Memory<Endianness: ByteOrder> {
-    stack_base: Vaddr,
+    stack_base: EVAddr,
     stack_size: usize,
     mappings: BTreeSet<Region>,
-    heap: Vaddr,
-    mapbase: Vaddr,
+    heap_base: EVAddr,
+    map_base: EVAddr,
     _endian: PhantomData<Endianness>,
 }
 
-fn align4k_up(address: Vaddr) -> Vaddr { (address + MASK4K) & !MASK4K }
-
-fn align4k_down(address: Vaddr) -> Vaddr { address & !MASK4K }
-
-fn is4kaligned(address: Vaddr) -> bool { (address & MASK4K) == 0 }
-
-#[derive(Debug, Copy, Clone)]
-pub enum MemoryError {
-    ConversionError,
-    AlreadyMapped,
-    NotMapped,
-    NotAligned,
-    ZeroSize,
-    InvalidSize,
-}
 
 pub trait MemoryWrite<T> {
     /// Writes data into memory starting at the supplied address
@@ -52,7 +35,7 @@ pub trait MemoryWrite<T> {
     /// returns: The size in bytes of the data that was written.
     fn write(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: T,
     ) -> u64;
     /// Writes data into memory such that the write ends at address.
@@ -66,26 +49,16 @@ pub trait MemoryWrite<T> {
     /// returns: The size in bytes of the data that was written.
     fn write_upto(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: T,
     ) -> u64;
 }
 
-#[macro_export]
-macro_rules! push_stack {
-    ($mem:ident, $data:expr, $reg:expr, $uc:ident) => {{
-        let d = $data;
-        let sp = $uc.reg_read($reg).expect("can't read stackpointer"); //TODO check
-        let len = $mem.write_upto(sp, d);
-        $uc.reg_write($reg, sp - len).expect("can't write stackpointer");
-        sp - len
-    }};
-}
 
 impl<Endianness: ByteOrder> MemoryWrite<u64> for Memory<Endianness> {
     fn write(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: u64,
     ) -> u64 {
         let mut buffer = self.access_mem_mut(address, u64::size_of()).unwrap();
@@ -94,7 +67,7 @@ impl<Endianness: ByteOrder> MemoryWrite<u64> for Memory<Endianness> {
     }
     fn write_upto(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: u64,
     ) -> u64 {
         let mut buf: Vec<u8> = vec![0; 8];
@@ -106,7 +79,7 @@ impl<Endianness: ByteOrder> MemoryWrite<u64> for Memory<Endianness> {
 impl<Endianness: ByteOrder> MemoryWrite<&[u8]> for Memory<Endianness> {
     fn write(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: &[u8],
     ) -> u64 {
         self.write_internal(address, data);
@@ -114,7 +87,7 @@ impl<Endianness: ByteOrder> MemoryWrite<&[u8]> for Memory<Endianness> {
     }
     fn write_upto(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: &[u8],
     ) -> u64 {
         let len: u64 = data.len().try_into().unwrap();
@@ -125,7 +98,7 @@ impl<Endianness: ByteOrder> MemoryWrite<&[u8]> for Memory<Endianness> {
 impl<Endianness: ByteOrder> MemoryWrite<&[(u64, u64)]> for Memory<Endianness> {
     fn write(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: &[(u64, u64)],
     ) -> u64 {
         let mut buffer = self.access_mem_mut(address, data.len() * 2 * 8).unwrap();
@@ -141,7 +114,7 @@ impl<Endianness: ByteOrder> MemoryWrite<&[(u64, u64)]> for Memory<Endianness> {
 
     fn write_upto(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: &[(u64, u64)],
     ) -> u64 {
         let len: u64 = data.len().try_into().unwrap();
@@ -153,14 +126,14 @@ impl<Endianness: ByteOrder> MemoryWrite<&[(u64, u64)]> for Memory<Endianness> {
 impl<Endianness: ByteOrder> MemoryWrite<&Vec<(u64, u64)>> for Memory<Endianness> {
     fn write(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: &Vec<(u64, u64)>,
     ) -> u64 {
         self.write(address, data.as_slice())
     }
     fn write_upto(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: &Vec<(u64, u64)>,
     ) -> u64 {
         self.write_upto(address, data.as_slice())
@@ -170,7 +143,7 @@ impl<Endianness: ByteOrder> MemoryWrite<&Vec<(u64, u64)>> for Memory<Endianness>
 impl<Endianness: ByteOrder> MemoryWrite<&[u64]> for Memory<Endianness> {
     fn write(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: &[u64],
     ) -> u64 {
         let mut buffer = self.access_mem_mut(address, data.len() * 8).unwrap();
@@ -179,7 +152,7 @@ impl<Endianness: ByteOrder> MemoryWrite<&[u64]> for Memory<Endianness> {
     }
     fn write_upto(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: &[u64],
     ) -> u64 {
         let len: u64 = data.len().try_into().unwrap();
@@ -191,14 +164,14 @@ impl<Endianness: ByteOrder> MemoryWrite<&[u64]> for Memory<Endianness> {
 impl<Endianness: ByteOrder> MemoryWrite<&Vec<u64>> for Memory<Endianness> {
     fn write(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: &Vec<u64>,
     ) -> u64 {
         self.write(address, data.as_slice())
     }
     fn write_upto(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: &Vec<u64>,
     ) -> u64 {
         self.write_upto(address, data.as_slice())
@@ -208,14 +181,14 @@ impl<Endianness: ByteOrder> MemoryWrite<&Vec<u64>> for Memory<Endianness> {
 impl<Endianness: ByteOrder> MemoryWrite<&Vec<u8>> for Memory<Endianness> {
     fn write(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: &Vec<u8>,
     ) -> u64 {
         self.write(address, data.as_slice())
     }
     fn write_upto(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: &Vec<u8>,
     ) -> u64 {
         self.write_upto(address, data.as_slice())
@@ -225,14 +198,14 @@ impl<Endianness: ByteOrder> MemoryWrite<&Vec<u8>> for Memory<Endianness> {
 impl<Endianness: ByteOrder> MemoryWrite<Ref<'_, [u8]>> for Memory<Endianness> {
     fn write(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: Ref<'_, [u8]>,
     ) -> u64 {
         self.write(address, &*data)
     }
     fn write_upto(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: Ref<'_, [u8]>,
     ) -> u64 {
         self.write_upto(address, &*data)
@@ -242,7 +215,7 @@ impl<Endianness: ByteOrder> MemoryWrite<Ref<'_, [u8]>> for Memory<Endianness> {
 impl<Endianness: ByteOrder> MemoryWrite<&str> for Memory<Endianness> {
     fn write(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: &str,
     ) -> u64 {
         let v: Vec<u8> = data.as_bytes().to_vec();
@@ -251,7 +224,7 @@ impl<Endianness: ByteOrder> MemoryWrite<&str> for Memory<Endianness> {
     }
     fn write_upto(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: &str,
     ) -> u64 {
         let v: Vec<u8> = data.as_bytes().to_vec();
@@ -260,86 +233,31 @@ impl<Endianness: ByteOrder> MemoryWrite<&str> for Memory<Endianness> {
     }
 }
 
-pub trait Encode<Endianness: ByteOrder>: Sized {
-    fn encode(&self) -> Vec<u8>;
-}
-
-pub struct Encoder<Endianness: ByteOrder> {
-    output: Vec<u8>,
-    _phantom: PhantomData<Endianness>,
-}
-
-impl<Endianness: ByteOrder> Encoder<Endianness> {
-    pub fn new() -> Encoder<Endianness> {
-        Encoder {
-            output: vec![],
-            _phantom: Default::default(),
-        }
-    }
-
-    pub fn encode<T: Encode<Endianness>>(
-        mut self,
-        data: &T,
-    ) -> Self {
-        self.output.extend(data.encode());
-        self
-    }
-
-    pub fn encode_front<T: Encode<Endianness>>(
-        mut self,
-        data: &T,
-    ) -> Self {
-        let mut bytes = data.encode();
-        mem::swap(&mut bytes, &mut self.output);
-        self.output.extend(bytes);
-        self
-    }
-
-    pub fn encode_with<F>(
-        mut self,
-        encode: F,
-    ) -> Self
-    where
-        F: Fn(Self) -> Self,
-    {
-        encode(self)
-    }
-
-    pub fn finalize(self) -> Vec<u8> { self.output }
-
-    pub fn encoded_length(&self) -> usize { self.output.len() }
-}
 
 impl<Endianness: ByteOrder> Encode<Endianness> for &[u8] {
     fn encode(&self) -> Vec<u8> { self.to_vec() }
 }
 
-pub trait Decode<Endianness: ByteOrder>: Sized {
-    fn decode(val: &[u8]) -> Result<Self, MemoryError>;
-}
-
-pub trait RequiredMem: Sized {
-    fn required_mem() -> usize { mem::size_of::<Self>() }
-}
 
 impl<'a, Endianness: ByteOrder> Memory<Endianness> {
     pub fn new<'b>(
         cpu: &mut (impl MMU + Hooks<'b>),
-        stack_base: Vaddr,
+        stack_base: EVAddr,
         stack_size: usize,
-        heap_base: Vaddr,
+        heap_base: EVAddr,
+        map_base: EVAddr,
     ) -> Memory<Endianness> {
         let mut mem = Memory {
             stack_base,
             stack_size,
             mappings: BTreeSet::new(),
-            heap: heap_base,
-            mapbase: 0x100000,
+            heap_base,
+            map_base,
             _endian: PhantomData,
         };
         mem.map_data(
-            &vec![0; stack_size],
-            (stack_base - (stack_size as Vaddr))..stack_base,
+            &vec![0x41; stack_size],
+            (stack_base - (stack_size as EVAddr))..stack_base,
             Permission::READ | Permission::WRITE,
             cpu,
         )
@@ -348,7 +266,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
             1,
             0,
             Box::new(move |_, action, addr, size, _| {
-                if ((stack_base - ((stack_size + 0x10000) as Vaddr))..stack_base).contains(&addr) {
+                if ((stack_base - ((stack_size + 0x10000) as EVAddr))..stack_base).contains(&addr) {
                     trace!("STACK OVERFLOW!");
                     // TODO: We want to log the stack overflow in some kind of facility such that the fuzzer can
                     // TODO: use this information in a meaningful way
@@ -360,13 +278,13 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         mem
     }
 
-    pub fn stack_base(&self) -> Vaddr { self.stack_base }
+    pub fn stack_base(&self) -> EVAddr { self.stack_base }
 
     pub fn stack_size(&self) -> usize { self.stack_size }
 
     pub fn write_generic<T>(
         &self,
-        addr: Vaddr,
+        addr: EVAddr,
         val: &T,
     ) -> Result<(), MemoryError>
     where
@@ -374,42 +292,42 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
     {
         let data = val.encode();
         let mut start = addr;
-        let end = addr + data.len() as Vaddr;
+        let end = addr + data.len() as EVAddr;
         while start < end {
             let mut buffer = self.access_mem_range_mut(start, end)?;
             let offset = (start - addr) as usize;
             let len = buffer.len();
             buffer.copy_from_slice(&data[offset..offset + len]);
-            start += buffer.len() as Vaddr;
+            start += buffer.len() as EVAddr;
         }
         Ok(())
     }
 
     pub fn read_struct<T: Decode<Endianness> + RequiredMem>(
         &self,
-        address: Vaddr,
+        address: EVAddr,
     ) -> Result<T, MemoryError> {
-        let mem = self.access_mem_range(address, address + T::required_mem() as Vaddr)?;
+        let mem = self.access_mem_range(address, address + T::required_mem() as EVAddr)?;
         T::decode(mem.as_ref()).map_err(|_| MemoryError::ConversionError)
     }
 
     /// Reads a struct but the memory supplied to decode is bounded by size
     pub fn read_struct_bounded<T: Decode<Endianness> + RequiredMem>(
         &self,
-        address: Vaddr,
+        address: EVAddr,
         size: usize,
     ) -> Result<T, MemoryError> {
-        let mem = self.access_mem_range(address, address + T::required_mem() as Vaddr)?;
+        let mem = self.access_mem_range(address, address + T::required_mem() as EVAddr)?;
         T::decode(&mem[..min(size, T::required_mem())]).map_err(|_| MemoryError::ConversionError)
     }
 
     pub fn read_structs<T: Decode<Endianness> + RequiredMem>(
         &self,
-        address: Vaddr,
+        address: EVAddr,
         count: usize,
     ) -> Result<Vec<T>, MemoryError> {
         let mut out = Vec::with_capacity(count);
-        let mem = self.access_mem_range(address, address + (count * T::required_mem()) as Vaddr)?;
+        let mem = self.access_mem_range(address, address + (count * T::required_mem()) as EVAddr)?;
         for i in 0..count {
             out.push(
                 T::decode(&mem[i * T::required_mem()..(i + 1) * T::required_mem()])
@@ -423,15 +341,15 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
     // Fails if less than size bytes are mapped.
     pub fn read_mem(
         &self,
-        mut address: Vaddr,
+        mut address: EVAddr,
         size: usize,
     ) -> Result<Vec<u8>, MemoryError> {
-        let end = address + size as Vaddr;
+        let end = address + size as EVAddr;
         let mut out = Vec::with_capacity(size);
         while address != end {
             let mem = self.access_mem_range(address, end)?;
             out.extend(mem.as_ref());
-            address += mem.len() as Vaddr;
+            address += mem.len() as EVAddr;
         }
         Ok(out)
     }
@@ -439,10 +357,10 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
     /// Tries to read up to size bytes. Returns less if not everything is mapped.
     pub fn attempt_read_mem(
         &self,
-        mut address: Vaddr,
+        mut address: EVAddr,
         size: usize,
     ) -> Result<Vec<u8>, MemoryError> {
-        let end = address + size as Vaddr;
+        let end = address + size as EVAddr;
         let mut out = Vec::with_capacity(size);
         while address != end {
             let mem = if let Ok(data) = self.access_mem_range(address, end) {
@@ -451,58 +369,58 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
                 break;
             };
             out.extend(mem.as_ref());
-            address += mem.len() as Vaddr;
+            address += mem.len() as EVAddr;
         }
         Ok(out)
     }
 
     pub fn access_mem(
         &self,
-        address: Vaddr,
+        address: EVAddr,
         size: usize,
     ) -> Result<Ref<[u8]>, MemoryError> {
-        self.access_mem_range(address, address.checked_add(size as Vaddr).ok_or(MemoryError::InvalidSize)?)
+        self.access_mem_range(address, address.checked_add(size as EVAddr).ok_or(MemoryError::InvalidSize)?)
     }
 
     pub fn access_mem_mut(
         &self,
-        address: Vaddr,
+        address: EVAddr,
         size: usize,
     ) -> Result<RefMut<[u8]>, MemoryError> {
-        self.access_mem_range_mut(address, address.checked_add(size as Vaddr).ok_or(MemoryError::InvalidSize)?)
+        self.access_mem_range_mut(address, address.checked_add(size as EVAddr).ok_or(MemoryError::InvalidSize)?)
     }
 
     pub fn access_mem_range(
         &self,
-        start: Vaddr,
-        end: Vaddr,
+        start: EVAddr,
+        end: EVAddr,
     ) -> Result<Ref<[u8]>, MemoryError> {
         if start >= end {
             Err(MemoryError::NotMapped)?
         }
         let region = self.get_region(start).ok_or(MemoryError::NotMapped)?;
         let start_offset = (start - region.vaddr) as usize;
-        let end_offset = min(end - region.vaddr, region.size as Vaddr) as usize;
+        let end_offset = min(end - region.vaddr, region.size as EVAddr) as usize;
         Ok(Ref::map(region.as_slice(), |slice| &slice[start_offset..end_offset]))
     }
 
     pub fn access_mem_range_mut(
         &self,
-        start: Vaddr,
-        end: Vaddr,
+        start: EVAddr,
+        end: EVAddr,
     ) -> Result<RefMut<[u8]>, MemoryError> {
         if start > end {
             Err(MemoryError::NotMapped)?
         }
         let region = self.get_region(start).ok_or(MemoryError::NotMapped)?;
         let start_offset = (start - region.vaddr) as usize;
-        let end_offset = min(end - region.vaddr, region.end() as Vaddr) as usize;
+        let end_offset = min(end - region.vaddr, region.end() as EVAddr) as usize;
         Ok(RefMut::map(region.as_mut_slice(), |slice| &mut slice[start_offset..end_offset]))
     }
 
     fn write_internal(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         data: &[u8],
     ) {
         let mut memory = self.access_mem_mut(address, data.len()).unwrap();
@@ -513,7 +431,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
     pub fn map_data(
         &mut self,
         data: &[u8],
-        vm_range: Range<Vaddr>,
+        vm_range: Range<EVAddr>,
         perms: Permission,
         cpu: &mut impl MMU,
     ) -> Result<(), MemoryError> {
@@ -532,9 +450,9 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
 
     pub fn remap(
         &mut self,
-        old_addr: Vaddr,
+        old_addr: EVAddr,
         old_len: u64,
-        new_addr: Vaddr,
+        new_addr: EVAddr,
         new_len: u64,
         flags: MREMAP_FLAGS,
         cpu: &mut impl MMU,
@@ -576,29 +494,29 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         addr: u64,
         cpu: &mut impl MMU,
     ) {
-        if !is4kaligned(addr) || addr < self.heap || addr > self.heap + 100 * 1024 * 1024 {
+        if !is4kaligned(addr) || addr < self.heap_base || addr > self.heap_base + 100 * 1024 * 1024 {
             //todo better implement max heapsize
             return;
         }
-        let heap = self.get_region(self.heap);
-        let size = addr - self.heap;
+        let heap = self.get_region(self.heap_base);
+        let size = addr - self.heap_base;
         if heap.is_none() {
-            self.fixed_mapping(self.heap, size, Permission::READ | Permission::WRITE, cpu).unwrap();
+            self.fixed_mapping(self.heap_base, size, Permission::READ | Permission::WRITE, cpu).unwrap();
         } else {
-            self.resize_region(self.heap, size as usize, cpu).unwrap();
+            self.resize_region(self.heap_base, size as usize, cpu).unwrap();
         }
     }
 
     pub fn heapend(&self) -> u64 {
-        match self.get_region(self.heap) {
-            Some(r) => self.heap + r.size as u64,
-            None => self.heap,
+        match self.get_region(self.heap_base) {
+            Some(r) => self.heap_base + r.size as u64,
+            None => self.heap_base,
         }
     }
 
     fn fixed_mapping(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         size: u64,
         perms: Permission,
         cpu: &mut impl MMU,
@@ -606,7 +524,8 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         //TODO argscheck
         info!("fixed mapping address: 0x{:X}", address);
         let region = Region::new(size, address, perms);
-        self.mappings.insert(region);
+        let region_inserted = self.mappings.insert(region);
+        assert!(region_inserted);
         let r = self.mappings.get(&address).unwrap();
         self.map_internal(r, cpu);
         Ok(address)
@@ -637,7 +556,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
     /// returns: Some(region) if the region contains the address and None otherwise.
     fn get_region(
         &self,
-        address: Vaddr,
+        address: EVAddr,
     ) -> Option<&Region> {
         self.mappings.get(&address).or_else(|| {
             self.mappings.range(..address).next_back().and_then(|region| {
@@ -652,7 +571,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
 
     fn get_regions_range(
         &self,
-        vaddr_range: Range<Vaddr>,
+        vaddr_range: Range<EVAddr>,
     ) -> Result<btree_set::Range<Region>, MemoryError> {
         let start_region = self.mappings.range(..vaddr_range.start).next_back().ok_or(MemoryError::NotMapped)?;
         Ok(self.mappings.range(start_region.vaddr..vaddr_range.end))
@@ -660,7 +579,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
 
     fn get_region_range(
         &self,
-        vaddr_range: &Range<Vaddr>,
+        vaddr_range: &Range<EVAddr>,
     ) -> Option<&Region> {
         self.mappings.get(&vaddr_range.start).or_else(|| {
             self.mappings.range(..vaddr_range.start).next_back().and_then(|region| {
@@ -675,7 +594,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
 
     fn resize_region(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         size: usize,
         cpu: &mut impl MMU,
     ) -> Result<(), MemoryError> {
@@ -689,7 +608,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
 
     pub fn unmap(
         &mut self,
-        address: Vaddr,
+        address: EVAddr,
         size: u64,
         cpu: &mut impl MMU,
     ) -> Result<(), MemoryError> {
@@ -744,13 +663,13 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
 
     pub fn find_space_for_region(
         &self,
-        hint: Vaddr,
+        hint: EVAddr,
         size: u64,
     ) -> u64 {
-        let mut hint = max(hint, self.mapbase);
+        let mut hint = max(hint, self.map_base);
         for region in self.mappings.range(hint..) {
             if region.contains(hint) || region.contains(hint + size - 1) {
-                hint = region.vaddr + region.size as Vaddr;
+                hint = region.vaddr + region.size as EVAddr;
             } else {
                 break;
             }
@@ -760,14 +679,14 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
 
     pub fn protect(
         &mut self,
-        start: Vaddr,
+        start: EVAddr,
         size: u64,
         perms: Permission,
         cpu: &mut impl MMU,
     ) {
         let region = self.get_region(start).unwrap();
         if region.vaddr != start || size != region.size {
-            if start + size > region.vaddr + region.size as Vaddr {
+            if start + size > region.vaddr + region.size as EVAddr {
                 error!("mprotect more then one region");
                 panic!("not implemented yet");
             }
@@ -783,30 +702,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
     }
 }
 
-bitflags! {
-    pub struct
-    MREMAP_FLAGS: u64 {
-        const MREMAP_MAYMOVE = 1;
-        const MREMAP_FIXED = 2;
-        const MREMAP_DONTUNMAP = 4;
-    }
-}
-
 // TODO: Improve error handling
-#[macro_export]
-macro_rules! read_osstring {
-    ($mem:expr, $addr:expr) => {{
-        use std::ffi::OsString;
-        use std::os::unix::ffi::OsStringExt;
-        use $crate::emulator::system::memory::MemoryError;
-        //todo better define path_max
-        let d = $mem.attempt_read_mem($addr, 4096).unwrap();
-        //todo better check for \0 byte existens
-        let s = d.split(|c| *c == 0).next().unwrap();
-        let r: Result<OsString, MemoryError> = Ok(OsString::from_vec(s.to_vec()));
-        r
-    }};
-}
 
 #[derive(Eq)]
 struct Region {
@@ -815,7 +711,7 @@ struct Region {
     // The offset in the data vector for this region.
     offset: u64,
     // The virtual address of this memory region
-    vaddr: Vaddr,
+    vaddr: EVAddr,
     // The size of the data in this memory region
     size: u64,
     // The permissions associated with this region.
@@ -849,8 +745,8 @@ impl Ord for Region {
     }
 }
 
-impl std::borrow::Borrow<Vaddr> for Region {
-    fn borrow(&self) -> &Vaddr { &self.vaddr }
+impl std::borrow::Borrow<EVAddr> for Region {
+    fn borrow(&self) -> &EVAddr { &self.vaddr }
 }
 
 impl fmt::Debug for Region {
@@ -865,7 +761,7 @@ impl fmt::Debug for Region {
 impl Region {
     fn new(
         size: u64,
-        vaddr: Vaddr,
+        vaddr: EVAddr,
         perms: Permission,
     ) -> Region {
         Region {
@@ -898,11 +794,11 @@ impl Region {
         }
     }
 
-    fn end(&self) -> Vaddr { self.vaddr + self.size as Vaddr }
+    fn end(&self) -> EVAddr { self.vaddr + self.size as EVAddr }
 
     fn cutout(
         self,
-        address: Vaddr,
+        address: EVAddr,
         size: u64,
     ) -> (Option<Region>, Region, Option<Region>) {
         if address > self.end() {
@@ -964,19 +860,19 @@ pub trait Contains<T> {
     ) -> bool;
 }
 
-impl Contains<Vaddr> for Region {
+impl Contains<EVAddr> for Region {
     fn contains(
         &self,
-        address: Vaddr,
+        address: EVAddr,
     ) -> bool {
-        address >= self.vaddr && address < self.vaddr + self.size as Vaddr
+        address >= self.vaddr && address < self.vaddr + self.size as EVAddr
     }
 }
 
-impl Contains<&Range<Vaddr>> for Region {
+impl Contains<&Range<EVAddr>> for Region {
     fn contains(
         &self,
-        vadd_range: &Range<Vaddr>,
+        vadd_range: &Range<EVAddr>,
     ) -> bool {
         self.contains(vadd_range.start) && self.contains(vadd_range.end)
     }

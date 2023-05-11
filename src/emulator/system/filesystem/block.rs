@@ -1,6 +1,6 @@
-use std::cmp::Ordering;
 use crate::emulator::system::filesystem;
 use crate::emulator::system::filesystem::{FSError, SnapId};
+use std::cmp::Ordering;
 
 #[derive(Eq, Copy, Clone, Debug)]
 pub(super) struct Block {
@@ -11,8 +11,16 @@ pub(super) struct Block {
 }
 
 impl Block {
-    pub(super) fn new(start: usize, size: usize, data_offset: usize, snap_id: SnapId) -> Result<Self, FSError> {
-        if !filesystem::is_4k_aligned(start) || !filesystem::is_4k_aligned(size) || !filesystem::is_4k_aligned(data_offset) {
+    pub(super) fn new(
+        start: usize,
+        size: usize,
+        data_offset: usize,
+        snap_id: SnapId,
+    ) -> Result<Self, FSError> {
+        if !filesystem::is_4k_aligned(start)
+            || !filesystem::is_4k_aligned(size)
+            || !filesystem::is_4k_aligned(data_offset)
+        {
             return Err(FSError::Unknown);
         }
         Ok(Self {
@@ -23,19 +31,28 @@ impl Block {
         })
     }
 
-    pub(super) fn end(&self) -> usize {
-        self.start + self.size
-    }
+    pub(super) fn end(&self) -> usize { self.start + self.size }
 
-    pub(super) fn contains(&self, pos: usize) -> bool {
+    pub(super) fn contains(
+        &self,
+        pos: usize,
+    ) -> bool {
         self.start <= pos && pos <= self.start + self.size
     }
 
-    pub(super) fn has_space(&self, pos: usize, size: usize) -> bool {
+    pub(super) fn has_space(
+        &self,
+        pos: usize,
+        size: usize,
+    ) -> bool {
         self.contains(pos) && self.contains(pos + size)
     }
 
-    pub(super) fn split(self, start: usize, end: usize) -> Result<(Option<Block>, Block, Option<Block>), FSError> {
+    pub(super) fn split(
+        self,
+        start: usize,
+        end: usize,
+    ) -> Result<(Option<Block>, Block, Option<Block>), FSError> {
         if !filesystem::is_4k_aligned(start) || !filesystem::is_4k_aligned(end) {
             return Err(FSError::Unknown);
         }
@@ -66,25 +83,32 @@ impl Block {
 }
 
 impl PartialEq for Block {
-    fn eq(&self, other: &Self) -> bool {
+    fn eq(
+        &self,
+        other: &Self,
+    ) -> bool {
         self.start.eq(&other.start) || self.data_offset.eq(&other.data_offset)
     }
 }
 
 impl PartialOrd for Block {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    fn partial_cmp(
+        &self,
+        other: &Self,
+    ) -> Option<Ordering> {
         self.start.partial_cmp(&other.start)
     }
 }
 
 impl Ord for Block {
-    fn cmp(&self, other: &Self) -> Ordering {
+    fn cmp(
+        &self,
+        other: &Self,
+    ) -> Ordering {
         self.start.cmp(&other.start)
     }
 }
 
 impl std::borrow::Borrow<usize> for Block {
-    fn borrow(&self) -> &usize {
-        &self.start
-    }
+    fn borrow(&self) -> &usize { &self.start }
 }

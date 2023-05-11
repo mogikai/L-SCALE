@@ -2,12 +2,11 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 
 use crate::emulator::abstractions::cpu::CPUError;
+use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::system::filesystem::FSError;
-use crate::emulator::system::memory::MemoryError;
 
 #[derive(Debug)]
-pub enum
-GenericErrorKind {
+pub enum GenericErrorKind {
     CPUError(CPUError),
     FSError(FSError),
     MemoryError(MemoryError),
@@ -16,15 +15,13 @@ GenericErrorKind {
 }
 
 #[derive(Debug)]
-pub struct
-GenericError {
+pub struct GenericError {
     kind: GenericErrorKind,
     message: String,
 }
 
 impl GenericError {
-    pub
-    fn new(
+    pub fn new(
         kind: GenericErrorKind,
         message: &str,
     ) -> Self {
@@ -34,11 +31,7 @@ impl GenericError {
         }
     }
 
-    pub fn kind(
-        &self
-    ) -> &GenericErrorKind {
-        &self.kind
-    }
+    pub fn kind(&self) -> &GenericErrorKind { &self.kind }
 }
 
 impl Display for GenericError {
@@ -62,9 +55,7 @@ impl Display for GenericErrorKind {
 impl Error for GenericError {}
 
 impl From<FSError> for GenericError {
-    fn from(
-        e: FSError
-    ) -> Self {
+    fn from(e: FSError) -> Self {
         Self {
             kind: GenericErrorKind::FSError(e),
             message: "".to_string(),
@@ -73,9 +64,7 @@ impl From<FSError> for GenericError {
 }
 
 impl From<CPUError> for GenericError {
-    fn from(
-        e: CPUError
-    ) -> Self {
+    fn from(e: CPUError) -> Self {
         Self {
             kind: GenericErrorKind::CPUError(e),
             message: "".to_string(),
@@ -84,9 +73,7 @@ impl From<CPUError> for GenericError {
 }
 
 impl From<MemoryError> for GenericError {
-    fn from(
-        e: MemoryError
-    ) -> Self {
+    fn from(e: MemoryError) -> Self {
         Self {
             kind: GenericErrorKind::MemoryError(e),
             message: "".to_string(),

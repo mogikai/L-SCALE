@@ -6,17 +6,16 @@ use num_enum::FromPrimitive;
 
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::handles::Handle;
-use crate::emulator::system::memory::{Decode, Encode, MemoryError, RequiredMem};
+use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
+use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::system::net::netlink::rtnetlink::{RTNetlinkMessageType, RTNetlinkSocket};
 
 pub mod rtnetlink;
 
-
 // TODO: Make global netlink handler that is referenced by netlink sockets.
 //       Each kernel(task) will have access to the handler.
 
-pub
-fn from_protocol<Endianness: ByteOrder>(protocol: u64) -> Result<Box<dyn Handle<Endianness>>, GenericError> {
+pub fn from_protocol<Endianness: ByteOrder>(protocol: u64) -> Result<Box<dyn Handle<Endianness>>, GenericError> {
     use NetlinkFamily::*;
     Ok(match NetlinkFamily::from(protocol) {
         NETLINK_ROUTE => Box::new(RTNetlinkSocket::new()),
@@ -39,27 +38,22 @@ struct nlmsghdr {
     /* Sender port ID */
 }
 
-impl<Endianness: ByteOrder>
-Decode<Endianness> for
-nlmsghdr {
+impl<Endianness: ByteOrder> Decode<Endianness> for nlmsghdr {
     fn decode(val: &[u8]) -> Result<Self, MemoryError> {
         Ok(Self {
             nlmsg_len: Endianness::read_u32(&val[..4]),
             nlmsg_type: RTNetlinkMessageType::from(Endianness::read_u16(&val[4..6])),
-            nlmsg_flags: NetlinkMessageFlags::from_bits(Endianness::read_u16(&val[6..8])).ok_or(MemoryError::ConversionError)?,
+            nlmsg_flags: NetlinkMessageFlags::from_bits(Endianness::read_u16(&val[6..8]))
+                .ok_or(MemoryError::ConversionError)?,
             nlmsg_seq: Endianness::read_u32(&val[8..12]),
             nlmsg_pid: Endianness::read_u32(&val[12..]),
         })
     }
 }
 
-impl
-RequiredMem for
-nlmsghdr {}
+impl RequiredMem for nlmsghdr {}
 
-impl<Endianness: ByteOrder>
-Encode<Endianness> for
-nlmsghdr {
+impl<Endianness: ByteOrder> Encode<Endianness> for nlmsghdr {
     fn encode(&self) -> Vec<u8> {
         let mut out = vec![0; mem::size_of::<Self>()];
         Endianness::write_u32(&mut out[..4], self.nlmsg_len);
@@ -107,28 +101,28 @@ bitflags! {
 #[allow(non_camel_case_types)]
 #[derive(Debug, FromPrimitive)]
 enum NetlinkFamily {
-    NETLINK_ROUTE = 0,
-    NETLINK_UNUSED = 1,
-    NETLINK_USERSOCK = 2,
-    NETLINK_FIREWALL = 3,
-    NETLINK_SOCK_DIAG = 4,
-    NETLINK_NFLOG = 5,
-    NETLINK_XFRM = 6,
-    NETLINK_SELINUX = 7,
-    NETLINK_ISCSI = 8,
-    NETLINK_AUDIT = 9,
+    NETLINK_ROUTE      = 0,
+    NETLINK_UNUSED     = 1,
+    NETLINK_USERSOCK   = 2,
+    NETLINK_FIREWALL   = 3,
+    NETLINK_SOCK_DIAG  = 4,
+    NETLINK_NFLOG      = 5,
+    NETLINK_XFRM       = 6,
+    NETLINK_SELINUX    = 7,
+    NETLINK_ISCSI      = 8,
+    NETLINK_AUDIT      = 9,
     NETLINK_FIB_LOOKUP = 10,
-    NETLINK_CONNECTOR = 11,
-    NETLINK_NETFILTER = 12,
-    NETLINK_IP6_FW = 13,
-    NETLINK_DNRTMSG = 14,
+    NETLINK_CONNECTOR  = 11,
+    NETLINK_NETFILTER  = 12,
+    NETLINK_IP6_FW     = 13,
+    NETLINK_DNRTMSG    = 14,
     NETLINK_KOBJECT_UEVENT = 15,
-    NETLINK_GENERIC = 16,
+    NETLINK_GENERIC    = 16,
     NETLINK_SCSITRANSPORT = 18,
-    NETLINK_ECRYPTFS = 19,
-    NETLINK_RDMA = 20,
-    NETLINK_CRYPTO = 21,
-    NETLINK_SMC = 22,
+    NETLINK_ECRYPTFS   = 19,
+    NETLINK_RDMA       = 20,
+    NETLINK_CRYPTO     = 21,
+    NETLINK_SMC        = 22,
     #[default]
-    INVALID = !0,
+    INVALID            = !0,
 }

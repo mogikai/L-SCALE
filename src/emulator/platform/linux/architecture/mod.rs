@@ -2,8 +2,8 @@ pub mod x86;
 
 use std::fmt::Debug;
 
-use crate::emulator::platform::linux::signals::{Signal, SignalAction};
 use crate::emulator::platform::linux::kernel::LinuxKernelError;
+use crate::emulator::platform::linux::signals::{Signal, SignalAction};
 
 pub trait Architecture {
     type SignalFlags: Debug + Clone + Copy;

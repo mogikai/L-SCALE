@@ -1,8 +1,9 @@
 use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
+use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
 
+use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::platform::linux::kernel::LinuxKernelError;
-use crate::emulator::system::memory::{Decode, Encode, MemoryError, RequiredMem};
 
 pub mod inet6;
 pub mod netlink;
@@ -45,7 +46,7 @@ impl<Endianness: ByteOrder> Decode<Endianness> for Sockaddr {
                 sin6_port: Endianness::read_u16(&val[2..4]),
                 sin6_flowinfo: Endianness::read_u32(&val[4..8]),
                 sin6_addr: <[u8; 16]>::try_from(&val[8..24]).unwrap(),
-                sin6_scope_id: Endianness::read_u32(&val[24..28])
+                sin6_scope_id: Endianness::read_u32(&val[24..28]),
             },
             _ => {
                 error!("Sockaddr not implemented for type {:?}", family);
@@ -63,7 +64,7 @@ impl RequiredMem for Sockaddr {
 
 impl<Endianness: ByteOrder> Encode<Endianness> for Sockaddr {
     fn encode(&self) -> Vec<u8> {
-        let mut out = vec![0; 128];
+        let mut out = vec![0; Self::required_mem()];
         use Sockaddr::*;
         match self {
             NL {
@@ -87,13 +88,19 @@ pub struct SocketFlags {
 }
 
 impl SocketFlags {
-    fn SOCK_CLOEXEC(&self) -> bool { self.flags & 0x02000000 != 0 }
+    fn SOCK_CLOEXEC(&self) -> bool {
+        self.flags & 0x02000000 != 0
+    }
 
-    fn SOCK_NONBLOCK(&self) -> bool { self.flags & 0x00004000 != 0 }
+    fn SOCK_NONBLOCK(&self) -> bool {
+        self.flags & 0x00004000 != 0
+    }
 }
 
 impl From<u64> for SocketFlags {
-    fn from(val: u64) -> Self { Self { flags: val & !0xFFF } }
+    fn from(val: u64) -> Self {
+        Self { flags: val & !0xFFF }
+    }
 }
 
 #[derive(Debug)]

@@ -2,40 +2,41 @@ use bitflags::bitflags;
 use byteorder::ByteOrder;
 
 use crate::emulator::platform::linux::kernel::*;
+use crate::read_osstring;
 
-impl<Endianness: ByteOrder + 'static, Arch: Architecture>
-LinuxKernel<Endianness, Arch> {
+impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness, Arch> {
     pub fn write(
         &mut self,
-        _: &mut impl CPU,
+        mmu: &mut impl MMU,
         fd: u64,
         buf: u64,
         size: u64,
     ) -> SyscallResult {
         self.handles.get_mut(&fd).map_or(Err(LinuxKernelError::EINVAL), |handle| {
-            let data = self.memory.access_mem(buf, size as usize).unwrap();
-            Ok(handle.write(&data).unwrap_or(!0).try_into().unwrap())
+            Ok(handle.write(&mmu.mem_read_bytes(buf, size as usize)?).unwrap_or(!0).try_into().unwrap())
         })
     }
 
     pub fn writev(
         &mut self,
-        _: &mut impl CPU,
+        mmu: &mut impl MMU,
         fd: u64,
-        iovec_ptr: Vaddr,
+        iovec_ptr: EVAddr,
         iovcnt: u64,
     ) -> SyscallResult {
         self.handles.get_mut(&fd).map_or(Err(LinuxKernelError::EINVAL), |handle| {
             let mut ret = 0;
-            let iovec = self.memory.access_mem(iovec_ptr, (iovcnt * 16) as usize).unwrap();
+            let iovec = mmu.mem_read_bytes(iovec_ptr, (iovcnt * 16) as usize).unwrap();
             for i in 0..iovcnt as usize {
                 let ptr = Endianness::read_u64(&iovec[(i * 16)..((i * 16) + 8)]);
                 let size = Endianness::read_u64(&iovec[i * 16 + 8..i * 16 + 16]) as usize;
-                let data = self.memory.access_mem(ptr, size)?;
+                let data = mmu.mem_read_bytes(ptr, size)?;
                 let written = handle.write(data.as_ref())?;
                 ret += written;
                 // Early return if not all bytes were written. We need to stop writing in this case
-                if written != data.len() { return Ok(ret.try_into().unwrap()); };
+                if written != data.len() {
+                    return Ok(ret.try_into().unwrap());
+                };
             }
             Ok(ret.try_into().unwrap())
         })
@@ -43,7 +44,7 @@ LinuxKernel<Endianness, Arch> {
 
     pub fn pread64(
         &mut self,
-        _: &mut impl CPU,
+        mmu: &mut impl MMU,
         fd: u64,
         buf: u64,
         count: u64,
@@ -51,60 +52,57 @@ LinuxKernel<Endianness, Arch> {
     ) -> SyscallResult {
         let file = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADF)?;
         let d = file.pread(pos, count).unwrap();
-        Ok(self.memory.write(buf, d.as_slice()))
+        Ok(mmu.mem_write_bytes(buf, d.as_slice())? as u64)
     }
 
     pub fn read(
         &mut self,
-        _: &mut impl CPU,
+        mmu: &mut impl MMU,
         fd: u64,
         buf: u64,
         count: u64,
     ) -> SyscallResult {
         if let Some(f) = self.handles.get_mut(&fd) {
-            Ok(self.memory.write(buf, f.read(count).unwrap().as_slice()))
+            Ok(mmu.mem_write_bytes(buf, f.read(count).unwrap().as_slice())? as u64)
         } else {
             Err(LinuxKernelError::EINVAL)
         }
     }
 
-    pub
-    fn fstat(
+    pub fn fstat(
         &mut self,
-        _: &mut impl CPU,
+        mmu: &mut impl MMU,
         fd: u64,
-        statbuf: Vaddr,
+        statbuf: EVAddr,
     ) -> SyscallResult {
         let file = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADF)?;
-        self.memory.write_generic(statbuf, &*file.stat()?)?;
+        mmu.mem_write_bytes(statbuf, file.stat()?.encode().as_slice())?;
         Ok(0)
     }
 
-    pub
-    fn stat(
+    pub fn stat(
         &mut self,
-        _: &mut impl CPU,
+        mmu: &mut impl MMU,
         filename: u64,
-        statbuf: Vaddr,
+        statbuf: EVAddr,
     ) -> SyscallResult {
-        let fname = read_osstring!(self.memory, filename).unwrap();
+        let fname = read_osstring!(mmu, filename)?;
         trace!("stat file {:?}", fname);
         let fs = self.filesystem.borrow();
         let file = fs.resolve_last(Path::new(&fname))?;
-        self.memory.write_generic(statbuf, fs.stat(file)?)?;
+        mmu.mem_write_bytes(statbuf, fs.stat(file)?.encode().as_slice())?;
         Ok(0)
     }
 
-    pub
-    fn openat(
+    pub fn openat(
         &mut self,
-        _: &mut impl CPU,
+        mmu: &mut impl MMU,
         _dfd: u64,
         filename: u64,
         _flags: u64,
         _mode: u64,
     ) -> SyscallResult {
-        let fname = read_osstring!(self.memory, filename).unwrap();
+        let fname = read_osstring!(mmu, filename)?;
         trace!("openat file: {:?}", fname);
         let p = Path::new(&fname);
         let file = self.filesystem.borrow().resolve_last(p)?;
@@ -114,32 +112,31 @@ LinuxKernel<Endianness, Arch> {
     pub fn statfs(
         &mut self,
         _: &mut impl CPU,
-        path: Vaddr,
-        buf: Vaddr,
+        path: EVAddr,
+        buf: EVAddr,
     ) -> SyscallResult {
         todo!()
     }
 
-    pub
-    fn newfstatat(
+    pub fn newfstatat(
         &mut self,
-        _: &mut impl CPU,
+        mmu: &mut impl MMU,
         dfd: u64,
-        filename: Vaddr,
-        statbuf: Vaddr,
+        filename: EVAddr,
+        statbuf: EVAddr,
         flag: u64,
     ) -> SyscallResult {
         let flags = at_flags::from_bits(flag).ok_or(LinuxKernelError::EINVAL)?;
-        if flags.contains(at_flags::AT_EMPTY_PATH)  {
+        if flags.contains(at_flags::AT_EMPTY_PATH) {
             let file = self.handles.get(&dfd).ok_or(LinuxKernelError::EBADFD)?;
-            self.memory.write_generic(statbuf, &*file.stat()?)?;
+            mmu.mem_write_bytes(statbuf, file.stat()?.encode().as_slice())?;
             Ok(0)
         } else {
-            let filename = read_osstring!(self.memory, filename).unwrap();
+            let filename = read_osstring!(mmu, filename)?;
             debug!("newfstatat: {filename:?}");
             let fs = self.filesystem.borrow_mut();
             let entry = fs.resolve_last(Path::new(&filename))?;
-            self.memory.write_generic(statbuf, fs.stat(entry)?)?;
+            mmu.mem_write_bytes(statbuf, fs.stat(entry)?.encode().as_slice())?;
             Ok(0)
         }
     }
@@ -164,8 +161,7 @@ LinuxKernel<Endianness, Arch> {
     }
 }
 
-
-const AT_FDCWD: u64 = -100i32 as u64;	/* Special value used to indicate the *at functions should use the current working directory. */
+const AT_FDCWD: u64 = -100i32 as u64; /* Special value used to indicate the *at functions should use the current working directory. */
 
 bitflags! {
     pub struct

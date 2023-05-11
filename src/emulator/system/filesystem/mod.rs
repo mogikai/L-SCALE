@@ -4,10 +4,9 @@
 //! TODO: Implement update of stat struct.
 //! TODO: Consider memory mapping of files into ram
 use std::cmp::min;
-use std::fs;
 use std::fs::read;
-use std::io;
 use std::path::{Path, PathBuf};
+use std::{fs, io};
 
 use byteorder::ByteOrder;
 
@@ -20,8 +19,8 @@ use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::filesystem::meta_info::FSEntryContent::File;
 
 mod block;
-mod meta_info;
 mod data;
+mod meta_info;
 mod stat;
 #[cfg(test)]
 mod tests;
@@ -33,13 +32,8 @@ pub enum FSError {
     Unknown,
 }
 
-impl
-From<io::Error> for FSError {
-    fn from(
-        _: io::Error
-    ) -> Self {
-        FSError::Unknown
-    }
+impl From<io::Error> for FSError {
+    fn from(_: io::Error) -> Self { FSError::Unknown }
 }
 
 pub type FSEntryId = usize;
@@ -47,8 +41,7 @@ type ContentId = usize;
 type SnapId = usize;
 
 #[derive(Debug)]
-pub struct
-Filesystem<Endianness: ByteOrder> {
+pub struct Filesystem<Endianness: ByteOrder> {
     on_disk_root: Option<PathBuf>,
     data: Data,
     meta_info: MetaInfo<Endianness>,
@@ -58,11 +51,8 @@ Filesystem<Endianness: ByteOrder> {
     current_snap: usize,
 }
 
-impl<Endianness: ByteOrder>
-Filesystem<Endianness> {
-    pub fn new(
-        size: usize
-    ) -> Self {
+impl<Endianness: ByteOrder> Filesystem<Endianness> {
+    pub fn new(size: usize) -> Self {
         Filesystem {
             on_disk_root: None,
             data: Data::new(),
@@ -84,9 +74,7 @@ Filesystem<Endianness> {
         Ok(fs)
     }
 
-    pub fn on_disk_root(
-        &self
-    ) -> Option<&Path> {
+    pub fn on_disk_root(&self) -> Option<&Path> {
         if let Some(r) = &self.on_disk_root {
             Some(r.as_path())
         } else {
@@ -120,7 +108,9 @@ Filesystem<Endianness> {
 
             for block in contents.range(start_block.start..pos + len) {
                 read += self.data.read_block(pos + read, block, buffer.spare_capacity_mut())?;
-                unsafe { buffer.set_len(read); }
+                unsafe {
+                    buffer.set_len(read);
+                }
             }
             Ok(buffer)
         } else {
@@ -139,7 +129,11 @@ Filesystem<Endianness> {
         if let File { contents } = &mut entry.contents {
             if (pos + data.len()).saturating_sub(size) > self.max_size - self.current_size {
                 // No space available
-                debug!("NO SPACE! remaining: {}, want: {}", self.max_size - self.current_size, (pos + data.len()).saturating_sub(size));
+                debug!(
+                    "NO SPACE! remaining: {}, want: {}",
+                    self.max_size - self.current_size,
+                    (pos + data.len()).saturating_sub(size)
+                );
                 Err(FSError::Unknown)?
             }
 
@@ -147,11 +141,11 @@ Filesystem<Endianness> {
             let mut written = 0;
             if let Some(start_block) = start_block {
                 if start_block.contains(pos) {
-                    for block_start
-                    in contents.range(start_block.start..pos + data.len())
-                               .map(|b| b.start)
-                               .collect::<Vec<_>>() {
-                        written += self.data.write_to_block_cow(pos + written, &data[written..], contents, block_start)?;
+                    for block_start in
+                        contents.range(start_block.start..pos + data.len()).map(|b| b.start).collect::<Vec<_>>()
+                    {
+                        written +=
+                            self.data.write_to_block_cow(pos + written, &data[written..], contents, block_start)?;
                     }
                 }
             }
@@ -196,7 +190,12 @@ Filesystem<Endianness> {
                 entry.stat.st_size = new_size as u64;
                 self.data.save_free_blocks(contents.split_off(&new_size).into_iter());
                 if let Some(block) = contents.iter().last().cloned() {
-                    self.data.write_to_block_cow(new_size, vec![0; block.end() - new_size].as_slice(), contents, block.start)?;
+                    self.data.write_to_block_cow(
+                        new_size,
+                        vec![0; block.end() - new_size].as_slice(),
+                        contents,
+                        block.start,
+                    )?;
                 }
                 Ok(())
             } else {
@@ -272,18 +271,11 @@ Filesystem<Endianness> {
         self.meta_info.resolve_last(None, path)
     }
 
-    fn print_tree(
-        &self
-    ) {
-        self.meta_info.print_tree(self.meta_info.root(), None);
-    }
+    fn print_tree(&self) { self.meta_info.print_tree(self.meta_info.root(), None); }
 }
 
-impl<Endianness: ByteOrder>
-Restorable for Filesystem<Endianness> {
-    fn snapshot(
-        &mut self
-    ) -> Result<(), GenericError> {
+impl<Endianness: ByteOrder> Restorable for Filesystem<Endianness> {
+    fn snapshot(&mut self) -> Result<(), GenericError> {
         assert_eq!(self.snap_markers.len(), self.current_snap);
         self.snap_markers.push(SnapMarker {
             data_marker: self.data.snapshot(),
@@ -294,9 +286,7 @@ Restorable for Filesystem<Endianness> {
         Ok(())
     }
 
-    fn restore_and_discard(
-        &mut self
-    ) -> Result<(), GenericError> {
+    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
         if self.current_snap == 0 {
             Err(FSError::Unknown)?
         }
@@ -308,9 +298,7 @@ Restorable for Filesystem<Endianness> {
         Ok(())
     }
 
-    fn restore(
-        &mut self
-    ) -> Result<(), GenericError> {
+    fn restore(&mut self) -> Result<(), GenericError> {
         if self.current_snap == 0 {
             Err(FSError::Unknown)?
         }
@@ -338,7 +326,12 @@ fn load_dir<Endianness: ByteOrder>(
                 // FSEntry::DirEntry(Dir {}, Stats::from(stats))
             } else {
                 let data = read(entry.path())?;
-                fs.create_file_with_contents(&Path::new("/").join(path.strip_prefix(root).unwrap()), data.as_slice(), Some(stat.into())).unwrap();
+                fs.create_file_with_contents(
+                    &Path::new("/").join(path.strip_prefix(root).unwrap()),
+                    data.as_slice(),
+                    Some(stat.into()),
+                )
+                .unwrap();
                 // FSEntry::FileEntry(File::new(&path), Stats::from(stats))
             };
             // println!("{:?}", Path::new("/").join(path.strip_prefix(root).unwrap().to_path_buf()));

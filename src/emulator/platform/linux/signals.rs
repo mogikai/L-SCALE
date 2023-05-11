@@ -2,19 +2,24 @@ use std::fmt::Debug;
 
 use enumset::EnumSetType;
 
-use crate::emulator::abstractions::cpu::Vaddr;
+use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::platform::linux::kernel::LinuxKernelError;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SignalAction<Flags: Debug + Clone + Copy> {
-    handler: Vaddr,
-    restorer: Option<Vaddr>,
+    handler: EVAddr,
+    restorer: Option<EVAddr>,
     mask: u64,
     flags: Flags,
 }
 
 impl<Flags: Debug + Clone + Copy> SignalAction<Flags> {
-    pub fn new(callback: Vaddr, restorer: Option<Vaddr>, mask: u64, flags: Flags) -> Self {
+    pub fn new(
+        callback: EVAddr,
+        restorer: Option<EVAddr>,
+        mask: u64,
+        flags: Flags,
+    ) -> Self {
         Self {
             handler: callback,
             restorer,
@@ -37,13 +42,20 @@ impl<Flags: Debug + Clone + Copy> SignalHandler<Flags> {
         }
     }
 
-    pub fn insert(&mut self, signal: u8, handler: SignalAction<Flags>) {
+    pub fn insert(
+        &mut self,
+        signal: u8,
+        handler: SignalAction<Flags>,
+    ) {
         if signal >= 64 {
             panic!("no such signal");
         }
         self.signals[signal as usize] = Some(handler);
     }
-    pub fn get(&self, signal: u8) -> Option<SignalAction<Flags>> {
+    pub fn get(
+        &self,
+        signal: u8,
+    ) -> Option<SignalAction<Flags>> {
         if signal >= 64 {
             return None;
         }
@@ -53,16 +65,18 @@ impl<Flags: Debug + Clone + Copy> SignalHandler<Flags> {
         debug!("insert signalhandler at signal 0x{:X}", signal);
         self.signals[signal as usize]
     }
-    pub fn setmask(&mut self, how: SignalMaskFlags, mask: u64) {
+    pub fn setmask(
+        &mut self,
+        how: SignalMaskFlags,
+        mask: u64,
+    ) {
         match how {
             SignalMaskFlags::SIG_BLOCK => self.mask |= mask,
             SignalMaskFlags::SIG_UNBLOCK => self.mask &= !mask,
             SignalMaskFlags::SIG_SET => self.mask = mask,
         }
     }
-    pub fn getmask(&self) -> u64 {
-        self.mask
-    }
+    pub fn getmask(&self) -> u64 { self.mask }
 }
 
 #[derive(Debug, Clone, Copy)]

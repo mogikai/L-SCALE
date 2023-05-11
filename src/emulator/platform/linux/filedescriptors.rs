@@ -5,23 +5,18 @@ use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::handles::Handle;
-use crate::emulator::system::filesystem::{Filesystem, FSEntryId, Stat};
+use crate::emulator::system::filesystem::{FSEntryId, Filesystem, Stat};
 
 #[derive(Debug, Clone)]
-pub struct
-FileHandle<Endianness: ByteOrder> {
+pub struct FileHandle<Endianness: ByteOrder> {
     filesystem: Rc<RefCell<Filesystem<Endianness>>>,
     fse_id: FSEntryId,
     pos: usize,
 }
 
 //TODO build a trait
-impl<Endianness: ByteOrder>
-Handle<Endianness> for
-FileHandle<Endianness> {
-    fn stat(
-        &self
-    ) -> Result<Ref<Stat<Endianness>>, GenericError> {
+impl<Endianness: ByteOrder> Handle<Endianness> for FileHandle<Endianness> {
+    fn stat(&self) -> Result<Ref<Stat<Endianness>>, GenericError> {
         Ref::filter_map(self.filesystem.borrow(), |fs| fs.stat(self.fse_id).ok())
             .or(Err(GenericError::new(GenericErrorKind::Unknown, "Could not stat the file")))
     }
@@ -53,12 +48,15 @@ FileHandle<Endianness> {
     }
 }
 
-impl<Endianness: ByteOrder>
-FileHandle<Endianness> {
+impl<Endianness: ByteOrder> FileHandle<Endianness> {
     pub fn new(
         fs: Rc<RefCell<Filesystem<Endianness>>>,
         file: FSEntryId,
     ) -> FileHandle<Endianness> {
-        FileHandle { filesystem: fs, pos: 0, fse_id: file }
+        FileHandle {
+            filesystem: fs,
+            pos: 0,
+            fse_id: file,
+        }
     }
 }
