@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use im_rc::{OrdMap, update_in};
+use im_rc::{OrdMap, Vector};
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
@@ -13,9 +13,20 @@ pub struct TLBEntry {
     pub permissions: Permission,
 }
 
+impl TLBEntry {
+    pub fn new(paddr: EPAddr, size: u64, perms: Permission) -> Self {
+        Self {
+            physical_address: paddr,
+            size: size,
+            permissions: perms,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct TLB {
     mappings: OrdMap<EVAddr, TLBEntry>,
-    snapshots: Vec<OrdMap<EVAddr, TLBEntry>>,
+    snapshots: Vector<OrdMap<EVAddr, TLBEntry>>,
 }
 
 impl TLB {
@@ -40,19 +51,37 @@ impl TLB {
         return Ok(*e);
     }
 
+    fn mapped(
+        &self,
+        address: EVAddr,
+        size: u64
+    ) -> bool {
+        let (a, e) = match self.mappings.get_prev(&address) {
+            Some(e) => e,
+            None => return false,
+        };
+
+        if (a + e.size) > address {
+            return true;
+        }
+
+        let (a, e) = match self.mappings.get_next(&(a + 1)) {
+            Some(e) => e,
+            None => return false,
+        };
+
+        return *a < (address + size);
+    }
+
     pub fn try_insert(
         &mut self,
         address: EVAddr,
         entry: TLBEntry,
     ) -> Result<(), MemoryError> {
-        let (a, e) = match self.mappings.get_prev(&address) {
-            Some(e) => e,
-            None => return Err(MemoryError::Unknown),
-        };
-        if (a + e.size) > address {
+        if self.mapped(address, entry.size) {
             return Err(MemoryError::Unknown);
         }
-        update_in!(self.mappings, address, entry);
+        self.mappings.insert(address, entry);
         return Ok(());
     }
 
@@ -65,13 +94,13 @@ impl Restorable for TLB {
     fn snapshot(&mut self) -> Result<(), GenericError> {
         let s = self.mappings.clone();
         self.mappings = s.clone();
-        self.snapshots.push(s);
+        self.snapshots.push_back(s);
         return Ok(());
     }
 
     fn restore_and_discard(&mut self) -> Result<(), GenericError> {
         self.restore();
-        self.snapshots.pop().ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot availible"))?;
+        self.snapshots.pop_back().ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot availible"))?;
         return Ok(());
     }
 
