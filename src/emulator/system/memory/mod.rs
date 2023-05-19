@@ -116,24 +116,39 @@ impl Memory {
         return Ok(layout.stack_base);
     }
 
-    pub(crate) fn stack_end(&self) -> EVAddr {
-        todo!()
+    pub(crate) fn stack_size(&self, pid: u32, tid: u32) -> Result<u64, MemoryError> {
+        let layout = self.layouts.get(&LayoutID{pid: pid, tid: tid}).ok_or(MemoryError::Unknown)?;
+        return Ok(layout.max_stack);
     }
 
-    pub(crate) fn stack_size(&self) -> usize {
-        todo!()
-    }
-
-    pub(crate) fn heap_end(&self) -> EVAddr {
-        todo!()
+    pub(crate) fn heap_end(&self, pid: u32, tid:u32) -> Result<EVAddr, MemoryError> {
+        let layout = self.layouts.get(&LayoutID{pid: pid, tid: tid}).ok_or(MemoryError::Unknown)?;
+        let tlb = layout.tlb.borrow();
+        let (a, e) = tlb.get_mapping(layout.heap_base)?;
+        return Ok(a + e.size);
     }
 
     pub(crate) fn realloc_heap(
         &mut self,
-        mmu: &mut impl MMU,
         addr: EVAddr,
+        pid: u32,
+        tid: u32
     ) -> Result<(), MemoryError> {
-        todo!()
+        let layout = self.layouts.get(&LayoutID{pid: pid, tid: tid}).ok_or(MemoryError::Unknown)?;
+        if addr < layout.heap_base {
+            return Err(MemoryError::Unknown);
+        }
+        let mut tlb = layout.tlb.borrow_mut();
+        let (a, e) = tlb.get_mapping(layout.heap_base)?;
+        if addr < a + e.size {
+            tlb.realloc(a, addr - a)?;
+            return Ok(());
+        }
+        if addr - a > 0x40000000 {
+            return Err(MemoryError::Unknown);
+        }
+        tlb.realloc(a, addr - a)?;
+        return Ok(());
     }
 
     pub(crate) fn map_data(

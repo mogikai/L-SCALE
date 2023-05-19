@@ -25,3 +25,4 @@ hexdump = "0.1.1"
 thiserror = "1.*"
 generational-arena = "0.2.8"
 im-rc = "15.1.0"
+derive_more = { version = "0.99.0", features = ["add"] }

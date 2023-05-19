@@ -85,9 +85,37 @@ impl TLB {
         return Ok(());
     }
 
-    pub fn heap_end(&self) -> Result<EVAddr, MemoryError> {
-        Err(MemoryError::Unknown)
+    pub fn get_mapping(
+        &self,
+        address: EVAddr,
+    ) -> Result<(EVAddr, TLBEntry), MemoryError> {
+        let (a, e) = self.mappings.get_prev(&address).ok_or(MemoryError::Unknown)?;
+        if (a + e.size) <= address {
+            return Err(MemoryError::Unknown);
+        }
+        return Ok((*a, *e));
     }
+
+    pub fn realloc(
+        &mut self,
+        addr: EVAddr,
+        size: u64
+    ) -> Result<(), MemoryError> {
+        let e = self.mappings.get(&addr).ok_or(MemoryError::Unknown)?;
+        let mut e = *e;
+        if e.size >= size {
+            e.size = size;
+            self.mappings.insert(addr, e);
+            return Ok(());
+        }
+        if self.mapped(addr + e.size, size - e.size) {
+            return Err(MemoryError::Unknown);
+        }
+        e.size = size;
+        self.mappings.insert(addr, e);
+        return Ok(());
+    }
+
 }
 
 impl Restorable for TLB {

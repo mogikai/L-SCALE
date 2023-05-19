@@ -8,6 +8,7 @@ pub mod fuzzer;
 #[macro_use]
 extern crate log;
 extern crate core;
+extern crate derive_more;
 
 use static_assertions::assert_eq_size;
 
