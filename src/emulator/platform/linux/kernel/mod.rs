@@ -227,7 +227,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         argv_strings.extend_from_slice(binary_args);
 
         info!("Initializing stack");
-        cpu.reg_write(RegisterX86::RSP.into(), self.memory.borrow().stack_base())
+        cpu.reg_write(RegisterX86::RSP.into(), self.memory.borrow().stack_base(0, 0).expect("no process found"))
             .expect("failed to write RSP");
         let mut aux: Vec<(u64, u64)> = Vec::new();
         crate::push_stack!(cpu, 0u64, RegisterX86::RSP.into())?; // Stack end marker
@@ -279,7 +279,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         let rsp = cpu.reg_read(RegisterX86::RSP.into())?;
         println!("Stack dump:\n");
         hexdump::hexdump(
-            cpu.mem_read_bytes(rsp, (self.memory.borrow().stack_base() - rsp) as usize).unwrap().as_slice(),
+            cpu.mem_read_bytes(rsp, (self.memory.borrow().stack_base(0, 0).expect("no process found") - rsp) as usize).unwrap().as_slice(),
         );
 
         Ok(())

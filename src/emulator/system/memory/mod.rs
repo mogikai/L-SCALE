@@ -1,24 +1,37 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::ops::{Not, Range};
 use std::rc::Rc;
+use im_rc::HashMap;
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
 use crate::emulator::abstractions::mmu::{MemoryError, MMU, MREMAP_FLAGS, Permission};
-use crate::emulator::system::memory::tlb::TLB;
+use crate::emulator::system::memory::tlb::{TLB, TLBEntry};
 
 pub mod tlb;
 
-#[derive(Hash, Eq, PartialEq)]
-struct LayoutID(u64, u64);
+#[derive(Hash, Eq, PartialEq, Clone, Copy)]
+struct LayoutID {
+    pid: u32,
+    tid: u32,
+}
+
+impl LayoutID {
+    pub fn new(pid: u32, tid: u32) -> Self {
+        Self {
+            pid: pid,
+            tid: tid,
+        }
+    }
+}
 
 /// Each Process/Thread has its own memory layout in the virtual address space
 /// The mapping from virtual address to physical address is managed in the (shared) TLB
 /// The TLB may be shared between multiple threads.
 /// A new process usually has a clone of the tlb from the process it originated from.
+#[derive(Clone)]
 struct Layout {
     stack_base: EVAddr,
-    max_stack: usize,
+    max_stack: u64,
     heap_base: EVAddr,
     map_base: EVAddr,
     tlb: Rc<RefCell<TLB>>,
@@ -63,7 +76,7 @@ pub struct Memory {
     physical_end: EPAddr,
 
     /// The size of emulated physical memory that is allocated per process.
-    process_mem_size: usize,
+    process_mem_size: u64,
 }
 
 impl Memory {
@@ -71,25 +84,36 @@ impl Memory {
         Self {
             layouts: HashMap::new(),
             physical_end: EPAddr::from(0),
-            process_mem_size: 0,
+            process_mem_size: 0x2000000, //32 MiByte
         }
     }
 
     pub fn new_process(
         &mut self,
         mmu: &mut impl MMU,
-        stack_base: EVAddr,
-        max_stack: usize,
-        heap_base: EVAddr,
-        map_base: EVAddr,
+        pid: u32,
+        tid: u32,
     ) -> Result<(), MemoryError> {
-        mmu.mem_map(self.physical_end.into(), self.process_mem_size, Permission::ALL)?;
-        self.layouts.try_insert(LayoutID(0, 0), Layout::new()).map_err(|_| MemoryError::Unknown)?;
+        let mut layout = Layout::new();
+
+        // heap
+        layout.heap_base = 0x55555555e000;
+        layout.tlb.borrow_mut().try_insert(layout.heap_base, TLBEntry{physical_address: self.physical_end.into(), size: 0x1000, permissions: Permission::READ|Permission::WRITE});
+
+        // stack
+        layout.stack_base = 0x7ffff7fff000;
+        layout.max_stack = 0x21000;
+        layout.tlb.borrow_mut().try_insert(layout.stack_base - layout.max_stack, TLBEntry{physical_address: self.physical_end + (self.process_mem_size - layout.max_stack).into(), size: layout.max_stack, permissions: Permission::READ|Permission::WRITE});
+
+        self.layouts.insert(LayoutID::new(pid, tid), layout).ok_or(MemoryError::Unknown)?;
+        mmu.mem_map(self.physical_end.into(), self.process_mem_size.try_into().unwrap(), Permission::ALL)?;
+        self.physical_end = self.physical_end + self.process_mem_size.into();
         Ok(())
     }
 
-    pub(crate) fn stack_base(&self) -> EVAddr {
-        todo!()
+    pub(crate) fn stack_base(&self, pid: u32, tid: u32) -> Result<EVAddr, MemoryError> {
+        let layout = self.layouts.get(&LayoutID{pid: pid, tid: tid}).ok_or(MemoryError::Unknown)?;
+        return Ok(layout.stack_base);
     }
 
     pub(crate) fn stack_end(&self) -> EVAddr {
