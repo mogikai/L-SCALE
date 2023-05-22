@@ -1,4 +1,6 @@
 use std::collections::BTreeMap;
+use std::ops::Not;
+
 use im_rc::{OrdMap, Vector};
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
@@ -14,7 +16,11 @@ pub struct TLBEntry {
 }
 
 impl TLBEntry {
-    pub fn new(physical_address: EPAddr, size: usize, permissions: Permission) -> Self {
+    pub fn new(
+        physical_address: EPAddr,
+        size: usize,
+        permissions: Permission,
+    ) -> Self {
         Self {
             physical_address,
             size,
@@ -43,34 +49,36 @@ impl TLB {
     ) -> Result<TLBEntry, MemoryError> {
         let (a, e) = match self.mappings.get_prev(&address) {
             Some(e) => e,
-            None => return Err(MemoryError::Unknown),
+            None => Err(MemoryError::Unknown)?,
         };
         if (a + e.size) <= address {
-            return Err(MemoryError::Unknown);
+            Err(MemoryError::Unknown)?;
         }
-        return Ok(*e);
+        Ok(*e)
     }
 
+    /// Checks whether the tlb contains an EVAddr mapping that contains the entire region
+    /// from address to address + size
     fn mapped(
         &self,
         address: EVAddr,
-        size: usize
+        size: usize,
     ) -> bool {
-        let (a, e) = match self.mappings.get_prev(&address) {
+        let (evaddr, entry) = match self.mappings.get_prev(&address) {
             Some(e) => e,
             None => return false,
         };
 
-        if (a + e.size) > address {
+        if (evaddr + entry.size) > address {
             return true;
         }
 
-        let (a, e) = match self.mappings.get_next(&(a + 1)) {
-            Some(e) => e,
+        let a = match self.mappings.get_next(&(evaddr + 1)) {
+            Some((a, _)) => a,
             None => return false,
         };
 
-        return *a < (address + size);
+        *a < (address + size)
     }
 
     pub fn try_insert(
@@ -82,58 +90,69 @@ impl TLB {
             return Err(MemoryError::Unknown);
         }
         self.mappings.insert(address, entry);
-        return Ok(());
+        Ok(())
     }
 
     pub fn get_mapping(
         &self,
         address: EVAddr,
     ) -> Result<(EVAddr, TLBEntry), MemoryError> {
-        let (a, e) = self.mappings.get_prev(&address).ok_or(MemoryError::Unknown)?;
-        if (a + e.size) <= address {
-            return Err(MemoryError::Unknown);
-        }
-        return Ok((*a, *e));
+        self.mappings
+            .get_prev(&address)
+            .and_then(|(vaddress, entry)| {
+                if vaddress + entry.size <= address {
+                    Some((*vaddress, *entry))
+                } else {
+                    None
+                }
+            })
+            .ok_or(MemoryError::Unknown)
     }
 
     pub fn realloc(
         &mut self,
         addr: EVAddr,
-        size: usize
+        size: usize,
     ) -> Result<(), MemoryError> {
-        let e = self.mappings.get(&addr).ok_or(MemoryError::Unknown)?;
-        let mut e = *e;
-        if e.size >= size {
-            e.size = size;
-            self.mappings.insert(addr, e);
-            return Ok(());
+        let mut tlb_entry = *self.mappings.get(&addr).ok_or(MemoryError::Unknown)?;
+        if tlb_entry.size >= size {
+            tlb_entry.size = size;
+            self.mappings
+                .insert(addr, tlb_entry)
+                .expect("This operation should replace an existing mapping");
+            Ok(())
+        } else if self.mapped(addr + tlb_entry.size, size - tlb_entry.size) {
+            Err(MemoryError::Unknown)
+        } else {
+            tlb_entry.size = size;
+            self.mappings
+                .insert(addr, tlb_entry)
+                .expect("This operation should replace an existing mapping");
+            Ok(())
         }
-        if self.mapped(addr + e.size, size - e.size) {
-            return Err(MemoryError::Unknown);
-        }
-        e.size = size;
-        self.mappings.insert(addr, e);
-        return Ok(());
     }
-
 }
 
 impl Restorable for TLB {
     fn snapshot(&mut self) -> Result<(), GenericError> {
-        let s = self.mappings.clone();
-        self.mappings = s.clone();
-        self.snapshots.push_back(s);
-        return Ok(());
+        self.snapshots.push_back(self.mappings.clone());
+        Ok(())
     }
 
     fn restore_and_discard(&mut self) -> Result<(), GenericError> {
-        self.restore();
-        self.snapshots.pop_back().ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot availible"))?;
-        return Ok(());
+        self.restore()?;
+        self.snapshots
+            .pop_back()
+            .ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot available"))?;
+        Ok(())
     }
 
     fn restore(&mut self) -> Result<(), GenericError> {
-        self.mappings = self.snapshots.last().ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot availible"))?.clone();
-        return Ok(());
+        self.mappings = self
+            .snapshots
+            .last()
+            .ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot available"))?
+            .clone();
+        Ok(())
     }
 }

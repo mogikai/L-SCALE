@@ -102,7 +102,7 @@ impl Memory {
         layout.tlb.borrow_mut().try_insert(
             layout.heap_base,
             TLBEntry {
-                physical_address: self.physical_end.into(),
+                physical_address: self.physical_end,
                 size: 0x1000,
                 permissions: Permission::READ | Permission::WRITE,
             },
@@ -121,7 +121,7 @@ impl Memory {
         ).map_err(|_| MemoryError::Unknown)?;
 
         self.layouts.insert(LayoutID::new(pid, tid), layout).ok_or(MemoryError::Unknown)?;
-        mmu.mem_map(self.physical_end, self.process_mem_size.try_into().unwrap(), Permission::ALL)?;
+        mmu.mem_map(self.physical_end, self.process_mem_size, Permission::ALL)?;
         self.physical_end = self.physical_end + self.process_mem_size;
         Ok(())
     }
@@ -132,7 +132,7 @@ impl Memory {
         tid: u32,
     ) -> Result<EVAddr, MemoryError> {
         let layout = self.layouts.get(&LayoutID { pid, tid }).ok_or(MemoryError::Unknown)?;
-        return Ok(layout.stack_base);
+        Ok(layout.stack_base)
     }
 
     pub(crate) fn stack_size(
@@ -141,7 +141,7 @@ impl Memory {
         tid: u32,
     ) -> Result<usize, MemoryError> {
         let layout = self.layouts.get(&LayoutID { pid, tid }).ok_or(MemoryError::Unknown)?;
-        return Ok(layout.max_stack);
+        Ok(layout.max_stack)
     }
 
     pub(crate) fn heap_end(
@@ -152,7 +152,7 @@ impl Memory {
         let layout = self.layouts.get(&LayoutID { pid: pid, tid: tid }).ok_or(MemoryError::Unknown)?;
         let tlb = layout.tlb.borrow();
         let (a, e) = tlb.get_mapping(layout.heap_base)?;
-        return Ok(a + e.size);
+        Ok(a + e.size)
     }
 
     pub(crate) fn realloc_heap(
@@ -175,7 +175,7 @@ impl Memory {
             return Err(MemoryError::Unknown);
         }
         tlb.realloc(a, addr - a)?;
-        return Ok(());
+        Ok(())
     }
 
     pub(crate) fn map_data(
