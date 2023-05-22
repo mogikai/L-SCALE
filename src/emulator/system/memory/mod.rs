@@ -1,11 +1,12 @@
 use std::cell::RefCell;
 use std::ops::{Not, Range};
 use std::rc::Rc;
+
 use im_rc::HashMap;
 
-use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
-use crate::emulator::abstractions::mmu::{MemoryError, MMU, MREMAP_FLAGS, Permission};
-use crate::emulator::system::memory::tlb::{TLB, TLBEntry};
+use crate::emulator::abstractions::cpu::address::{EPAddr, EVA_NULL, EVAddr};
+use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU, MREMAP_FLAGS};
+use crate::emulator::system::memory::tlb::{TLBEntry, TLB};
 
 pub mod tlb;
 
@@ -16,11 +17,11 @@ struct LayoutID {
 }
 
 impl LayoutID {
-    pub fn new(pid: u32, tid: u32) -> Self {
-        Self {
-            pid: pid,
-            tid: tid,
-        }
+    pub fn new(
+        pid: u32,
+        tid: u32,
+    ) -> Self {
+        Self { pid, tid }
     }
 }
 
@@ -31,7 +32,7 @@ impl LayoutID {
 #[derive(Clone)]
 struct Layout {
     stack_base: EVAddr,
-    max_stack: u64,
+    max_stack: usize,
     heap_base: EVAddr,
     map_base: EVAddr,
     tlb: Rc<RefCell<TLB>>,
@@ -40,10 +41,10 @@ struct Layout {
 impl Layout {
     pub fn new() -> Self {
         Self {
-            stack_base: 0,
+            stack_base: EVA_NULL,
             max_stack: 0,
-            heap_base: 0,
-            map_base: 0,
+            heap_base: EVA_NULL,
+            map_base: EVA_NULL,
             tlb: Rc::new(RefCell::new(TLB::new())),
         }
     }
@@ -52,15 +53,15 @@ impl Layout {
 const MASK4K: u64 = 4 * (1 << 10) - 1;
 
 fn align4k_up(address: EVAddr) -> EVAddr {
-    (address + MASK4K) & !MASK4K
+    (address + MASK4K) & !EVAddr::from(MASK4K)
 }
 
 fn align4k_down(address: EVAddr) -> EVAddr {
-    address & !MASK4K
+    address & !EVAddr::from(MASK4K)
 }
 
 fn is4kaligned(address: EVAddr) -> bool {
-    (address & MASK4K) == 0
+    (address & EVAddr::from(MASK4K)) == EVA_NULL
 }
 
 /// Contains the memory layout of the current process task. Each process has its own copy of the memory layout.
@@ -76,7 +77,7 @@ pub struct Memory {
     physical_end: EPAddr,
 
     /// The size of emulated physical memory that is allocated per process.
-    process_mem_size: u64,
+    process_mem_size: usize,
 }
 
 impl Memory {
@@ -97,32 +98,58 @@ impl Memory {
         let mut layout = Layout::new();
 
         // heap
-        layout.heap_base = 0x55555555e000;
-        layout.tlb.borrow_mut().try_insert(layout.heap_base, TLBEntry{physical_address: self.physical_end.into(), size: 0x1000, permissions: Permission::READ|Permission::WRITE});
+        layout.heap_base = EVAddr::from(0x55555555e000);
+        layout.tlb.borrow_mut().try_insert(
+            layout.heap_base,
+            TLBEntry {
+                physical_address: self.physical_end.into(),
+                size: 0x1000,
+                permissions: Permission::READ | Permission::WRITE,
+            },
+        ).map_err(|_| MemoryError::Unknown)?;
 
         // stack
-        layout.stack_base = 0x7ffff7fff000;
+        layout.stack_base = EVAddr::from(0x7ffff7fff000);
         layout.max_stack = 0x21000;
-        layout.tlb.borrow_mut().try_insert(layout.stack_base - layout.max_stack, TLBEntry{physical_address: self.physical_end + (self.process_mem_size - layout.max_stack).into(), size: layout.max_stack, permissions: Permission::READ|Permission::WRITE});
+        layout.tlb.borrow_mut().try_insert(
+            layout.stack_base - layout.max_stack,
+            TLBEntry {
+                physical_address: self.physical_end + self.process_mem_size - layout.max_stack,
+                size: layout.max_stack,
+                permissions: Permission::READ | Permission::WRITE,
+            },
+        ).map_err(|_| MemoryError::Unknown)?;
 
         self.layouts.insert(LayoutID::new(pid, tid), layout).ok_or(MemoryError::Unknown)?;
-        mmu.mem_map(self.physical_end.into(), self.process_mem_size.try_into().unwrap(), Permission::ALL)?;
-        self.physical_end = self.physical_end + self.process_mem_size.into();
+        mmu.mem_map(self.physical_end, self.process_mem_size.try_into().unwrap(), Permission::ALL)?;
+        self.physical_end = self.physical_end + self.process_mem_size;
         Ok(())
     }
 
-    pub(crate) fn stack_base(&self, pid: u32, tid: u32) -> Result<EVAddr, MemoryError> {
-        let layout = self.layouts.get(&LayoutID{pid: pid, tid: tid}).ok_or(MemoryError::Unknown)?;
+    pub(crate) fn stack_base(
+        &self,
+        pid: u32,
+        tid: u32,
+    ) -> Result<EVAddr, MemoryError> {
+        let layout = self.layouts.get(&LayoutID { pid, tid }).ok_or(MemoryError::Unknown)?;
         return Ok(layout.stack_base);
     }
 
-    pub(crate) fn stack_size(&self, pid: u32, tid: u32) -> Result<u64, MemoryError> {
-        let layout = self.layouts.get(&LayoutID{pid: pid, tid: tid}).ok_or(MemoryError::Unknown)?;
+    pub(crate) fn stack_size(
+        &self,
+        pid: u32,
+        tid: u32,
+    ) -> Result<usize, MemoryError> {
+        let layout = self.layouts.get(&LayoutID { pid, tid }).ok_or(MemoryError::Unknown)?;
         return Ok(layout.max_stack);
     }
 
-    pub(crate) fn heap_end(&self, pid: u32, tid:u32) -> Result<EVAddr, MemoryError> {
-        let layout = self.layouts.get(&LayoutID{pid: pid, tid: tid}).ok_or(MemoryError::Unknown)?;
+    pub(crate) fn heap_end(
+        &self,
+        pid: u32,
+        tid: u32,
+    ) -> Result<EVAddr, MemoryError> {
+        let layout = self.layouts.get(&LayoutID { pid: pid, tid: tid }).ok_or(MemoryError::Unknown)?;
         let tlb = layout.tlb.borrow();
         let (a, e) = tlb.get_mapping(layout.heap_base)?;
         return Ok(a + e.size);
@@ -132,9 +159,9 @@ impl Memory {
         &mut self,
         addr: EVAddr,
         pid: u32,
-        tid: u32
+        tid: u32,
     ) -> Result<(), MemoryError> {
-        let layout = self.layouts.get(&LayoutID{pid: pid, tid: tid}).ok_or(MemoryError::Unknown)?;
+        let layout = self.layouts.get(&LayoutID { pid: pid, tid: tid }).ok_or(MemoryError::Unknown)?;
         if addr < layout.heap_base {
             return Err(MemoryError::Unknown);
         }

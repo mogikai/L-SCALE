@@ -17,7 +17,7 @@ impl<'a, Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<u8, Endianness> for
         address: EVAddr,
         data: u8,
     ) -> Result<usize, MemoryError> {
-        self.write_direct(address - std::mem::size_of::<u8>() as u64, data)
+        self.write_direct(address - std::mem::size_of::<u8>(), data)
     }
 }
 
@@ -35,7 +35,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&[u8], Endianness> for 
         address: EVAddr,
         data: &[u8],
     ) -> Result<usize, MemoryError> {
-        self.write_direct(address - data.len() as u64, data)
+        self.write_direct(address - data.len(), data)
     }
 }
 
@@ -53,7 +53,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&Vec<u8>, Endianness> f
         address: EVAddr,
         data: &Vec<u8>,
     ) -> Result<usize, MemoryError> {
-        self.write_direct(address - data.len() as u64, data)
+        self.write_direct(address - data.len(), data)
     }
 }
 
@@ -73,7 +73,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<u64, Endianness> for Me
         address: EVAddr,
         data: u64,
     ) -> Result<usize, MemoryError> {
-        self.write_direct(address - std::mem::size_of::<u64>() as u64, data)
+        self.write_direct(address - std::mem::size_of::<u64>(), data)
     }
 }
 
@@ -93,7 +93,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&i64, Endianness> for M
         address: EVAddr,
         data: &i64,
     ) -> Result<usize, MemoryError> {
-        self.write_direct(address - std::mem::size_of::<i64>() as u64, data)
+        self.write_direct(address - std::mem::size_of::<i64>(), data)
     }
 }
 
@@ -111,7 +111,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&str, Endianness> for M
         address: EVAddr,
         data: &str,
     ) -> Result<usize, MemoryError> {
-        self.write_direct(address - data.len() as u64, data)
+        self.write_direct(address - data.len(), data)
     }
 }
 
@@ -135,7 +135,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&[u64], Endianness> for
         address: EVAddr,
         data: &[u64],
     ) -> Result<usize, MemoryError> {
-        self.write_direct(address - (data.len() * std::mem::size_of::<u64>()) as u64, data)
+        self.write_direct(address - (data.len() * std::mem::size_of::<u64>()), data)
     }
 }
 
@@ -197,7 +197,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&[(u64, u64)], Endianne
         address: EVAddr,
         data: &[(u64, u64)],
     ) -> Result<usize, MemoryError> {
-        self.write_direct(address - (data.len() * std::mem::size_of::<u64>() * 2) as u64, data)
+        self.write_direct(address - (data.len() * std::mem::size_of::<u64>() * 2), data)
     }
 }
 

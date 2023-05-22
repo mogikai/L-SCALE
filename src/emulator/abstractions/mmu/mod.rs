@@ -6,7 +6,7 @@ use std::ops::Range;
 use bitflags::bitflags;
 use byteorder::ByteOrder;
 
-use crate::emulator::abstractions::cpu::address::EVAddr;
+use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode};
 
 pub mod accessor;
@@ -50,7 +50,7 @@ pub trait MemoryWrite<T: Encode<Endianness>, Endianness: ByteOrder> {
         address: EVAddr,
         data: T,
     ) -> Result<usize, MemoryError> {
-        Self::write(self, address - data.encoded_size() as u64, data)
+        Self::write(self, address - data.encoded_size(), data)
     }
 }
 
@@ -76,7 +76,7 @@ pub trait MemoryRead<T: Decode<Endianness>, Endianness: ByteOrder> {
         &self,
         address: EVAddr,
     ) -> Result<T, MemoryError> {
-        self.read(address - T::required_mem() as u64)
+        self.read(address - T::required_mem())
     }
 
     fn read_down_n(
@@ -84,21 +84,21 @@ pub trait MemoryRead<T: Decode<Endianness>, Endianness: ByteOrder> {
         address: EVAddr,
         n: usize,
     ) -> Result<Vec<T>, MemoryError> {
-        self.read_n(address - (n * T::required_mem()) as u64, n)
+        self.read_n(address - (n * T::required_mem()), n)
     }
 }
 
 pub trait MMU {
     fn mem_map(
         &mut self,
-        address: EVAddr,
+        address: EPAddr,
         size: usize,
         perms: Permission,
     ) -> Result<(), MemoryError>;
 
     fn mem_unmap(
         &mut self,
-        address: EVAddr,
+        address: EPAddr,
         size: usize,
     ) -> Result<(), MemoryError>;
 
@@ -113,7 +113,7 @@ pub trait MMU {
         address: EVAddr,
         len: usize,
     ) -> Result<Vec<u8>, MemoryError> {
-        self.mem_read_bytes(address - len as u64, len)
+        self.mem_read_bytes(address - len, len)
     }
 
     fn mem_write_bytes(
@@ -127,7 +127,7 @@ pub trait MMU {
         address: EVAddr,
         data: &[u8],
     ) -> Result<usize, MemoryError> {
-        self.mem_write_bytes(address - data.len() as u64, data)
+        self.mem_write_bytes(address - data.len(), data)
     }
 }
 

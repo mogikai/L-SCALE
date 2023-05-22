@@ -3,7 +3,7 @@ macro_rules! push_stack {
     ($cpu:ident, $data:expr, $reg:expr) => {{
         $cpu.reg_read($reg).map_err(|e| GenericError::from(e)).and_then(|sp| {
             MemoryAccessor::<Endianness, _>::new($cpu)
-                .write_direct_down(sp, $data)
+                .write_direct_down(sp.into(), $data)
                 .map_err(|e| GenericError::from(e))
                 .and_then(|len| {
                     let diff = sp.wrapping_sub(len as u64);

@@ -8,6 +8,7 @@ use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
 
 use crate::emulator::abstractions::cpu::{CPUError, ContextHandle, RegisterX86, CPU};
+use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::emulator::{Emulator, StopReason};
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::hooks::Hooks;
@@ -94,20 +95,20 @@ macro_rules! do_syscall {
     (1, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
         $debug_str = format!("(0x{:X}) ", rdi);
-        $name.$fun($uc, rdi)
+        $name.$fun($uc, rdi.into())
     }};
     (2, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
         let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
         $debug_str = format!("(0x{:X}, 0x{:X}) ", rdi, rsi);
-        $name.$fun($uc, rdi, rsi)
+        $name.$fun($uc, rdi.into(), rsi.into())
     }};
     (3, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
         let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
         let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
         $debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx);
-        $name.$fun($uc, rdi, rsi, rdx)
+        $name.$fun($uc, rdi.into(), rsi.into(), rdx.into())
     }};
     (4, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
@@ -115,7 +116,7 @@ macro_rules! do_syscall {
         let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
         let r10 = $uc.reg_read(RegisterX86::R10.into()).unwrap();
         $debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10);
-        $name.$fun($uc, rdi, rsi, rdx, r10)
+        $name.$fun($uc, rdi.into(), rsi.into(), rdx.into(), r10.into())
     }};
     (5, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
@@ -124,7 +125,7 @@ macro_rules! do_syscall {
         let r10 = $uc.reg_read(RegisterX86::R10.into()).unwrap();
         let r8 = $uc.reg_read(RegisterX86::R8.into()).unwrap();
         $debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10, r8);
-        $name.$fun($uc, rdi, rsi, rdx, r10, r8)
+        $name.$fun($uc, rdi.into(), rsi.into(), rdx.into(), r10.into(), r8.into())
     }};
     (6, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
@@ -134,7 +135,7 @@ macro_rules! do_syscall {
         let r8 = $uc.reg_read(RegisterX86::R8.into()).unwrap();
         let r9 = $uc.reg_read(RegisterX86::R9.into()).unwrap();
         $debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10, r8, r9);
-        $name.$fun($uc, rdi, rsi, rdx, r10, r8, r9)
+        $name.$fun($uc, rdi.into(), rsi.into(), rdx.into(), r10.into(), r8.into(), r9.into())
     }};
 }
 
@@ -635,8 +636,8 @@ where
             }));
 
             cpu.add_syscall_hook(
-                1,
-                0,
+                EVAddr::from(1),
+                EVAddr::from(0),
                 Box::new(move |cpu: &mut CpuT| {
                     syscall(cpu, &mut *kernel.borrow_mut());
                 }),

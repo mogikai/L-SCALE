@@ -279,11 +279,11 @@ struct user_msghdr {
 impl<Endianness: ByteOrder> Decode<Endianness> for user_msghdr {
     fn decode(val: &[u8]) -> Result<Self, MemoryError> {
         Ok(Self {
-            msg_name: Endianness::read_u64(&val[..8]),
+            msg_name: EVAddr::from(Endianness::read_u64(&val[..8])),
             msg_namelen: Endianness::read_u64(&val[8..16]),
-            msg_iov: Endianness::read_u64(&val[16..24]),
+            msg_iov: EVAddr::from(Endianness::read_u64(&val[16..24])),
             msg_iovlen: Endianness::read_u64(&val[24..32]),
-            msg_control: Endianness::read_u64(&val[32..40]),
+            msg_control: EVAddr::from(Endianness::read_u64(&val[32..40])),
             msg_controllen: Endianness::read_u64(&val[40..48]),
             msg_flags: Endianness::read_u32(&val[48..52]),
         })
@@ -303,7 +303,7 @@ struct iovec {
 impl<Endianness: ByteOrder> Decode<Endianness> for iovec {
     fn decode(val: &[u8]) -> Result<Self, MemoryError> {
         Ok(Self {
-            iov_base: Endianness::read_u64(&val[..8]),
+            iov_base: EVAddr::from(Endianness::read_u64(&val[..8])),
             iov_len: Endianness::read_u64(&val[8..16]),
         })
     }

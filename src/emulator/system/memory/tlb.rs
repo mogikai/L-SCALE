@@ -9,16 +9,16 @@ use crate::emulator::abstractions::restore::Restorable;
 #[derive(Copy, Clone)]
 pub struct TLBEntry {
     pub physical_address: EPAddr,
-    pub size: u64,
+    pub size: usize,
     pub permissions: Permission,
 }
 
 impl TLBEntry {
-    pub fn new(paddr: EPAddr, size: u64, perms: Permission) -> Self {
+    pub fn new(physical_address: EPAddr, size: usize, permissions: Permission) -> Self {
         Self {
-            physical_address: paddr,
-            size: size,
-            permissions: perms,
+            physical_address,
+            size,
+            permissions,
         }
     }
 }
@@ -54,7 +54,7 @@ impl TLB {
     fn mapped(
         &self,
         address: EVAddr,
-        size: u64
+        size: usize
     ) -> bool {
         let (a, e) = match self.mappings.get_prev(&address) {
             Some(e) => e,
@@ -99,7 +99,7 @@ impl TLB {
     pub fn realloc(
         &mut self,
         addr: EVAddr,
-        size: u64
+        size: usize
     ) -> Result<(), MemoryError> {
         let e = self.mappings.get(&addr).ok_or(MemoryError::Unknown)?;
         let mut e = *e;

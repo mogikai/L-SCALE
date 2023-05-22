@@ -10,7 +10,7 @@ use unicorn_engine::{Context, InsnSysX86, RegisterX86, Unicorn};
 
 use crate::emulator::abstractions::cpu;
 use crate::emulator::abstractions::cpu::{ContextHandle, CPU, CPUError, Register};
-use crate::emulator::abstractions::cpu::address::EVAddr;
+use crate::emulator::abstractions::cpu::address::{EVA_NULL, EVAddr};
 use crate::emulator::abstractions::emulator::StopReason;
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::hooks::Hooks;
@@ -119,7 +119,7 @@ impl CPU for UCWrapper<'_> {
         } else {
             0u64
         };
-        self.uc_mut().emu_start(rip, stop.unwrap_or(0), timeout, instruction_count.unwrap_or(0))?;
+        self.uc_mut().emu_start(rip, stop.unwrap_or(EVA_NULL).into(), timeout, instruction_count.unwrap_or(0))?;
         if let Some(stop_reason) = self.stop_reason {
             Err(CPUError::Stopped(stop_reason))
         } else {

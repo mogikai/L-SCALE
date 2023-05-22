@@ -27,7 +27,7 @@ impl<'a> Hooks<'a> for UCWrapper<'a> {
         };
         let _hook = self
             .uc_mut()
-            .add_insn_sys_hook(InsnSysX86::SYSCALL, start, end, trampoline)
+            .add_insn_sys_hook(InsnSysX86::SYSCALL, start.into(), end.into(), trampoline)
             .expect("failed to add syscall hook");
     }
 
@@ -40,7 +40,7 @@ impl<'a> Hooks<'a> for UCWrapper<'a> {
         let trampoline = move |uc: &mut Unicorn<*mut UCWrapper<'a>>, mem_type, address, size, value| {
             hook(unsafe { &mut **uc.get_data_mut() }, MemoryAction::from(mem_type), address, size, value)
         };
-        let _hook = self.uc_mut().add_mem_hook(HookType::MEM_UNMAPPED, start, end, trampoline).unwrap();
+        let _hook = self.uc_mut().add_mem_hook(HookType::MEM_UNMAPPED, start.into(), end.into(), trampoline).unwrap();
     }
 
     fn add_block_hook(
@@ -56,8 +56,8 @@ impl<'a> Hooks<'a> for UCWrapper<'a> {
         &mut self,
         mut hook: Box<dyn FnMut(&mut Self, EVAddr, MemoryAction) -> Option<TLBEntry> + 'a>,
     ) -> Result<(), GenericError> {
-        let trampoline = move |uc: &mut Unicorn<*mut UCWrapper<'a>>, address, access_type| {
-            hook(unsafe { &mut **uc.get_data_mut() }, address, MemoryAction::from(access_type))
+        let trampoline = move |uc: &mut Unicorn<*mut UCWrapper<'a>>, address: u64, access_type| {
+            hook(unsafe { &mut **uc.get_data_mut() }, address.into(), MemoryAction::from(access_type))
                 .map(|tlbentry| tlbentry.into())
         };
         self.uc_mut().add_tlb_hook(1, 0, trampoline)?;

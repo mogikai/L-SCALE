@@ -9,7 +9,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         &mut self,
         mmu: &mut impl MMU,
         fd: u64,
-        buf: u64,
+        buf: EVAddr,
         size: u64,
     ) -> SyscallResult {
         self.handles.get_mut(&fd).map_or(Err(LinuxKernelError::EINVAL), |handle| {
@@ -28,7 +28,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
             let mut ret = 0;
             let iovec = mmu.mem_read_bytes(iovec_ptr, (iovcnt * 16) as usize).unwrap();
             for i in 0..iovcnt as usize {
-                let ptr = Endianness::read_u64(&iovec[(i * 16)..((i * 16) + 8)]);
+                let ptr = EVAddr::from(Endianness::read_u64(&iovec[(i * 16)..((i * 16) + 8)]));
                 let size = Endianness::read_u64(&iovec[i * 16 + 8..i * 16 + 16]) as usize;
                 let data = mmu.mem_read_bytes(ptr, size)?;
                 let written = handle.write(data.as_ref())?;
@@ -46,7 +46,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         &mut self,
         mmu: &mut impl MMU,
         fd: u64,
-        buf: u64,
+        buf: EVAddr,
         count: u64,
         pos: u64,
     ) -> SyscallResult {
@@ -59,7 +59,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         &mut self,
         mmu: &mut impl MMU,
         fd: u64,
-        buf: u64,
+        buf: EVAddr,
         count: u64,
     ) -> SyscallResult {
         if let Some(f) = self.handles.get_mut(&fd) {
@@ -83,7 +83,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
     pub fn stat(
         &mut self,
         mmu: &mut impl MMU,
-        filename: u64,
+        filename: EVAddr,
         statbuf: EVAddr,
     ) -> SyscallResult {
         let fname = read_osstring!(mmu, filename)?;
@@ -98,7 +98,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         &mut self,
         mmu: &mut impl MMU,
         _dfd: u64,
-        filename: u64,
+        filename: EVAddr,
         _flags: u64,
         _mode: u64,
     ) -> SyscallResult {

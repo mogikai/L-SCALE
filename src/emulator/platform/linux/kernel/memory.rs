@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::emulator::abstractions::cpu::address::EVAddr;
+use crate::emulator::abstractions::cpu::address::{EVA_NULL, EVAddr};
 use crate::emulator::abstractions::mmu::{DirectMemoryWrite, MMU, MREMAP_FLAGS};
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::kernel::{LinuxKernel, LinuxKernelError, SyscallResult};
@@ -20,7 +20,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         length: u64,
         prot: u64,
         flags: u64,
-    ) -> SyscallResult {
+    ) -> Result<EVAddr, LinuxKernelError> {
         let addr = if (flags & MAP_FIXED) != 0 {
             self.memory.borrow_mut().unmap(addr, length as usize)?;
             addr
@@ -41,20 +41,20 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
     fn mmap_private(
         &mut self,
         mmu: &mut impl MMU,
-        addr: u64,
+        addr: EVAddr,
         length: u64,
         prot: u64,
         flags: u64,
         fd: u64,
         offset: u64,
-    ) -> SyscallResult {
+    ) -> Result<EVAddr, LinuxKernelError> {
         // TODO: This will leak memory if the file handle errors. Needs to be fixed when converting to uctlb solution.
         let addr = self.mmap_anon(mmu, addr, length, prot, flags)?;
         if fd >= 1 << 31 {
             Err(LinuxKernelError::EINVAL)?
         }
         let addr = self.mmap_anon(mmu, addr, length, prot, flags).unwrap();
-        if addr == !0 {
+        if addr == !EVA_NULL {
             Err(LinuxKernelError::EINVAL)?
         }
         let f = self.handles.get(&fd).ok_or(LinuxKernelError::EINVAL)?;
@@ -77,9 +77,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
             Err(LinuxKernelError::EINVAL)?
         }
         if (flags & MAP_ANONYMOUS) != 0 {
-            self.mmap_anon(cpu, addr, length, prot, flags)
+            Ok(self.mmap_anon(cpu, addr, length, prot, flags)?.into())
         } else if (flags & MAP_PRIVATE) != 0 {
-            self.mmap_private(cpu, addr, length, prot, flags, fd, offset)
+            Ok(self.mmap_private(cpu, addr, length, prot, flags, fd, offset)?.into())
         } else {
             Err(LinuxKernelError::EINVAL)
         }
@@ -110,13 +110,13 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
             new_addr,
             new_len,
             MREMAP_FLAGS::from_bits(flags).ok_or(LinuxKernelError::EINVAL)?,
-        )?)
+        )?.into())
     }
 
     pub fn mprotect(
         &mut self,
         _: &mut impl MMU,
-        start: u64,
+        start: EVAddr,
         len: u64,
         prot: u64,
     ) -> SyscallResult {
