@@ -96,10 +96,10 @@ impl TLB {
         self.mappings
             // First block that starts at address less than or equal to address
             .get_prev(&address)
-            .and_then(|(vaddress, entry)| {
+            .and_then(|(block_start, entry)| {
                 // Address is contained in block
-                if vaddress + entry.size <= address {
-                    Some((*vaddress, *entry))
+                if address < block_start + entry.size {
+                    Some((*block_start, *entry))
                 } else {
                     None
                 }
