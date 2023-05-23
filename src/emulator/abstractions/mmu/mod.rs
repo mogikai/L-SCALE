@@ -22,6 +22,8 @@ pub enum MemoryError {
     InvalidPermission,
     InvalidSize,
     Unknown,
+    ProcessAlreadyExists,
+    LayoutNotFound,
 }
 
 pub trait DirectMemoryWrite<T, Endianness: ByteOrder> {

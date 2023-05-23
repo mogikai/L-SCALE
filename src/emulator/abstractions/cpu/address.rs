@@ -1,4 +1,4 @@
-use std::ops::{Add, Sub};
+use std::ops::{Add, AddAssign, Sub};
 use derive_more::{Add, BitAnd, From, Into, Not, UpperHex};
 /// Emulated virtual address
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Add, From, Into, Not, UpperHex, BitAnd)]
@@ -87,5 +87,11 @@ impl Add<usize> for EPAddr {
 
     fn add(self, rhs: usize) -> Self::Output {
         Self(self.0 + u64::try_from(rhs).expect("usize must be equal length to u64"))
+    }
+}
+
+impl AddAssign<usize> for EPAddr {
+    fn add_assign(&mut self, rhs: usize) {
+        self.0 += u64::try_from(rhs).expect("usize must be equal length to u64")
     }
 }

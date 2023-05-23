@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::ops::{Not, Range};
+use std::ops::Range;
 use std::rc::Rc;
 
 use im_rc::HashMap;
@@ -35,16 +35,24 @@ struct Layout {
     max_stack: usize,
     heap_base: EVAddr,
     map_base: EVAddr,
+    designated_physical_memory: Range<EPAddr>,
     tlb: Rc<RefCell<TLB>>,
 }
 
 impl Layout {
-    pub fn new() -> Self {
+    pub fn new(
+        stack_base: EVAddr,
+        max_stack: usize,
+        heap_base: EVAddr,
+        map_base: EVAddr,
+        designated_physical_memory: Range<EPAddr>,
+    ) -> Self {
         Self {
-            stack_base: EVA_NULL,
-            max_stack: 0,
-            heap_base: EVA_NULL,
-            map_base: EVA_NULL,
+            stack_base,
+            max_stack,
+            heap_base,
+            map_base,
+            designated_physical_memory,
             tlb: Rc::new(RefCell::new(TLB::new())),
         }
     }
@@ -85,7 +93,7 @@ impl Memory {
         Self {
             layouts: HashMap::new(),
             physical_end: EPAddr::from(0),
-            process_mem_size: 0x2000000, //32 MiByte
+            process_mem_size: 1024 * 1024 * 1024, // 1 GiB
         }
     }
 
@@ -95,36 +103,43 @@ impl Memory {
         pid: u32,
         tid: u32,
     ) -> Result<(), MemoryError> {
-        let mut layout = Layout::new();
+        if self.layouts.contains_key(&LayoutID { pid, tid }) {
+            Err(MemoryError::ProcessAlreadyExists)?
+        }
+
+        let layout = Layout::new(
+            0x0000_7fff_ffff_ffff.into(),
+            10 * 1024 * 1024, // 10 MiB
+            0x0000_5000_0000_0000.into(),
+            0x0000_3000_0000_0000.into(),
+            self.physical_end..(self.physical_end + self.process_mem_size),
+        );
 
         // heap
-        layout.heap_base = EVAddr::from(0x55555555e000);
         layout.tlb.borrow_mut().try_insert(
             layout.heap_base,
             TLBEntry {
-                physical_address: self.physical_end,
+                physical_address: layout.designated_physical_memory.start,
                 size: 0x1000,
                 permissions: Permission::READ | Permission::WRITE,
             },
         )?;
 
         // stack
-        layout.stack_base = EVAddr::from(0x7ffff7fff000);
-        layout.max_stack = 0x21000;
         layout.tlb.borrow_mut().try_insert(
             layout.stack_base - layout.max_stack,
             TLBEntry {
-                physical_address: self.physical_end + self.process_mem_size - layout.max_stack,
+                physical_address: layout.designated_physical_memory.end - layout.max_stack,
                 size: layout.max_stack,
                 permissions: Permission::READ | Permission::WRITE,
             },
         )?;
 
-        self.layouts
-            .insert(LayoutID::new(pid, tid), layout)
-            .ok_or(MemoryError::Unknown)?;
         mmu.mem_map(self.physical_end, self.process_mem_size, Permission::ALL)?;
-        self.physical_end = self.physical_end + self.process_mem_size;
+        self.physical_end += self.process_mem_size;
+
+        let old_layout = self.layouts.insert(LayoutID::new(pid, tid), layout);
+        assert!(old_layout.is_none());
         Ok(())
     }
 
@@ -133,11 +148,10 @@ impl Memory {
         pid: u32,
         tid: u32,
     ) -> Result<EVAddr, MemoryError> {
-        let layout = self
-            .layouts
+        self.layouts
             .get(&LayoutID { pid, tid })
-            .ok_or(MemoryError::Unknown)?;
-        Ok(layout.stack_base)
+            .map(|layout| layout.stack_base)
+            .ok_or(MemoryError::Unknown)
     }
 
     pub(crate) fn stack_size(
@@ -145,11 +159,10 @@ impl Memory {
         pid: u32,
         tid: u32,
     ) -> Result<usize, MemoryError> {
-        let layout = self
-            .layouts
+        self.layouts
             .get(&LayoutID { pid, tid })
-            .ok_or(MemoryError::Unknown)?;
-        Ok(layout.max_stack)
+            .map(|layout| layout.max_stack)
+            .ok_or(MemoryError::Unknown)
     }
 
     pub(crate) fn heap_end(
@@ -157,13 +170,16 @@ impl Memory {
         pid: u32,
         tid: u32,
     ) -> Result<EVAddr, MemoryError> {
-        let layout = self
-            .layouts
-            .get(&LayoutID { pid: pid, tid: tid })
-            .ok_or(MemoryError::Unknown)?;
-        let tlb = layout.tlb.borrow();
-        let (a, e) = tlb.get_mapping(layout.heap_base)?;
-        Ok(a + e.size)
+        self.layouts
+            .get(&LayoutID { pid, tid })
+            .ok_or(MemoryError::LayoutNotFound)
+            .and_then(|layout| {
+                layout
+                    .tlb
+                    .borrow()
+                    .get_mapping(layout.heap_base)
+                    .map(|(block_start, tlb_entry)| block_start + tlb_entry.size)
+            })
     }
 
     pub(crate) fn realloc_heap(
@@ -174,7 +190,7 @@ impl Memory {
     ) -> Result<(), MemoryError> {
         let layout = self
             .layouts
-            .get(&LayoutID { pid: pid, tid: tid })
+            .get(&LayoutID { pid, tid })
             .ok_or(MemoryError::Unknown)?;
         if addr < layout.heap_base {
             return Err(MemoryError::Unknown);
