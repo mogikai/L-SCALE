@@ -1,4 +1,5 @@
 use std::ops::Not;
+
 use im_rc::{OrdMap, Vector};
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
@@ -41,29 +42,18 @@ impl TLB {
         }
     }
 
-    /// Checks whether the tlb contains an EVAddr mapping that contains the entire region
-    /// from address to address + size
+    /// Checks whether the tlb contains one or more EVAddr mappings
+    /// that contain parts of the region from address to address + size.
+    /// Returns true if any part of the region is mapped, and false otherwise.
     fn mapped(
         &self,
         address: EVAddr,
         size: usize,
     ) -> bool {
-        // Block that starts at address less than or equal to address
-        let (evaddr, entry) = match self.mappings.get_prev(&address) {
-            Some(e) => e,
-            None => return false,
-        };
-
-        if (evaddr + entry.size) > address {
-            return true;
-        }
-
-        let a = match self.mappings.get_next(&(evaddr + 1)) {
-            Some((a, _)) => a,
-            None => return false,
-        };
-
-        *a < (address + size)
+        self.mappings
+            .range(&address..&(address + size))
+            .next()
+            .is_some()
     }
 
     pub fn try_insert(
@@ -71,10 +61,13 @@ impl TLB {
         address: EVAddr,
         entry: TLBEntry,
     ) -> Result<(), MemoryError> {
-        self.mapped(address, entry.size).not().then(|| {
-            let old = self.mappings.insert(address, entry);
-            assert!(old.is_none())
-        }).ok_or(MemoryError::AlreadyMapped)
+        self.mapped(address, entry.size)
+            .not()
+            .then(|| {
+                let old = self.mappings.insert(address, entry);
+                assert!(old.is_none())
+            })
+            .ok_or(MemoryError::AlreadyMapped)
     }
 
     /// Translates the given virtual address `address` into a physical address.
