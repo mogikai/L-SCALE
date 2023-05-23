@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::emulator::abstractions::cpu::address::{EVA_NULL, EVAddr};
+use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
 use crate::emulator::abstractions::mmu::{DirectMemoryWrite, MMU, MREMAP_FLAGS};
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::kernel::{LinuxKernel, LinuxKernelError, SyscallResult};
@@ -22,13 +22,19 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         flags: u64,
     ) -> Result<EVAddr, LinuxKernelError> {
         let addr = if (flags & MAP_FIXED) != 0 {
-            self.memory.borrow_mut().unmap(addr, length as usize)?;
+            self.memory
+                .borrow_mut()
+                .unmap(self.task_id, addr, length as usize)?;
             addr
         } else {
             //self.memory.find_free(addr, length)
             addr
         };
-        let addr = match self.memory.borrow_mut().mmap(addr, length as usize, prot.try_into()?) {
+        let addr = match self
+            .memory
+            .borrow_mut()
+            .mmap(self.task_id, addr, length as usize, prot.try_into()?)
+        {
             Ok(addr) => addr,
             Err(e) => {
                 println!("mmap error {:?}", e);
@@ -79,7 +85,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         if (flags & MAP_ANONYMOUS) != 0 {
             Ok(self.mmap_anon(cpu, addr, length, prot, flags)?.into())
         } else if (flags & MAP_PRIVATE) != 0 {
-            Ok(self.mmap_private(cpu, addr, length, prot, flags, fd, offset)?.into())
+            Ok(self
+                .mmap_private(cpu, addr, length, prot, flags, fd, offset)?
+                .into())
         } else {
             Err(LinuxKernelError::EINVAL)
         }
@@ -91,7 +99,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         addr: EVAddr,
         len: u64,
     ) -> SyscallResult {
-        self.memory.borrow_mut().unmap(addr, len as usize)?;
+        self.memory
+            .borrow_mut()
+            .unmap(self.task_id, addr, len as usize)?;
         Ok(0)
     }
 
@@ -104,13 +114,18 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         flags: u64,
         new_addr: EVAddr,
     ) -> SyscallResult {
-        Ok(self.memory.borrow().remap(
-            old_addr,
-            old_len,
-            new_addr,
-            new_len,
-            MREMAP_FLAGS::from_bits(flags).ok_or(LinuxKernelError::EINVAL)?,
-        )?.into())
+        Ok(self
+            .memory
+            .borrow()
+            .remap(
+                self.task_id,
+                old_addr,
+                old_len,
+                new_addr,
+                new_len,
+                MREMAP_FLAGS::from_bits(flags).ok_or(LinuxKernelError::EINVAL)?,
+            )?
+            .into())
     }
 
     pub fn mprotect(
@@ -120,7 +135,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         len: u64,
         prot: u64,
     ) -> SyscallResult {
-        self.memory.borrow().protect(start, len as usize, prot.try_into().unwrap())?;
+        self.memory
+            .borrow()
+            .protect(self.task_id, start, len as usize, prot.try_into().unwrap())?;
         Ok(0)
     }
 }

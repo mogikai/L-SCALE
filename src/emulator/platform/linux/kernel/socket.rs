@@ -146,7 +146,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         let mut sockaddr = memory.read(umyaddr)?;
         if let Sockaddr::NL { nl_pid, .. } = &mut sockaddr {
             if *nl_pid == 0 {
-                *nl_pid = self.pid;
+                *nl_pid = self.task_id.pid;
             }
         }
         handle.bind(sockaddr)?;

@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::cmp::max;
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -6,24 +7,10 @@ use im_rc::HashMap;
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr, EVA_NULL};
 use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU, MREMAP_FLAGS};
+use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::memory::tlb::{TLBEntry, TLB};
 
 pub mod tlb;
-
-#[derive(Hash, Eq, PartialEq, Clone, Copy)]
-struct LayoutID {
-    pid: u32,
-    tid: u32,
-}
-
-impl LayoutID {
-    pub fn new(
-        pid: u32,
-        tid: u32,
-    ) -> Self {
-        Self { pid, tid }
-    }
-}
 
 /// Each Process/Thread has its own memory layout in the virtual address space
 /// The mapping from virtual address to physical address is managed in the (shared) TLB
@@ -78,7 +65,7 @@ fn is4kaligned(address: EVAddr) -> bool {
 pub struct Memory {
     /// The virtual address layout of each process/thread (stack, heap, mappings, etc.)
     /// and the VTLB containing the mappings from emulated virtual addresses to emulated physical addresses.
-    layouts: HashMap<LayoutID, Layout>,
+    layouts: HashMap<TaskId, Layout>,
 
     /// The end of the allocated Emulated Physical address space.
     /// New processes are placed here and the end is then extended to after the new process.
@@ -100,10 +87,9 @@ impl Memory {
     pub fn new_process(
         &mut self,
         mmu: &mut impl MMU,
-        pid: u32,
-        tid: u32,
+        task_id: TaskId,
     ) -> Result<(), MemoryError> {
-        if self.layouts.contains_key(&LayoutID { pid, tid }) {
+        if self.layouts.contains_key(&task_id) {
             Err(MemoryError::ProcessAlreadyExists)?
         }
 
@@ -138,40 +124,37 @@ impl Memory {
         mmu.mem_map(self.physical_end, self.process_mem_size, Permission::ALL)?;
         self.physical_end += self.process_mem_size;
 
-        let old_layout = self.layouts.insert(LayoutID::new(pid, tid), layout);
+        let old_layout = self.layouts.insert(task_id, layout);
         assert!(old_layout.is_none());
         Ok(())
     }
 
     pub(crate) fn stack_base(
         &self,
-        pid: u32,
-        tid: u32,
+        task_id: TaskId,
     ) -> Result<EVAddr, MemoryError> {
         self.layouts
-            .get(&LayoutID { pid, tid })
+            .get(&task_id)
             .map(|layout| layout.stack_base)
             .ok_or(MemoryError::Unknown)
     }
 
     pub(crate) fn stack_size(
         &self,
-        pid: u32,
-        tid: u32,
+        task_id: TaskId,
     ) -> Result<usize, MemoryError> {
         self.layouts
-            .get(&LayoutID { pid, tid })
+            .get(&task_id)
             .map(|layout| layout.max_stack)
             .ok_or(MemoryError::Unknown)
     }
 
     pub(crate) fn heap_end(
         &self,
-        pid: u32,
-        tid: u32,
+        task_id: TaskId,
     ) -> Result<EVAddr, MemoryError> {
         self.layouts
-            .get(&LayoutID { pid, tid })
+            .get(&task_id)
             .ok_or(MemoryError::LayoutNotFound)
             .and_then(|layout| {
                 layout
@@ -184,14 +167,10 @@ impl Memory {
 
     pub(crate) fn realloc_heap(
         &mut self,
+        task_id: TaskId,
         addr: EVAddr,
-        pid: u32,
-        tid: u32,
     ) -> Result<(), MemoryError> {
-        let layout = self
-            .layouts
-            .get(&LayoutID { pid, tid })
-            .ok_or(MemoryError::Unknown)?;
+        let layout = self.layouts.get(&task_id).ok_or(MemoryError::Unknown)?;
         if addr < layout.heap_base {
             return Err(MemoryError::Unknown);
         }
@@ -211,6 +190,7 @@ impl Memory {
     pub(crate) fn map_data(
         &mut self,
         cpu: &mut impl MMU,
+        task_id: TaskId,
         vm_range: Range<EVAddr>,
         data: &[u8],
         perms: Permission,
@@ -231,6 +211,7 @@ impl Memory {
 
     pub(crate) fn mmap(
         &mut self,
+        task_id: TaskId,
         addr: EVAddr,
         size: usize,
         permissions: Permission,
@@ -240,6 +221,7 @@ impl Memory {
 
     pub(crate) fn remap(
         &self,
+        task_id: TaskId,
         address: EVAddr,
         size: u64,
         new_address: EVAddr,
@@ -251,6 +233,7 @@ impl Memory {
 
     pub(crate) fn protect(
         &self,
+        task_id: TaskId,
         address: EVAddr,
         size: usize,
         permissions: Permission,
@@ -260,9 +243,26 @@ impl Memory {
 
     pub(crate) fn unmap(
         &mut self,
+        task_id: TaskId,
         addr: EVAddr,
         size: usize,
     ) -> Result<(), MemoryError> {
         todo!()
     }
+
+    // pub fn find_space_for_region(
+    //     &self,
+    //     hint: EVAddr,
+    //     size: u64,
+    // ) -> u64 {
+    //     let mut hint = max(hint, self.map_base);
+    //     for region in self.mappings.range(hint..) {
+    //         if region.contains(hint) || region.contains(hint + size - 1) {
+    //             hint = region.vaddr + region.size as EVAddr;
+    //         } else {
+    //             break;
+    //         }
+    //     }
+    //     hint
+    // }
 }

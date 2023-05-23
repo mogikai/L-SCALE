@@ -11,7 +11,7 @@ use byteorder::ByteOrder;
 use linux_libc_auxv::AuxVarType;
 use num_enum::FromPrimitive;
 
-use crate::emulator::abstractions::cpu::address::{EVA_NULL, EVAddr};
+use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
 use crate::emulator::abstractions::cpu::{RegisterX86, CPU};
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::handles::Handle;
@@ -22,6 +22,7 @@ use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::filedescriptors::FileHandle;
 pub use crate::emulator::platform::linux::kernel::error::LinuxKernelError;
+use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
 use crate::emulator::system::default_handles;
 use crate::emulator::system::filesystem::Filesystem;
@@ -32,6 +33,7 @@ pub mod eventpoll;
 pub mod fs;
 pub mod memory;
 pub mod socket;
+pub mod task_id;
 
 struct HandleMap<Endianness: ByteOrder> {
     handles: HashMap<u64, Box<dyn Handle<Endianness>>>,
@@ -83,8 +85,14 @@ impl<Endianness: ByteOrder> HandleMap<Endianness> {
         handle: Box<dyn Handle<Endianness>>,
     ) -> Option<Box<dyn Handle<Endianness>>> {
         // Insert the handle if no replacement exists. Otherwise insert the replacement
-        self.handles
-            .insert(fd, self.replacement_handles.entry(fd).or_default().pop_back().unwrap_or(handle))
+        self.handles.insert(
+            fd,
+            self.replacement_handles
+                .entry(fd)
+                .or_default()
+                .pop_back()
+                .unwrap_or(handle),
+        )
     }
 
     fn add(
@@ -131,7 +139,9 @@ impl<Endianness: ByteOrder> HandleMap<Endianness> {
 
     fn get_free_fd(&mut self) -> u64 {
         // TODO: Implement max fd handling (e.g. 1024?)
-        self.free_fds.pop().unwrap_or_else(|| *self.handles.keys().max().unwrap_or(&2) + 1)
+        self.free_fds
+            .pop()
+            .unwrap_or_else(|| *self.handles.keys().max().unwrap_or(&2) + 1)
     }
 }
 
@@ -145,8 +155,7 @@ pub struct LinuxKernel<Endianness: ByteOrder, Arch: Architecture> {
     robust_list_head: Option<EVAddr>,
     signalhandler: SignalHandler<Arch::SignalFlags>,
     system_time: Duration,
-    pid: u32,
-    tid: u32,
+    task_id: TaskId,
     exited: bool,
     _arch: PhantomData<Arch>,
 }
@@ -168,8 +177,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
             robust_list_head: None,
             signalhandler: SignalHandler::new(),
             system_time: Duration::from_nanos(1662647309301240322), // TODO: Need a global system time that is shared between tasks
-            pid,
-            tid,
+            task_id: TaskId::new(pid, tid),
             exited: false,
             _arch: PhantomData,
         }
@@ -195,7 +203,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         let interpreter_path = Path::new(elf.interpreter.ok_or(LinuxKernelError::ENOENT)?);
         let buffer = fs.read_all(fs.resolve_last(interpreter_path)?)?;
         let interpreter = goblin::elf::Elf::parse(&buffer).unwrap();
-        cpu.reg_write(RegisterX86::RIP.into(), interpreter.entry).unwrap();
+        cpu.reg_write(RegisterX86::RIP.into(), interpreter.entry)
+            .unwrap();
         //TODO iterator
         for ph in interpreter.program_headers {
             if ph.p_type == goblin::elf::program_header::PT_LOAD {
@@ -207,7 +216,10 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
                 let vm_range = EVAddr::from(ph.p_vaddr)..(EVAddr::from(ph.p_vaddr) + ph.p_memsz);
                 info!("vm_range   0x{:X}..0x{:X}", vm_range.start, vm_range.end);
                 info!("file_range 0x{:X}..0x{:X}", ph.file_range().start, ph.file_range().end);
-                self.memory.borrow_mut().map_data(cpu, vm_range, data, perms).unwrap();
+                self.memory
+                    .borrow_mut()
+                    .map_data(cpu, self.task_id, vm_range, data, perms)
+                    .unwrap();
             }
         }
         drop(fs);
@@ -229,7 +241,11 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         info!("Initializing stack");
         cpu.reg_write(
             RegisterX86::RSP.into(),
-            self.memory.borrow().stack_base(self.pid, self.tid).expect("no process found").into(),
+            self.memory
+                .borrow()
+                .stack_base(self.task_id)
+                .expect("no process found")
+                .into(),
         )
         .expect("failed to write RSP");
         let mut aux: Vec<(u64, u64)> = Vec::new();
@@ -270,7 +286,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         aux.push((0, 0));
 
         // align stack
-        let rsp = cpu.reg_read(RegisterX86::RSP.into()).expect("error can't read RSP");
+        let rsp = cpu
+            .reg_read(RegisterX86::RSP.into())
+            .expect("error can't read RSP");
         if (rsp & !0xf) != rsp {
             cpu.reg_write(RegisterX86::RSP.into(), rsp & !0xf).unwrap();
         }
@@ -284,7 +302,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         hexdump::hexdump(
             cpu.mem_read_bytes(
                 rsp,
-                (self.memory.borrow().stack_base(self.pid, self.tid).expect("no process found") - rsp),
+                (self
+                    .memory
+                    .borrow()
+                    .stack_base(self.task_id)
+                    .expect("no process found")
+                    - rsp),
             )
             .unwrap()
             .as_slice(),
@@ -309,9 +332,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
     }
 
     pub fn add_stdio_handles(&mut self) {
-        self.handles.insert(0, Box::new(default_handles::ReadOnly::new()));
-        self.handles.insert(1, Box::new(default_handles::WriteOnly::new()));
-        self.handles.insert(2, Box::new(default_handles::WriteOnly::new()));
+        self.handles
+            .insert(0, Box::new(default_handles::ReadOnly::new()));
+        self.handles
+            .insert(1, Box::new(default_handles::WriteOnly::new()));
+        self.handles
+            .insert(2, Box::new(default_handles::WriteOnly::new()));
     }
 
     pub fn brk(
@@ -320,9 +346,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         addr: EVAddr,
     ) -> SyscallResult {
         if addr != EVA_NULL {
-            self.memory.borrow_mut().realloc_heap(addr, self.pid, self.tid)?;
+            self.memory.borrow_mut().realloc_heap(self.task_id, addr)?;
         }
-        Ok(self.memory.borrow().heap_end(self.pid, self.tid)?.into())
+        Ok(self.memory.borrow().heap_end(self.task_id)?.into())
     }
 
     pub fn arch_prctl(
@@ -354,7 +380,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         _: &mut impl CPU,
     ) -> SyscallResult {
         // TODO: Handle tid separately once threads are implemented
-        Ok(self.pid.into())
+        Ok(self.task_id.tid.into())
     }
 
     pub fn time(
@@ -362,7 +388,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         mmu: &mut impl MMU,
         tloc: EVAddr,
     ) -> SyscallResult {
-        self.mem_accessor(mmu).write_direct(tloc, &(self.system_time.as_secs() as i64))?;
+        self.mem_accessor(mmu)
+            .write_direct(tloc, &(self.system_time.as_secs() as i64))?;
         Ok(0)
     }
 
@@ -386,7 +413,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         _: &mut impl CPU,
     ) -> SyscallResult {
         // TODO: Implement multi threading / processing
-        Ok(self.pid as u64)
+        Ok(self.task_id.pid as u64)
     }
 
     pub fn execve(
@@ -533,8 +560,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
                     todo!("Need to implement setting stack size")
                 }
                 Rlimit {
-                    rlim_cur: self.memory.borrow().stack_size(self.pid, self.tid)? as u64,
-                    rlim_max: self.memory.borrow().stack_size(self.pid, self.tid)? as u64,
+                    rlim_cur: self.memory.borrow().stack_size(self.task_id)? as u64,
+                    rlim_max: self.memory.borrow().stack_size(self.task_id)? as u64,
                 }
             }
             RLIMIT::CORE => todo!(),
@@ -585,7 +612,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         }
         let oset = self.signalhandler.getmask();
         if new_set != EVA_NULL {
-            let set = mmu.mem_read_bytes(new_set, sigsetsize as usize).map(|s| Endianness::read_u64(&s))?;
+            let set = mmu
+                .mem_read_bytes(new_set, sigsetsize as usize)
+                .map(|s| Endianness::read_u64(&s))?;
             let how = SignalMaskFlags::try_from(how)?;
             self.signalhandler.setmask(how, set);
         }
@@ -593,7 +622,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
             // TODO: Clean up and adjust to new memory interface. The memory interface in general needs some reworking still
             let mut old = mmu.mem_read_bytes(old_set, sigsetsize as usize)?;
             Endianness::write_u64(&mut old, oset);
-            self.mem_accessor(mmu).write_direct(old_set, old.as_slice())?;
+            self.mem_accessor(mmu)
+                .write_direct(old_set, old.as_slice())?;
         }
         Ok(0)
     }
