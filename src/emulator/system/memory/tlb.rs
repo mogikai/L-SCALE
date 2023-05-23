@@ -1,6 +1,3 @@
-use std::collections::BTreeMap;
-use std::ops::Not;
-
 use im_rc::{OrdMap, Vector};
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
@@ -43,21 +40,6 @@ impl TLB {
         }
     }
 
-    pub fn translate_virtual_address(
-        &self,
-        address: EVAddr,
-    ) -> Result<TLBEntry, MemoryError> {
-        // First block that starts at address less than or equal to address
-        self.mappings.get_prev(&address).and_then(|(vaddr, &entry)| {
-            // Address is contained in block
-            if address < (vaddr + entry.size) {
-                Some(entry)
-            } else {
-                None
-            }
-        }).ok_or(MemoryError::NotMapped)
-    }
-
     /// Checks whether the tlb contains an EVAddr mapping that contains the entire region
     /// from address to address + size
     fn mapped(
@@ -65,6 +47,7 @@ impl TLB {
         address: EVAddr,
         size: usize,
     ) -> bool {
+        // Block that starts at address less than or equal to address
         let (evaddr, entry) = match self.mappings.get_prev(&address) {
             Some(e) => e,
             None => return false,
@@ -94,20 +77,31 @@ impl TLB {
         Ok(())
     }
 
+    pub fn translate_virtual_address(
+        &self,
+        address: EVAddr,
+    ) -> Result<TLBEntry, MemoryError> {
+        self.get_mapping(address).map(|(_, tlb_entry)| tlb_entry)
+    }
+
+    /// Looks up the tlb entry for a given address.
+    /// Returns the entry and the start virtual address to which the entry is mapped.
     pub fn get_mapping(
         &self,
         address: EVAddr,
     ) -> Result<(EVAddr, TLBEntry), MemoryError> {
         self.mappings
+            // First block that starts at address less than or equal to address
             .get_prev(&address)
             .and_then(|(vaddress, entry)| {
+                // Address is contained in block
                 if vaddress + entry.size <= address {
                     Some((*vaddress, *entry))
                 } else {
                     None
                 }
             })
-            .ok_or(MemoryError::Unknown)
+            .ok_or(MemoryError::NotMapped)
     }
 
     pub fn realloc(
