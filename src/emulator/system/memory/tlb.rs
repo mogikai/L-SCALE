@@ -47,14 +47,15 @@ impl TLB {
         &self,
         address: EVAddr,
     ) -> Result<TLBEntry, MemoryError> {
-        let (a, e) = match self.mappings.get_prev(&address) {
-            Some(e) => e,
-            None => Err(MemoryError::Unknown)?,
-        };
-        if (a + e.size) <= address {
-            Err(MemoryError::Unknown)?;
-        }
-        Ok(*e)
+        // First block that starts at address less than or equal to address
+        self.mappings.get_prev(&address).and_then(|(vaddr, &entry)| {
+            // Address is contained in block
+            if address < (vaddr + entry.size) {
+                Some(entry)
+            } else {
+                None
+            }
+        }).ok_or(MemoryError::NotMapped)
     }
 
     /// Checks whether the tlb contains an EVAddr mapping that contains the entire region
