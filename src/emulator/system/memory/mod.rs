@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use im_rc::HashMap;
 
-use crate::emulator::abstractions::cpu::address::{EPAddr, EVA_NULL, EVAddr};
+use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr, EVA_NULL};
 use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU, MREMAP_FLAGS};
 use crate::emulator::system::memory::tlb::{TLBEntry, TLB};
 
@@ -106,7 +106,7 @@ impl Memory {
                 size: 0x1000,
                 permissions: Permission::READ | Permission::WRITE,
             },
-        ).map_err(|_| MemoryError::Unknown)?;
+        )?;
 
         // stack
         layout.stack_base = EVAddr::from(0x7ffff7fff000);
@@ -118,9 +118,11 @@ impl Memory {
                 size: layout.max_stack,
                 permissions: Permission::READ | Permission::WRITE,
             },
-        ).map_err(|_| MemoryError::Unknown)?;
+        )?;
 
-        self.layouts.insert(LayoutID::new(pid, tid), layout).ok_or(MemoryError::Unknown)?;
+        self.layouts
+            .insert(LayoutID::new(pid, tid), layout)
+            .ok_or(MemoryError::Unknown)?;
         mmu.mem_map(self.physical_end, self.process_mem_size, Permission::ALL)?;
         self.physical_end = self.physical_end + self.process_mem_size;
         Ok(())
@@ -131,7 +133,10 @@ impl Memory {
         pid: u32,
         tid: u32,
     ) -> Result<EVAddr, MemoryError> {
-        let layout = self.layouts.get(&LayoutID { pid, tid }).ok_or(MemoryError::Unknown)?;
+        let layout = self
+            .layouts
+            .get(&LayoutID { pid, tid })
+            .ok_or(MemoryError::Unknown)?;
         Ok(layout.stack_base)
     }
 
@@ -140,7 +145,10 @@ impl Memory {
         pid: u32,
         tid: u32,
     ) -> Result<usize, MemoryError> {
-        let layout = self.layouts.get(&LayoutID { pid, tid }).ok_or(MemoryError::Unknown)?;
+        let layout = self
+            .layouts
+            .get(&LayoutID { pid, tid })
+            .ok_or(MemoryError::Unknown)?;
         Ok(layout.max_stack)
     }
 
@@ -149,7 +157,10 @@ impl Memory {
         pid: u32,
         tid: u32,
     ) -> Result<EVAddr, MemoryError> {
-        let layout = self.layouts.get(&LayoutID { pid: pid, tid: tid }).ok_or(MemoryError::Unknown)?;
+        let layout = self
+            .layouts
+            .get(&LayoutID { pid: pid, tid: tid })
+            .ok_or(MemoryError::Unknown)?;
         let tlb = layout.tlb.borrow();
         let (a, e) = tlb.get_mapping(layout.heap_base)?;
         Ok(a + e.size)
@@ -161,7 +172,10 @@ impl Memory {
         pid: u32,
         tid: u32,
     ) -> Result<(), MemoryError> {
-        let layout = self.layouts.get(&LayoutID { pid: pid, tid: tid }).ok_or(MemoryError::Unknown)?;
+        let layout = self
+            .layouts
+            .get(&LayoutID { pid: pid, tid: tid })
+            .ok_or(MemoryError::Unknown)?;
         if addr < layout.heap_base {
             return Err(MemoryError::Unknown);
         }

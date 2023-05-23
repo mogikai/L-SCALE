@@ -1,3 +1,4 @@
+use std::ops::Not;
 use im_rc::{OrdMap, Vector};
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
@@ -70,11 +71,10 @@ impl TLB {
         address: EVAddr,
         entry: TLBEntry,
     ) -> Result<(), MemoryError> {
-        if self.mapped(address, entry.size) {
-            return Err(MemoryError::Unknown);
-        }
-        self.mappings.insert(address, entry);
-        Ok(())
+        self.mapped(address, entry.size).not().then(|| {
+            let old = self.mappings.insert(address, entry);
+            assert!(old.is_none())
+        }).ok_or(MemoryError::AlreadyMapped)
     }
 
     /// Translates the given virtual address `address` into a physical address.
