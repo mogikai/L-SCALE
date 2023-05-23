@@ -77,6 +77,9 @@ impl TLB {
         Ok(())
     }
 
+    /// Translates the given virtual address `address` into a physical address.
+    /// The returned [`TLBEntry`] contains the physical address and the permissions
+    /// that are set on the memory region.
     pub fn translate_virtual_address(
         &self,
         address: EVAddr,
