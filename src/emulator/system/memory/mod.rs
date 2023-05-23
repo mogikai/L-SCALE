@@ -1,14 +1,15 @@
 use std::cell::RefCell;
-use std::cmp::max;
+use std::collections::HashMap;
 use std::ops::Range;
 use std::rc::Rc;
 
-use im_rc::HashMap;
+use tlb::tlb_entry::TLBEntry;
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr, EVA_NULL};
 use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU, MREMAP_FLAGS};
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
-use crate::emulator::system::memory::tlb::{TLBEntry, TLB};
+use crate::emulator::system::memory::tlb::region::{Contains, Region};
+use crate::emulator::system::memory::tlb::TLB;
 
 pub mod tlb;
 
@@ -102,24 +103,20 @@ impl Memory {
         );
 
         // heap
-        layout.tlb.borrow_mut().try_insert(
-            layout.heap_base,
-            TLBEntry {
-                physical_address: layout.designated_physical_memory.start,
-                size: 0x1000,
-                permissions: Permission::READ | Permission::WRITE,
-            },
-        )?;
+        layout.tlb.borrow_mut().try_insert(Region {
+            v_start: layout.heap_base,
+            p_start: layout.designated_physical_memory.start,
+            size: 0,
+            permissions: Permission::READ | Permission::WRITE,
+        })?;
 
         // stack
-        layout.tlb.borrow_mut().try_insert(
-            layout.stack_base - layout.max_stack,
-            TLBEntry {
-                physical_address: layout.designated_physical_memory.end - layout.max_stack,
-                size: layout.max_stack,
-                permissions: Permission::READ | Permission::WRITE,
-            },
-        )?;
+        layout.tlb.borrow_mut().try_insert(Region {
+            v_start: layout.stack_base - layout.max_stack,
+            p_start: layout.designated_physical_memory.end - layout.max_stack,
+            size: layout.max_stack,
+            permissions: Permission::READ | Permission::WRITE,
+        })?;
 
         mmu.mem_map(self.physical_end, self.process_mem_size, Permission::ALL)?;
         self.physical_end += self.process_mem_size;
@@ -160,8 +157,8 @@ impl Memory {
                 layout
                     .tlb
                     .borrow()
-                    .get_mapping(layout.heap_base)
-                    .map(|(block_start, tlb_entry)| block_start + tlb_entry.size)
+                    .get_region(layout.heap_base)
+                    .map(|region| region.v_start + region.size)
             })
     }
 
@@ -172,18 +169,14 @@ impl Memory {
     ) -> Result<(), MemoryError> {
         let layout = self.layouts.get(&task_id).ok_or(MemoryError::Unknown)?;
         if addr < layout.heap_base {
-            return Err(MemoryError::Unknown);
+            Err(MemoryError::Unknown)?
         }
         let mut tlb = layout.tlb.borrow_mut();
-        let (a, e) = tlb.get_mapping(layout.heap_base)?;
-        if addr < a + e.size {
-            tlb.realloc(a, addr - a)?;
-            return Ok(());
-        }
-        if addr - a > 0x40000000 {
-            return Err(MemoryError::Unknown);
-        }
-        tlb.realloc(a, addr - a)?;
+        let heap = tlb.get_region(layout.heap_base)?;
+        tlb.resize(heap.v_start, addr - heap.v_start)?;
+        // if addr - heap.v_start > MAX_HEAP {
+        //     return Err(MemoryError::Unknown);
+        // }
         Ok(())
     }
 

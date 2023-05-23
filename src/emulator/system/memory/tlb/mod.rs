@@ -1,37 +1,22 @@
-use std::ops::Not;
+use std::collections::BTreeSet;
+use std::ops::{Not, Range};
 
-use im_rc::{OrdMap, Vector};
+use im_rc::{OrdSet, Vector};
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::mmu::{MemoryError, Permission};
 use crate::emulator::abstractions::restore::Restorable;
+use crate::emulator::system::memory::tlb::region::{Contains, Region};
+use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 
-#[derive(Copy, Clone)]
-pub struct TLBEntry {
-    pub physical_address: EPAddr,
-    pub size: usize,
-    pub permissions: Permission,
-}
-
-impl TLBEntry {
-    pub fn new(
-        physical_address: EPAddr,
-        size: usize,
-        permissions: Permission,
-    ) -> Self {
-        Self {
-            physical_address,
-            size,
-            permissions,
-        }
-    }
-}
+pub mod region;
+pub mod tlb_entry;
 
 #[derive(Clone)]
 pub struct TLB {
-    mappings: OrdMap<EVAddr, TLBEntry>,
-    snapshots: Vector<OrdMap<EVAddr, TLBEntry>>,
+    mappings: BTreeSet<Region>,
+    snapshots: Vector<BTreeSet<Region>>,
 }
 
 impl TLB {
@@ -51,21 +36,20 @@ impl TLB {
         size: usize,
     ) -> bool {
         self.mappings
-            .range(&address..&(address + size))
+            .range(address..(address + size))
             .next()
             .is_some()
     }
 
     pub fn try_insert(
         &mut self,
-        address: EVAddr,
-        entry: TLBEntry,
+        region: Region,
     ) -> Result<(), MemoryError> {
-        self.mapped(address, entry.size)
+        self.mapped(region.v_start, region.size)
             .not()
             .then(|| {
-                let old = self.mappings.insert(address, entry);
-                assert!(old.is_none())
+                let inserted = self.mappings.insert(region);
+                assert!(inserted)
             })
             .ok_or(MemoryError::AlreadyMapped)
     }
@@ -77,47 +61,38 @@ impl TLB {
         &self,
         address: EVAddr,
     ) -> Result<TLBEntry, MemoryError> {
-        self.get_mapping(address).map(|(_, tlb_entry)| tlb_entry)
+        self.get_region(address)
+            .and_then(|region| region.make_tlb_entry(address))
     }
 
-    /// Looks up the tlb entry for a given address.
-    /// Returns the entry and the start virtual address to which the entry is mapped.
-    pub fn get_mapping(
+    /// Looks up the region containing a given virtual address.
+    pub fn get_region(
         &self,
         address: EVAddr,
-    ) -> Result<(EVAddr, TLBEntry), MemoryError> {
+    ) -> Result<Region, MemoryError> {
         self.mappings
             // First block that starts at address less than or equal to address
-            .get_prev(&address)
-            .and_then(|(block_start, entry)| {
-                // Address is contained in block
-                if address < block_start + entry.size {
-                    Some((*block_start, *entry))
-                } else {
-                    None
-                }
-            })
+            .range(..=address)
+            .next_back()
+            .and_then(|region| region.contains(address).then_some(*region))
             .ok_or(MemoryError::NotMapped)
     }
 
-    pub fn realloc(
+    pub fn resize(
         &mut self,
         addr: EVAddr,
-        size: usize,
+        new_size: usize,
     ) -> Result<(), MemoryError> {
-        let mut tlb_entry = *self.mappings.get(&addr).ok_or(MemoryError::Unknown)?;
-        if tlb_entry.size >= size {
-            tlb_entry.size = size;
-            self.mappings
-                .insert(addr, tlb_entry)
-                .expect("This operation should replace an existing mapping");
-            Ok(())
-        } else if self.mapped(addr + tlb_entry.size, size - tlb_entry.size) {
-            Err(MemoryError::Unknown)
+        // TODO: What about the physical address space? We need to check if space is free and otherwise
+        //       create a new mapping?
+        let mut region = *self.mappings.get(&addr).ok_or(MemoryError::NotMapped)?;
+        if new_size > region.size && self.mapped(addr + region.size, new_size - region.size) {
+            // Cannot extend the region since the address space after the region is already mapped
+            Err(MemoryError::AlreadyMapped)
         } else {
-            tlb_entry.size = size;
+            region.size = new_size;
             self.mappings
-                .insert(addr, tlb_entry)
+                .replace(region)
                 .expect("This operation should replace an existing mapping");
             Ok(())
         }
