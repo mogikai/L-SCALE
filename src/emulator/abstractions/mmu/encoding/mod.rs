@@ -1,11 +1,12 @@
-pub mod basic_types;
-
+use std::cell::Ref;
 use std::marker::PhantomData;
 use std::mem;
 
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::mmu::MemoryError;
+
+pub mod basic_types;
 
 pub trait Decode<Endianness: ByteOrder>: Sized + RequiredMem {
     fn decode(val: &[u8]) -> Result<Self, MemoryError>;
@@ -77,6 +78,17 @@ pub trait Encode<Endianness: ByteOrder>: RequiredMem {
 impl<T> RequiredMem for &T where T: RequiredMem {}
 
 impl<T, Endianness: ByteOrder> Encode<Endianness> for &T
+where
+    T: Encode<Endianness>,
+{
+    fn encode(&self) -> Vec<u8> {
+        self.encode()
+    }
+}
+
+impl<T> RequiredMem for Ref<'_, T> where T: RequiredMem {}
+
+impl<T, Endianness: ByteOrder> Encode<Endianness> for Ref<'_, T>
 where
     T: Encode<Endianness>,
 {

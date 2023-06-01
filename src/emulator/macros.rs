@@ -1,8 +1,9 @@
 #[macro_export]
 macro_rules! push_stack {
-    ($cpu:ident, $data:expr, $reg:expr) => {{
+    ($accessor:expr, $cpu:ident, $data:expr, $reg:expr) => {{
+        use crate::emulator::system::memory::rw_interface::DirectMemoryWrite;
         $cpu.reg_read($reg).map_err(|e| GenericError::from(e)).and_then(|sp| {
-            MemoryAccessor::<Endianness, _>::new($cpu)
+            $accessor
                 .write_direct_down(sp.into(), $data)
                 .map_err(|e| GenericError::from(e))
                 .and_then(|len| {
@@ -15,12 +16,12 @@ macro_rules! push_stack {
 
 #[macro_export]
 macro_rules! read_osstring {
-    ($mmu:expr, $addr:expr) => {{
+    ($memory:expr, $addr:expr) => {{
         use std::ffi::OsString;
         use std::os::unix::ffi::OsStringExt;
         use $crate::emulator::abstractions::mmu::MemoryError;
         //todo better define path_max
-        $mmu.mem_read_bytes($addr, 4096).and_then(|bytes| {
+        $memory.read_bytes($addr, 4096).and_then(|bytes| {
             // TODO: This should be a more specific memory error. String not null terminated or smth
             bytes
                 .split(|c| *c == 0)

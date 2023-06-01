@@ -1,9 +1,10 @@
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
-use crate::emulator::abstractions::mmu::{DirectMemoryWrite, MMU, MREMAP_FLAGS};
+use crate::emulator::abstractions::mmu::{MMU, MREMAP_FLAGS};
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::kernel::{LinuxKernel, LinuxKernelError, SyscallResult};
+use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask, SyscallResult};
+use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
 
 // TODO: Bitflags?
 
@@ -12,7 +13,7 @@ const MAP_PRIVATE: u64 = 0x2;
 const MAP_FIXED: u64 = 0x10;
 const MAP_DENYWRITE: u64 = 0x0800;
 
-impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness, Arch> {
+impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     fn mmap_anon(
         &mut self,
         mmu: &mut impl MMU,
@@ -22,7 +23,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         flags: u64,
     ) -> Result<EVAddr, LinuxKernelError> {
         let addr = if (flags & MAP_FIXED) != 0 {
-            self.memory
+            self.system
+                .memory
                 .borrow_mut()
                 .unmap(self.task_id, addr, length as usize)?;
             addr
@@ -31,6 +33,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
             addr
         };
         let addr = match self
+            .system
             .memory
             .borrow_mut()
             .mmap(self.task_id, addr, length as usize, prot.try_into()?)
@@ -65,7 +68,10 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         }
         let f = self.handles.get(&fd).ok_or(LinuxKernelError::EINVAL)?;
         let data = f.pread(offset, length)?;
-        self.mem_accessor(mmu).write_direct(addr, data.as_slice())?;
+
+        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = memory.accessor(mmu, self.task_id);
+        memory.write_direct(addr, data.as_slice())?;
         Ok(addr)
     }
 
@@ -99,7 +105,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         addr: EVAddr,
         len: u64,
     ) -> SyscallResult {
-        self.memory
+        self.system
+            .memory
             .borrow_mut()
             .unmap(self.task_id, addr, len as usize)?;
         Ok(0)
@@ -115,6 +122,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         new_addr: EVAddr,
     ) -> SyscallResult {
         Ok(self
+            .system
             .memory
             .borrow()
             .remap(
@@ -135,7 +143,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         len: u64,
         prot: u64,
     ) -> SyscallResult {
-        self.memory
+        self.system
+            .memory
             .borrow()
             .protect(self.task_id, start, len as usize, prot.try_into().unwrap())?;
         Ok(0)

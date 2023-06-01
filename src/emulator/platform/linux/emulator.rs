@@ -1,4 +1,5 @@
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
+use std::collections::{BTreeMap, BTreeSet};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -7,15 +8,17 @@ use std::time::Duration;
 use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
 
-use crate::emulator::abstractions::cpu::{CPUError, ContextHandle, RegisterX86, CPU};
 use crate::emulator::abstractions::cpu::address::EVAddr;
+use crate::emulator::abstractions::cpu::{CPUError, ContextHandle, RegisterX86, CPU};
 use crate::emulator::abstractions::emulator::{Emulator, StopReason};
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::hooks::Hooks;
-use crate::emulator::abstractions::mmu::MMU;
+use crate::emulator::abstractions::mmu::{MemoryError, MMU};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::architecture::x86::X86;
-use crate::emulator::platform::linux::kernel::{LinuxKernel, LinuxKernelError};
+use crate::emulator::platform::linux::kernel::task_id::TaskId;
+use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask};
+use crate::emulator::system::System;
 
 #[derive(Debug)]
 pub enum CreationError {
@@ -23,38 +26,43 @@ pub enum CreationError {
     Unknown,
 }
 
-pub struct LinuxX86<'a, CpuT, Endianness>
+struct SchedulerContext<Endianness: ByteOrder> {
+    current_task: TaskId,
+    tasks: BTreeMap<TaskId, LinuxKernelTask<Endianness, X86>>,
+}
+
+pub struct LinuxX86Scheduler<'a, CpuT, Endianness>
 where
     CpuT: CPU + MMU + Hooks<'a>,
     Endianness: ByteOrder,
 {
-    binary_path: PathBuf,
+    system: Rc<System<Endianness>>,
+    context: Rc<RefCell<SchedulerContext<Endianness>>>,
     cpu: Rc<RefCell<CpuT>>,
     cpu_context_handle: ContextHandle,
-    kernel: Rc<RefCell<LinuxKernel<Endianness, X86>>>,
     phantom: PhantomData<&'a CpuT>,
 }
 
-impl<'a, CpuT, Endianness> Restorable for LinuxX86<'a, CpuT, Endianness>
-where
-    CpuT: CPU + MMU + Hooks<'a>,
-    Endianness: ByteOrder,
-{
-    fn snapshot(&mut self) -> Result<(), GenericError> {
-        self.kernel.borrow_mut().snapshot()?;
-        self.cpu.borrow_mut().snapshot()
-    }
-
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
-        self.kernel.borrow_mut().restore_and_discard()?;
-        self.cpu.borrow_mut().restore_and_discard()
-    }
-
-    fn restore(&mut self) -> Result<(), GenericError> {
-        self.kernel.borrow_mut().restore()?;
-        self.cpu.borrow_mut().restore()
-    }
-}
+// impl<'a, CpuT, Endianness> Restorable for LinuxX86Scheduler<'a, CpuT, Endianness>
+// where
+//     CpuT: CPU + MMU + Hooks<'a>,
+//     Endianness: ByteOrder,
+// {
+//     fn snapshot(&mut self) -> Result<(), GenericError> {
+//         self.kernel.snapshot()?;
+//         self.cpu.borrow_mut().snapshot()
+//     }
+//
+//     fn restore_and_discard(&mut self) -> Result<(), GenericError> {
+//         self.kernel.restore_and_discard()?;
+//         self.cpu.borrow_mut().restore_and_discard()
+//     }
+//
+//     fn restore(&mut self) -> Result<(), GenericError> {
+//         self.kernel.restore()?;
+//         self.cpu.borrow_mut().restore()
+//     }
+// }
 
 impl From<CPUError> for StopReason {
     fn from(cpuerror: CPUError) -> Self {
@@ -65,7 +73,7 @@ impl From<CPUError> for StopReason {
     }
 }
 
-impl<'a, CpuT, Endianness> Emulator for LinuxX86<'a, CpuT, Endianness>
+impl<'a, CpuT, Endianness> Emulator for LinuxX86Scheduler<'a, CpuT, Endianness>
 where
     CpuT: CPU + MMU + Hooks<'a>,
     Endianness: ByteOrder + 'static,
@@ -75,11 +83,25 @@ where
         timeout: Option<Duration>,
         instruction_count: Option<usize>,
     ) -> Result<(), StopReason> {
+        // TODO: Implement scheduling
+        // let mut processes = vec![scheduler];
+        //
+        // loop {
+        //     processes.retain_mut(|process| {
+        //         let result = process.run(None, Some(10000));
+        //         result.is_ok()
+        //     });
+        //
+        //     if processes.is_empty() {
+        //         break;
+        //     }
+        // }
         let mut cpu = self.cpu.borrow_mut();
         cpu.restore_context(self.cpu_context_handle)?;
         cpu.emulate(None, timeout, instruction_count)?;
         cpu.save_context(self.cpu_context_handle)?;
-        if self.kernel.borrow().exited() {
+        let inner = self.context.borrow();
+        if inner.tasks.get(&inner.current_task).unwrap().exited() {
             Err(StopReason::ProcessExit)
         } else {
             Ok(())
@@ -510,7 +532,7 @@ enum SYSCALL {
 
 fn syscall<Endianness: ByteOrder + 'static>(
     cpu: &mut (impl CPU + MMU),
-    kernel: &mut LinuxKernel<Endianness, X86>,
+    kernel: &mut LinuxKernelTask<Endianness, X86>,
 ) {
     let rax = cpu.reg_read(RegisterX86::RAX.into()).unwrap();
     let mut debug_str = String::new();
@@ -602,48 +624,79 @@ fn syscall<Endianness: ByteOrder + 'static>(
     cpu.reg_write(RegisterX86::RAX.into(), rax).unwrap();
 }
 
-impl<'a, CpuT, Endianness> LinuxX86<'a, CpuT, Endianness>
+impl<'a, CpuT, Endianness> LinuxX86Scheduler<'a, CpuT, Endianness>
 where
     CpuT: CPU + MMU + Hooks<'a>,
     Endianness: ByteOrder + 'static,
 {
     pub fn new(
-        kernel: Rc<RefCell<LinuxKernel<Endianness, X86>>>,
+        system: Rc<System<Endianness>>,
+        initial_task: LinuxKernelTask<Endianness, X86>,
         cpu: Rc<RefCell<CpuT>>,
         binary_path: PathBuf,
         binary_args: &[&str],
         binary_env: &[&str],
-    ) -> Result<LinuxX86<'a, CpuT, Endianness>, CreationError> {
-        let cpu_context_handle = cpu.borrow_mut().create_context().map_err(|_| CreationError::Unknown)?;
-        let emu = LinuxX86 {
-            binary_path,
+    ) -> Result<LinuxX86Scheduler<'a, CpuT, Endianness>, GenericError> {
+        let cpu_context_handle = cpu.borrow_mut().create_context()?;
+        let mut sched = LinuxX86Scheduler {
+            system,
+            context: Rc::new(RefCell::new(SchedulerContext {
+                current_task: TaskId::new(42, 1),
+                tasks: Default::default(),
+            })),
             cpu,
             cpu_context_handle,
-            kernel: kernel.clone(),
             phantom: Default::default(),
         };
-        kernel.borrow_mut().add_stdio_handles();
 
-        {
-            let mut cpu = emu.cpu.borrow_mut();
-            kernel
-                .borrow_mut()
-                .load_binary(&mut *cpu, emu.binary_path.as_path(), binary_args, binary_env)
-                .unwrap();
-            let kernel_copy = kernel.clone();
-            cpu.add_block_hook(Box::new(move |_, addr, instrs| {
-                kernel_copy.borrow_mut().do_timestep(instrs);
-            }));
+        sched.setup_initial_task(initial_task, binary_path, binary_args, binary_env)?;
 
-            cpu.add_syscall_hook(
-                EVAddr::from(1),
-                EVAddr::from(0),
-                Box::new(move |cpu: &mut CpuT| {
-                    syscall(cpu, &mut *kernel.borrow_mut());
-                }),
-            );
-            cpu.save_context(emu.cpu_context_handle).map_err(|_| CreationError::Unknown)?;
-        }
-        Ok(emu)
+        sched.setup_cpu()?;
+
+        Ok(sched)
+    }
+
+    fn setup_cpu(&mut self) -> Result<(), GenericError> {
+        let mut cpu = self.cpu.borrow_mut();
+
+        // TODO: Potentially move this to the clock setup?
+        let timestep_system = self.system.clone();
+        cpu.add_block_hook(Box::new(move |_, _, instrs| {
+            timestep_system.clock.borrow_mut().do_timestep(instrs);
+        }));
+
+        let syscall_context = self.context.clone();
+        cpu.add_syscall_hook(
+            EVAddr::from(1),
+            EVAddr::from(0),
+            Box::new(move |cpu: &mut CpuT| {
+                let mut context = syscall_context.borrow_mut();
+                let current_task = context.current_task;
+                let task = context.tasks.get_mut(&current_task).unwrap();
+                syscall(cpu, task);
+            }),
+        );
+        cpu.save_context(self.cpu_context_handle)?;
+        Ok(())
+    }
+
+    fn setup_initial_task(
+        &mut self,
+        mut initial_task: LinuxKernelTask<Endianness, X86>,
+        binary_path: PathBuf,
+        binary_args: &[&str],
+        binary_env: &[&str],
+    ) -> Result<(), GenericError> {
+        initial_task.add_stdio_handles();
+
+        let mut cpu = self.cpu.borrow_mut();
+        initial_task.load_binary(&mut *cpu, binary_path.as_path(), binary_args, binary_env)?;
+        let mut context = self.context.borrow_mut();
+        context.current_task = initial_task.task_id();
+        context
+            .tasks
+            .try_insert(initial_task.task_id(), initial_task)
+            .map_err(|_| GenericError::from(CPUError::TaskExists))?;
+        Ok(())
     }
 }

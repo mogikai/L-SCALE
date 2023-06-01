@@ -3,18 +3,18 @@ use std::mem;
 
 use byteorder::{ByteOrder, LittleEndian};
 
-use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::cpu::address::EVAddr;
+use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::handles::Handle;
-use crate::emulator::abstractions::mmu::{DirectMemoryWrite, MemoryError, MemoryRead, MemoryWrite, MMU};
-use crate::emulator::abstractions::mmu::accessor::MemoryAccessor;
 use crate::emulator::abstractions::mmu::encoding::{Decode, RequiredMem};
+use crate::emulator::abstractions::mmu::{MemoryError, MMU};
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::kernel::{LinuxKernel, LinuxKernelError, SyscallResult};
+use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask, SyscallResult};
+use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
 use crate::emulator::system::net::unix::UnixSocket;
 use crate::emulator::system::net::{inet6, netlink, Sockaddr, SocketDomain, SocketFlags, SocketType};
 
-impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
+impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     pub fn socket(
         &mut self,
         _: &mut impl CPU,
@@ -43,7 +43,10 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         uservaddr: EVAddr,
         addrlen: u64,
     ) -> SyscallResult {
-        self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADFD)?.connect()?;
+        self.handles
+            .get_mut(&fd)
+            .ok_or(LinuxKernelError::EBADFD)?
+            .connect()?;
         Ok(0)
     }
 
@@ -61,17 +64,22 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         &mut self,
         mmu: &mut impl MMU,
         fd: u64,
-        buff: EVAddr,      // void*
+        buf: EVAddr,       // void*
         len: u64,          // size_t
         flags: u64,        // unsigned int
         dest_addr: EVAddr, // sockaddr*
         dest_addr_len: u64,
     ) -> SyscallResult {
-        let sockaddr: Sockaddr =
-            MemoryAccessor::<Endianness, _>::new(mmu).read_bounded(dest_addr, dest_addr_len as usize)?;
-        let buff = mmu.mem_read_bytes(buff, len as usize)?;
-        debug!("Buff: {:?}", &*buff);
-        Ok(self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADFD)?.sendto(&*buff)? as u64)
+        let mut memory = self.system.memory.borrow_mut();
+        let memory = memory.accessor(mmu, self.task_id);
+        let sockaddr: Sockaddr = memory.read_bounded(dest_addr, dest_addr_len as usize)?;
+        let buf = memory.read_bytes(buf, len as usize)?;
+        debug!("Buff: {:?}", &*buf);
+        Ok(self
+            .handles
+            .get_mut(&fd)
+            .ok_or(LinuxKernelError::EBADFD)?
+            .sendto(&*buf)? as u64)
     }
 
     pub fn recvfrom(
@@ -104,7 +112,8 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         msg: EVAddr, // msghdr*
         flags: u64,  // unsigned int
     ) -> SyscallResult {
-        let mut memory = MemoryAccessor::<Endianness, _>::new(mmu);
+        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = memory.accessor(mmu, self.task_id);
         let msghdr: user_msghdr = memory.read(msg)?;
         let addr: Sockaddr = memory.read(msghdr.msg_name)?;
         let iovec: Vec<iovec> = memory.read_n(msghdr.msg_iov, msghdr.msg_iovlen as usize)?;
@@ -112,7 +121,11 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
             .iter()
             .try_fold(0usize, |sum, vec| sum.checked_add(vec.iov_len as usize))
             .ok_or(LinuxKernelError::EINVAL)?;
-        let data = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADFD)?.recvmsg(to_read)?;
+        let data = self
+            .handles
+            .get_mut(&fd)
+            .ok_or(LinuxKernelError::EBADFD)?
+            .recvmsg(to_read)?;
         let mut offset = 0;
         for vec in iovec {
             let to_write = &data[offset..];
@@ -136,12 +149,13 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
 
     pub fn bind(
         &mut self,
-        cpu: &mut (impl CPU + MMU),
+        mmu: &mut impl MMU,
         fd: u64,
         umyaddr: EVAddr, // sockaddr*
         addrlen: u64,
     ) -> SyscallResult {
-        let memory = MemoryAccessor::<Endianness, _>::new(cpu);
+        let mut memory = self.system.memory.borrow_mut();
+        let memory = memory.accessor(mmu, self.task_id);
         let handle = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADF)?;
         let mut sockaddr = memory.read(umyaddr)?;
         if let Sockaddr::NL { nl_pid, .. } = &mut sockaddr {
@@ -170,8 +184,16 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         usockaddr: EVAddr,     // sockaddr*
         usockaddr_len: EVAddr, // int*
     ) -> SyscallResult {
-        let sockaddr = self.handles.get(&fd).ok_or(LinuxKernelError::EBADFD)?.getsockname()?;
-        MemoryAccessor::<Endianness, _>::new(mmu).write(usockaddr, sockaddr)?;
+        let sockaddr = self
+            .handles
+            .get(&fd)
+            .ok_or(LinuxKernelError::EBADFD)?
+            .getsockname()?;
+        self.system
+            .memory
+            .borrow_mut()
+            .accessor(mmu, self.task_id)
+            .write(usockaddr, sockaddr)?;
         Ok(0)
     }
 
@@ -205,9 +227,14 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
         optval: EVAddr, // char*
         optlen: u64,
     ) -> SyscallResult {
-        let opt_data = mmu.mem_read_bytes(optval, optlen as usize)?;
+        let mut memory = self.system.memory.borrow_mut();
+        let memory = memory.accessor(mmu, self.task_id);
+        let opt_data = memory.read_bytes(optval, optlen as usize)?;
         // TODO: Handle sockopts correctly
-        self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADFD)?.setsockopt()?;
+        self.handles
+            .get_mut(&fd)
+            .ok_or(LinuxKernelError::EBADFD)?
+            .setsockopt()?;
         Ok(0)
     }
 

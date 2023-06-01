@@ -3,6 +3,7 @@ use std::fmt::{Debug, Display, Formatter};
 
 use crate::emulator::abstractions::cpu::CPUError;
 use crate::emulator::abstractions::mmu::MemoryError;
+use crate::emulator::platform::linux::kernel::LinuxKernelError;
 use crate::emulator::system::filesystem::FSError;
 
 #[derive(Debug)]
@@ -31,7 +32,9 @@ impl GenericError {
         }
     }
 
-    pub fn kind(&self) -> &GenericErrorKind { &self.kind }
+    pub fn kind(&self) -> &GenericErrorKind {
+        &self.kind
+    }
 }
 
 impl Display for GenericError {
@@ -76,6 +79,15 @@ impl From<MemoryError> for GenericError {
     fn from(e: MemoryError) -> Self {
         Self {
             kind: GenericErrorKind::MemoryError(e),
+            message: "".to_string(),
+        }
+    }
+}
+
+impl From<LinuxKernelError> for GenericError {
+    fn from(value: LinuxKernelError) -> Self {
+        Self {
+            kind: GenericErrorKind::Unknown,
             message: "".to_string(),
         }
     }

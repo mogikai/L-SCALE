@@ -1,0 +1,75 @@
+use std::cell::{Ref, RefCell, RefMut};
+use std::collections::BTreeSet;
+use std::iter::once;
+use std::rc::Rc;
+
+use crate::emulator::abstractions::cpu::address::EVAddr;
+use crate::emulator::abstractions::mmu::MemoryError;
+use crate::emulator::system::memory::pregion::PhysicalRegion;
+use crate::emulator::system::memory::tlb::TLB;
+
+/// Each Process/Thread has its own memory layout in the virtual address space
+/// The mapping from virtual address to physical address is managed in the (shared) TLB
+/// The TLB may be shared between multiple threads.
+/// A new process usually has a clone of the tlb from the process it originated from.
+#[derive(Clone, Debug)]
+pub struct Layout {
+    pub stack_end: EVAddr,
+    pub max_stack: usize,
+    pub heap_base: EVAddr,
+    pub map_base: EVAddr,
+    pub tlb: Rc<RefCell<TLB>>,
+    /// A set of unused physical memory regions, shared between threads.
+    /// TODO: Might make sense to sort the regions into buckets of different sizes for optimization
+    unused_physical_memory: Rc<RefCell<BTreeSet<PhysicalRegion>>>,
+}
+
+impl Layout {
+    pub fn new(
+        stack_base: EVAddr,
+        max_stack: usize,
+        heap_base: EVAddr,
+        map_base: EVAddr,
+        designated_physical_memory: PhysicalRegion,
+    ) -> Self {
+        Self {
+            stack_end: stack_base,
+            max_stack,
+            heap_base,
+            map_base,
+            unused_physical_memory: Rc::new(RefCell::new(BTreeSet::from_iter(once(designated_physical_memory)))),
+            tlb: Rc::new(RefCell::new(TLB::new())),
+        }
+    }
+
+    pub fn reserve_first_free_physical_region(
+        &mut self,
+        size: usize,
+    ) -> Result<PhysicalRegion, MemoryError> {
+        let mut memory = self.unused_physical_memory.borrow_mut();
+        let start = memory
+            .iter()
+            .find(|region| size <= region.size())
+            .map(|r| r.start)
+            .ok_or(MemoryError::OutOfMemory)?;
+        let (front, back) = memory.take(&start).unwrap().split(size);
+        back.map(|b| memory.insert(b));
+        front.ok_or(MemoryError::Unknown)
+    }
+
+    pub fn reserve_last_free_physical_region(
+        &mut self,
+        size: usize,
+    ) -> Result<PhysicalRegion, MemoryError> {
+        let mut memory = self.unused_physical_memory.borrow_mut();
+        let start = memory
+            .iter()
+            .rev()
+            .find(|region| size <= region.size())
+            .map(|r| r.start)
+            .ok_or(MemoryError::OutOfMemory)?;
+        let (front, back) = memory.take(&start).unwrap().split(size);
+        front.map(|b| memory.insert(b));
+        back.ok_or(MemoryError::Unknown)
+    }
+}

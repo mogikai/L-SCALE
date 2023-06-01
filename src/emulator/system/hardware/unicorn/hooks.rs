@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use unicorn_engine::unicorn_const::HookType;
 use unicorn_engine::{InsnSysX86, TlbEntry, Unicorn};
 
@@ -40,7 +43,10 @@ impl<'a> Hooks<'a> for UCWrapper<'a> {
         let trampoline = move |uc: &mut Unicorn<*mut UCWrapper<'a>>, mem_type, address, size, value| {
             hook(unsafe { &mut **uc.get_data_mut() }, MemoryAction::from(mem_type), address, size, value)
         };
-        let _hook = self.uc_mut().add_mem_hook(HookType::MEM_UNMAPPED, start.into(), end.into(), trampoline).unwrap();
+        let _hook = self
+            .uc_mut()
+            .add_mem_hook(HookType::MEM_UNMAPPED, start.into(), end.into(), trampoline)
+            .unwrap();
     }
 
     fn add_block_hook(

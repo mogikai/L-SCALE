@@ -14,6 +14,7 @@ pub enum CPUError {
     InvalidArch,
     InvalidPermission,
     Stopped(StopReason),
+    TaskExists,
     Unknown,
 }
 

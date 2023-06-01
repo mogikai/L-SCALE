@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use std::ops::{Not, Range};
+use std::ops::{BitOr, Not, Range};
 
 use im_rc::{OrdSet, Vector};
 
@@ -7,16 +7,16 @@ use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::mmu::{MemoryError, Permission};
 use crate::emulator::abstractions::restore::Restorable;
-use crate::emulator::system::memory::tlb::region::{Contains, Region};
+use crate::emulator::system::memory::tlb::mapping::{Contains, Mapping};
 use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 
-pub mod region;
+pub mod mapping;
 pub mod tlb_entry;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TLB {
-    mappings: BTreeSet<Region>,
-    snapshots: Vector<BTreeSet<Region>>,
+    mappings: BTreeSet<Mapping>,
+    snapshots: Vector<BTreeSet<Mapping>>,
 }
 
 impl TLB {
@@ -27,28 +27,54 @@ impl TLB {
         }
     }
 
+    pub fn address_mapped(
+        &self,
+        address: EVAddr,
+    ) -> bool {
+        self.mappings
+            .range(..=address)
+            .next_back()
+            .filter(|mapping| mapping.contains(address))
+            .is_some()
+    }
+
     /// Checks whether the tlb contains one or more EVAddr mappings
     /// that contain parts of the region from address to address + size.
     /// Returns true if any part of the region is mapped, and false otherwise.
-    fn mapped(
+    pub fn region_mapped(
         &self,
         address: EVAddr,
         size: usize,
     ) -> bool {
+        // The first check only finds regions which start inside the range `address..address + size`.
+        // To find regions that start outside this range, but still overlap, we have to check if the start or end
+        // of our region is mapped somewhere.
         self.mappings
-            .range(address..(address + size))
+            .range(address..address + size)
             .next()
             .is_some()
+            || self.address_mapped(address)
+            || self.address_mapped(address + size - 1)
     }
 
-    pub fn try_insert(
+    /// Maps the virtual memory area `v_start..(v_start + size)`
+    /// to the physical memory area `p_start..(p_start + size)`
+    /// with permissions `permissions`
+    ///
+    /// Results in an error if any part of the area `v_start..(v_start + size)` is already mapped.
+    pub fn try_map(
         &mut self,
-        region: Region,
+        v_start: EVAddr,
+        p_start: EPAddr,
+        size: usize,
+        permissions: Permission,
     ) -> Result<(), MemoryError> {
-        self.mapped(region.v_start, region.size)
+        self.region_mapped(v_start, size)
             .not()
             .then(|| {
-                let inserted = self.mappings.insert(region);
+                let inserted = self
+                    .mappings
+                    .insert(Mapping::new(v_start, p_start, size, permissions));
                 assert!(inserted)
             })
             .ok_or(MemoryError::AlreadyMapped)
@@ -69,7 +95,7 @@ impl TLB {
     pub fn get_region(
         &self,
         address: EVAddr,
-    ) -> Result<Region, MemoryError> {
+    ) -> Result<Mapping, MemoryError> {
         self.mappings
             // First block that starts at address less than or equal to address
             .range(..=address)
@@ -86,7 +112,7 @@ impl TLB {
         // TODO: What about the physical address space? We need to check if space is free and otherwise
         //       create a new mapping?
         let mut region = *self.mappings.get(&addr).ok_or(MemoryError::NotMapped)?;
-        if new_size > region.size && self.mapped(addr + region.size, new_size - region.size) {
+        if new_size > region.size && self.region_mapped(addr + region.size, new_size - region.size) {
             // Cannot extend the region since the address space after the region is already mapped
             Err(MemoryError::AlreadyMapped)
         } else {

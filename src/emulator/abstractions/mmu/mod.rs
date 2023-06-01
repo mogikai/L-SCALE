@@ -1,7 +1,4 @@
-use std::marker::PhantomData;
-use std::mem;
 use std::num::TryFromIntError;
-use std::ops::Range;
 
 use bitflags::bitflags;
 use byteorder::ByteOrder;
@@ -9,7 +6,6 @@ use byteorder::ByteOrder;
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode};
 
-pub mod accessor;
 pub mod encoding;
 
 #[derive(Debug, Copy, Clone)]
@@ -24,70 +20,8 @@ pub enum MemoryError {
     Unknown,
     ProcessAlreadyExists,
     LayoutNotFound,
-}
-
-pub trait DirectMemoryWrite<T, Endianness: ByteOrder> {
-    fn write_direct(
-        &mut self,
-        address: EVAddr,
-        data: T,
-    ) -> Result<usize, MemoryError>;
-
-    fn write_direct_down(
-        &mut self,
-        address: EVAddr,
-        data: T,
-    ) -> Result<usize, MemoryError>;
-}
-
-pub trait MemoryWrite<T: Encode<Endianness>, Endianness: ByteOrder> {
-    fn write(
-        &mut self,
-        address: EVAddr,
-        data: T,
-    ) -> Result<usize, MemoryError>;
-
-    fn write_down(
-        &mut self,
-        address: EVAddr,
-        data: T,
-    ) -> Result<usize, MemoryError> {
-        Self::write(self, address - data.encoded_size(), data)
-    }
-}
-
-pub trait MemoryRead<T: Decode<Endianness>, Endianness: ByteOrder> {
-    fn read(
-        &self,
-        address: EVAddr,
-    ) -> Result<T, MemoryError>;
-
-    fn read_bounded(
-        &self,
-        address: EVAddr,
-        size: usize,
-    ) -> Result<T, MemoryError>;
-
-    fn read_n(
-        &self,
-        address: EVAddr,
-        n: usize,
-    ) -> Result<Vec<T>, MemoryError>;
-
-    fn read_down(
-        &self,
-        address: EVAddr,
-    ) -> Result<T, MemoryError> {
-        self.read(address - T::required_mem())
-    }
-
-    fn read_down_n(
-        &self,
-        address: EVAddr,
-        n: usize,
-    ) -> Result<Vec<T>, MemoryError> {
-        self.read_n(address - (n * T::required_mem()), n)
-    }
+    OutOfMemory,
+    GuardRegionAccess { address: EVAddr, guard_callback_id: usize },
 }
 
 pub trait MMU {
@@ -106,13 +40,13 @@ pub trait MMU {
 
     fn mem_read_bytes(
         &self,
-        address: EVAddr,
+        address: EPAddr,
         len: usize,
     ) -> Result<Vec<u8>, MemoryError>;
 
     fn mem_read_bytes_down(
         &self,
-        address: EVAddr,
+        address: EPAddr,
         len: usize,
     ) -> Result<Vec<u8>, MemoryError> {
         self.mem_read_bytes(address - len, len)
@@ -120,13 +54,13 @@ pub trait MMU {
 
     fn mem_write_bytes(
         &mut self,
-        address: EVAddr,
+        address: EPAddr,
         data: &[u8],
     ) -> Result<usize, MemoryError>;
 
     fn mem_write_bytes_down(
         &mut self,
-        address: EVAddr,
+        address: EPAddr,
         data: &[u8],
     ) -> Result<usize, MemoryError> {
         self.mem_write_bytes(address - data.len(), data)

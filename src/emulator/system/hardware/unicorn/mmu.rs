@@ -1,10 +1,10 @@
 use byteorder::ByteOrder;
-use unicorn_engine::unicorn_const::{uc_error, MemType};
 use unicorn_engine::unicorn_const as uc_const;
+use unicorn_engine::unicorn_const::{uc_error, MemType};
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
-use crate::emulator::abstractions::mmu::{MemoryAction, MemoryError, MemoryWrite, Permission, MMU};
 use crate::emulator::abstractions::mmu::encoding::Encode;
+use crate::emulator::abstractions::mmu::{MemoryAction, MemoryError, Permission, MMU};
 use crate::emulator::system::hardware::unicorn::UCWrapper;
 
 impl MMU for UCWrapper<'_> {
@@ -14,7 +14,9 @@ impl MMU for UCWrapper<'_> {
         size: usize,
         perms: Permission,
     ) -> Result<(), MemoryError> {
-        Ok(self.uc_mut().mem_map(address.into(), size, perms.try_into()?)?)
+        Ok(self
+            .uc_mut()
+            .mem_map(address.into(), size, perms.try_into()?)?)
     }
 
     fn mem_unmap(
@@ -27,7 +29,7 @@ impl MMU for UCWrapper<'_> {
 
     fn mem_read_bytes(
         &self,
-        address: EVAddr,
+        address: EPAddr,
         len: usize,
     ) -> Result<Vec<u8>, MemoryError> {
         Ok(self.uc().mem_read_as_vec(address.into(), len)?)
@@ -35,21 +37,11 @@ impl MMU for UCWrapper<'_> {
 
     fn mem_write_bytes(
         &mut self,
-        address: EVAddr,
+        address: EPAddr,
         data: &[u8],
     ) -> Result<usize, MemoryError> {
         self.uc_mut().mem_write(address.into(), data)?;
         Ok(data.len())
-    }
-}
-
-impl<T: Encode<Endianness> + ExactSizeIterator, Endianness: ByteOrder> MemoryWrite<T, Endianness> for UCWrapper<'_> {
-    fn write(
-        &mut self,
-        address: EVAddr,
-        data: T,
-    ) -> Result<usize, MemoryError> {
-        self.mem_write_bytes(address, data.encode().as_slice())
     }
 }
 

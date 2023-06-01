@@ -1,5 +1,6 @@
 #![feature(try_blocks)]
 #![feature(map_try_insert)]
+// #![feature(map_try_insert)]
 
 pub mod emulator;
 pub mod fuzzer;

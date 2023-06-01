@@ -1,10 +1,13 @@
+use std::ops::Deref;
 use bitflags::bitflags;
 use byteorder::ByteOrder;
+use iced_x86::OpCodeOperandKind::mem;
 
 use crate::emulator::platform::linux::kernel::*;
+use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
 use crate::read_osstring;
 
-impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness, Arch> {
+impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     pub fn write(
         &mut self,
         mmu: &mut impl MMU,
@@ -12,9 +15,21 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         buf: EVAddr,
         size: u64,
     ) -> SyscallResult {
-        self.handles.get_mut(&fd).map_or(Err(LinuxKernelError::EINVAL), |handle| {
-            Ok(handle.write(&mmu.mem_read_bytes(buf, size as usize)?).unwrap_or(!0).try_into().unwrap())
-        })
+        let mut memory = self.system.memory.borrow_mut();
+        self.handles
+            .get_mut(&fd)
+            .map_or(Err(LinuxKernelError::EINVAL), |handle| {
+                Ok(handle
+                    .write(
+                        memory
+                            .accessor(mmu, self.task_id)
+                            .read_bytes(buf, size as usize)?
+                            .as_slice(),
+                    )
+                    .unwrap_or(!0)
+                    .try_into()
+                    .unwrap())
+            })
     }
 
     pub fn writev(
@@ -24,22 +39,28 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         iovec_ptr: EVAddr,
         iovcnt: u64,
     ) -> SyscallResult {
-        self.handles.get_mut(&fd).map_or(Err(LinuxKernelError::EINVAL), |handle| {
-            let mut ret = 0;
-            let iovec = mmu.mem_read_bytes(iovec_ptr, (iovcnt * 16) as usize).unwrap();
-            for i in 0..iovcnt as usize {
-                let ptr = EVAddr::from(Endianness::read_u64(&iovec[(i * 16)..((i * 16) + 8)]));
-                let size = Endianness::read_u64(&iovec[i * 16 + 8..i * 16 + 16]) as usize;
-                let data = mmu.mem_read_bytes(ptr, size)?;
-                let written = handle.write(data.as_ref())?;
-                ret += written;
-                // Early return if not all bytes were written. We need to stop writing in this case
-                if written != data.len() {
-                    return Ok(ret.try_into().unwrap());
-                };
-            }
-            Ok(ret.try_into().unwrap())
-        })
+        let mut memory = self.system.memory.borrow_mut();
+        let memory = memory.accessor(mmu, self.task_id);
+        self.handles
+            .get_mut(&fd)
+            .map_or(Err(LinuxKernelError::EINVAL), |handle| {
+                let mut ret = 0;
+                let iovec = memory
+                    .read_bytes(iovec_ptr, (iovcnt * 16) as usize)
+                    .unwrap();
+                for i in 0..iovcnt as usize {
+                    let ptr = EVAddr::from(Endianness::read_u64(&iovec[(i * 16)..((i * 16) + 8)]));
+                    let size = Endianness::read_u64(&iovec[i * 16 + 8..i * 16 + 16]) as usize;
+                    let data = memory.read_bytes(ptr, size)?;
+                    let written = handle.write(data.as_ref())?;
+                    ret += written;
+                    // Early return if not all bytes were written. We need to stop writing in this case
+                    if written != data.len() {
+                        return Ok(ret.try_into().unwrap());
+                    };
+                }
+                Ok(ret.try_into().unwrap())
+            })
     }
 
     pub fn pread64(
@@ -50,9 +71,11 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         count: u64,
         pos: u64,
     ) -> SyscallResult {
+        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = memory.accessor(mmu, self.task_id);
         let file = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADF)?;
         let d = file.pread(pos, count).unwrap();
-        Ok(mmu.mem_write_bytes(buf, d.as_slice())? as u64)
+        Ok(memory.write_direct(buf, d.as_slice())? as u64)
     }
 
     pub fn read(
@@ -62,8 +85,10 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         buf: EVAddr,
         count: u64,
     ) -> SyscallResult {
+        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = memory.accessor(mmu, self.task_id);
         if let Some(f) = self.handles.get_mut(&fd) {
-            Ok(mmu.mem_write_bytes(buf, f.read(count).unwrap().as_slice())? as u64)
+            Ok(memory.write_direct(buf, f.read(count).unwrap().as_slice())? as u64)
         } else {
             Err(LinuxKernelError::EINVAL)
         }
@@ -75,8 +100,10 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         fd: u64,
         statbuf: EVAddr,
     ) -> SyscallResult {
+        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = memory.accessor(mmu, self.task_id);
         let file = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADF)?;
-        mmu.mem_write_bytes(statbuf, file.stat()?.encode().as_slice())?;
+        memory.write(statbuf, file.stat()?)?;
         Ok(0)
     }
 
@@ -86,11 +113,13 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         filename: EVAddr,
         statbuf: EVAddr,
     ) -> SyscallResult {
-        let fname = read_osstring!(mmu, filename)?;
+        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = memory.accessor(mmu, self.task_id);
+        let fname = read_osstring!(memory, filename)?;
         trace!("stat file {:?}", fname);
-        let fs = self.filesystem.borrow();
+        let fs = self.system.filesystem.borrow();
         let file = fs.resolve_last(Path::new(&fname))?;
-        mmu.mem_write_bytes(statbuf, fs.stat(file)?.encode().as_slice())?;
+        memory.write(statbuf, fs.stat(file)?)?;
         Ok(0)
     }
 
@@ -102,11 +131,18 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         _flags: u64,
         _mode: u64,
     ) -> SyscallResult {
-        let fname = read_osstring!(mmu, filename)?;
+        let mut memory = self.system.memory.borrow_mut();
+        let memory = memory.accessor(mmu, self.task_id);
+        let fname = read_osstring!(memory, filename)?;
         trace!("openat file: {:?}", fname);
-        let p = Path::new(&fname);
-        let file = self.filesystem.borrow().resolve_last(p)?;
-        Ok(self.handles.add(Box::new(FileHandle::new(self.filesystem.clone(), file))))
+        let file = self
+            .system
+            .filesystem
+            .borrow()
+            .resolve_last(Path::new(&fname))?;
+        Ok(self
+            .handles
+            .add(Box::new(FileHandle::new(self.system.clone(), file))))
     }
 
     pub fn statfs(
@@ -126,17 +162,19 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernel<Endianness
         statbuf: EVAddr,
         flag: u64,
     ) -> SyscallResult {
+        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = memory.accessor(mmu, self.task_id);
         let flags = at_flags::from_bits(flag).ok_or(LinuxKernelError::EINVAL)?;
         if flags.contains(at_flags::AT_EMPTY_PATH) {
             let file = self.handles.get(&dfd).ok_or(LinuxKernelError::EBADFD)?;
-            mmu.mem_write_bytes(statbuf, file.stat()?.encode().as_slice())?;
+            memory.write(statbuf, file.stat()?)?;
             Ok(0)
         } else {
-            let filename = read_osstring!(mmu, filename)?;
+            let filename = read_osstring!(memory, filename)?;
             debug!("newfstatat: {filename:?}");
-            let fs = self.filesystem.borrow_mut();
+            let fs = self.system.filesystem.borrow_mut();
             let entry = fs.resolve_last(Path::new(&filename))?;
-            mmu.mem_write_bytes(statbuf, fs.stat(entry)?.encode().as_slice())?;
+            memory.write(statbuf, fs.stat(entry)?)?;
             Ok(0)
         }
     }

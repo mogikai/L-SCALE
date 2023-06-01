@@ -4,9 +4,9 @@ use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::handles::Handle;
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::kernel::{LinuxKernel, SyscallResult};
+use crate::emulator::platform::linux::kernel::{LinuxKernelTask, SyscallResult};
 
-impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernel<Endianness, Arch> {
+impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     pub fn epoll_create(
         &mut self,
         _: &mut impl CPU,

@@ -90,14 +90,19 @@ impl Sub<EVAddr> for EVAddr {
         self,
         rhs: EVAddr,
     ) -> Self::Output {
-        usize::try_from(self.0 - rhs.0).expect("usize must be equal length to u64")
+        usize::try_from(
+            self.0
+                .checked_sub(rhs.0)
+                .expect("Subtracting a larger address from a smaller address is undefined behavior"),
+        )
+        .expect("usize must be equal length to u64")
     }
 }
 
 pub const EVA_NULL: EVAddr = EVAddr(0);
 
 /// Emulated physical address
-#[derive(Eq, PartialEq, Copy, Clone, Add, From, Into)]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Add, From, Into)]
 pub struct EPAddr(u64);
 
 impl Sub<usize> for EPAddr {
@@ -128,5 +133,21 @@ impl AddAssign<usize> for EPAddr {
         rhs: usize,
     ) {
         self.0 += u64::try_from(rhs).expect("usize must be equal length to u64")
+    }
+}
+
+impl Sub<EPAddr> for EPAddr {
+    type Output = usize;
+
+    fn sub(
+        self,
+        rhs: EPAddr,
+    ) -> Self::Output {
+        usize::try_from(
+            self.0
+                .checked_sub(rhs.0)
+                .expect("Subtracting a larger address from a smaller address is undefined behavior"),
+        )
+        .expect("usize must be equal length to u64")
     }
 }
