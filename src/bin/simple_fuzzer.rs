@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -7,11 +6,9 @@ use std::time::Duration;
 use byteorder::LittleEndian;
 use log::debug;
 
-use fuzzyemu::emulator::abstractions::cpu::address::EVAddr;
 use fuzzyemu::emulator::abstractions::emulator::Emulator;
-use fuzzyemu::emulator::abstractions::errors::{GenericError, GenericErrorKind};
+use fuzzyemu::emulator::abstractions::errors::GenericError;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
-use fuzzyemu::emulator::abstractions::mmu::{MemoryAction, MemoryError};
 use fuzzyemu::emulator::platform::linux::architecture::x86::X86;
 use fuzzyemu::emulator::platform::linux::emulator::LinuxX86Scheduler;
 use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
@@ -28,7 +25,7 @@ fn main() -> Result<(), GenericError> {
     let mut prev_block2: u64 = 0;
 
     {
-        let mut cpu = UCWrapper::new();
+        let cpu = UCWrapper::new();
 
         let filesystem = Filesystem::from_disk(1_073_741_824, Path::new("systems/ubuntu2204")).unwrap();
         let memory = Memory::new();
@@ -50,7 +47,7 @@ fn main() -> Result<(), GenericError> {
         }));
         let vtlb_system = system.clone();
         cpu.borrow_mut()
-            .add_vtlb_hook(Box::new(move |uc, vaddr, action| {
+            .add_vtlb_hook(Box::new(move |_uc, vaddr, _action| {
                 vtlb_system.current_task.borrow().and_then(|task_id| {
                     vtlb_system
                         .memory
@@ -61,19 +58,25 @@ fn main() -> Result<(), GenericError> {
             .unwrap();
 
         // TODO: Only one task for now. Need to implement a scheduler that switches tasks.
-        let kernel = LinuxKernelTask::<LittleEndian, X86>::new(system.clone(), 1337, 1);
+        let initial_task = LinuxKernelTask::<LittleEndian, X86>::new(system.clone(), 1337, 1);
 
         // let mut data = vec![b'A'; 0x01];
         // data.extend(vec![b'x', b'y', b'z', b'x', b'y', b'z', b'\n']);
         // let demo_handle = Box::new(ReadOnly::from(data));
         // kernel.borrow_mut().add_replacement_handle(0, demo_handle);
         let args = [];
-        let env = ["SHELL=/bin/sh", "LD_DEBUG=all", "LD_BIND_NOW=true"];
-        // let eflags = cpu.borrow_mut().reg_read(RegisterX86::EFLAGS.into()).unwrap();
-        // cpu.borrow_mut().reg_write(RegisterX86::EFLAGS.into(), eflags | (1 << 22)).unwrap();
-        let mut scheduler =
-            LinuxX86Scheduler::new(system.clone(), kernel, cpu, PathBuf::from("/home/user/memstuff"), &args, &env)
-                .unwrap();
+        let env = ["SHELL=/bin/sh", "LD_DEBUG=all"]; //, "LD_BIND_NOW=true"];
+                                                     // let eflags = cpu.borrow_mut().reg_read(RegisterX86::EFLAGS.into()).unwrap();
+                                                     // cpu.borrow_mut().reg_write(RegisterX86::EFLAGS.into(), eflags | (1 << 22)).unwrap();
+        let mut scheduler = LinuxX86Scheduler::new(
+            system.clone(),
+            initial_task,
+            cpu,
+            PathBuf::from("/home/user/open62541_server"),
+            &args,
+            &env,
+        )
+        .unwrap();
         scheduler.run(None, None).unwrap();
     }
 

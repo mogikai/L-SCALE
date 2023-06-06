@@ -1,6 +1,8 @@
 #![feature(try_blocks)]
 #![feature(map_try_insert)]
-// #![feature(map_try_insert)]
+#![allow(dead_code)]
+#![allow(unused)]
+#![allow(unused_variables)]
 
 pub mod emulator;
 pub mod fuzzer;

@@ -1,6 +1,7 @@
 use std::cell::Ref;
 use std::marker::PhantomData;
 use std::mem;
+use std::ops::Deref;
 
 use byteorder::ByteOrder;
 
@@ -82,7 +83,7 @@ where
     T: Encode<Endianness>,
 {
     fn encode(&self) -> Vec<u8> {
-        self.encode()
+        self.deref().encode()
     }
 }
 
@@ -93,6 +94,6 @@ where
     T: Encode<Endianness>,
 {
     fn encode(&self) -> Vec<u8> {
-        self.encode()
+        self.deref().encode()
     }
 }

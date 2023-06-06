@@ -101,6 +101,7 @@ impl From<RegisterRISCV> for Register {
     }
 }
 
+#[allow(non_camel_case_types)]
 #[derive(Copy, Clone)]
 pub enum RegisterX86 {
     INVALID,

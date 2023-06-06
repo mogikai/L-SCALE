@@ -202,6 +202,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
 const AT_FDCWD: u64 = -100i32 as u64; /* Special value used to indicate the *at functions should use the current working directory. */
 
 bitflags! {
+    #[allow(non_camel_case_types)]
     pub struct
     at_flags: u64 {
         const AT_SYMLINK_NOFOLLOW =	0x100;	/* Do not follow symbolic links.  */

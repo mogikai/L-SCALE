@@ -334,6 +334,7 @@ fn align(size: usize) -> usize {
     (size + 3) & !3
 }
 
+#[allow(non_camel_case_types)]
 #[repr(u16)]
 #[derive(Copy, Clone)]
 pub enum nla_type {
@@ -372,6 +373,7 @@ impl<Endianness: ByteOrder> Encode<Endianness> for nlattr {
 }
 
 bitflags! {
+    #[allow(non_camel_case_types)]
     pub struct
     ifa_flags: u32 {
         const IFA_F_SECONDARY = 0x01;

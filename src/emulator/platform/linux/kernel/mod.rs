@@ -241,10 +241,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         info!("Initializing stack");
         cpu.reg_write(
             RegisterX86::RSP.into(),
-            memory
-                .stack_base(self.task_id)
-                .expect("no process found")
-                .into(),
+            stack_base.into(),
         )
         .expect("failed to write RSP");
         let mut aux: Vec<(u64, u64)> = Vec::new();

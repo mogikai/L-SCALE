@@ -87,6 +87,7 @@ pub struct SocketFlags {
     flags: u64,
 }
 
+#[allow(non_snake_case, unused)]
 impl SocketFlags {
     fn SOCK_CLOEXEC(&self) -> bool {
         self.flags & 0x02000000 != 0
@@ -103,6 +104,7 @@ impl From<u64> for SocketFlags {
     }
 }
 
+#[allow(non_camel_case_types, unused)]
 #[derive(Debug)]
 pub enum SocketType {
     SOCK_STREAM    = 1,
@@ -176,10 +178,12 @@ pub enum SocketDomain {
     AF_ALG        = 38,
 }
 
+#[allow(non_camel_case_types)]
 pub enum SockOptLevel {
     SOL_SOCKET = 1,
 }
 
+#[allow(non_camel_case_types)]
 pub enum SockOpt {
     SO_DEBUG            = 1,
     SO_REUSEADDR        = 2,

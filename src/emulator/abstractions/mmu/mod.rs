@@ -78,6 +78,7 @@ pub struct Permission : u32 {
 }
 
 bitflags! {
+    #[allow(non_camel_case_types)]
     pub struct
     MREMAP_FLAGS: u64 {
         const MREMAP_MAYMOVE = 1;
@@ -100,6 +101,7 @@ impl From<TryFromIntError> for MemoryError {
     }
 }
 
+#[allow(non_camel_case_types)]
 #[derive(Debug)]
 pub enum MemoryAction {
     READ,

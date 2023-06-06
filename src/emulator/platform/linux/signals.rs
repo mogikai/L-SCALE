@@ -79,6 +79,7 @@ impl<Flags: Debug + Clone + Copy> SignalHandler<Flags> {
     pub fn getmask(&self) -> u64 { self.mask }
 }
 
+#[allow(non_camel_case_types)]
 #[derive(Debug, Clone, Copy)]
 pub enum SignalMaskFlags {
     SIG_BLOCK,
@@ -98,6 +99,7 @@ impl TryFrom<u64> for SignalMaskFlags {
     }
 }
 
+#[allow(non_camel_case_types)]
 #[derive(Debug, EnumSetType)]
 pub enum Signal {
     SIGHUP,
@@ -140,6 +142,7 @@ pub enum Signal {
     SIGUNUSED,
 }
 
+#[allow(non_camel_case_types)]
 #[derive(Debug, EnumSetType)]
 pub enum GenericSignalFlag {
     SA_NOCLDSTOP,

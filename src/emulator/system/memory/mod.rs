@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::ops::Range;
+use std::ops::{Add, BitAnd, Not, Range};
 
 use byteorder::ByteOrder;
 
@@ -20,16 +20,26 @@ pub mod tlb;
 
 const MASK4K: u64 = 4 * (1 << 10) - 1;
 
-fn align4k_up(address: EVAddr) -> EVAddr {
-    (address + MASK4K) & !EVAddr::from(MASK4K)
+fn align4k_up<T>(address: T) -> T
+where
+    T: Add<u64, Output = T> + Not<Output = T> + From<u64> + BitAnd<Output = T>,
+{
+    (address + MASK4K) & !T::from(MASK4K)
 }
 
-fn align4k_down(address: EVAddr) -> EVAddr {
-    address & !EVAddr::from(MASK4K)
+fn align4k_down<T>(address: T) -> T
+where
+    T: Not<Output = T> + From<u64> + BitAnd<Output = T>,
+{
+    address & !T::from(MASK4K)
 }
 
-fn is4kaligned(address: EVAddr) -> bool {
-    (address & EVAddr::from(MASK4K)) == EVA_NULL
+#[allow(unused)]
+fn is4kaligned<T>(address: T) -> bool
+where
+    T: From<u64> + BitAnd<Output = T> + Eq,
+{
+    (address & T::from(MASK4K)) == T::from(0)
 }
 
 pub struct MemoryAccessor<'a, Endianness: ByteOrder, MmuT: MMU> {
@@ -139,8 +149,14 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         mmu.mem_map(self.physical_end, self.process_mem_size, Permission::ALL)?;
         self.physical_end += self.process_mem_size;
 
+        let max_stack = layout.max_stack;
+        let stack_end = layout.stack_end;
         let old_layout = self.layouts.insert(task_id, layout);
         assert!(old_layout.is_none());
+
+        self.accessor(mmu, task_id)
+            .write_direct_down(stack_end, vec![b'A'; max_stack].as_slice())
+            .unwrap();
         Ok(())
     }
 
@@ -149,9 +165,13 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         task_id: TaskId,
         address: EVAddr,
     ) -> Option<TLBEntry> {
-        self.layouts
-            .get(&task_id)
-            .and_then(|layout| layout.tlb.borrow().translate_virtual_address(address).ok())
+        let layout = self.layouts.get(&task_id);
+        if layout.is_none() {
+            trace!("Could not fetch layout for address translation of {address:?}");
+        }
+        let tlb_entry = layout.and_then(|layout| layout.tlb.borrow().translate_virtual_address(address).ok());
+        trace!("Translation result for address {address:?} is {tlb_entry:?}");
+        tlb_entry
     }
 
     pub(crate) fn stack_base(

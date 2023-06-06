@@ -11,7 +11,7 @@ use num_enum::FromPrimitive;
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::{CPUError, ContextHandle, RegisterX86, CPU};
 use crate::emulator::abstractions::emulator::{Emulator, StopReason};
-use crate::emulator::abstractions::errors::GenericError;
+use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::mmu::{MemoryError, MMU};
 use crate::emulator::abstractions::restore::Restorable;
@@ -20,6 +20,58 @@ use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask};
 use crate::emulator::system::System;
 
+macro_rules! do_syscall {
+    (0, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
+        $debug_str = format!("() ");
+        $name.$fun($uc)
+    }};
+    (1, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
+        let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
+        $debug_str = format!("(0x{:X}) ", rdi);
+        $name.$fun($uc, rdi.into())
+    }};
+    (2, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
+        let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
+        let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
+        $debug_str = format!("(0x{:X}, 0x{:X}) ", rdi, rsi);
+        $name.$fun($uc, rdi.into(), rsi.into())
+    }};
+    (3, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
+        let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
+        let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
+        let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
+        $debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx);
+        $name.$fun($uc, rdi.into(), rsi.into(), rdx.into())
+    }};
+    (4, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
+        let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
+        let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
+        let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
+        let r10 = $uc.reg_read(RegisterX86::R10.into()).unwrap();
+        $debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10);
+        $name.$fun($uc, rdi.into(), rsi.into(), rdx.into(), r10.into())
+    }};
+    (5, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
+        let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
+        let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
+        let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
+        let r10 = $uc.reg_read(RegisterX86::R10.into()).unwrap();
+        let r8 = $uc.reg_read(RegisterX86::R8.into()).unwrap();
+        $debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10, r8);
+        $name.$fun($uc, rdi.into(), rsi.into(), rdx.into(), r10.into(), r8.into())
+    }};
+    (6, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
+        let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
+        let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
+        let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
+        let r10 = $uc.reg_read(RegisterX86::R10.into()).unwrap();
+        let r8 = $uc.reg_read(RegisterX86::R8.into()).unwrap();
+        let r9 = $uc.reg_read(RegisterX86::R9.into()).unwrap();
+        $debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10, r8, r9);
+        $name.$fun($uc, rdi.into(), rsi.into(), rdx.into(), r10.into(), r8.into(), r9.into())
+    }};
+}
+
 #[derive(Debug)]
 pub enum CreationError {
     ProgramHeaderErr,
@@ -27,7 +79,6 @@ pub enum CreationError {
 }
 
 struct SchedulerContext<Endianness: ByteOrder> {
-    current_task: TaskId,
     tasks: BTreeMap<TaskId, LinuxKernelTask<Endianness, X86>>,
 }
 
@@ -96,69 +147,202 @@ where
         //         break;
         //     }
         // }
-        let mut cpu = self.cpu.borrow_mut();
-        cpu.restore_context(self.cpu_context_handle)?;
-        cpu.emulate(None, timeout, instruction_count)?;
-        cpu.save_context(self.cpu_context_handle)?;
-        let inner = self.context.borrow();
-        if inner.tasks.get(&inner.current_task).unwrap().exited() {
-            Err(StopReason::ProcessExit)
+        if let Some(current_task) = *self.system.current_task.borrow() {
+            let mut cpu = self.cpu.borrow_mut();
+            cpu.restore_context(self.cpu_context_handle)?;
+            cpu.emulate(None, timeout, instruction_count)?;
+            cpu.save_context(self.cpu_context_handle)?;
+            let inner = self.context.borrow();
+            if inner.tasks.get(&current_task).unwrap().exited() {
+                Err(StopReason::ProcessExit)
+            } else {
+                Ok(())
+            }
         } else {
-            Ok(())
+            Err(StopReason::Unknown)
         }
     }
 }
 
-macro_rules! do_syscall {
-    (0, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
-        $debug_str = format!("() ");
-        $name.$fun($uc)
-    }};
-    (1, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
-        let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
-        $debug_str = format!("(0x{:X}) ", rdi);
-        $name.$fun($uc, rdi.into())
-    }};
-    (2, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
-        let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
-        let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
-        $debug_str = format!("(0x{:X}, 0x{:X}) ", rdi, rsi);
-        $name.$fun($uc, rdi.into(), rsi.into())
-    }};
-    (3, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
-        let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
-        let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
-        let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
-        $debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx);
-        $name.$fun($uc, rdi.into(), rsi.into(), rdx.into())
-    }};
-    (4, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
-        let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
-        let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
-        let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
-        let r10 = $uc.reg_read(RegisterX86::R10.into()).unwrap();
-        $debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10);
-        $name.$fun($uc, rdi.into(), rsi.into(), rdx.into(), r10.into())
-    }};
-    (5, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
-        let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
-        let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
-        let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
-        let r10 = $uc.reg_read(RegisterX86::R10.into()).unwrap();
-        let r8 = $uc.reg_read(RegisterX86::R8.into()).unwrap();
-        $debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10, r8);
-        $name.$fun($uc, rdi.into(), rsi.into(), rdx.into(), r10.into(), r8.into())
-    }};
-    (6, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
-        let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
-        let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
-        let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
-        let r10 = $uc.reg_read(RegisterX86::R10.into()).unwrap();
-        let r8 = $uc.reg_read(RegisterX86::R8.into()).unwrap();
-        let r9 = $uc.reg_read(RegisterX86::R9.into()).unwrap();
-        $debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10, r8, r9);
-        $name.$fun($uc, rdi.into(), rsi.into(), rdx.into(), r10.into(), r8.into(), r9.into())
-    }};
+fn syscall<Endianness: ByteOrder + 'static>(
+    cpu: &mut (impl CPU + MMU),
+    kernel: &mut LinuxKernelTask<Endianness, X86>,
+) {
+    let rax = cpu.reg_read(RegisterX86::RAX.into()).unwrap();
+    let mut debug_str = String::new();
+    let syscall = SYSCALL::from(rax);
+    let mut unknown_syscall = false;
+    use SYSCALL::*;
+    let result = match SYSCALL::from(rax) {
+        READ => do_syscall!(3, cpu, kernel::read, debug_str),
+        WRITE => do_syscall!(3, cpu, kernel::write, debug_str),
+        CLOSE => do_syscall!(1, cpu, kernel::close, debug_str),
+        STAT => do_syscall!(2, cpu, kernel::stat, debug_str),
+        FSTAT => do_syscall!(2, cpu, kernel::fstat, debug_str),
+        MMAP => do_syscall!(6, cpu, kernel::mmap, debug_str),
+        MPROTECT => do_syscall!(3, cpu, kernel::mprotect, debug_str),
+        MUNMAP => do_syscall!(2, cpu, kernel::munmap, debug_str),
+        BRK => do_syscall!(1, cpu, kernel::brk, debug_str),
+        RT_SIGACTION => do_syscall!(4, cpu, kernel::rt_sigaction, debug_str),
+        RT_SIGPROCMASK => do_syscall!(4, cpu, kernel::rt_sigprocmask, debug_str),
+        IOCTL => do_syscall!(3, cpu, kernel::ioctl, debug_str),
+        PREAD64 => do_syscall!(4, cpu, kernel::pread64, debug_str),
+        WRITEV => do_syscall!(3, cpu, kernel::writev, debug_str),
+        ACCESS => do_syscall!(2, cpu, kernel::access, debug_str),
+        MREMAP => do_syscall!(5, cpu, kernel::mremap, debug_str),
+        GETPID => do_syscall!(0, cpu, kernel::getpid, debug_str),
+        SOCKET => do_syscall!(3, cpu, kernel::socket, debug_str),
+        CONNECT => do_syscall!(3, cpu, kernel::connect, debug_str),
+        ACCEPT => do_syscall!(3, cpu, kernel::accept, debug_str),
+        SENDTO => do_syscall!(6, cpu, kernel::sendto, debug_str),
+        RECVFROM => do_syscall!(6, cpu, kernel::recvfrom, debug_str),
+        SENDMSG => do_syscall!(3, cpu, kernel::sendmsg, debug_str),
+        RECVMSG => do_syscall!(3, cpu, kernel::recvmsg, debug_str),
+        SHUTDOWN => do_syscall!(2, cpu, kernel::shutdown, debug_str),
+        BIND => do_syscall!(3, cpu, kernel::bind, debug_str),
+        LISTEN => do_syscall!(2, cpu, kernel::listen, debug_str),
+        GETSOCKNAME => do_syscall!(3, cpu, kernel::getsockname, debug_str),
+        GETPEERNAME => do_syscall!(3, cpu, kernel::getpeername, debug_str),
+        SOCKETPAIR => do_syscall!(4, cpu, kernel::socketpair, debug_str),
+        SETSOCKOPT => do_syscall!(5, cpu, kernel::setsockopt, debug_str),
+        GETSOCKOPT => do_syscall!(5, cpu, kernel::getsockopt, debug_str),
+        EXECVE => do_syscall!(3, cpu, kernel::execve, debug_str),
+        UNAME => do_syscall!(1, cpu, kernel::uname, debug_str),
+        FCNTL => do_syscall!(3, cpu, kernel::fcntl, debug_str),
+        GETTIMEOFDAY => do_syscall!(2, cpu, kernel::gettimeofday, debug_str),
+        STATFS => do_syscall!(2, cpu, kernel::statfs, debug_str),
+        ARCH_PRCTL => do_syscall!(2, cpu, kernel::arch_prctl, debug_str),
+        GETTID => do_syscall!(0, cpu, kernel::gettid, debug_str),
+        TIME => do_syscall!(1, cpu, kernel::time, debug_str),
+        EPOLL_CREATE => do_syscall!(1, cpu, kernel::epoll_create, debug_str),
+        SET_TID_ADDRESS => do_syscall!(1, cpu, kernel::set_tid_address, debug_str),
+        FADVISE64 => do_syscall!(4, cpu, kernel::fadvise64, debug_str),
+        CLOCK_GETTIME => do_syscall!(2, cpu, kernel::clock_gettime, debug_str),
+        EXIT_GROUP => {
+            cpu.stop(StopReason::ProcessExit).unwrap();
+            Ok(0)
+        } // TODO: Implement properly and propagate exit code
+        EPOLL_WAIT => do_syscall!(4, cpu, kernel::epoll_wait, debug_str),
+        EPOLL_CTL => do_syscall!(4, cpu, kernel::epoll_ctl, debug_str),
+        OPENAT => do_syscall!(4, cpu, kernel::openat, debug_str),
+        NEWFSTATAT => do_syscall!(4, cpu, kernel::newfstatat, debug_str),
+        SET_ROBUST_LIST => do_syscall!(2, cpu, kernel::set_robust_list, debug_str),
+        EPOLL_PWAIT => do_syscall!(6, cpu, kernel::epoll_pwait, debug_str),
+        SIGNALFD4 => do_syscall!(4, cpu, kernel::signalfd4, debug_str),
+        EPOLL_CREATE1 => do_syscall!(1, cpu, kernel::epoll_create1, debug_str),
+        PRLIMIT64 => do_syscall!(4, cpu, kernel::prlimit64, debug_str),
+        GETRANDOM => do_syscall!(3, cpu, kernel::getrandom, debug_str),
+        RSEQ => do_syscall!(4, cpu, kernel::rseq, debug_str),
+        _ => {
+            debug_str = format!("(rax: {})", rax);
+            unknown_syscall = true;
+            Err(LinuxKernelError::EINVAL)
+        }
+    };
+    let rax = match result {
+        Ok(rax) => {
+            debug_str = format!("SYSCALL: {:?} {} -> 0x{:X}", syscall, debug_str, rax);
+            rax
+        }
+        Err(e) => {
+            debug_str = format!("SYSCALL: {:?} {} -> 0x{:X} ({})", syscall, debug_str, u64::from(e), e.describe());
+            e.into()
+        }
+    };
+    if unknown_syscall {
+        error!("SYSCALL NOT IMPLEMENTED: {}", debug_str);
+        cpu.stop(StopReason::MissingSyscall).unwrap();
+    } else {
+        trace!("{}", debug_str);
+    }
+    cpu.reg_write(RegisterX86::RAX.into(), rax).unwrap();
+}
+
+impl<'a, CpuT, Endianness> LinuxX86Scheduler<'a, CpuT, Endianness>
+where
+    CpuT: CPU + MMU + Hooks<'a>,
+    Endianness: ByteOrder + 'static,
+{
+    pub fn new(
+        system: Rc<System<Endianness>>,
+        initial_task: LinuxKernelTask<Endianness, X86>,
+        cpu: Rc<RefCell<CpuT>>,
+        binary_path: PathBuf,
+        binary_args: &[&str],
+        binary_env: &[&str],
+    ) -> Result<LinuxX86Scheduler<'a, CpuT, Endianness>, GenericError> {
+        let cpu_context_handle = cpu.borrow_mut().create_context()?;
+        let mut sched = LinuxX86Scheduler {
+            system,
+            context: Rc::new(RefCell::new(SchedulerContext {
+                tasks: Default::default(),
+            })),
+            cpu,
+            cpu_context_handle,
+            phantom: Default::default(),
+        };
+
+        sched.setup_initial_task(initial_task, binary_path, binary_args, binary_env)?;
+
+        sched.setup_cpu()?;
+
+        Ok(sched)
+    }
+
+    fn setup_cpu(&mut self) -> Result<(), GenericError> {
+        let mut cpu = self.cpu.borrow_mut();
+
+        // TODO: Potentially move this to the clock setup?
+        let timestep_system = self.system.clone();
+        cpu.add_block_hook(Box::new(move |_, _, instrs| {
+            timestep_system.clock.borrow_mut().do_timestep(instrs);
+        }));
+
+        let syscall_context = self.context.clone();
+        let syscall_system = self.system.clone();
+        cpu.add_syscall_hook(
+            EVAddr::from(1),
+            EVAddr::from(0),
+            Box::new(move |cpu: &mut CpuT| {
+                let mut context = syscall_context.borrow_mut();
+                let current_task = syscall_system.current_task.borrow().unwrap();
+                let task = context.tasks.get_mut(&current_task).unwrap();
+                syscall(cpu, task);
+            }),
+        );
+
+        cpu.add_unmapped_mem_hook(
+            1.into(),
+            0.into(),
+            Box::new(move |_, action, addr, size, _| {
+                trace!("{:?} on {:#X} with size {} ", action, addr, size);
+                false
+            }),
+        );
+
+        cpu.save_context(self.cpu_context_handle)?;
+        Ok(())
+    }
+
+    fn setup_initial_task(
+        &mut self,
+        mut initial_task: LinuxKernelTask<Endianness, X86>,
+        binary_path: PathBuf,
+        binary_args: &[&str],
+        binary_env: &[&str],
+    ) -> Result<(), GenericError> {
+        initial_task.add_stdio_handles();
+
+        let mut cpu = self.cpu.borrow_mut();
+        initial_task.load_binary(&mut *cpu, binary_path.as_path(), binary_args, binary_env)?;
+        *self.system.current_task.borrow_mut() = Some(initial_task.task_id());
+        let mut context = self.context.borrow_mut();
+        context
+            .tasks
+            .try_insert(initial_task.task_id(), initial_task)
+            .map_err(|_| GenericError::from(CPUError::TaskExists))?;
+        Ok(())
+    }
 }
 
 #[repr(u64)]
@@ -528,175 +712,4 @@ enum SYSCALL {
     PROCESS_MRELEASE   = 448,
     #[default]
     NONE               = !0,
-}
-
-fn syscall<Endianness: ByteOrder + 'static>(
-    cpu: &mut (impl CPU + MMU),
-    kernel: &mut LinuxKernelTask<Endianness, X86>,
-) {
-    let rax = cpu.reg_read(RegisterX86::RAX.into()).unwrap();
-    let mut debug_str = String::new();
-    let syscall = SYSCALL::from(rax);
-    let mut unknown_syscall = false;
-    use SYSCALL::*;
-    let result = match SYSCALL::from(rax) {
-        READ => do_syscall!(3, cpu, kernel::read, debug_str),
-        WRITE => do_syscall!(3, cpu, kernel::write, debug_str),
-        CLOSE => do_syscall!(1, cpu, kernel::close, debug_str),
-        STAT => do_syscall!(2, cpu, kernel::stat, debug_str),
-        FSTAT => do_syscall!(2, cpu, kernel::fstat, debug_str),
-        MMAP => do_syscall!(6, cpu, kernel::mmap, debug_str),
-        MPROTECT => do_syscall!(3, cpu, kernel::mprotect, debug_str),
-        MUNMAP => do_syscall!(2, cpu, kernel::munmap, debug_str),
-        BRK => do_syscall!(1, cpu, kernel::brk, debug_str),
-        RT_SIGACTION => do_syscall!(4, cpu, kernel::rt_sigaction, debug_str),
-        RT_SIGPROCMASK => do_syscall!(4, cpu, kernel::rt_sigprocmask, debug_str),
-        IOCTL => do_syscall!(3, cpu, kernel::ioctl, debug_str),
-        PREAD64 => do_syscall!(4, cpu, kernel::pread64, debug_str),
-        WRITEV => do_syscall!(3, cpu, kernel::writev, debug_str),
-        ACCESS => do_syscall!(2, cpu, kernel::access, debug_str),
-        MREMAP => do_syscall!(5, cpu, kernel::mremap, debug_str),
-        GETPID => do_syscall!(0, cpu, kernel::getpid, debug_str),
-        SOCKET => do_syscall!(3, cpu, kernel::socket, debug_str),
-        CONNECT => do_syscall!(3, cpu, kernel::connect, debug_str),
-        ACCEPT => do_syscall!(3, cpu, kernel::accept, debug_str),
-        SENDTO => do_syscall!(6, cpu, kernel::sendto, debug_str),
-        RECVFROM => do_syscall!(6, cpu, kernel::recvfrom, debug_str),
-        SENDMSG => do_syscall!(3, cpu, kernel::sendmsg, debug_str),
-        RECVMSG => do_syscall!(3, cpu, kernel::recvmsg, debug_str),
-        SHUTDOWN => do_syscall!(2, cpu, kernel::shutdown, debug_str),
-        BIND => do_syscall!(3, cpu, kernel::bind, debug_str),
-        LISTEN => do_syscall!(2, cpu, kernel::listen, debug_str),
-        GETSOCKNAME => do_syscall!(3, cpu, kernel::getsockname, debug_str),
-        GETPEERNAME => do_syscall!(3, cpu, kernel::getpeername, debug_str),
-        SOCKETPAIR => do_syscall!(4, cpu, kernel::socketpair, debug_str),
-        SETSOCKOPT => do_syscall!(5, cpu, kernel::setsockopt, debug_str),
-        GETSOCKOPT => do_syscall!(5, cpu, kernel::getsockopt, debug_str),
-        EXECVE => do_syscall!(3, cpu, kernel::execve, debug_str),
-        UNAME => do_syscall!(1, cpu, kernel::uname, debug_str),
-        FCNTL => do_syscall!(3, cpu, kernel::fcntl, debug_str),
-        GETTIMEOFDAY => do_syscall!(2, cpu, kernel::gettimeofday, debug_str),
-        STATFS => do_syscall!(2, cpu, kernel::statfs, debug_str),
-        ARCH_PRCTL => do_syscall!(2, cpu, kernel::arch_prctl, debug_str),
-        GETTID => do_syscall!(0, cpu, kernel::gettid, debug_str),
-        TIME => do_syscall!(1, cpu, kernel::time, debug_str),
-        EPOLL_CREATE => do_syscall!(1, cpu, kernel::epoll_create, debug_str),
-        SET_TID_ADDRESS => do_syscall!(1, cpu, kernel::set_tid_address, debug_str),
-        FADVISE64 => do_syscall!(4, cpu, kernel::fadvise64, debug_str),
-        CLOCK_GETTIME => do_syscall!(2, cpu, kernel::clock_gettime, debug_str),
-        EXIT_GROUP => {
-            cpu.stop(StopReason::ProcessExit).unwrap();
-            Ok(0)
-        } // TODO: Implement properly and propagate exit code
-        EPOLL_WAIT => do_syscall!(4, cpu, kernel::epoll_wait, debug_str),
-        EPOLL_CTL => do_syscall!(4, cpu, kernel::epoll_ctl, debug_str),
-        OPENAT => do_syscall!(4, cpu, kernel::openat, debug_str),
-        NEWFSTATAT => do_syscall!(4, cpu, kernel::newfstatat, debug_str),
-        SET_ROBUST_LIST => do_syscall!(2, cpu, kernel::set_robust_list, debug_str),
-        EPOLL_PWAIT => do_syscall!(6, cpu, kernel::epoll_pwait, debug_str),
-        SIGNALFD4 => do_syscall!(4, cpu, kernel::signalfd4, debug_str),
-        EPOLL_CREATE1 => do_syscall!(1, cpu, kernel::epoll_create1, debug_str),
-        PRLIMIT64 => do_syscall!(4, cpu, kernel::prlimit64, debug_str),
-        GETRANDOM => do_syscall!(3, cpu, kernel::getrandom, debug_str),
-        RSEQ => do_syscall!(4, cpu, kernel::rseq, debug_str),
-        _ => {
-            debug_str = format!("(rax: {})", rax);
-            unknown_syscall = true;
-            Err(LinuxKernelError::EINVAL)
-        }
-    };
-    let rax = match result {
-        Ok(rax) => {
-            debug_str = format!("SYSCALL: {:?} {} -> 0x{:X}", syscall, debug_str, rax);
-            rax
-        }
-        Err(e) => {
-            debug_str = format!("SYSCALL: {:?} {} -> 0x{:X} ({})", syscall, debug_str, u64::from(e), e.describe());
-            e.into()
-        }
-    };
-    if unknown_syscall {
-        error!("SYSCALL NOT IMPLEMENTED: {}", debug_str);
-        cpu.stop(StopReason::MissingSyscall).unwrap();
-    } else {
-        trace!("{}", debug_str);
-    }
-    cpu.reg_write(RegisterX86::RAX.into(), rax).unwrap();
-}
-
-impl<'a, CpuT, Endianness> LinuxX86Scheduler<'a, CpuT, Endianness>
-where
-    CpuT: CPU + MMU + Hooks<'a>,
-    Endianness: ByteOrder + 'static,
-{
-    pub fn new(
-        system: Rc<System<Endianness>>,
-        initial_task: LinuxKernelTask<Endianness, X86>,
-        cpu: Rc<RefCell<CpuT>>,
-        binary_path: PathBuf,
-        binary_args: &[&str],
-        binary_env: &[&str],
-    ) -> Result<LinuxX86Scheduler<'a, CpuT, Endianness>, GenericError> {
-        let cpu_context_handle = cpu.borrow_mut().create_context()?;
-        let mut sched = LinuxX86Scheduler {
-            system,
-            context: Rc::new(RefCell::new(SchedulerContext {
-                current_task: TaskId::new(42, 1),
-                tasks: Default::default(),
-            })),
-            cpu,
-            cpu_context_handle,
-            phantom: Default::default(),
-        };
-
-        sched.setup_initial_task(initial_task, binary_path, binary_args, binary_env)?;
-
-        sched.setup_cpu()?;
-
-        Ok(sched)
-    }
-
-    fn setup_cpu(&mut self) -> Result<(), GenericError> {
-        let mut cpu = self.cpu.borrow_mut();
-
-        // TODO: Potentially move this to the clock setup?
-        let timestep_system = self.system.clone();
-        cpu.add_block_hook(Box::new(move |_, _, instrs| {
-            timestep_system.clock.borrow_mut().do_timestep(instrs);
-        }));
-
-        let syscall_context = self.context.clone();
-        cpu.add_syscall_hook(
-            EVAddr::from(1),
-            EVAddr::from(0),
-            Box::new(move |cpu: &mut CpuT| {
-                let mut context = syscall_context.borrow_mut();
-                let current_task = context.current_task;
-                let task = context.tasks.get_mut(&current_task).unwrap();
-                syscall(cpu, task);
-            }),
-        );
-        cpu.save_context(self.cpu_context_handle)?;
-        Ok(())
-    }
-
-    fn setup_initial_task(
-        &mut self,
-        mut initial_task: LinuxKernelTask<Endianness, X86>,
-        binary_path: PathBuf,
-        binary_args: &[&str],
-        binary_env: &[&str],
-    ) -> Result<(), GenericError> {
-        initial_task.add_stdio_handles();
-
-        let mut cpu = self.cpu.borrow_mut();
-        initial_task.load_binary(&mut *cpu, binary_path.as_path(), binary_args, binary_env)?;
-        let mut context = self.context.borrow_mut();
-        context.current_task = initial_task.task_id();
-        context
-            .tasks
-            .try_insert(initial_task.task_id(), initial_task)
-            .map_err(|_| GenericError::from(CPUError::TaskExists))?;
-        Ok(())
-    }
 }

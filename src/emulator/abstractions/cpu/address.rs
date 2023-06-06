@@ -1,10 +1,20 @@
-use std::ops::{Add, AddAssign, Sub};
+use std::fmt::{Debug, Formatter};
+use std::ops::{Add, AddAssign, BitAnd, Not, Sub};
 
 use derive_more::{Add, BitAnd, From, Into, Not, UpperHex};
 
 /// Emulated virtual address
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Add, From, Into, Not, UpperHex, BitAnd)]
+#[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Add, From, Into, Not, UpperHex, BitAnd)]
 pub struct EVAddr(u64);
+
+impl Debug for EVAddr {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "v{:#x?}", self.0)
+    }
+}
 
 impl Sub<usize> for EVAddr {
     type Output = EVAddr;
@@ -102,8 +112,17 @@ impl Sub<EVAddr> for EVAddr {
 pub const EVA_NULL: EVAddr = EVAddr(0);
 
 /// Emulated physical address
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Add, From, Into)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Add, From, Into)]
 pub struct EPAddr(u64);
+
+impl Debug for EPAddr {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "p{:#x?}", self.0)
+    }
+}
 
 impl Sub<usize> for EPAddr {
     type Output = EPAddr;

@@ -1,7 +1,7 @@
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
 use crate::emulator::abstractions::mmu::Permission;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct TLBEntry {
     pub virtual_address: EVAddr,
     pub physical_address: EPAddr,

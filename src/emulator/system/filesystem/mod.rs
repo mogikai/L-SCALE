@@ -33,7 +33,9 @@ pub enum FSError {
 }
 
 impl From<io::Error> for FSError {
-    fn from(_: io::Error) -> Self { FSError::Unknown }
+    fn from(_: io::Error) -> Self {
+        FSError::Unknown
+    }
 }
 
 pub type FSEntryId = usize;
@@ -103,11 +105,16 @@ impl<Endianness: ByteOrder> Filesystem<Endianness> {
             }
             let len = min(len, entry.stat.st_size as usize - pos);
             let mut read = 0;
-            let start_block = contents.range(..=pos).last().expect("Must exist since pos < size");
+            let start_block = contents
+                .range(..=pos)
+                .last()
+                .expect("Must exist since pos < size");
             let mut buffer = Vec::with_capacity(len);
 
             for block in contents.range(start_block.start..pos + len) {
-                read += self.data.read_block(pos + read, block, buffer.spare_capacity_mut())?;
+                read += self
+                    .data
+                    .read_block(pos + read, block, buffer.spare_capacity_mut())?;
                 unsafe {
                     buffer.set_len(read);
                 }
@@ -141,18 +148,22 @@ impl<Endianness: ByteOrder> Filesystem<Endianness> {
             let mut written = 0;
             if let Some(start_block) = start_block {
                 if start_block.contains(pos) {
-                    for block_start in
-                        contents.range(start_block.start..pos + data.len()).map(|b| b.start).collect::<Vec<_>>()
+                    for block_start in contents
+                        .range(start_block.start..pos + data.len())
+                        .map(|b| b.start)
+                        .collect::<Vec<_>>()
                     {
                         written +=
-                            self.data.write_to_block_cow(pos + written, &data[written..], contents, block_start)?;
+                            self.data
+                                .write_to_block_cow(pos + written, &data[written..], contents, block_start)?;
                     }
                 }
             }
 
             // Write the remaining data to a new block.
             if data.len() > written {
-                self.data.new_block(pos + written, contents, &data[written..])?;
+                self.data
+                    .new_block(pos + written, contents, &data[written..])?;
                 written = data.len();
             }
 
@@ -188,7 +199,8 @@ impl<Endianness: ByteOrder> Filesystem<Endianness> {
             if let File { contents } = &mut entry.contents {
                 self.current_size -= entry.stat.st_size as usize - new_size;
                 entry.stat.st_size = new_size as u64;
-                self.data.save_free_blocks(contents.split_off(&new_size).into_iter());
+                self.data
+                    .save_free_blocks(contents.split_off(&new_size).into_iter());
                 if let Some(block) = contents.iter().last().cloned() {
                     self.data.write_to_block_cow(
                         new_size,
@@ -271,7 +283,9 @@ impl<Endianness: ByteOrder> Filesystem<Endianness> {
         self.meta_info.resolve_last(None, path)
     }
 
-    fn print_tree(&self) { self.meta_info.print_tree(self.meta_info.root(), None); }
+    fn print_tree(&self) {
+        self.meta_info.print_tree(self.meta_info.root(), None);
+    }
 }
 
 impl<Endianness: ByteOrder> Restorable for Filesystem<Endianness> {
@@ -290,8 +304,12 @@ impl<Endianness: ByteOrder> Restorable for Filesystem<Endianness> {
         if self.current_snap == 0 {
             Err(FSError::Unknown)?
         }
-        let snap_marker = self.snap_markers.pop().expect("Must exist since current_snap > 0");
-        self.meta_info.restore_and_discard(snap_marker.meta_info_marker);
+        let snap_marker = self
+            .snap_markers
+            .pop()
+            .expect("Must exist since current_snap > 0");
+        self.meta_info
+            .restore_and_discard(snap_marker.meta_info_marker);
         self.data.restore_and_discard(snap_marker.data_marker);
         self.current_size = snap_marker.current_size;
         self.current_snap -= 1;
@@ -302,7 +320,10 @@ impl<Endianness: ByteOrder> Restorable for Filesystem<Endianness> {
         if self.current_snap == 0 {
             Err(FSError::Unknown)?
         }
-        let snap_marker = self.snap_markers.last().expect("Must exist since current_snap > 0");
+        let snap_marker = self
+            .snap_markers
+            .last()
+            .expect("Must exist since current_snap > 0");
         self.meta_info.restore(snap_marker.meta_info_marker);
         self.data.restore(snap_marker.data_marker);
         self.current_size = snap_marker.current_size;
@@ -321,7 +342,8 @@ fn load_dir<Endianness: ByteOrder>(
             let path = entry.path();
             let stat = entry.metadata().unwrap();
             if path.is_dir() {
-                fs.create_dir(&Path::new("/").join(path.strip_prefix(root).unwrap()), Some(stat.into())).unwrap();
+                fs.create_dir(&Path::new("/").join(path.strip_prefix(root).unwrap()), Some(stat.into()))
+                    .unwrap();
                 load_dir(fs, &path, root)?;
                 // FSEntry::DirEntry(Dir {}, Stats::from(stats))
             } else {
@@ -349,8 +371,14 @@ struct SnapMarker {
 
 const MASK4K: usize = 4 * (1 << 10) - 1;
 
-fn is_4k_aligned(val: usize) -> bool { val & MASK4K == 0 }
+fn is_4k_aligned(val: usize) -> bool {
+    val & MASK4K == 0
+}
 
-fn align_4k(val: usize) -> usize { (val + MASK4K) & !MASK4K }
+fn align_4k(val: usize) -> usize {
+    (val + MASK4K) & !MASK4K
+}
 
-fn align_4k_down(val: usize) -> usize { val & !MASK4K }
+fn align_4k_down(val: usize) -> usize {
+    val & !MASK4K
+}
