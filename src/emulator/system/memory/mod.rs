@@ -155,7 +155,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         assert!(old_layout.is_none());
 
         self.accessor(mmu, task_id)
-            .write_direct_down(stack_end, vec![b'A'; max_stack].as_slice())
+            .write_direct_down(stack_end, vec![b'\0'; max_stack].as_slice())
             .unwrap();
         Ok(())
     }

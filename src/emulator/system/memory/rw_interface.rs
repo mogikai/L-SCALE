@@ -1,3 +1,5 @@
+use std::ffi::CString;
+
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
@@ -113,7 +115,8 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&Vec<u8>, Endianness>
         address: EVAddr,
         data: &Vec<u8>,
     ) -> Result<usize, MemoryError> {
-        self.mmu.mem_write_bytes(self.translate(address)?, data.as_slice())
+        self.mmu
+            .mem_write_bytes(self.translate(address)?, data.as_slice())
     }
 
     fn write_direct_down(
@@ -171,7 +174,12 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&str, Endianness> for M
         address: EVAddr,
         data: &str,
     ) -> Result<usize, MemoryError> {
-        self.mmu.mem_write_bytes(self.translate(address)?, data.as_bytes())
+        self.mmu.mem_write_bytes(
+            self.translate(address)?,
+            CString::new(data)
+                .map_err(|_| MemoryError::ConversionError)?
+                .as_bytes_with_nul(),
+        )
     }
 
     fn write_direct_down(
@@ -179,7 +187,12 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&str, Endianness> for M
         address: EVAddr,
         data: &str,
     ) -> Result<usize, MemoryError> {
-        self.write_direct(address - data.len(), data)
+        self.write_direct_down(
+            address,
+            CString::new(data)
+                .map_err(|_| MemoryError::ConversionError)?
+                .as_bytes_with_nul(),
+        )
     }
 }
 
@@ -334,7 +347,11 @@ impl<Endianness: ByteOrder, MmuT: MMU, T: Decode<Endianness>> MemoryRead<T, Endi
         address: EVAddr,
         size: usize,
     ) -> Result<T, MemoryError> {
-        T::decode(self.mmu.mem_read_bytes(self.translate(address)?, size)?.as_slice())
+        T::decode(
+            self.mmu
+                .mem_read_bytes(self.translate(address)?, size)?
+                .as_slice(),
+        )
     }
 
     fn read_n(
@@ -358,7 +375,8 @@ impl<Endianness: ByteOrder, MmuT: MMU, T: Encode<Endianness>> MemoryWrite<T, End
         address: EVAddr,
         data: T,
     ) -> Result<usize, MemoryError> {
-        self.mmu.mem_write_bytes(self.translate(address)?, data.encode().as_slice())
+        self.mmu
+            .mem_write_bytes(self.translate(address)?, data.encode().as_slice())
     }
 }
 

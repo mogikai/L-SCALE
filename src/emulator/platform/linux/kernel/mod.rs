@@ -185,7 +185,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         binary_env: &[&str],
     ) -> Result<(), LinuxKernelError> {
         let (interpreter_path, entrypoint) = self.load_program_sections(cpu, binary_path)?;
-        self.initstack(cpu, binary_path, binary_args, binary_env, interpreter_path, entrypoint)
+        self.initstack(cpu, binary_path, binary_args, binary_env, interpreter_path, entrypoint)?;
+        cpu.reg_write(RegisterX86::RIP.into(), entrypoint.into())?;
+        Ok(())
     }
 
     fn load_program_sections(
@@ -202,8 +204,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let interpreter_path = Path::new(elf.interpreter.ok_or(LinuxKernelError::ENOENT)?).to_owned();
         let buffer = fs.read_all(fs.resolve_last(&interpreter_path)?)?;
         let interpreter = goblin::elf::Elf::parse(&buffer).unwrap();
-        cpu.reg_write(RegisterX86::RIP.into(), interpreter.entry)
-            .unwrap();
         //TODO iterator
         for ph in interpreter.program_headers {
             if ph.p_type == goblin::elf::program_header::PT_LOAD {
@@ -297,6 +297,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         println!("Stack dump:\n");
 
         hexdump::hexdump(memory.accessor(cpu, self.task_id).read_bytes(rsp, stack_base - rsp)?.as_slice());
+        debug!("Stack pointer after setup: {:#x?}", cpu.reg_read(RegisterX86::RSP.into()));
 
         Ok(())
     }
