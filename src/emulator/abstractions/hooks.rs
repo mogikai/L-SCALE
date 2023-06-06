@@ -27,4 +27,11 @@ pub trait Hooks<'a> {
         &mut self,
         hook: Box<dyn FnMut(&mut Self, EVAddr, MemoryAction) -> Option<TLBEntry> + 'a>,
     ) -> Result<(), GenericError>;
+
+    fn add_code_hook(
+        &mut self,
+        start: EVAddr,
+        end: EVAddr,
+        hook: Box<dyn FnMut(&mut Self, u64, u32) + 'a>,
+    ) -> Result<(), GenericError>;
 }

@@ -55,7 +55,8 @@ impl Mapping {
                 .guard_callback_id
                 .expect("If p_start is None then a guard_callback_id must exist"),
         })?;
-        Ok(TLBEntry::new(address, p_start + (address - self.v_start), self.permissions))
+        let result = TLBEntry::new(address, p_start + (address - self.v_start), self.permissions);
+        Ok(result)
     }
 }
 

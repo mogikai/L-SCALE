@@ -91,8 +91,8 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
     pub fn new() -> Self {
         Self {
             layouts: HashMap::new(),
-            physical_end: EPAddr::from(0),
-            process_mem_size: 1024 * 1024 * 1024, // 1 GiB
+            physical_end: align4k_down(EPAddr::from(0x8_0000_0000)),
+            process_mem_size: align4k_down(1024u64 * 1024u64 * 1024u64) as usize, // 1 GiB
             phantom_data: Default::default(),
         }
     }
@@ -119,7 +119,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         }
 
         let mut layout = Layout::new(
-            0x0000_7fff_ffff_ffff.into(),
+            0x0000_7fff_ffff_0000.into(),
             10 * 1024 * 1024, // 10 MiB
             0x0000_5000_0000_0000.into(),
             0x0000_3000_0000_0000.into(),
@@ -155,7 +155,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         assert!(old_layout.is_none());
 
         self.accessor(mmu, task_id)
-            .write_direct_down(stack_end, vec![b'\0'; max_stack].as_slice())
+            .write_direct_down(stack_end, vec![0u8; max_stack].as_slice())
             .unwrap();
         Ok(())
     }

@@ -69,6 +69,19 @@ impl<'a> Hooks<'a> for UCWrapper<'a> {
         self.uc_mut().add_tlb_hook(1, 0, trampoline)?;
         Ok(())
     }
+
+    fn add_code_hook(
+        &mut self,
+        start: EVAddr,
+        end: EVAddr,
+        mut hook: Box<dyn FnMut(&mut Self, u64, u32) + 'a>,
+    ) -> Result<(), GenericError> {
+        let trampoline = move |uc: &mut Unicorn<*mut UCWrapper<'a>>, address, size| {
+            hook(unsafe { &mut **uc.get_data_mut() }, address, size)
+        };
+        let _hook = self.uc_mut().add_block_hook(trampoline)?;
+        Ok(())
+    }
 }
 
 impl From<TLBEntry> for unicorn_engine::TlbEntry {

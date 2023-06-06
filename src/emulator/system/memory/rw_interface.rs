@@ -174,8 +174,8 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&str, Endianness> for M
         address: EVAddr,
         data: &str,
     ) -> Result<usize, MemoryError> {
-        self.mmu.mem_write_bytes(
-            self.translate(address)?,
+        self.write_direct(
+            address,
             CString::new(data)
                 .map_err(|_| MemoryError::ConversionError)?
                 .as_bytes_with_nul(),
@@ -204,10 +204,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&[u64], Endianness> for
     ) -> Result<usize, MemoryError> {
         let mut buf = vec![0u8; std::mem::size_of::<u64>() * data.len()];
         let mut i = 0;
-        for val in data {
-            Endianness::write_u64(&mut buf[i..i + std::mem::size_of::<u64>()], *val);
-            i += std::mem::size_of::<u64>();
-        }
+        Endianness::write_u64_into(data, &mut buf);
         self.mmu.mem_write_bytes(self.translate(address)?, &buf)
     }
 

@@ -22,6 +22,7 @@ pub enum MemoryError {
     LayoutNotFound,
     OutOfMemory,
     GuardRegionAccess { address: EVAddr, guard_callback_id: usize },
+    InvalidAlignment,
 }
 
 pub trait MMU {

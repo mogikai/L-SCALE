@@ -112,7 +112,7 @@ impl Sub<EVAddr> for EVAddr {
 pub const EVA_NULL: EVAddr = EVAddr(0);
 
 /// Emulated physical address
-#[derive(Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Add, From, Into)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Add, From, Into, BitAnd, Not)]
 pub struct EPAddr(u64);
 
 impl Debug for EPAddr {

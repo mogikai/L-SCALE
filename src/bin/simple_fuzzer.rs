@@ -1,21 +1,29 @@
+extern crate core;
+
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
 
-use byteorder::LittleEndian;
+use byteorder::{BigEndian, ByteOrder, LittleEndian};
+use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, IntelFormatter};
+use libc::access;
 use log::debug;
+use unicorn_engine::Unicorn;
 
+use fuzzyemu::emulator::abstractions::cpu::{RegisterX86, CPU};
 use fuzzyemu::emulator::abstractions::emulator::Emulator;
 use fuzzyemu::emulator::abstractions::errors::GenericError;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
+use fuzzyemu::emulator::abstractions::mmu::MMU;
 use fuzzyemu::emulator::platform::linux::architecture::x86::X86;
 use fuzzyemu::emulator::platform::linux::emulator::LinuxX86Scheduler;
+use fuzzyemu::emulator::platform::linux::kernel::task_id::TaskId;
 use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
 use fuzzyemu::emulator::system::clock::Clock;
 use fuzzyemu::emulator::system::filesystem::Filesystem;
 use fuzzyemu::emulator::system::hardware::unicorn::UCWrapper;
-use fuzzyemu::emulator::system::memory::Memory;
+use fuzzyemu::emulator::system::memory::{Memory, MemoryAccessor};
 use fuzzyemu::emulator::system::System;
 
 fn main() -> Result<(), GenericError> {
@@ -56,6 +64,17 @@ fn main() -> Result<(), GenericError> {
                 })
             }))
             .unwrap();
+        // let code_system = system.clone();
+        // cpu.borrow_mut()
+        //     .add_code_hook(
+        //         1.into(),
+        //         0.into(),
+        //         Box::new(move |uc, address, size| {
+        //             let mut memory = code_system.memory.borrow_mut();
+        //             _code_hook(uc, &mut memory, code_system.current_task.borrow().unwrap(), address, size)
+        //         }),
+        //     )
+        //     .unwrap();
 
         // TODO: Only one task for now. Need to implement a scheduler that switches tasks.
         let initial_task = LinuxKernelTask::<LittleEndian, X86>::new(system.clone(), 1337, 1);
@@ -71,7 +90,7 @@ fn main() -> Result<(), GenericError> {
         let mut scheduler = LinuxX86Scheduler::new(
             system.clone(),
             initial_task,
-            cpu,
+            cpu.clone(),
             PathBuf::from("/home/user/open62541_server"),
             &args,
             &env,
@@ -102,4 +121,75 @@ fn main() -> Result<(), GenericError> {
     );
     debug!("Total 3-edges executed: {:?}", blocks.values().cloned().reduce(|acc, b| acc + b).unwrap());
     Ok(())
+}
+
+fn _code_hook<'a, Endianness: ByteOrder>(
+    uc: &mut (impl CPU + MMU),
+    memory: &mut Memory<Endianness>,
+    current_task: TaskId,
+    address: u64,
+    size: u32,
+) {
+    let accessor = memory.accessor(uc, current_task);
+    let bytes: Vec<u8> = accessor
+        .read_bytes(address.into(), size.try_into().unwrap())
+        .unwrap();
+    let mut decoder = Decoder::with_ip(64, &bytes, address, DecoderOptions::NONE);
+
+    // Formatters: Masm*, Nasm*, Gas* (AT&T) and Intel* (XED).
+    // For fastest code, see `SpecializedFormatter` which is ~3.3x faster. Use it if formatting
+    // speed is more important than being able to re-assemble formatted instructions.
+    let mut formatter = IntelFormatter::new();
+
+    // Change some options, there are many more
+    //	formatter.options_mut().set_digit_separator("`");
+    formatter.options_mut().set_first_operand_char_index(10);
+
+    // String implements FormatterOutput
+    let mut output = String::new();
+
+    // Initialize this outside the loop because decode_out() writes to every field
+    let mut instruction = Instruction::default();
+
+    // The decoder also implements Iterator/IntoIterator so you could use a for loop:
+    //	  for instruction in &mut decoder { /* ... */ }
+    // or collect():
+    //	  let instructions: Vec<_> = decoder.into_iter().collect();
+    // but can_decode()/decode_out() is a little faster:
+    while decoder.can_decode() {
+        // There's also a decode() method that returns an instruction but that also
+        // means it copies an instruction (40 bytes):
+        //	 instruction = decoder.decode();
+        decoder.decode_out(&mut instruction);
+
+        // Format the instruction ("disassemble" it)
+        output.clear();
+        formatter.format(&instruction, &mut output);
+
+        // Eg. "00007FFAC46ACDB2 488DAC2400FFFFFF	 lea	   rbp,[rsp-100h]"
+        print!("{:016X} ", instruction.ip());
+        let start_index = (instruction.ip() - address) as usize;
+        let instr_bytes = &bytes[start_index..start_index + instruction.len()];
+        for b in instr_bytes.iter() {
+            print!("{:02X}", b);
+        }
+        if instr_bytes.len() < 10 {
+            for _ in 0..10 - instr_bytes.len() {
+                print!("  ");
+            }
+        }
+        println!(" {}", output);
+        // let rdi: u64 = uc.reg_read(RegisterX86::RDI.into()).unwrap();
+        // let rsp: u64 = uc.reg_read(RegisterX86::RSP.into()).unwrap();
+        // let rax: u64 = uc.reg_read(RegisterX86::RAX.into()).unwrap();
+        // let rbx: u64 = uc.reg_read(unicorn_engine::RegisterX86::RBX).unwrap();
+        // let rcx: u64 = uc.reg_read(unicorn_engine::RegisterX86::RCX).unwrap();
+        // let rdx: u64 = uc.reg_read(RegisterX86::RDX.into()).unwrap();
+        // println!("RDI: {rdi:x}");
+        // println!("RSP: {rsp:x}");
+        // println!("RAX: {rax:x}");
+        // println!("RBX: {rbx:x}");
+        // println!("RCX: {rcx:x}");
+        // println!("RDX: {rdx:x}");
+    }
 }

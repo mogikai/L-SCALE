@@ -7,6 +7,7 @@ use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::mmu::{MemoryError, Permission};
 use crate::emulator::abstractions::restore::Restorable;
+use crate::emulator::system::memory::is4kaligned;
 use crate::emulator::system::memory::tlb::mapping::{Contains, Mapping};
 use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 
@@ -69,6 +70,9 @@ impl TLB {
         size: usize,
         permissions: Permission,
     ) -> Result<(), MemoryError> {
+        if !is4kaligned(v_start) || !is4kaligned(p_start) || !is4kaligned(size as u64) {
+            Err(MemoryError::InvalidAlignment)?
+        }
         self.region_mapped(v_start, size)
             .not()
             .then(|| {
