@@ -1,4 +1,5 @@
 use std::cell::{Ref, RefCell, RefMut};
+use std::cmp::max;
 use std::collections::BTreeSet;
 use std::iter::once;
 use std::rc::Rc;
@@ -71,5 +72,15 @@ impl Layout {
         let (front, back) = memory.take(&start).unwrap().split(size);
         front.map(|b| memory.insert(b));
         back.ok_or(MemoryError::Unknown)
+    }
+
+    /// Finds free space for a requested virtual memory region.
+    /// The returned address is always larger than the layouts map_base.
+    pub fn find_free_virtual_memory(
+        &self,
+        hint: EVAddr,
+        size: usize,
+    ) -> Result<EVAddr, MemoryError> {
+        self.tlb.borrow().find_free_space(max(hint, self.map_base), size)
     }
 }

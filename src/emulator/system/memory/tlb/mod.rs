@@ -70,7 +70,7 @@ impl TLB {
         size: usize,
         permissions: Permission,
     ) -> Result<(), MemoryError> {
-        if !is4kaligned(v_start) || !is4kaligned(p_start) || !is4kaligned(size as u64) {
+        if !is4kaligned(v_start) || !is4kaligned(p_start) || !is4kaligned(size) {
             Err(MemoryError::InvalidAlignment)?
         }
         self.region_mapped(v_start, size)
@@ -126,6 +126,22 @@ impl TLB {
                 .expect("This operation should replace an existing mapping");
             Ok(())
         }
+    }
+
+    /// Finds the next free virtual memory region in this process groups mapping starting at `hint`.
+    pub fn find_free_space(
+        &self,
+        mut hint: EVAddr,
+        size: usize,
+    ) -> Result<EVAddr, MemoryError> {
+        for mapping in self.mappings.range(hint..) {
+            if mapping.contains(hint) || mapping.contains(hint + size - 1) {
+                hint = mapping.v_end();
+            } else {
+                break;
+            }
+        }
+        Ok(hint)
     }
 }
 

@@ -404,7 +404,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         _: &mut impl CPU,
     ) -> SyscallResult {
         // TODO: Implement multi threading / processing
-        Ok(self.task_id.pid as u64)
+        Ok(self.task_id.pid.into())
     }
 
     pub fn execve(

@@ -1,4 +1,6 @@
+use std::cmp::max;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::{Add, BitAnd, Not, Range};
 
@@ -22,24 +24,46 @@ const MASK4K: u64 = 4 * (1 << 10) - 1;
 
 fn align4k_up<T>(address: T) -> T
 where
-    T: Add<u64, Output = T> + Not<Output = T> + From<u64> + BitAnd<Output = T>,
+    T: Add<T, Output = T> + Not<Output = T> + TryFrom<u64> + BitAnd<Output = T> + Copy,
+    <T as TryFrom<u64>>::Error: Debug,
 {
-    (address + MASK4K) & !T::from(MASK4K)
+    let mask = T::try_from(MASK4K).expect("Address like type must be convertible from 64 bit values");
+    (address + mask) & !mask
 }
 
 fn align4k_down<T>(address: T) -> T
 where
-    T: Not<Output = T> + From<u64> + BitAnd<Output = T>,
+    T: Not<Output = T> + TryFrom<u64> + BitAnd<Output = T>,
+    <T as TryFrom<u64>>::Error: Debug,
 {
-    address & !T::from(MASK4K)
+    address & !T::try_from(MASK4K).expect("Address like type must be convertible from 64 bit values")
 }
 
-#[allow(unused)]
 fn is4kaligned<T>(address: T) -> bool
 where
-    T: From<u64> + BitAnd<Output = T> + Eq,
+    T: TryFrom<u64> + BitAnd<Output = T> + Eq + Copy,
+    <T as TryFrom<u64>>::Error: Debug,
 {
-    (address & T::from(MASK4K)) == T::from(0)
+    let mask = T::try_from(0).expect("Address like type must be convertible from 64 bit values");
+    (address & mask) == mask
+}
+
+macro_rules! layout {
+    ($self:ident, $task_id:ident) => {
+        $self
+            .layouts
+            .get(&$task_id)
+            .ok_or(MemoryError::LayoutNotFound)
+    };
+}
+
+macro_rules! layout_mut {
+    ($self:ident, $task_id:ident) => {
+        $self
+            .layouts
+            .get_mut(&$task_id)
+            .ok_or(MemoryError::LayoutNotFound)
+    };
 }
 
 pub struct MemoryAccessor<'a, Endianness: ByteOrder, MmuT: MMU> {
@@ -207,6 +231,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
                     .borrow()
                     .get_region(layout.heap_base)
                     .map(|region| region.v_start + region.size)
+                    .or(Ok(layout.heap_base))
             })
     }
 
@@ -243,20 +268,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             todo!()
         }
 
-        let layout = self
-            .layouts
-            .get_mut(&task_id)
-            .ok_or(MemoryError::LayoutNotFound)?;
-        if layout.tlb.borrow_mut().region_mapped(start, size) {
-            todo!()
-        }
-
-        let physical_region = layout.reserve_first_free_physical_region(size)?;
-        // TODO: This will leak physical regions if try_map fails.
-        layout
-            .tlb
-            .borrow_mut()
-            .try_map(start, physical_region.start, size, perms)?;
+        self.fixed_mapping(task_id, start, size, perms)?;
         self.accessor(mmu, task_id)
             .write_direct(vm_range.start, data)?;
         Ok(())
@@ -265,11 +277,18 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
     pub(crate) fn mmap(
         &mut self,
         task_id: TaskId,
-        addr: EVAddr,
+        address: EVAddr,
         size: usize,
         permissions: Permission,
     ) -> Result<EVAddr, MemoryError> {
-        todo!()
+        let size = align4k_up(size);
+        if !is4kaligned(address) {
+            return Err(MemoryError::NotAligned);
+        }
+        if size == 0 {
+            return Err(MemoryError::ZeroSize);
+        }
+        self.fixed_mapping(task_id, layout!(self, task_id)?.find_free_virtual_memory(address, size)?, size, permissions)
     }
 
     pub(crate) fn remap(
@@ -303,19 +322,27 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         todo!()
     }
 
-    // pub fn find_space_for_region(
-    //     &self,
-    //     hint: EVAddr,
-    //     size: u64,
-    // ) -> u64 {
-    //     let mut hint = max(hint, self.map_base);
-    //     for region in self.mappings.range(hint..) {
-    //         if region.contains(hint) || region.contains(hint + size - 1) {
-    //             hint = region.vaddr + region.size as EVAddr;
-    //         } else {
-    //             break;
-    //         }
-    //     }
-    //     hint
-    // }
+    /// Maps the virtual memory region address..address + start to the first free physical region.
+    /// Will fail if any address inside the virtual memory region is already mapped.
+    fn fixed_mapping(
+        &mut self,
+        task_id: TaskId,
+        address: EVAddr,
+        size: usize,
+        permissions: Permission,
+    ) -> Result<EVAddr, MemoryError> {
+        let layout = layout_mut!(self, task_id)?;
+        if layout.tlb.borrow_mut().region_mapped(address, size) {
+            Err(MemoryError::AlreadyMapped)?
+        }
+
+        let physical_region = layout.reserve_first_free_physical_region(size)?;
+        // TODO: This will leak physical regions if try_map fails.
+        layout
+            .tlb
+            .borrow_mut()
+            .try_map(address, physical_region.start, size, permissions)?;
+
+        Ok(address)
+    }
 }

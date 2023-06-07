@@ -58,6 +58,16 @@ impl Mapping {
         let result = TLBEntry::new(address, p_start + (address - self.v_start), self.permissions);
         Ok(result)
     }
+
+    /// Returns the end virtual memory address of this mapping
+    pub fn v_end(&self) -> EVAddr {
+        self.v_start + self.size
+    }
+
+    /// Returns the end physical memory address of this mapping if it has one.
+    pub fn p_end(&self) -> Option<EPAddr> {
+        self.p_start.map(|pa| pa + self.size)
+    }
 }
 
 impl PartialEq for Mapping {

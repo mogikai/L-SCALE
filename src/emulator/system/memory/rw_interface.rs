@@ -202,7 +202,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&[u64], Endianness> for
         address: EVAddr,
         data: &[u64],
     ) -> Result<usize, MemoryError> {
-        let mut buf = vec![0u8; std::mem::size_of::<u64>() * data.len()];
+        let mut buf = vec![0u8; std::mem::size_of_val(data)];
         let mut i = 0;
         Endianness::write_u64_into(data, &mut buf);
         self.mmu.mem_write_bytes(self.translate(address)?, &buf)
@@ -213,7 +213,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&[u64], Endianness> for
         address: EVAddr,
         data: &[u64],
     ) -> Result<usize, MemoryError> {
-        self.write_direct(address - (data.len() * std::mem::size_of::<u64>()), data)
+        self.write_direct(address - std::mem::size_of_val(data), data)
     }
 }
 
