@@ -79,7 +79,7 @@ impl<'a> Hooks<'a> for UCWrapper<'a> {
         let trampoline = move |uc: &mut Unicorn<*mut UCWrapper<'a>>, address, size| {
             hook(unsafe { &mut **uc.get_data_mut() }, address, size)
         };
-        let _hook = self.uc_mut().add_block_hook(trampoline)?;
+        let _hook = self.uc_mut().add_code_hook(start.into(), end.into(), trampoline)?;
         Ok(())
     }
 }

@@ -64,7 +64,7 @@ fn main() -> Result<(), GenericError> {
                 })
             }))
             .unwrap();
-        // let code_system = system.clone();
+        let code_system = system.clone();
         // cpu.borrow_mut()
         //     .add_code_hook(
         //         1.into(),
@@ -182,8 +182,8 @@ fn _code_hook<'a, Endianness: ByteOrder>(
         // let rdi: u64 = uc.reg_read(RegisterX86::RDI.into()).unwrap();
         // let rsp: u64 = uc.reg_read(RegisterX86::RSP.into()).unwrap();
         // let rax: u64 = uc.reg_read(RegisterX86::RAX.into()).unwrap();
-        // let rbx: u64 = uc.reg_read(unicorn_engine::RegisterX86::RBX).unwrap();
-        // let rcx: u64 = uc.reg_read(unicorn_engine::RegisterX86::RCX).unwrap();
+        // let rbx: u64 = uc.reg_read(RegisterX86::RBX.into()).unwrap();
+        // let rcx: u64 = uc.reg_read(RegisterX86::RCX.into()).unwrap();
         // let rdx: u64 = uc.reg_read(RegisterX86::RDX.into()).unwrap();
         // println!("RDI: {rdi:x}");
         // println!("RSP: {rsp:x}");
