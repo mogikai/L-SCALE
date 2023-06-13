@@ -143,6 +143,13 @@ impl TLB {
         }
         Ok(hint)
     }
+
+    pub fn remove(
+        &mut self,
+        mapping: Mapping,
+    ) -> bool {
+        return self.mappings.remove(&mapping);
+    }
 }
 
 impl Restorable for TLB {

@@ -319,7 +319,24 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         addr: EVAddr,
         size: usize,
     ) -> Result<(), MemoryError> {
-        todo!()
+        let start = align4k_down(addr);
+        let size = align4k_up(size);
+        let layout = self.layouts.get(&task_id).ok_or(MemoryError::Unknown)?;
+        let mut tlb = layout.tlb.borrow_mut();
+        let region = tlb.get_region(start)?;
+        if addr + size > region.v_start + region.size {
+            todo!("unmap multible regions");
+        }
+        if start > region.v_start {
+            tlb.resize(region.v_start, start - region.v_start);
+        } else {
+            tlb.remove(region);
+        }
+        if start + size < region.v_start + region.size {
+            //TODO check why Option<EPAddr> and maybe check better
+            tlb.try_map(start + size, region.p_start.unwrap() + (addr - region.v_start) + size, region.v_start + region.size - (start + size), region.permissions)?;
+        }
+        return Ok(());
     }
 
     /// Maps the virtual memory region address..address + start to the first free physical region.
