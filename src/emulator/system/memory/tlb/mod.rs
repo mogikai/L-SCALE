@@ -128,6 +128,21 @@ impl TLB {
         }
     }
 
+    pub fn setperms(
+        &mut self,
+        addr: EVAddr,
+        permissions: Permission,
+    ) -> Result<(), MemoryError> {
+        // TODO: What about the physical address space? We need to check if space is free and otherwise
+        //       create a new mapping?
+        let mut region = *self.mappings.get(&addr).ok_or(MemoryError::NotMapped)?;
+        region.permissions = permissions;
+        self.mappings
+            .replace(region)
+            .expect("This operation should replace an existing mapping");
+        return Ok(());
+    }
+
     /// Finds the next free virtual memory region in this process groups mapping starting at `hint`.
     pub fn find_free_space(
         &self,
