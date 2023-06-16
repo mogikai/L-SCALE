@@ -543,7 +543,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         new_rlim: EVAddr,
         old_rlim: EVAddr,
     ) -> SyscallResult {
-        let memory = self.system.memory.borrow();
         let new_rlim: Option<Rlimit> = if new_rlim != EVA_NULL {
             Some(
                 self.system
@@ -564,8 +563,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
                     todo!("Need to implement setting stack size")
                 }
                 Rlimit {
-                    rlim_cur: memory.stack_size(self.task_id)? as u64,
-                    rlim_max: memory.stack_size(self.task_id)? as u64,
+                    rlim_cur: self.system.memory.borrow().stack_size(self.task_id)? as u64,
+                    rlim_max: self.system.memory.borrow().stack_size(self.task_id)? as u64,
                 }
             }
             RLIMIT::CORE => todo!(),
