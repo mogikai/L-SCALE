@@ -62,7 +62,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         if fd >= 1 << 31 {
             Err(LinuxKernelError::EINVAL)?
         }
-        let addr = self.mmap_anon(mmu, addr, length, prot, flags).unwrap();
+        let addr = self.mmap_anon(mmu, addr, length, prot, flags)?;
         if addr == !EVA_NULL {
             Err(LinuxKernelError::EINVAL)?
         }

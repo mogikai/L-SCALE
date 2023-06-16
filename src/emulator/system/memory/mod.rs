@@ -144,7 +144,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
 
         let mut layout = Layout::new(
             0x0000_7fff_ffff_0000.into(),
-            10 * 1024 * 1024, // 10 MiB
+            500 * 1024 * 1024, // 10 MiB
             0x0000_5000_0000_0000.into(),
             0x0000_3000_0000_0000.into(),
             PhysicalRegion::new(self.physical_end, self.physical_end + self.process_mem_size),
