@@ -152,10 +152,11 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
 
         // TODO: Allocate heap on the fly
         // heap
+        // let heap_physical_region = layout.reserve_last_free_physical_region(layout.max_heap)?;
         // layout.tlb.borrow_mut().try_map(
         //     layout.heap_base,
-        //     layout.designated_physical_memory.start,
-        //     0,
+        //     heap_physical_region.start,
+        //     0x0000_5000_0000_0000.into()
         //     Permission::READ | Permission::WRITE,
         // )?;
 
@@ -245,13 +246,27 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             Err(MemoryError::Unknown)?
         }
         let heap_base = layout.heap_base;
-        let mut tlb = layout.tlb.borrow_mut();
-        let heap = tlb.get_region(heap_base)?;
-        tlb.resize(heap.v_start, addr - heap.v_start)?;
-        // if addr - heap.v_start > MAX_HEAP {
-        //     return Err(MemoryError::Unknown);
-        // }
-        Ok(())
+        trace!("get heap: {:#x}", u64::from(heap_base));
+        let heapstart = match layout.tlb.borrow_mut().get_region(heap_base) {
+            Ok(heap) => {
+                Some(heap.v_start)
+            },
+            Err(_) => {
+                None
+            },
+        };
+        match heapstart {
+            Some(heapstart) => {
+                layout.tlb.borrow_mut().resize(heapstart, addr - heapstart)?;
+                return Ok(());
+            }
+            None => {
+                let size: usize = align4k_up(addr - heap_base);
+                let physical_region = layout.reserve_first_free_physical_region(size)?;
+                layout.tlb.borrow_mut().try_map(heap_base, physical_region.start, size, Permission::READ | Permission::WRITE)?;
+                return Ok(());
+            },
+        }
     }
 
     pub(crate) fn map_data(
