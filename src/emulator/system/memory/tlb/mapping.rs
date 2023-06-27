@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::cmp::{max, min, Ordering};
 use std::ops::Range;
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
@@ -67,6 +67,46 @@ impl Mapping {
     /// Returns the end physical memory address of this mapping if it has one.
     pub fn p_end(&self) -> Option<EPAddr> {
         self.p_start.map(|pa| pa + self.size)
+    }
+
+    pub fn cutout(
+        self,
+        cutout_address: EVAddr,
+        cutout_size: usize,
+    ) -> Result<(Option<Mapping>, Mapping, Option<Mapping>), MemoryError> {
+        if !self.contains(cutout_address) || cutout_address + cutout_size > self.v_end() {
+            Err(MemoryError::Unknown)?
+        }
+
+        let offset = cutout_address - self.v_start;
+
+        let front = offset.gt(&0).then_some(Mapping {
+            v_start: self.v_start,
+            size: offset,
+            permissions: self.permissions,
+            p_start: self.p_start,
+            guard_callback_id: self.guard_callback_id,
+        });
+
+        let middle = Mapping {
+            v_start: self.v_start + offset,
+            size: cutout_size,
+            permissions: self.permissions,
+            p_start: self.p_start.map(|pa| pa + offset),
+            guard_callback_id: self.guard_callback_id,
+        };
+
+        let back = (self.v_start + offset + cutout_size)
+            .lt(&self.v_end())
+            .then_some(Mapping {
+                v_start: self.v_start + offset + cutout_size,
+                size: self.size - offset - cutout_size,
+                permissions: self.permissions,
+                p_start: self.p_start.map(|pa| pa + offset + cutout_size),
+                guard_callback_id: self.guard_callback_id,
+            });
+
+        Ok((front, middle, back))
     }
 }
 

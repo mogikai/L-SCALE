@@ -1,6 +1,7 @@
 use std::cmp::{min, Ordering};
 
 use crate::emulator::abstractions::cpu::address::EPAddr;
+use crate::emulator::system::memory::is4kaligned;
 
 #[derive(Debug, Copy, Clone)]
 pub struct PhysicalRegion {
@@ -13,6 +14,7 @@ impl PhysicalRegion {
         start: EPAddr,
         end: EPAddr,
     ) -> Self {
+        assert!(is4kaligned(start) && is4kaligned(end));
         Self { start, end }
     }
 
@@ -29,10 +31,8 @@ impl PhysicalRegion {
     ) -> bool {
         if self.end <= other.start {
             false
-        } else if other.end <= self.start {
-            false
         } else {
-            true
+            other.end > self.start
         }
     }
 

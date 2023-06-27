@@ -1,3 +1,4 @@
+use std::cmp::{max, min};
 use std::collections::BTreeSet;
 use std::ops::{BitOr, Not, Range};
 
@@ -8,6 +9,7 @@ use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::mmu::{MemoryError, Permission};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::memory::is4kaligned;
+use crate::emulator::system::memory::pregion::PhysicalRegion;
 use crate::emulator::system::memory::tlb::mapping::{Contains, Mapping};
 use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 
@@ -106,6 +108,53 @@ impl TLB {
             .next_back()
             .and_then(|region| region.contains(address).then_some(*region))
             .ok_or(MemoryError::NotMapped)
+    }
+
+    /// Get a reference to all regions that are contained in the specified range start..end
+    pub fn get_regions(
+        &self,
+        start: EVAddr,
+        end: EVAddr,
+    ) -> Result<Vec<&Mapping>, MemoryError> {
+        Ok(self
+            .mappings
+            .range(..end)
+            .rev()
+            .take_while(|m| start < m.v_end())
+            .collect())
+    }
+
+    /// Cuts out the region start..end from the mapped regions and returns the freed physical region(s)
+    pub fn unmap(
+        &mut self,
+        start: EVAddr,
+        size: usize,
+    ) -> Result<Vec<PhysicalRegion>, MemoryError> {
+        let mappings = self
+            .get_regions(start, start + size)?
+            .into_iter()
+            .map(|r| r.v_start)
+            .collect::<Vec<_>>();
+
+        Ok(mappings
+            .iter()
+            .filter_map(|vaddr| {
+                let mapping = self
+                    .mappings
+                    .take(vaddr)
+                    .expect("The mapping must exist since the addresses were previously gathered from the collection");
+                let (front, middle, back) = mapping
+                    .cutout(max(start, mapping.v_start), min(size, mapping.size))
+                    .expect("This cutout operation should never fail if implemented correctly");
+                // Reinsert remainders
+                front.map(|m| self.mappings.insert(m));
+                back.map(|m| self.mappings.insert(m));
+                // Return free physical regions if applicable
+                middle
+                    .p_start
+                    .map(|pa| PhysicalRegion::new(pa, pa + middle.size))
+            })
+            .collect::<Vec<_>>())
     }
 
     pub fn resize(

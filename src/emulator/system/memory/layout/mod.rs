@@ -74,6 +74,17 @@ impl Layout {
         back.ok_or(MemoryError::Unknown)
     }
 
+    /// Adds a currently unused physical region to the layouts set of free physical regions.
+    /// The layout may merge existing adjacent regions into one large region.
+    pub fn add_physical_region(
+        &mut self,
+        region: PhysicalRegion,
+    ) -> Result<(), MemoryError> {
+        // FIXME: Reusing physical regions currently causes a change in program behavior. Probably bug
+        // assert!(self.unused_physical_memory.borrow_mut().insert(region));
+        Ok(())
+    }
+
     /// Finds free space for a requested virtual memory region.
     /// The returned address is always larger than the layouts map_base.
     pub fn find_free_virtual_memory(

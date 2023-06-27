@@ -253,7 +253,7 @@ fn syscall<Endianness: ByteOrder + 'static>(
         error!("SYSCALL NOT IMPLEMENTED: {}", debug_str);
         cpu.stop(StopReason::MissingSyscall).unwrap();
     } else {
-        trace!("{}", debug_str);
+        debug!("{}", debug_str);
     }
     cpu.reg_write(RegisterX86::RAX.into(), rax).unwrap();
 }

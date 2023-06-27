@@ -144,7 +144,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
 
         let mut layout = Layout::new(
             0x0000_7fff_ffff_0000.into(),
-            500 * 1024 * 1024, // 10 MiB
+            50 * 1024 * 1024, // 50 MiB
             0x0000_5000_0000_0000.into(),
             0x0000_3000_0000_0000.into(),
             PhysicalRegion::new(self.physical_end, self.physical_end + self.process_mem_size),
@@ -248,24 +248,28 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         let heap_base = layout.heap_base;
         trace!("get heap: {:#x}", u64::from(heap_base));
         let heapstart = match layout.tlb.borrow_mut().get_region(heap_base) {
-            Ok(heap) => {
-                Some(heap.v_start)
-            },
-            Err(_) => {
-                None
-            },
+            Ok(heap) => Some(heap.v_start),
+            Err(_) => None,
         };
         match heapstart {
             Some(heapstart) => {
-                layout.tlb.borrow_mut().resize(heapstart, addr - heapstart)?;
+                layout
+                    .tlb
+                    .borrow_mut()
+                    .resize(heapstart, addr - heapstart)?;
                 return Ok(());
             }
             None => {
                 let size: usize = align4k_up(addr - heap_base);
                 let physical_region = layout.reserve_first_free_physical_region(size)?;
-                layout.tlb.borrow_mut().try_map(heap_base, physical_region.start, size, Permission::READ | Permission::WRITE)?;
+                layout.tlb.borrow_mut().try_map(
+                    heap_base,
+                    physical_region.start,
+                    size,
+                    Permission::READ | Permission::WRITE,
+                )?;
                 return Ok(());
-            },
+            }
         }
     }
 
@@ -343,7 +347,12 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
 
         if start + size < region.v_start + region.size {
             //TODO check why Option<EPAddr> and maybe check better
-            tlb.try_map(start + size, region.p_start.unwrap() + (addr - region.v_start) + size, region.v_start + region.size - (start + size), region.permissions)?;
+            tlb.try_map(
+                start + size,
+                region.p_start.unwrap() + (addr - region.v_start) + size,
+                region.v_start + region.size - (start + size),
+                region.permissions,
+            )?;
         }
         return Ok(());
         todo!()
@@ -352,27 +361,27 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
     pub(crate) fn unmap(
         &mut self,
         task_id: TaskId,
-        addr: EVAddr,
+        address: EVAddr,
         size: usize,
     ) -> Result<(), MemoryError> {
-        let start = align4k_down(addr);
+        if !is4kaligned(address) {
+            return Err(MemoryError::NotAligned);
+        }
+        if size == 0 {
+            return Err(MemoryError::ZeroSize);
+        }
+
+        let start = align4k_down(address);
         let size = align4k_up(size);
-        let layout = self.layouts.get(&task_id).ok_or(MemoryError::Unknown)?;
-        let mut tlb = layout.tlb.borrow_mut();
-        let region = tlb.get_region(start)?;
-        if addr + size > region.v_start + region.size {
-            todo!("unmap multible regions");
-        }
-        if start > region.v_start {
-            tlb.resize(region.v_start, start - region.v_start);
-        } else {
-            tlb.remove(region);
-        }
-        if start + size < region.v_start + region.size {
-            //TODO check why Option<EPAddr> and maybe check better
-            tlb.try_map(start + size, region.p_start.unwrap() + (addr - region.v_start) + size, region.v_start + region.size - (start + size), region.permissions)?;
-        }
-        return Ok(());
+        let layout = self.layouts.get_mut(&task_id).ok_or(MemoryError::Unknown)?;
+
+        let free_physical_regions = layout.tlb.borrow_mut().unmap(address, size)?;
+
+        free_physical_regions
+            .into_iter()
+            .try_for_each(|physical_region| layout.add_physical_region(physical_region))?;
+
+        Ok(())
     }
 
     /// Maps the virtual memory region address..address + start to the first free physical region.
