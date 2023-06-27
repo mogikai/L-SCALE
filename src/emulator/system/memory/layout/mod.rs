@@ -5,7 +5,8 @@ use std::iter::once;
 use std::rc::Rc;
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
-use crate::emulator::abstractions::mmu::MemoryError;
+use crate::emulator::abstractions::mmu::{MemoryError, Permission};
+use crate::emulator::system::memory::{align4k_up, is4kaligned};
 use crate::emulator::system::memory::pregion::PhysicalRegion;
 use crate::emulator::system::memory::tlb::TLB;
 
@@ -18,6 +19,7 @@ pub struct Layout {
     pub stack_end: EVAddr,
     pub max_stack: usize,
     pub heap_base: EVAddr,
+    heap_end: EVAddr,
     pub map_base: EVAddr,
     pub tlb: Rc<RefCell<TLB>>,
     /// A set of unused physical memory regions, shared between threads.
@@ -37,6 +39,7 @@ impl Layout {
             stack_end: stack_base,
             max_stack,
             heap_base,
+            heap_end: heap_base,
             map_base,
             unused_physical_memory: Rc::new(RefCell::new(BTreeSet::from_iter(once(designated_physical_memory)))),
             tlb: Rc::new(RefCell::new(TLB::new())),
@@ -92,6 +95,37 @@ impl Layout {
         hint: EVAddr,
         size: usize,
     ) -> Result<EVAddr, MemoryError> {
-        self.tlb.borrow().find_free_space(max(hint, self.map_base), size)
+        self.tlb
+            .borrow()
+            .find_free_space(max(hint, self.map_base), size)
+    }
+
+    pub fn increase_heap(
+        &mut self,
+        size: usize,
+    ) -> Result<(), MemoryError> {
+        if size == 0 || !is4kaligned(size) {
+            Err(MemoryError::InvalidSize)?
+        }
+
+        if self.tlb.borrow().region_mapped(self.heap_end, size) {
+            // Cannot extend the region since the address space after the region is already mapped
+            Err(MemoryError::AlreadyMapped)?
+        }
+
+        let physical_region = self.reserve_first_free_physical_region(size)?;
+        self.tlb.borrow_mut().try_map(
+            self.heap_end,
+            physical_region.start,
+            size,
+            Permission::READ | Permission::WRITE,
+        )?;
+        self.heap_end += size;
+
+        Ok(())
+    }
+
+    pub fn heap_end(&self) -> EVAddr {
+        self.heap_end
     }
 }

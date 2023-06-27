@@ -26,7 +26,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             self.system
                 .memory
                 .borrow_mut()
-                .unmap(self.task_id, addr, length as usize)?;
+                .unmap(mmu, self.task_id, addr, length as usize)?;
             addr
         } else {
             //self.memory.find_free(addr, length)
@@ -108,7 +108,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         self.system
             .memory
             .borrow_mut()
-            .unmap(self.task_id, addr, len as usize)?;
+            .unmap(mmu, self.task_id, addr, len as usize)?;
         Ok(0)
     }
 

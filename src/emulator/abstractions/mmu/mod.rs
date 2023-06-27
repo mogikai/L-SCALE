@@ -66,6 +66,10 @@ pub trait MMU {
     ) -> Result<usize, MemoryError> {
         self.mem_write_bytes(address - data.len(), data)
     }
+
+    fn flush_tlb(
+        &mut self,
+    ) -> Result<(), MemoryError>;
 }
 
 bitflags! {

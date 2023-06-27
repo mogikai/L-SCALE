@@ -38,6 +38,15 @@ impl Add<usize> for EVAddr {
     }
 }
 
+impl AddAssign<usize> for EVAddr {
+    fn add_assign(
+        &mut self,
+        rhs: usize,
+    ) {
+        self.0 += u64::try_from(rhs).expect("usize must be equal length to u64");
+    }
+}
+
 impl Add<usize> for &EVAddr {
     type Output = EVAddr;
 

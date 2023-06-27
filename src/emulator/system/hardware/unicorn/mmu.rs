@@ -43,6 +43,12 @@ impl MMU for UCWrapper<'_> {
         self.uc_mut().mem_write(address.into(), data)?;
         Ok(data.len())
     }
+
+    fn flush_tlb(
+        &mut self,
+    ) -> Result<(), MemoryError> {
+        Ok(self.uc_mut().ctl_flush_tlb()?)
+    }
 }
 
 impl From<MemType> for MemoryAction {

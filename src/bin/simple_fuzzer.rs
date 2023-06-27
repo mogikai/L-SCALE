@@ -84,7 +84,7 @@ fn main() -> Result<(), GenericError> {
         // let demo_handle = Box::new(ReadOnly::from(data));
         // kernel.borrow_mut().add_replacement_handle(0, demo_handle);
         let args = [];
-        let env = ["SHELL=/bin/sh", "LD_DEBUG=all"]; //, "LD_BIND_NOW=true"];
+        let env = ["SHELL=/bin/sh", "LD_DEBUG=all", "LD_BIND_NOW=true"];
                                                      // let eflags = cpu.borrow_mut().reg_read(RegisterX86::EFLAGS.into()).unwrap();
                                                      // cpu.borrow_mut().reg_write(RegisterX86::EFLAGS.into(), eflags | (1 << 22)).unwrap();
         let mut scheduler = LinuxX86Scheduler::new(
