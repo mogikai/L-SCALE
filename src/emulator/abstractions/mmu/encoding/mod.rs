@@ -83,6 +83,7 @@ where
     T: Encode<Endianness>,
 {
     fn encode(&self) -> Vec<u8> {
+        #[allow(suspicious_double_ref_op)]
         self.deref().encode()
     }
 }

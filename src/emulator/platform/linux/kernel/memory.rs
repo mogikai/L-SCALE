@@ -36,7 +36,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             .system
             .memory
             .borrow_mut()
-            .mmap(self.task_id, addr, length as usize, prot.try_into()?)
+            .mmap(mmu, self.task_id, addr, length as usize, prot.try_into()?)
         {
             Ok(addr) => addr,
             Err(e) => {

@@ -5,13 +5,11 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
 
-use byteorder::{BigEndian, ByteOrder, LittleEndian};
+use byteorder::{ByteOrder, LittleEndian};
 use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, IntelFormatter};
-use libc::access;
 use log::debug;
-use unicorn_engine::Unicorn;
 
-use fuzzyemu::emulator::abstractions::cpu::{RegisterX86, CPU};
+use fuzzyemu::emulator::abstractions::cpu::CPU;
 use fuzzyemu::emulator::abstractions::emulator::Emulator;
 use fuzzyemu::emulator::abstractions::errors::GenericError;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
@@ -23,7 +21,7 @@ use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
 use fuzzyemu::emulator::system::clock::Clock;
 use fuzzyemu::emulator::system::filesystem::Filesystem;
 use fuzzyemu::emulator::system::hardware::unicorn::UCWrapper;
-use fuzzyemu::emulator::system::memory::{Memory, MemoryAccessor};
+use fuzzyemu::emulator::system::memory::Memory;
 use fuzzyemu::emulator::system::System;
 
 fn main() -> Result<(), GenericError> {
@@ -64,7 +62,7 @@ fn main() -> Result<(), GenericError> {
                 })
             }))
             .unwrap();
-        let code_system = system.clone();
+        // let code_system = system.clone();
         // cpu.borrow_mut()
         //     .add_code_hook(
         //         1.into(),
@@ -85,8 +83,8 @@ fn main() -> Result<(), GenericError> {
         // kernel.borrow_mut().add_replacement_handle(0, demo_handle);
         let args = [];
         let env = ["SHELL=/bin/sh", "LD_DEBUG=all", "LD_BIND_NOW=true"];
-                                                     // let eflags = cpu.borrow_mut().reg_read(RegisterX86::EFLAGS.into()).unwrap();
-                                                     // cpu.borrow_mut().reg_write(RegisterX86::EFLAGS.into(), eflags | (1 << 22)).unwrap();
+        // let eflags = cpu.borrow_mut().reg_read(RegisterX86::EFLAGS.into()).unwrap();
+        // cpu.borrow_mut().reg_write(RegisterX86::EFLAGS.into(), eflags | (1 << 22)).unwrap();
         let mut scheduler = LinuxX86Scheduler::new(
             system.clone(),
             initial_task,

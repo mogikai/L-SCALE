@@ -258,11 +258,11 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
     ) -> Result<(), MemoryError> {
         let start = align4k_down(vm_range.start);
         let size = align4k_up(vm_range.end) - start;
-        if data.len() > size as usize {
+        if data.len() > size {
             todo!()
         }
 
-        self.fixed_mapping(task_id, start, size, perms)?;
+        self.fixed_mapping(mmu, task_id, start, size, perms)?;
         self.accessor(mmu, task_id)
             .write_direct(vm_range.start, data)?;
         Ok(())
@@ -270,6 +270,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
 
     pub(crate) fn mmap(
         &mut self,
+        mmu: &mut impl MMU,
         task_id: TaskId,
         address: EVAddr,
         size: usize,
@@ -282,7 +283,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         if size == 0 {
             return Err(MemoryError::ZeroSize);
         }
-        self.fixed_mapping(task_id, layout!(self, task_id)?.find_free_virtual_memory(address, size)?, size, permissions)
+        self.fixed_mapping(mmu, task_id, layout!(self, task_id)?.find_free_virtual_memory(address, size)?, size, permissions)
     }
 
     pub(crate) fn remap(
@@ -366,6 +367,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
     /// Will fail if any address inside the virtual memory region is already mapped.
     fn fixed_mapping(
         &mut self,
+        mmu: &mut impl MMU,
         task_id: TaskId,
         address: EVAddr,
         size: usize,
@@ -376,12 +378,16 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             Err(MemoryError::AlreadyMapped)?
         }
 
-        let physical_region = layout.reserve_first_free_physical_region(size, true)?;
+        let physical_region = layout.reserve_first_free_physical_region(size)?;
         // TODO: This will leak physical regions if try_map fails.
         layout
             .tlb
             .borrow_mut()
             .try_map(address, physical_region.start, size, permissions)?;
+
+        if physical_region.dirty {
+            mmu.mem_write_bytes(physical_region.start, &vec![0u8; physical_region.size()]);
+        }
 
         Ok(address)
     }

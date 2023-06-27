@@ -49,12 +49,11 @@ impl Layout {
     pub fn reserve_first_free_physical_region(
         &mut self,
         size: usize,
-        zero: bool,
     ) -> Result<PhysicalRegion, MemoryError> {
         let mut memory = self.unused_physical_memory.borrow_mut();
         let start = memory
             .iter()
-            .find(|region| size <= region.size() && !(region.dirty && zero))
+            .find(|region| size <= region.size())
             .map(|r| r.start)
             .ok_or(MemoryError::OutOfMemory)?;
         let (front, back) = memory.take(&start).unwrap().split(size);
@@ -115,7 +114,7 @@ impl Layout {
             Err(MemoryError::AlreadyMapped)?
         }
 
-        let physical_region = self.reserve_first_free_physical_region(size, false)?;
+        let physical_region = self.reserve_first_free_physical_region(size)?;
         self.tlb.borrow_mut().try_map(
             self.heap_end,
             physical_region.start,
