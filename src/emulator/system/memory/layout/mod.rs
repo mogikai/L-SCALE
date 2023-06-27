@@ -49,11 +49,12 @@ impl Layout {
     pub fn reserve_first_free_physical_region(
         &mut self,
         size: usize,
+        zero: bool,
     ) -> Result<PhysicalRegion, MemoryError> {
         let mut memory = self.unused_physical_memory.borrow_mut();
         let start = memory
             .iter()
-            .find(|region| size <= region.size())
+            .find(|region| size <= region.size() && !(region.dirty && zero))
             .map(|r| r.start)
             .ok_or(MemoryError::OutOfMemory)?;
         let (front, back) = memory.take(&start).unwrap().split(size);
@@ -81,10 +82,11 @@ impl Layout {
     /// The layout may merge existing adjacent regions into one large region.
     pub fn add_physical_region(
         &mut self,
-        region: PhysicalRegion,
+        mut region: PhysicalRegion,
     ) -> Result<(), MemoryError> {
         // FIXME: Reusing physical regions currently causes a change in program behavior. Probably bug
-        // assert!(self.unused_physical_memory.borrow_mut().insert(region));
+        region.set_dirty();
+        assert!(self.unused_physical_memory.borrow_mut().insert(region));
         Ok(())
     }
 
@@ -113,7 +115,7 @@ impl Layout {
             Err(MemoryError::AlreadyMapped)?
         }
 
-        let physical_region = self.reserve_first_free_physical_region(size)?;
+        let physical_region = self.reserve_first_free_physical_region(size, false)?;
         self.tlb.borrow_mut().try_map(
             self.heap_end,
             physical_region.start,

@@ -376,7 +376,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             Err(MemoryError::AlreadyMapped)?
         }
 
-        let physical_region = layout.reserve_first_free_physical_region(size)?;
+        let physical_region = layout.reserve_first_free_physical_region(size, true)?;
         // TODO: This will leak physical regions if try_map fails.
         layout
             .tlb

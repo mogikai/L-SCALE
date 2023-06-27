@@ -7,6 +7,7 @@ use crate::emulator::system::memory::is4kaligned;
 pub struct PhysicalRegion {
     pub start: EPAddr,
     pub end: EPAddr,
+    pub dirty: bool,
 }
 
 impl PhysicalRegion {
@@ -15,7 +16,7 @@ impl PhysicalRegion {
         end: EPAddr,
     ) -> Self {
         assert!(is4kaligned(start) && is4kaligned(end));
-        Self { start, end }
+        Self { start, end, dirty: false }
     }
 
     pub fn contains(
@@ -43,11 +44,13 @@ impl PhysicalRegion {
         let front = size.gt(&0).then(|| PhysicalRegion {
             start: self.start,
             end: self.start + min(size, self.size()),
+            dirty: self.dirty,
         });
 
         let back = size.lt(&self.size()).then(|| PhysicalRegion {
             start: self.start + size,
             end: self.end,
+            dirty: self.dirty,
         });
 
         (front, back)
@@ -55,6 +58,10 @@ impl PhysicalRegion {
 
     pub fn size(&self) -> usize {
         self.end - self.start
+    }
+
+    pub fn set_dirty(&mut self) {
+        self.dirty = true;
     }
 }
 
