@@ -262,7 +262,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             todo!()
         }
 
-        self.fixed_mapping(mmu, task_id, start, size, perms)?;
+        self.map_fixed(mmu, task_id, start, size, perms)?;
         self.accessor(mmu, task_id)
             .write_direct(vm_range.start, data)?;
         Ok(())
@@ -276,14 +276,13 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         size: usize,
         permissions: Permission,
     ) -> Result<EVAddr, MemoryError> {
-        let size = align4k_up(size);
-        if !is4kaligned(address) {
-            return Err(MemoryError::NotAligned);
-        }
-        if size == 0 {
-            return Err(MemoryError::ZeroSize);
-        }
-        self.fixed_mapping(mmu, task_id, layout!(self, task_id)?.find_free_virtual_memory(address, size)?, size, permissions)
+        self.map_fixed(
+            mmu,
+            task_id,
+            layout!(self, task_id)?.find_free_virtual_memory(address, size)?,
+            size,
+            permissions,
+        )
     }
 
     pub(crate) fn remap(
@@ -365,7 +364,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
 
     /// Maps the virtual memory region address..address + start to the first free physical region.
     /// Will fail if any address inside the virtual memory region is already mapped.
-    fn fixed_mapping(
+    pub fn map_fixed(
         &mut self,
         mmu: &mut impl MMU,
         task_id: TaskId,
@@ -373,6 +372,15 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         size: usize,
         permissions: Permission,
     ) -> Result<EVAddr, MemoryError> {
+        if !is4kaligned(address) {
+            Err(MemoryError::InvalidAlignment)?
+        }
+
+        let size = align4k_up(size);
+        if size == 0 {
+            Err(MemoryError::ZeroSize)?
+        }
+
         let layout = layout_mut!(self, task_id)?;
         if layout.tlb.borrow_mut().region_mapped(address, size) {
             Err(MemoryError::AlreadyMapped)?
@@ -386,7 +394,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             .try_map(address, physical_region.start, size, permissions)?;
 
         if physical_region.dirty {
-            mmu.mem_write_bytes(physical_region.start, &vec![0u8; physical_region.size()]);
+            mmu.mem_write_bytes(physical_region.start, &vec![0u8; physical_region.size()])?;
         }
 
         Ok(address)

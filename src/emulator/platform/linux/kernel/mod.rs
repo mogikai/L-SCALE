@@ -801,7 +801,7 @@ enum RLIMIT {
     INVALID,
 }
 
-impl<'a, Endianness: ByteOrder, Arch: Architecture> Restorable for LinuxKernelTask<Endianness, Arch> {
+impl<Endianness: ByteOrder, Arch: Architecture> Restorable for LinuxKernelTask<Endianness, Arch> {
     fn snapshot(&mut self) -> Result<(), GenericError> {
         todo!()
     }

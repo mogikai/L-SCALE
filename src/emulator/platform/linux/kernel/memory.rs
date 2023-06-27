@@ -1,3 +1,4 @@
+use bitflags::bitflags;
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
@@ -6,12 +7,26 @@ use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask, SyscallResult};
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
 
-// TODO: Bitflags?
-
-const MAP_ANONYMOUS: u64 = 0x20;
-const MAP_PRIVATE: u64 = 0x2;
-const MAP_FIXED: u64 = 0x10;
-const MAP_DENYWRITE: u64 = 0x0800;
+bitflags! {
+#[repr(C)]
+pub struct MMAP_FLAGS : u64 {
+        const MAP_SHARED            = 0x1;      // Share changes.
+        const MAP_PRIVATE           = 0x2;      // Changes are private.
+        const MAP_SHARED_VALIDATE   = 0x3;      // Share changes and validate extension flags.
+        const MAP_FIXED             = 0x10;     // Interpret addr exactly.
+        const MAP_ANONYMOUS         = 0x20;
+        const MAP_GROWSDOWN         = 0x00100;  // Stack-like segment.
+        const MAP_DENYWRITE         = 0x00800;  // ETXTBSY.
+        const MAP_EXECUTABLE        = 0x01000;  // Mark it as an executable.
+        const MAP_LOCKED            = 0x02000;  // Lock the mapping.
+        const MAP_NORESERVE         = 0x04000;  // Don't check for reservations.
+        const MAP_POPULATE          = 0x08000;  // Populate (prefault) pagetables.
+        const MAP_NONBLOCK          = 0x10000;  // Do not block on IO.
+        const MAP_STACK             = 0x20000;  // Allocation is for a stack.
+        const MAP_HUGETLB           = 0x40000;  // Create huge page mapping.
+        const MAP_SYNC              = 0x80000;  // Perform synchronous page faults for the mapping.
+    }
+}
 
 impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     fn mmap_anon(
@@ -20,31 +35,26 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         addr: EVAddr,
         length: u64,
         prot: u64,
-        flags: u64,
+        flags: MMAP_FLAGS,
     ) -> Result<EVAddr, LinuxKernelError> {
-        let addr = if (flags & MAP_FIXED) != 0 {
+        if flags.contains(MMAP_FLAGS::MAP_FIXED) {
             self.system
                 .memory
                 .borrow_mut()
                 .unmap(mmu, self.task_id, addr, length as usize)?;
-            addr
+
+            self.system
+                .memory
+                .borrow_mut()
+                .map_fixed(mmu, self.task_id, addr, length as usize, prot.try_into()?)
+                .map_err(|e| e.into())
         } else {
-            //self.memory.find_free(addr, length)
-            addr
-        };
-        let addr = match self
-            .system
-            .memory
-            .borrow_mut()
-            .mmap(mmu, self.task_id, addr, length as usize, prot.try_into()?)
-        {
-            Ok(addr) => addr,
-            Err(e) => {
-                println!("mmap error {:?}", e);
-                return Err(LinuxKernelError::EINVAL);
-            }
-        };
-        Ok(addr)
+            self.system
+                .memory
+                .borrow_mut()
+                .mmap(mmu, self.task_id, addr, length as usize, prot.try_into()?)
+                .map_err(|e| e.into())
+        }
     }
 
     fn mmap_private(
@@ -53,7 +63,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         addr: EVAddr,
         length: u64,
         prot: u64,
-        flags: u64,
+        flags: MMAP_FLAGS,
         fd: u64,
         offset: u64,
     ) -> Result<EVAddr, LinuxKernelError> {
@@ -85,15 +95,18 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         fd: u64,
         offset: u64,
     ) -> SyscallResult {
-        if (flags & !(MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED | MAP_DENYWRITE)) != 0 {
-            Err(LinuxKernelError::EINVAL)?
-        }
-        if (flags & MAP_ANONYMOUS) != 0 {
+        let flags = MMAP_FLAGS::from_bits_truncate(flags);
+        // if (flags & !(MAP_ANONYMOUS | MAP_PRIVATE | MAP_FIXED | MAP_DENYWRITE)) != 0 {
+        //     Err(LinuxKernelError::EINVAL)?
+        // }
+        if flags.contains(MMAP_FLAGS::MAP_ANONYMOUS) {
             Ok(self.mmap_anon(cpu, addr, length, prot, flags)?.into())
-        } else if (flags & MAP_PRIVATE) != 0 {
+        } else if flags.contains(MMAP_FLAGS::MAP_PRIVATE) {
             Ok(self
                 .mmap_private(cpu, addr, length, prot, flags, fd, offset)?
                 .into())
+        } else if flags.contains(MMAP_FLAGS::MAP_SHARED_VALIDATE) {
+            todo!("Implement MAP_SHARED_VALIDATE")
         } else {
             Err(LinuxKernelError::EINVAL)
         }
