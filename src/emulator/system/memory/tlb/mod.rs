@@ -125,31 +125,47 @@ impl TLB {
             .collect())
     }
 
+    /// Get a copy of all mappings that are contained in the specified range start..end
+    /// The mappings are returned in the order highest address to lowest address
+    pub fn get_mappings_copied(
+        &self,
+        start: EVAddr,
+        end: EVAddr,
+    ) -> Result<Vec<Mapping>, MemoryError> {
+        Ok(self
+            .mappings
+            .range(..end)
+            .rev()
+            .take_while(|m| start < m.v_end())
+            .copied()
+            .collect())
+    }
+
     /// Cuts out the region start..end from the mapped regions and returns the freed physical region(s)
     pub fn unmap(
         &mut self,
         start: EVAddr,
         size: usize,
     ) -> Result<Vec<PhysicalRegion>, MemoryError> {
-        let mappings = self
-            .get_mappings(start, start + size)?
+        Ok(self
+            .get_mappings_copied(start, start + size)?
             .into_iter()
-            .map(|r| r.v_start)
-            .collect::<Vec<_>>();
-
-        Ok(mappings
-            .iter()
-            .filter_map(|vaddr| {
+            .filter_map(|m| {
+                // Remove the original mapping so we can modify it
                 let mapping = self
                     .mappings
-                    .take(vaddr)
+                    .take(&m.v_start)
                     .expect("The mapping must exist since the addresses were previously gathered from the collection");
+
+                // Clamp cutout to mapping boundaries with max and min
                 let (front, middle, back) = mapping
                     .cutout(max(start, mapping.v_start), min(size, mapping.size))
                     .expect("This cutout operation should never fail if implemented correctly");
+
                 // Reinsert remainders
                 front.map(|m| self.mappings.insert(m));
                 back.map(|m| self.mappings.insert(m));
+
                 // Return free physical regions if applicable
                 middle
                     .p_start
@@ -239,4 +255,11 @@ impl Restorable for TLB {
             .clone();
         Ok(())
     }
+}
+
+fn is_continuous(mappings: &[Mapping]) -> bool {
+    mappings
+        .iter()
+        .rfold(mappings.last().unwrap().v_start, |val, elem| elem.v_end() + (elem.v_start - val))
+        == mappings.first().unwrap().v_end()
 }
