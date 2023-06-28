@@ -23,6 +23,7 @@ pub enum MemoryError {
     OutOfMemory,
     GuardRegionAccess { address: EVAddr, guard_callback_id: usize },
     InvalidAlignment,
+    NotContinuous,
 }
 
 pub trait MMU {

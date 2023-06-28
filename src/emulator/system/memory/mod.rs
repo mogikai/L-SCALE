@@ -190,43 +190,30 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         task_id: TaskId,
         address: EVAddr,
     ) -> Option<TLBEntry> {
-        let layout = self.layouts.get(&task_id);
-        if layout.is_none() {
-            trace!("Could not fetch layout for address translation of {address:?}");
-        }
-        let tlb_entry = layout.and_then(|layout| layout.tlb.borrow().translate_virtual_address(address).ok());
-        trace!("Translation result for address {address:?} is {tlb_entry:?}");
-        tlb_entry
+        layout!(self, task_id)
+            .ok()
+            .and_then(|l| l.tlb.borrow().translate_virtual_address(address).ok())
     }
 
     pub(crate) fn stack_base(
         &self,
         task_id: TaskId,
     ) -> Result<EVAddr, MemoryError> {
-        self.layouts
-            .get(&task_id)
-            .map(|layout| layout.stack_end)
-            .ok_or(MemoryError::Unknown)
+        Ok(layout!(self, task_id)?.stack_end)
     }
 
     pub(crate) fn stack_size(
         &self,
         task_id: TaskId,
     ) -> Result<usize, MemoryError> {
-        self.layouts
-            .get(&task_id)
-            .map(|layout| layout.max_stack)
-            .ok_or(MemoryError::Unknown)
+        Ok(layout!(self, task_id)?.max_stack)
     }
 
     pub(crate) fn heap_end(
         &self,
         task_id: TaskId,
     ) -> Result<EVAddr, MemoryError> {
-        self.layouts
-            .get(&task_id)
-            .ok_or(MemoryError::LayoutNotFound)
-            .map(|layout| layout.heap_end())
+        Ok(layout!(self, task_id)?.heap_end())
     }
 
     pub(crate) fn realloc_heap(
@@ -234,7 +221,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         task_id: TaskId,
         new_heap_end: EVAddr,
     ) -> Result<(), MemoryError> {
-        let layout = self.layouts.get_mut(&task_id).ok_or(MemoryError::Unknown)?;
+        let layout = layout_mut!(self, task_id)?;
 
         if new_heap_end < layout.heap_base {
             Err(MemoryError::Unknown)?
@@ -300,8 +287,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         let start = align4k_down(addr);
         let size = align4k_up(size);
 
-        let layout = self.layouts.get(&task_id).ok_or(MemoryError::Unknown)?;
-        let mut tlb = layout.tlb.borrow_mut();
+        let mut tlb = layout!(self, task_id)?.tlb.borrow_mut();
 
         let region = tlb.get_mapping(start)?;
         if addr + size > region.v_start + region.size {
@@ -341,7 +327,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         }
 
         let start = align4k_down(address);
-        let layout = self.layouts.get_mut(&task_id).ok_or(MemoryError::Unknown)?;
+        let layout = layout_mut!(self, task_id)?;
 
         let free_physical_regions = layout.tlb.borrow_mut().unmap(address, size)?;
 

@@ -309,6 +309,7 @@ impl From<MemoryError> for LinuxKernelError {
         use MemoryError::*;
         match me {
             NotMapped => LinuxKernelError::EFAULT,
+            NotContinuous | OutOfMemory => LinuxKernelError::ENOMEM,
             _ => LinuxKernelError::EINVAL,
         }
     }
