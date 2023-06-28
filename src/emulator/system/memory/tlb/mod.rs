@@ -141,6 +141,29 @@ impl TLB {
             .collect())
     }
 
+    pub fn protect(
+        &mut self,
+        start: EVAddr,
+        size: usize,
+        permissions: Permission,
+    ) -> Result<(), MemoryError> {
+        let mappings = self.get_mappings_copied(start, start + size)?;
+        if !is_continuous(&mappings) {
+            Err(MemoryError::NotContinuous)?
+        }
+
+        for mapping in mappings.iter().rev() {
+            let vaddr = mapping.v_start;
+            let mapping = self.mappings.take(&vaddr).unwrap();
+            let (front, mut middle, back) = mapping.cutout(start, size)?;
+            middle.permissions = permissions;
+            front.map(|r| self.mappings.insert(r));
+            back.map(|r| self.mappings.insert(r));
+            self.mappings.insert(middle);
+        }
+        Ok(())
+    }
+
     /// Cuts out the region start..end from the mapped regions and returns the freed physical region(s)
     pub fn unmap(
         &mut self,
@@ -194,21 +217,6 @@ impl TLB {
         }
     }
 
-    pub fn setperms(
-        &mut self,
-        addr: EVAddr,
-        permissions: Permission,
-    ) -> Result<(), MemoryError> {
-        // TODO: What about the physical address space? We need to check if space is free and otherwise
-        //       create a new mapping?
-        let mut region = *self.mappings.get(&addr).ok_or(MemoryError::NotMapped)?;
-        region.permissions = permissions;
-        self.mappings
-            .replace(region)
-            .expect("This operation should replace an existing mapping");
-        return Ok(());
-    }
-
     /// Finds the next free virtual memory region in this process groups mapping starting at `hint`.
     pub fn find_free_space(
         &self,
@@ -257,7 +265,10 @@ impl Restorable for TLB {
     }
 }
 
+/// Takes a reversed list of mappings (the list is ordered highest to lowest start address)
+/// and checks if the mappings are continuous
 fn is_continuous(mappings: &[Mapping]) -> bool {
+    // FIXME: This has problems with overflow. Use a simple loop instead.
     mappings
         .iter()
         .rfold(mappings.last().unwrap().v_start, |val, elem| elem.v_end() + (elem.v_start - val))

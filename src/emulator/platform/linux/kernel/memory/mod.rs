@@ -2,11 +2,11 @@ use bitflags::bitflags;
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
-use crate::emulator::abstractions::mmu::{MMU, MREMAP_FLAGS};
+use crate::emulator::abstractions::mmu::{MemoryError, MMU, MREMAP_FLAGS};
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::kernel::memory::flags::MMAP_FLAGS;
 use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask, SyscallResult};
-use crate::emulator::system::memory::align4k_up;
+use crate::emulator::system::memory::{align4k_up, is4kaligned};
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
 
 pub mod flags;
@@ -98,6 +98,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         len: u64,
         prot: u64,
     ) -> SyscallResult {
+        if !is4kaligned(start) {
+            Err(MemoryError::NotAligned)?
+        }
         self.system
             .memory
             .borrow()

@@ -284,33 +284,10 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         size: usize,
         permissions: Permission,
     ) -> Result<(), MemoryError> {
-        let start = align4k_down(addr);
-        let size = align4k_up(size);
-
-        let mut tlb = layout!(self, task_id)?.tlb.borrow_mut();
-
-        let region = tlb.get_mapping(start)?;
-        if addr + size > region.v_start + region.size {
-            todo!("unmap multible regions");
-        }
-        if start > region.v_start {
-            tlb.resize(region.v_start, start - region.v_start);
-            tlb.try_map(start, region.p_start.unwrap() + (addr - region.v_start), size, permissions);
-        } else {
-            tlb.resize(region.v_start, size);
-            tlb.setperms(region.v_start, permissions);
-        }
-
-        if start + size < region.v_start + region.size {
-            //TODO check why Option<EPAddr> and maybe check better
-            tlb.try_map(
-                start + size,
-                region.p_start.unwrap() + (addr - region.v_start) + size,
-                region.v_start + region.size - (start + size),
-                region.permissions,
-            )?;
-        }
-        Ok(())
+        layout!(self, task_id)?
+            .tlb
+            .borrow_mut()
+            .protect(addr, align4k_up(size), permissions)
     }
 
     pub(crate) fn unmap(
