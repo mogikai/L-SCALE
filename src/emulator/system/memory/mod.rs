@@ -299,9 +299,11 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
     ) -> Result<(), MemoryError> {
         let start = align4k_down(addr);
         let size = align4k_up(size);
+
         let layout = self.layouts.get(&task_id).ok_or(MemoryError::Unknown)?;
         let mut tlb = layout.tlb.borrow_mut();
-        let region = tlb.get_region(start)?;
+
+        let region = tlb.get_mapping(start)?;
         if addr + size > region.v_start + region.size {
             todo!("unmap multible regions");
         }
@@ -322,8 +324,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
                 region.permissions,
             )?;
         }
-        return Ok(());
-        todo!()
+        Ok(())
     }
 
     pub(crate) fn unmap(

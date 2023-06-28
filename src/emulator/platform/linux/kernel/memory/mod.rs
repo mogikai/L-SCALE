@@ -93,7 +93,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
 
     pub fn mprotect(
         &mut self,
-        _: &mut impl MMU,
+        mmu: &mut impl MMU,
         start: EVAddr,
         len: u64,
         prot: u64,
@@ -102,6 +102,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             .memory
             .borrow()
             .protect(self.task_id, start, len as usize, prot.try_into().unwrap())?;
+        // Need to flush existing cache since permissions of cached entries might have changed.
+        mmu.flush_tlb()?;
         Ok(0)
     }
 }

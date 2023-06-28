@@ -93,12 +93,12 @@ impl TLB {
         &self,
         address: EVAddr,
     ) -> Result<TLBEntry, MemoryError> {
-        self.get_region(address)
+        self.get_mapping(address)
             .and_then(|region| region.make_tlb_entry(address))
     }
 
-    /// Looks up the region containing a given virtual address.
-    pub fn get_region(
+    /// Looks up the mapping containing a given virtual address.
+    pub fn get_mapping(
         &self,
         address: EVAddr,
     ) -> Result<Mapping, MemoryError> {
@@ -110,8 +110,9 @@ impl TLB {
             .ok_or(MemoryError::NotMapped)
     }
 
-    /// Get a reference to all regions that are contained in the specified range start..end
-    pub fn get_regions(
+    /// Get a reference to all mappings that are contained in the specified range start..end
+    /// The mappings are returned in the order highest address to lowest address
+    pub fn get_mappings(
         &self,
         start: EVAddr,
         end: EVAddr,
@@ -131,7 +132,7 @@ impl TLB {
         size: usize,
     ) -> Result<Vec<PhysicalRegion>, MemoryError> {
         let mappings = self
-            .get_regions(start, start + size)?
+            .get_mappings(start, start + size)?
             .into_iter()
             .map(|r| r.v_start)
             .collect::<Vec<_>>();
