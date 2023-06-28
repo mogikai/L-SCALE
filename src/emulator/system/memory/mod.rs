@@ -22,7 +22,7 @@ pub mod tlb;
 
 const MASK4K: u64 = 4 * (1 << 10) - 1;
 
-fn align4k_up<T>(address: T) -> T
+pub(crate) fn align4k_up<T>(address: T) -> T
 where
     T: Add<T, Output = T> + Not<Output = T> + TryFrom<u64> + BitAnd<Output = T> + Copy,
     <T as TryFrom<u64>>::Error: Debug,
@@ -31,7 +31,7 @@ where
     (address + mask) & !mask
 }
 
-fn align4k_down<T>(address: T) -> T
+pub(crate) fn align4k_down<T>(address: T) -> T
 where
     T: Not<Output = T> + TryFrom<u64> + BitAnd<Output = T>,
     <T as TryFrom<u64>>::Error: Debug,
@@ -39,7 +39,7 @@ where
     address & !T::try_from(MASK4K).expect("Address like type must be convertible from 64 bit values")
 }
 
-fn is4kaligned<T>(address: T) -> bool
+pub(crate) fn is4kaligned<T>(address: T) -> bool
 where
     T: TryFrom<u64> + BitAnd<Output = T> + Eq + Copy,
     <T as TryFrom<u64>>::Error: Debug,
@@ -262,7 +262,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             todo!()
         }
 
-        self.map_fixed(mmu, task_id, start, size, perms)?;
+        self.map_fixed(task_id, start, size, perms)?;
         self.accessor(mmu, task_id)
             .write_direct(vm_range.start, data)?;
         Ok(())
@@ -270,19 +270,12 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
 
     pub(crate) fn mmap(
         &mut self,
-        mmu: &mut impl MMU,
         task_id: TaskId,
         address: EVAddr,
         size: usize,
         permissions: Permission,
     ) -> Result<EVAddr, MemoryError> {
-        self.map_fixed(
-            mmu,
-            task_id,
-            layout!(self, task_id)?.find_free_virtual_memory(address, size)?,
-            size,
-            permissions,
-        )
+        self.map_fixed(task_id, layout!(self, task_id)?.find_free_virtual_memory(address, size)?, size, permissions)
     }
 
     pub(crate) fn remap(
@@ -335,12 +328,11 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
 
     pub(crate) fn unmap(
         &mut self,
-        mmu: &mut impl MMU,
         task_id: TaskId,
         address: EVAddr,
         size: usize,
     ) -> Result<(), MemoryError> {
-        if !is4kaligned(address) {
+        if !is4kaligned(address) || !is4kaligned(size) {
             return Err(MemoryError::NotAligned);
         }
         if size == 0 {
@@ -348,7 +340,6 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         }
 
         let start = align4k_down(address);
-        let size = align4k_up(size);
         let layout = self.layouts.get_mut(&task_id).ok_or(MemoryError::Unknown)?;
 
         let free_physical_regions = layout.tlb.borrow_mut().unmap(address, size)?;
@@ -357,8 +348,6 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             .into_iter()
             .try_for_each(|physical_region| layout.add_physical_region(physical_region))?;
 
-        mmu.flush_tlb()?;
-
         Ok(())
     }
 
@@ -366,17 +355,15 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
     /// Will fail if any address inside the virtual memory region is already mapped.
     pub fn map_fixed(
         &mut self,
-        mmu: &mut impl MMU,
         task_id: TaskId,
         address: EVAddr,
         size: usize,
         permissions: Permission,
     ) -> Result<EVAddr, MemoryError> {
-        if !is4kaligned(address) {
+        if !is4kaligned(address) || !is4kaligned(size) {
             Err(MemoryError::InvalidAlignment)?
         }
 
-        let size = align4k_up(size);
         if size == 0 {
             Err(MemoryError::ZeroSize)?
         }
@@ -392,10 +379,6 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             .tlb
             .borrow_mut()
             .try_map(address, physical_region.start, size, permissions)?;
-
-        if physical_region.dirty {
-            mmu.mem_write_bytes(physical_region.start, &vec![0u8; physical_region.size()])?;
-        }
 
         Ok(address)
     }

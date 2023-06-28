@@ -6,6 +6,7 @@ use crate::emulator::abstractions::mmu::{MMU, MREMAP_FLAGS};
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::kernel::memory::flags::MMAP_FLAGS;
 use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask, SyscallResult};
+use crate::emulator::system::memory::align4k_up;
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
 
 pub mod flags;
@@ -15,6 +16,7 @@ pub mod flags;
 ////////////////////////////////
 
 impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
+    #[allow(clippy::too_many_arguments)]
     pub fn mmap(
         &mut self,
         cpu: &mut impl MMU,
@@ -38,8 +40,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             todo!()
         }
 
-        if flags.contains(MMAP_FLAGS::MAP_ANONYMOUS) {
-            Ok(self.mmap_anon(cpu, addr, length, prot, flags)?.into())
+        if flags.contains(MMAP_FLAGS::MAP_SHARED) {
+            todo!("Implement MAP_SHARED")
         } else if flags.contains(MMAP_FLAGS::MAP_PRIVATE) {
             Ok(self
                 .mmap_private(cpu, addr, length, prot, flags, fd, offset)?
@@ -60,7 +62,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         self.system
             .memory
             .borrow_mut()
-            .unmap(mmu, self.task_id, addr, len as usize)?;
+            .unmap(self.task_id, addr, len as usize)?;
+        mmu.flush_tlb()?;
         Ok(0)
     }
 
@@ -108,34 +111,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
 /////////////////////////////////
 
 impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
-    fn mmap_anon(
-        &mut self,
-        mmu: &mut impl MMU,
-        addr: EVAddr,
-        length: u64,
-        prot: u64,
-        flags: MMAP_FLAGS,
-    ) -> Result<EVAddr, LinuxKernelError> {
-        if flags.contains(MMAP_FLAGS::MAP_FIXED) {
-            self.system
-                .memory
-                .borrow_mut()
-                .unmap(mmu, self.task_id, addr, length as usize)?;
-
-            self.system
-                .memory
-                .borrow_mut()
-                .map_fixed(mmu, self.task_id, addr, length as usize, prot.try_into()?)
-                .map_err(|e| e.into())
-        } else {
-            self.system
-                .memory
-                .borrow_mut()
-                .mmap(mmu, self.task_id, addr, length as usize, prot.try_into()?)
-                .map_err(|e| e.into())
-        }
-    }
-
+    #[allow(clippy::too_many_arguments)]
     fn mmap_private(
         &mut self,
         mmu: &mut impl MMU,
@@ -146,21 +122,104 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         fd: u64,
         offset: u64,
     ) -> Result<EVAddr, LinuxKernelError> {
-        // TODO: This will leak memory if the file handle errors. Needs to be fixed when converting to uctlb solution.
-        let addr = self.mmap_anon(mmu, addr, length, prot, flags)?;
+        if flags.contains(MMAP_FLAGS::MAP_ANONYMOUS) {
+            self.mmap_anon(mmu, addr, length, prot, flags)
+        } else {
+            self.mmap_file(mmu, addr, length, prot, flags, fd, offset)
+        }
+    }
+
+    fn mmap_anon(
+        &mut self,
+        mmu: &mut impl MMU,
+        address: EVAddr,
+        size: u64,
+        prot: u64,
+        flags: MMAP_FLAGS,
+    ) -> Result<EVAddr, LinuxKernelError> {
+        let size = align4k_up(size as usize);
+        let addr = if flags.contains(MMAP_FLAGS::MAP_FIXED) {
+            // map fixed overwrites any mappings that already exist in the region so we unmap here.
+            self.system
+                .memory
+                .borrow_mut()
+                .unmap(self.task_id, address, size)?;
+            // Need to flush tlb to let cpu emulator now to re-fetch the addresses
+            mmu.flush_tlb()?;
+
+            self.system
+                .memory
+                .borrow_mut()
+                .map_fixed(self.task_id, address, size, prot.try_into()?)
+                .map_err(LinuxKernelError::from)?
+        } else {
+            self.system
+                .memory
+                .borrow_mut()
+                .mmap(self.task_id, address, size, prot.try_into()?)
+                .map_err(LinuxKernelError::from)?
+        };
+
+        // Map anonymous requires memory being zero initialized.
+        self.system
+            .memory
+            .borrow_mut()
+            .accessor(mmu, self.task_id)
+            .write_direct(addr, &vec![0u8; size]);
+        Ok(addr)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn mmap_file(
+        &mut self,
+        mmu: &mut impl MMU,
+        addr: EVAddr,
+        length: u64,
+        prot: u64,
+        flags: MMAP_FLAGS,
+        fd: u64,
+        offset: u64,
+    ) -> Result<EVAddr, LinuxKernelError> {
         if fd >= 1 << 31 {
             Err(LinuxKernelError::EINVAL)?
         }
+
         let addr = self.mmap_anon(mmu, addr, length, prot, flags)?;
         if addr == !EVA_NULL {
             Err(LinuxKernelError::EINVAL)?
         }
+
+        self.write_file_contents(mmu, length, fd, offset, addr)
+            .map_err(|e| {
+                // Unmap if we encountered an error during writing
+                self.system
+                    .memory
+                    .borrow_mut()
+                    .unmap(self.task_id, addr, length as usize)
+                    .map_err(LinuxKernelError::from)
+                    .err()
+                    .unwrap_or(e)
+            })?;
+        Ok(addr)
+    }
+
+    fn write_file_contents(
+        &mut self,
+        mmu: &mut impl MMU,
+        length: u64,
+        fd: u64,
+        offset: u64,
+        addr: EVAddr,
+    ) -> Result<(), LinuxKernelError> {
         let f = self.handles.get(&fd).ok_or(LinuxKernelError::EINVAL)?;
         let data = f.pread(offset, length)?;
 
-        let mut memory = self.system.memory.borrow_mut();
-        let mut memory = memory.accessor(mmu, self.task_id);
-        memory.write_direct(addr, data.as_slice())?;
-        Ok(addr)
+        let mut memory = self
+            .system
+            .memory
+            .borrow_mut()
+            .accessor(mmu, self.task_id)
+            .write_direct(addr, data.as_slice())?;
+        Ok(())
     }
 }
