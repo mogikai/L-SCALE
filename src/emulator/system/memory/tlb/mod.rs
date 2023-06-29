@@ -268,9 +268,16 @@ impl Restorable for TLB {
 /// Takes a reversed list of mappings (the list is ordered highest to lowest start address)
 /// and checks if the mappings are continuous
 fn is_continuous(mappings: &[Mapping]) -> bool {
-    // FIXME: This has problems with overflow. Use a simple loop instead.
-    mappings
-        .iter()
-        .rfold(mappings.last().unwrap().v_start, |val, elem| elem.v_end() + (elem.v_start - val))
-        == mappings.first().unwrap().v_end()
+    if mappings.is_empty() {
+        return true;
+    }
+
+    let mut prev_mapping = mappings.last().unwrap();
+    for mapping in mappings.iter().rev().skip(1) {
+        if prev_mapping.v_end() != mapping.v_start {
+            return false;
+        }
+        prev_mapping = mapping;
+    }
+    true
 }
