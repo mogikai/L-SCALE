@@ -42,6 +42,13 @@ impl<Flags: Debug + Clone + Copy> SignalHandler<Flags> {
         }
     }
 
+    pub fn InsertFD(
+        &mut self,
+        fd: u64
+    ) {
+        error!("add signalfd");
+    }
+
     pub fn insert(
         &mut self,
         signal: u8,
@@ -52,6 +59,7 @@ impl<Flags: Debug + Clone + Copy> SignalHandler<Flags> {
         }
         self.signals[signal as usize] = Some(handler);
     }
+
     pub fn get(
         &self,
         signal: u8,

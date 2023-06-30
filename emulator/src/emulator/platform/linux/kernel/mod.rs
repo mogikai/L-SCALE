@@ -22,6 +22,7 @@ use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::macros::push_stack;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::filedescriptors::FileHandle;
+use crate::emulator::platform::linux::signalfd::SignalFD;
 pub use crate::emulator::platform::linux::kernel::error::LinuxKernelError;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
@@ -525,14 +526,32 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
 
     pub fn signalfd4(
         &mut self,
-        _: &mut impl CPU,
+        mmu: &mut impl MMU,
         fd: u64,
         mask: EVAddr,
-        flags: u64,
+        _flags: u64,
         sizemask: u64,
     ) -> SyscallResult {
-        error!("TODO: Implement signalfd");
-        Ok(4567)
+        if fd < 1 << 31 { //TODO besser auf -1 prüfen
+            todo!("fd != -1");
+        }
+        if mask == EVA_NULL {
+            return Err(LinuxKernelError::EINVAL);
+        }
+
+        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = memory.accessor(mmu, self.task_id);
+        if sizemask != 8 {
+            //todo architure specific
+            Err(LinuxKernelError::EINVAL)?
+        }
+
+        let sigmask = memory
+            .read_bytes(mask, sizemask as usize)
+            .map(|s| Endianness::read_u64(&s))?;
+        let fd = self.handles.add(Box::new(SignalFD::new(self.system.clone(), sigmask)));
+        self.signalhandler.insertFD(fd);
+        return Ok(fd);
     }
 
     pub fn prlimit64(
