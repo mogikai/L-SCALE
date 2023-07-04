@@ -8,6 +8,7 @@ use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::mmu::{MemoryError, Permission};
 use crate::emulator::system::memory::{align4k_up, is4kaligned};
 use crate::emulator::system::memory::pregion::PhysicalRegion;
+use crate::emulator::system::memory::tlb::mapping::MappingType;
 use crate::emulator::system::memory::tlb::TLB;
 
 /// Each Process/Thread has its own memory layout in the virtual address space
@@ -120,6 +121,7 @@ impl Layout {
             physical_region.start,
             size,
             Permission::READ | Permission::WRITE,
+            MappingType::PrivateAnonymous
         )?;
         self.heap_end += size;
 

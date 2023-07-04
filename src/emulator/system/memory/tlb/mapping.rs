@@ -5,6 +5,18 @@ use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
 use crate::emulator::abstractions::mmu::{MemoryError, Permission};
 use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum MappingType {
+    /// Private mapping
+    PrivateAnonymous,
+    /// Private file backed
+    PrivateFile(usize),
+    /// Shared but not file backed
+    SharedAnonymous,
+    /// Shared File backed
+    SharedFile(usize),
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct Mapping {
     pub v_start: EVAddr,
@@ -12,6 +24,7 @@ pub struct Mapping {
     pub size: usize,
     pub permissions: Permission,
     pub guard_callback_id: Option<usize>,
+    pub mapping_type: MappingType,
 }
 
 impl Mapping {
@@ -20,6 +33,7 @@ impl Mapping {
         p_start: EPAddr,
         size: usize,
         permissions: Permission,
+        mapping_type: MappingType
     ) -> Self {
         Self {
             v_start,
@@ -27,6 +41,7 @@ impl Mapping {
             size,
             permissions,
             guard_callback_id: None,
+            mapping_type,
         }
     }
 
@@ -42,6 +57,7 @@ impl Mapping {
             size,
             permissions: Permission::NONE,
             guard_callback_id: Some(guard_callback_id),
+            mapping_type: MappingType::PrivateAnonymous
         }
     }
 
@@ -55,7 +71,12 @@ impl Mapping {
                 .guard_callback_id
                 .expect("If p_start is None then a guard_callback_id must exist"),
         })?;
-        let result = TLBEntry::new(address, p_start + (address - self.v_start), self.permissions);
+        let result = TLBEntry::new(
+            address,
+            p_start + (address - self.v_start),
+            self.permissions,
+            self.size - (address - self.v_start),
+        );
         Ok(result)
     }
 
@@ -74,11 +95,14 @@ impl Mapping {
         cutout_address: EVAddr,
         cutout_size: usize,
     ) -> Result<(Option<Mapping>, Mapping, Option<Mapping>), MemoryError> {
-        if !self.contains(cutout_address) || cutout_address + cutout_size > self.v_end() {
-            Err(MemoryError::Unknown)?
+        if cutout_address > self.v_end() {
+            Err(MemoryError::InvalidArguments)?
         }
+        let cutout_start = max(cutout_address, self.v_start);
+        let cutout_end = min(cutout_address + cutout_size, self.v_end());
+        let cutout_size = cutout_end - cutout_start;
 
-        let offset = cutout_address - self.v_start;
+        let offset = cutout_start - self.v_start;
 
         let front = offset.gt(&0).then_some(Mapping {
             v_start: self.v_start,
@@ -86,6 +110,7 @@ impl Mapping {
             permissions: self.permissions,
             p_start: self.p_start,
             guard_callback_id: self.guard_callback_id,
+            mapping_type: self.mapping_type,
         });
 
         let middle = Mapping {
@@ -94,6 +119,7 @@ impl Mapping {
             permissions: self.permissions,
             p_start: self.p_start.map(|pa| pa + offset),
             guard_callback_id: self.guard_callback_id,
+            mapping_type: self.mapping_type,
         };
 
         let back = (self.v_start + offset + cutout_size)
@@ -104,6 +130,7 @@ impl Mapping {
                 permissions: self.permissions,
                 p_start: self.p_start.map(|pa| pa + offset + cutout_size),
                 guard_callback_id: self.guard_callback_id,
+                mapping_type: self.mapping_type,
             });
 
         Ok((front, middle, back))

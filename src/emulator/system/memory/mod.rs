@@ -1,10 +1,11 @@
-use std::cmp::max;
+use std::cmp::{max, min};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::{Add, BitAnd, Not, Range};
 
 use byteorder::ByteOrder;
+use itertools::Itertools;
 
 use layout::Layout;
 
@@ -13,6 +14,7 @@ use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU, MREMAP_FL
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::memory::pregion::PhysicalRegion;
 use crate::emulator::system::memory::rw_interface::DirectMemoryWrite;
+use crate::emulator::system::memory::tlb::mapping::{Mapping, MappingType};
 use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 
 pub mod layout;
@@ -73,14 +75,15 @@ pub struct MemoryAccessor<'a, Endianness: ByteOrder, MmuT: MMU> {
 }
 
 impl<Endianness: ByteOrder, MmuT: MMU> MemoryAccessor<'_, Endianness, MmuT> {
+    /// Returns a list of physical regions that correspond to the
+    /// translated virtual memory region address..address+size
     fn translate(
         &self,
         address: EVAddr,
-    ) -> Result<EPAddr, MemoryError> {
+        size: usize,
+    ) -> Result<Vec<TLBEntry>, MemoryError> {
         self.memory
-            .translate_vaddr(self.task_id, address)
-            .ok_or(MemoryError::NotMapped)
-            .map(|tlb_entry| tlb_entry.physical_address)
+            .translate_vaddr_range(self.task_id, address, size)
     }
 
     pub fn read_bytes(
@@ -88,7 +91,31 @@ impl<Endianness: ByteOrder, MmuT: MMU> MemoryAccessor<'_, Endianness, MmuT> {
         address: EVAddr,
         size: usize,
     ) -> Result<Vec<u8>, MemoryError> {
-        self.mmu.mem_read_bytes(self.translate(address)?, size)
+        self.translate(address, size)?
+            .iter()
+            .map(|tlb_entry| {
+                self.mmu
+                    .mem_read_bytes(tlb_entry.physical_address, tlb_entry.size)
+            })
+            .flatten_ok()
+            .try_collect()
+    }
+
+    pub fn write_bytes(
+        &mut self,
+        address: EVAddr,
+        bytes: &[u8],
+    ) -> Result<usize, MemoryError> {
+        let tlb_entries = self.translate(address, bytes.len())?;
+
+        let mut already_written = 0;
+        for entry in tlb_entries {
+            self.mmu
+                .mem_write_bytes(entry.physical_address, &bytes[already_written..already_written + entry.size])
+                .map_err(|_| MemoryError::IncompleteWrite(already_written))?;
+            already_written += entry.size;
+        }
+        Ok(already_written)
     }
 }
 
@@ -109,6 +136,12 @@ pub struct Memory<Endianness: ByteOrder> {
     process_mem_size: usize,
 
     phantom_data: PhantomData<Endianness>,
+}
+
+impl<Endianness: ByteOrder> Default for Memory<Endianness> {
+    fn default() -> Self {
+        Memory::new()
+    }
 }
 
 impl<Endianness: ByteOrder> Memory<Endianness> {
@@ -144,24 +177,13 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
 
         let mut layout = Layout::new(
             0x0000_7fff_ffff_0000.into(),
-            50 * 1024 * 1024, // 50 MiB
+            10 * 1024 * 1024, // 10 MiB
             0x0000_5000_0000_0000.into(),
             0x0000_3000_0000_0000.into(),
             PhysicalRegion::new(self.physical_end, self.physical_end + self.process_mem_size),
         );
 
-        // TODO: Allocate heap on the fly
-        // heap
-        // let heap_physical_region = layout.reserve_last_free_physical_region(layout.max_heap)?;
-        // layout.tlb.borrow_mut().try_map(
-        //     layout.heap_base,
-        //     heap_physical_region.start,
-        //     0x0000_5000_0000_0000.into()
-        //     Permission::READ | Permission::WRITE,
-        // )?;
-
         // stack
-
         let stack_physical_region = layout.reserve_last_free_physical_region(layout.max_stack)?;
 
         layout.tlb.borrow_mut().try_map(
@@ -169,6 +191,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             stack_physical_region.start,
             layout.max_stack,
             Permission::READ | Permission::WRITE,
+            MappingType::PrivateAnonymous,
         )?;
 
         mmu.mem_map(self.physical_end, self.process_mem_size, Permission::ALL)?;
@@ -189,10 +212,23 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         &self,
         task_id: TaskId,
         address: EVAddr,
-    ) -> Option<TLBEntry> {
-        layout!(self, task_id)
-            .ok()
-            .and_then(|l| l.tlb.borrow().translate_virtual_address(address).ok())
+    ) -> Result<TLBEntry, MemoryError> {
+        layout!(self, task_id)?
+            .tlb
+            .borrow()
+            .translate_virtual_address(address)
+    }
+
+    pub fn translate_vaddr_range(
+        &self,
+        task_id: TaskId,
+        address: EVAddr,
+        size: usize,
+    ) -> Result<Vec<TLBEntry>, MemoryError> {
+        layout!(self, task_id)?
+            .tlb
+            .borrow()
+            .translate_virtual_addresses(address, size)
     }
 
     pub(crate) fn stack_base(
@@ -249,7 +285,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             todo!()
         }
 
-        self.map_fixed(task_id, start, size, perms)?;
+        self.map_fixed(task_id, start, size, perms, MappingType::PrivateAnonymous)?;
         self.accessor(mmu, task_id)
             .write_direct(vm_range.start, data)?;
         Ok(())
@@ -261,20 +297,88 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         address: EVAddr,
         size: usize,
         permissions: Permission,
+        mapping_type: MappingType,
     ) -> Result<EVAddr, MemoryError> {
-        self.map_fixed(task_id, layout!(self, task_id)?.find_free_virtual_memory(address, size)?, size, permissions)
+        self.map_fixed(
+            task_id,
+            layout!(self, task_id)?.find_free_virtual_memory(address, size)?,
+            size,
+            permissions,
+            mapping_type,
+        )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn remap(
-        &self,
+        &mut self,
+        mmu: &mut impl MMU,
         task_id: TaskId,
         address: EVAddr,
-        size: u64,
+        size: usize,
         new_address: EVAddr,
-        new_size: u64,
+        new_size: usize,
         flags: MREMAP_FLAGS,
     ) -> Result<EVAddr, MemoryError> {
-        todo!()
+        let size_aligned = align4k_up(size);
+
+        if flags.contains(MREMAP_FLAGS::MREMAP_FIXED) {
+            if !flags.contains(MREMAP_FLAGS::MREMAP_MAYMOVE) {
+                Err(MemoryError::InvalidArguments)?
+            }
+            if address < new_address && address + size_aligned > new_address {
+                Err(MemoryError::Overlap)?
+            }
+
+            if new_address < address && new_address + new_size > address {
+                Err(MemoryError::Overlap)?
+            }
+            let new_size_aligned = align4k_up(new_size);
+
+            let mappings = layout!(self, task_id)?
+                .tlb
+                .borrow()
+                .get_mappings_copied(address, address + size)?;
+
+            let mut first_mapping = mappings.last().unwrap();
+            for mapping in mappings.iter().rev() {
+                // All mappings must have the same mapping type.
+                if first_mapping.mapping_type != mapping.mapping_type {
+                    Err(MemoryError::InvalidArguments)?
+                }
+                // All mapping must have the same permissions.
+                if first_mapping.permissions != mapping.permissions {
+                    Err(MemoryError::InvalidPermission)?
+                }
+            }
+
+            let unmap = if flags.contains(MREMAP_FLAGS::MREMAP_DONTUNMAP) {
+                if first_mapping.mapping_type != MappingType::PrivateAnonymous {
+                    Err(MemoryError::InvalidArguments)?
+                }
+                false
+            } else {
+                true
+            };
+
+            // Copy the mapping data before doing anything else
+            let mapping_data = self.accessor(mmu, task_id).read_bytes(address, size)?;
+            // Unmap any existing mappings from the new address area as specified by the man pages
+            self.unmap(task_id, new_address, new_size_aligned);
+            // Map in the new area
+            self.map_fixed(task_id, new_address, new_size_aligned, first_mapping.permissions, first_mapping.mapping_type)?;
+            // Copy over the data
+            self.accessor(mmu, task_id).write_bytes(new_address, mapping_data.as_slice())?;
+            // Unmap the old area
+            if unmap {
+                self.unmap(task_id, address, size_aligned)?;
+            }
+            Ok(new_address)
+        } else {
+            // todo: try resizing mapping by either shrinking the mapping or adding a new mapping directly after this mapping
+            let err = MemoryError::AlreadyMapped; // Result of trying to resize
+                                                  // todo: On already mapped error: map in free region and copy there. then unmap old, if !flags.contains(MREMAP_DONTUNMAP)
+            todo!()
+        }
     }
 
     pub(crate) fn protect(
@@ -323,6 +427,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         address: EVAddr,
         size: usize,
         permissions: Permission,
+        mapping_type: MappingType,
     ) -> Result<EVAddr, MemoryError> {
         if !is4kaligned(address) || !is4kaligned(size) {
             Err(MemoryError::InvalidAlignment)?
@@ -342,7 +447,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         layout
             .tlb
             .borrow_mut()
-            .try_map(address, physical_region.start, size, permissions)?;
+            .try_map(address, physical_region.start, size, permissions, mapping_type)?;
 
         Ok(address)
     }

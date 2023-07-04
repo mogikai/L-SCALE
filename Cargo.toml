@@ -9,6 +9,7 @@ edition = "2021"
 rand = "0.8.5"
 
 [dependencies]
+itertools = "0.10.5"
 static_assertions = "1.*"
 unicorn-engine = { path = "deps/unicorn" }
 byteorder = "1.*"

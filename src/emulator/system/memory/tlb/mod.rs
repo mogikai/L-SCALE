@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use std::ops::{BitOr, Not, Range};
 
 use im_rc::{OrdSet, Vector};
+use itertools::{Itertools, PeekingNext};
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
@@ -10,7 +11,7 @@ use crate::emulator::abstractions::mmu::{MemoryError, Permission};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::memory::is4kaligned;
 use crate::emulator::system::memory::pregion::PhysicalRegion;
-use crate::emulator::system::memory::tlb::mapping::{Contains, Mapping};
+use crate::emulator::system::memory::tlb::mapping::{Contains, Mapping, MappingType};
 use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 
 pub mod mapping;
@@ -20,6 +21,12 @@ pub mod tlb_entry;
 pub struct TLB {
     mappings: BTreeSet<Mapping>,
     snapshots: Vector<BTreeSet<Mapping>>,
+}
+
+impl Default for TLB {
+    fn default() -> Self {
+        TLB::new()
+    }
 }
 
 impl TLB {
@@ -71,6 +78,7 @@ impl TLB {
         p_start: EPAddr,
         size: usize,
         permissions: Permission,
+        mapping_type: MappingType,
     ) -> Result<(), MemoryError> {
         if !is4kaligned(v_start) || !is4kaligned(p_start) || !is4kaligned(size) {
             Err(MemoryError::InvalidAlignment)?
@@ -80,7 +88,7 @@ impl TLB {
             .then(|| {
                 let inserted = self
                     .mappings
-                    .insert(Mapping::new(v_start, p_start, size, permissions));
+                    .insert(Mapping::new(v_start, p_start, size, permissions, mapping_type));
                 assert!(inserted)
             })
             .ok_or(MemoryError::AlreadyMapped)
@@ -95,6 +103,35 @@ impl TLB {
     ) -> Result<TLBEntry, MemoryError> {
         self.get_mapping(address)
             .and_then(|region| region.make_tlb_entry(address))
+    }
+
+    /// Translates the virtual address range address..address+size and returns
+    /// a list of TLBEntry objects this range corresponds to. The returned
+    /// physical regions are ordered in ascending order from lowest to highest.
+    pub fn translate_virtual_addresses(
+        &self,
+        address: EVAddr,
+        size: usize,
+    ) -> Result<Vec<TLBEntry>, MemoryError> {
+        let mappings = self.get_mappings_copied(address, address + size)?;
+        if !is_continuous(&mappings) {
+            Err(MemoryError::NotContinuous)?
+        }
+        let mappings = mappings.into_iter().rev();
+
+        let mut current_address = address;
+        let mut current_size = size;
+        let mut physical_regions = Vec::with_capacity(mappings.len());
+        for mapping in mappings {
+            let mut tlb_entry = mapping.make_tlb_entry(current_address)?;
+            if current_size < tlb_entry.size {
+                tlb_entry.size = current_size;
+            }
+            current_size -= tlb_entry.size;
+            current_address = tlb_entry.virtual_address + tlb_entry.size;
+            physical_regions.push(tlb_entry)
+        }
+        Ok(physical_regions)
     }
 
     /// Looks up the mapping containing a given virtual address.
@@ -165,6 +202,8 @@ impl TLB {
     }
 
     /// Cuts out the region start..end from the mapped regions and returns the freed physical region(s)
+    /// Any unmapped parts of the address region are simply ignored. unmap on a region where no mappings
+    /// exist is a noop
     pub fn unmap(
         &mut self,
         start: EVAddr,
@@ -173,6 +212,7 @@ impl TLB {
         Ok(self
             .get_mappings_copied(start, start + size)?
             .into_iter()
+            .rev()
             .filter_map(|m| {
                 // Remove the original mapping so we can modify it
                 let mapping = self
@@ -237,7 +277,7 @@ impl TLB {
         &mut self,
         mapping: Mapping,
     ) -> bool {
-        return self.mappings.remove(&mapping);
+        self.mappings.remove(&mapping)
     }
 }
 

@@ -24,6 +24,9 @@ pub enum MemoryError {
     GuardRegionAccess { address: EVAddr, guard_callback_id: usize },
     InvalidAlignment,
     NotContinuous,
+    InvalidArguments,
+    Overlap,
+    IncompleteWrite(usize),
 }
 
 pub trait MMU {

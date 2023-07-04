@@ -77,7 +77,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<u8, Endianness> for Mem
         address: EVAddr,
         data: u8,
     ) -> Result<usize, MemoryError> {
-        self.mmu.mem_write_bytes(self.translate(address)?, &[data])
+        self.write_bytes(address, &[data])
     }
 
     fn write_direct_down(
@@ -95,7 +95,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&[u8], Endianness> for 
         address: EVAddr,
         data: &[u8],
     ) -> Result<usize, MemoryError> {
-        self.mmu.mem_write_bytes(self.translate(address)?, data)
+        self.write_bytes(address, data)
     }
 
     fn write_direct_down(
@@ -115,8 +115,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&Vec<u8>, Endianness>
         address: EVAddr,
         data: &Vec<u8>,
     ) -> Result<usize, MemoryError> {
-        self.mmu
-            .mem_write_bytes(self.translate(address)?, data.as_slice())
+        self.write_bytes(address, data.as_slice())
     }
 
     fn write_direct_down(
@@ -136,7 +135,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<u64, Endianness> for Me
     ) -> Result<usize, MemoryError> {
         let mut buf = [0u8; std::mem::size_of::<u64>()];
         Endianness::write_u64(&mut buf, data);
-        self.mmu.mem_write_bytes(self.translate(address)?, &buf)
+        self.write_bytes(address, &buf)
     }
 
     fn write_direct_down(
@@ -156,7 +155,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&i64, Endianness> for M
     ) -> Result<usize, MemoryError> {
         let mut buf = [0u8; std::mem::size_of::<i64>()];
         Endianness::write_i64(&mut buf, *data);
-        self.mmu.mem_write_bytes(self.translate(address)?, &buf)
+        self.write_bytes(address, &buf)
     }
 
     fn write_direct_down(
@@ -205,7 +204,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&[u64], Endianness> for
         let mut buf = vec![0u8; std::mem::size_of_val(data)];
         let mut i = 0;
         Endianness::write_u64_into(data, &mut buf);
-        self.mmu.mem_write_bytes(self.translate(address)?, &buf)
+        self.write_bytes(address, &buf)
     }
 
     fn write_direct_down(
@@ -273,7 +272,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&[(u64, u64)], Endianne
             Endianness::write_u64(&mut buf[i..i + std::mem::size_of::<u64>()], *b);
             i += std::mem::size_of::<u64>();
         }
-        self.mmu.mem_write_bytes(self.translate(address)?, &buf)
+        self.write_bytes(address, &buf)
     }
 
     fn write_direct_down(
@@ -332,11 +331,7 @@ impl<Endianness: ByteOrder, MmuT: MMU, T: Decode<Endianness>> MemoryRead<T, Endi
         &self,
         address: EVAddr,
     ) -> Result<T, MemoryError> {
-        T::decode(
-            self.mmu
-                .mem_read_bytes(self.translate(address)?, T::required_mem())?
-                .as_slice(),
-        )
+        T::decode(self.read_bytes(address, T::required_mem())?.as_slice())
     }
 
     fn read_bounded(
@@ -344,11 +339,7 @@ impl<Endianness: ByteOrder, MmuT: MMU, T: Decode<Endianness>> MemoryRead<T, Endi
         address: EVAddr,
         size: usize,
     ) -> Result<T, MemoryError> {
-        T::decode(
-            self.mmu
-                .mem_read_bytes(self.translate(address)?, size)?
-                .as_slice(),
-        )
+        T::decode(self.read_bytes(address, size)?.as_slice())
     }
 
     fn read_n(
@@ -356,8 +347,7 @@ impl<Endianness: ByteOrder, MmuT: MMU, T: Decode<Endianness>> MemoryRead<T, Endi
         address: EVAddr,
         n: usize,
     ) -> Result<Vec<T>, MemoryError> {
-        self.mmu
-            .mem_read_bytes(self.translate(address)?, T::required_mem() * n)?
+        self.read_bytes(address, T::required_mem() * n)?
             .chunks(T::required_mem())
             .map(|chunk| try { T::decode(chunk)? })
             .collect()
@@ -372,8 +362,7 @@ impl<Endianness: ByteOrder, MmuT: MMU, T: Encode<Endianness>> MemoryWrite<T, End
         address: EVAddr,
         data: T,
     ) -> Result<usize, MemoryError> {
-        self.mmu
-            .mem_write_bytes(self.translate(address)?, data.encode().as_slice())
+        self.write_bytes(address, data.encode().as_slice())
     }
 }
 

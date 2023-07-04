@@ -1,13 +1,14 @@
 use bitflags::bitflags;
 use byteorder::ByteOrder;
 
-use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
+use crate::emulator::abstractions::cpu::address::{EVA_NULL, EVAddr};
 use crate::emulator::abstractions::mmu::{MemoryError, MMU, MREMAP_FLAGS};
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::kernel::memory::flags::MMAP_FLAGS;
 use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask, SyscallResult};
+use crate::emulator::platform::linux::kernel::memory::flags::MMAP_FLAGS;
 use crate::emulator::system::memory::{align4k_up, is4kaligned};
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
+use crate::emulator::system::memory::tlb::mapping::MappingType;
 
 pub mod flags;
 
@@ -69,23 +70,33 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
 
     pub fn mremap(
         &mut self,
-        cpu: &mut impl MMU,
+        mmu: &mut impl MMU,
         old_addr: EVAddr,
         old_len: u64,
         new_len: u64,
         flags: u64,
         new_addr: EVAddr,
     ) -> SyscallResult {
+        if !is4kaligned(old_addr) {
+            Err(MemoryError::NotAligned)?
+        }
+        if old_len == 0 {
+            todo!("The old_len = 0  trick has buggy and inconsistent \
+                   behavior on current kernels since 2007 https://bugzilla.kernel.org/show_bug.cgi?id=8691 \
+                   and we will not implement it until this is resolved")
+        }
+
         Ok(self
             .system
             .memory
-            .borrow()
+            .borrow_mut()
             .remap(
+                mmu,
                 self.task_id,
                 old_addr,
-                old_len,
+                old_len as usize,
                 new_addr,
-                new_len,
+                new_len as usize,
                 MREMAP_FLAGS::from_bits(flags).ok_or(LinuxKernelError::EINVAL)?,
             )?
             .into())
@@ -128,9 +139,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         offset: u64,
     ) -> Result<EVAddr, LinuxKernelError> {
         if flags.contains(MMAP_FLAGS::MAP_ANONYMOUS) {
-            self.mmap_anon(mmu, addr, length, prot, flags)
+            self.mmap_anon(mmu, addr, length, prot, flags, MappingType::PrivateAnonymous)
         } else {
-            self.mmap_file(mmu, addr, length, prot, flags, fd, offset)
+            self.mmap_file_private(mmu, addr, length, prot, flags, fd, offset)
         }
     }
 
@@ -141,6 +152,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         size: u64,
         prot: u64,
         flags: MMAP_FLAGS,
+        mapping_type: MappingType,
     ) -> Result<EVAddr, LinuxKernelError> {
         let size = align4k_up(size as usize);
         let addr = if flags.contains(MMAP_FLAGS::MAP_FIXED) {
@@ -155,13 +167,13 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             self.system
                 .memory
                 .borrow_mut()
-                .map_fixed(self.task_id, address, size, prot.try_into()?)
+                .map_fixed(self.task_id, address, size, prot.try_into()?, mapping_type)
                 .map_err(LinuxKernelError::from)?
         } else {
             self.system
                 .memory
                 .borrow_mut()
-                .mmap(self.task_id, address, size, prot.try_into()?)
+                .mmap(self.task_id, address, size, prot.try_into()?, mapping_type)
                 .map_err(LinuxKernelError::from)?
         };
 
@@ -175,7 +187,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn mmap_file(
+    fn mmap_file_private(
         &mut self,
         mmu: &mut impl MMU,
         addr: EVAddr,
@@ -189,7 +201,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             Err(LinuxKernelError::EINVAL)?
         }
 
-        let addr = self.mmap_anon(mmu, addr, length, prot, flags)?;
+        let addr = self.mmap_anon(mmu, addr, length, prot, flags, MappingType::PrivateAnonymous)?;
         if addr == !EVA_NULL {
             Err(LinuxKernelError::EINVAL)?
         }

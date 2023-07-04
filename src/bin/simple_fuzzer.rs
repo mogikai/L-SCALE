@@ -59,6 +59,7 @@ fn main() -> Result<(), GenericError> {
                         .memory
                         .borrow_mut()
                         .translate_vaddr(task_id, vaddr)
+                        .ok()
                 })
             }))
             .unwrap();
