@@ -6,7 +6,7 @@ use byteorder::ByteOrder;
 use crate::emulator::abstractions::mmu::encoding::{Encode, RequiredMem};
 
 #[derive(Clone, Debug, Default)]
-pub struct Stat<Endianness: ByteOrder> {
+pub struct Stat {
     pub st_dev: u64,
     pub st_ino: u64,
     pub st_nlink: u64,
@@ -29,10 +29,9 @@ pub struct Stat<Endianness: ByteOrder> {
     _unused1: u64,
     _unused2: u64,
     _unused3: u64,
-    _phantom: PhantomData<Endianness>,
 }
 
-impl<Endianness: ByteOrder> From<Metadata> for Stat<Endianness> {
+impl From<Metadata> for Stat {
     fn from(m: Metadata) -> Self {
         Self {
             st_dev: m.st_dev(),
@@ -55,15 +54,14 @@ impl<Endianness: ByteOrder> From<Metadata> for Stat<Endianness> {
             _unused1: 0,
             _unused2: 0,
             _unused3: 0,
-            _phantom: Default::default(),
         }
     }
 }
 
-impl<Endianness: ByteOrder> RequiredMem for Stat<Endianness> {}
+impl RequiredMem for Stat {}
 
-impl<Endianness: ByteOrder> Encode<Endianness> for Stat<Endianness> {
-    fn encode(&self) -> Vec<u8> {
+impl Encode for Stat {
+    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8> {
         let mut d = vec![0; Self::required_mem()];
         Endianness::write_u64(&mut d[0..8], self.st_dev);
         Endianness::write_u64(&mut d[8..16], self.st_ino);

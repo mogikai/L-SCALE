@@ -19,7 +19,7 @@ pub mod net;
 #[derive(Debug)]
 pub struct System<Endianness: ByteOrder> {
     pub memory: RefCell<Memory<Endianness>>,
-    pub filesystem: RefCell<Filesystem<Endianness>>,
+    pub filesystem: RefCell<Filesystem>,
     pub clock: RefCell<Clock>,
     pub current_task: RefCell<Option<TaskId>>,
 }
@@ -27,7 +27,7 @@ pub struct System<Endianness: ByteOrder> {
 impl<Endianness: ByteOrder> System<Endianness> {
     pub fn new(
         memory: Memory<Endianness>,
-        filesystem: Filesystem<Endianness>,
+        filesystem: Filesystem,
         clock: Clock,
     ) -> Self {
         Self {

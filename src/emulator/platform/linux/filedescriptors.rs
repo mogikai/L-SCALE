@@ -16,8 +16,8 @@ pub struct FileHandle<Endianness: ByteOrder> {
 }
 
 //TODO build a trait
-impl<Endianness: ByteOrder> Handle<Endianness> for FileHandle<Endianness> {
-    fn stat(&self) -> Result<Ref<Stat<Endianness>>, GenericError> {
+impl<Endianness: ByteOrder> Handle for FileHandle<Endianness> {
+    fn stat(&self) -> Result<Ref<Stat>, GenericError> {
         Ref::filter_map(self.system.filesystem.borrow(), |fs| fs.stat(self.fse_id).ok())
             .or(Err(GenericError::new(GenericErrorKind::Unknown, "Could not stat the file")))
     }

@@ -27,8 +27,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let typ = SocketType::try_from(typ)?;
         debug!("Creating socket ({:?} {:?})", family, typ);
         use SocketDomain::*;
-        let socket: Box<dyn Handle<Endianness>> = match family {
-            AF_NETLINK => netlink::from_protocol(protocol)?,
+        let socket: Box<dyn Handle> = match family {
+            AF_NETLINK => netlink::from_protocol::<Endianness>(protocol)?,
             AF_UNIX => Box::new(UnixSocket::new()),
             AF_INET6 => inet6::from_type(typ)?,
             _ => todo!(),
@@ -303,8 +303,8 @@ struct user_msghdr {
     /* flags on received message */
 }
 
-impl<Endianness: ByteOrder> Decode<Endianness> for user_msghdr {
-    fn decode(val: &[u8]) -> Result<Self, MemoryError> {
+impl Decode for user_msghdr {
+    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
         Ok(Self {
             msg_name: EVAddr::from(Endianness::read_u64(&val[..8])),
             msg_namelen: Endianness::read_u64(&val[8..16]),
@@ -327,8 +327,8 @@ struct iovec {
     /* Must be size_t (1003.1g) */
 }
 
-impl<Endianness: ByteOrder> Decode<Endianness> for iovec {
-    fn decode(val: &[u8]) -> Result<Self, MemoryError> {
+impl Decode for iovec {
+    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
         Ok(Self {
             iov_base: EVAddr::from(Endianness::read_u64(&val[..8])),
             iov_len: Endianness::read_u64(&val[8..16]),

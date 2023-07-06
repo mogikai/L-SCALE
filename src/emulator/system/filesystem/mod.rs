@@ -43,17 +43,17 @@ type ContentId = usize;
 type SnapId = usize;
 
 #[derive(Debug)]
-pub struct Filesystem<Endianness: ByteOrder> {
+pub struct Filesystem {
     on_disk_root: Option<PathBuf>,
     data: Data,
-    meta_info: MetaInfo<Endianness>,
+    meta_info: MetaInfo,
     snap_markers: Vec<SnapMarker>,
     current_size: usize,
     max_size: usize,
     current_snap: usize,
 }
 
-impl<Endianness: ByteOrder> Filesystem<Endianness> {
+impl Filesystem {
     pub fn new(size: usize) -> Self {
         Filesystem {
             on_disk_root: None,
@@ -219,7 +219,7 @@ impl<Endianness: ByteOrder> Filesystem<Endianness> {
     pub fn create_file(
         &mut self,
         path: &Path,
-        stat: Option<Stat<Endianness>>,
+        stat: Option<Stat>,
     ) -> Result<FSEntryId, FSError> {
         self.meta_info.create_file(path, stat)
     }
@@ -228,7 +228,7 @@ impl<Endianness: ByteOrder> Filesystem<Endianness> {
         &mut self,
         path: &Path,
         data: &[u8],
-        stat: Option<Stat<Endianness>>,
+        stat: Option<Stat>,
     ) -> Result<FSEntryId, FSError> {
         let fse_id = self.create_file(path, stat)?;
         self.write(fse_id, 0, data)?;
@@ -238,7 +238,7 @@ impl<Endianness: ByteOrder> Filesystem<Endianness> {
     pub fn create_dir(
         &mut self,
         path: &Path,
-        stat: Option<Stat<Endianness>>,
+        stat: Option<Stat>,
     ) -> Result<FSEntryId, FSError> {
         self.meta_info.create_dir(path, stat)
     }
@@ -253,7 +253,7 @@ impl<Endianness: ByteOrder> Filesystem<Endianness> {
     pub fn stat(
         &self,
         file_id: FSEntryId,
-    ) -> Result<&Stat<Endianness>, FSError> {
+    ) -> Result<&Stat, FSError> {
         Ok(&self.meta_info.most_recent_entry(file_id)?.stat)
     }
 
@@ -288,7 +288,7 @@ impl<Endianness: ByteOrder> Filesystem<Endianness> {
     }
 }
 
-impl<Endianness: ByteOrder> Restorable for Filesystem<Endianness> {
+impl Restorable for Filesystem {
     fn snapshot(&mut self) -> Result<(), GenericError> {
         assert_eq!(self.snap_markers.len(), self.current_snap);
         self.snap_markers.push(SnapMarker {
@@ -331,8 +331,8 @@ impl<Endianness: ByteOrder> Restorable for Filesystem<Endianness> {
     }
 }
 
-fn load_dir<Endianness: ByteOrder>(
-    fs: &mut Filesystem<Endianness>,
+fn load_dir(
+    fs: &mut Filesystem,
     dir: &Path,
     root: &Path,
 ) -> io::Result<()> {

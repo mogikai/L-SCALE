@@ -34,13 +34,13 @@ pub mod memory;
 pub mod socket;
 pub mod task_id;
 
-struct HandleMap<Endianness: ByteOrder> {
-    handles: HashMap<u64, Box<dyn Handle<Endianness>>>,
+struct HandleMap {
+    handles: HashMap<u64, Box<dyn Handle>>,
     free_fds: Vec<u64>,
-    replacement_handles: HashMap<u64, VecDeque<Box<dyn Handle<Endianness>>>>,
+    replacement_handles: HashMap<u64, VecDeque<Box<dyn Handle>>>,
 }
 
-impl<Endianness: ByteOrder> HandleMap<Endianness> {
+impl HandleMap {
     fn new() -> Self {
         Self {
             handles: HashMap::new(),
@@ -50,7 +50,7 @@ impl<Endianness: ByteOrder> HandleMap<Endianness> {
     }
 }
 
-impl<Endianness: ByteOrder> HandleMap<Endianness> {
+impl HandleMap {
     /// This function is used to add a replacement handle that is inserted instead of the actual handle
     /// for the first call that is associated with the supplied fd. If multiple replacements are added
     /// for the same fd, they will be used subsequently for each new insert that happens after the fd
@@ -64,7 +64,7 @@ impl<Endianness: ByteOrder> HandleMap<Endianness> {
     fn add_replacement_handle(
         &mut self,
         fd: u64,
-        handle: Box<dyn Handle<Endianness>>,
+        handle: Box<dyn Handle>,
     ) {
         // TODO: We need to be able to skip handles and only replace later ones
         let handles = self.replacement_handles.entry(fd).or_default();
@@ -81,8 +81,8 @@ impl<Endianness: ByteOrder> HandleMap<Endianness> {
     fn insert(
         &mut self,
         fd: u64,
-        handle: Box<dyn Handle<Endianness>>,
-    ) -> Option<Box<dyn Handle<Endianness>>> {
+        handle: Box<dyn Handle>,
+    ) -> Option<Box<dyn Handle>> {
         // Insert the handle if no replacement exists. Otherwise insert the replacement
         self.handles.insert(
             fd,
@@ -96,7 +96,7 @@ impl<Endianness: ByteOrder> HandleMap<Endianness> {
 
     fn add(
         &mut self,
-        handle: Box<dyn Handle<Endianness>>,
+        handle: Box<dyn Handle>,
     ) -> u64 {
         // Insert the handle if no replacement exists. Otherwise insert the replacement
         let fd = self.get_free_fd();
@@ -110,25 +110,25 @@ impl<Endianness: ByteOrder> HandleMap<Endianness> {
     fn get_mut(
         &mut self,
         fd: &u64,
-    ) -> Option<&mut Box<dyn Handle<Endianness>>> {
+    ) -> Option<&mut Box<dyn Handle>> {
         self.handles.get_mut(fd)
     }
 
-    fn keys(&self) -> Keys<u64, Box<dyn Handle<Endianness>>> {
+    fn keys(&self) -> Keys<u64, Box<dyn Handle>> {
         self.handles.keys()
     }
 
     fn get(
         &self,
         fd: &u64,
-    ) -> Option<&Box<dyn Handle<Endianness>>> {
+    ) -> Option<&Box<dyn Handle>> {
         self.handles.get(fd)
     }
 
     fn remove(
         &mut self,
         fd: &u64,
-    ) -> Option<Box<dyn Handle<Endianness>>> {
+    ) -> Option<Box<dyn Handle>> {
         let old = self.handles.remove(fd);
         if old.is_some() {
             self.free_fds.push(*fd);
@@ -148,7 +148,7 @@ impl<Endianness: ByteOrder> HandleMap<Endianness> {
 // TODO: Move thread shared data to thread specific struct that is shared between kernel task objects (rcrefcell?)
 pub struct LinuxKernelTask<Endianness: ByteOrder, Arch: Architecture> {
     system: Rc<System<Endianness>>,
-    handles: HandleMap<Endianness>,
+    handles: HandleMap,
     clear_child_tid: Option<EVAddr>,
     robust_list_head: Option<EVAddr>,
     signalhandler: SignalHandler<Arch::SignalFlags>,
@@ -385,10 +385,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         tp: EVAddr,
     ) -> SyscallResult {
         let time = self.system.clock.borrow().time();
-        let ts = Timespec::<Endianness> {
+        let ts = Timespec {
             tv_sec: time.as_secs() as i64,
             tv_nsec: time.subsec_nanos() as i64,
-            _phantom: Default::default(),
         };
         self.system
             .memory
@@ -461,10 +460,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             todo!("Timezone not implemented yet")
         }
         let time = self.system.clock.borrow().time();
-        let timeval = Timeval::<Endianness> {
+        let timeval = Timeval {
             tv_sec: time.as_secs() as i64,
             tv_usec: time.subsec_micros() as i64,
-            _phantom: Default::default(),
         };
         self.system
             .memory
@@ -681,16 +679,15 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     }
 }
 
-pub struct Timeval<Endianness> {
+pub struct Timeval {
     pub tv_sec: i64,
     pub tv_usec: i64,
-    _phantom: PhantomData<Endianness>,
 }
 
-impl<Endianness: ByteOrder> RequiredMem for Timeval<Endianness> {}
+impl RequiredMem for Timeval {}
 
-impl<Endianness: ByteOrder> Encode<Endianness> for Timeval<Endianness> {
-    fn encode(&self) -> Vec<u8> {
+impl Encode for Timeval {
+    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8> {
         let mut d = vec![0; Self::required_mem()];
         Endianness::write_i64(&mut d[..8], self.tv_sec);
         Endianness::write_i64(&mut d[8..], self.tv_usec);
@@ -698,32 +695,28 @@ impl<Endianness: ByteOrder> Encode<Endianness> for Timeval<Endianness> {
     }
 }
 
-impl<Endianness: ByteOrder> TryFrom<&[u8]> for Timeval<Endianness> {
-    type Error = GenericError;
-
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+impl Decode for Timeval {
+    fn decode<Endianness: ByteOrder>(value: &[u8]) -> Result<Self, MemoryError> {
         if value.len() != mem::size_of::<i64>() * 2 {
-            Err(GenericError::new(GenericErrorKind::Unknown, "Invalid length"))
+            Err(MemoryError::InvalidSize)
         } else {
             Ok(Timeval {
                 tv_sec: Endianness::read_i64(&value[..8]),
                 tv_usec: Endianness::read_i64(&value[8..]),
-                _phantom: Default::default(),
             })
         }
     }
 }
 
-pub struct Timespec<Endianness: ByteOrder> {
+pub struct Timespec {
     pub tv_sec: i64,
     pub tv_nsec: i64,
-    _phantom: PhantomData<Endianness>,
 }
 
-impl<Endianness: ByteOrder> RequiredMem for Timespec<Endianness> {}
+impl RequiredMem for Timespec {}
 
-impl<Endianness: ByteOrder> Encode<Endianness> for Timespec<Endianness> {
-    fn encode(&self) -> Vec<u8> {
+impl Encode for Timespec {
+    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8> {
         let mut d = vec![0; mem::size_of::<Self>()];
         Endianness::write_i64(&mut d[..8], self.tv_sec);
         Endianness::write_i64(&mut d[8..], self.tv_nsec);
@@ -731,17 +724,14 @@ impl<Endianness: ByteOrder> Encode<Endianness> for Timespec<Endianness> {
     }
 }
 
-impl<Endianness: ByteOrder> TryFrom<&[u8]> for Timespec<Endianness> {
-    type Error = GenericError;
-
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+impl Decode for Timespec {
+    fn decode<Endianness: ByteOrder>(value: &[u8]) -> Result<Self, MemoryError> {
         if value.len() != mem::size_of::<i64>() * 2 {
-            Err(GenericError::new(GenericErrorKind::Unknown, "Invalid length"))
+            Err(MemoryError::InvalidSize)
         } else {
             Ok(Timespec {
                 tv_sec: Endianness::read_i64(&value[..8]),
                 tv_nsec: Endianness::read_i64(&value[8..]),
-                _phantom: Default::default(),
             })
         }
     }
@@ -754,8 +744,8 @@ struct Rlimit {
     rlim_max: u64,
 }
 
-impl<Endianness: ByteOrder> Encode<Endianness> for Rlimit {
-    fn encode(&self) -> Vec<u8> {
+impl Encode for Rlimit {
+    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8> {
         let mut d = vec![0; mem::size_of::<Self>()];
         Endianness::write_u64(&mut d[..8], self.rlim_cur);
         Endianness::write_u64(&mut d[8..], self.rlim_max);
@@ -764,8 +754,8 @@ impl<Endianness: ByteOrder> Encode<Endianness> for Rlimit {
 }
 
 // TODO: Write derive macro or something like this to automate the from trait?
-impl<Endianness: ByteOrder> Decode<Endianness> for Rlimit {
-    fn decode(value: &[u8]) -> Result<Self, MemoryError> {
+impl Decode for Rlimit {
+    fn decode<Endianness: ByteOrder>(value: &[u8]) -> Result<Self, MemoryError> {
         if value.len() != mem::size_of::<Rlimit>() {
             Err(MemoryError::InvalidSize)
         } else {

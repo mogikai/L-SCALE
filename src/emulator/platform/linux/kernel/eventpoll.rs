@@ -76,4 +76,4 @@ impl Epoll {
     fn new() -> Self { Epoll { interest_list: Default::default() } }
 }
 
-impl<Endianness: ByteOrder> Handle<Endianness> for Epoll {}
+impl Handle for Epoll {}

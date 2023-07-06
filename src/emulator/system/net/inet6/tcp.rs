@@ -10,7 +10,7 @@ impl TcpSock {
     pub fn new() -> Self { Self {} }
 }
 
-impl<Endianness: ByteOrder> Handle<Endianness> for TcpSock {
+impl Handle for TcpSock {
     fn bind(
         &mut self,
         sockaddr: Sockaddr,

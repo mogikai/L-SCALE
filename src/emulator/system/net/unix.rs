@@ -10,7 +10,7 @@ impl UnixSocket {
     pub fn new() -> Self { Self {} }
 }
 
-impl<Endianness: ByteOrder> Handle<Endianness> for UnixSocket {
+impl Handle for UnixSocket {
     fn connect(&mut self) -> Result<(), GenericError> {
         Err(GenericError::new(GenericErrorKind::FSError(FSError::NotFound), ""))
     }

@@ -28,8 +28,8 @@ pub enum Sockaddr {
     },
 }
 
-impl<Endianness: ByteOrder> Decode<Endianness> for Sockaddr {
-    fn decode(val: &[u8]) -> Result<Self, MemoryError> {
+impl Decode for Sockaddr {
+    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
         let family = SocketDomain::from(Endianness::read_u16(&val[..2]) as u64);
         use SocketDomain::*;
         Ok(match family {
@@ -62,8 +62,8 @@ impl RequiredMem for Sockaddr {
     }
 }
 
-impl<Endianness: ByteOrder> Encode<Endianness> for Sockaddr {
-    fn encode(&self) -> Vec<u8> {
+impl Encode for Sockaddr {
+    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8> {
         let mut out = vec![0; Self::required_mem()];
         use Sockaddr::*;
         match self {

@@ -7,11 +7,11 @@ use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::handles::Handle;
 use crate::emulator::system::filesystem::Stat;
 
-pub struct WriteOnly<Endianness: ByteOrder> {
-    stat: RefCell<Stat<Endianness>>,
+pub struct WriteOnly {
+    stat: RefCell<Stat>,
 }
 
-impl<Endianness: ByteOrder> WriteOnly<Endianness> {
+impl WriteOnly {
     pub(crate) fn new() -> Self {
         Self {
             stat: Default::default(),
@@ -19,8 +19,8 @@ impl<Endianness: ByteOrder> WriteOnly<Endianness> {
     }
 }
 
-impl<Endianness: ByteOrder> Handle<Endianness> for WriteOnly<Endianness> {
-    fn stat(&self) -> Result<Ref<Stat<Endianness>>, GenericError> { Ok(self.stat.borrow()) }
+impl Handle for WriteOnly {
+    fn stat(&self) -> Result<Ref<Stat>, GenericError> { Ok(self.stat.borrow()) }
 
     fn read(
         &mut self,
@@ -46,13 +46,13 @@ impl<Endianness: ByteOrder> Handle<Endianness> for WriteOnly<Endianness> {
     }
 }
 
-pub struct ReadOnly<Endianness: ByteOrder> {
+pub struct ReadOnly {
     data: Vec<u8>,
     pos: usize,
-    stat: RefCell<Stat<Endianness>>,
+    stat: RefCell<Stat>,
 }
 
-impl<Endianness: ByteOrder> ReadOnly<Endianness> {
+impl ReadOnly {
     pub(crate) fn new() -> Self {
         Self {
             pos: 0,
@@ -70,8 +70,8 @@ impl<Endianness: ByteOrder> ReadOnly<Endianness> {
     }
 }
 
-impl<Endianness: ByteOrder> Handle<Endianness> for ReadOnly<Endianness> {
-    fn stat(&self) -> Result<Ref<Stat<Endianness>>, GenericError> { Ok(self.stat.borrow()) }
+impl Handle for ReadOnly {
+    fn stat(&self) -> Result<Ref<Stat>, GenericError> { Ok(self.stat.borrow()) }
 
     fn read(
         &mut self,

@@ -21,7 +21,7 @@ pub trait DirectMemoryWrite<T, Endianness: ByteOrder> {
     ) -> Result<usize, MemoryError>;
 }
 
-pub trait MemoryWrite<T: Encode<Endianness>, Endianness: ByteOrder> {
+pub trait MemoryWrite<T: Encode, Endianness: ByteOrder> {
     fn write(
         &mut self,
         address: EVAddr,
@@ -37,7 +37,7 @@ pub trait MemoryWrite<T: Encode<Endianness>, Endianness: ByteOrder> {
     }
 }
 
-pub trait MemoryRead<T: Decode<Endianness>, Endianness: ByteOrder> {
+pub trait MemoryRead<T: Decode, Endianness: ByteOrder> {
     fn read(
         &self,
         address: EVAddr,
@@ -324,14 +324,14 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&Vec<(u64, u64)>, Endia
     }
 }
 
-impl<Endianness: ByteOrder, MmuT: MMU, T: Decode<Endianness>> MemoryRead<T, Endianness>
+impl<Endianness: ByteOrder, MmuT: MMU, T: Decode> MemoryRead<T, Endianness>
     for MemoryAccessor<'_, Endianness, MmuT>
 {
     fn read(
         &self,
         address: EVAddr,
     ) -> Result<T, MemoryError> {
-        T::decode(self.read_bytes(address, T::required_mem())?.as_slice())
+        T::decode::<Endianness>(self.read_bytes(address, T::required_mem())?.as_slice())
     }
 
     fn read_bounded(
@@ -339,7 +339,7 @@ impl<Endianness: ByteOrder, MmuT: MMU, T: Decode<Endianness>> MemoryRead<T, Endi
         address: EVAddr,
         size: usize,
     ) -> Result<T, MemoryError> {
-        T::decode(self.read_bytes(address, size)?.as_slice())
+        T::decode::<Endianness>(self.read_bytes(address, size)?.as_slice())
     }
 
     fn read_n(
@@ -349,12 +349,12 @@ impl<Endianness: ByteOrder, MmuT: MMU, T: Decode<Endianness>> MemoryRead<T, Endi
     ) -> Result<Vec<T>, MemoryError> {
         self.read_bytes(address, T::required_mem() * n)?
             .chunks(T::required_mem())
-            .map(|chunk| try { T::decode(chunk)? })
+            .map(|chunk| try { T::decode::<Endianness>(chunk)? })
             .collect()
     }
 }
 
-impl<Endianness: ByteOrder, MmuT: MMU, T: Encode<Endianness>> MemoryWrite<T, Endianness>
+impl<Endianness: ByteOrder, MmuT: MMU, T: Encode> MemoryWrite<T, Endianness>
     for MemoryAccessor<'_, Endianness, MmuT>
 {
     fn write(
@@ -362,7 +362,7 @@ impl<Endianness: ByteOrder, MmuT: MMU, T: Encode<Endianness>> MemoryWrite<T, End
         address: EVAddr,
         data: T,
     ) -> Result<usize, MemoryError> {
-        self.write_bytes(address, data.encode().as_slice())
+        self.write_bytes(address, data.encode::<Endianness>().as_slice())
     }
 }
 

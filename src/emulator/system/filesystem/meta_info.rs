@@ -11,15 +11,15 @@ use crate::emulator::system::filesystem::{ContentId, FSEntryId, FSError, SnapId}
 use self::FSEntryContent::{Dir, File};
 
 #[derive(Debug)]
-pub struct MetaInfo<Endianness: ByteOrder> {
-    content: Vec<FSEntry<Endianness>>,
+pub struct MetaInfo {
+    content: Vec<FSEntry>,
     fse_ids: RefCell<Vec<HashMap<FSEntryId, Index>>>,
     next_fse_id: FSEntryId,
     current_snap: usize,
     root_node: FSEntryId,
 }
 
-impl<Endianness: ByteOrder> MetaInfo<Endianness> {
+impl MetaInfo {
     pub(super) fn new() -> Self {
         let mut meta_info = Self {
             content: Vec::new(),
@@ -53,7 +53,7 @@ impl<Endianness: ByteOrder> MetaInfo<Endianness> {
     pub(super) fn new_entry(
         &mut self,
         path: &Path,
-        new_entry: impl FnOnce(String) -> FSEntry<Endianness>,
+        new_entry: impl FnOnce(String) -> FSEntry,
     ) -> Result<FSEntryId, FSError> {
         let dir_entry_id = self.resolve_last(None, path.parent().ok_or(FSError::Unknown)?)?;
         let dir_content_id = self.most_recent_content_id(dir_entry_id)?;
@@ -84,7 +84,7 @@ impl<Endianness: ByteOrder> MetaInfo<Endianness> {
     pub(super) fn create_file(
         &mut self,
         path: &Path,
-        stat: Option<Stat<Endianness>>,
+        stat: Option<Stat>,
     ) -> Result<FSEntryId, FSError> {
         self.new_entry(path, |name| {
             FSEntry::new(
@@ -101,7 +101,7 @@ impl<Endianness: ByteOrder> MetaInfo<Endianness> {
     pub(super) fn create_dir(
         &mut self,
         path: &Path,
-        stat: Option<Stat<Endianness>>,
+        stat: Option<Stat>,
     ) -> Result<FSEntryId, FSError> {
         self.new_entry(path, |name| {
             FSEntry::new(
@@ -160,7 +160,7 @@ impl<Endianness: ByteOrder> MetaInfo<Endianness> {
     pub(super) fn add_entry(
         &mut self,
         fse_id: FSEntryId,
-        entry: FSEntry<Endianness>,
+        entry: FSEntry,
     ) -> Result<(), FSError> {
         self.content.push(entry);
         let result = self.fse_ids.borrow_mut()[self.current_snap]
@@ -252,7 +252,7 @@ impl<Endianness: ByteOrder> MetaInfo<Endianness> {
     pub(super) fn most_recent_entry_mut(
         &mut self,
         fse_id: FSEntryId,
-    ) -> Result<&mut FSEntry<Endianness>, FSError> {
+    ) -> Result<&mut FSEntry, FSError> {
         let historical_index = self.most_recent_historical_index(fse_id)?.historical_or(FSError::Unknown)?;
         if historical_index.snap_id < self.current_snap {
             // Historical. Cannot modify. Need to clone first.
@@ -268,14 +268,14 @@ impl<Endianness: ByteOrder> MetaInfo<Endianness> {
     pub(super) fn most_recent_entry(
         &self,
         index: FSEntryId,
-    ) -> Result<&FSEntry<Endianness>, FSError> {
+    ) -> Result<&FSEntry, FSError> {
         Ok(self.content.get(self.most_recent_content_id(index)?).expect("The id must be valid"))
     }
 
     fn most_recent_entry_and_snap_id(
         &self,
         index: FSEntryId,
-    ) -> Result<(&FSEntry<Endianness>, SnapId), FSError> {
+    ) -> Result<(&FSEntry, SnapId), FSError> {
         let historical_index = self.most_recent_historical_index(index)?.historical_or(FSError::Unknown)?;
         Ok((
             self.content.get(historical_index.content_id).expect("The id must be valid"),
@@ -286,7 +286,7 @@ impl<Endianness: ByteOrder> MetaInfo<Endianness> {
     fn get_content_by_id(
         &self,
         content_id: ContentId,
-    ) -> Result<&FSEntry<Endianness>, FSError> {
+    ) -> Result<&FSEntry, FSError> {
         self.content.get(content_id).ok_or(FSError::Unknown)
     }
 
@@ -348,16 +348,16 @@ pub(super) enum FSEntryContent {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct FSEntry<Endianness: ByteOrder> {
+pub(super) struct FSEntry {
     pub(super) contents: FSEntryContent,
-    pub(super) stat: Stat<Endianness>,
+    pub(super) stat: Stat,
     pub(super) name: String,
 }
 
-impl<Endianness: ByteOrder> FSEntry<Endianness> {
+impl FSEntry {
     fn new(
         contents: FSEntryContent,
-        stat: Stat<Endianness>,
+        stat: Stat,
         name: String,
     ) -> Self {
         FSEntry { contents, stat, name }

@@ -9,8 +9,8 @@ use crate::emulator::abstractions::mmu::MemoryError;
 
 pub mod basic_types;
 
-pub trait Decode<Endianness: ByteOrder>: Sized + RequiredMem {
-    fn decode(val: &[u8]) -> Result<Self, MemoryError>;
+pub trait Decode: Sized + RequiredMem {
+    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError>;
 }
 
 pub struct Encoder<Endianness: ByteOrder> {
@@ -26,19 +26,19 @@ impl<Endianness: ByteOrder> Encoder<Endianness> {
         }
     }
 
-    pub fn encode<T: Encode<Endianness>>(
+    pub fn encode<T: Encode>(
         mut self,
         data: &T,
     ) -> Self {
-        self.output.extend(data.encode());
+        self.output.extend(data.encode::<Endianness>());
         self
     }
 
-    pub fn encode_front<T: Encode<Endianness>>(
+    pub fn encode_front<T: Encode>(
         mut self,
         data: &T,
     ) -> Self {
-        let mut bytes = data.encode();
+        let mut bytes = data.encode::<Endianness>();
         mem::swap(&mut bytes, &mut self.output);
         self.output.extend(bytes);
         self
@@ -69,8 +69,8 @@ pub trait RequiredMem: Sized {
     }
 }
 
-pub trait Encode<Endianness: ByteOrder>: RequiredMem {
-    fn encode(&self) -> Vec<u8>;
+pub trait Encode: RequiredMem {
+    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8>;
     fn encoded_size(&self) -> usize {
         Self::required_mem()
     }
@@ -78,23 +78,23 @@ pub trait Encode<Endianness: ByteOrder>: RequiredMem {
 
 impl<T> RequiredMem for &T where T: RequiredMem {}
 
-impl<T, Endianness: ByteOrder> Encode<Endianness> for &T
+impl<T> Encode for &T
 where
-    T: Encode<Endianness>,
+    T: Encode,
 {
-    fn encode(&self) -> Vec<u8> {
+    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8> {
         #[allow(suspicious_double_ref_op)]
-        self.deref().encode()
+        self.deref().encode::<Endianness>()
     }
 }
 
 impl<T> RequiredMem for Ref<'_, T> where T: RequiredMem {}
 
-impl<T, Endianness: ByteOrder> Encode<Endianness> for Ref<'_, T>
+impl<T> Encode for Ref<'_, T>
 where
-    T: Encode<Endianness>,
+    T: Encode,
 {
-    fn encode(&self) -> Vec<u8> {
-        self.deref().encode()
+    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8> {
+        self.deref().encode::<Endianness>()
     }
 }

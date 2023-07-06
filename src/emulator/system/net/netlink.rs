@@ -15,10 +15,10 @@ pub mod rtnetlink;
 // TODO: Make global netlink handler that is referenced by netlink sockets.
 //       Each kernel(task) will have access to the handler.
 
-pub fn from_protocol<Endianness: ByteOrder>(protocol: u64) -> Result<Box<dyn Handle<Endianness>>, GenericError> {
+pub fn from_protocol<Endianness: ByteOrder + 'static>(protocol: u64) -> Result<Box<dyn Handle>, GenericError> {
     use NetlinkFamily::*;
     Ok(match NetlinkFamily::from(protocol) {
-        NETLINK_ROUTE => Box::new(RTNetlinkSocket::new()),
+        NETLINK_ROUTE => Box::new(RTNetlinkSocket::<Endianness>::new()),
         _ => todo!(),
     })
 }
@@ -38,8 +38,8 @@ struct nlmsghdr {
     /* Sender port ID */
 }
 
-impl<Endianness: ByteOrder> Decode<Endianness> for nlmsghdr {
-    fn decode(val: &[u8]) -> Result<Self, MemoryError> {
+impl Decode for nlmsghdr {
+    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
         Ok(Self {
             nlmsg_len: Endianness::read_u32(&val[..4]),
             nlmsg_type: RTNetlinkMessageType::from(Endianness::read_u16(&val[4..6])),
@@ -53,8 +53,8 @@ impl<Endianness: ByteOrder> Decode<Endianness> for nlmsghdr {
 
 impl RequiredMem for nlmsghdr {}
 
-impl<Endianness: ByteOrder> Encode<Endianness> for nlmsghdr {
-    fn encode(&self) -> Vec<u8> {
+impl Encode for nlmsghdr {
+    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8> {
         let mut out = vec![0; mem::size_of::<Self>()];
         Endianness::write_u32(&mut out[..4], self.nlmsg_len);
         Endianness::write_u16(&mut out[4..6], self.nlmsg_type.into());
