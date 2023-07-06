@@ -532,7 +532,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         flags: u64,
         sizemask: u64,
     ) -> SyscallResult {
-        todo!()
+        error!("TODO: Implement signalfd");
+        Ok(4567)
     }
 
     pub fn prlimit64(

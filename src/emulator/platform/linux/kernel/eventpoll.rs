@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::cpu::CPU;
@@ -34,10 +35,13 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
         fd: u64,
         event: EVAddr, // epoll_event*
     ) -> SyscallResult {
+        // TODO: The poll and select syscalls require files to have a poll/select function that can be called by
+        //       the epoll/select handler to query whether or not data is available for read or write ops
         error!("TODO: Implement epoll_ctl. Need to add fds to interest list");
         Ok(0)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn epoll_pwait(
         &mut self,
         _: &mut impl CPU,
@@ -48,6 +52,10 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
         sigmask: EVAddr, // sigset_t*
         sigsetsize: u64,
     ) -> SyscallResult {
+        // TODO: We need to possibly yield to the scheduler here. So we would need to stop emulation and return
+        //       control to outside of the syscall handler so we can perform a context switch.
+        //       Another possibility would be to simply not yield here and employ some kind of time slice
+        //       scheduling, where each thread / process is run for X iterations.
         todo!()
     }
 
@@ -60,10 +68,12 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
     }
 }
 
-struct Epoll {}
+struct Epoll {
+    interest_list: BTreeMap<u64, u64>
+}
 
 impl Epoll {
-    fn new() -> Self { Epoll {} }
+    fn new() -> Self { Epoll { interest_list: Default::default() } }
 }
 
 impl<Endianness: ByteOrder> Handle<Endianness> for Epoll {}

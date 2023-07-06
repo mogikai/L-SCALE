@@ -71,18 +71,17 @@ pub trait MMU {
         self.mem_write_bytes(address - data.len(), data)
     }
 
-    fn flush_tlb(
-        &mut self,
-    ) -> Result<(), MemoryError>;
+    fn flush_tlb(&mut self) -> Result<(), MemoryError>;
 }
 
 bitflags! {
+    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Permission : u32 {
         const NONE = 0;
         const READ = 1;
         const WRITE = 2;
         const EXEC = 4;
-        const ALL = Self::READ.bits | Self::WRITE.bits | Self::EXEC.bits;
+        const ALL = Self::READ.bits() | Self::WRITE.bits() | Self::EXEC.bits();
     }
 }
 

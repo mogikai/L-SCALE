@@ -1,8 +1,8 @@
 use bitflags::bitflags;
 use byteorder::{ByteOrder, LittleEndian};
 use enumset::EnumSet;
-use crate::emulator::abstractions::cpu::address::EVAddr;
 
+use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::kernel::LinuxKernelError;
 use crate::emulator::platform::linux::signals::{Signal, SignalAction};
@@ -10,6 +10,7 @@ use crate::emulator::platform::linux::signals::{Signal, SignalAction};
 pub enum X86 {}
 
 bitflags! {
+    #[derive(Copy, Clone, Debug)]
     pub struct X86SignalFlags: u64 {
         const SA_NOCLDSTOP = 1;
         const SA_NOCLDWAIT = 2;

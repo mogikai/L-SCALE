@@ -254,7 +254,7 @@ impl<Endianness: ByteOrder> Handle<Endianness> for RTNetlinkSocket {
             .encode(&ifaddrmsg {
                 ifa_family: AF_INET6 as u8,
                 ifa_prefixlen: 64,
-                ifa_flags: ifa_flags::IFA_F_PERMANENT.bits as u8,
+                ifa_flags: ifa_flags::IFA_F_PERMANENT.bits() as u8,
                 ifa_scope: 253,
                 ifa_index: 4,
             })
@@ -396,7 +396,7 @@ impl RequiredMem for ifa_flags {}
 impl<Endianness: ByteOrder> Encode<Endianness> for ifa_flags {
     fn encode(&self) -> Vec<u8> {
         let mut out = vec![0; Self::required_mem()];
-        Endianness::write_u32(out.as_mut_slice(), self.bits);
+        Endianness::write_u32(out.as_mut_slice(), self.bits());
         out
     }
 }

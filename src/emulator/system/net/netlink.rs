@@ -58,7 +58,7 @@ impl<Endianness: ByteOrder> Encode<Endianness> for nlmsghdr {
         let mut out = vec![0; mem::size_of::<Self>()];
         Endianness::write_u32(&mut out[..4], self.nlmsg_len);
         Endianness::write_u16(&mut out[4..6], self.nlmsg_type.into());
-        Endianness::write_u16(&mut out[6..8], self.nlmsg_flags.bits);
+        Endianness::write_u16(&mut out[6..8], self.nlmsg_flags.bits());
         Endianness::write_u32(&mut out[8..12], self.nlmsg_seq);
         Endianness::write_u32(&mut out[12..], self.nlmsg_pid);
         out
@@ -66,6 +66,7 @@ impl<Endianness: ByteOrder> Encode<Endianness> for nlmsghdr {
 }
 
 bitflags! {
+    #[derive(Debug)]
     struct
     NetlinkMessageFlags: u16 {
         const NLM_F_REQUEST         = 0x01;	    /* It is request message. 	*/
@@ -79,7 +80,7 @@ bitflags! {
         const NLM_GET_F_ROOT        = 0x100;	/* specify tree	root	*/
         const NLM_GET_F_MATCH       = 0x200;	/* return all matching	*/
         const NLM_GET_F_ATOMIC      = 0x400;	/* atomic GET		*/
-        const NLM_GET_F_DUMP        = Self::NLM_GET_F_ROOT.bits | Self::NLM_GET_F_MATCH.bits;
+        const NLM_GET_F_DUMP        = Self::NLM_GET_F_ROOT.bits() | Self::NLM_GET_F_MATCH.bits();
 
         /* Modifiers to NEW request */
         const NLM_NEW_F_REPLACE     = 0x100;	/* Override existing		*/
