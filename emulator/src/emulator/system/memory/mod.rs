@@ -4,13 +4,13 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::{Add, BitAnd, Not, Range};
 
+use bitflags::Flags;
 use byteorder::ByteOrder;
-use itertools::Itertools;
 
 use layout::Layout;
 
-use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr, EVA_NULL};
-use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU, MREMAP_FLAGS};
+use crate::emulator::abstractions::cpu::address::{EPAddr, EVA_NULL, EVAddr};
+use crate::emulator::abstractions::mmu::{MemoryError, MMU, MREMAP_FLAGS, Permission};
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::memory::pregion::PhysicalRegion;
 use crate::emulator::system::memory::rw_interface::DirectMemoryWrite;
@@ -25,26 +25,26 @@ pub mod tlb;
 const MASK4K: u64 = 4 * (1 << 10) - 1;
 
 pub(crate) fn align4k_up<T>(address: T) -> T
-where
-    T: Add<T, Output = T> + Not<Output = T> + TryFrom<u64> + BitAnd<Output = T> + Copy,
-    <T as TryFrom<u64>>::Error: Debug,
+    where
+        T: Add<T, Output=T> + Not<Output=T> + TryFrom<u64> + BitAnd<Output=T> + Copy,
+        <T as TryFrom<u64>>::Error: Debug,
 {
     let mask = T::try_from(MASK4K).expect("Address like type must be convertible from 64 bit values");
     (address + mask) & !mask
 }
 
 pub(crate) fn align4k_down<T>(address: T) -> T
-where
-    T: Not<Output = T> + TryFrom<u64> + BitAnd<Output = T>,
-    <T as TryFrom<u64>>::Error: Debug,
+    where
+        T: Not<Output=T> + TryFrom<u64> + BitAnd<Output=T>,
+        <T as TryFrom<u64>>::Error: Debug,
 {
     address & !T::try_from(MASK4K).expect("Address like type must be convertible from 64 bit values")
 }
 
 pub(crate) fn is4kaligned<T>(address: T) -> bool
-where
-    T: TryFrom<u64> + BitAnd<Output = T> + Eq + Copy,
-    <T as TryFrom<u64>>::Error: Debug,
+    where
+        T: TryFrom<u64> + BitAnd<Output=T> + Eq + Copy,
+        <T as TryFrom<u64>>::Error: Debug,
 {
     let mask = T::try_from(0).expect("Address like type must be convertible from 64 bit values");
     (address & mask) == mask
@@ -91,6 +91,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> MemoryAccessor<'_, Endianness, MmuT> {
         address: EVAddr,
         size: usize,
     ) -> Result<Vec<u8>, MemoryError> {
+        use itertools::Itertools;
         self.translate(address, size)?
             .iter()
             .map(|tlb_entry| {
@@ -376,7 +377,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         } else {
             // todo: try resizing mapping by either shrinking the mapping or adding a new mapping directly after this mapping
             let err = MemoryError::AlreadyMapped; // Result of trying to resize
-                                                  // todo: On already mapped error: map in free region and copy there. then unmap old, if !flags.contains(MREMAP_DONTUNMAP)
+            // todo: On already mapped error: map in free region and copy there. then unmap old, if !flags.contains(MREMAP_DONTUNMAP)
             todo!()
         }
     }
@@ -421,7 +422,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
 
     /// Maps the virtual memory region address..address + start to the first free physical region.
     /// Will fail if any address inside the virtual memory region is already mapped.
-    pub fn map_fixed(
+    pub(crate) fn map_fixed(
         &mut self,
         task_id: TaskId,
         address: EVAddr,

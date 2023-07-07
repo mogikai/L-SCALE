@@ -12,7 +12,6 @@
 // #![warn(missing_docs)]
 
 pub mod emulator;
-pub mod fuzzer;
 
 #[macro_use]
 extern crate log;
@@ -20,6 +19,8 @@ extern crate core;
 extern crate derive_more;
 
 use static_assertions::assert_eq_size;
+
+pub use byteorder::{LittleEndian, BigEndian, ByteOrder};
 
 // This library emulates 64 bit targets and thus requires usize to be 64 bits
 assert_eq_size!(u64, usize);

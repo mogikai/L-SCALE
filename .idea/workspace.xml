@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="CMakeSettings">
+    <configurations>
+      <configuration PROFILE_NAME="Debug" ENABLED="true" CONFIG_NAME="Debug" />
+    </configurations>
+  </component>
+  <component name="CargoProjects">
+    <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="c2226101-b811-4c7e-90b9-96ef805a0052" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/codeStyles/Project.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/codeStyles/codeStyleConfig.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/externalDependencies.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/fuzzyemu.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/fuzzyemu.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/bin/simple_fuzzer.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/cpu/address.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/cpu/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/emulator.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/errors.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/handles.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/hooks.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/mmu/encoding/basic_types.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/mmu/encoding/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/mmu/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/restore.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/macros.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/architecture/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/architecture/x86.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/emulator.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/filedescriptors.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/kernel/error.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/kernel/eventpoll.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/kernel/fs.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/kernel/memory/flags.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/kernel/memory/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/kernel/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/kernel/socket.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/kernel/task_id.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/signals.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/platform/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/clock/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/default_handles.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/filesystem/block.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/filesystem/data.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/filesystem/meta_info.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/filesystem/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/filesystem/stat.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/filesystem/tests.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/hardware/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/hardware/unicorn/cpu.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/hardware/unicorn/hooks.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/hardware/unicorn/mmu.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/hardware/unicorn/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/memory/layout/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/memory/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/memory/pregion.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/memory/rw_interface.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/memory/tlb/mapping.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/memory/tlb/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/memory/tlb/tlb_entry.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/memory_old.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/net/inet6/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/net/inet6/tcp.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/net/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/net/netlink.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/net/netlink/rtnetlink.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/emulator/system/net/unix.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/fuzzer/mod.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/etc/host.conf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/etc/nsswitch.conf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/etc/resolv.conf" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/home/user/cat" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/home/user/echo" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/home/user/main" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/home/user/main.c" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/home/user/server" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/home/user/server_rel" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/home/user/server_rel2" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/home/user/test.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/lib/x86_64-linux-gnu/libc.so.6" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/lib/x86_64-linux-gnu/libpthread.so.0" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/lib64/ld-linux-x86-64.so.2" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/home/user/cat" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/home/user/main" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/home/user/main.c" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/home/user/memstuff" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/home/user/memstuff.c" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/home/user/mremap_priv_anon" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/home/user/open62541_server" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/home/user/tar" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/home/user/test.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/lib/x86_64-linux-gnu/libacl.so.1" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/lib/x86_64-linux-gnu/libc.so.6" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/lib/x86_64-linux-gnu/libmbedcrypto.so.7" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/lib/x86_64-linux-gnu/libmbedx509.so.1" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/lib/x86_64-linux-gnu/libpcre2-8.so.0" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/lib/x86_64-linux-gnu/libpthread.so.0" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/lib/x86_64-linux-gnu/libselinux.so.1" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/lib64/ld-linux-x86-64.so.2" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/mremap.rs" beforeDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="ClangdSettings">
+    <option name="formatViaClangd" value="false" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="MacroExpansionManager">
+    <option name="directoryName" value="reh951m6" />
+  </component>
+  <component name="ProjectId" id="2SEtOKQoo1K9HUtu9pEWgcngtfZ" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "RunOnceActivity.OpenProjectViewOnStart": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.cidr.known.project.marker": "true",
+    "WebServerToolWindowFactoryState": "false",
+    "cf.first.check.clang-format": "false",
+    "cidr.known.project.marker": "true",
+    "git-widget-placeholder": "master",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "org.rust.cargo.project.model.PROJECT_DISCOVERY": "true",
+    "org.rust.disableDetachedFileInspection/home/mark/projects/fraunhofer/fuzzing/prototypes/fuzzyemu/fuzzer/bin/simple_fuzzer.rs": "true",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/fuzzer/src" />
+    </key>
+  </component>
+  <component name="RunAnythingCache">
+    <option name="myCommands">
+      <command value="cargo build" />
+      <command value="cargo run" />
+    </option>
+  </component>
+  <component name="RunManager" selected="Cargo.Run simple_fuzzer">
+    <configuration name="Build fuzzyfuzz" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="build --package fuzzyfuzz --lib" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="false" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="Run simple_fuzzer" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="run --package fuzzyfuzz --bin simple_fuzzer" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="true" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <envs>
+        <env name="RUST_LOG" value="trace" />
+        <env name="RUST_BACKTRACE" value="full" />
+      </envs>
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="build" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="build" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="false" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="run" type="CargoCommandRunConfiguration" factoryName="Cargo Command" temporary="true">
+      <option name="command" value="run" />
+      <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+      <option name="emulateTerminal" value="false" />
+      <option name="channel" value="DEFAULT" />
+      <option name="requiredFeatures" value="true" />
+      <option name="allFeatures" value="false" />
+      <option name="withSudo" value="false" />
+      <option name="buildTarget" value="REMOTE" />
+      <option name="backtrace" value="SHORT" />
+      <envs />
+      <option name="isRedirectInput" value="false" />
+      <option name="redirectInputPath" value="" />
+      <method v="2">
+        <option name="CARGO.BUILD_TASK_PROVIDER" enabled="true" />
+      </method>
+    </configuration>
+    <list>
+      <item itemvalue="Cargo.build" />
+      <item itemvalue="Cargo.Build fuzzyfuzz" />
+      <item itemvalue="Cargo.run" />
+      <item itemvalue="Cargo.Run simple_fuzzer" />
+    </list>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Cargo.Run simple_fuzzer" />
+        <item itemvalue="Cargo.run" />
+        <item itemvalue="Cargo.run" />
+        <item itemvalue="Cargo.Build fuzzyfuzz" />
+        <item itemvalue="Cargo.build" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="RustProjectSettings">
+    <option name="toolchainHomeDirectory" value="$USER_HOME$/.cargo/bin" />
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="c2226101-b811-4c7e-90b9-96ef805a0052" name="Changes" comment="" />
+      <created>1688723535846</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1688723535846</updated>
+      <workItem from="1688723537352" duration="3668000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+</project>

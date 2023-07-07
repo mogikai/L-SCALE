@@ -1,29 +1,7 @@
-[package]
-name = "fuzzyemu"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+members = [
+    "emulator",
+    "fuzzer"
+]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dev-dependencies]
-rand = "0.8.5"
-
-[dependencies]
-itertools = "0.10.5"
-static_assertions = "1.*"
-unicorn-engine = { path = "deps/unicorn" }
-byteorder = "1.*"
-num_enum = "0.6.*"
-goblin = "0.*"
-linux-libc-auxv = "0.2.*"
-libc = "0.2.126"
-iced-x86 = "1.18.*"
-log = "*"
-pretty_env_logger = "*"
-bitflags = "2.3.*"
-enumset = "1.0.11"
-hexdump = "0.1.1"
-thiserror = "1.*"
-generational-arena = "0.2.8"
-im-rc = "15.1.0"
-derive_more = { version = "0.99.0", features = ["add"] }
+resolver = "2"

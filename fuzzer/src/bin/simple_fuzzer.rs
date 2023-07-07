@@ -4,8 +4,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
+use fuzzyemu::{ByteOrder, LittleEndian};
 
-use byteorder::{ByteOrder, LittleEndian};
 use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, IntelFormatter};
 use log::debug;
 
@@ -33,7 +33,7 @@ fn main() -> Result<(), GenericError> {
     {
         let cpu = UCWrapper::new();
 
-        let filesystem = Filesystem::from_disk(1_073_741_824, Path::new("systems/ubuntu2204")).unwrap();
+        let filesystem = Filesystem::from_disk(1_073_741_824, Path::new("emulator/systems/ubuntu2204")).unwrap();
         let memory = Memory::new();
         let clock = Clock::new(Duration::from_nanos(1662647309301240322));
         let system = Rc::new(System::new(memory, filesystem, clock));
