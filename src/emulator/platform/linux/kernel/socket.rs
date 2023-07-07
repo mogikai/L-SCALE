@@ -60,6 +60,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         todo!()
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn sendto(
         &mut self,
         mmu: &mut impl MMU,
@@ -82,6 +83,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             .sendto(&*buf)? as u64)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn recvfrom(
         &mut self,
         _: &mut impl CPU,

@@ -1,4 +1,3 @@
-#[macro_export]
 macro_rules! push_stack {
     ($accessor:expr, $cpu:ident, $data:expr, $reg:expr) => {{
         use crate::emulator::system::memory::rw_interface::DirectMemoryWrite;
@@ -15,7 +14,6 @@ macro_rules! push_stack {
     }};
 }
 
-#[macro_export]
 macro_rules! read_osstring {
     ($memory:expr, $addr:expr) => {{
         use std::ffi::OsString;
@@ -32,3 +30,6 @@ macro_rules! read_osstring {
         })
     }};
 }
+
+pub(super) use push_stack;
+pub(super) use read_osstring;

@@ -5,7 +5,7 @@ use iced_x86::OpCodeOperandKind::mem;
 
 use crate::emulator::platform::linux::kernel::*;
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
-use crate::read_osstring;
+use crate::emulator::macros::*;
 
 impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     pub fn write(

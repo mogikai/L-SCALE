@@ -4,6 +4,7 @@ use byteorder::ByteOrder;
 use crate::emulator::abstractions::handles::Handle;
 use crate::emulator::system::filesystem::FSError;
 
+#[derive(Default)]
 pub struct UnixSocket {}
 
 impl UnixSocket {

@@ -19,6 +19,7 @@ use crate::emulator::abstractions::handles::Handle;
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
 use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU};
 use crate::emulator::abstractions::restore::Restorable;
+use crate::emulator::macros::push_stack;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::filedescriptors::FileHandle;
 pub use crate::emulator::platform::linux::kernel::error::LinuxKernelError;
@@ -245,13 +246,13 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         )
         .expect("failed to write RSP");
         let mut aux: Vec<(u64, u64)> = Vec::new();
-        crate::push_stack!(memory.accessor(cpu, self.task_id), cpu, 0u64, RegisterX86::RSP.into())?; // Stack end marker
+        push_stack!(memory.accessor(cpu, self.task_id), cpu, 0u64, RegisterX86::RSP.into())?; // Stack end marker
 
         // Push env strings. Pointers are saved in a null terminated env array.
         let env = {
             let mut env = Vec::<u64>::new();
             for &env_str in binary_env {
-                env.push(crate::push_stack!(memory.accessor(cpu, self.task_id), cpu, env_str, RegisterX86::RSP.into())?);
+                env.push(push_stack!(memory.accessor(cpu, self.task_id), cpu, env_str, RegisterX86::RSP.into())?);
             }
             env.push(0); // End of array nullptr
             env
@@ -262,7 +263,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             let mut argv = Vec::<u64>::new();
             argv.push(argv_strings.len() as u64);
             for arg in argv_strings {
-                argv.push(crate::push_stack!(memory.accessor(cpu, self.task_id), cpu, arg, RegisterX86::RSP.into())?);
+                argv.push(push_stack!(memory.accessor(cpu, self.task_id), cpu, arg, RegisterX86::RSP.into())?);
             }
             argv.push(0); // End of array nullptr
             argv
@@ -274,7 +275,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         aux.push((AuxVarType::Gid as u64, 1));
         aux.push((AuxVarType::EUid as u64, 1));
         aux.push((AuxVarType::EGid as u64, 1));
-        aux.push((AuxVarType::Platform as u64, crate::push_stack!(memory.accessor(cpu, self.task_id), cpu, "x86_64", RegisterX86::RSP.into())?));
+        aux.push((AuxVarType::Platform as u64, push_stack!(memory.accessor(cpu, self.task_id), cpu, "x86_64", RegisterX86::RSP.into())?));
         aux.push((AuxVarType::Entry as u64, entrypoint.into()));
         aux.push((AuxVarType::Phdr as u64, 56));
         aux.push((AuxVarType::Phent as u64, 11));
@@ -289,9 +290,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             cpu.reg_write(RegisterX86::RSP.into(), rsp & !0xf).unwrap();
         }
 
-        crate::push_stack!(memory.accessor(cpu, self.task_id), cpu, &aux, RegisterX86::RSP.into())?;
-        crate::push_stack!(memory.accessor(cpu, self.task_id), cpu, &env, RegisterX86::RSP.into())?;
-        crate::push_stack!(memory.accessor(cpu, self.task_id), cpu, &argv, RegisterX86::RSP.into())?;
+        push_stack!(memory.accessor(cpu, self.task_id), cpu, &aux, RegisterX86::RSP.into())?;
+        push_stack!(memory.accessor(cpu, self.task_id), cpu, &env, RegisterX86::RSP.into())?;
+        push_stack!(memory.accessor(cpu, self.task_id), cpu, &argv, RegisterX86::RSP.into())?;
 
         let rsp = EVAddr::from(cpu.reg_read(RegisterX86::RSP.into())?);
         println!("Stack dump:\n");
@@ -771,6 +772,7 @@ impl RequiredMem for Rlimit {}
 
 #[repr(u64)]
 #[derive(FromPrimitive)]
+#[allow(clippy::style)]
 enum RLIMIT {
     CPU        = 0,
     FSIZE      = 1,

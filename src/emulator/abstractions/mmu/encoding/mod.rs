@@ -13,6 +13,7 @@ pub trait Decode: Sized + RequiredMem {
     fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError>;
 }
 
+#[derive(Default)]
 pub struct Encoder<Endianness: ByteOrder> {
     output: Vec<u8>,
     _phantom: PhantomData<Endianness>,
