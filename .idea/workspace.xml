@@ -12,110 +12,18 @@
     <cargoProject FILE="$PROJECT_DIR$/Cargo.toml" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="c2226101-b811-4c7e-90b9-96ef805a0052" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/codeStyles/Project.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/codeStyles/codeStyleConfig.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/externalDependencies.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/fuzzyemu.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/fuzzyemu.iml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Cargo.toml" beforeDir="false" afterPath="$PROJECT_DIR$/Cargo.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/bin/simple_fuzzer.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/cpu/address.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/cpu/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/emulator.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/errors.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/handles.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/hooks.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/mmu/encoding/basic_types.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/mmu/encoding/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/mmu/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/abstractions/restore.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/macros.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/architecture/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/architecture/x86.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/emulator.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/filedescriptors.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/kernel/error.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/kernel/eventpoll.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/kernel/fs.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/kernel/memory/flags.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/kernel/memory/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/kernel/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/kernel/socket.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/kernel/task_id.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/platform/linux/signals.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/platform/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/clock/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/default_handles.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/filesystem/block.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/filesystem/data.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/filesystem/meta_info.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/filesystem/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/filesystem/stat.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/filesystem/tests.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/hardware/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/hardware/unicorn/cpu.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/hardware/unicorn/hooks.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/hardware/unicorn/mmu.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/hardware/unicorn/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/memory/layout/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/memory/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/memory/pregion.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/memory/rw_interface.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/memory/tlb/mapping.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/memory/tlb/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/memory/tlb/tlb_entry.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/memory_old.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/net/inet6/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/net/inet6/tcp.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/net/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/net/netlink.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/net/netlink/rtnetlink.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/emulator/system/net/unix.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/fuzzer/mod.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib.rs" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/etc/host.conf" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/etc/nsswitch.conf" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/etc/resolv.conf" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/home/user/cat" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/home/user/echo" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/home/user/main" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/home/user/main.c" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/home/user/server" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/home/user/server_rel" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/home/user/server_rel2" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/home/user/test.txt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/lib/x86_64-linux-gnu/libc.so.6" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/lib/x86_64-linux-gnu/libpthread.so.0" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2004/lib64/ld-linux-x86-64.so.2" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/home/user/cat" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/home/user/main" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/home/user/main.c" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/home/user/memstuff" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/home/user/memstuff.c" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/home/user/mremap_priv_anon" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/home/user/open62541_server" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/home/user/tar" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/home/user/test.txt" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/lib/x86_64-linux-gnu/libacl.so.1" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/lib/x86_64-linux-gnu/libc.so.6" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/lib/x86_64-linux-gnu/libmbedcrypto.so.7" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/lib/x86_64-linux-gnu/libmbedx509.so.1" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/lib/x86_64-linux-gnu/libpcre2-8.so.0" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/lib/x86_64-linux-gnu/libpthread.so.0" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/lib/x86_64-linux-gnu/libselinux.so.1" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/systems/ubuntu2204/lib64/ld-linux-x86-64.so.2" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/tests/mremap.rs" beforeDir="false" />
+    <list default="true" id="c2226101-b811-4c7e-90b9-96ef805a0052" name="Changes" comment="Split fuzzer and emulator into separate libs and use a workspace">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="ChangesViewManager">
+    <option name="groupingKeys">
+      <option value="directory" />
+    </option>
   </component>
   <component name="ClangdSettings">
     <option name="formatViaClangd" value="false" />
@@ -126,7 +34,13 @@
   <component name="MacroExpansionManager">
     <option name="directoryName" value="reh951m6" />
   </component>
+  <component name="MarkdownSettingsMigration">
+    <option name="stateVersion" value="1" />
+  </component>
   <component name="ProjectId" id="2SEtOKQoo1K9HUtu9pEWgcngtfZ" />
+  <component name="ProjectLevelVcsManager">
+    <ConfirmationsSetting value="1" id="Add" />
+  </component>
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
@@ -147,6 +61,7 @@
     "nodejs_package_manager_path": "npm",
     "org.rust.cargo.project.model.PROJECT_DISCOVERY": "true",
     "org.rust.disableDetachedFileInspection/home/mark/projects/fraunhofer/fuzzing/prototypes/fuzzyemu/fuzzer/bin/simple_fuzzer.rs": "true",
+    "settings.editor.selected.configurable": "preferences.lookFeel",
     "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
@@ -260,11 +175,24 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1688723535846</updated>
-      <workItem from="1688723537352" duration="3668000" />
+      <workItem from="1688723537352" duration="5028000" />
     </task>
+    <task id="LOCAL-00001" summary="Split fuzzer and emulator into separate libs and use a workspace">
+      <option name="closed" value="true" />
+      <created>1688727847470</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1688727847470</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="Split fuzzer and emulator into separate libs and use a workspace" />
+    <option name="LAST_COMMIT_MESSAGE" value="Split fuzzer and emulator into separate libs and use a workspace" />
   </component>
 </project>
