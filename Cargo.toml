@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "emulator",
-    "fuzzer"
+    "fuzzer",
+    "gui"
 ]
 
 resolver = "2"

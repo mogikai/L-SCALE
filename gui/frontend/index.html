@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>FuzE</title>
+</head>
+<body>
+<h1>FuzE</h1>
+<p id="test" onclick="bla()">
+    Test
+</p>
+<script>
+    const {invoke} = window.__TAURI__.tauri
+
+    function bla() {
+        invoke('hello_world', {name: "World"}).then((response) => {
+            window.test.innerHTML = response
+        })
+    }
+</script>
+</body>
+</html>

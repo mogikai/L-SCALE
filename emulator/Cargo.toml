@@ -2,6 +2,14 @@
 name = "fuzzyemu"
 version = "0.1.0"
 edition = "2021"
+authors = [
+    "Mark Leon Giraud <mark.giraud@iosb.fraunhofer.de>",
+]
+license-file = "LICENSE"
+repository = "https://gitlab.cc-asp.fraunhofer.de/fuzzing/fuzzyemu/fuzzyemu"
+rust-version = "1.72"
+#description = "TODO"
+readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
