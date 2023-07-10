@@ -6,6 +6,7 @@ use iced_x86::OpCodeOperandKind::mem;
 use crate::emulator::platform::linux::kernel::*;
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
 use crate::emulator::macros::*;
+use crate::emulator::platform::linux::filedescriptors::FileData;
 
 impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     pub fn write(
@@ -18,9 +19,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let mut memory = self.system.memory.borrow_mut();
         self.handles
             .get_mut(&fd)
-            .map_or(Err(LinuxKernelError::EINVAL), |handle| {
+            .map_or(Err(LinuxKernelError::EINVAL), |(handle, fd)| {
                 Ok(handle
-                    .write(
+                    .write(fd,
                         memory
                             .accessor(mmu, self.task_id)
                             .read_bytes(buf, size as usize)?
@@ -43,8 +44,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let memory = memory.accessor(mmu, self.task_id);
         self.handles
             .get_mut(&fd)
-            .map_or(Err(LinuxKernelError::EINVAL), |handle| {
-                let mut ret = 0;
+            .map_or(Err(LinuxKernelError::EINVAL), |(handle, fd)| {
+                let mut ret: usize = 0;
                 let iovec = memory
                     .read_bytes(iovec_ptr, (iovcnt * 16) as usize)
                     .unwrap();
@@ -52,7 +53,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
                     let ptr = EVAddr::from(Endianness::read_u64(&iovec[(i * 16)..((i * 16) + 8)]));
                     let size = Endianness::read_u64(&iovec[i * 16 + 8..i * 16 + 16]) as usize;
                     let data = memory.read_bytes(ptr, size)?;
-                    let written = handle.write(data.as_ref())?;
+                    let written: usize = handle.write(fd, data.as_ref())?;
                     ret += written;
                     // Early return if not all bytes were written. We need to stop writing in this case
                     if written != data.len() {
@@ -73,8 +74,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     ) -> SyscallResult {
         let mut memory = self.system.memory.borrow_mut();
         let mut memory = memory.accessor(mmu, self.task_id);
-        let file = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADF)?;
-        let d = file.pread(pos, count).unwrap();
+        let (handle, fd) = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADF)?;
+        let d = handle.pread(fd, pos, count).unwrap();
         Ok(memory.write_direct(buf, d.as_slice())? as u64)
     }
 
@@ -87,11 +88,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     ) -> SyscallResult {
         let mut memory = self.system.memory.borrow_mut();
         let mut memory = memory.accessor(mmu, self.task_id);
-        if let Some(f) = self.handles.get_mut(&fd) {
-            Ok(memory.write_direct(buf, f.read(count).unwrap().as_slice())? as u64)
-        } else {
-            Err(LinuxKernelError::EINVAL)
-        }
+        let (handle, ref mut file) = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EINVAL)?;
+        Ok(memory.write_direct(buf, handle.read(file, count).unwrap().as_slice())? as u64)
     }
 
     pub fn fstat(
@@ -102,8 +100,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     ) -> SyscallResult {
         let mut memory = self.system.memory.borrow_mut();
         let mut memory = memory.accessor(mmu, self.task_id);
-        let file = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADF)?;
-        memory.write(statbuf, file.stat()?)?;
+        let (handle, ref mut file) = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADF)?;
+        memory.write(statbuf, handle.stat(file)?)?;
         Ok(0)
     }
 
@@ -142,7 +140,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             .resolve_last(Path::new(&fname))?;
         Ok(self
             .handles
-            .add(Box::new(FileHandle::new(self.system.clone(), file))))
+            .add((Box::new(FileHandle::new(self.system.clone())), FileData::new(file))))
     }
 
     pub fn statfs(
@@ -166,8 +164,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let mut memory = memory.accessor(mmu, self.task_id);
         let flags = at_flags::from_bits(flag).ok_or(LinuxKernelError::EINVAL)?;
         if flags.contains(at_flags::AT_EMPTY_PATH) {
-            let file = self.handles.get(&dfd).ok_or(LinuxKernelError::EBADFD)?;
-            memory.write(statbuf, file.stat()?)?;
+            let (file, fd) = self.handles.get_mut(&dfd).ok_or(LinuxKernelError::EBADFD)?;
+            memory.write(statbuf, file.stat(fd)?)?;
             Ok(0)
         } else {
             let filename = read_osstring!(memory, filename)?;

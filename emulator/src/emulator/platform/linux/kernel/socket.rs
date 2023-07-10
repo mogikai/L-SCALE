@@ -13,6 +13,7 @@ use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
 use crate::emulator::system::net::unix::UnixSocket;
 use crate::emulator::system::net::{inet6, netlink, Sockaddr, SocketDomain, SocketFlags, SocketType};
+use crate::emulator::platform::linux::kernel::FileDescriptor;
 
 impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     pub fn socket(
@@ -33,7 +34,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             AF_INET6 => inet6::from_type(typ)?,
             _ => todo!(),
         };
-        Ok(self.handles.add(socket))
+        let fd = FileDescriptor::new();
+        Ok(self.handles.add((socket, fd)))
     }
 
     pub fn connect(
@@ -43,10 +45,10 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         uservaddr: EVAddr,
         addrlen: u64,
     ) -> SyscallResult {
-        self.handles
+        let (handle, fd) = self.handles
             .get_mut(&fd)
-            .ok_or(LinuxKernelError::EBADFD)?
-            .connect()?;
+            .ok_or(LinuxKernelError::EBADFD)?;
+        handle.connect(fd)?;
         Ok(0)
     }
 
@@ -76,11 +78,11 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let sockaddr: Sockaddr = memory.read_bounded(dest_addr, dest_addr_len as usize)?;
         let buf = memory.read_bytes(buf, len as usize)?;
         debug!("Buff: {:?}", &*buf);
-        Ok(self
+        let (handle, fd) = self
             .handles
             .get_mut(&fd)
-            .ok_or(LinuxKernelError::EBADFD)?
-            .sendto(&*buf)? as u64)
+            .ok_or(LinuxKernelError::EBADFD)?;
+        Ok(handle.sendto(fd, &*buf)? as u64)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -123,11 +125,11 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             .iter()
             .try_fold(0usize, |sum, vec| sum.checked_add(vec.iov_len as usize))
             .ok_or(LinuxKernelError::EINVAL)?;
-        let data = self
+        let (handle, fd) = self
             .handles
             .get_mut(&fd)
-            .ok_or(LinuxKernelError::EBADFD)?
-            .recvmsg(to_read)?;
+            .ok_or(LinuxKernelError::EBADFD)?;
+        let data = handle.recvmsg(fd, to_read)?;
         let mut offset = 0;
         for vec in iovec {
             let to_write = &data[offset..];
@@ -158,14 +160,14 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     ) -> SyscallResult {
         let mut memory = self.system.memory.borrow_mut();
         let memory = memory.accessor(mmu, self.task_id);
-        let handle = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADF)?;
+        let (handle, fd) = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADF)?;
         let mut sockaddr = memory.read(umyaddr)?;
         if let Sockaddr::NL { nl_pid, .. } = &mut sockaddr {
             if *nl_pid == 0 {
                 *nl_pid = self.task_id.pid;
             }
         }
-        handle.bind(sockaddr)?;
+        handle.bind(fd, sockaddr)?;
         Ok(0)
     }
 
@@ -186,11 +188,11 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         usockaddr: EVAddr,     // sockaddr*
         usockaddr_len: EVAddr, // int*
     ) -> SyscallResult {
-        let sockaddr = self
+        let (handle, fd) = self
             .handles
-            .get(&fd)
-            .ok_or(LinuxKernelError::EBADFD)?
-            .getsockname()?;
+            .get_mut(&fd)
+            .ok_or(LinuxKernelError::EBADFD)?;
+        let sockaddr = handle.getsockname(fd)?;
         self.system
             .memory
             .borrow_mut()
@@ -233,10 +235,10 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let memory = memory.accessor(mmu, self.task_id);
         let opt_data = memory.read_bytes(optval, optlen as usize)?;
         // TODO: Handle sockopts correctly
-        self.handles
+        let (handle, fd) = self.handles
             .get_mut(&fd)
-            .ok_or(LinuxKernelError::EBADFD)?
-            .setsockopt()?;
+            .ok_or(LinuxKernelError::EBADFD)?;
+        handle.setsockopt(fd)?;
         Ok(0)
     }
 

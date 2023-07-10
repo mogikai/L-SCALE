@@ -6,6 +6,7 @@ use byteorder::ByteOrder;
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::handles::Handle;
 use crate::emulator::system::filesystem::Stat;
+use crate::emulator::platform::linux::filedescriptor::FileDescriptor;
 
 pub struct WriteOnly {
     stat: RefCell<Stat>,
@@ -20,10 +21,11 @@ impl WriteOnly {
 }
 
 impl Handle for WriteOnly {
-    fn stat(&self) -> Result<Ref<Stat>, GenericError> { Ok(self.stat.borrow()) }
+    fn stat(&self, fd: &mut FileDescriptor) -> Result<Ref<Stat>, GenericError> { Ok(self.stat.borrow()) }
 
     fn read(
         &mut self,
+        fd: &mut FileDescriptor,
         count: u64,
     ) -> Result<Vec<u8>, GenericError> {
         todo!()
@@ -31,6 +33,7 @@ impl Handle for WriteOnly {
 
     fn pread(
         &self,
+        fd: &mut FileDescriptor,
         offset: u64,
         length: u64,
     ) -> Result<Vec<u8>, GenericError> {
@@ -39,6 +42,7 @@ impl Handle for WriteOnly {
 
     fn write(
         &mut self,
+        fd: &mut FileDescriptor,
         data: &[u8],
     ) -> Result<usize, GenericError> {
         print!("{:}", String::from_utf8_lossy(data));
@@ -71,10 +75,11 @@ impl ReadOnly {
 }
 
 impl Handle for ReadOnly {
-    fn stat(&self) -> Result<Ref<Stat>, GenericError> { Ok(self.stat.borrow()) }
+    fn stat(&self, fd: &mut FileDescriptor) -> Result<Ref<Stat>, GenericError> { Ok(self.stat.borrow()) }
 
     fn read(
         &mut self,
+        fd: &mut FileDescriptor,
         count: u64,
     ) -> Result<Vec<u8>, GenericError> {
         let upper = min(self.pos + count as usize, self.data.len());
@@ -85,6 +90,7 @@ impl Handle for ReadOnly {
 
     fn pread(
         &self,
+        fd: &mut FileDescriptor,
         offset: u64,
         length: u64,
     ) -> Result<Vec<u8>, GenericError> {
@@ -93,6 +99,7 @@ impl Handle for ReadOnly {
 
     fn write(
         &mut self,
+        fd: &mut FileDescriptor,
         data: &[u8],
     ) -> Result<usize, GenericError> {
         todo!()

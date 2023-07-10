@@ -22,12 +22,14 @@ use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::macros::push_stack;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::filedescriptors::FileHandle;
+use crate::emulator::platform::linux::filedescriptor::FileDescriptor;
 use crate::emulator::platform::linux::signalfd::SignalFD;
 pub use crate::emulator::platform::linux::kernel::error::LinuxKernelError;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
 use crate::emulator::system::{default_handles, System};
+use crate::emulator::platform::linux::signalfd::SignalFDHandler;
 
 mod error;
 pub mod eventpoll;
@@ -37,7 +39,7 @@ pub mod socket;
 pub mod task_id;
 
 struct HandleMap {
-    handles: HashMap<u64, Box<dyn Handle>>,
+    handles: HashMap<u64, (Box<dyn Handle>,FileDescriptor)>,
     free_fds: Vec<u64>,
     replacement_handles: HashMap<u64, VecDeque<Box<dyn Handle>>>,
 }
@@ -83,22 +85,23 @@ impl HandleMap {
     fn insert(
         &mut self,
         fd: u64,
-        handle: Box<dyn Handle>,
-    ) -> Option<Box<dyn Handle>> {
+        handle: (Box<dyn Handle>, FileDescriptor),
+    ) -> Option<(Box<dyn Handle>, FileDescriptor)> {
         // Insert the handle if no replacement exists. Otherwise insert the replacement
-        self.handles.insert(
-            fd,
-            self.replacement_handles
+        let (h, d) = handle;
+        let h = self.replacement_handles
                 .entry(fd)
                 .or_default()
                 .pop_back()
-                .unwrap_or(handle),
+                .unwrap_or(h);
+        self.handles.insert(
+            fd, (h, d)
         )
     }
 
     fn add(
         &mut self,
-        handle: Box<dyn Handle>,
+        handle: (Box<dyn Handle>, FileDescriptor),
     ) -> u64 {
         // Insert the handle if no replacement exists. Otherwise insert the replacement
         let fd = self.get_free_fd();
@@ -112,25 +115,25 @@ impl HandleMap {
     fn get_mut(
         &mut self,
         fd: &u64,
-    ) -> Option<&mut Box<dyn Handle>> {
+    ) -> Option<&mut (Box<dyn Handle>, FileDescriptor)> {
         self.handles.get_mut(fd)
     }
 
-    fn keys(&self) -> Keys<u64, Box<dyn Handle>> {
+    fn keys(&self) -> Keys<u64, (Box<dyn Handle>, FileDescriptor)> {
         self.handles.keys()
     }
 
     fn get(
         &self,
         fd: &u64,
-    ) -> Option<&Box<dyn Handle>> {
+    ) -> Option<&(Box<dyn Handle>, FileDescriptor)> {
         self.handles.get(fd)
     }
 
     fn remove(
         &mut self,
         fd: &u64,
-    ) -> Option<Box<dyn Handle>> {
+    ) -> Option<(Box<dyn Handle>, FileDescriptor)> {
         let old = self.handles.remove(fd);
         if old.is_some() {
             self.free_fds.push(*fd);
@@ -313,12 +316,15 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     }
 
     pub fn add_stdio_handles(&mut self) {
+        let fd = FileDescriptor::new();
         self.handles
-            .insert(0, Box::new(default_handles::ReadOnly::new()));
+            .insert(0, (Box::new(default_handles::ReadOnly::new()), fd));
+        let fd = FileDescriptor::new();
         self.handles
-            .insert(1, Box::new(default_handles::WriteOnly::new()));
+            .insert(1, (Box::new(default_handles::WriteOnly::new()), fd));
+        let fd = FileDescriptor::new();
         self.handles
-            .insert(2, Box::new(default_handles::WriteOnly::new()));
+            .insert(2, (Box::new(default_handles::WriteOnly::new()), fd));
     }
 
     pub fn brk(
@@ -549,7 +555,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let sigmask = memory
             .read_bytes(mask, sizemask as usize)
             .map(|s| Endianness::read_u64(&s))?;
-        let fd = self.handles.add(Box::new(SignalFD::new(self.system.clone(), sigmask)));
+        let fd = self.handles.add((Box::new(SignalFDHandler::new()), FileDescriptor::new()));
         self.signalhandler.insertFD(fd);
         return Ok(fd);
     }

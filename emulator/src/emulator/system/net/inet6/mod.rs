@@ -1,4 +1,4 @@
-mod tcp;
+pub mod tcp;
 
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::handles::Handle;

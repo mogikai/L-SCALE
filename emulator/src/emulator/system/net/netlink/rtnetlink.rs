@@ -16,6 +16,7 @@ use crate::emulator::system::net::netlink::rtnetlink::nla_type::{
 use crate::emulator::system::net::netlink::{nlmsghdr, NetlinkMessageFlags};
 use crate::emulator::system::net::Sockaddr;
 use crate::emulator::system::net::SocketDomain::{AF_INET, AF_INET6};
+use crate::emulator::platform::linux::filedescriptor::FileDescriptor;
 
 pub struct RTNetlinkSocket<Endianness: ByteOrder> {
     sockaddr: Option<Sockaddr>,
@@ -36,6 +37,7 @@ impl<Endianness: ByteOrder> RTNetlinkSocket<Endianness> {
 impl<Endianness: ByteOrder> Handle for RTNetlinkSocket<Endianness> {
     fn bind(
         &mut self,
+        fd: &mut FileDescriptor,
         sockaddr: Sockaddr,
     ) -> Result<(), GenericError> {
         // TODO: What needs to be done here?
@@ -43,7 +45,10 @@ impl<Endianness: ByteOrder> Handle for RTNetlinkSocket<Endianness> {
         Ok(())
     }
 
-    fn getsockname(&self) -> Result<&Sockaddr, GenericError> {
+    fn getsockname(
+        &self,
+        fd: &mut FileDescriptor,
+        ) -> Result<&Sockaddr, GenericError> {
         match &self.sockaddr {
             Some(s) => Ok(s),
             None => Err(GenericError::new(GenericErrorKind::Unknown, "")),
@@ -52,6 +57,7 @@ impl<Endianness: ByteOrder> Handle for RTNetlinkSocket<Endianness> {
 
     fn sendto(
         &mut self,
+        fd: &mut FileDescriptor,
         data: &[u8],
     ) -> Result<usize, GenericError> {
         let hdr = nlmsghdr::decode::<Endianness>(data)?;
@@ -289,6 +295,7 @@ impl<Endianness: ByteOrder> Handle for RTNetlinkSocket<Endianness> {
 
     fn recvmsg(
         &mut self,
+        fd: &mut FileDescriptor,
         len: usize,
     ) -> Result<Vec<u8>, GenericError> {
         // TODO: EAGAIN?

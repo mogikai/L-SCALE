@@ -13,10 +13,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="c2226101-b811-4c7e-90b9-96ef805a0052" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/emulator/src/emulator/platform/linux/signalfd.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/emulator/src/emulator/platform/linux/kernel/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/emulator/src/emulator/platform/linux/kernel/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/emulator/src/emulator/platform/linux/mod.rs" beforeDir="false" afterPath="$PROJECT_DIR$/emulator/src/emulator/platform/linux/mod.rs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/emulator/src/emulator/platform/linux/signals.rs" beforeDir="false" afterPath="$PROJECT_DIR$/emulator/src/emulator/platform/linux/signals.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/emulator/src/emulator/platform/linux/filedescriptor.rs" beforeDir="false" afterPath="$PROJECT_DIR$/emulator/src/emulator/platform/linux/filedescriptor.rs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/emulator/src/emulator/platform/linux/signalfd.rs" beforeDir="false" afterPath="$PROJECT_DIR$/emulator/src/emulator/platform/linux/signalfd.rs" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -56,7 +55,7 @@
     "WebServerToolWindowFactoryState": "false",
     "cf.first.check.clang-format": "false",
     "cidr.known.project.marker": "true",
-    "git-widget-placeholder": "Rebasing signalfd",
+    "git-widget-placeholder": "signalfd",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",

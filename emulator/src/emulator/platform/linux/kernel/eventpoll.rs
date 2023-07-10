@@ -6,6 +6,7 @@ use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::handles::Handle;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::kernel::{LinuxKernelTask, SyscallResult};
+use crate::emulator::platform::linux::kernel::FileDescriptor;
 
 impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     pub fn epoll_create(
@@ -64,11 +65,13 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
         _: &mut impl CPU,
         flags: u64,
     ) -> SyscallResult {
-        Ok(self.handles.add(Box::new(Epoll::new())))
+        let mut fd = FileDescriptor::new();
+        fd.poll = Some(Epoll::new());
+        Ok(self.handles.add((Box::new(EpollHandler::new()),fd)))
     }
 }
 
-struct Epoll {
+pub struct Epoll {
     interest_list: BTreeMap<u64, u64>
 }
 
@@ -76,4 +79,9 @@ impl Epoll {
     fn new() -> Self { Epoll { interest_list: Default::default() } }
 }
 
-impl Handle for Epoll {}
+pub struct EpollHandler {}
+impl EpollHandler {
+    fn new() -> Self { Self{} }
+}
+
+impl Handle for EpollHandler {}
