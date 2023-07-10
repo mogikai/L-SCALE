@@ -426,8 +426,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         mmu: &mut impl MMU,
         fd: u64,
         mask: EVAddr,
-        _flags: u64,
         sizemask: u64,
+        _flags: u64,
     ) -> SyscallResult {
         if fd < 1 << 31 { //TODO besser auf -1 prüfen
             todo!("fd != -1");
