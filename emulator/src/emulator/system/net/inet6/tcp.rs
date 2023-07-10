@@ -1,7 +1,7 @@
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::handles::Handle;
+use crate::emulator::abstractions::handles::HandleOps;
 use crate::emulator::system::net::Sockaddr;
 use crate::emulator::platform::linux::filedescriptor::FileDescriptor;
 
@@ -11,7 +11,7 @@ impl TcpSock {
     pub fn new() -> Self { Self {} }
 }
 
-impl Handle for TcpSock {
+impl HandleOps for TcpSock {
     fn bind(
         &mut self,
         fd: &mut FileDescriptor,

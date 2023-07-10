@@ -16,7 +16,7 @@ use fd_map::HandleMap;
 use crate::emulator::abstractions::cpu::address::{EVA_NULL, EVAddr};
 use crate::emulator::abstractions::cpu::{CPU, RegisterX86};
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
-use crate::emulator::abstractions::handles::Handle;
+use crate::emulator::abstractions::handles::HandleOps;
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
 use crate::emulator::abstractions::mmu::{MemoryError, MMU, Permission};
 use crate::emulator::abstractions::restore::Restorable;

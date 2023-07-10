@@ -5,7 +5,7 @@ use byteorder::{ByteOrder, LittleEndian};
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::CPU;
-use crate::emulator::abstractions::handles::Handle;
+use crate::emulator::abstractions::handles::HandleOps;
 use crate::emulator::abstractions::mmu::encoding::{Decode, RequiredMem};
 use crate::emulator::abstractions::mmu::{MemoryError, MMU};
 use crate::emulator::platform::linux::architecture::Architecture;
@@ -28,7 +28,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let typ = SocketType::try_from(typ)?;
         debug!("Creating socket ({:?} {:?})", family, typ);
         use SocketDomain::*;
-        let socket: Box<dyn Handle> = match family {
+        let socket: Box<dyn HandleOps> = match family {
             AF_NETLINK => netlink::from_protocol::<Endianness>(protocol)?,
             AF_UNIX => Box::new(UnixSocket::new()),
             AF_INET6 => inet6::from_type(typ)?,

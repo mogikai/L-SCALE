@@ -7,7 +7,7 @@ use byteorder::ByteOrder;
 use num_enum::{FromPrimitive, IntoPrimitive};
 
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
-use crate::emulator::abstractions::handles::Handle;
+use crate::emulator::abstractions::handles::HandleOps;
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, Encoder, RequiredMem};
 use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::system::net::netlink::rtnetlink::nla_type::{
@@ -34,7 +34,7 @@ impl<Endianness: ByteOrder> RTNetlinkSocket<Endianness> {
     }
 }
 
-impl<Endianness: ByteOrder> Handle for RTNetlinkSocket<Endianness> {
+impl<Endianness: ByteOrder> HandleOps for RTNetlinkSocket<Endianness> {
     fn bind(
         &mut self,
         fd: &mut FileDescriptor,

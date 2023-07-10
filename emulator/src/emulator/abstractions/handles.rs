@@ -8,7 +8,14 @@ use crate::emulator::system::net::Sockaddr;
 
 use crate::emulator::platform::linux::filedescriptor::FileDescriptor;
 
-pub trait Handle {
+/// The HandleOps trait contains all the functions necessary
+/// for a handle (file descriptor in linux) to function.
+/// Some functions may always return an error since they might
+/// not be supported on the specific supplied handle.
+///
+/// The actual handle data is contained in the TODO struct
+///
+pub trait HandleOps {
     fn read_ready(&self, fd: &mut FileDescriptor) -> bool { todo!() }
     fn write_ready(&self, fd: &mut FileDescriptor) -> bool { todo!() }
 

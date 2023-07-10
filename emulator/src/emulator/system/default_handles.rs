@@ -4,7 +4,7 @@ use std::cmp::min;
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::handles::Handle;
+use crate::emulator::abstractions::handles::HandleOps;
 use crate::emulator::system::filesystem::Stat;
 use crate::emulator::platform::linux::filedescriptor::FileDescriptor;
 
@@ -20,7 +20,7 @@ impl WriteOnly {
     }
 }
 
-impl Handle for WriteOnly {
+impl HandleOps for WriteOnly {
     fn stat(&self, fd: &mut FileDescriptor) -> Result<Ref<Stat>, GenericError> { Ok(self.stat.borrow()) }
 
     fn read(
@@ -74,7 +74,7 @@ impl ReadOnly {
     }
 }
 
-impl Handle for ReadOnly {
+impl HandleOps for ReadOnly {
     fn stat(&self, fd: &mut FileDescriptor) -> Result<Ref<Stat>, GenericError> { Ok(self.stat.borrow()) }
 
     fn read(

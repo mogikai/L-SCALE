@@ -3,7 +3,7 @@ use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::cpu::address::EVAddr;
-use crate::emulator::abstractions::handles::Handle;
+use crate::emulator::abstractions::handles::HandleOps;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::kernel::{LinuxKernelTask, SyscallResult};
 use crate::emulator::platform::linux::kernel::FileDescriptor;
@@ -84,4 +84,4 @@ impl EpollHandler {
     fn new() -> Self { Self{} }
 }
 
-impl Handle for EpollHandler {}
+impl HandleOps for EpollHandler {}

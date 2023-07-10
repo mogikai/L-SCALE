@@ -191,7 +191,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     pub fn add_replacement_handle(
         &mut self,
         fd: u64,
-        handle: Box<dyn Handle>,
+        handle: Box<dyn HandleOps>,
     ) {
         self.handles.add_replacement_handle(fd, handle);
     }
