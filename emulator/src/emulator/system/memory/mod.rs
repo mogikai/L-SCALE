@@ -46,8 +46,8 @@ pub(crate) fn is4kaligned<T>(address: T) -> bool
         T: TryFrom<u64> + BitAnd<Output=T> + Eq + Copy,
         <T as TryFrom<u64>>::Error: Debug,
 {
-    let mask = T::try_from(0).expect("Address like type must be convertible from 64 bit values");
-    (address & mask) == mask
+    let mask = T::try_from(MASK4K).expect("Address like type must be convertible from 64 bit values");
+    (address & mask) == T::try_from(0u64).expect("Address like type must be convertible from 64 bit values")
 }
 
 macro_rules! layout {
