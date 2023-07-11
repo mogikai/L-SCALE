@@ -4,3 +4,13 @@ It provides a hook API for the fuzzer to do observations of the target during it
 It also provides the capability to efficiently create snapshots of the target and later reset to these snapshots.
 
 TODO: Document and give some examples maybe.
+
+
+
+## Current tasks
+
+| Tasks      | Status                                                                                     | Assignee |
+|------------|--------------------------------------------------------------------------------------------|----------|
+| Eventpoll  | Development                                                                                | @giraud  |
+| Unit Tests | Need Resources                                                                             |          |
+| Restorable | Waiting for [Pull Request in Unicorn](https://github.com/unicorn-engine/unicorn/pull/1820) | @takphi  |
