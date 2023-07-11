@@ -1,11 +1,14 @@
 use std::collections::{HashMap, VecDeque};
 use std::collections::hash_map::Keys;
+
 use crate::emulator::abstractions::handles::HandleOps;
 use crate::emulator::platform::linux::filedescriptor::FileDescriptor;
 
 pub(crate) struct HandleMap {
-    handles: HashMap<u64, (Box<dyn HandleOps>, FileDescriptor)>,
+    handles: HashMap<u64, FileDescriptor>,
     free_fds: Vec<u64>,
+    // TODO: Implement as a hook object that can be inserted to be called after the handle
+    //       processed the call.
     replacement_handles: HashMap<u64, VecDeque<Box<dyn HandleOps>>>,
 }
 
@@ -50,23 +53,22 @@ impl HandleMap {
     pub(crate) fn insert(
         &mut self,
         fd: u64,
-        handle: (Box<dyn HandleOps>, FileDescriptor),
-    ) -> Option<(Box<dyn HandleOps>, FileDescriptor)> {
+        mut handle: FileDescriptor,
+    ) -> Option<FileDescriptor> {
         // Insert the handle if no replacement exists. Otherwise insert the replacement
-        let (h, d) = handle;
-        let h = self.replacement_handles
-                .entry(fd)
-                .or_default()
-                .pop_back()
-                .unwrap_or(h);
+        handle.ops = self.replacement_handles
+            .entry(fd)
+            .or_default()
+            .pop_back()
+            .unwrap_or(handle.ops);
         self.handles.insert(
-            fd, (h, d)
+            fd, handle,
         )
     }
 
     pub(crate) fn add(
         &mut self,
-        handle: (Box<dyn HandleOps>, FileDescriptor),
+        handle: FileDescriptor,
     ) -> u64 {
         // Insert the handle if no replacement exists. Otherwise insert the replacement
         let fd = self.get_free_fd();
@@ -80,25 +82,25 @@ impl HandleMap {
     pub(crate) fn get_mut(
         &mut self,
         fd: &u64,
-    ) -> Option<&mut (Box<dyn HandleOps>, FileDescriptor)> {
+    ) -> Option<&mut FileDescriptor> {
         self.handles.get_mut(fd)
     }
 
-    pub(crate) fn keys(&self) -> Keys<u64, (Box<dyn HandleOps>, FileDescriptor)> {
+    pub(crate) fn keys(&self) -> Keys<u64, FileDescriptor> {
         self.handles.keys()
     }
 
     pub(crate) fn get(
         &self,
         fd: &u64,
-    ) -> Option<&(Box<dyn HandleOps>, FileDescriptor)> {
+    ) -> Option<&FileDescriptor> {
         self.handles.get(fd)
     }
 
     pub(crate) fn remove(
         &mut self,
         fd: &u64,
-    ) -> Option<(Box<dyn HandleOps>, FileDescriptor)> {
+    ) -> Option<FileDescriptor> {
         let old = self.handles.remove(fd);
         if old.is_some() {
             self.free_fds.push(*fd);

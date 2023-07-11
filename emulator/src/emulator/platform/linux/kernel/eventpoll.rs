@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
+
 use byteorder::ByteOrder;
 
-use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::cpu::address::EVAddr;
+use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::handles::HandleOps;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::kernel::{LinuxKernelTask, SyscallResult};
@@ -65,23 +66,24 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
         _: &mut impl CPU,
         flags: u64,
     ) -> SyscallResult {
-        let mut fd = FileDescriptor::new();
-        fd.poll = Some(Epoll::new());
-        Ok(self.handles.add((Box::new(EpollHandler::new()),fd)))
+        let mut fd = FileDescriptor::new(Box::new(EpollOps::new()));
+        fd.data.poll = Some(Epoll::new());
+        Ok(self.handles.add(fd))
     }
 }
 
 pub struct Epoll {
-    interest_list: BTreeMap<u64, u64>
+    interest_list: BTreeMap<u64, u64>,
 }
 
 impl Epoll {
     fn new() -> Self { Epoll { interest_list: Default::default() } }
 }
 
-pub struct EpollHandler {}
-impl EpollHandler {
-    fn new() -> Self { Self{} }
+pub struct EpollOps {}
+
+impl EpollOps {
+    fn new() -> Self { Self {} }
 }
 
-impl HandleOps for EpollHandler {}
+impl HandleOps for EpollOps {}

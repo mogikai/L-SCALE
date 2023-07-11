@@ -1,12 +1,12 @@
-use std::cell::{Ref, RefCell};
+use std::cell::Ref;
 use std::rc::Rc;
 
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::handles::HandleOps;
-use crate::emulator::platform::linux::filedescriptor::FileDescriptor;
-use crate::emulator::system::filesystem::{Filesystem, FSEntryId, Stat};
+use crate::emulator::platform::linux::filedescriptor::{FileDescriptor, FileDescriptorData};
+use crate::emulator::system::filesystem::{FSEntryId, Stat};
 use crate::emulator::system::System;
 
 #[derive(Debug, Clone)]
@@ -16,21 +16,19 @@ pub struct FileData {
 }
 
 impl FileData {
-    pub fn new(fse_id: FSEntryId) -> FileDescriptor {
-        let mut fd = FileDescriptor::new();
-        fd.file = Some(FileData { fse_id, pos: 0 });
-        fd
+    pub fn new(fse_id: FSEntryId) -> FileData {
+        FileData { fse_id, pos: 0 }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct FileHandle<Endianness: ByteOrder> {
+pub struct FileOps<Endianness: ByteOrder> {
     system: Rc<System<Endianness>>,
 }
 
 //TODO build a trait
-impl<Endianness: ByteOrder> HandleOps for FileHandle<Endianness> {
-    fn stat(&self, fd: &mut FileDescriptor) -> Result<Ref<Stat>, GenericError> {
+impl<Endianness: ByteOrder> HandleOps for FileOps<Endianness> {
+    fn stat(&self, fd: &mut FileDescriptorData) -> Result<Ref<Stat>, GenericError> {
         let fd = fd.file.as_mut().ok_or(GenericError::new(GenericErrorKind::Unknown, "not a fs backed file"))?;
         Ref::filter_map(self.system.filesystem.borrow(), |fs| fs.stat(fd.fse_id).ok())
             .or(Err(GenericError::new(GenericErrorKind::Unknown, "Could not stat the file")))
@@ -38,7 +36,7 @@ impl<Endianness: ByteOrder> HandleOps for FileHandle<Endianness> {
 
     fn read(
         &mut self,
-        fd: &mut FileDescriptor,
+        fd: &mut FileDescriptorData,
         count: u64,
     ) -> Result<Vec<u8>, GenericError> {
         let fd = fd.file.as_mut().ok_or(GenericError::new(GenericErrorKind::Unknown, "not a fs backed file"))?;
@@ -49,7 +47,7 @@ impl<Endianness: ByteOrder> HandleOps for FileHandle<Endianness> {
 
     fn pread(
         &self,
-        fd: &mut FileDescriptor,
+        fd: &mut FileDescriptorData,
         offset: u64,
         length: u64,
     ) -> Result<Vec<u8>, GenericError> {
@@ -59,7 +57,7 @@ impl<Endianness: ByteOrder> HandleOps for FileHandle<Endianness> {
 
     fn write(
         &mut self,
-        fd: &mut FileDescriptor,
+        fd: &mut FileDescriptorData,
         data: &[u8],
     ) -> Result<usize, GenericError> {
         let fd = fd.file.as_mut().ok_or(GenericError::new(GenericErrorKind::Unknown, "not a fs backed file"))?;
@@ -69,11 +67,11 @@ impl<Endianness: ByteOrder> HandleOps for FileHandle<Endianness> {
     }
 }
 
-impl<Endianness: ByteOrder> FileHandle<Endianness> {
+impl<Endianness: ByteOrder> FileOps<Endianness> {
     pub fn new(
         system: Rc<System<Endianness>>,
-    ) -> FileHandle<Endianness> {
-        FileHandle {
+    ) -> FileOps<Endianness> {
+        FileOps {
             system,
         }
     }

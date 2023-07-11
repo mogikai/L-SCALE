@@ -24,10 +24,10 @@ impl SignalFD {
         }
     }
 }
-pub struct SignalFDHandler {}
+pub struct SignalFDOps {}
 
-impl SignalFDHandler {
-    pub fn new() -> Self { SignalFDHandler{} }
+impl SignalFDOps {
+    pub fn new() -> Self { SignalFDOps {} }
 }
 
-impl HandleOps for SignalFDHandler {}
+impl HandleOps for SignalFDOps {}

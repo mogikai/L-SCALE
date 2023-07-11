@@ -228,8 +228,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         offset: u64,
         addr: EVAddr,
     ) -> Result<(), LinuxKernelError> {
-        let (f, fd) = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EINVAL)?;
-        let data = f.pread(fd, offset, length)?;
+        let fd = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EINVAL)?;
+        let data = fd.ops.pread(&mut fd.data, offset, length)?;
 
         let mut memory = self
             .system

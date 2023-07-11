@@ -1,13 +1,25 @@
-use byteorder::ByteOrder;
-
+use crate::emulator::abstractions::handles::HandleOps;
 use crate::emulator::platform::linux::filedescriptors::FileData;
 use crate::emulator::platform::linux::kernel::eventpoll::Epoll;
 use crate::emulator::platform::linux::signalfd::SignalFD;
 use crate::emulator::system::net::inet6::tcp::TcpSock;
 use crate::emulator::system::net::unix::UnixSocketData;
 
-#[derive(Default)]
 pub struct FileDescriptor {
+    /// The data field contains all state data for the fds. Each system component has
+    /// its own optional field in the data struct. The HandleOps implementation
+    /// is responsible for checking whether the appropriate data field exists.
+    /// If it does not, the user space application called the operation on an invalid
+    /// handle, and the HandleOps implementation shall return an EBADF error.
+    pub data: FileDescriptorData,
+    /// The ops implementation may contain pointers to system components.
+    /// It must however be stateless. All data pertaining to state or
+    /// similar fd related info must be contained in the data field.
+    pub ops: Box<dyn HandleOps>,
+}
+
+#[derive(Default)]
+pub struct FileDescriptorData {
     pub file: Option<FileData>,
     pub signals: Option<SignalFD>,
     pub socket: Option<TcpSock>,
@@ -16,52 +28,10 @@ pub struct FileDescriptor {
 }
 
 impl FileDescriptor {
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    pub fn new_file(
-        f: FileData
-    ) -> FileDescriptor {
+    pub fn new(ops: Box<dyn HandleOps>) -> Self {
         FileDescriptor {
-            file: Some(f),
-            ..Default::default()
-        }
-    }
-
-    pub fn new_signalfd(
-        sh: SignalFD
-    ) -> FileDescriptor {
-        FileDescriptor {
-            signals: Some(sh),
-            ..Default::default()
-        }
-    }
-
-    pub fn new_socket(
-        t: TcpSock,
-    ) -> FileDescriptor {
-        FileDescriptor {
-            socket: Some(t),
-            ..Default::default()
-        }
-    }
-
-    pub fn new_usock(
-        s: UnixSocketData,
-    ) -> FileDescriptor {
-        FileDescriptor {
-            usock: Some(s),
-            ..Default::default()
-        }
-    }
-
-    pub fn new_epoll(
-        e: Epoll,
-    ) -> FileDescriptor {
-        FileDescriptor {
-            poll: Some(e),
-            ..Default::default()
+            data: Default::default(),
+            ops,
         }
     }
 }

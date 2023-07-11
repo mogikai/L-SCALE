@@ -21,7 +21,7 @@ use crate::emulator::abstractions::mmu::{MemoryError, MMU, Permission};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::macros::push_stack;
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::filedescriptors::FileHandle;
+use crate::emulator::platform::linux::filedescriptors::FileOps;
 use crate::emulator::platform::linux::filedescriptor::FileDescriptor;
 use crate::emulator::platform::linux::kernel::auxv::AUXVType;
 use crate::emulator::platform::linux::signalfd::SignalFD;
@@ -30,7 +30,7 @@ use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
 use crate::emulator::system::{default_handles, System};
-use crate::emulator::platform::linux::signalfd::SignalFDHandler;
+use crate::emulator::platform::linux::signalfd::SignalFDOps;
 
 mod error;
 pub(crate) mod eventpoll;
@@ -208,15 +208,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     }
 
     pub fn add_stdio_handles(&mut self) {
-        let fd = FileDescriptor::new();
         self.handles
-            .insert(0, (Box::new(default_handles::ReadOnly::new()), fd));
-        let fd = FileDescriptor::new();
+            .insert(0, FileDescriptor::new(Box::new(default_handles::ReadOnly::new())));
         self.handles
-            .insert(1, (Box::new(default_handles::WriteOnly::new()), fd));
-        let fd = FileDescriptor::new();
+            .insert(1, FileDescriptor::new(Box::new(default_handles::WriteOnly::new())));
         self.handles
-            .insert(2, (Box::new(default_handles::WriteOnly::new()), fd));
+            .insert(2, FileDescriptor::new(Box::new(default_handles::WriteOnly::new())));
     }
 
     pub fn brk(
@@ -447,7 +444,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let sigmask = memory
             .read_bytes(mask, sizemask as usize)
             .map(|s| Endianness::read_u64(&s))?;
-        let fd = self.handles.add((Box::new(SignalFDHandler::new()), FileDescriptor::new()));
+        let fd = self.handles.add(FileDescriptor::new(Box::new(SignalFDOps::new())));
         self.signalhandler.insertFD(fd);
         return Ok(fd);
     }
