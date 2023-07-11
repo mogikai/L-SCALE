@@ -60,7 +60,7 @@ impl MetaInfo {
         if let Dir { contents } = &self.get_content_by_id(dir_content_id)?.contents {
             let name = path.file_name().ok_or(FSError::Unknown)?.to_str().ok_or(FSError::Unknown)?;
             if contents.contains_key(name) {
-                return Err(FSError::Unknown);
+                Err(FSError::Unknown)?
             }
             let entry = new_entry(name.into());
             let entry_id = self.next_fse_id;
@@ -127,7 +127,7 @@ impl MetaInfo {
         match &entry.contents {
             Dir { contents } => {
                 if !contents.is_empty() {
-                    return Err(FSError::Unknown);
+                    Err(FSError::Unknown)?
                 }
             }
             File { .. } => {

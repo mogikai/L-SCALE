@@ -1,17 +1,10 @@
-use crate::emulator::platform::linux::filedescriptors::FileData;
-use crate::emulator::platform::linux::signalfd::SignalFD;
-use crate::emulator::platform::linux::kernel::eventpoll::Epoll;
-use crate::emulator::system::net::unix::UnixSocketData;
-use crate::emulator::system::net::inet6::tcp::TcpSock;
 use byteorder::ByteOrder;
 
-/*enum fdtype {
-    file,
-    socket,
-    ...,
-
-    callback,
-}*/
+use crate::emulator::platform::linux::filedescriptors::FileData;
+use crate::emulator::platform::linux::kernel::eventpoll::Epoll;
+use crate::emulator::platform::linux::signalfd::SignalFD;
+use crate::emulator::system::net::inet6::tcp::TcpSock;
+use crate::emulator::system::net::unix::UnixSocketData;
 
 #[derive(Default)]
 pub struct FileDescriptor {
@@ -22,49 +15,51 @@ pub struct FileDescriptor {
     pub usock: Option<UnixSocketData>,
 }
 
-
-
 impl FileDescriptor {
     pub fn new() -> Self {
-        return Default::default();
+        Default::default()
     }
 
     pub fn new_file(
         f: FileData
     ) -> FileDescriptor {
-        return FileDescriptor {
+        FileDescriptor {
             file: Some(f),
             ..Default::default()
         }
     }
+
     pub fn new_signalfd(
         sh: SignalFD
     ) -> FileDescriptor {
-        return FileDescriptor {
+        FileDescriptor {
             signals: Some(sh),
             ..Default::default()
         }
     }
+
     pub fn new_socket(
         t: TcpSock,
     ) -> FileDescriptor {
-        return FileDescriptor {
+        FileDescriptor {
             socket: Some(t),
             ..Default::default()
         }
     }
+
     pub fn new_usock(
         s: UnixSocketData,
     ) -> FileDescriptor {
-        return FileDescriptor {
+        FileDescriptor {
             usock: Some(s),
             ..Default::default()
         }
     }
+
     pub fn new_epoll(
         e: Epoll,
     ) -> FileDescriptor {
-        return FileDescriptor {
+        FileDescriptor {
             poll: Some(e),
             ..Default::default()
         }

@@ -5,8 +5,8 @@ use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::handles::HandleOps;
-use crate::emulator::system::filesystem::{FSEntryId, Filesystem, Stat};
 use crate::emulator::platform::linux::filedescriptor::FileDescriptor;
+use crate::emulator::system::filesystem::{Filesystem, FSEntryId, Stat};
 use crate::emulator::system::System;
 
 #[derive(Debug, Clone)]
@@ -18,8 +18,8 @@ pub struct FileData {
 impl FileData {
     pub fn new(fse_id: FSEntryId) -> FileDescriptor {
         let mut fd = FileDescriptor::new();
-        fd.file = Some(FileData{ fse_id, pos: 0});
-        return fd;
+        fd.file = Some(FileData { fse_id, pos: 0 });
+        fd
     }
 }
 

@@ -402,10 +402,10 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         size: usize,
     ) -> Result<(), MemoryError> {
         if !is4kaligned(address) || !is4kaligned(size) {
-            return Err(MemoryError::NotAligned);
+            Err(MemoryError::NotAligned)?
         }
         if size == 0 {
-            return Err(MemoryError::ZeroSize);
+            Err(MemoryError::ZeroSize)?
         }
 
         let start = align4k_down(address);
