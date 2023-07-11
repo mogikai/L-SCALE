@@ -1,8 +1,8 @@
 use std::cmp::{max, min};
 use std::collections::BTreeSet;
-use std::ops::{BitOr, Not, Range};
+use std::ops::{BitOr, Not};
 
-use im_rc::{OrdSet, Vector};
+use im_rc::Vector;
 use itertools::{Itertools, PeekingNext};
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
@@ -16,6 +16,7 @@ use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 
 pub mod mapping;
 pub mod tlb_entry;
+mod tests;
 
 #[derive(Clone, Debug)]
 pub struct TLB {

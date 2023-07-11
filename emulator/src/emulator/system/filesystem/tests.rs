@@ -1,15 +1,15 @@
-use byteorder::LittleEndian;
+#![cfg(test)]
 /// Unit tests for file system module
 /// TODO: Write more sensible tests
 use std::path::Path;
 
-use rand::{thread_rng, RngCore};
+use rand::{RngCore, thread_rng};
 
 use super::*;
 
 #[test]
 fn basic() -> Result<(), GenericError> {
-    let mut fs = Filesystem::<LittleEndian>::new(2_621_440);
+    let mut fs = Filesystem::new(2_621_440);
     fs.create_file(Path::new("/my_file.txt"), None)?;
     assert!(fs.create_file(Path::new("/my_file.txt"), None).is_err());
     fs.create_file(Path::new("/my_file2.txt"), None)?;
@@ -59,7 +59,7 @@ fn basic() -> Result<(), GenericError> {
 
 #[test]
 fn load_file_contents() -> Result<(), GenericError> {
-    let mut fs = Filesystem::<LittleEndian>::new(1_073_741_824);
+    let mut fs = Filesystem::new(1_073_741_824);
     let data = "This a sample text file\n It should contain two lines and a trailing newline\n".as_bytes();
     let data2 = "This a different sample text file\n It should contain two lines and a trailing newline and some fancy shit WOOOOO\n".as_bytes();
     let file_id = fs.create_file_with_contents(Path::new("/test.txt"), data, None)?;
@@ -104,7 +104,7 @@ fn load_file_contents() -> Result<(), GenericError> {
 
 #[test]
 fn load_fs() -> Result<(), FSError> {
-    let fs = Filesystem::<LittleEndian>::from_disk(
+    let fs = Filesystem::from_disk(
         1_073_741_824,
         Path::new("/home/mark/projects/fraunhofer/fuzzing/prototypes/ffs"),
     )?;
@@ -117,7 +117,7 @@ fn load_fs() -> Result<(), FSError> {
 
 #[test]
 fn size_after_reset_is_correct() -> Result<(), FSError> {
-    let mut fs = Filesystem::<LittleEndian>::new(1000);
+    let mut fs = Filesystem::new(1000);
     let test_file = Path::new("/test.txt");
     fs.create_file(test_file, None)?;
     let test_file_id = fs.resolve_last(test_file)?;

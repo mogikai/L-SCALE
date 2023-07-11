@@ -22,7 +22,6 @@ mod block;
 mod data;
 mod meta_info;
 mod stat;
-#[cfg(test)]
 mod tests;
 
 #[derive(Debug, Copy, Clone)]
