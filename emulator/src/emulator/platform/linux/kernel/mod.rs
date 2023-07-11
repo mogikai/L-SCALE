@@ -9,7 +9,6 @@ use std::time::Duration;
 
 use byteorder::ByteOrder;
 use goblin::elf::Elf;
-use linux_libc_auxv::AuxVarType;
 use num_enum::FromPrimitive;
 use fd_map::HandleMap;
 
@@ -24,6 +23,7 @@ use crate::emulator::macros::push_stack;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::filedescriptors::FileHandle;
 use crate::emulator::platform::linux::filedescriptor::FileDescriptor;
+use crate::emulator::platform::linux::kernel::auxv::AUXVType;
 use crate::emulator::platform::linux::signalfd::SignalFD;
 pub use crate::emulator::platform::linux::kernel::error::LinuxKernelError;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
@@ -39,6 +39,7 @@ pub(crate) mod memory;
 pub(crate) mod socket;
 pub(crate) mod task_id;
 pub(crate) mod fd_map;
+pub(crate) mod auxv;
 
 /* eventuell nach task umbenennen */
 // TODO: Move thread shared data to thread specific struct that is shared between kernel task objects (rcrefcell?)
@@ -164,17 +165,17 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             argv
         };
 
-        aux.push((AuxVarType::Pagesz as u64, 4096));
-        aux.push((AuxVarType::HwCap as u64, 0xbfebfbff));
-        aux.push((AuxVarType::Uid as u64, 1));
-        aux.push((AuxVarType::Gid as u64, 1));
-        aux.push((AuxVarType::EUid as u64, 1));
-        aux.push((AuxVarType::EGid as u64, 1));
-        aux.push((AuxVarType::Platform as u64, push_stack!(memory.accessor(cpu, self.task_id), cpu, "x86_64", RegisterX86::RSP.into())?));
-        aux.push((AuxVarType::Entry as u64, entrypoint.into()));
-        aux.push((AuxVarType::Phdr as u64, 56));
-        aux.push((AuxVarType::Phent as u64, 11));
-        aux.push((AuxVarType::Secure as u64, 0));
+        aux.push((AUXVType::Pagesz as u64, 4096));
+        aux.push((AUXVType::HwCap as u64, 0xbfebfbff));
+        aux.push((AUXVType::Uid as u64, 1));
+        aux.push((AUXVType::Gid as u64, 1));
+        aux.push((AUXVType::EUid as u64, 1));
+        aux.push((AUXVType::EGid as u64, 1));
+        aux.push((AUXVType::Platform as u64, push_stack!(memory.accessor(cpu, self.task_id), cpu, "x86_64", RegisterX86::RSP.into())?));
+        aux.push((AUXVType::Entry as u64, entrypoint.into()));
+        aux.push((AUXVType::Phdr as u64, 56));
+        aux.push((AUXVType::Phent as u64, 11));
+        aux.push((AUXVType::Secure as u64, 0));
         aux.push((0, 0));
 
         // align stack

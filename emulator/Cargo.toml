@@ -23,7 +23,6 @@ unicorn-engine = { path = "../deps/unicorn" }
 byteorder = "1.*"
 num_enum = "0.6.*"
 goblin = "0.*"
-linux-libc-auxv = "0.2.*"
 libc = "0.2.126"
 iced-x86 = "1.18.*"
 log = "*"
