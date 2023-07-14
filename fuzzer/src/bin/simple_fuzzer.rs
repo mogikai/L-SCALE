@@ -18,6 +18,7 @@ use fuzzyemu::emulator::platform::linux::architecture::x86::X86;
 use fuzzyemu::emulator::platform::linux::emulator::LinuxX86Scheduler;
 use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
 use fuzzyemu::emulator::system::clock::Clock;
+use fuzzyemu::emulator::system::file_descriptors::fd_map::FileDescriptorMap;
 use fuzzyemu::emulator::system::filesystem::Filesystem;
 use fuzzyemu::emulator::system::hardware::unicorn::UCWrapper;
 use fuzzyemu::emulator::system::memory::Memory;
@@ -35,7 +36,8 @@ fn main() -> Result<(), GenericError> {
         let filesystem = Filesystem::from_disk(1_073_741_824, Path::new("emulator/systems/ubuntu2204")).unwrap();
         let memory = Memory::new();
         let clock = Clock::new(Duration::from_nanos(1662647309301240322));
-        let system = Rc::new(System::new(memory, filesystem, clock));
+        let file_descriptor_map = FileDescriptorMap::new();
+        let system = Rc::new(System::new(memory, filesystem, clock, file_descriptor_map));
         // let memory = Rc::new(RefCell::new(Memory::new(
         //     &mut *cpu.borrow_mut(),
         //     0x0000_7fff_ffff_ffff,

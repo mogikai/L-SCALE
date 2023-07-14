@@ -4,6 +4,7 @@ use byteorder::ByteOrder;
 
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::clock::Clock;
+use crate::emulator::system::file_descriptors::fd_map::FileDescriptorMap;
 use crate::emulator::system::filesystem::Filesystem;
 use crate::emulator::system::memory::Memory;
 
@@ -13,6 +14,7 @@ pub mod filesystem;
 pub mod hardware;
 pub mod memory;
 pub mod net;
+pub mod file_descriptors;
 
 /// This struct contains the global system state and system components like memory and filesystem or the system clock.
 /// Also, all currently running tasks are kept here.
@@ -22,6 +24,7 @@ pub struct System<Endianness: ByteOrder> {
     pub filesystem: RefCell<Filesystem>,
     pub clock: RefCell<Clock>,
     pub current_task: RefCell<Option<TaskId>>,
+    pub fd_map: RefCell<FileDescriptorMap>,
 }
 
 impl<Endianness: ByteOrder> System<Endianness> {
@@ -29,12 +32,14 @@ impl<Endianness: ByteOrder> System<Endianness> {
         memory: Memory<Endianness>,
         filesystem: Filesystem,
         clock: Clock,
+        fd_map: FileDescriptorMap,
     ) -> Self {
         Self {
             memory: RefCell::new(memory),
             filesystem: RefCell::new(filesystem),
             clock: RefCell::new(clock),
             current_task: RefCell::new(None),
+            fd_map: RefCell::new(fd_map),
         }
     }
 }

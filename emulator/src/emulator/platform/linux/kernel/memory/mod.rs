@@ -1,14 +1,15 @@
-use bitflags::bitflags;
+use bitflags::Flags;
 use byteorder::ByteOrder;
 
-use crate::emulator::abstractions::cpu::address::{EVA_NULL, EVAddr};
+use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
 use crate::emulator::abstractions::mmu::{MemoryError, MMU, MREMAP_FLAGS};
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask, SyscallResult};
 use crate::emulator::platform::linux::kernel::memory::flags::MMAP_FLAGS;
-use crate::emulator::system::memory::{align4k_up, is4kaligned};
+use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask, SyscallResult};
+use crate::emulator::system::file_descriptors::fd_map::FD;
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
 use crate::emulator::system::memory::tlb::mapping::MappingType;
+use crate::emulator::system::memory::{align4k_up, is4kaligned};
 
 pub mod flags;
 
@@ -25,7 +26,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         length: u64,
         prot: u64,
         flags: u64,
-        fd: u64,
+        fd: FD,
         offset: u64,
     ) -> SyscallResult {
         let flags = MMAP_FLAGS::from_bits_truncate(flags);
@@ -81,9 +82,11 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             Err(MemoryError::NotAligned)?
         }
         if old_len == 0 {
-            todo!("The old_len = 0  trick has buggy and inconsistent \
+            todo!(
+                "The old_len = 0  trick has buggy and inconsistent \
                    behavior on current kernels since 2007 https://bugzilla.kernel.org/show_bug.cgi?id=8691 \
-                   and we will not implement it until this is resolved")
+                   and we will not implement it until this is resolved"
+            )
         }
 
         Ok(self
@@ -135,7 +138,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         length: u64,
         prot: u64,
         flags: MMAP_FLAGS,
-        fd: u64,
+        fd: FD,
         offset: u64,
     ) -> Result<EVAddr, LinuxKernelError> {
         if flags.contains(MMAP_FLAGS::MAP_ANONYMOUS) {
@@ -194,10 +197,10 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         length: u64,
         prot: u64,
         flags: MMAP_FLAGS,
-        fd: u64,
+        fd: FD,
         offset: u64,
     ) -> Result<EVAddr, LinuxKernelError> {
-        if fd >= 1 << 31 {
+        if fd <= FD::from(-1) {
             Err(LinuxKernelError::EINVAL)?
         }
 
@@ -224,11 +227,15 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         &mut self,
         mmu: &mut impl MMU,
         length: u64,
-        fd: u64,
+        fd: FD,
         offset: u64,
         addr: EVAddr,
     ) -> Result<(), LinuxKernelError> {
-        let fd = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EINVAL)?;
+        let mut file_descriptor_map = self.system.fd_map.borrow_mut();
+        let fd = self
+            .fd_map
+            .get_mut(&mut file_descriptor_map, &fd)
+            .ok_or(LinuxKernelError::EINVAL)?;
         let data = fd.ops.pread(&mut fd.data, offset, length)?;
 
         let mut memory = self

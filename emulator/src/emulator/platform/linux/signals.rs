@@ -4,6 +4,7 @@ use enumset::EnumSetType;
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::platform::linux::kernel::LinuxKernelError;
+use crate::emulator::system::file_descriptors::fd_map::FD;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SignalAction<Flags: Debug + Clone + Copy> {
@@ -44,7 +45,7 @@ impl<Flags: Debug + Clone + Copy> SignalHandler<Flags> {
 
     pub fn insertFD(
         &mut self,
-        fd: u64
+        fd: FD
     ) {
         error!("add signalfd");
     }

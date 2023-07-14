@@ -1,29 +1,33 @@
-use bitflags::bitflags;
+use bitflags::{bitflags, Flags};
 use byteorder::ByteOrder;
 
 use crate::emulator::macros::*;
-use crate::emulator::platform::linux::filedescriptors::FileData;
 use crate::emulator::platform::linux::kernel::*;
+use crate::emulator::system::filesystem::file_descriptor::{FileData, FileOps};
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
 
 impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
+    /// Write syscall. See `man write` for details
     pub fn write(
         &mut self,
         mmu: &mut impl MMU,
-        fd: u64,
+        fd: FD,
         buf: EVAddr,
         size: u64,
     ) -> SyscallResult {
         let mut memory = self.system.memory.borrow_mut();
-        self.handles
-            .get_mut(&fd)
+        let mut file_descriptor_map = self.system.fd_map.borrow_mut();
+        self.fd_map
+            .get_mut(&mut file_descriptor_map, &fd)
             .map_or(Err(LinuxKernelError::EINVAL), |fd| {
-                Ok(fd.ops
-                    .write(&mut fd.data,
-                           memory
-                               .accessor(mmu, self.task_id)
-                               .read_bytes(buf, size as usize)?
-                               .as_slice(),
+                Ok(fd
+                    .ops
+                    .write(
+                        &mut fd.data,
+                        memory
+                            .accessor(mmu, self.task_id)
+                            .read_bytes(buf, size as usize)?
+                            .as_slice(),
                     )
                     .unwrap_or(!0)
                     .try_into()
@@ -34,14 +38,15 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     pub fn writev(
         &mut self,
         mmu: &mut impl MMU,
-        fd: u64,
+        fd: FD,
         iovec_ptr: EVAddr,
         iovcnt: u64,
     ) -> SyscallResult {
         let mut memory = self.system.memory.borrow_mut();
+        let mut file_descriptor_map = self.system.fd_map.borrow_mut();
         let memory = memory.accessor(mmu, self.task_id);
-        self.handles
-            .get_mut(&fd)
+        self.fd_map
+            .get_mut(&mut file_descriptor_map, &fd)
             .map_or(Err(LinuxKernelError::EINVAL), |fd| {
                 let mut ret: usize = 0;
                 let iovec = memory
@@ -65,14 +70,18 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     pub fn pread64(
         &mut self,
         mmu: &mut impl MMU,
-        fd: u64,
+        fd: FD,
         buf: EVAddr,
         count: u64,
         pos: u64,
     ) -> SyscallResult {
         let mut memory = self.system.memory.borrow_mut();
+        let mut file_descriptor_map = self.system.fd_map.borrow_mut();
         let mut memory = memory.accessor(mmu, self.task_id);
-        let fd = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADF)?;
+        let fd = self
+            .fd_map
+            .get_mut(&mut file_descriptor_map, &fd)
+            .ok_or(LinuxKernelError::EBADF)?;
         let d = fd.ops.pread(&mut fd.data, pos, count).unwrap();
         Ok(memory.write_direct(buf, d.as_slice())? as u64)
     }
@@ -80,25 +89,33 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     pub fn read(
         &mut self,
         mmu: &mut impl MMU,
-        fd: u64,
+        fd: FD,
         buf: EVAddr,
         count: u64,
     ) -> SyscallResult {
         let mut memory = self.system.memory.borrow_mut();
+        let mut file_descriptor_map = self.system.fd_map.borrow_mut();
         let mut memory = memory.accessor(mmu, self.task_id);
-        let file = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EINVAL)?;
+        let file = self
+            .fd_map
+            .get_mut(&mut file_descriptor_map, &fd)
+            .ok_or(LinuxKernelError::EINVAL)?;
         Ok(memory.write_direct(buf, file.ops.read(&mut file.data, count).unwrap().as_slice())? as u64)
     }
 
     pub fn fstat(
         &mut self,
         mmu: &mut impl MMU,
-        fd: u64,
+        fd: FD,
         statbuf: EVAddr,
     ) -> SyscallResult {
         let mut memory = self.system.memory.borrow_mut();
+        let mut file_descriptor_map = self.system.fd_map.borrow_mut();
         let mut memory = memory.accessor(mmu, self.task_id);
-        let file = self.handles.get_mut(&fd).ok_or(LinuxKernelError::EBADF)?;
+        let file = self
+            .fd_map
+            .get_mut(&mut file_descriptor_map, &fd)
+            .ok_or(LinuxKernelError::EBADF)?;
         memory.write(statbuf, file.ops.stat(&mut file.data)?)?;
         Ok(0)
     }
@@ -122,7 +139,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     pub fn openat(
         &mut self,
         mmu: &mut impl MMU,
-        _dfd: u64,
+        _dfd: FD,
         filename: EVAddr,
         _flags: u64,
         _mode: u64,
@@ -139,8 +156,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let mut file_descriptor = FileDescriptor::new(Box::new(FileOps::new(self.system.clone())));
         file_descriptor.data.file = Some(FileData::new(file));
         Ok(self
-            .handles
-            .add(file_descriptor))
+            .fd_map
+            .insert(&mut self.system.fd_map.borrow_mut(), file_descriptor)
+            .into())
     }
 
     pub fn statfs(
@@ -155,16 +173,20 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     pub fn newfstatat(
         &mut self,
         mmu: &mut impl MMU,
-        dfd: u64,
+        dfd: FD,
         filename: EVAddr,
         statbuf: EVAddr,
         flag: u64,
     ) -> SyscallResult {
         let mut memory = self.system.memory.borrow_mut();
+        let mut file_descriptor_map = self.system.fd_map.borrow_mut();
         let mut memory = memory.accessor(mmu, self.task_id);
         let flags = at_flags::from_bits(flag).ok_or(LinuxKernelError::EINVAL)?;
         if flags.contains(at_flags::AT_EMPTY_PATH) {
-            let fd = self.handles.get_mut(&dfd).ok_or(LinuxKernelError::EBADFD)?;
+            let fd = self
+                .fd_map
+                .get_mut(&mut file_descriptor_map, &dfd)
+                .ok_or(LinuxKernelError::EBADFD)?;
             memory.write(statbuf, fd.ops.stat(&mut fd.data)?)?;
             Ok(0)
         } else {
@@ -180,20 +202,20 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     pub fn close(
         &mut self,
         _: &mut impl CPU,
-        fd: u64,
+        fd: FD,
     ) -> SyscallResult {
-        if self.handles.remove(&fd).is_none() {
-            Err(LinuxKernelError::EBADF)?
-        }
-        Ok(0)
+        self.fd_map
+            .remove(&mut self.system.fd_map.borrow_mut(), &fd)
+            .map(|_| 0)
     }
 
     pub fn add_replacement_handle(
         &mut self,
-        fd: u64,
-        handle: Box<dyn HandleOps>,
+        fd: FD,
+        handle: Box<dyn FileDescriptorOps>,
     ) {
-        self.handles.add_replacement_handle(fd, handle);
+        todo!()
+        // self.fd_map.add_replacement_handle(fd, handle);
     }
 }
 

@@ -1,17 +1,18 @@
-use byteorder::ByteOrder;
-
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::handles::HandleOps;
+use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
+use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
 use crate::emulator::system::net::Sockaddr;
-use crate::emulator::platform::linux::filedescriptor::{FileDescriptor, FileDescriptorData};
 
+#[derive(Debug)]
 pub struct TcpSock {}
 
 impl TcpSock {
-    pub fn new() -> Self { Self {} }
+    pub fn new() -> Self {
+        Self {}
+    }
 }
 
-impl HandleOps for TcpSock {
+impl FileDescriptorOps for TcpSock {
     fn bind(
         &mut self,
         fd: &mut FileDescriptorData,
@@ -20,5 +21,10 @@ impl HandleOps for TcpSock {
         Ok(())
     }
 
-    fn setsockopt(&mut self, fd: &mut FileDescriptorData) -> Result<(), GenericError> { Ok(()) }
+    fn setsockopt(
+        &mut self,
+        fd: &mut FileDescriptorData,
+    ) -> Result<(), GenericError> {
+        Ok(())
+    }
 }

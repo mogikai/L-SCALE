@@ -4,7 +4,7 @@ use std::rc::Rc;
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
-use crate::emulator::abstractions::handles::HandleOps;
+use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::platform::linux::filedescriptor::{FileDescriptor, FileDescriptorData};
 use crate::emulator::system::filesystem::{FSEntryId, Stat};
 use crate::emulator::system::System;
@@ -27,7 +27,7 @@ pub struct FileOps<Endianness: ByteOrder> {
 }
 
 //TODO build a trait
-impl<Endianness: ByteOrder> HandleOps for FileOps<Endianness> {
+impl<Endianness: ByteOrder> FileDescriptorOps for FileOps<Endianness> {
     fn stat(&self, fd: &mut FileDescriptorData) -> Result<Ref<Stat>, GenericError> {
         let fd = fd.file.as_mut().ok_or(GenericError::new(GenericErrorKind::Unknown, "not a fs backed file"))?;
         Ref::filter_map(self.system.filesystem.borrow(), |fs| fs.stat(fd.fse_id).ok())

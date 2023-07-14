@@ -4,7 +4,7 @@ use std::rc::Rc;
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
-use crate::emulator::abstractions::handles::HandleOps;
+use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::system::filesystem::{FSEntryId, Filesystem, Stat};
 use crate::emulator::system::System;
 
@@ -24,10 +24,12 @@ impl SignalFD {
         }
     }
 }
+
+#[derive(Debug)]
 pub struct SignalFDOps {}
 
 impl SignalFDOps {
     pub fn new() -> Self { SignalFDOps {} }
 }
 
-impl HandleOps for SignalFDOps {}
+impl FileDescriptorOps for SignalFDOps {}

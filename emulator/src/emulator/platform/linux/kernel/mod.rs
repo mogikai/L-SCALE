@@ -1,51 +1,45 @@
-use std::cell::RefCell;
-use std::collections::hash_map::Keys;
-use std::collections::{HashMap, VecDeque};
 use std::marker::PhantomData;
 use std::mem;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::time::Duration;
 
 use byteorder::ByteOrder;
-use goblin::elf::Elf;
 use num_enum::FromPrimitive;
-use fd_map::HandleMap;
 
-use crate::emulator::abstractions::cpu::address::{EVA_NULL, EVAddr};
-use crate::emulator::abstractions::cpu::{CPU, RegisterX86};
-use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
-use crate::emulator::abstractions::handles::HandleOps;
+use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
+use crate::emulator::abstractions::cpu::{RegisterX86, CPU};
+use crate::emulator::abstractions::errors::GenericError;
+use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
-use crate::emulator::abstractions::mmu::{MemoryError, MMU, Permission};
+use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::macros::push_stack;
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::filedescriptors::FileOps;
 use crate::emulator::platform::linux::filedescriptor::FileDescriptor;
 use crate::emulator::platform::linux::kernel::auxv::AUXVType;
-use crate::emulator::platform::linux::signalfd::SignalFD;
 pub use crate::emulator::platform::linux::kernel::error::LinuxKernelError;
+use crate::emulator::platform::linux::kernel::fd_map::FDMap;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
+use crate::emulator::platform::linux::signalfd::SignalFDOps;
 use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
+use crate::emulator::system::file_descriptors::fd_map::FD;
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
 use crate::emulator::system::{default_handles, System};
-use crate::emulator::platform::linux::signalfd::SignalFDOps;
 
+pub(crate) mod auxv;
 mod error;
 pub(crate) mod eventpoll;
+mod fd_map;
 pub(crate) mod fs;
 pub(crate) mod memory;
 pub(crate) mod socket;
 pub(crate) mod task_id;
-pub(crate) mod fd_map;
-pub(crate) mod auxv;
 
 /* eventuell nach task umbenennen */
 // TODO: Move thread shared data to thread specific struct that is shared between kernel task objects (rcrefcell?)
 pub struct LinuxKernelTask<Endianness: ByteOrder, Arch: Architecture> {
     system: Rc<System<Endianness>>,
-    handles: HandleMap,
+    fd_map: FDMap,
     clear_child_tid: Option<EVAddr>,
     robust_list_head: Option<EVAddr>,
     signalhandler: SignalHandler<Arch::SignalFlags>,
@@ -64,7 +58,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     ) -> Self {
         LinuxKernelTask {
             system,
-            handles: HandleMap::new(),
+            fd_map: FDMap::new(),
             clear_child_tid: None,
             robust_list_head: None,
             signalhandler: SignalHandler::new(),
@@ -136,11 +130,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
 
         let stack_base = memory.stack_base(self.task_id).expect("no process found");
         info!("Initializing stack");
-        cpu.reg_write(
-            RegisterX86::RSP.into(),
-            stack_base.into(),
-        )
-        .expect("failed to write RSP");
+        cpu.reg_write(RegisterX86::RSP.into(), stack_base.into())
+            .expect("failed to write RSP");
         let mut aux: Vec<(u64, u64)> = Vec::new();
         push_stack!(memory.accessor(cpu, self.task_id), cpu, 0u64, RegisterX86::RSP.into())?; // Stack end marker
 
@@ -171,7 +162,10 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         aux.push((AUXVType::Gid as u64, 1));
         aux.push((AUXVType::EUid as u64, 1));
         aux.push((AUXVType::EGid as u64, 1));
-        aux.push((AUXVType::Platform as u64, push_stack!(memory.accessor(cpu, self.task_id), cpu, "x86_64", RegisterX86::RSP.into())?));
+        aux.push((
+            AUXVType::Platform as u64,
+            push_stack!(memory.accessor(cpu, self.task_id), cpu, "x86_64", RegisterX86::RSP.into())?,
+        ));
         aux.push((AUXVType::Entry as u64, entrypoint.into()));
         aux.push((AUXVType::Phdr as u64, 56));
         aux.push((AUXVType::Phent as u64, 11));
@@ -193,7 +187,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let rsp = EVAddr::from(cpu.reg_read(RegisterX86::RSP.into())?);
         println!("Stack dump:\n");
 
-        hexdump::hexdump(memory.accessor(cpu, self.task_id).read_bytes(rsp, stack_base - rsp)?.as_slice());
+        hexdump::hexdump(
+            memory
+                .accessor(cpu, self.task_id)
+                .read_bytes(rsp, stack_base - rsp)?
+                .as_slice(),
+        );
         debug!("Stack pointer after setup: {:#x?}", cpu.reg_read(RegisterX86::RSP.into()));
 
         Ok(())
@@ -208,12 +207,22 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     }
 
     pub fn add_stdio_handles(&mut self) {
-        self.handles
-            .insert(0, FileDescriptor::new(Box::new(default_handles::ReadOnly::new())));
-        self.handles
-            .insert(1, FileDescriptor::new(Box::new(default_handles::WriteOnly::new())));
-        self.handles
-            .insert(2, FileDescriptor::new(Box::new(default_handles::WriteOnly::new())));
+        let mut file_descriptor_map = self.system.fd_map.borrow_mut();
+        self.fd_map.insert_at(
+            &mut file_descriptor_map,
+            0.into(),
+            FileDescriptor::new(Box::new(default_handles::ReadOnly::new())),
+        );
+        self.fd_map.insert_at(
+            &mut file_descriptor_map,
+            1.into(),
+            FileDescriptor::new(Box::new(default_handles::WriteOnly::new())),
+        );
+        self.fd_map.insert_at(
+            &mut file_descriptor_map,
+            2.into(),
+            FileDescriptor::new(Box::new(default_handles::WriteOnly::new())),
+        );
     }
 
     pub fn brk(
@@ -334,13 +343,14 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     pub fn fcntl(
         &mut self,
         _: &mut impl CPU,
-        fd: u64,
+        fd: FD,
         cmd: u64,
         arg: u64,
     ) -> SyscallResult {
         // TODO: Implement correctly
-        warn!("FCNTL not implemented fully yet");
-        self.handles.get_mut(&fd);
+        error!("FCNTL not implemented fully yet");
+        self.fd_map
+            .get_mut(&mut self.system.fd_map.borrow_mut(), &fd);
         Ok(2)
     }
 
@@ -427,7 +437,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         sizemask: u64,
         _flags: u64,
     ) -> SyscallResult {
-        if fd < 1 << 31 { //TODO besser auf -1 prüfen
+        if fd < 1 << 31 {
+            //TODO besser auf -1 prüfen
             todo!("fd != -1");
         }
         if mask == EVA_NULL {
@@ -444,9 +455,11 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let sigmask = memory
             .read_bytes(mask, sizemask as usize)
             .map(|s| Endianness::read_u64(&s))?;
-        let fd = self.handles.add(FileDescriptor::new(Box::new(SignalFDOps::new())));
+        let fd = self
+            .fd_map
+            .insert(&mut self.system.fd_map.borrow_mut(), FileDescriptor::new(Box::new(SignalFDOps::new())));
         self.signalhandler.insertFD(fd);
-        return Ok(fd);
+        return Ok(fd.into());
     }
 
     pub fn prlimit64(

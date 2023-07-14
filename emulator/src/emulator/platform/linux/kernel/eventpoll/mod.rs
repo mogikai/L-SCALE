@@ -4,7 +4,7 @@ use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::CPU;
-use crate::emulator::abstractions::handles::HandleOps;
+use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::kernel::{LinuxKernelTask, SyscallResult};
 use crate::emulator::platform::linux::kernel::FileDescriptor;
@@ -68,10 +68,11 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
     ) -> SyscallResult {
         let mut fd = FileDescriptor::new(Box::new(EpollOps::new()));
         fd.data.poll = Some(Epoll::new());
-        Ok(self.handles.add(fd))
+        Ok(self.fd_map.insert(&mut self.system.fd_map.borrow_mut(),fd).into())
     }
 }
 
+#[derive(Debug)]
 pub struct Epoll {
     interest_list: BTreeMap<u64, u64>,
 }
@@ -80,10 +81,11 @@ impl Epoll {
     fn new() -> Self { Epoll { interest_list: Default::default() } }
 }
 
+#[derive(Debug)]
 pub struct EpollOps {}
 
 impl EpollOps {
     fn new() -> Self { Self {} }
 }
 
-impl HandleOps for EpollOps {}
+impl FileDescriptorOps for EpollOps {}

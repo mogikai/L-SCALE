@@ -7,17 +7,18 @@ use byteorder::ByteOrder;
 use num_enum::{FromPrimitive, IntoPrimitive};
 
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
-use crate::emulator::abstractions::handles::HandleOps;
+use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, Encoder, RequiredMem};
 use crate::emulator::abstractions::mmu::MemoryError;
+use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
 use crate::emulator::system::net::netlink::rtnetlink::nla_type::{
     IFA_ADDRESS, IFA_BROADCAST, IFA_FLAGS, IFA_LABEL, IFA_LOCAL,
 };
 use crate::emulator::system::net::netlink::{nlmsghdr, NetlinkMessageFlags};
 use crate::emulator::system::net::Sockaddr;
 use crate::emulator::system::net::SocketDomain::{AF_INET, AF_INET6};
-use crate::emulator::platform::linux::filedescriptor::{FileDescriptor, FileDescriptorData};
 
+#[derive(Debug)]
 pub struct RTNetlinkSocket<Endianness: ByteOrder> {
     sockaddr: Option<Sockaddr>,
     messages: VecDeque<Vec<u8>>,
@@ -34,7 +35,7 @@ impl<Endianness: ByteOrder> RTNetlinkSocket<Endianness> {
     }
 }
 
-impl<Endianness: ByteOrder> HandleOps for RTNetlinkSocket<Endianness> {
+impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
     fn bind(
         &mut self,
         fd: &mut FileDescriptorData,
@@ -48,7 +49,7 @@ impl<Endianness: ByteOrder> HandleOps for RTNetlinkSocket<Endianness> {
     fn getsockname(
         &self,
         fd: &mut FileDescriptorData,
-        ) -> Result<&Sockaddr, GenericError> {
+    ) -> Result<&Sockaddr, GenericError> {
         match &self.sockaddr {
             Some(s) => Ok(s),
             None => Err(GenericError::new(GenericErrorKind::Unknown, "")),
@@ -125,7 +126,15 @@ impl<Endianness: ByteOrder> HandleOps for RTNetlinkSocket<Endianness> {
             .encode_with(|encoder| encode_attr(encoder, IFA_LOCAL, &[192, 168, 178, 30]))
             .encode_with(|encoder| encode_attr(encoder, IFA_BROADCAST, &[192, 168, 178, 255]))
             .encode_with(|encoder| encode_attr(encoder, IFA_LABEL, "wlp7s0\0".as_bytes()))
-            .encode_with(|encoder| encode_attr(encoder, IFA_FLAGS, ifa_flags::IFA_F_NOPREFIXROUTE.encode::<Endianness>().as_slice()))
+            .encode_with(|encoder| {
+                encode_attr(
+                    encoder,
+                    IFA_FLAGS,
+                    ifa_flags::IFA_F_NOPREFIXROUTE
+                        .encode::<Endianness>()
+                        .as_slice(),
+                )
+            })
             .encode(
                 &[
                     20u8, 0, 6, 0, 100, 250, 12, 0, 100, 250, 12, 0, 126, 3, 0, 0, 89, 96, 20, 0,
@@ -161,7 +170,9 @@ impl<Endianness: ByteOrder> HandleOps for RTNetlinkSocket<Endianness> {
                 ]
                 .as_slice(),
             )
-            .encode_with(|encoder| encode_attr(encoder, IFA_FLAGS, ifa_flags::IFA_F_PERMANENT.encode::<Endianness>().as_slice()));
+            .encode_with(|encoder| {
+                encode_attr(encoder, IFA_FLAGS, ifa_flags::IFA_F_PERMANENT.encode::<Endianness>().as_slice())
+            });
 
         let hdr = nlmsghdr {
             nlmsg_len: (nlmsghdr::required_mem() + msg.encoded_length()) as u32,
@@ -190,7 +201,9 @@ impl<Endianness: ByteOrder> HandleOps for RTNetlinkSocket<Endianness> {
                 ]
                 .as_slice(),
             )
-            .encode_with(|encoder| encode_attr(encoder, IFA_FLAGS, ifa_flags::IFA_F_SECONDARY.encode::<Endianness>().as_slice()));
+            .encode_with(|encoder| {
+                encode_attr(encoder, IFA_FLAGS, ifa_flags::IFA_F_SECONDARY.encode::<Endianness>().as_slice())
+            });
 
         let hdr = nlmsghdr {
             nlmsg_len: (nlmsghdr::required_mem() + msg.encoded_length()) as u32,
@@ -260,7 +273,8 @@ impl<Endianness: ByteOrder> HandleOps for RTNetlinkSocket<Endianness> {
                 encode_attr(
                     encoder,
                     IFA_FLAGS,
-                    (ifa_flags::IFA_F_PERMANENT | ifa_flags::IFA_F_NOPREFIXROUTE).encode::<Endianness>()
+                    (ifa_flags::IFA_F_PERMANENT | ifa_flags::IFA_F_NOPREFIXROUTE)
+                        .encode::<Endianness>()
                         .as_slice(),
                 )
             });

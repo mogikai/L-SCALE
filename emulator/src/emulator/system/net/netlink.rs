@@ -5,7 +5,7 @@ use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
 
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::handles::HandleOps;
+use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
 use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::system::net::netlink::rtnetlink::{RTNetlinkMessageType, RTNetlinkSocket};
@@ -15,7 +15,7 @@ pub mod rtnetlink;
 // TODO: Make global netlink handler that is referenced by netlink sockets.
 //       Each kernel(task) will have access to the handler.
 
-pub fn from_protocol<Endianness: ByteOrder + 'static>(protocol: u64) -> Result<Box<dyn HandleOps>, GenericError> {
+pub fn from_protocol<Endianness: ByteOrder + 'static>(protocol: u64) -> Result<Box<dyn FileDescriptorOps>, GenericError> {
     use NetlinkFamily::*;
     Ok(match NetlinkFamily::from(protocol) {
         NETLINK_ROUTE => Box::new(RTNetlinkSocket::<Endianness>::new()),

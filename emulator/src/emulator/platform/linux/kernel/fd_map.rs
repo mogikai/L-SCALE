@@ -1,117 +1,76 @@
-use std::collections::{HashMap, VecDeque};
-use std::collections::hash_map::Keys;
+use std::collections::HashMap;
+use std::rc::Rc;
 
-use crate::emulator::abstractions::handles::HandleOps;
+use byteorder::ByteOrder;
+
 use crate::emulator::platform::linux::filedescriptor::FileDescriptor;
+use crate::emulator::platform::linux::kernel::LinuxKernelError;
+use crate::emulator::system::file_descriptors::fd_map::{FDPointer, FileDescriptorMap, FD};
+use crate::emulator::system::System;
 
-pub(crate) struct HandleMap {
-    handles: HashMap<u64, FileDescriptor>,
-    free_fds: Vec<u64>,
-    // TODO: Implement as a hook object that can be inserted to be called after the handle
-    //       processed the call.
-    replacement_handles: HashMap<u64, VecDeque<Box<dyn HandleOps>>>,
+#[derive(Default)]
+pub struct FDMap {
+    handles: HashMap<FD, FDPointer>,
+    free_fds: Vec<FD>,
 }
 
-impl HandleMap {
-    pub(crate) fn new() -> Self {
-        Self {
-            handles: HashMap::new(),
-            free_fds: Vec::new(),
-            replacement_handles: HashMap::new(),
+impl FDMap {
+    pub fn new() -> FDMap {
+        FDMap {
+            handles: Default::default(),
+            free_fds: vec![],
         }
     }
-}
 
-impl HandleMap {
-    /// This function is used to add a replacement handle that is inserted instead of the actual handle
-    /// for the first call that is associated with the supplied fd. If multiple replacements are added
-    /// for the same fd, they will be used subsequently for each new insert that happens after the fd
-    /// was closed, i.e. after it was removed
-    /// # Arguments
-    ///
-    /// * `fd`: The fd the replacement is associated with.
-    /// * `handle`: The replacement handle.
-    ///
-    /// returns: ()
-    pub(crate) fn add_replacement_handle(
-        &mut self,
-        fd: u64,
-        handle: Box<dyn HandleOps>,
-    ) {
-        // TODO: We need to be able to skip handles and only replace later ones
-        let handles = self.replacement_handles.entry(fd).or_default();
-        handles.push_front(handle);
-    }
-
-    // TODO: Need to implement dup. We will most likely have to move to RC or a different datastructure that can store
-    //       references to its own members
-    // TODO: Need to associate pid with fd as well. If we implement fork() we will need to be able to have the same fd
-    //       for multiple processes. Only the close operation will then delete the fd for one of the processes.
-    //       Maybe like this?
-    //       (fd, pid) -> internal_fd_id
-    //       internal_fd_id -> Box<dyn Handle>
     pub(crate) fn insert(
         &mut self,
-        fd: u64,
-        mut handle: FileDescriptor,
-    ) -> Option<FileDescriptor> {
-        // Insert the handle if no replacement exists. Otherwise insert the replacement
-        handle.ops = self.replacement_handles
-            .entry(fd)
-            .or_default()
-            .pop_back()
-            .unwrap_or(handle.ops);
-        self.handles.insert(
-            fd, handle,
-        )
+        file_descriptor_map: &mut FileDescriptorMap,
+        file_descriptor: FileDescriptor,
+    ) -> FD {
+        let fd = self.get_free_fd();
+        self.insert_at(file_descriptor_map, fd, file_descriptor)
     }
 
-    pub(crate) fn add(
+    pub(crate) fn insert_at(
         &mut self,
-        handle: FileDescriptor,
-    ) -> u64 {
-        // Insert the handle if no replacement exists. Otherwise insert the replacement
-        let fd = self.get_free_fd();
-        let old = self.insert(fd, handle);
-        if old.is_some() {
-            panic!("Add must only insert into unused keys");
-        }
+        file_descriptor_map: &mut FileDescriptorMap,
+        fd: FD,
+        file_descriptor: FileDescriptor,
+    ) -> FD {
+        // TODO: Introduce error handling if fd is already used.
+        let fd_pointer = file_descriptor_map.insert(file_descriptor);
+        self.handles.try_insert(fd, fd_pointer).unwrap();
         fd
     }
 
-    pub(crate) fn get_mut(
-        &mut self,
-        fd: &u64,
+    pub(crate) fn get_mut<'a>(
+        &'a mut self,
+        file_descriptor_map: &'a mut FileDescriptorMap,
+        fd: &FD,
     ) -> Option<&mut FileDescriptor> {
-        self.handles.get_mut(fd)
-    }
-
-    pub(crate) fn keys(&self) -> Keys<u64, FileDescriptor> {
-        self.handles.keys()
-    }
-
-    pub(crate) fn get(
-        &self,
-        fd: &u64,
-    ) -> Option<&FileDescriptor> {
-        self.handles.get(fd)
+        self.handles.get(fd).map(move |fd_pointer| {
+            file_descriptor_map
+                .get_mut(fd_pointer)
+                .expect("The fd_pointer must always point to a valid fd. This is an implementation error")
+        })
     }
 
     pub(crate) fn remove(
         &mut self,
-        fd: &u64,
-    ) -> Option<FileDescriptor> {
-        let old = self.handles.remove(fd);
-        if old.is_some() {
-            self.free_fds.push(*fd);
-        }
-        old
+        file_descriptor_map: &mut FileDescriptorMap,
+        fd: &FD,
+    ) -> Result<(), LinuxKernelError> {
+        self.handles
+            .get(fd)
+            .ok_or(LinuxKernelError::EBADF)
+            .map(|fd_pointer| {
+                file_descriptor_map.decrease_refcount(fd_pointer).unwrap();
+            })
     }
 
-    pub(crate) fn get_free_fd(&mut self) -> u64 {
-        // TODO: Implement max fd handling (e.g. 1024?)
+    fn get_free_fd(&mut self) -> FD {
         self.free_fds
             .pop()
-            .unwrap_or_else(|| *self.handles.keys().max().unwrap_or(&2) + 1)
+            .unwrap_or_else(|| *self.handles.keys().max().unwrap_or(&FD::from(2)) + 1)
     }
 }

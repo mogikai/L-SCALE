@@ -1,4 +1,7 @@
 use std::cell::Ref;
+use std::fmt::Debug;
+
+use bitflags::bitflags;
 
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
@@ -12,9 +15,9 @@ use crate::emulator::system::net::Sockaddr;
 ///
 /// The actual handle data is contained in the TODO struct
 ///
-pub trait HandleOps {
-    fn read_ready(&self, fd: &mut FileDescriptorData) -> bool { todo!() }
-    fn write_ready(&self, fd: &mut FileDescriptorData) -> bool { todo!() }
+pub trait FileDescriptorOps: Debug {
+    /// Can be called to query what operations can be called without blocking on the handle.
+    fn poll(&self, fd: &mut FileDescriptorData) -> HandleOperationsReady { todo!() }
 
     /// returns: The stat vector of the handle this method is called on
     fn stat(&self, fd: &mut FileDescriptorData) -> Result<Ref<Stat>, GenericError> { todo!() }
@@ -82,4 +85,21 @@ pub trait HandleOps {
     fn connect(&mut self, fd: &mut FileDescriptorData) -> Result<(), GenericError> { todo!() }
 
     fn setsockopt(&mut self, fd: &mut FileDescriptorData) -> Result<(), GenericError> { todo!() }
+}
+
+bitflags! {
+    #[repr(C)]
+    pub struct HandleOperationsReady: u64 {
+        const Read              = 0x0001;
+        const Priority          = 0x0002;
+        const Write             = 0x0004;
+        const Error             = 0x0008;
+        const HangUp            = 0x0010;
+        const Invalid           = 0x0020;
+        const ReadNormal        = 0x0040;
+        const ReadOutOfBand     = 0x0080;
+        const WriteNormal       = 0x0100;
+        const WriteOutOfBand    = 0x0200;
+        const ReadHangUp        = 0x2000;
+    }
 }

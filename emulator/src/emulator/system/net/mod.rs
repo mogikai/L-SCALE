@@ -9,7 +9,7 @@ pub mod inet6;
 pub mod netlink;
 pub mod unix;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum Sockaddr {
     IN {
         sin_port: u16,

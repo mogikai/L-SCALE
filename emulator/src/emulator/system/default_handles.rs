@@ -1,13 +1,12 @@
 use std::cell::{Ref, RefCell};
 use std::cmp::min;
 
-use byteorder::ByteOrder;
-
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::handles::HandleOps;
+use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
+use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
 use crate::emulator::system::filesystem::Stat;
-use crate::emulator::platform::linux::filedescriptor::{FileDescriptor, FileDescriptorData};
 
+#[derive(Debug)]
 pub struct WriteOnly {
     stat: RefCell<Stat>,
 }
@@ -20,8 +19,13 @@ impl WriteOnly {
     }
 }
 
-impl HandleOps for WriteOnly {
-    fn stat(&self, fd: &mut FileDescriptorData) -> Result<Ref<Stat>, GenericError> { Ok(self.stat.borrow()) }
+impl FileDescriptorOps for WriteOnly {
+    fn stat(
+        &self,
+        fd: &mut FileDescriptorData,
+    ) -> Result<Ref<Stat>, GenericError> {
+        Ok(self.stat.borrow())
+    }
 
     fn read(
         &mut self,
@@ -50,6 +54,7 @@ impl HandleOps for WriteOnly {
     }
 }
 
+#[derive(Debug)]
 pub struct ReadOnly {
     data: Vec<u8>,
     pos: usize,
@@ -74,8 +79,13 @@ impl ReadOnly {
     }
 }
 
-impl HandleOps for ReadOnly {
-    fn stat(&self, fd: &mut FileDescriptorData) -> Result<Ref<Stat>, GenericError> { Ok(self.stat.borrow()) }
+impl FileDescriptorOps for ReadOnly {
+    fn stat(
+        &self,
+        fd: &mut FileDescriptorData,
+    ) -> Result<Ref<Stat>, GenericError> {
+        Ok(self.stat.borrow())
+    }
 
     fn read(
         &mut self,
