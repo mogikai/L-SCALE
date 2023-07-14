@@ -3,17 +3,13 @@ extern crate core;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::time::Duration;
-use fuzzyemu::{ByteOrder, LittleEndian};
+use std::time::{Duration, Instant};
 
-use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, IntelFormatter};
 use log::debug;
 
-use fuzzyemu::emulator::abstractions::cpu::CPU;
 use fuzzyemu::emulator::abstractions::emulator::Emulator;
 use fuzzyemu::emulator::abstractions::errors::GenericError;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
-use fuzzyemu::emulator::abstractions::mmu::MMU;
 use fuzzyemu::emulator::platform::linux::architecture::x86::X86;
 use fuzzyemu::emulator::platform::linux::emulator::LinuxX86Scheduler;
 use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
@@ -23,14 +19,16 @@ use fuzzyemu::emulator::system::filesystem::Filesystem;
 use fuzzyemu::emulator::system::hardware::unicorn::UCWrapper;
 use fuzzyemu::emulator::system::memory::Memory;
 use fuzzyemu::emulator::system::System;
+use fuzzyemu::LittleEndian;
 
 fn main() -> Result<(), GenericError> {
     pretty_env_logger::init();
     let mut blocks = HashMap::<(u64, u64, u64), u64>::new();
     let mut prev_block: u64 = 0;
     let mut prev_block2: u64 = 0;
+    let mut total_blocks: u64 = 0;
 
-    {
+    let duration = {
         let cpu = UCWrapper::new();
 
         let filesystem = Filesystem::from_disk(1_073_741_824, Path::new("emulator/systems/ubuntu2204")).unwrap();
@@ -47,6 +45,7 @@ fn main() -> Result<(), GenericError> {
         // )));
 
         cpu.borrow_mut().add_block_hook(Box::new(|_, addr, _| {
+            total_blocks += 1;
             *blocks.entry((prev_block2, prev_block, addr)).or_insert(0) += 1;
             prev_block2 = prev_block;
             prev_block = addr;
@@ -96,9 +95,13 @@ fn main() -> Result<(), GenericError> {
             &env,
         )
         .unwrap();
-        scheduler.run(None, None).unwrap();
-    }
+        let start = Instant::now();
+        let result = scheduler.run(None, None);
+        debug!("Emulation returned {result:?}");
+        start.elapsed()
+    };
 
+    debug!("BB/s: {:?}", total_blocks as f64 / duration.as_secs_f64());
     // debug!("Blocks: {:X?}", blocks);
     debug!("Unique 3-edges executed: {:?}", blocks.keys().fold(0, |acc, _| acc + 1));
     debug!(

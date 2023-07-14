@@ -6,7 +6,7 @@ use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::kernel::{LinuxKernelTask, SyscallResult};
+use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask, SyscallResult};
 use crate::emulator::platform::linux::kernel::FileDescriptor;
 
 impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {

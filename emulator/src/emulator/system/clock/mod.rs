@@ -3,12 +3,14 @@ use std::time::Duration;
 #[derive(Debug)]
 pub struct Clock {
     system_time: Duration,
+    simulation_factor: f64,
 }
 
 impl Clock {
     pub fn new(current_time: Duration) -> Self {
         Self {
             system_time: current_time,
+            simulation_factor: 7f64,
         }
     }
 
@@ -21,9 +23,16 @@ impl Clock {
         proportion: u32,
     ) {
         // TODO: Pull out simulation factor and make it configurable.
-        // The simulation factor determines the size of the timestep taken during each basic block.
-        // let simulation_factor = 0.032f64;
-        let simulation_factor = 0.32f64;
-        self.system_time += Duration::from_nanos((proportion as f64 * simulation_factor) as u64);
+        self.system_time += Duration::from_nanos((proportion as f64 * self.simulation_factor) as u64);
+    }
+
+    /// Adjust the simulation factor to the given value.
+    /// The simulation factor is the amount of (virtual) time
+    /// in nanoseconds taken for each instruction.
+    pub fn set_simulation_factor(
+        &mut self,
+        simulation_factor: f64,
+    ) {
+        self.simulation_factor = simulation_factor;
     }
 }
