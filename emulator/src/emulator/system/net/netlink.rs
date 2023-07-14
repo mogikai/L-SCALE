@@ -1,8 +1,8 @@
-use std::mem;
-
-use bitflags::bitflags;
+use bitflags::{bitflags, Flags};
 use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
+
+use fuzzyemu_derive::{Encode, RequiredMem};
 
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
@@ -15,7 +15,9 @@ pub mod rtnetlink;
 // TODO: Make global netlink handler that is referenced by netlink sockets.
 //       Each kernel(task) will have access to the handler.
 
-pub fn from_protocol<Endianness: ByteOrder + 'static>(protocol: u64) -> Result<Box<dyn FileDescriptorOps>, GenericError> {
+pub fn from_protocol<Endianness: ByteOrder + 'static>(
+    protocol: u64
+) -> Result<Box<dyn FileDescriptorOps>, GenericError> {
     use NetlinkFamily::*;
     Ok(match NetlinkFamily::from(protocol) {
         NETLINK_ROUTE => Box::new(RTNetlinkSocket::<Endianness>::new()),
@@ -23,7 +25,7 @@ pub fn from_protocol<Endianness: ByteOrder + 'static>(protocol: u64) -> Result<B
     })
 }
 
-#[derive(Debug)]
+#[derive(Debug, Encode, RequiredMem)]
 #[repr(C)]
 struct nlmsghdr {
     nlmsg_len: u32,
@@ -51,22 +53,8 @@ impl Decode for nlmsghdr {
     }
 }
 
-impl RequiredMem for nlmsghdr {}
-
-impl Encode for nlmsghdr {
-    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8> {
-        let mut out = vec![0; mem::size_of::<Self>()];
-        Endianness::write_u32(&mut out[..4], self.nlmsg_len);
-        Endianness::write_u16(&mut out[4..6], self.nlmsg_type.into());
-        Endianness::write_u16(&mut out[6..8], self.nlmsg_flags.bits());
-        Endianness::write_u32(&mut out[8..12], self.nlmsg_seq);
-        Endianness::write_u32(&mut out[12..], self.nlmsg_pid);
-        out
-    }
-}
-
 bitflags! {
-    #[derive(Debug)]
+    #[derive(Debug, RequiredMem)]
     struct
     NetlinkMessageFlags: u16 {
         const NLM_F_REQUEST         = 0x01;	    /* It is request message. 	*/
@@ -95,6 +83,12 @@ bitflags! {
         /* Flags for ACK message */
         const NLM_ACK_F_CAPPED       = 0x100;	/* request was capped */
         const NLM_ACK_F_ACK_TLVS     = 0x200;	/* extended ACK TVLs were included */
+    }
+}
+
+impl Encode for NetlinkMessageFlags {
+    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+        self.bits().encode::<Endianness>(buffer)
     }
 }
 

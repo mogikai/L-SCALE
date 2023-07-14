@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "emulator",
+    "emulator-derive",
     "fuzzer",
     "gui"
 ]

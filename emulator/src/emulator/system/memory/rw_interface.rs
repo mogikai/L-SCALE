@@ -362,7 +362,9 @@ impl<Endianness: ByteOrder, MmuT: MMU, T: Encode> MemoryWrite<T, Endianness>
         address: EVAddr,
         data: T,
     ) -> Result<usize, MemoryError> {
-        self.write_bytes(address, data.encode::<Endianness>().as_slice())
+        let mut buffer = Vec::with_capacity(T::required_mem());
+        data.encode::<Endianness>(&mut buffer);
+        self.write_bytes(address, buffer.as_slice())
     }
 }
 

@@ -1,13 +1,17 @@
 use std::collections::BTreeMap;
 
 use byteorder::ByteOrder;
+use fuzzyemu_derive::{Encode, RequiredMem};
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
+use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
+use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask, SyscallResult};
 use crate::emulator::platform::linux::kernel::FileDescriptor;
+use crate::emulator::system::file_descriptors::fd_map::{FD, FDPointer};
 
 impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     pub fn epoll_create(
@@ -32,13 +36,17 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
     pub fn epoll_ctl(
         &mut self,
         _: &mut impl CPU,
-        epfd: u64,
+        epfd: FD,
         op: u64,
-        fd: u64,
+        fd: FD,
         event: EVAddr, // epoll_event*
     ) -> SyscallResult {
         // TODO: The poll and select syscalls require files to have a poll/select function that can be called by
         //       the epoll/select handler to query whether or not data is available for read or write ops
+        let mut file_descriptor_map = self.system.fd_map.borrow_mut();
+        let epfd = self.fd_map.get_mut(&mut file_descriptor_map, &epfd).ok_or(LinuxKernelError::EBADF)?;
+        let epoll = epfd.data.epoll.as_mut().ok_or(LinuxKernelError::EPERM)?;
+
         error!("TODO: Implement epoll_ctl. Need to add fds to interest list");
         Ok(0)
     }
@@ -67,18 +75,31 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
         flags: u64,
     ) -> SyscallResult {
         let mut fd = FileDescriptor::new(Box::new(EpollOps::new()));
-        fd.data.epoll = Some(Epoll::new());
+        fd.data.epoll = Some(EpollData::new());
         Ok(self.fd_map.insert(&mut self.system.fd_map.borrow_mut(),fd).into())
     }
 }
 
 #[derive(Debug)]
-pub struct Epoll {
-    interest_list: BTreeMap<u64, u64>,
+pub struct EpollData {
+    interest_list: BTreeMap<FDPointer, epoll_event>,
 }
 
-impl Epoll {
-    fn new() -> Self { Epoll { interest_list: Default::default() } }
+impl EpollData {
+    fn new() -> Self { EpollData { interest_list: Default::default() } }
+}
+
+#[derive(Debug, Encode, RequiredMem)]
+#[repr(C)]
+struct epoll_event {
+    events: u32,
+    data: u64,
+}
+
+impl Decode for epoll_event {
+    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
+        todo!()
+    }
 }
 
 #[derive(Debug)]

@@ -1,7 +1,9 @@
 use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
-use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
 
+use fuzzyemu_derive::RequiredMem;
+
+use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
 use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::platform::linux::kernel::LinuxKernelError;
 
@@ -9,7 +11,7 @@ pub mod inet6;
 pub mod netlink;
 pub mod unix;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, RequiredMem)]
 pub enum Sockaddr {
     IN {
         sin_port: u16,
@@ -56,15 +58,11 @@ impl Decode for Sockaddr {
     }
 }
 
-impl RequiredMem for Sockaddr {
-    fn required_mem() -> usize {
-        128 // Defined in kernel
-    }
-}
-
 impl Encode for Sockaddr {
-    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8> {
-        let mut out = vec![0; Self::required_mem()];
+    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+        let start = buffer.len();
+        buffer.reserve(Self::required_mem());
+        unsafe { buffer.set_len(start + Self::required_mem()); }
         use Sockaddr::*;
         match self {
             NL {
@@ -72,14 +70,13 @@ impl Encode for Sockaddr {
                 nl_pid,
                 nl_groups,
             } => {
-                Endianness::write_u16(&mut out[..2], SocketDomain::AF_NETLINK as u16);
-                Endianness::write_u16(&mut out[2..4], *nl_pad);
-                Endianness::write_u32(&mut out[4..8], *nl_pid);
-                Endianness::write_u32(&mut out[8..12], *nl_groups);
+                Endianness::write_u16(&mut buffer[start..start+2], SocketDomain::AF_NETLINK as u16);
+                Endianness::write_u16(&mut buffer[start+2..start+4], *nl_pad);
+                Endianness::write_u32(&mut buffer[start+4..start+8], *nl_pid);
+                Endianness::write_u32(&mut buffer[start+8..start+12], *nl_groups);
             }
             _ => todo!(),
         }
-        out
     }
 }
 

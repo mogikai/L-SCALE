@@ -17,6 +17,7 @@ readme = "README.md"
 rand = "0.8.5"
 
 [dependencies]
+fuzzyemu-derive = { path = "../emulator-derive" }
 itertools = "0.10.5"
 static_assertions = "1.*"
 unicorn-engine = { path = "../deps/unicorn" }

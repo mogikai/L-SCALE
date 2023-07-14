@@ -2,19 +2,22 @@ use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::mem;
 
-use bitflags::bitflags;
+use bitflags::{bitflags, Flags};
+use bitflags::__private::PublicFlags;
 use byteorder::ByteOrder;
 use num_enum::{FromPrimitive, IntoPrimitive};
+
+use fuzzyemu_derive::{Encode, RequiredMem};
 
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, Encoder, RequiredMem};
 use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
+use crate::emulator::system::net::netlink::{NetlinkMessageFlags, nlmsghdr};
 use crate::emulator::system::net::netlink::rtnetlink::nla_type::{
     IFA_ADDRESS, IFA_BROADCAST, IFA_FLAGS, IFA_LABEL, IFA_LOCAL,
 };
-use crate::emulator::system::net::netlink::{nlmsghdr, NetlinkMessageFlags};
 use crate::emulator::system::net::Sockaddr;
 use crate::emulator::system::net::SocketDomain::{AF_INET, AF_INET6};
 
@@ -89,12 +92,10 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
                 ifa_scope: 254,
                 ifa_index: 1,
             })
-            .encode_with(|encoder| encode_attr(encoder, IFA_ADDRESS, &[127, 0, 0, 1]))
-            .encode_with(|encoder| encode_attr(encoder, IFA_LOCAL, &[127, 0, 0, 1]))
-            .encode_with(|encoder| encode_attr(encoder, IFA_LABEL, "lo\0".as_bytes()))
-            .encode_with(|encoder| {
-                encode_attr(encoder, IFA_FLAGS, ifa_flags::IFA_F_PERMANENT.encode::<Endianness>().as_slice())
-            })
+            .encode_with(|encoder| encode_attr(encoder, IFA_ADDRESS, &[127, 0, 0, 1].as_slice()))
+            .encode_with(|encoder| encode_attr(encoder, IFA_LOCAL, &[127, 0, 0, 1].as_slice()))
+            .encode_with(|encoder| encode_attr(encoder, IFA_LABEL, &"lo\0".as_bytes()))
+            .encode_with(|encoder| encode_attr(encoder, IFA_FLAGS, &ifa_flags::IFA_F_PERMANENT))
             .encode(
                 &[
                     20u8, 0, 6, 0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xf0, 0x00, 0x00, 0x00, 0xf0, 0x00,
@@ -122,19 +123,11 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
                 ifa_scope: 0,
                 ifa_index: 4,
             })
-            .encode_with(|encoder| encode_attr(encoder, IFA_ADDRESS, &[192, 168, 178, 30]))
-            .encode_with(|encoder| encode_attr(encoder, IFA_LOCAL, &[192, 168, 178, 30]))
-            .encode_with(|encoder| encode_attr(encoder, IFA_BROADCAST, &[192, 168, 178, 255]))
-            .encode_with(|encoder| encode_attr(encoder, IFA_LABEL, "wlp7s0\0".as_bytes()))
-            .encode_with(|encoder| {
-                encode_attr(
-                    encoder,
-                    IFA_FLAGS,
-                    ifa_flags::IFA_F_NOPREFIXROUTE
-                        .encode::<Endianness>()
-                        .as_slice(),
-                )
-            })
+            .encode_with(|encoder| encode_attr(encoder, IFA_ADDRESS, &[192, 168, 178, 30].as_slice()))
+            .encode_with(|encoder| encode_attr(encoder, IFA_LOCAL, &[192, 168, 178, 30].as_slice()))
+            .encode_with(|encoder| encode_attr(encoder, IFA_BROADCAST, &[192, 168, 178, 255].as_slice()))
+            .encode_with(|encoder| encode_attr(encoder, IFA_LABEL, &"wlp7s0\0".as_bytes()))
+            .encode_with(|encoder| encode_attr(encoder, IFA_FLAGS, &ifa_flags::IFA_F_NOPREFIXROUTE))
             .encode(
                 &[
                     20u8, 0, 6, 0, 100, 250, 12, 0, 100, 250, 12, 0, 126, 3, 0, 0, 89, 96, 20, 0,
@@ -162,7 +155,9 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
                 ifa_scope: 254,
                 ifa_index: 1,
             })
-            .encode_with(|encoder| encode_attr(encoder, IFA_ADDRESS, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]))
+            .encode_with(|encoder| {
+                encode_attr(encoder, IFA_ADDRESS, &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1].as_slice())
+            })
             .encode(
                 &[
                     20u8, 0, 6, 0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xf0, 0x00, 0x00, 0x00, 0xf0, 0x00,
@@ -170,9 +165,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
                 ]
                 .as_slice(),
             )
-            .encode_with(|encoder| {
-                encode_attr(encoder, IFA_FLAGS, ifa_flags::IFA_F_PERMANENT.encode::<Endianness>().as_slice())
-            });
+            .encode_with(|encoder| encode_attr(encoder, IFA_FLAGS, &ifa_flags::IFA_F_PERMANENT));
 
         let hdr = nlmsghdr {
             nlmsg_len: (nlmsghdr::required_mem() + msg.encoded_length()) as u32,
@@ -193,7 +186,11 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
                 ifa_index: 4,
             })
             .encode_with(|encoder| {
-                encode_attr(encoder, IFA_ADDRESS, &[32, 3, 0, 201, 127, 31, 25, 0, 211, 3, 223, 122, 219, 62, 235, 176])
+                encode_attr(
+                    encoder,
+                    IFA_ADDRESS,
+                    &[32, 3, 0, 201, 127, 31, 25, 0, 211, 3, 223, 122, 219, 62, 235, 176].as_slice(),
+                )
             })
             .encode(
                 &[
@@ -201,9 +198,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
                 ]
                 .as_slice(),
             )
-            .encode_with(|encoder| {
-                encode_attr(encoder, IFA_FLAGS, ifa_flags::IFA_F_SECONDARY.encode::<Endianness>().as_slice())
-            });
+            .encode_with(|encoder| encode_attr(encoder, IFA_FLAGS, &ifa_flags::IFA_F_SECONDARY));
 
         let hdr = nlmsghdr {
             nlmsg_len: (nlmsghdr::required_mem() + msg.encoded_length()) as u32,
@@ -224,7 +219,11 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
                 ifa_index: 4,
             })
             .encode_with(|encoder| {
-                encode_attr(encoder, IFA_ADDRESS, &[32, 3, 0, 201, 127, 31, 25, 0, 15, 71, 61, 94, 29, 8, 104, 180])
+                encode_attr(
+                    encoder,
+                    IFA_ADDRESS,
+                    &[32, 3, 0, 201, 127, 31, 25, 0, 15, 71, 61, 94, 29, 8, 104, 180].as_slice(),
+                )
             })
             .encode(
                 &[
@@ -233,13 +232,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
                 .as_slice(),
             )
             .encode_with(|encoder| {
-                encode_attr(
-                    encoder,
-                    IFA_FLAGS,
-                    (ifa_flags::IFA_F_MANAGETEMPADDR | ifa_flags::IFA_F_NOPREFIXROUTE)
-                        .encode::<Endianness>()
-                        .as_slice(),
-                )
+                encode_attr(encoder, IFA_FLAGS, &(ifa_flags::IFA_F_MANAGETEMPADDR | ifa_flags::IFA_F_NOPREFIXROUTE))
             });
 
         let hdr = nlmsghdr {
@@ -261,7 +254,11 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
                 ifa_index: 4,
             })
             .encode_with(|encoder| {
-                encode_attr(encoder, IFA_ADDRESS, &[254, 128, 0, 0, 0, 0, 0, 0, 173, 11, 58, 69, 177, 184, 112, 232])
+                encode_attr(
+                    encoder,
+                    IFA_ADDRESS,
+                    &[254, 128, 0, 0, 0, 0, 0, 0, 173, 11, 58, 69, 177, 184, 112, 232].as_slice(),
+                )
             })
             .encode(
                 &[
@@ -270,13 +267,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
                 .as_slice(),
             )
             .encode_with(|encoder| {
-                encode_attr(
-                    encoder,
-                    IFA_FLAGS,
-                    (ifa_flags::IFA_F_PERMANENT | ifa_flags::IFA_F_NOPREFIXROUTE)
-                        .encode::<Endianness>()
-                        .as_slice(),
-                )
+                encode_attr(encoder, IFA_FLAGS, &(ifa_flags::IFA_F_PERMANENT | ifa_flags::IFA_F_NOPREFIXROUTE))
             });
 
         let hdr = nlmsghdr {
@@ -321,12 +312,12 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
     }
 }
 
-fn encode_attr<Endianness: ByteOrder>(
+fn encode_attr<Endianness: ByteOrder, T: Encode>(
     encoder: Encoder<Endianness>,
     typ: nla_type,
-    payload: &[u8],
+    payload: &T,
 ) -> Encoder<Endianness> {
-    let attr_size = mem::size_of::<nlattr>() + payload.len();
+    let attr_size = mem::size_of::<nlattr>() + payload.encoded_size();
     let attr = nlattr {
         nla_len: attr_size as u16,
         nla_type: typ,
@@ -343,7 +334,7 @@ fn align(size: usize) -> usize {
 
 #[allow(non_camel_case_types)]
 #[repr(u16)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, RequiredMem)]
 pub enum nla_type {
     IFA_UNSPEC,
     IFA_ADDRESS,
@@ -362,24 +353,24 @@ pub enum nla_type {
     __IFA_MAX,
 }
 
+impl Encode for nla_type {
+    fn encode<Endianness: ByteOrder>(
+        &self,
+        buffer: &mut Vec<u8>,
+    ) {
+        (*self as u16).encode::<Endianness>(buffer)
+    }
+}
+
+#[derive(Encode, RequiredMem)]
 #[repr(C)]
 struct nlattr {
     nla_len: u16,
     nla_type: nla_type,
 }
 
-impl RequiredMem for nlattr {}
-
-impl Encode for nlattr {
-    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8> {
-        let mut out = vec![0; Self::required_mem()];
-        Endianness::write_u16(&mut out[..2], self.nla_len);
-        Endianness::write_u16(&mut out[2..], self.nla_type as u16);
-        out
-    }
-}
-
 bitflags! {
+    #[derive(RequiredMem)]
     #[allow(non_camel_case_types)]
     pub struct
     ifa_flags: u32 {
@@ -398,16 +389,13 @@ bitflags! {
     }
 }
 
-impl RequiredMem for ifa_flags {}
-
 impl Encode for ifa_flags {
-    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8> {
-        let mut out = vec![0; Self::required_mem()];
-        Endianness::write_u32(out.as_mut_slice(), self.bits());
-        out
+    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+        self.bits().encode::<Endianness>(buffer)
     }
 }
 
+#[derive(Encode, RequiredMem)]
 #[repr(C)]
 struct ifaddrmsg {
     ifa_family: u8,
@@ -429,23 +417,9 @@ impl Decode for ifaddrmsg {
     }
 }
 
-impl Encode for ifaddrmsg {
-    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8> {
-        let mut out = vec![0; mem::size_of::<ifaddrmsg>()];
-        out[0] = self.ifa_family;
-        out[1] = self.ifa_prefixlen;
-        out[2] = self.ifa_flags;
-        out[3] = self.ifa_scope;
-        Endianness::write_u32(&mut out[4..], self.ifa_index);
-        out
-    }
-}
-
-impl RequiredMem for ifaddrmsg {}
-
 #[repr(u16)]
 #[allow(non_camel_case_types)]
-#[derive(Debug, FromPrimitive, IntoPrimitive, Copy, Clone)]
+#[derive(Debug, FromPrimitive, IntoPrimitive, Copy, Clone, RequiredMem)]
 pub enum RTNetlinkMessageType {
     NLMSG_NOOP           = 0x1,
     NLMSG_ERROR          = 0x2,
@@ -552,4 +526,10 @@ pub enum RTNetlinkMessageType {
 
     #[default]
     INVALID              = !0,
+}
+
+impl Encode for RTNetlinkMessageType {
+    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+        u16::from(*self).encode::<Endianness>(buffer)
+    }
 }

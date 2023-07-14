@@ -31,7 +31,7 @@ impl<Endianness: ByteOrder> Encoder<Endianness> {
         mut self,
         data: &T,
     ) -> Self {
-        self.output.extend(data.encode::<Endianness>());
+        data.encode::<Endianness>(&mut self.output);
         self
     }
 
@@ -39,7 +39,8 @@ impl<Endianness: ByteOrder> Encoder<Endianness> {
         mut self,
         data: &T,
     ) -> Self {
-        let mut bytes = data.encode::<Endianness>();
+        let mut bytes = Vec::new();
+        data.encode::<Endianness>(&mut bytes);
         mem::swap(&mut bytes, &mut self.output);
         self.output.extend(bytes);
         self
@@ -71,7 +72,7 @@ pub trait RequiredMem: Sized {
 }
 
 pub trait Encode: RequiredMem {
-    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8>;
+    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>);
     fn encoded_size(&self) -> usize {
         Self::required_mem()
     }
@@ -83,9 +84,9 @@ impl<T> Encode for &T
 where
     T: Encode,
 {
-    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8> {
+    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
         #[allow(suspicious_double_ref_op)]
-        self.deref().encode::<Endianness>()
+        self.deref().encode::<Endianness>(buffer)
     }
 }
 
@@ -95,7 +96,7 @@ impl<T> Encode for Ref<'_, T>
 where
     T: Encode,
 {
-    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8> {
-        self.deref().encode::<Endianness>()
+    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+        self.deref().encode::<Endianness>(buffer)
     }
 }

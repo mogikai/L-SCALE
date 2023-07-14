@@ -1,5 +1,5 @@
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
-use crate::emulator::platform::linux::kernel::eventpoll::Epoll;
+use crate::emulator::platform::linux::kernel::eventpoll::EpollData;
 use crate::emulator::platform::linux::signalfd::SignalFD;
 use crate::emulator::system::filesystem::file_descriptor::FileData;
 use crate::emulator::system::net::inet6::tcp::TcpSock;
@@ -24,7 +24,7 @@ pub struct FileDescriptorData {
     pub file: Option<FileData>,
     pub signals: Option<SignalFD>,
     pub socket: Option<TcpSock>,
-    pub epoll: Option<Epoll>,
+    pub epoll: Option<EpollData>,
     pub usock: Option<UnixSocketData>,
 }
 

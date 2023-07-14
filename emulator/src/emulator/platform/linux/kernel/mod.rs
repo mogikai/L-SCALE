@@ -6,12 +6,14 @@ use std::rc::Rc;
 use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
 
-use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
-use crate::emulator::abstractions::cpu::{RegisterX86, CPU};
+use fuzzyemu_derive::{Encode, RequiredMem};
+
+use crate::emulator::abstractions::cpu::{CPU, RegisterX86};
+use crate::emulator::abstractions::cpu::address::{EVA_NULL, EVAddr};
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
+use crate::emulator::abstractions::mmu::{MemoryError, MMU, Permission};
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
-use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::macros::push_stack;
 use crate::emulator::platform::linux::architecture::Architecture;
@@ -22,9 +24,9 @@ use crate::emulator::platform::linux::kernel::fd_map::FDMap;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::signalfd::SignalFDOps;
 use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
+use crate::emulator::system::{default_handles, System};
 use crate::emulator::system::file_descriptors::fd_map::FD;
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
-use crate::emulator::system::{default_handles, System};
 
 pub(crate) mod auxv;
 mod error;
@@ -607,20 +609,10 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     }
 }
 
+#[derive(Encode, RequiredMem)]
 pub struct Timeval {
     pub tv_sec: i64,
     pub tv_usec: i64,
-}
-
-impl RequiredMem for Timeval {}
-
-impl Encode for Timeval {
-    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8> {
-        let mut d = vec![0; Self::required_mem()];
-        Endianness::write_i64(&mut d[..8], self.tv_sec);
-        Endianness::write_i64(&mut d[8..], self.tv_usec);
-        d
-    }
 }
 
 impl Decode for Timeval {
@@ -636,20 +628,10 @@ impl Decode for Timeval {
     }
 }
 
+#[derive(Encode, RequiredMem)]
 pub struct Timespec {
     pub tv_sec: i64,
     pub tv_nsec: i64,
-}
-
-impl RequiredMem for Timespec {}
-
-impl Encode for Timespec {
-    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8> {
-        let mut d = vec![0; mem::size_of::<Self>()];
-        Endianness::write_i64(&mut d[..8], self.tv_sec);
-        Endianness::write_i64(&mut d[8..], self.tv_nsec);
-        d
-    }
 }
 
 impl Decode for Timespec {
@@ -666,19 +648,11 @@ impl Decode for Timespec {
 }
 
 // TODO: Make types architecture dependant
+#[derive(Encode, RequiredMem)]
 #[repr(C)]
 struct Rlimit {
     rlim_cur: u64,
     rlim_max: u64,
-}
-
-impl Encode for Rlimit {
-    fn encode<Endianness: ByteOrder>(&self) -> Vec<u8> {
-        let mut d = vec![0; mem::size_of::<Self>()];
-        Endianness::write_u64(&mut d[..8], self.rlim_cur);
-        Endianness::write_u64(&mut d[8..], self.rlim_max);
-        d
-    }
 }
 
 // TODO: Write derive macro or something like this to automate the from trait?
@@ -694,8 +668,6 @@ impl Decode for Rlimit {
         }
     }
 }
-
-impl RequiredMem for Rlimit {}
 
 #[repr(u64)]
 #[derive(FromPrimitive)]
