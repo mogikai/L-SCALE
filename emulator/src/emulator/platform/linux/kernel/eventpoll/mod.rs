@@ -67,7 +67,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
         flags: u64,
     ) -> SyscallResult {
         let mut fd = FileDescriptor::new(Box::new(EpollOps::new()));
-        fd.data.poll = Some(Epoll::new());
+        fd.data.epoll = Some(Epoll::new());
         Ok(self.fd_map.insert(&mut self.system.fd_map.borrow_mut(),fd).into())
     }
 }

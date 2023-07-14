@@ -24,7 +24,7 @@ pub struct FileDescriptorData {
     pub file: Option<FileData>,
     pub signals: Option<SignalFD>,
     pub socket: Option<TcpSock>,
-    pub poll: Option<Epoll>,
+    pub epoll: Option<Epoll>,
     pub usock: Option<UnixSocketData>,
 }
 
