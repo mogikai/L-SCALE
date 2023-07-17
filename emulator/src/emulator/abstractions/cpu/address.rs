@@ -2,9 +2,10 @@ use std::fmt::{Debug, Formatter};
 use std::ops::{Add, AddAssign, BitAnd, Not, Sub};
 
 use derive_more::{Add, BitAnd, From, Into, Not, UpperHex};
+use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 
 /// Emulated virtual address
-#[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Add, From, Into, Not, UpperHex, BitAnd)]
+#[derive(Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Add, From, Into, Not, UpperHex, BitAnd, Decode, Encode, RequiredMem)]
 pub struct EVAddr(u64);
 
 impl Debug for EVAddr {

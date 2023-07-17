@@ -55,6 +55,18 @@ impl FDMap {
         })
     }
 
+    pub(crate) fn get<'a>(
+        &'a mut self,
+        file_descriptor_map: &'a FileDescriptorMap,
+        fd: &FD,
+    ) -> Option<&FileDescriptor> {
+        self.handles.get(fd).map(move |fd_pointer| {
+            file_descriptor_map
+                .get(fd_pointer)
+                .expect("The fd_pointer must always point to a valid fd. This is an implementation error")
+        })
+    }
+
     pub(crate) fn remove(
         &mut self,
         file_descriptor_map: &mut FileDescriptorMap,

@@ -2,17 +2,19 @@ use std::cmp::min;
 
 use byteorder::ByteOrder;
 
+use fuzzyemu_derive::{Decode, Encode, RequiredMem};
+
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
-use crate::emulator::abstractions::mmu::encoding::{Decode, RequiredMem};
 use crate::emulator::abstractions::mmu::{MemoryError, MMU};
+use crate::emulator::abstractions::mmu::encoding::{Decode, RequiredMem};
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::kernel::{FileDescriptor, LinuxKernelError, LinuxKernelTask, SyscallResult};
 use crate::emulator::system::file_descriptors::fd_map::FD;
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
-use crate::emulator::system::net::unix::UnixSocketOps;
 use crate::emulator::system::net::{inet6, netlink, Sockaddr, SocketDomain, SocketFlags, SocketType};
+use crate::emulator::system::net::unix::UnixSocketOps;
 
 impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     pub fn socket(
@@ -302,6 +304,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     }
 }
 
+#[derive(Encode, Decode, RequiredMem)]
 #[repr(C)]
 struct user_msghdr {
     msg_name: EVAddr,
@@ -320,22 +323,7 @@ struct user_msghdr {
     /* flags on received message */
 }
 
-impl Decode for user_msghdr {
-    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
-        Ok(Self {
-            msg_name: EVAddr::from(Endianness::read_u64(&val[..8])),
-            msg_namelen: Endianness::read_u64(&val[8..16]),
-            msg_iov: EVAddr::from(Endianness::read_u64(&val[16..24])),
-            msg_iovlen: Endianness::read_u64(&val[24..32]),
-            msg_control: EVAddr::from(Endianness::read_u64(&val[32..40])),
-            msg_controllen: Endianness::read_u64(&val[40..48]),
-            msg_flags: Endianness::read_u32(&val[48..52]),
-        })
-    }
-}
-
-impl RequiredMem for user_msghdr {}
-
+#[derive(Decode, Encode, RequiredMem)]
 #[repr(C)]
 struct iovec {
     iov_base: EVAddr,
@@ -343,14 +331,3 @@ struct iovec {
     iov_len: u64,
     /* Must be size_t (1003.1g) */
 }
-
-impl Decode for iovec {
-    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
-        Ok(Self {
-            iov_base: EVAddr::from(Endianness::read_u64(&val[..8])),
-            iov_len: Endianness::read_u64(&val[8..16]),
-        })
-    }
-}
-
-impl RequiredMem for iovec {}

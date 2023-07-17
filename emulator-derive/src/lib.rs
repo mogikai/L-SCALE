@@ -1,13 +1,18 @@
-use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Fields, GenericParam, Generics, parse_macro_input, parse_quote};
+use syn::{DeriveInput, parse_macro_input};
+
+use crate::decode::derive_decode_impl;
+use crate::encode::{add_trait_bounds, encode};
+
+mod encode;
+mod decode;
 
 #[proc_macro_derive(RequiredMem)]
 pub fn derive_required_mem(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = input.ident;
     let expaned = quote! {
-        impl RequiredMem for #name {}
+        impl crate::emulator::abstractions::mmu::encoding::RequiredMem for #name {}
     };
     proc_macro::TokenStream::from(expaned)
 }
@@ -24,7 +29,8 @@ pub fn derive_encode(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
     let expanded = quote! {
         #[automatically_derived]
         impl #impl_generics crate::emulator::abstractions::mmu::encoding::Encode for #name #ty_generics #where_clause {
-            fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+            fn encode<Endianness: byteorder::ByteOrder>(&self, buffer: &mut Vec<u8>) {
+                use crate::emulator::abstractions::mmu::encoding::RequiredMem;
                 buffer.reserve(Self::required_mem());
                 #encode
             }
@@ -33,40 +39,8 @@ pub fn derive_encode(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
     proc_macro::TokenStream::from(expanded)
 }
 
-fn add_trait_bounds(mut generics: Generics) -> Generics {
-    for param in &mut generics.params {
-        if let GenericParam::Type(ref mut type_param) = *param {
-            type_param
-                .bounds
-                .push(parse_quote!(fuzzyemu::emulator::abstractions::mmu::encoding::Encode));
-        }
-    }
-    generics
-}
-
-fn encode(data: &Data) -> TokenStream {
-    match *data {
-        Data::Struct(ref data) => match &data.fields {
-            Fields::Named(fields) => {
-                fields.named.iter().map(|field| {
-                    let field_name = field.ident.as_ref().unwrap();
-                    quote! {
-                        self.#field_name.encode::<Endianness>(buffer);
-                    }
-                }).collect::<TokenStream>()
-            }
-            Fields::Unnamed(fields) => {
-                fields.unnamed.iter().enumerate().map(|(i, field)| {
-                    quote! {
-                        self.#i.encode::<Endianness>(buffer);
-                    }
-                }).collect::<TokenStream>()
-            }
-            Fields::Unit => {
-                quote! {}
-            }
-        },
-        Data::Enum(_) => unimplemented!(),
-        Data::Union(_) => unimplemented!(),
-    }
+#[proc_macro_derive(Decode)]
+pub fn derive_decode(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    proc_macro::TokenStream::from(derive_decode_impl(input))
 }

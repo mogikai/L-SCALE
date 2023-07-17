@@ -1,6 +1,7 @@
 use byteorder::ByteOrder;
 
-use crate::emulator::abstractions::mmu::encoding::{Encode, RequiredMem};
+use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
+use crate::emulator::abstractions::mmu::MemoryError;
 
 impl RequiredMem for i64 {}
 
@@ -13,11 +14,29 @@ impl Encode for i64 {
     }
 }
 
+impl Decode for i64 {
+    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
+        if val.len() != Self::required_mem() {
+            Err(MemoryError::InvalidSize)?
+        }
+        Ok(Endianness::read_i64(val))
+    }
+}
+
 impl RequiredMem for u8 {}
 
 impl Encode for u8 {
     fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
         buffer.push(*self)
+    }
+}
+
+impl Decode for u8 {
+    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
+        if val.len() != Self::required_mem() {
+            Err(MemoryError::InvalidSize)?
+        }
+        Ok(val[0])
     }
 }
 
@@ -32,6 +51,15 @@ impl Encode for u16 {
     }
 }
 
+impl Decode for u16 {
+    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
+        if val.len() != Self::required_mem() {
+            Err(MemoryError::InvalidSize)?
+        }
+        Ok(Endianness::read_u16(val))
+    }
+}
+
 impl RequiredMem for u32 {}
 
 impl Encode for u32 {
@@ -43,6 +71,15 @@ impl Encode for u32 {
     }
 }
 
+impl Decode for u32 {
+    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
+        if val.len() != Self::required_mem() {
+            Err(MemoryError::InvalidSize)?
+        }
+        Ok(Endianness::read_u32(val))
+    }
+}
+
 impl RequiredMem for u64 {}
 
 impl Encode for u64 {
@@ -51,6 +88,15 @@ impl Encode for u64 {
         buffer.reserve(Self::required_mem());
         unsafe { buffer.set_len(start + Self::required_mem()); }
         Endianness::write_u64(&mut buffer[start..], *self);
+    }
+}
+
+impl Decode for u64 {
+    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
+        if val.len() != Self::required_mem() {
+            Err(MemoryError::InvalidSize)?
+        }
+        Ok(Endianness::read_u64(val))
     }
 }
 

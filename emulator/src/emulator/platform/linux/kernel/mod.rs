@@ -6,7 +6,7 @@ use std::rc::Rc;
 use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
 
-use fuzzyemu_derive::{Encode, RequiredMem};
+use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 
 use crate::emulator::abstractions::cpu::{CPU, RegisterX86};
 use crate::emulator::abstractions::cpu::address::{EVA_NULL, EVAddr};
@@ -609,64 +609,24 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     }
 }
 
-#[derive(Encode, RequiredMem)]
+#[derive(Encode, Decode, RequiredMem)]
 pub struct Timeval {
     pub tv_sec: i64,
     pub tv_usec: i64,
 }
 
-impl Decode for Timeval {
-    fn decode<Endianness: ByteOrder>(value: &[u8]) -> Result<Self, MemoryError> {
-        if value.len() != mem::size_of::<i64>() * 2 {
-            Err(MemoryError::InvalidSize)
-        } else {
-            Ok(Timeval {
-                tv_sec: Endianness::read_i64(&value[..8]),
-                tv_usec: Endianness::read_i64(&value[8..]),
-            })
-        }
-    }
-}
-
-#[derive(Encode, RequiredMem)]
+#[derive(Encode, Decode, RequiredMem)]
 pub struct Timespec {
     pub tv_sec: i64,
     pub tv_nsec: i64,
 }
 
-impl Decode for Timespec {
-    fn decode<Endianness: ByteOrder>(value: &[u8]) -> Result<Self, MemoryError> {
-        if value.len() != mem::size_of::<i64>() * 2 {
-            Err(MemoryError::InvalidSize)
-        } else {
-            Ok(Timespec {
-                tv_sec: Endianness::read_i64(&value[..8]),
-                tv_nsec: Endianness::read_i64(&value[8..]),
-            })
-        }
-    }
-}
-
 // TODO: Make types architecture dependant
-#[derive(Encode, RequiredMem)]
+#[derive(Encode, Decode, RequiredMem)]
 #[repr(C)]
 struct Rlimit {
     rlim_cur: u64,
     rlim_max: u64,
-}
-
-// TODO: Write derive macro or something like this to automate the from trait?
-impl Decode for Rlimit {
-    fn decode<Endianness: ByteOrder>(value: &[u8]) -> Result<Self, MemoryError> {
-        if value.len() != mem::size_of::<Rlimit>() {
-            Err(MemoryError::InvalidSize)
-        } else {
-            Ok(Rlimit {
-                rlim_cur: Endianness::read_u64(&value[..8]),
-                rlim_max: Endianness::read_u64(&value[8..]),
-            })
-        }
-    }
 }
 
 #[repr(u64)]

@@ -90,6 +90,15 @@ impl FileDescriptorMap {
             .map(|entry| &mut entry.file_descriptor)
     }
 
+    pub fn get(
+        &self,
+        fd_pointer: &FDPointer,
+    ) -> Option<&FileDescriptor> {
+        self.file_descriptors
+            .get(fd_pointer.0)
+            .map(|entry| &entry.file_descriptor)
+    }
+
     /// Increase the reference count for the file descriptor pointed to by fd_pointer.
     /// For example, a dup call will create a new FD that points to the same file_descriptor,
     /// increasing its refcount by one.

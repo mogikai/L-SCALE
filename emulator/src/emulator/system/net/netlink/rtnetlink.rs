@@ -7,7 +7,7 @@ use bitflags::__private::PublicFlags;
 use byteorder::ByteOrder;
 use num_enum::{FromPrimitive, IntoPrimitive};
 
-use fuzzyemu_derive::{Encode, RequiredMem};
+use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
@@ -395,7 +395,7 @@ impl Encode for ifa_flags {
     }
 }
 
-#[derive(Encode, RequiredMem)]
+#[derive(Decode, Encode, RequiredMem)]
 #[repr(C)]
 struct ifaddrmsg {
     ifa_family: u8,
@@ -403,18 +403,6 @@ struct ifaddrmsg {
     ifa_flags: u8,
     ifa_scope: u8,
     ifa_index: u32,
-}
-
-impl Decode for ifaddrmsg {
-    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
-        Ok(Self {
-            ifa_family: val[0],
-            ifa_prefixlen: val[1],
-            ifa_flags: val[2],
-            ifa_scope: val[3],
-            ifa_index: Endianness::read_u32(&val[4..]),
-        })
-    }
 }
 
 #[repr(u16)]
