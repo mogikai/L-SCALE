@@ -25,7 +25,8 @@ pub fn encode(data: &Data) -> TokenStream {
                 }).collect::<TokenStream>()
             }
             Fields::Unnamed(fields) => {
-                fields.unnamed.iter().enumerate().map(|(i, field)| {
+                fields.unnamed.iter().enumerate().map(|(i, _)| {
+                    let i = syn::Index::from(i);
                     quote! {
                         self.#i.encode::<Endianness>(buffer);
                     }
