@@ -86,7 +86,7 @@ impl Decode for NetlinkMessageFlags {
 }
 
 #[repr(u64)]
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Debug, FromPrimitive)]
 enum NetlinkFamily {
     NETLINK_ROUTE      = 0,

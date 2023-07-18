@@ -80,9 +80,7 @@ impl PartialOrd for PhysicalRegion {
     fn partial_cmp(
         &self,
         other: &Self,
-    ) -> Option<Ordering> {
-        self.start.partial_cmp(&other.start)
-    }
+    ) -> Option<Ordering> { Some(self.cmp(other)) }
 }
 
 impl Ord for PhysicalRegion {

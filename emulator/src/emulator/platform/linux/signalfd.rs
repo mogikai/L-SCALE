@@ -25,7 +25,7 @@ impl SignalFD {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct SignalFDOps {}
 
 impl SignalFDOps {

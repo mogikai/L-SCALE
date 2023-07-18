@@ -61,8 +61,7 @@ impl Decode for Sockaddr {
 impl Encode for Sockaddr {
     fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
         let start = buffer.len();
-        buffer.reserve(Self::required_mem());
-        unsafe { buffer.set_len(start + Self::required_mem()); }
+        buffer.resize(start + Self::required_mem(), 0);
         use Sockaddr::*;
         match self {
             NL {

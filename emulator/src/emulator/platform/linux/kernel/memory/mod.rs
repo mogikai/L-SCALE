@@ -234,7 +234,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let mut file_descriptor_map = self.system.fd_map.borrow_mut();
         let mut fd = self
             .fd_map
-            .get(&mut file_descriptor_map, &fd)
+            .get(&file_descriptor_map, &fd)
             .ok_or(LinuxKernelError::EINVAL)?
             .borrow_mut();
         let fd = &mut *fd;

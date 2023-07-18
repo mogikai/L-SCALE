@@ -1,6 +1,7 @@
+use std::cmp::Ordering;
+
 use crate::emulator::system::filesystem;
 use crate::emulator::system::filesystem::{FSError, SnapId};
-use std::cmp::Ordering;
 
 #[derive(Eq, Copy, Clone, Debug)]
 pub(super) struct Block {
@@ -95,9 +96,7 @@ impl PartialOrd for Block {
     fn partial_cmp(
         &self,
         other: &Self,
-    ) -> Option<Ordering> {
-        self.start.partial_cmp(&other.start)
-    }
+    ) -> Option<Ordering> { Some(self.cmp(other)) }
 }
 
 impl Ord for Block {

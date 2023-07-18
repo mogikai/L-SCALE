@@ -59,7 +59,7 @@ impl From<FileDescriptor> for FileDescriptorMapEntry {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct FileDescriptorMap {
     file_descriptors: generational_arena::Arena<FileDescriptorMapEntry>,
     // TODO: Implement as a hook object that can be inserted to be called after the handle

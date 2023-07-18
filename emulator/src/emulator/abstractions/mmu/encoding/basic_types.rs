@@ -8,8 +8,7 @@ impl RequiredMem for i64 {}
 impl Encode for i64 {
     fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
         let start = buffer.len();
-        buffer.reserve(Self::required_mem());
-        unsafe { buffer.set_len(start + Self::required_mem()); }
+        buffer.resize(start + Self::required_mem(), 0);
         Endianness::write_i64(&mut buffer[start..], *self);
     }
 }
@@ -45,8 +44,7 @@ impl RequiredMem for u16 {}
 impl Encode for u16 {
     fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
         let start = buffer.len();
-        buffer.reserve(Self::required_mem());
-        unsafe { buffer.set_len(start + Self::required_mem()); }
+        buffer.resize(start + Self::required_mem(), 0);
         Endianness::write_u16(&mut buffer[start..], *self);
     }
 }
@@ -65,8 +63,7 @@ impl RequiredMem for u32 {}
 impl Encode for u32 {
     fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
         let start = buffer.len();
-        buffer.reserve(Self::required_mem());
-        unsafe { buffer.set_len(start + Self::required_mem()); }
+        buffer.resize(start + Self::required_mem(), 0);
         Endianness::write_u32(&mut buffer[start..], *self);
     }
 }
@@ -85,8 +82,7 @@ impl RequiredMem for u64 {}
 impl Encode for u64 {
     fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
         let start = buffer.len();
-        buffer.reserve(Self::required_mem());
-        unsafe { buffer.set_len(start + Self::required_mem()); }
+        buffer.resize(start + Self::required_mem(), 0);
         Endianness::write_u64(&mut buffer[start..], *self);
     }
 }

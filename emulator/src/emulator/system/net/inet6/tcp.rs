@@ -3,7 +3,7 @@ use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
 use crate::emulator::system::net::Sockaddr;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TcpSock {}
 
 impl TcpSock {

@@ -108,7 +108,7 @@ impl TryFrom<u64> for SignalMaskFlags {
     }
 }
 
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Debug, EnumSetType)]
 pub enum Signal {
     SIGHUP,

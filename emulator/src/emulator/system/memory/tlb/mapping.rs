@@ -152,9 +152,7 @@ impl PartialOrd for Mapping {
     fn partial_cmp(
         &self,
         other: &Self,
-    ) -> Option<Ordering> {
-        self.v_start.partial_cmp(&other.v_start)
-    }
+    ) -> Option<Ordering> { Some(self.cmp(other)) }
 }
 
 impl Ord for Mapping {

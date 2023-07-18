@@ -21,7 +21,7 @@ use crate::emulator::system::net::netlink::rtnetlink::nla_type::{
 use crate::emulator::system::net::Sockaddr;
 use crate::emulator::system::net::SocketDomain::{AF_INET, AF_INET6};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct RTNetlinkSocket<Endianness: ByteOrder> {
     sockaddr: Option<Sockaddr>,
     messages: VecDeque<Vec<u8>>,

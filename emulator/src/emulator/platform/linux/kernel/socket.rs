@@ -52,7 +52,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let mut file_descriptor_map = self.system.fd_map.borrow_mut();
         let mut fd = self
             .fd_map
-            .get(&mut file_descriptor_map, &fd)
+            .get(&file_descriptor_map, &fd)
             .ok_or(LinuxKernelError::EBADFD)?
             .borrow_mut();
         let fd = &mut *fd;
@@ -89,11 +89,11 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         debug!("Buff: {:?}", &*buf);
         let mut fd = self
             .fd_map
-            .get(&mut file_descriptor_map, &fd)
+            .get(&file_descriptor_map, &fd)
             .ok_or(LinuxKernelError::EBADFD)?
             .borrow_mut();
         let fd = &mut *fd;
-        Ok(fd.ops.sendto(&mut fd.data, &*buf)? as u64)
+        Ok(fd.ops.sendto(&mut fd.data, &buf)? as u64)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -139,7 +139,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             .ok_or(LinuxKernelError::EINVAL)?;
         let mut fd = self
             .fd_map
-            .get(&mut file_descriptor_map, &fd)
+            .get(&file_descriptor_map, &fd)
             .ok_or(LinuxKernelError::EBADFD)?
             .borrow_mut();
         let fd = &mut *fd;
@@ -177,7 +177,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let memory = memory.accessor(mmu, self.task_id);
         let mut fd = self
             .fd_map
-            .get(&mut file_descriptor_map, &fd)
+            .get(&file_descriptor_map, &fd)
             .ok_or(LinuxKernelError::EBADF)?
             .borrow_mut();
         let fd = &mut *fd;
@@ -211,7 +211,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let mut file_descriptor_map = self.system.fd_map.borrow_mut();
         let mut fd = self
             .fd_map
-            .get(&mut file_descriptor_map, &fd)
+            .get(&file_descriptor_map, &fd)
             .ok_or(LinuxKernelError::EBADFD)?
             .borrow_mut();
         let fd = &mut *fd;
@@ -261,7 +261,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         // TODO: Handle sockopts correctly
         let mut fd = self
             .fd_map
-            .get(&mut file_descriptor_map, &fd)
+            .get(&file_descriptor_map, &fd)
             .ok_or(LinuxKernelError::EBADFD)?
             .borrow_mut();
         let fd = &mut *fd;

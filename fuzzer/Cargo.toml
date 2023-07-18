@@ -9,4 +9,4 @@ edition = "2021"
 fuzzyemu = { path = "../emulator" }
 pretty_env_logger = "*"
 log = "*"
-iced-x86 = "1.18.*"
+iced-x86 = "*"
