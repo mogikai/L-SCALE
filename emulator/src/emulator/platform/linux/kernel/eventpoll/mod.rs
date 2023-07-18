@@ -48,7 +48,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
         let mut file_descriptor_map = self.system.fd_map.borrow_mut();
         let mut memory = self.system.memory.borrow_mut();
         let memory = memory.accessor(mmu, self.task_id);
-        let epfd = self.fd_map.get_mut(&mut file_descriptor_map, &epfd).ok_or(LinuxKernelError::EBADF)?;
+        let mut epfd = self.fd_map.get(&mut file_descriptor_map, &epfd).ok_or(LinuxKernelError::EBADF)?.borrow_mut();
         let epoll = epfd.data.epoll.as_mut().ok_or(LinuxKernelError::EPERM)?;
 
         let event: epoll_event = memory.read(event)?;

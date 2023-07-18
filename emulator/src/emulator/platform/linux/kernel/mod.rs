@@ -352,7 +352,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         // TODO: Implement correctly
         error!("FCNTL not implemented fully yet");
         self.fd_map
-            .get_mut(&mut self.system.fd_map.borrow_mut(), &fd);
+            .get(&mut self.system.fd_map.borrow_mut(), &fd);
         Ok(2)
     }
 
@@ -460,7 +460,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let fd = self
             .fd_map
             .insert(&mut self.system.fd_map.borrow_mut(), FileDescriptor::new(Box::new(SignalFDOps::new())));
-        self.signalhandler.insertFD(fd);
+        self.signalhandler.insert_fd(fd);
         return Ok(fd.into());
     }
 

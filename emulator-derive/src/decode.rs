@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Data, DataStruct, DeriveInput, Fields, FieldsNamed, FieldsUnnamed, GenericParam, Generics, parse_quote};
+use syn::{Data, DataEnum, DataStruct, DeriveInput, Fields, FieldsNamed, FieldsUnnamed, GenericParam, Generics, parse_quote};
 
 pub fn derive_decode_impl(input: DeriveInput) -> TokenStream {
     let name = input.ident;
@@ -37,7 +37,7 @@ fn trait_bounds(mut generics: Generics) -> Generics {
 fn decode(data: &Data) -> TokenStream {
     match data {
         Data::Struct(s) => decode_struct(s),
-        Data::Enum(_) => unimplemented!(),
+        Data::Enum(e) => decode_enum(e),
         Data::Union(_) => unimplemented!(),
     }
 }
@@ -57,8 +57,8 @@ fn offsets(data: &DataStruct) -> TokenStream {
 fn decode_struct(data: &DataStruct) -> TokenStream {
     let offsets = offsets(data);
     let fields = match &data.fields {
-        Fields::Named(fields) => decode_named(fields),
-        Fields::Unnamed(fields) => decode_unnamed(fields),
+        Fields::Named(fields) => decode_struct_named(fields),
+        Fields::Unnamed(fields) => decode_struct_unnamed(fields),
         Fields::Unit => unimplemented!(),
     };
     quote! {
@@ -67,7 +67,7 @@ fn decode_struct(data: &DataStruct) -> TokenStream {
     }
 }
 
-fn decode_named(fields: &FieldsNamed) -> TokenStream {
+fn decode_struct_named(fields: &FieldsNamed) -> TokenStream {
     let fields = fields.named.iter().enumerate().map(|(i, field)| {
         let field_name = field.ident.as_ref().unwrap();
         let field_type = &field.ty;
@@ -82,7 +82,7 @@ fn decode_named(fields: &FieldsNamed) -> TokenStream {
     }
 }
 
-fn decode_unnamed(fields: &FieldsUnnamed) -> TokenStream {
+fn decode_struct_unnamed(fields: &FieldsUnnamed) -> TokenStream {
     let fields = fields.unnamed.iter().enumerate().map(|(i, field)| {
         let field_type = &field.ty;
         quote! {
@@ -92,4 +92,8 @@ fn decode_unnamed(fields: &FieldsUnnamed) -> TokenStream {
     quote! {
         Ok(Self(#fields))
     }
+}
+
+fn decode_enum(_data: &DataEnum) -> TokenStream {
+    unimplemented!()
 }

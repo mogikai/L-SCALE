@@ -50,10 +50,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         addrlen: u64,
     ) -> SyscallResult {
         let mut file_descriptor_map = self.system.fd_map.borrow_mut();
-        let fd = self
+        let mut fd = self
             .fd_map
-            .get_mut(&mut file_descriptor_map, &fd)
-            .ok_or(LinuxKernelError::EBADFD)?;
+            .get(&mut file_descriptor_map, &fd)
+            .ok_or(LinuxKernelError::EBADFD)?
+            .borrow_mut();
+        let fd = &mut *fd;
         fd.ops.connect(&mut fd.data)?;
         Ok(0)
     }
@@ -85,10 +87,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let sockaddr: Sockaddr = memory.read_bounded(dest_addr, dest_addr_len as usize)?;
         let buf = memory.read_bytes(buf, len as usize)?;
         debug!("Buff: {:?}", &*buf);
-        let fd = self
+        let mut fd = self
             .fd_map
-            .get_mut(&mut file_descriptor_map, &fd)
-            .ok_or(LinuxKernelError::EBADFD)?;
+            .get(&mut file_descriptor_map, &fd)
+            .ok_or(LinuxKernelError::EBADFD)?
+            .borrow_mut();
+        let fd = &mut *fd;
         Ok(fd.ops.sendto(&mut fd.data, &*buf)? as u64)
     }
 
@@ -133,10 +137,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             .iter()
             .try_fold(0usize, |sum, vec| sum.checked_add(vec.iov_len as usize))
             .ok_or(LinuxKernelError::EINVAL)?;
-        let fd = self
+        let mut fd = self
             .fd_map
-            .get_mut(&mut file_descriptor_map, &fd)
-            .ok_or(LinuxKernelError::EBADFD)?;
+            .get(&mut file_descriptor_map, &fd)
+            .ok_or(LinuxKernelError::EBADFD)?
+            .borrow_mut();
+        let fd = &mut *fd;
         let data = fd.ops.recvmsg(&mut fd.data, to_read)?;
         let mut offset = 0;
         for vec in iovec {
@@ -169,10 +175,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let mut memory = self.system.memory.borrow_mut();
         let mut file_descriptor_map = self.system.fd_map.borrow_mut();
         let memory = memory.accessor(mmu, self.task_id);
-        let fd = self
+        let mut fd = self
             .fd_map
-            .get_mut(&mut file_descriptor_map, &fd)
-            .ok_or(LinuxKernelError::EBADF)?;
+            .get(&mut file_descriptor_map, &fd)
+            .ok_or(LinuxKernelError::EBADF)?
+            .borrow_mut();
+        let fd = &mut *fd;
         let mut sockaddr = memory.read(umyaddr)?;
         if let Sockaddr::NL { nl_pid, .. } = &mut sockaddr {
             if *nl_pid == 0 {
@@ -201,10 +209,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         usockaddr_len: EVAddr, // int*
     ) -> SyscallResult {
         let mut file_descriptor_map = self.system.fd_map.borrow_mut();
-        let fd = self
+        let mut fd = self
             .fd_map
-            .get_mut(&mut file_descriptor_map, &fd)
-            .ok_or(LinuxKernelError::EBADFD)?;
+            .get(&mut file_descriptor_map, &fd)
+            .ok_or(LinuxKernelError::EBADFD)?
+            .borrow_mut();
+        let fd = &mut *fd;
         let sockaddr = fd.ops.getsockname(&mut fd.data)?;
         self.system
             .memory
@@ -249,10 +259,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let memory = memory.accessor(mmu, self.task_id);
         let opt_data = memory.read_bytes(optval, optlen as usize)?;
         // TODO: Handle sockopts correctly
-        let fd = self
+        let mut fd = self
             .fd_map
-            .get_mut(&mut file_descriptor_map, &fd)
-            .ok_or(LinuxKernelError::EBADFD)?;
+            .get(&mut file_descriptor_map, &fd)
+            .ok_or(LinuxKernelError::EBADFD)?
+            .borrow_mut();
+        let fd = &mut *fd;
         fd.ops.setsockopt(&mut fd.data)?;
         Ok(0)
     }

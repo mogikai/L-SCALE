@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::ops::Add;
 
@@ -45,14 +46,14 @@ pub struct FDPointer(generational_arena::Index);
 
 #[derive(Debug)]
 struct FileDescriptorMapEntry {
-    file_descriptor: FileDescriptor,
+    file_descriptor: RefCell<FileDescriptor>,
     refcount: usize,
 }
 
 impl From<FileDescriptor> for FileDescriptorMapEntry {
     fn from(file_descriptor: FileDescriptor) -> Self {
         Self {
-            file_descriptor,
+            file_descriptor: RefCell::new(file_descriptor),
             refcount: 1,
         }
     }
@@ -81,19 +82,10 @@ impl FileDescriptorMap {
         FDPointer(self.file_descriptors.insert(file_descriptor.into()))
     }
 
-    pub fn get_mut(
-        &mut self,
-        fd_pointer: &FDPointer,
-    ) -> Option<&mut FileDescriptor> {
-        self.file_descriptors
-            .get_mut(fd_pointer.0)
-            .map(|entry| &mut entry.file_descriptor)
-    }
-
     pub fn get(
         &self,
         fd_pointer: &FDPointer,
-    ) -> Option<&FileDescriptor> {
+    ) -> Option<&RefCell<FileDescriptor>> {
         self.file_descriptors
             .get(fd_pointer.0)
             .map(|entry| &entry.file_descriptor)

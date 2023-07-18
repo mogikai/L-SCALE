@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -43,23 +44,11 @@ impl FDMap {
         fd
     }
 
-    pub(crate) fn get_mut<'a>(
-        &'a mut self,
-        file_descriptor_map: &'a mut FileDescriptorMap,
-        fd: &FD,
-    ) -> Option<&mut FileDescriptor> {
-        self.handles.get(fd).map(move |fd_pointer| {
-            file_descriptor_map
-                .get_mut(fd_pointer)
-                .expect("The fd_pointer must always point to a valid fd. This is an implementation error")
-        })
-    }
-
     pub(crate) fn get<'a>(
         &'a mut self,
         file_descriptor_map: &'a FileDescriptorMap,
         fd: &FD,
-    ) -> Option<&FileDescriptor> {
+    ) -> Option<&RefCell<FileDescriptor>> {
         self.handles.get(fd).map(move |fd_pointer| {
             file_descriptor_map
                 .get(fd_pointer)

@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Fields, GenericParam, Generics, parse_macro_input, parse_quote};
+use syn::{Data, Fields, GenericParam, Generics, parse_quote};
 
 pub fn add_trait_bounds(mut generics: Generics) -> Generics {
     for param in &mut generics.params {

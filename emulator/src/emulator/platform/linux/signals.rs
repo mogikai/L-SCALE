@@ -43,7 +43,7 @@ impl<Flags: Debug + Clone + Copy> SignalHandler<Flags> {
         }
     }
 
-    pub fn insertFD(
+    pub fn insert_fd(
         &mut self,
         fd: FD
     ) {

@@ -317,7 +317,7 @@ fn encode_attr<Endianness: ByteOrder, T: Encode>(
     typ: nla_type,
     payload: &T,
 ) -> Encoder<Endianness> {
-    let attr_size = mem::size_of::<nlattr>() + payload.encoded_size();
+    let attr_size = nlattr::required_mem() + payload.encoded_size();
     let attr = nlattr {
         nla_len: attr_size as u16,
         nla_type: typ,
