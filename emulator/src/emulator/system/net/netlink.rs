@@ -2,7 +2,7 @@ use bitflags::{bitflags, Flags};
 use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
 
-use fuzzyemu_derive::{Encode, RequiredMem};
+use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
@@ -25,7 +25,7 @@ pub fn from_protocol<Endianness: ByteOrder + 'static>(
     })
 }
 
-#[derive(Debug, Encode, RequiredMem)]
+#[derive(Debug, Encode, Decode, RequiredMem)]
 #[repr(C)]
 struct nlmsghdr {
     nlmsg_len: u32,
@@ -38,19 +38,6 @@ struct nlmsghdr {
     /* Sequence number */
     nlmsg_pid: u32,
     /* Sender port ID */
-}
-
-impl Decode for nlmsghdr {
-    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
-        Ok(Self {
-            nlmsg_len: Endianness::read_u32(&val[..4]),
-            nlmsg_type: RTNetlinkMessageType::from(Endianness::read_u16(&val[4..6])),
-            nlmsg_flags: NetlinkMessageFlags::from_bits(Endianness::read_u16(&val[6..8]))
-                .ok_or(MemoryError::ConversionError)?,
-            nlmsg_seq: Endianness::read_u32(&val[8..12]),
-            nlmsg_pid: Endianness::read_u32(&val[12..]),
-        })
-    }
 }
 
 bitflags! {
@@ -89,6 +76,12 @@ bitflags! {
 impl Encode for NetlinkMessageFlags {
     fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
         self.bits().encode::<Endianness>(buffer)
+    }
+}
+
+impl Decode for NetlinkMessageFlags {
+    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
+        Self::from_bits(Endianness::read_u16(val)).ok_or(MemoryError::ConversionError)
     }
 }
 

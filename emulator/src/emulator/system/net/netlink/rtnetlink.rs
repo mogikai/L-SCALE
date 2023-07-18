@@ -64,8 +64,8 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
         fd: &mut FileDescriptorData,
         data: &[u8],
     ) -> Result<usize, GenericError> {
-        let hdr = nlmsghdr::decode::<Endianness>(data)?;
-        let payload = &data[mem::size_of::<nlmsghdr>()..];
+        let hdr = nlmsghdr::decode::<Endianness>(&data[..nlmsghdr::required_mem()])?;
+        let payload = &data[nlmsghdr::required_mem()..];
         match hdr.nlmsg_type {
             RTNetlinkMessageType::RTM_GETADDR => {}
             _ => todo!("Only RTM_GETADDR supported currently"),
@@ -519,5 +519,11 @@ pub enum RTNetlinkMessageType {
 impl Encode for RTNetlinkMessageType {
     fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
         u16::from(*self).encode::<Endianness>(buffer)
+    }
+}
+
+impl Decode for RTNetlinkMessageType {
+    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
+        Ok(Self::from(Endianness::read_u16(val)))
     }
 }
