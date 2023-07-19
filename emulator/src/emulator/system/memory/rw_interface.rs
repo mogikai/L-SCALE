@@ -5,7 +5,7 @@ use byteorder::ByteOrder;
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode};
 use crate::emulator::abstractions::mmu::{MemoryError, MMU};
-use crate::emulator::system::memory::{Memory, MemoryAccessor};
+use crate::emulator::system::memory::accessor::MemoryAccessor;
 
 pub trait DirectMemoryWrite<T, Endianness: ByteOrder> {
     fn write_direct(
@@ -367,13 +367,3 @@ impl<Endianness: ByteOrder, MmuT: MMU, T: Encode> MemoryWrite<T, Endianness>
         self.write_bytes(address, buffer.as_slice())
     }
 }
-
-// impl<T: Encode<Endianness> + ExactSizeIterator, Endianness: ByteOrder> MemoryWrite<T, Endianness> for UCWrapper<'_> {
-//     fn write(
-//         &mut self,
-//         address: EVAddr,
-//         data: T,
-//     ) -> Result<usize, MemoryError> {
-//         self.mem_write_bytes(address, data.encode().as_slice())
-//     }
-// }

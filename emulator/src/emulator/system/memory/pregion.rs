@@ -1,7 +1,7 @@
 use std::cmp::{min, Ordering};
 
 use crate::emulator::abstractions::cpu::address::EPAddr;
-use crate::emulator::system::memory::is4kaligned;
+use crate::emulator::system::memory::helpers::is4kaligned;
 
 #[derive(Debug, Copy, Clone)]
 pub struct PhysicalRegion {

@@ -1,7 +1,7 @@
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::mmu::MemoryAction;
-use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
+use crate::emulator::system::memory::TLBEntry;
 
 pub trait Hooks<'a> {
     fn add_syscall_hook(

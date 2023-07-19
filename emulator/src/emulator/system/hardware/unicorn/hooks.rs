@@ -9,7 +9,7 @@ use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::mmu::{MemoryAction, MemoryError, Permission};
 use crate::emulator::system::hardware::unicorn::UCWrapper;
-use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
+use crate::emulator::system::memory::TLBEntry;
 
 impl<'a> Hooks<'a> for UCWrapper<'a> {
     fn add_syscall_hook(

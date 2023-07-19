@@ -1,4 +1,4 @@
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::RefCell;
 use std::cmp::max;
 use std::collections::BTreeSet;
 use std::iter::once;
@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::mmu::{MemoryError, Permission};
-use crate::emulator::system::memory::{align4k_up, is4kaligned};
+use crate::emulator::system::memory::helpers::is4kaligned;
 use crate::emulator::system::memory::pregion::PhysicalRegion;
 use crate::emulator::system::memory::tlb::mapping::MappingType;
 use crate::emulator::system::memory::tlb::TLB;

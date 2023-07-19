@@ -1,6 +1,8 @@
 use std::cell::RefCell;
 
 use byteorder::ByteOrder;
+use crate::emulator::abstractions::errors::GenericError;
+use crate::emulator::abstractions::restore::Restorable;
 
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::clock::Clock;
@@ -41,5 +43,21 @@ impl<Endianness: ByteOrder> System<Endianness> {
             current_task: RefCell::new(None),
             fd_map: RefCell::new(fd_map),
         }
+    }
+}
+
+impl<Endianness: ByteOrder> Restorable for System<Endianness> {
+    fn snapshot(&mut self) -> Result<(), GenericError> {
+        self.memory.get_mut().snapshot()?;
+        self.filesystem.get_mut().snapshot()?;
+        todo!()
+    }
+
+    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
+        todo!()
+    }
+
+    fn restore(&mut self) -> Result<(), GenericError> {
+        todo!()
     }
 }

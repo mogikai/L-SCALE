@@ -9,7 +9,7 @@ use unicorn_engine::{Context, TlbType, Unicorn};
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::emulator::StopReason;
 use crate::emulator::abstractions::mmu::MemoryAction;
-use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
+use crate::emulator::system::memory::TLBEntry;
 
 pub mod cpu;
 pub mod hooks;
