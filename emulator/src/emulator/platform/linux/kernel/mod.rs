@@ -20,7 +20,6 @@ use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::filedescriptor::FileDescriptor;
 use crate::emulator::platform::linux::kernel::auxv::AUXVType;
 pub use crate::emulator::platform::linux::kernel::error::LinuxKernelError;
-use crate::emulator::platform::linux::kernel::fd_map::FDMap;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::signalfd::SignalFDOps;
 use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
@@ -31,7 +30,6 @@ use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRea
 pub(crate) mod auxv;
 mod error;
 pub(crate) mod eventpoll;
-mod fd_map;
 pub(crate) mod fs;
 pub(crate) mod memory;
 pub(crate) mod socket;
@@ -41,7 +39,6 @@ pub(crate) mod task_id;
 // TODO: Move thread shared data to thread specific struct that is shared between kernel task objects (rcrefcell?)
 pub struct LinuxKernelTask<Endianness: ByteOrder, Arch: Architecture> {
     system: Rc<System<Endianness>>,
-    fd_map: FDMap,
     clear_child_tid: Option<EVAddr>,
     robust_list_head: Option<EVAddr>,
     signalhandler: SignalHandler<Arch::SignalFlags>,
@@ -60,7 +57,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     ) -> Self {
         LinuxKernelTask {
             system,
-            fd_map: FDMap::new(),
             clear_child_tid: None,
             robust_list_head: None,
             signalhandler: SignalHandler::new(),
@@ -210,18 +206,18 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
 
     pub fn add_stdio_handles(&mut self) {
         let mut file_descriptor_map = self.system.fd_map.borrow_mut();
-        self.fd_map.insert_at(
-            &mut file_descriptor_map,
+        file_descriptor_map.insert_at(
+            &self.task_id,
             0.into(),
             FileDescriptor::new(Box::new(default_handles::ReadOnly::new())),
         );
-        self.fd_map.insert_at(
-            &mut file_descriptor_map,
+        file_descriptor_map.insert_at(
+            &self.task_id,
             1.into(),
             FileDescriptor::new(Box::new(default_handles::WriteOnly::new())),
         );
-        self.fd_map.insert_at(
-            &mut file_descriptor_map,
+        file_descriptor_map.insert_at(
+            &self.task_id,
             2.into(),
             FileDescriptor::new(Box::new(default_handles::WriteOnly::new())),
         );
@@ -351,8 +347,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     ) -> SyscallResult {
         // TODO: Implement correctly
         error!("FCNTL not implemented fully yet");
-        self.fd_map
-            .get(&self.system.fd_map.borrow_mut(), &fd);
+        self.system.fd_map.borrow_mut()
+            .get(&self.task_id, &fd);
         Ok(2)
     }
 
@@ -457,9 +453,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let sigmask = memory
             .read_bytes(mask, sizemask as usize)
             .map(|s| Endianness::read_u64(&s))?;
-        let fd = self
-            .fd_map
-            .insert(&mut self.system.fd_map.borrow_mut(), FileDescriptor::new(Box::new(SignalFDOps::new())));
+        let fd = self.system.fd_map.borrow_mut().insert(&self.task_id, FileDescriptor::new(Box::new(SignalFDOps::new())))?;
         self.signalhandler.insert_fd(fd);
         Ok(fd.into())
     }

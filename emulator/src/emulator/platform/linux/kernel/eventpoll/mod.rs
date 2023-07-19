@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use bitflags::{bitflags, Flags};
 
 use byteorder::ByteOrder;
 
@@ -48,7 +49,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
         let mut file_descriptor_map = self.system.fd_map.borrow_mut();
         let mut memory = self.system.memory.borrow_mut();
         let memory = memory.accessor(mmu, self.task_id);
-        let mut epfd = self.fd_map.get(&file_descriptor_map, &epfd).ok_or(LinuxKernelError::EBADF)?.borrow_mut();
+        let mut epfd = file_descriptor_map.get_mut(&self.task_id, &epfd).ok_or(LinuxKernelError::EBADF)?;
         let epoll = epfd.data.epoll.as_mut().ok_or(LinuxKernelError::EPERM)?;
 
         let event: epoll_event = memory.read(event)?;
@@ -83,7 +84,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
     ) -> SyscallResult {
         let mut fd = FileDescriptor::new(Box::new(EpollOps::new()));
         fd.data.epoll = Some(EpollData::new());
-        Ok(self.fd_map.insert(&mut self.system.fd_map.borrow_mut(), fd).into())
+        Ok(self.system.fd_map.borrow_mut().insert(&self.task_id, fd)?.into())
     }
 }
 
@@ -99,8 +100,38 @@ impl EpollData {
 #[derive(Debug, Decode, Encode, RequiredMem)]
 #[repr(C)]
 struct epoll_event {
-    events: u32,
+    events: Events,
     data: u64,
+}
+
+bitflags! {
+    #[derive(Debug, RequiredMem)]
+    #[repr(C)]
+    pub struct Events: u32 {
+        const Read              = 0x0001;
+        const Priority          = 0x0002;
+        const Write             = 0x0004;
+        const Error             = 0x0008;
+        const HangUp            = 0x0010;
+        const Invalid           = 0x0020;
+        const ReadNormal        = 0x0040;
+        const ReadOutOfBand     = 0x0080;
+        const WriteNormal       = 0x0100;
+        const WriteOutOfBand    = 0x0200;
+        const ReadHangUp        = 0x2000;
+    }
+}
+
+impl Decode for Events {
+    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
+        Self::from_bits(Endianness::read_u32(val)).ok_or(MemoryError::ConversionError)
+    }
+}
+
+impl Encode for Events {
+    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+        self.bits().encode::<Endianness>(buffer)
+    }
 }
 
 

@@ -1,4 +1,6 @@
 #[derive(Debug)]
 pub enum FileDescriptorMapError {
-    InvalidFDPointer,
+    InvalidFD,
+    NoFreeFD,
+    FDExists,
 }

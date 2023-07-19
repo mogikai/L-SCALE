@@ -17,7 +17,7 @@ use crate::emulator::system::net::Sockaddr;
 ///
 pub trait FileDescriptorOps: Debug {
     /// Can be called to query what operations can be called without blocking on the handle.
-    fn poll(&self, fd: &mut FileDescriptorData) -> HandleOperationsReady { todo!() }
+    fn poll(&self, fd: &mut FileDescriptorData) -> FileOperationsReady { todo!() }
 
     /// returns: The stat vector of the handle this method is called on
     fn stat(&self, fd: &mut FileDescriptorData) -> Result<Ref<Stat>, GenericError> { todo!() }
@@ -89,7 +89,7 @@ pub trait FileDescriptorOps: Debug {
 
 bitflags! {
     #[repr(C)]
-    pub struct HandleOperationsReady: u64 {
+    pub struct FileOperationsReady: u64 {
         const Read              = 0x0001;
         const Priority          = 0x0002;
         const Write             = 0x0004;

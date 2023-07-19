@@ -1,6 +1,7 @@
-use std::cell::RefCell;
-use std::collections::{HashMap, VecDeque};
+use std::cell::{Ref, RefCell, RefMut};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::ops::Add;
+use std::rc::Rc;
 
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::platform::linux::filedescriptor::FileDescriptor;
@@ -41,27 +42,10 @@ impl From<FD> for u64 {
     }
 }
 
-#[derive(Debug)]
-pub struct FDPointer(generational_arena::Index);
-
-#[derive(Debug)]
-struct FileDescriptorMapEntry {
-    file_descriptor: RefCell<FileDescriptor>,
-    refcount: usize,
-}
-
-impl From<FileDescriptor> for FileDescriptorMapEntry {
-    fn from(file_descriptor: FileDescriptor) -> Self {
-        Self {
-            file_descriptor: RefCell::new(file_descriptor),
-            refcount: 1,
-        }
-    }
-}
-
 #[derive(Debug, Default)]
 pub struct FileDescriptorMap {
-    file_descriptors: generational_arena::Arena<FileDescriptorMapEntry>,
+    file_descriptors: BTreeMap<TaskId, BTreeMap<FD, Rc<RefCell<FileDescriptor>>>>,
+    free_fds: BTreeMap<TaskId, Vec<FD>>,
     // TODO: Implement as a hook object that can be inserted to be called after the handle
     //       processed the call.
     replacement_handles: HashMap<TaskId, HashMap<FD, VecDeque<Box<dyn FileDescriptorOps>>>>,
@@ -69,60 +53,78 @@ pub struct FileDescriptorMap {
 
 impl FileDescriptorMap {
     pub fn new() -> Self {
-        Self {
-            file_descriptors: Default::default(),
-            replacement_handles: Default::default(),
-        }
+        Self { ..Default::default() }
+    }
+
+    pub fn insert_at(
+        &mut self,
+        task_id: &TaskId,
+        fd: FD,
+        file_descriptor: FileDescriptor,
+    ) -> Result<FD, FileDescriptorMapError> {
+        self.file_descriptors.entry(*task_id).or_insert(Default::default()).try_insert(fd, Rc::new(RefCell::new(file_descriptor))).map_err(|_| FileDescriptorMapError::FDExists)?;
+        Ok(fd)
     }
 
     pub fn insert(
         &mut self,
+        task_id: &TaskId,
         file_descriptor: FileDescriptor,
-    ) -> FDPointer {
-        FDPointer(self.file_descriptors.insert(file_descriptor.into()))
+    ) -> Result<FD, FileDescriptorMapError> {
+        let fd = self.get_free_fd(task_id);
+        self.insert_at(task_id, fd, file_descriptor)
+    }
+
+    pub fn remove(
+        &mut self,
+        task_id: &TaskId,
+        fd: &FD,
+    ) -> Result<(), FileDescriptorMapError> {
+        self.file_descriptors.get_mut(task_id).and_then(|map| {
+            map.remove(fd).map(|_| ())
+        }).ok_or(FileDescriptorMapError::InvalidFD)
+    }
+
+    pub fn get_mut(
+        &self,
+        task_id: &TaskId,
+        fd: &FD,
+    ) -> Option<RefMut<FileDescriptor>> {
+        self.file_descriptors.get(task_id).and_then(|map| {
+            map.get(fd)
+                .and_then(|file_descriptor| file_descriptor.try_borrow_mut().ok())
+        })
     }
 
     pub fn get(
         &self,
-        fd_pointer: &FDPointer,
-    ) -> Option<&RefCell<FileDescriptor>> {
-        self.file_descriptors
-            .get(fd_pointer.0)
-            .map(|entry| &entry.file_descriptor)
+        task_id: &TaskId,
+        fd: &FD,
+    ) -> Option<Ref<FileDescriptor>> {
+        self.file_descriptors.get(task_id).and_then(|map| {
+            map.get(fd)
+                .and_then(|file_descriptor| file_descriptor.try_borrow().ok())
+        })
     }
 
-    /// Increase the reference count for the file descriptor pointed to by fd_pointer.
-    /// For example, a dup call will create a new FD that points to the same file_descriptor,
-    /// increasing its refcount by one.
-    pub fn increase_refcount(
+    fn get_free_fd(
         &mut self,
-        fd_pointer: &FDPointer,
-    ) {
-        self.file_descriptors
-            .get_mut(fd_pointer.0)
-            .map(|entry| entry.refcount += 1);
-    }
-
-    /// Decreases the refcount for the file descriptor pointed to by fd_pointer.
-    /// Once the refcount reaches zero, i.e. all FDs pointing to this file_descriptor
-    /// have been closed, the file_descriptor is removed, and any remaining pointers
-    /// to the FD (can only happen due to programming error) will result in an error
-    /// upon trying to access the pointer.
-    pub fn decrease_refcount(
-        &mut self,
-        fd_pointer: &FDPointer,
-    ) -> Result<(), FileDescriptorMapError> {
-        let file_descriptor = self
-            .file_descriptors
-            .get_mut(fd_pointer.0)
-            .ok_or(FileDescriptorMapError::InvalidFDPointer)?;
-
-        assert!(file_descriptor.refcount >= 1);
-        file_descriptor.refcount -= 1;
-        if file_descriptor.refcount == 0 {
-            self.file_descriptors.remove(fd_pointer.0);
-        }
-        Ok(())
+        task_id: &TaskId,
+    ) -> FD {
+        self.free_fds
+            .entry(*task_id)
+            .or_insert(vec![])
+            .pop()
+            .unwrap_or_else(|| {
+                *self
+                    .file_descriptors
+                    .entry(*task_id)
+                    .or_insert(Default::default())
+                    .keys()
+                    .max()
+                    .unwrap_or(&FD::from(2))
+                    + 1
+            })
     }
 }
 

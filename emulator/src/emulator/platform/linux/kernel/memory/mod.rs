@@ -1,15 +1,15 @@
 use bitflags::Flags;
 use byteorder::ByteOrder;
 
-use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
+use crate::emulator::abstractions::cpu::address::{EVA_NULL, EVAddr};
 use crate::emulator::abstractions::mmu::{MemoryError, MMU, MREMAP_FLAGS};
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::kernel::memory::flags::MMAP_FLAGS;
 use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask, SyscallResult};
+use crate::emulator::platform::linux::kernel::memory::flags::MMAP_FLAGS;
 use crate::emulator::system::file_descriptors::fd_map::FD;
+use crate::emulator::system::memory::{align4k_up, is4kaligned};
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
 use crate::emulator::system::memory::tlb::mapping::MappingType;
-use crate::emulator::system::memory::{align4k_up, is4kaligned};
 
 pub mod flags;
 
@@ -232,11 +232,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         addr: EVAddr,
     ) -> Result<(), LinuxKernelError> {
         let mut file_descriptor_map = self.system.fd_map.borrow_mut();
-        let mut fd = self
-            .fd_map
-            .get(&file_descriptor_map, &fd)
-            .ok_or(LinuxKernelError::EINVAL)?
-            .borrow_mut();
+        let mut fd = file_descriptor_map
+            .get_mut(&self.task_id, &fd)
+            .ok_or(LinuxKernelError::EINVAL)?;
         let fd = &mut *fd;
         let data = fd.ops.pread(&mut fd.data, offset, length)?;
 
