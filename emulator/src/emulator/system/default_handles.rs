@@ -20,6 +20,10 @@ impl WriteOnly {
 }
 
 impl FileDescriptorOps for WriteOnly {
+    fn supports_poll(&self, fd: &mut FileDescriptorData) -> bool {
+        false
+    }
+
     fn stat(
         &self,
         fd: &mut FileDescriptorData,
@@ -80,6 +84,10 @@ impl ReadOnly {
 }
 
 impl FileDescriptorOps for ReadOnly {
+    fn supports_poll(&self, fd: &mut FileDescriptorData) -> bool {
+        false
+    }
+
     fn stat(
         &self,
         fd: &mut FileDescriptorData,

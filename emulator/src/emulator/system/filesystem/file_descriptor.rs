@@ -28,6 +28,10 @@ pub struct FileOps<Endianness: ByteOrder> {
 
 //TODO build a trait
 impl<Endianness: ByteOrder> FileDescriptorOps for FileOps<Endianness> {
+    fn supports_poll(&self, fd: &mut FileDescriptorData) -> bool {
+        false
+    }
+
     fn stat(&self, fd: &mut FileDescriptorData) -> Result<Ref<Stat>, GenericError> {
         let fd = fd.file.as_mut().ok_or(GenericError::new(GenericErrorKind::Unknown, "not a fs backed file"))?;
         Ref::filter_map(self.system.filesystem.borrow(), |fs| fs.stat(fd.fse_id).ok())

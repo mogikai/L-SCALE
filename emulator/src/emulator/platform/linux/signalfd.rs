@@ -5,6 +5,7 @@ use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
+use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
 use crate::emulator::system::filesystem::{FSEntryId, Filesystem, Stat};
 use crate::emulator::system::System;
 
@@ -32,4 +33,8 @@ impl SignalFDOps {
     pub fn new() -> Self { SignalFDOps {} }
 }
 
-impl FileDescriptorOps for SignalFDOps {}
+impl FileDescriptorOps for SignalFDOps {
+    fn supports_poll(&self, fd: &mut FileDescriptorData) -> bool {
+        true
+    }
+}

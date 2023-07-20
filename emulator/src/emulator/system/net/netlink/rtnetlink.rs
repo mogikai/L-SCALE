@@ -39,6 +39,10 @@ impl<Endianness: ByteOrder> RTNetlinkSocket<Endianness> {
 }
 
 impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
+    fn supports_poll(&self, fd: &mut FileDescriptorData) -> bool {
+        todo!()
+    }
+
     fn bind(
         &mut self,
         fd: &mut FileDescriptorData,

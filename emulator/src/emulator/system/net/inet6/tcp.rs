@@ -13,6 +13,10 @@ impl TcpSock {
 }
 
 impl FileDescriptorOps for TcpSock {
+    fn supports_poll(&self, fd: &mut FileDescriptorData) -> bool {
+        true
+    }
+
     fn bind(
         &mut self,
         fd: &mut FileDescriptorData,

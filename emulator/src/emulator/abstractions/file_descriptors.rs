@@ -19,6 +19,9 @@ pub trait FileDescriptorOps: Debug {
     /// Can be called to query what operations can be called without blocking on the handle.
     fn poll(&self, fd: &mut FileDescriptorData) -> FileOperationsReady { todo!() }
 
+    /// Returns true if the file descriptor supports polling.
+    fn supports_poll(&self, fd: &mut FileDescriptorData) -> bool;
+
     /// returns: The stat vector of the handle this method is called on
     fn stat(&self, fd: &mut FileDescriptorData) -> Result<Ref<Stat>, GenericError> { todo!() }
 
