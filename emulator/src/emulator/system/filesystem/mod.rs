@@ -23,7 +23,6 @@ mod data;
 mod meta_info;
 mod stat;
 mod tests;
-pub mod file_descriptor;
 
 #[derive(Debug, Copy, Clone)]
 #[non_exhaustive]

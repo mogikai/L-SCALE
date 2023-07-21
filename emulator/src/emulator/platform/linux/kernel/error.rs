@@ -1,7 +1,7 @@
 use crate::emulator::abstractions::cpu::CPUError;
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::mmu::MemoryError;
-use crate::emulator::system::file_descriptors::fd_map::error::FileDescriptorMapError;
+use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 use crate::emulator::system::filesystem::FSError;
 
 #[derive(Debug, Copy, Clone)]

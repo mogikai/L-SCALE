@@ -6,7 +6,7 @@ use crate::emulator::abstractions::restore::Restorable;
 
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::clock::Clock;
-use crate::emulator::system::file_descriptors::fd_map::FileDescriptorMap;
+use crate::emulator::system::fd_map::FileDescriptorMap;
 use crate::emulator::system::filesystem::Filesystem;
 use crate::emulator::system::memory::Memory;
 
@@ -15,8 +15,7 @@ pub mod default_handles;
 pub mod filesystem;
 pub mod hardware;
 pub mod memory;
-pub mod net;
-pub mod file_descriptors;
+pub mod fd_map;
 
 /// This struct contains the global system state and system components like memory and filesystem or the system clock.
 /// Also, all currently running tasks are kept here.

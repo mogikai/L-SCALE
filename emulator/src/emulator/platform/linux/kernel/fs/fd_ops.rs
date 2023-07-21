@@ -10,18 +10,6 @@ use crate::emulator::system::filesystem::{FSEntryId, Stat};
 use crate::emulator::system::System;
 
 #[derive(Debug, Clone)]
-pub struct FileData {
-    fse_id: FSEntryId,
-    pos: usize,
-}
-
-impl FileData {
-    pub fn new(fse_id: FSEntryId) -> FileData {
-        FileData { fse_id, pos: 0 }
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct FileOps<Endianness: ByteOrder> {
     system: Rc<System<Endianness>>,
 }

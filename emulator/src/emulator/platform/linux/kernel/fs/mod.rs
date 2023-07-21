@@ -2,9 +2,13 @@ use bitflags::{bitflags, Flags};
 use byteorder::ByteOrder;
 
 use crate::emulator::macros::*;
+use crate::emulator::platform::linux::kernel::fs::fd_ops::FileOps;
 use crate::emulator::platform::linux::kernel::*;
-use crate::emulator::system::filesystem::file_descriptor::{FileData, FileOps};
+use crate::emulator::system::fd_map::FD;
+use crate::emulator::system::filesystem::FSEntryId;
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
+
+mod fd_ops;
 
 impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     /// Write syscall. See `man write` for details
@@ -157,7 +161,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             .resolve_last(Path::new(&fname))?;
         let mut file_descriptor = FileDescriptor::new(Box::new(FileOps::new(self.system.clone())));
         file_descriptor.data.file = Some(FileData::new(file));
-        Ok(self.system.fd_map.borrow_mut().insert(&self.task_id, file_descriptor)?.into())
+        Ok(self
+            .system
+            .fd_map
+            .borrow_mut()
+            .insert(&self.task_id, file_descriptor)?
+            .into())
     }
 
     pub fn statfs(
@@ -182,7 +191,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let mut memory = memory.accessor(mmu, self.task_id);
         let flags = at_flags::from_bits(flag).ok_or(LinuxKernelError::EINVAL)?;
         if flags.contains(at_flags::AT_EMPTY_PATH) {
-            let mut fd = file_descriptor_map.get_mut(&self.task_id, &dfd)
+            let mut fd = file_descriptor_map
+                .get_mut(&self.task_id, &dfd)
                 .ok_or(LinuxKernelError::EBADFD)?;
             let fd = &mut *fd;
             memory.write(statbuf, fd.ops.stat(&mut fd.data)?)?;
@@ -202,7 +212,10 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         _: &mut impl CPU,
         fd: FD,
     ) -> SyscallResult {
-        Ok(self.system.fd_map.borrow_mut()
+        Ok(self
+            .system
+            .fd_map
+            .borrow_mut()
             .remove(&self.task_id, &fd)
             .map(|_| 0)?)
     }
@@ -214,6 +227,18 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     ) {
         todo!()
         // self.fd_map.add_replacement_handle(fd, handle);
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FileData {
+    fse_id: FSEntryId,
+    pos: usize,
+}
+
+impl FileData {
+    pub fn new(fse_id: FSEntryId) -> FileData {
+        FileData { fse_id, pos: 0 }
     }
 }
 

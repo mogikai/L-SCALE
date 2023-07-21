@@ -14,7 +14,7 @@ use fuzzyemu::emulator::platform::linux::architecture::x86::X86;
 use fuzzyemu::emulator::platform::linux::emulator::LinuxX86Scheduler;
 use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
 use fuzzyemu::emulator::system::clock::Clock;
-use fuzzyemu::emulator::system::file_descriptors::fd_map::FileDescriptorMap;
+use fuzzyemu::emulator::system::fd_map::FileDescriptorMap;
 use fuzzyemu::emulator::system::filesystem::Filesystem;
 use fuzzyemu::emulator::system::hardware::unicorn::UCWrapper;
 use fuzzyemu::emulator::system::memory::Memory;
@@ -83,7 +83,7 @@ fn main() -> Result<(), GenericError> {
         // let demo_handle = Box::new(ReadOnly::from(data));
         // kernel.borrow_mut().add_replacement_handle(0, demo_handle);
         let args = [];
-        let env = ["SHELL=/bin/sh", "LD_DEBUG=all", "LD_BIND_NOW=true"];
+        let env = ["SHELL=/bin/sh", "LD_BIND_NOW=true"]; // "LD_DEBUG=all"
         // let eflags = cpu.borrow_mut().reg_read(RegisterX86::EFLAGS.into()).unwrap();
         // cpu.borrow_mut().reg_write(RegisterX86::EFLAGS.into(), eflags | (1 << 22)).unwrap();
         let mut scheduler = LinuxX86Scheduler::new(

@@ -14,12 +14,10 @@ use crate::emulator::abstractions::file_descriptors::{FileDescriptorOps, FileOpe
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, Encoder, RequiredMem};
 use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
-use crate::emulator::system::net::netlink::{NetlinkMessageFlags, nlmsghdr};
-use crate::emulator::system::net::netlink::rtnetlink::nla_type::{
-    IFA_ADDRESS, IFA_BROADCAST, IFA_FLAGS, IFA_LABEL, IFA_LOCAL,
-};
-use crate::emulator::system::net::Sockaddr;
-use crate::emulator::system::net::SocketDomain::{AF_INET, AF_INET6};
+use crate::emulator::platform::linux::kernel::net::netlink::{NetlinkMessageFlags, nlmsghdr};
+use crate::emulator::platform::linux::kernel::net::netlink::rtnetlink::nla_type::{IFA_ADDRESS, IFA_BROADCAST, IFA_FLAGS, IFA_LABEL, IFA_LOCAL};
+use crate::emulator::platform::linux::kernel::net::Sockaddr;
+use crate::emulator::platform::linux::kernel::net::SocketDomain::{AF_INET, AF_INET6};
 
 #[derive(Debug, Default)]
 pub struct RTNetlinkSocket<Endianness: ByteOrder> {

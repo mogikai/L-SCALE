@@ -24,7 +24,7 @@ use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::signalfd::SignalFDOps;
 use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
 use crate::emulator::system::{default_handles, System};
-use crate::emulator::system::file_descriptors::fd_map::FD;
+use crate::emulator::system::fd_map::FD;
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
 
 pub(crate) mod auxv;
@@ -34,6 +34,7 @@ pub(crate) mod fs;
 pub(crate) mod memory;
 pub(crate) mod socket;
 pub(crate) mod task_id;
+pub(crate) mod net;
 
 /* eventuell nach task umbenennen */
 // TODO: Move thread shared data to thread specific struct that is shared between kernel task objects (rcrefcell?)
@@ -183,15 +184,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         push_stack!(memory.accessor(cpu, self.task_id), cpu, &argv, RegisterX86::RSP.into())?;
 
         let rsp = EVAddr::from(cpu.reg_read(RegisterX86::RSP.into())?);
-        println!("Stack dump:\n");
-
-        hexdump::hexdump(
-            memory
-                .accessor(cpu, self.task_id)
-                .read_bytes(rsp, stack_base - rsp)?
-                .as_slice(),
-        );
-        debug!("Stack pointer after setup: {:#x?}", cpu.reg_read(RegisterX86::RSP.into()));
 
         Ok(())
     }

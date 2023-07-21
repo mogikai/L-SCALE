@@ -15,11 +15,13 @@ use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::eventpoll::events::EPOLL_EVENTS;
 use crate::emulator::platform::linux::kernel::{FileDescriptor, LinuxKernelError, LinuxKernelTask, SyscallResult};
-use crate::emulator::system::file_descriptors::fd_map::FD;
+use crate::emulator::platform::linux::kernel::eventpoll::fd_ops::EpollOps;
+use crate::emulator::system::fd_map::FD;
 use crate::emulator::system::memory::rw_interface::{MemoryRead, MemoryWrite};
 use crate::emulator::system::memory::MemoryAccessor;
 
 mod events;
+mod fd_ops;
 
 impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     pub fn epoll_create(
@@ -255,28 +257,4 @@ pub enum EPOLL_OPCODES {
     EPOLL_CTL_ADD = 1,
     EPOLL_CTL_DEL = 2,
     EPOLL_CTL_MOD = 3,
-}
-#[derive(Debug)]
-pub struct EpollOps {}
-
-impl EpollOps {
-    fn new() -> Self {
-        Self {}
-    }
-}
-
-impl FileDescriptorOps for EpollOps {
-    fn poll(
-        &self,
-        fd: &mut FileDescriptorData,
-    ) -> Option<FileOperationsReady> {
-        todo!()
-    }
-
-    fn supports_poll(
-        &self,
-        fd: &mut FileDescriptorData,
-    ) -> bool {
-        true
-    }
 }

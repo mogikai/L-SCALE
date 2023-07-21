@@ -1,9 +1,9 @@
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::platform::linux::kernel::eventpoll::EpollData;
+use crate::emulator::platform::linux::kernel::fs::FileData;
+use crate::emulator::platform::linux::kernel::net::inet6::tcp::TcpSock;
+use crate::emulator::platform::linux::kernel::net::unix::UnixSocketData;
 use crate::emulator::platform::linux::signalfd::SignalFD;
-use crate::emulator::system::filesystem::file_descriptor::FileData;
-use crate::emulator::system::net::inet6::tcp::TcpSock;
-use crate::emulator::system::net::unix::UnixSocketData;
 
 #[derive(Debug)]
 pub struct FileDescriptor {
@@ -19,6 +19,7 @@ pub struct FileDescriptor {
     pub ops: Box<dyn FileDescriptorOps>,
 }
 
+// TODO: Move to platform directory and make FileDescriptor generic
 #[derive(Default, Debug)]
 pub struct FileDescriptorData {
     pub file: Option<FileData>,

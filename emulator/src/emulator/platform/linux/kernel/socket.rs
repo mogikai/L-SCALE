@@ -10,11 +10,11 @@ use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::mmu::encoding::{Decode, RequiredMem};
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::platform::linux::architecture::Architecture;
+use crate::emulator::platform::linux::kernel::net::unix::UnixSocketOps;
+use crate::emulator::platform::linux::kernel::net::{inet6, netlink, Sockaddr, SocketDomain, SocketFlags, SocketType};
 use crate::emulator::platform::linux::kernel::{FileDescriptor, LinuxKernelError, LinuxKernelTask, SyscallResult};
-use crate::emulator::system::file_descriptors::fd_map::FD;
+use crate::emulator::system::fd_map::FD;
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
-use crate::emulator::system::net::{inet6, netlink, Sockaddr, SocketDomain, SocketFlags, SocketType};
-use crate::emulator::system::net::unix::UnixSocketOps;
 
 impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     pub fn socket(
@@ -203,7 +203,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         usockaddr_len: EVAddr, // int*
     ) -> SyscallResult {
         let mut file_descriptor_map = self.system.fd_map.borrow_mut();
-        let mut fd = file_descriptor_map.get_mut(&self.task_id, &fd)
+        let mut fd = file_descriptor_map
+            .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADFD)?;
         let fd = &mut *fd;
         let sockaddr = fd.ops.getsockname(&mut fd.data)?;
@@ -250,7 +251,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let memory = memory.accessor(mmu, self.task_id);
         let opt_data = memory.read_bytes(optval, optlen as usize)?;
         // TODO: Handle sockopts correctly
-        let mut fd = file_descriptor_map.get_mut(&self.task_id, &fd)
+        let mut fd = file_descriptor_map
+            .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADFD)?;
         let fd = &mut *fd;
         fd.ops.setsockopt(&mut fd.data)?;

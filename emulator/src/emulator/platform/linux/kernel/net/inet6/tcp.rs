@@ -2,7 +2,7 @@ use bitflags::Flags;
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorOps, FileOperationsReady};
 use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
-use crate::emulator::system::net::Sockaddr;
+use crate::emulator::platform::linux::kernel::net::Sockaddr;
 
 #[derive(Debug, Default)]
 pub struct TcpSock {}

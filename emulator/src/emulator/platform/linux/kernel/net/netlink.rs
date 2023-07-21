@@ -8,7 +8,7 @@ use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
 use crate::emulator::abstractions::mmu::MemoryError;
-use crate::emulator::system::net::netlink::rtnetlink::{RTNetlinkMessageType, RTNetlinkSocket};
+use crate::emulator::platform::linux::kernel::net::netlink::rtnetlink::{RTNetlinkMessageType, RTNetlinkSocket};
 
 pub mod rtnetlink;
 
@@ -74,7 +74,10 @@ bitflags! {
 }
 
 impl Encode for NetlinkMessageFlags {
-    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+    fn encode<Endianness: ByteOrder>(
+        &self,
+        buffer: &mut Vec<u8>,
+    ) {
         self.bits().encode::<Endianness>(buffer)
     }
 }

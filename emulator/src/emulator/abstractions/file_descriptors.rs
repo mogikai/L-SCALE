@@ -5,8 +5,8 @@ use bitflags::bitflags;
 
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
+use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::system::filesystem::Stat;
-use crate::emulator::system::net::Sockaddr;
 
 /// The HandleOps trait contains all the functions necessary
 /// for a handle (file descriptor in linux) to function.
