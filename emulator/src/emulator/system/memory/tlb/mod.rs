@@ -15,8 +15,8 @@ use crate::emulator::system::memory::tlb::mapping::{Contains, Mapping, MappingTy
 use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 
 pub mod mapping;
-pub mod tlb_entry;
 mod tests;
+pub mod tlb_entry;
 
 #[derive(Clone, Debug)]
 pub struct TLB {

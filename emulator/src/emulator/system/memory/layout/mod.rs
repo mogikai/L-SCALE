@@ -121,7 +121,7 @@ impl Layout {
             physical_region.start,
             size,
             Permission::READ | Permission::WRITE,
-            MappingType::PrivateAnonymous
+            MappingType::PrivateAnonymous,
         )?;
         self.heap_end += size;
 

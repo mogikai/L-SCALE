@@ -30,7 +30,9 @@ impl Data {
         contents: &mut BTreeSet<Block>,
         block_start: usize,
     ) -> Result<usize, FSError> {
-        let block = contents.take(&block_start).expect("The block_starts were constructed beforehand and must exist");
+        let block = contents
+            .take(&block_start)
+            .expect("The block_starts were constructed beforehand and must exist");
         // We can now split the block if COW is necessary, or modify directly and reinsert
         let block = if block.snap_id < self.current_snap {
             assert!(block.contains(pos));
@@ -43,7 +45,8 @@ impl Data {
             front.map(|b| contents.insert(b));
             back.map(|b| contents.insert(b));
             let new_data_offset = self.data.len();
-            self.data.extend_from_within(block.data_offset..block.data_offset + block.size);
+            self.data
+                .extend_from_within(block.data_offset..block.data_offset + block.size);
             center.data_offset = new_data_offset;
             center
         } else {
@@ -114,7 +117,10 @@ impl Data {
             // We only want to save blocks that are used in the current snapshot.
             // Old blocks are copied anyways on write and need to be preserved.
             if b.snap_id == self.current_snap {
-                self.free_blocks[self.current_snap].entry(b.size).or_insert(Vec::new()).push(b);
+                self.free_blocks[self.current_snap]
+                    .entry(b.size)
+                    .or_insert(Vec::new())
+                    .push(b);
             }
         });
     }

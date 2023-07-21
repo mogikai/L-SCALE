@@ -1,3 +1,4 @@
+use std::fmt;
 use std::cell::{Ref, RefCell, RefMut};
 use std::cmp::{max, min, Ordering};
 use std::collections::{btree_set, BTreeSet};
@@ -5,7 +6,6 @@ use std::ffi::CString;
 use std::marker::PhantomData;
 use std::ops::Range;
 use std::rc::Rc;
-use std::{fmt, mem};
 
 use bitflags::bitflags;
 use byteorder::ByteOrder;
@@ -261,7 +261,7 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
             Permission::READ | Permission::WRITE,
             cpu,
         )
-        .unwrap();
+            .unwrap();
         cpu.add_unmapped_mem_hook(
             1,
             0,
@@ -287,8 +287,8 @@ impl<'a, Endianness: ByteOrder> Memory<Endianness> {
         addr: EVAddr,
         val: &T,
     ) -> Result<(), MemoryError>
-    where
-        T: Encode<Endianness>,
+        where
+            T: Encode<Endianness>,
     {
         let data = val.encode();
         let mut start = addr;

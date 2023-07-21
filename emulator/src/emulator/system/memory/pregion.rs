@@ -16,7 +16,11 @@ impl PhysicalRegion {
         end: EPAddr,
     ) -> Self {
         assert!(is4kaligned(start) && is4kaligned(end));
-        Self { start, end, dirty: false }
+        Self {
+            start,
+            end,
+            dirty: false,
+        }
     }
 
     pub fn contains(
@@ -80,7 +84,9 @@ impl PartialOrd for PhysicalRegion {
     fn partial_cmp(
         &self,
         other: &Self,
-    ) -> Option<Ordering> { Some(self.cmp(other)) }
+    ) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl Ord for PhysicalRegion {

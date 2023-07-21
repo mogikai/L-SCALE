@@ -23,10 +23,14 @@ pub enum Sockaddr {
         nl_groups: u32,
     },
     IN6 {
-        sin6_port: u16,      /* Transport layer port # */
-        sin6_flowinfo: u32,  /* IPv6 flow information */
-        sin6_addr: [u8; 16], /* IPv6 address */
-        sin6_scope_id: u32,  /* IPv6 scope-id */
+        sin6_port: u16,
+        /* Transport layer port # */
+        sin6_flowinfo: u32,
+        /* IPv6 flow information */
+        sin6_addr: [u8; 16],
+        /* IPv6 address */
+        sin6_scope_id: u32,
+        /* IPv6 scope-id */
     },
 }
 
@@ -59,7 +63,10 @@ impl Decode for Sockaddr {
 }
 
 impl Encode for Sockaddr {
-    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+    fn encode<Endianness: ByteOrder>(
+        &self,
+        buffer: &mut Vec<u8>,
+    ) {
         let start = buffer.len();
         buffer.resize(start + Self::required_mem(), 0);
         use Sockaddr::*;
@@ -69,10 +76,10 @@ impl Encode for Sockaddr {
                 nl_pid,
                 nl_groups,
             } => {
-                Endianness::write_u16(&mut buffer[start..start+2], SocketDomain::AF_NETLINK as u16);
-                Endianness::write_u16(&mut buffer[start+2..start+4], *nl_pad);
-                Endianness::write_u32(&mut buffer[start+4..start+8], *nl_pid);
-                Endianness::write_u32(&mut buffer[start+8..start+12], *nl_groups);
+                Endianness::write_u16(&mut buffer[start..start + 2], SocketDomain::AF_NETLINK as u16);
+                Endianness::write_u16(&mut buffer[start + 2..start + 4], *nl_pad);
+                Endianness::write_u32(&mut buffer[start + 4..start + 8], *nl_pid);
+                Endianness::write_u32(&mut buffer[start + 8..start + 12], *nl_groups);
             }
             _ => todo!(),
         }

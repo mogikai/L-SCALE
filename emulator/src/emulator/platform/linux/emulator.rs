@@ -1,7 +1,7 @@
-use std::cell::{RefCell, RefMut};
-use std::collections::{BTreeMap, BTreeSet};
+use std::cell::RefCell;
+use std::collections::BTreeMap;
 use std::marker::PhantomData;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -11,16 +11,14 @@ use num_enum::FromPrimitive;
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::{CPUError, ContextHandle, RegisterX86, CPU};
 use crate::emulator::abstractions::emulator::{Emulator, StopReason};
-use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
+use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::hooks::Hooks;
-use crate::emulator::abstractions::mmu::{MemoryError, MMU};
+use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::architecture::x86::X86;
-use crate::emulator::platform::linux::fd::{FD, FileDescriptorData};
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask};
 use crate::emulator::platform::linux::LinuxSystem;
-use crate::emulator::system::System;
 
 macro_rules! do_syscall {
     (0, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{

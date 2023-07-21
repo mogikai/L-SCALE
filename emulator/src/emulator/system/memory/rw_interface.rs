@@ -324,9 +324,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&Vec<(u64, u64)>, Endia
     }
 }
 
-impl<Endianness: ByteOrder, MmuT: MMU, T: Decode> MemoryRead<T, Endianness>
-    for MemoryAccessor<'_, Endianness, MmuT>
-{
+impl<Endianness: ByteOrder, MmuT: MMU, T: Decode> MemoryRead<T, Endianness> for MemoryAccessor<'_, Endianness, MmuT> {
     fn read(
         &self,
         address: EVAddr,
@@ -354,9 +352,7 @@ impl<Endianness: ByteOrder, MmuT: MMU, T: Decode> MemoryRead<T, Endianness>
     }
 }
 
-impl<Endianness: ByteOrder, MmuT: MMU, T: Encode> MemoryWrite<T, Endianness>
-    for MemoryAccessor<'_, Endianness, MmuT>
-{
+impl<Endianness: ByteOrder, MmuT: MMU, T: Encode> MemoryWrite<T, Endianness> for MemoryAccessor<'_, Endianness, MmuT> {
     fn write(
         &mut self,
         address: EVAddr,

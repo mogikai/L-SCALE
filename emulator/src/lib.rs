@@ -12,16 +12,15 @@
 #![allow(unused_variables)]
 // #![warn(missing_docs)]
 
-pub mod emulator;
-
-#[macro_use]
-extern crate log;
 extern crate core;
 extern crate derive_more;
+#[macro_use]
+extern crate log;
 
+pub use byteorder::{BigEndian, ByteOrder, LittleEndian};
 use static_assertions::assert_eq_size;
 
-pub use byteorder::{LittleEndian, BigEndian, ByteOrder};
+pub mod emulator;
 
 // This library emulates 64 bit targets and thus requires usize to be 64 bits
 assert_eq_size!(u64, usize);

@@ -1,9 +1,10 @@
 #include <stdio.h>
 
-int main() {
+int
+main() {
     puts("hello world");
     char c = 0;
-    while ((c = getchar()) != '\n') {
+    while((c = getchar()) != '\n') {
         puts("Got char");
     }
 }

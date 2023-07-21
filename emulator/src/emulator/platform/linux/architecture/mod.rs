@@ -1,9 +1,9 @@
-pub mod x86;
-
 use std::fmt::Debug;
 
 use crate::emulator::platform::linux::kernel::LinuxKernelError;
 use crate::emulator::platform::linux::signals::{Signal, SignalAction};
+
+pub mod x86;
 
 pub trait Architecture {
     type SignalFlags: Debug + Clone + Copy;

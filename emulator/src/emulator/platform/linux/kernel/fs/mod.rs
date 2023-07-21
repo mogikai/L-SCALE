@@ -2,7 +2,7 @@ use bitflags::{bitflags, Flags};
 use byteorder::ByteOrder;
 
 use crate::emulator::macros::*;
-use crate::emulator::platform::linux::fd::{FD, FileDescriptorData};
+use crate::emulator::platform::linux::fd::{FileDescriptorData, FD};
 use crate::emulator::platform::linux::kernel::fs::fd_ops::FileOps;
 use crate::emulator::platform::linux::kernel::*;
 use crate::emulator::system::fd_map::FileDescriptor;

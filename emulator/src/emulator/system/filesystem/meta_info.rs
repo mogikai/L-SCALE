@@ -2,8 +2,6 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 
-use byteorder::ByteOrder;
-
 use crate::emulator::system::filesystem::block::Block;
 use crate::emulator::system::filesystem::stat::Stat;
 use crate::emulator::system::filesystem::{ContentId, FSEntryId, FSError, SnapId};
@@ -58,7 +56,11 @@ impl MetaInfo {
         let dir_entry_id = self.resolve_last(None, path.parent().ok_or(FSError::Unknown)?)?;
         let dir_content_id = self.most_recent_content_id(dir_entry_id)?;
         if let Dir { contents } = &self.get_content_by_id(dir_content_id)?.contents {
-            let name = path.file_name().ok_or(FSError::Unknown)?.to_str().ok_or(FSError::Unknown)?;
+            let name = path
+                .file_name()
+                .ok_or(FSError::Unknown)?
+                .to_str()
+                .ok_or(FSError::Unknown)?;
             if contents.contains_key(name) {
                 Err(FSError::Unknown)?
             }
@@ -148,10 +150,19 @@ impl MetaInfo {
         self.fse_ids.borrow_mut()[self.current_snap].insert(*fse_ids.last().unwrap(), Index::Deleted);
 
         // Remove entry from parent dir
-        let dir =
-            self.most_recent_entry_mut(fse_ids.len().checked_sub(2).map(|i| fse_ids[i]).ok_or(FSError::Unknown)?)?;
+        let dir = self.most_recent_entry_mut(
+            fse_ids
+                .len()
+                .checked_sub(2)
+                .map(|i| fse_ids[i])
+                .ok_or(FSError::Unknown)?,
+        )?;
         if let Dir { contents } = &mut dir.contents {
-            let name = path.file_name().expect("The path resolved, so the name has to exist").to_str().unwrap();
+            let name = path
+                .file_name()
+                .expect("The path resolved, so the name has to exist")
+                .to_str()
+                .unwrap();
             contents.remove(name);
         }
         Ok(())
@@ -184,7 +195,8 @@ impl MetaInfo {
                 // Absolute paths with supplied root is not allowed
                 return Err(FSError::Unknown);
             }
-            path.strip_prefix("/").expect("Absolute path always has / as prefix")
+            path.strip_prefix("/")
+                .expect("Absolute path always has / as prefix")
         } else {
             path
         };
@@ -192,10 +204,13 @@ impl MetaInfo {
         let mut path_ids = Vec::new();
         path_ids.push(root.unwrap_or(self.root_node));
         for component in path {
-            if let Dir { contents } =
-                &self.most_recent_entry(*path_ids.last().expect("Path always contains root"))?.contents
+            if let Dir { contents } = &self
+                .most_recent_entry(*path_ids.last().expect("Path always contains root"))?
+                .contents
             {
-                let child = *contents.get(component.to_str().unwrap()).ok_or(FSError::Unknown)?;
+                let child = *contents
+                    .get(component.to_str().unwrap())
+                    .ok_or(FSError::Unknown)?;
                 path_ids.push(child);
             }
         }
@@ -208,10 +223,15 @@ impl MetaInfo {
         root: Option<FSEntryId>,
         path: &Path,
     ) -> Result<FSEntryId, FSError> {
-        Ok(*self.resolve_path(root, path)?.last().expect("Empty paths cannot occur"))
+        Ok(*self
+            .resolve_path(root, path)?
+            .last()
+            .expect("Empty paths cannot occur"))
     }
 
-    pub(super) fn root(&self) -> FSEntryId { self.root_node }
+    pub(super) fn root(&self) -> FSEntryId {
+        self.root_node
+    }
 
     fn most_recent_historical_index(
         &self,
@@ -236,14 +256,20 @@ impl MetaInfo {
         &self,
         index: FSEntryId,
     ) -> Result<SnapId, FSError> {
-        Ok(self.most_recent_historical_index(index)?.historical_or(FSError::NotFound)?.snap_id)
+        Ok(self
+            .most_recent_historical_index(index)?
+            .historical_or(FSError::NotFound)?
+            .snap_id)
     }
 
     fn most_recent_content_id(
         &self,
         index: FSEntryId,
     ) -> Result<ContentId, FSError> {
-        Ok(self.most_recent_historical_index(index)?.historical_or(FSError::NotFound)?.content_id)
+        Ok(self
+            .most_recent_historical_index(index)?
+            .historical_or(FSError::NotFound)?
+            .content_id)
     }
 
     /// Returns the most recent entry mutably. If the entry is historical, a new copy is created and inserted,
@@ -253,15 +279,23 @@ impl MetaInfo {
         &mut self,
         fse_id: FSEntryId,
     ) -> Result<&mut FSEntry, FSError> {
-        let historical_index = self.most_recent_historical_index(fse_id)?.historical_or(FSError::Unknown)?;
+        let historical_index = self
+            .most_recent_historical_index(fse_id)?
+            .historical_or(FSError::Unknown)?;
         if historical_index.snap_id < self.current_snap {
             // Historical. Cannot modify. Need to clone first.
-            let entry = self.content.get(historical_index.content_id).expect("id must be valid");
+            let entry = self
+                .content
+                .get(historical_index.content_id)
+                .expect("id must be valid");
             let new_entry = entry.clone();
             self.add_entry(fse_id, new_entry)?;
             Ok(self.most_recent_entry_mut(fse_id)?)
         } else {
-            Ok(self.content.get_mut(historical_index.content_id).expect("id must be valid"))
+            Ok(self
+                .content
+                .get_mut(historical_index.content_id)
+                .expect("id must be valid"))
         }
     }
 
@@ -269,16 +303,23 @@ impl MetaInfo {
         &self,
         index: FSEntryId,
     ) -> Result<&FSEntry, FSError> {
-        Ok(self.content.get(self.most_recent_content_id(index)?).expect("The id must be valid"))
+        Ok(self
+            .content
+            .get(self.most_recent_content_id(index)?)
+            .expect("The id must be valid"))
     }
 
     fn most_recent_entry_and_snap_id(
         &self,
         index: FSEntryId,
     ) -> Result<(&FSEntry, SnapId), FSError> {
-        let historical_index = self.most_recent_historical_index(index)?.historical_or(FSError::Unknown)?;
+        let historical_index = self
+            .most_recent_historical_index(index)?
+            .historical_or(FSError::Unknown)?;
         Ok((
-            self.content.get(historical_index.content_id).expect("The id must be valid"),
+            self.content
+                .get(historical_index.content_id)
+                .expect("The id must be valid"),
             historical_index.snap_id,
         ))
     }
@@ -297,7 +338,14 @@ impl MetaInfo {
     ) {
         let depth = depth.unwrap_or(0);
         let node = self.most_recent_entry(root).unwrap();
-        println!("{} {}", vec![' '; depth * 3].into_iter().chain("|-".chars()).collect::<String>(), node.name);
+        println!(
+            "{} {}",
+            vec![' '; depth * 3]
+                .into_iter()
+                .chain("|-".chars())
+                .collect::<String>(),
+            node.name
+        );
         match &node.contents {
             File { .. } => {}
             Dir { contents } => {

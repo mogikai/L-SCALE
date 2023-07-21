@@ -1,8 +1,6 @@
 use std::fs::Metadata;
 use std::os::linux::fs::MetadataExt;
 
-use byteorder::ByteOrder;
-
 use fuzzyemu_derive::{Encode, RequiredMem};
 
 use crate::emulator::abstractions::mmu::encoding::{Encode, RequiredMem};

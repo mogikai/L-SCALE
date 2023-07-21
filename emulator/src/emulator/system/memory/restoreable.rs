@@ -1,4 +1,5 @@
 use byteorder::ByteOrder;
+
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::memory::Memory;

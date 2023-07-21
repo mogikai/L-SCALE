@@ -1,9 +1,10 @@
 use byteorder::ByteOrder;
+
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::mmu::{MemoryError, MMU};
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
-use crate::emulator::system::memory::Memory;
 use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
+use crate::emulator::system::memory::Memory;
 
 pub struct MemoryAccessor<'a, Endianness: ByteOrder, MmuT: MMU> {
     pub(super) memory: &'a mut Memory<Endianness>,

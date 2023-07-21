@@ -32,7 +32,9 @@ impl Block {
         })
     }
 
-    pub(super) fn end(&self) -> usize { self.start + self.size }
+    pub(super) fn end(&self) -> usize {
+        self.start + self.size
+    }
 
     pub(super) fn contains(
         &self,
@@ -96,7 +98,9 @@ impl PartialOrd for Block {
     fn partial_cmp(
         &self,
         other: &Self,
-    ) -> Option<Ordering> { Some(self.cmp(other)) }
+    ) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl Ord for Block {
@@ -109,5 +113,7 @@ impl Ord for Block {
 }
 
 impl std::borrow::Borrow<usize> for Block {
-    fn borrow(&self) -> &usize { &self.start }
+    fn borrow(&self) -> &usize {
+        &self.start
+    }
 }

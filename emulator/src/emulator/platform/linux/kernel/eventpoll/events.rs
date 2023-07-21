@@ -1,6 +1,8 @@
-use byteorder::ByteOrder;
 use bitflags::{bitflags, Flags};
+use byteorder::ByteOrder;
+
 use fuzzyemu_derive::RequiredMem;
+
 use crate::emulator::abstractions::file_descriptors::FileOperationsReady;
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode};
 use crate::emulator::abstractions::mmu::MemoryError;

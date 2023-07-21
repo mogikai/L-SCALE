@@ -7,23 +7,23 @@ use num_enum::FromPrimitive;
 
 use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 
-use crate::emulator::abstractions::cpu::{CPU, RegisterX86};
-use crate::emulator::abstractions::cpu::address::{EVA_NULL, EVAddr};
+use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
+use crate::emulator::abstractions::cpu::{RegisterX86, CPU};
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
-use crate::emulator::abstractions::mmu::{MMU, Permission};
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
+use crate::emulator::abstractions::mmu::{Permission, MMU};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::macros::push_stack;
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::fd::{FD, FileDescriptorData};
+use crate::emulator::platform::linux::fd::{FileDescriptorData, FD};
 use crate::emulator::platform::linux::kernel::auxv::AUXVType;
 pub use crate::emulator::platform::linux::kernel::error::LinuxKernelError;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
-use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::platform::linux::signalfd::SignalFDOps;
 use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
-use crate::emulator::system::{default_handles, System};
+use crate::emulator::platform::linux::LinuxSystem;
+use crate::emulator::system::default_handles;
 use crate::emulator::system::fd_map::FileDescriptor;
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
 
@@ -32,9 +32,9 @@ mod error;
 pub(crate) mod eventpoll;
 pub(crate) mod fs;
 pub(crate) mod memory;
+pub(crate) mod net;
 pub(crate) mod socket;
 pub(crate) mod task_id;
-pub(crate) mod net;
 
 /* eventuell nach task umbenennen */
 // TODO: Move thread shared data to thread specific struct that is shared between kernel task objects (rcrefcell?)
@@ -339,8 +339,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     ) -> SyscallResult {
         // TODO: Implement correctly
         error!("FCNTL not implemented fully yet");
-        self.system.fd_map.borrow_mut()
-            .get(&self.task_id, &fd);
+        self.system.fd_map.borrow_mut().get(&self.task_id, &fd);
         Ok(2)
     }
 
@@ -445,7 +444,11 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let sigmask = memory
             .read_bytes(mask, sizemask as usize)
             .map(|s| Endianness::read_u64(&s))?;
-        let fd = self.system.fd_map.borrow_mut().insert(&self.task_id, FileDescriptor::new(Box::new(SignalFDOps::new())))?;
+        let fd = self
+            .system
+            .fd_map
+            .borrow_mut()
+            .insert(&self.task_id, FileDescriptor::new(Box::new(SignalFDOps::new())))?;
         self.signalhandler.insert_fd(fd);
         Ok(fd.into())
     }

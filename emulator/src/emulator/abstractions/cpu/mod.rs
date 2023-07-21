@@ -1,13 +1,14 @@
-pub mod address;
-
 use std::num::TryFromIntError;
 use std::time::Duration;
 
 use generational_arena::Index;
+
 use address::EVAddr;
 
 use crate::emulator::abstractions::emulator::StopReason;
 use crate::emulator::abstractions::restore::Restorable;
+
+pub mod address;
 
 #[derive(Debug, Copy, Clone)]
 pub enum CPUError {

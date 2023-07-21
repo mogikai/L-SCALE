@@ -2,14 +2,12 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use generational_arena::Arena;
-use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, IntelFormatter};
-use unicorn_engine::unicorn_const::{Arch, HookType, Mode};
+use iced_x86::Formatter;
+
+use unicorn_engine::unicorn_const::{Arch, Mode};
 use unicorn_engine::{Context, TlbType, Unicorn};
 
-use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::emulator::StopReason;
-use crate::emulator::abstractions::mmu::MemoryAction;
-use crate::emulator::system::memory::TLBEntry;
 
 pub mod cpu;
 pub mod hooks;

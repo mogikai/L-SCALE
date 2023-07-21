@@ -18,6 +18,7 @@ impl WriteOnly {
         }
     }
 }
+
 // TODO: This probably should be handled via callbacks
 impl FileDescriptorOps<FileDescriptorData> for WriteOnly {
     fn poll(

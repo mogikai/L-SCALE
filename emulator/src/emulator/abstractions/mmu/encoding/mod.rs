@@ -72,7 +72,10 @@ pub trait RequiredMem: Sized {
 }
 
 pub trait Encode: RequiredMem {
-    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>);
+    fn encode<Endianness: ByteOrder>(
+        &self,
+        buffer: &mut Vec<u8>,
+    );
     fn encoded_size(&self) -> usize {
         Self::required_mem()
     }
@@ -84,7 +87,10 @@ impl<T> Encode for &T
 where
     T: Encode,
 {
-    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+    fn encode<Endianness: ByteOrder>(
+        &self,
+        buffer: &mut Vec<u8>,
+    ) {
         #[allow(suspicious_double_ref_op)]
         self.deref().encode::<Endianness>(buffer)
     }
@@ -96,7 +102,10 @@ impl<T> Encode for Ref<'_, T>
 where
     T: Encode,
 {
-    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+    fn encode<Endianness: ByteOrder>(
+        &self,
+        buffer: &mut Vec<u8>,
+    ) {
         self.deref().encode::<Endianness>(buffer)
     }
 }

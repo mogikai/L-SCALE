@@ -1,6 +1,5 @@
 use bitflags::bitflags;
 use byteorder::{ByteOrder, LittleEndian};
-use enumset::EnumSet;
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::platform::linux::architecture::Architecture;

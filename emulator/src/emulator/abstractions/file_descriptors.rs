@@ -16,13 +16,24 @@ use crate::emulator::system::filesystem::Stat;
 ///
 pub trait FileDescriptorOps<D>: Debug {
     /// Can be called to query what operations can be called without blocking on the handle.
-    fn poll(&self, fd: &mut D) -> Option<FileOperationsReady>;
+    fn poll(
+        &self,
+        fd: &mut D,
+    ) -> Option<FileOperationsReady>;
 
     /// Returns true if the file descriptor supports polling.
-    fn supports_poll(&self, fd: &mut D) -> bool;
+    fn supports_poll(
+        &self,
+        fd: &mut D,
+    ) -> bool;
 
     /// returns: The stat vector of the handle this method is called on
-    fn stat(&self, fd: &mut D) -> Result<Ref<Stat>, GenericError> { todo!() }
+    fn stat(
+        &self,
+        fd: &mut D,
+    ) -> Result<Ref<Stat>, GenericError> {
+        todo!()
+    }
 
     /// # Arguments
     /// * `count`: The amount of bytes to read from the current position of the descriptor
@@ -66,7 +77,12 @@ pub trait FileDescriptorOps<D>: Debug {
         todo!()
     }
 
-    fn getsockname(&self, fd: &mut D) -> Result<&Sockaddr, GenericError> { todo!() }
+    fn getsockname(
+        &self,
+        fd: &mut D,
+    ) -> Result<&Sockaddr, GenericError> {
+        todo!()
+    }
 
     fn sendto(
         &mut self,
@@ -84,9 +100,19 @@ pub trait FileDescriptorOps<D>: Debug {
         todo!()
     }
 
-    fn connect(&mut self, fd: &mut D) -> Result<(), GenericError> { todo!() }
+    fn connect(
+        &mut self,
+        fd: &mut D,
+    ) -> Result<(), GenericError> {
+        todo!()
+    }
 
-    fn setsockopt(&mut self, fd: &mut D) -> Result<(), GenericError> { todo!() }
+    fn setsockopt(
+        &mut self,
+        fd: &mut D,
+    ) -> Result<(), GenericError> {
+        todo!()
+    }
 }
 
 bitflags! {

@@ -16,11 +16,17 @@ impl UnixSocketOps {
 }
 
 impl FileDescriptorOps<FileDescriptorData> for UnixSocketOps {
-    fn poll(&self, fd: &mut FileDescriptorData) -> Option<FileOperationsReady> {
+    fn poll(
+        &self,
+        fd: &mut FileDescriptorData,
+    ) -> Option<FileOperationsReady> {
         todo!()
     }
 
-    fn supports_poll(&self, fd: &mut FileDescriptorData) -> bool {
+    fn supports_poll(
+        &self,
+        fd: &mut FileDescriptorData,
+    ) -> bool {
         todo!()
     }
 

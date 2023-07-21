@@ -33,7 +33,7 @@ impl Mapping {
         p_start: EPAddr,
         size: usize,
         permissions: Permission,
-        mapping_type: MappingType
+        mapping_type: MappingType,
     ) -> Self {
         Self {
             v_start,
@@ -57,7 +57,7 @@ impl Mapping {
             size,
             permissions: Permission::NONE,
             guard_callback_id: Some(guard_callback_id),
-            mapping_type: MappingType::PrivateAnonymous
+            mapping_type: MappingType::PrivateAnonymous,
         }
     }
 
@@ -152,7 +152,9 @@ impl PartialOrd for Mapping {
     fn partial_cmp(
         &self,
         other: &Self,
-    ) -> Option<Ordering> { Some(self.cmp(other)) }
+    ) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl Ord for Mapping {

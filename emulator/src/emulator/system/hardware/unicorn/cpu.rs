@@ -1,19 +1,13 @@
-use std::arch::x86_64;
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::time::Duration;
 
-use generational_arena::Arena;
-use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, IntelFormatter};
-use unicorn_engine::unicorn_const::{Arch, HookType, MemType, Mode, Permission, uc_error};
-use unicorn_engine::{Context, InsnSysX86, RegisterX86, Unicorn};
+use unicorn_engine::unicorn_const::uc_error;
+use unicorn_engine::RegisterX86;
 
 use crate::emulator::abstractions::cpu;
-use crate::emulator::abstractions::cpu::{ContextHandle, CPU, CPUError, Register};
-use crate::emulator::abstractions::cpu::address::{EVA_NULL, EVAddr};
+use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
+use crate::emulator::abstractions::cpu::{CPUError, ContextHandle, Register, CPU};
 use crate::emulator::abstractions::emulator::StopReason;
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
-use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::hardware::unicorn::UCWrapper;
 
@@ -31,9 +25,13 @@ impl Restorable for UCWrapper<'_> {
         Ok(())
     }
 
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> { todo!() }
+    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
+        todo!()
+    }
 
-    fn restore(&mut self) -> Result<(), GenericError> { todo!() }
+    fn restore(&mut self) -> Result<(), GenericError> {
+        todo!()
+    }
 }
 
 impl From<uc_error> for GenericError {
@@ -55,7 +53,8 @@ impl CPU for UCWrapper<'_> {
         } else {
             0u64
         };
-        self.uc_mut().emu_start(rip, stop.unwrap_or(EVA_NULL).into(), timeout, instruction_count.unwrap_or(0))?;
+        self.uc_mut()
+            .emu_start(rip, stop.unwrap_or(EVA_NULL).into(), timeout, instruction_count.unwrap_or(0))?;
         if let Some(stop_reason) = self.stop_reason {
             Err(CPUError::Stopped(stop_reason))
         } else {

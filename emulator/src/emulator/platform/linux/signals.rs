@@ -3,8 +3,8 @@ use std::fmt::Debug;
 use enumset::EnumSetType;
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
-use crate::emulator::platform::linux::kernel::LinuxKernelError;
 use crate::emulator::platform::linux::fd::FD;
+use crate::emulator::platform::linux::kernel::LinuxKernelError;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SignalAction<Flags: Debug + Clone + Copy> {
@@ -45,7 +45,7 @@ impl<Flags: Debug + Clone + Copy> SignalHandler<Flags> {
 
     pub fn insert_fd(
         &mut self,
-        fd: FD
+        fd: FD,
     ) {
         error!("add signalfd");
     }
@@ -85,7 +85,9 @@ impl<Flags: Debug + Clone + Copy> SignalHandler<Flags> {
             SignalMaskFlags::SIG_SET => self.mask = mask,
         }
     }
-    pub fn getmask(&self) -> u64 { self.mask }
+    pub fn getmask(&self) -> u64 {
+        self.mask
+    }
 }
 
 #[allow(non_camel_case_types)]

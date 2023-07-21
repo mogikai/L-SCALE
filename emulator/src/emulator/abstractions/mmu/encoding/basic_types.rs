@@ -6,7 +6,10 @@ use crate::emulator::abstractions::mmu::MemoryError;
 impl RequiredMem for i64 {}
 
 impl Encode for i64 {
-    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+    fn encode<Endianness: ByteOrder>(
+        &self,
+        buffer: &mut Vec<u8>,
+    ) {
         let start = buffer.len();
         buffer.resize(start + Self::required_mem(), 0);
         Endianness::write_i64(&mut buffer[start..], *self);
@@ -25,7 +28,10 @@ impl Decode for i64 {
 impl RequiredMem for u8 {}
 
 impl Encode for u8 {
-    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+    fn encode<Endianness: ByteOrder>(
+        &self,
+        buffer: &mut Vec<u8>,
+    ) {
         buffer.push(*self)
     }
 }
@@ -42,7 +48,10 @@ impl Decode for u8 {
 impl RequiredMem for u16 {}
 
 impl Encode for u16 {
-    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+    fn encode<Endianness: ByteOrder>(
+        &self,
+        buffer: &mut Vec<u8>,
+    ) {
         let start = buffer.len();
         buffer.resize(start + Self::required_mem(), 0);
         Endianness::write_u16(&mut buffer[start..], *self);
@@ -61,7 +70,10 @@ impl Decode for u16 {
 impl RequiredMem for u32 {}
 
 impl Encode for u32 {
-    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+    fn encode<Endianness: ByteOrder>(
+        &self,
+        buffer: &mut Vec<u8>,
+    ) {
         let start = buffer.len();
         buffer.resize(start + Self::required_mem(), 0);
         Endianness::write_u32(&mut buffer[start..], *self);
@@ -80,7 +92,10 @@ impl Decode for u32 {
 impl RequiredMem for u64 {}
 
 impl Encode for u64 {
-    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+    fn encode<Endianness: ByteOrder>(
+        &self,
+        buffer: &mut Vec<u8>,
+    ) {
         let start = buffer.len();
         buffer.resize(start + Self::required_mem(), 0);
         Endianness::write_u64(&mut buffer[start..], *self);
@@ -97,7 +112,10 @@ impl Decode for u64 {
 }
 
 impl Encode for &[u8] {
-    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+    fn encode<Endianness: ByteOrder>(
+        &self,
+        buffer: &mut Vec<u8>,
+    ) {
         buffer.extend_from_slice(self);
     }
 
@@ -106,7 +124,6 @@ impl Encode for &[u8] {
     }
 }
 
-
 impl<T: Encode> RequiredMem for &[T] {
     default fn required_mem() -> usize {
         unimplemented!()
@@ -114,7 +131,10 @@ impl<T: Encode> RequiredMem for &[T] {
 }
 
 impl<T: Encode> Encode for &[T] {
-    default fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+    default fn encode<Endianness: ByteOrder>(
+        &self,
+        buffer: &mut Vec<u8>,
+    ) {
         buffer.reserve(T::required_mem() * self.len());
         for x in self.iter() {
             x.encode::<Endianness>(buffer);

@@ -1,13 +1,10 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use unicorn_engine::unicorn_const::HookType;
 use unicorn_engine::{InsnSysX86, TlbEntry, Unicorn};
 
-use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
+use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::hooks::Hooks;
-use crate::emulator::abstractions::mmu::{MemoryAction, MemoryError, Permission};
+use crate::emulator::abstractions::mmu::MemoryAction;
 use crate::emulator::system::hardware::unicorn::UCWrapper;
 use crate::emulator::system::memory::TLBEntry;
 
@@ -79,7 +76,9 @@ impl<'a> Hooks<'a> for UCWrapper<'a> {
         let trampoline = move |uc: &mut Unicorn<*mut UCWrapper<'a>>, address, size| {
             hook(unsafe { &mut **uc.get_data_mut() }, address, size)
         };
-        let _hook = self.uc_mut().add_code_hook(start.into(), end.into(), trampoline)?;
+        let _hook = self
+            .uc_mut()
+            .add_code_hook(start.into(), end.into(), trampoline)?;
         Ok(())
     }
 }

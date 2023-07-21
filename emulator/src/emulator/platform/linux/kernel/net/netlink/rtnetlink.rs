@@ -1,9 +1,8 @@
 use std::collections::VecDeque;
 use std::marker::PhantomData;
-use std::mem;
 
-use bitflags::{bitflags, Flags};
 use bitflags::__private::PublicFlags;
+use bitflags::{bitflags, Flags};
 use byteorder::ByteOrder;
 use num_enum::{FromPrimitive, IntoPrimitive};
 
@@ -14,8 +13,10 @@ use crate::emulator::abstractions::file_descriptors::{FileDescriptorOps, FileOpe
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, Encoder, RequiredMem};
 use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
-use crate::emulator::platform::linux::kernel::net::netlink::{NetlinkMessageFlags, nlmsghdr};
-use crate::emulator::platform::linux::kernel::net::netlink::rtnetlink::nla_type::{IFA_ADDRESS, IFA_BROADCAST, IFA_FLAGS, IFA_LABEL, IFA_LOCAL};
+use crate::emulator::platform::linux::kernel::net::netlink::rtnetlink::nla_type::{
+    IFA_ADDRESS, IFA_BROADCAST, IFA_FLAGS, IFA_LABEL, IFA_LOCAL,
+};
+use crate::emulator::platform::linux::kernel::net::netlink::{nlmsghdr, NetlinkMessageFlags};
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::platform::linux::kernel::net::SocketDomain::{AF_INET, AF_INET6};
 
@@ -37,11 +38,17 @@ impl<Endianness: ByteOrder> RTNetlinkSocket<Endianness> {
 }
 
 impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for RTNetlinkSocket<Endianness> {
-    fn poll(&self, fd: &mut FileDescriptorData) -> Option<FileOperationsReady> {
+    fn poll(
+        &self,
+        fd: &mut FileDescriptorData,
+    ) -> Option<FileOperationsReady> {
         todo!()
     }
 
-    fn supports_poll(&self, fd: &mut FileDescriptorData) -> bool {
+    fn supports_poll(
+        &self,
+        fd: &mut FileDescriptorData,
+    ) -> bool {
         todo!()
     }
 
@@ -396,7 +403,10 @@ bitflags! {
 }
 
 impl Encode for ifa_flags {
-    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+    fn encode<Endianness: ByteOrder>(
+        &self,
+        buffer: &mut Vec<u8>,
+    ) {
         self.bits().encode::<Endianness>(buffer)
     }
 }
@@ -523,7 +533,10 @@ pub enum RTNetlinkMessageType {
 }
 
 impl Encode for RTNetlinkMessageType {
-    fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+    fn encode<Endianness: ByteOrder>(
+        &self,
+        buffer: &mut Vec<u8>,
+    ) {
         u16::from(*self).encode::<Endianness>(buffer)
     }
 }

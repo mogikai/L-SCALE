@@ -1,9 +1,7 @@
-use byteorder::ByteOrder;
 use unicorn_engine::unicorn_const as uc_const;
 use unicorn_engine::unicorn_const::{uc_error, MemType};
 
-use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
-use crate::emulator::abstractions::mmu::encoding::Encode;
+use crate::emulator::abstractions::cpu::address::EPAddr;
 use crate::emulator::abstractions::mmu::{MemoryAction, MemoryError, Permission, MMU};
 use crate::emulator::system::hardware::unicorn::UCWrapper;
 
@@ -44,9 +42,7 @@ impl MMU for UCWrapper<'_> {
         Ok(data.len())
     }
 
-    fn flush_tlb(
-        &mut self,
-    ) -> Result<(), MemoryError> {
+    fn flush_tlb(&mut self) -> Result<(), MemoryError> {
         Ok(self.uc_mut().ctl_flush_tlb()?)
     }
 }
