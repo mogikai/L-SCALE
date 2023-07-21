@@ -9,13 +9,14 @@ use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
-use crate::emulator::abstractions::mmu::{MemoryError, MMU};
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
+use crate::emulator::abstractions::mmu::{MemoryError, MMU};
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::{FileDescriptor, LinuxKernelError, LinuxKernelTask, SyscallResult};
 use crate::emulator::system::file_descriptors::fd_map::FD;
 use crate::emulator::system::memory::rw_interface::MemoryRead;
+use crate::emulator::system::memory::MemoryAccessor;
 
 impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     pub fn epoll_create(
@@ -73,47 +74,70 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
         }
 
         match op {
-            EPOLL_OPCODES::EPOLL_CTL_ADD => {
-                // TODO: Do loop check (see https://man7.org/linux/man-pages/man2/epoll_ctl.2.html)
-                let event: epoll_event = memory.read(event)?;
-
-                if event.events.contains(EPOLL_EVENTS::EPOLLEXCLUSIVE) && file_descriptor.data.epoll.is_some() {
-                    Err(LinuxKernelError::EINVAL)?
-                }
-
-                epoll
-                    .interest_list
-                    .try_insert(fd, event)
-                    .map_err(|_| LinuxKernelError::EEXIST)?;
-                Ok(0)
-            }
-            EPOLL_OPCODES::EPOLL_CTL_DEL => {
-                epoll
-                    .interest_list
-                    .remove(&fd)
-                    .ok_or(LinuxKernelError::ENOENT)?;
-                Ok(0)
-            }
-            EPOLL_OPCODES::EPOLL_CTL_MOD => {
-                let event: epoll_event = memory.read(event)?;
-
-                if event.events.contains(EPOLL_EVENTS::EPOLLEXCLUSIVE) {
-                    Err(LinuxKernelError::EINVAL)?
-                }
-
-                let current_event = epoll
-                    .interest_list
-                    .get_mut(&fd)
-                    .ok_or(LinuxKernelError::EINVAL)?;
-
-                if current_event.events.contains(EPOLL_EVENTS::EPOLLEXCLUSIVE) {
-                    Err(LinuxKernelError::EINVAL)?
-                }
-
-                *current_event = event;
-                Ok(0)
-            }
+            EPOLL_OPCODES::EPOLL_CTL_ADD => self.epoll_ctl_add(&memory, epoll, &fd, file_descriptor, event),
+            EPOLL_OPCODES::EPOLL_CTL_DEL => self.epoll_ctl_del(epoll, &fd),
+            EPOLL_OPCODES::EPOLL_CTL_MOD => self.epoll_ctl_mod(&memory, epoll, &fd, event),
         }
+    }
+
+    fn epoll_ctl_add(
+        &self,
+        memory: &MemoryAccessor<Endianness, impl MMU + Sized>,
+        epoll: &mut EpollData,
+        fd: &FD,
+        file_descriptor: &mut FileDescriptor,
+        event: EVAddr,
+    ) -> SyscallResult {
+        // TODO: Do loop check (see https://man7.org/linux/man-pages/man2/epoll_ctl.2.html)
+        let event: epoll_event = memory.read(event)?;
+
+        if event.events.contains(EPOLL_EVENTS::EPOLLEXCLUSIVE) && file_descriptor.data.epoll.is_some() {
+            Err(LinuxKernelError::EINVAL)?
+        }
+
+        epoll
+            .interest_list
+            .try_insert(*fd, event)
+            .map_err(|_| LinuxKernelError::EEXIST)?;
+        Ok(0)
+    }
+
+    fn epoll_ctl_del(
+        &self,
+        epoll: &mut EpollData,
+        fd: &FD,
+    ) -> SyscallResult {
+        epoll
+            .interest_list
+            .remove(&fd)
+            .ok_or(LinuxKernelError::ENOENT)?;
+        Ok(0)
+    }
+
+    fn epoll_ctl_mod(
+        &self,
+        memory: &MemoryAccessor<Endianness, impl MMU + Sized>,
+        epoll: &mut EpollData,
+        fd: &FD,
+        event: EVAddr,
+    ) -> SyscallResult {
+        let event: epoll_event = memory.read(event)?;
+
+        if event.events.contains(EPOLL_EVENTS::EPOLLEXCLUSIVE) {
+            Err(LinuxKernelError::EINVAL)?
+        }
+
+        let current_event = epoll
+            .interest_list
+            .get_mut(&fd)
+            .ok_or(LinuxKernelError::EINVAL)?;
+
+        if current_event.events.contains(EPOLL_EVENTS::EPOLLEXCLUSIVE) {
+            Err(LinuxKernelError::EINVAL)?
+        }
+
+        *current_event = event;
+        Ok(0)
     }
 
     #[allow(clippy::too_many_arguments)]

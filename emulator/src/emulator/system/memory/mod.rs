@@ -6,11 +6,11 @@ use std::ops::{Add, BitAnd, Not, Range};
 use bitflags::Flags;
 use byteorder::ByteOrder;
 
-use accessor::MemoryAccessor;
+pub use accessor::MemoryAccessor;
 use layout::Layout;
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
-use crate::emulator::abstractions::mmu::{MemoryError, MMU, MREMAP_FLAGS, Permission};
+use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU, MREMAP_FLAGS};
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::memory::pregion::PhysicalRegion;
 use crate::emulator::system::memory::rw_interface::DirectMemoryWrite;
