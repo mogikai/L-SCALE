@@ -8,15 +8,15 @@ use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::CPU;
-use crate::emulator::abstractions::file_descriptors::{FileDescriptorOps, FileOperationsReady};
+use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
+use crate::emulator::platform::linux::fd::{FD, FileDescriptorData};
 use crate::emulator::platform::linux::kernel::eventpoll::events::EPOLL_EVENTS;
-use crate::emulator::platform::linux::kernel::{FileDescriptor, LinuxKernelError, LinuxKernelTask, SyscallResult};
+use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask, SyscallResult};
 use crate::emulator::platform::linux::kernel::eventpoll::fd_ops::EpollOps;
-use crate::emulator::system::fd_map::FD;
+use crate::emulator::system::fd_map::FileDescriptor;
 use crate::emulator::system::memory::rw_interface::{MemoryRead, MemoryWrite};
 use crate::emulator::system::memory::MemoryAccessor;
 
@@ -140,7 +140,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
         memory: &MemoryAccessor<Endianness, impl MMU + Sized>,
         epoll: &mut EpollData,
         fd: &FD,
-        file_descriptor: &mut FileDescriptor,
+        file_descriptor: &mut FileDescriptor<FileDescriptorData>,
         event: EVAddr,
     ) -> SyscallResult {
         // TODO: Do loop check (see https://man7.org/linux/man-pages/man2/epoll_ctl.2.html)

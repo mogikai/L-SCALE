@@ -1,4 +1,4 @@
-#[derive(Debug, Hash, Eq, PartialEq, Clone, Copy, Ord, PartialOrd)]
+#[derive(Debug, Hash, Eq, PartialEq, Clone, Copy, Ord, PartialOrd, Default)]
 pub struct TaskId {
     pub pid: u32,
     pub tid: u32,

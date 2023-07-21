@@ -4,7 +4,7 @@ use enumset::EnumSetType;
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::platform::linux::kernel::LinuxKernelError;
-use crate::emulator::system::fd_map::FD;
+use crate::emulator::platform::linux::fd::FD;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SignalAction<Flags: Debug + Clone + Copy> {

@@ -5,17 +5,19 @@ use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorOps, FileOperationsReady};
-use crate::emulator::platform::linux::filedescriptor::{FileDescriptor, FileDescriptorData};
+use crate::emulator::platform::linux::fd::{FD, FileDescriptorData};
+use crate::emulator::platform::linux::kernel::task_id::TaskId;
+use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::system::filesystem::{FSEntryId, Stat};
 use crate::emulator::system::System;
 
 #[derive(Debug, Clone)]
 pub struct FileOps<Endianness: ByteOrder> {
-    system: Rc<System<Endianness>>,
+    system: Rc<LinuxSystem<Endianness>>,
 }
 
 //TODO build a trait
-impl<Endianness: ByteOrder> FileDescriptorOps for FileOps<Endianness> {
+impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for FileOps<Endianness> {
     fn poll(&self, fd: &mut FileDescriptorData) -> Option<FileOperationsReady> {
         None
     }
@@ -65,7 +67,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps for FileOps<Endianness> {
 
 impl<Endianness: ByteOrder> FileOps<Endianness> {
     pub fn new(
-        system: Rc<System<Endianness>>,
+        system: Rc<LinuxSystem<Endianness>>,
     ) -> FileOps<Endianness> {
         FileOps {
             system,

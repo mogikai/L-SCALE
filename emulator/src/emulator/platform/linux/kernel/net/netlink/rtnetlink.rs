@@ -13,7 +13,7 @@ use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorOps, FileOperationsReady};
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, Encoder, RequiredMem};
 use crate::emulator::abstractions::mmu::MemoryError;
-use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
+use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::netlink::{NetlinkMessageFlags, nlmsghdr};
 use crate::emulator::platform::linux::kernel::net::netlink::rtnetlink::nla_type::{IFA_ADDRESS, IFA_BROADCAST, IFA_FLAGS, IFA_LABEL, IFA_LOCAL};
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
@@ -36,7 +36,7 @@ impl<Endianness: ByteOrder> RTNetlinkSocket<Endianness> {
     }
 }
 
-impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
+impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for RTNetlinkSocket<Endianness> {
     fn poll(&self, fd: &mut FileDescriptorData) -> Option<FileOperationsReady> {
         todo!()
     }

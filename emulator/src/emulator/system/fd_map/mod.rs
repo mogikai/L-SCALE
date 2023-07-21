@@ -1,58 +1,59 @@
-pub mod error;
-
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::ops::Add;
 use std::rc::Rc;
 
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
-use crate::emulator::platform::linux::filedescriptor::FileDescriptor;
-use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 
-#[derive(Hash, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
-pub struct FD(i64);
+pub mod error;
 
-impl Add<i32> for FD {
-    type Output = FD;
+#[derive(Debug)]
+pub struct FileDescriptor<D: Default> {
+    /// The data field contains all state data for the fds. Each system component has
+    /// its own optional field in the data struct. The HandleOps implementation
+    /// is responsible for checking whether the appropriate data field exists.
+    /// If it does not, the user space application called the operation on an invalid
+    /// handle, and the HandleOps implementation shall return an EBADF error.
+    pub data: D,
+    /// The ops implementation may contain pointers to system components.
+    /// It must however be stateless. All data pertaining to state or
+    /// similar fd related info must be contained in the data field.
+    pub ops: Box<dyn FileDescriptorOps<D>>,
+}
 
-    fn add(
-        self,
-        rhs: i32,
-    ) -> Self::Output {
-        FD(self.0 + i64::from(rhs))
+impl<D: Default> FileDescriptor<D> {
+    pub fn new(ops: Box<dyn FileDescriptorOps<D>>) -> Self {
+        FileDescriptor {
+            data: Default::default(),
+            ops,
+        }
     }
 }
 
-impl From<i32> for FD {
-    fn from(value: i32) -> Self {
-        Self(value.into())
-    }
-}
-
-impl From<u64> for FD {
-    fn from(value: u64) -> Self {
-        FD(value as i64)
-    }
-}
-
-impl From<FD> for u64 {
-    fn from(value: FD) -> Self {
-        value.0 as u64
-    }
-}
+pub trait FdId: Copy + Clone + Ord + Default + From<u64> + Add<i32, Output = Self> {}
 
 #[derive(Debug, Default)]
-pub struct FileDescriptorMap {
+pub struct FileDescriptorMap<FD, TaskId, D>
+where
+    FD: FdId,
+    TaskId: Ord + Copy + Clone + Default,
+    D: Default,
+{
     // TODO: Use generics instead of TaskId and FileDescriptor
-    file_descriptors: BTreeMap<TaskId, BTreeMap<FD, Rc<RefCell<FileDescriptor>>>>,
+    file_descriptors: BTreeMap<TaskId, BTreeMap<FD, Rc<RefCell<FileDescriptor<D>>>>>,
     free_fds: BTreeMap<TaskId, Vec<FD>>,
     // TODO: Implement as a hook object that can be inserted to be called after the handle
     //       processed the call.
-    replacement_handles: HashMap<TaskId, HashMap<FD, VecDeque<Box<dyn FileDescriptorOps>>>>,
+    replacement_handles: HashMap<TaskId, HashMap<FD, VecDeque<Box<dyn FileDescriptorOps<D>>>>>,
 }
 
-impl FileDescriptorMap {
+impl<FD, TaskId, D> FileDescriptorMap<FD, TaskId, D>
+where
+    FD: FdId,
+    TaskId: Ord + Copy + Clone + Default,
+    D: Default,
+{
     pub fn new() -> Self {
         Self { ..Default::default() }
     }
@@ -61,7 +62,7 @@ impl FileDescriptorMap {
         &mut self,
         task_id: &TaskId,
         fd: FD,
-        file_descriptor: FileDescriptor,
+        file_descriptor: FileDescriptor<D>,
     ) -> Result<FD, FileDescriptorMapError> {
         self.file_descriptors
             .entry(*task_id)
@@ -74,7 +75,7 @@ impl FileDescriptorMap {
     pub fn insert(
         &mut self,
         task_id: &TaskId,
-        file_descriptor: FileDescriptor,
+        file_descriptor: FileDescriptor<D>,
     ) -> Result<FD, FileDescriptorMapError> {
         let fd = self.get_free_fd(task_id);
         self.insert_at(task_id, fd, file_descriptor)
@@ -95,7 +96,7 @@ impl FileDescriptorMap {
         &self,
         task_id: &TaskId,
         fd: &FD,
-    ) -> Option<RefMut<FileDescriptor>> {
+    ) -> Option<RefMut<FileDescriptor<D>>> {
         self.file_descriptors.get(task_id).and_then(|map| {
             map.get(fd)
                 .map(|file_descriptor| file_descriptor.borrow_mut())
@@ -106,7 +107,7 @@ impl FileDescriptorMap {
         &self,
         task_id: &TaskId,
         fd: &FD,
-    ) -> Option<Ref<FileDescriptor>> {
+    ) -> Option<Ref<FileDescriptor<D>>> {
         self.file_descriptors
             .get(task_id)
             .and_then(|map| map.get(fd).map(|file_descriptor| file_descriptor.borrow()))

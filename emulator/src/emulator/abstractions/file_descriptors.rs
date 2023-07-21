@@ -4,7 +4,6 @@ use std::fmt::Debug;
 use bitflags::bitflags;
 
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::system::filesystem::Stat;
 
@@ -15,15 +14,15 @@ use crate::emulator::system::filesystem::Stat;
 ///
 /// The actual handle data is contained in the TODO struct
 ///
-pub trait FileDescriptorOps: Debug {
+pub trait FileDescriptorOps<D>: Debug {
     /// Can be called to query what operations can be called without blocking on the handle.
-    fn poll(&self, fd: &mut FileDescriptorData) -> Option<FileOperationsReady>;
+    fn poll(&self, fd: &mut D) -> Option<FileOperationsReady>;
 
     /// Returns true if the file descriptor supports polling.
-    fn supports_poll(&self, fd: &mut FileDescriptorData) -> bool;
+    fn supports_poll(&self, fd: &mut D) -> bool;
 
     /// returns: The stat vector of the handle this method is called on
-    fn stat(&self, fd: &mut FileDescriptorData) -> Result<Ref<Stat>, GenericError> { todo!() }
+    fn stat(&self, fd: &mut D) -> Result<Ref<Stat>, GenericError> { todo!() }
 
     /// # Arguments
     /// * `count`: The amount of bytes to read from the current position of the descriptor
@@ -31,7 +30,7 @@ pub trait FileDescriptorOps: Debug {
     /// returns: A reference to the data that is accessed by the read call
     fn read(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut D,
         count: u64,
     ) -> Result<Vec<u8>, GenericError> {
         todo!()
@@ -44,7 +43,7 @@ pub trait FileDescriptorOps: Debug {
     /// returns: A reference to the data that is accessed by the pread call
     fn pread(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut D,
         offset: u64,
         length: u64,
     ) -> Result<Vec<u8>, GenericError> {
@@ -53,7 +52,7 @@ pub trait FileDescriptorOps: Debug {
 
     fn write(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut D,
         data: &[u8],
     ) -> Result<usize, GenericError> {
         todo!()
@@ -61,17 +60,17 @@ pub trait FileDescriptorOps: Debug {
 
     fn bind(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut D,
         sockaddr: Sockaddr,
     ) -> Result<(), GenericError> {
         todo!()
     }
 
-    fn getsockname(&self, fd: &mut FileDescriptorData) -> Result<&Sockaddr, GenericError> { todo!() }
+    fn getsockname(&self, fd: &mut D) -> Result<&Sockaddr, GenericError> { todo!() }
 
     fn sendto(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut D,
         data: &[u8],
     ) -> Result<usize, GenericError> {
         todo!()
@@ -79,15 +78,15 @@ pub trait FileDescriptorOps: Debug {
 
     fn recvmsg(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut D,
         len: usize,
     ) -> Result<Vec<u8>, GenericError> {
         todo!()
     }
 
-    fn connect(&mut self, fd: &mut FileDescriptorData) -> Result<(), GenericError> { todo!() }
+    fn connect(&mut self, fd: &mut D) -> Result<(), GenericError> { todo!() }
 
-    fn setsockopt(&mut self, fd: &mut FileDescriptorData) -> Result<(), GenericError> { todo!() }
+    fn setsockopt(&mut self, fd: &mut D) -> Result<(), GenericError> { todo!() }
 }
 
 bitflags! {

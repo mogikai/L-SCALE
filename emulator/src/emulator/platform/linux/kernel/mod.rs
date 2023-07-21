@@ -1,5 +1,4 @@
 use std::marker::PhantomData;
-use std::mem;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -12,19 +11,20 @@ use crate::emulator::abstractions::cpu::{CPU, RegisterX86};
 use crate::emulator::abstractions::cpu::address::{EVA_NULL, EVAddr};
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
-use crate::emulator::abstractions::mmu::{MemoryError, MMU, Permission};
+use crate::emulator::abstractions::mmu::{MMU, Permission};
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::macros::push_stack;
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::filedescriptor::FileDescriptor;
+use crate::emulator::platform::linux::fd::{FD, FileDescriptorData};
 use crate::emulator::platform::linux::kernel::auxv::AUXVType;
 pub use crate::emulator::platform::linux::kernel::error::LinuxKernelError;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
+use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::platform::linux::signalfd::SignalFDOps;
 use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
 use crate::emulator::system::{default_handles, System};
-use crate::emulator::system::fd_map::FD;
+use crate::emulator::system::fd_map::FileDescriptor;
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
 
 pub(crate) mod auxv;
@@ -39,7 +39,7 @@ pub(crate) mod net;
 /* eventuell nach task umbenennen */
 // TODO: Move thread shared data to thread specific struct that is shared between kernel task objects (rcrefcell?)
 pub struct LinuxKernelTask<Endianness: ByteOrder, Arch: Architecture> {
-    system: Rc<System<Endianness>>,
+    system: Rc<LinuxSystem<Endianness>>,
     clear_child_tid: Option<EVAddr>,
     robust_list_head: Option<EVAddr>,
     signalhandler: SignalHandler<Arch::SignalFlags>,
@@ -52,7 +52,7 @@ type SyscallResult = Result<u64, LinuxKernelError>;
 
 impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     pub fn new(
-        system: Rc<System<Endianness>>,
+        system: Rc<LinuxSystem<Endianness>>,
         pid: u32,
         tid: u32,
     ) -> Self {

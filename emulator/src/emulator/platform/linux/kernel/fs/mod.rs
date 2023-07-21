@@ -2,9 +2,10 @@ use bitflags::{bitflags, Flags};
 use byteorder::ByteOrder;
 
 use crate::emulator::macros::*;
+use crate::emulator::platform::linux::fd::{FD, FileDescriptorData};
 use crate::emulator::platform::linux::kernel::fs::fd_ops::FileOps;
 use crate::emulator::platform::linux::kernel::*;
-use crate::emulator::system::fd_map::FD;
+use crate::emulator::system::fd_map::FileDescriptor;
 use crate::emulator::system::filesystem::FSEntryId;
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
 
@@ -223,7 +224,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     pub fn add_replacement_handle(
         &mut self,
         fd: FD,
-        handle: Box<dyn FileDescriptorOps>,
+        handle: Box<dyn FileDescriptorOps<FileDescriptorData>>,
     ) {
         todo!()
         // self.fd_map.add_replacement_handle(fd, handle);

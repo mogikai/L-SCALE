@@ -16,8 +16,10 @@ use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::mmu::{MemoryError, MMU};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::architecture::x86::X86;
+use crate::emulator::platform::linux::fd::{FD, FileDescriptorData};
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask};
+use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::system::System;
 
 macro_rules! do_syscall {
@@ -87,7 +89,7 @@ where
     CpuT: CPU + MMU + Hooks<'a>,
     Endianness: ByteOrder,
 {
-    system: Rc<System<Endianness>>,
+    system: Rc<LinuxSystem<Endianness>>,
     context: Rc<RefCell<SchedulerContext<Endianness>>>,
     cpu: Rc<RefCell<CpuT>>,
     cpu_context_handle: ContextHandle,
@@ -264,7 +266,7 @@ where
     Endianness: ByteOrder + 'static,
 {
     pub fn new(
-        system: Rc<System<Endianness>>,
+        system: Rc<LinuxSystem<Endianness>>,
         initial_task: LinuxKernelTask<Endianness, X86>,
         cpu: Rc<RefCell<CpuT>>,
         binary_path: PathBuf,

@@ -1,5 +1,5 @@
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorOps, FileOperationsReady};
-use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
+use crate::emulator::platform::linux::fd::FileDescriptorData;
 
 #[derive(Debug)]
 pub(super) struct EpollOps {}
@@ -10,7 +10,7 @@ impl EpollOps {
     }
 }
 
-impl FileDescriptorOps for EpollOps {
+impl FileDescriptorOps<FileDescriptorData> for EpollOps {
     fn poll(
         &self,
         fd: &mut FileDescriptorData,

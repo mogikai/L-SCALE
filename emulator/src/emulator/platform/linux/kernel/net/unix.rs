@@ -1,6 +1,6 @@
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorOps, FileOperationsReady};
-use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
+use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::system::filesystem::FSError;
 
 #[derive(Debug)]
@@ -15,7 +15,7 @@ impl UnixSocketOps {
     }
 }
 
-impl FileDescriptorOps for UnixSocketOps {
+impl FileDescriptorOps<FileDescriptorData> for UnixSocketOps {
     fn poll(&self, fd: &mut FileDescriptorData) -> Option<FileOperationsReady> {
         todo!()
     }

@@ -3,7 +3,7 @@ use std::cmp::min;
 
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorOps, FileOperationsReady};
-use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
+use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::system::filesystem::Stat;
 
 #[derive(Debug)]
@@ -18,8 +18,8 @@ impl WriteOnly {
         }
     }
 }
-
-impl FileDescriptorOps for WriteOnly {
+// TODO: This probably should be handled via callbacks
+impl FileDescriptorOps<FileDescriptorData> for WriteOnly {
     fn poll(
         &self,
         fd: &mut FileDescriptorData,
@@ -93,7 +93,7 @@ impl ReadOnly {
     }
 }
 
-impl FileDescriptorOps for ReadOnly {
+impl FileDescriptorOps<FileDescriptorData> for ReadOnly {
     fn poll(
         &self,
         fd: &mut FileDescriptorData,

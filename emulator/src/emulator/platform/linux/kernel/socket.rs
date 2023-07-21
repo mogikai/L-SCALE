@@ -10,10 +10,11 @@ use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::mmu::encoding::{Decode, RequiredMem};
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::platform::linux::architecture::Architecture;
+use crate::emulator::platform::linux::fd::{FD, FileDescriptorData};
 use crate::emulator::platform::linux::kernel::net::unix::UnixSocketOps;
 use crate::emulator::platform::linux::kernel::net::{inet6, netlink, Sockaddr, SocketDomain, SocketFlags, SocketType};
-use crate::emulator::platform::linux::kernel::{FileDescriptor, LinuxKernelError, LinuxKernelTask, SyscallResult};
-use crate::emulator::system::fd_map::FD;
+use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask, SyscallResult};
+use crate::emulator::system::fd_map::FileDescriptor;
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
 
 impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
@@ -29,7 +30,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let typ = SocketType::try_from(typ)?;
         debug!("Creating socket ({:?} {:?})", family, typ);
         use SocketDomain::*;
-        let socket_ops: Box<dyn FileDescriptorOps> = match family {
+        let socket_ops: Box<dyn FileDescriptorOps<FileDescriptorData>> = match family {
             AF_NETLINK => netlink::from_protocol::<Endianness>(protocol)?,
             AF_UNIX => Box::new(UnixSocketOps::new()),
             AF_INET6 => inet6::from_type(typ)?,
