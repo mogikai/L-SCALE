@@ -17,7 +17,7 @@ use crate::emulator::system::net::Sockaddr;
 ///
 pub trait FileDescriptorOps: Debug {
     /// Can be called to query what operations can be called without blocking on the handle.
-    fn poll(&self, fd: &mut FileDescriptorData) -> FileOperationsReady { todo!() }
+    fn poll(&self, fd: &mut FileDescriptorData) -> Option<FileOperationsReady>;
 
     /// Returns true if the file descriptor supports polling.
     fn supports_poll(&self, fd: &mut FileDescriptorData) -> bool;

@@ -62,7 +62,11 @@ impl FileDescriptorMap {
         fd: FD,
         file_descriptor: FileDescriptor,
     ) -> Result<FD, FileDescriptorMapError> {
-        self.file_descriptors.entry(*task_id).or_insert(Default::default()).try_insert(fd, Rc::new(RefCell::new(file_descriptor))).map_err(|_| FileDescriptorMapError::FDExists)?;
+        self.file_descriptors
+            .entry(*task_id)
+            .or_insert(Default::default())
+            .try_insert(fd, Rc::new(RefCell::new(file_descriptor)))
+            .map_err(|_| FileDescriptorMapError::FDExists)?;
         Ok(fd)
     }
 
@@ -80,9 +84,10 @@ impl FileDescriptorMap {
         task_id: &TaskId,
         fd: &FD,
     ) -> Result<(), FileDescriptorMapError> {
-        self.file_descriptors.get_mut(task_id).and_then(|map| {
-            map.remove(fd).map(|_| ())
-        }).ok_or(FileDescriptorMapError::InvalidFD)
+        self.file_descriptors
+            .get_mut(task_id)
+            .and_then(|map| map.remove(fd).map(|_| ()))
+            .ok_or(FileDescriptorMapError::InvalidFD)
     }
 
     pub fn get_mut(
@@ -92,7 +97,7 @@ impl FileDescriptorMap {
     ) -> Option<RefMut<FileDescriptor>> {
         self.file_descriptors.get(task_id).and_then(|map| {
             map.get(fd)
-                .and_then(|file_descriptor| file_descriptor.try_borrow_mut().ok())
+                .map(|file_descriptor| file_descriptor.borrow_mut())
         })
     }
 
@@ -101,10 +106,9 @@ impl FileDescriptorMap {
         task_id: &TaskId,
         fd: &FD,
     ) -> Option<Ref<FileDescriptor>> {
-        self.file_descriptors.get(task_id).and_then(|map| {
-            map.get(fd)
-                .and_then(|file_descriptor| file_descriptor.try_borrow().ok())
-        })
+        self.file_descriptors
+            .get(task_id)
+            .and_then(|map| map.get(fd).map(|file_descriptor| file_descriptor.borrow()))
     }
 
     fn get_free_fd(

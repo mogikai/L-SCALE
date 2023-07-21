@@ -10,7 +10,7 @@ use num_enum::{FromPrimitive, IntoPrimitive};
 use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
-use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
+use crate::emulator::abstractions::file_descriptors::{FileDescriptorOps, FileOperationsReady};
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, Encoder, RequiredMem};
 use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
@@ -39,6 +39,10 @@ impl<Endianness: ByteOrder> RTNetlinkSocket<Endianness> {
 }
 
 impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
+    fn poll(&self, fd: &mut FileDescriptorData) -> Option<FileOperationsReady> {
+        todo!()
+    }
+
     fn supports_poll(&self, fd: &mut FileDescriptorData) -> bool {
         todo!()
     }

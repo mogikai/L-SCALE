@@ -1,5 +1,6 @@
+use bitflags::Flags;
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
+use crate::emulator::abstractions::file_descriptors::{FileDescriptorOps, FileOperationsReady};
 use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
 use crate::emulator::system::net::Sockaddr;
 
@@ -13,6 +14,11 @@ impl TcpSock {
 }
 
 impl FileDescriptorOps for TcpSock {
+    fn poll(&self, fd: &mut FileDescriptorData) -> Option<FileOperationsReady> {
+        todo!();
+        Some(FileOperationsReady::Read)
+    }
+
     fn supports_poll(&self, fd: &mut FileDescriptorData) -> bool {
         true
     }

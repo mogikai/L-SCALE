@@ -96,18 +96,32 @@ impl Decode for u64 {
     }
 }
 
-impl RequiredMem for &[u8] {
-    fn required_mem() -> usize {
-        std::mem::size_of::<u8>()
-    }
-}
-
 impl Encode for &[u8] {
     fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
         buffer.extend_from_slice(self);
     }
 
     fn encoded_size(&self) -> usize {
-        self.len() * Self::required_mem()
+        self.len() * u8::required_mem()
+    }
+}
+
+
+impl<T: Encode> RequiredMem for &[T] {
+    default fn required_mem() -> usize {
+        unimplemented!()
+    }
+}
+
+impl<T: Encode> Encode for &[T] {
+    default fn encode<Endianness: ByteOrder>(&self, buffer: &mut Vec<u8>) {
+        buffer.reserve(T::required_mem() * self.len());
+        for x in self.iter() {
+            x.encode::<Endianness>(buffer);
+        }
+    }
+
+    default fn encoded_size(&self) -> usize {
+        T::required_mem() * self.len()
     }
 }

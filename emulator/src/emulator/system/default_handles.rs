@@ -2,7 +2,7 @@ use std::cell::{Ref, RefCell};
 use std::cmp::min;
 
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
+use crate::emulator::abstractions::file_descriptors::{FileDescriptorOps, FileOperationsReady};
 use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
 use crate::emulator::system::filesystem::Stat;
 
@@ -20,7 +20,17 @@ impl WriteOnly {
 }
 
 impl FileDescriptorOps for WriteOnly {
-    fn supports_poll(&self, fd: &mut FileDescriptorData) -> bool {
+    fn poll(
+        &self,
+        fd: &mut FileDescriptorData,
+    ) -> Option<FileOperationsReady> {
+        None
+    }
+
+    fn supports_poll(
+        &self,
+        fd: &mut FileDescriptorData,
+    ) -> bool {
         false
     }
 
@@ -84,7 +94,17 @@ impl ReadOnly {
 }
 
 impl FileDescriptorOps for ReadOnly {
-    fn supports_poll(&self, fd: &mut FileDescriptorData) -> bool {
+    fn poll(
+        &self,
+        fd: &mut FileDescriptorData,
+    ) -> Option<FileOperationsReady> {
+        None
+    }
+
+    fn supports_poll(
+        &self,
+        fd: &mut FileDescriptorData,
+    ) -> bool {
         false
     }
 

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use bitflags::{bitflags, Flags};
+use bitflags::Flags;
 use byteorder::ByteOrder;
 use num_enum::TryFromPrimitive;
 
@@ -8,15 +8,18 @@ use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::CPU;
-use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
+use crate::emulator::abstractions::file_descriptors::{FileDescriptorOps, FileOperationsReady};
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
-use crate::emulator::abstractions::mmu::{MemoryError, MMU};
+use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::filedescriptor::FileDescriptorData;
+use crate::emulator::platform::linux::kernel::eventpoll::events::EPOLL_EVENTS;
 use crate::emulator::platform::linux::kernel::{FileDescriptor, LinuxKernelError, LinuxKernelTask, SyscallResult};
 use crate::emulator::system::file_descriptors::fd_map::FD;
-use crate::emulator::system::memory::rw_interface::MemoryRead;
+use crate::emulator::system::memory::rw_interface::{MemoryRead, MemoryWrite};
 use crate::emulator::system::memory::MemoryAccessor;
+
+mod events;
 
 impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     pub fn epoll_create(
@@ -29,13 +32,63 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
 
     pub fn epoll_wait(
         &mut self,
-        _: &mut impl CPU,
-        epfd: u64,
+        mmu: &mut impl MMU,
+        epfd: FD,
         events: EVAddr, // epoll_event*
         maxevents: u64,
         timeout: u64,
     ) -> SyscallResult {
-        todo!()
+        // TODO: Need to implement yielding when no fds are ready
+        //       Need to advance the clock by fuzzer/callback specified amount
+        //       The controller (e.g. fuzzer) of the emulator needs to be able
+        //       to specify the elapsed time before an event occurs and also
+        //       needs to be able to see which events are asked for, such that
+        //       it can react accordingly and produce events. This might be
+        //       possible via some kind of event loop between fuzzer and emulator?
+        let mut fd_map = self.system.fd_map.borrow_mut();
+
+        let mut epoll = fd_map
+            .get_mut(&self.task_id, &epfd)
+            .ok_or(LinuxKernelError::EBADF)?;
+        let epoll = &mut *epoll;
+        let epoll_data = epoll.data.epoll.as_mut().ok_or(LinuxKernelError::EINVAL)?;
+
+        let mut triggered_events = vec![];
+        let mut fds_to_clean = vec![];
+        for (fd, event) in &epoll_data.interest_list {
+            // If we can't find the fd it means it was closed in the meantime. Remove it.
+            let file = fd_map.get_mut(&self.task_id, &fd);
+            match file {
+                None => fds_to_clean.push(*fd),
+                Some(mut file) => {
+                    let file = &mut *file;
+                    let ready_ops = file
+                        .ops
+                        .poll(&mut file.data)
+                        .expect("Only pollable fds should be in interest list");
+                    let ready_events = EPOLL_EVENTS::from(ready_ops);
+                    if event.events.intersects(ready_events) {
+                        if triggered_events.len() < maxevents as usize {
+                            triggered_events.push(epoll_event {
+                                events: ready_events,
+                                data: event.data,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        fds_to_clean.into_iter().for_each(|fd| {
+            epoll_data.interest_list.remove(&fd);
+        });
+
+        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = memory.accessor(mmu, self.task_id);
+
+        memory.write(events, triggered_events.as_slice());
+
+        Ok(triggered_events.len() as u64)
     }
 
     pub fn epoll_ctl(
@@ -46,7 +99,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
         fd: FD,
         event: EVAddr, // epoll_event*
     ) -> SyscallResult {
-        let mut file_descriptor_map = self.system.fd_map.borrow_mut();
+        let mut fd_map = self.system.fd_map.borrow_mut();
         let mut memory = self.system.memory.borrow_mut();
         let memory = memory.accessor(mmu, self.task_id);
 
@@ -57,11 +110,11 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
         }
 
         // Check if fd is valid by fetching it
-        let mut file_descriptor = file_descriptor_map
+        let mut file_descriptor = fd_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADF)?;
         let file_descriptor = &mut *file_descriptor;
-        let mut epfd = file_descriptor_map
+        let mut epfd = fd_map
             .get_mut(&self.task_id, &epfd)
             .ok_or(LinuxKernelError::EBADF)?;
 
@@ -187,48 +240,12 @@ impl EpollData {
     }
 }
 
-#[derive(Debug, Decode, Encode, RequiredMem)]
+#[derive(Debug, Decode, Encode, RequiredMem, Copy, Clone)]
 #[repr(C)]
+#[allow(non_camel_case_types)]
 struct epoll_event {
     events: EPOLL_EVENTS,
     data: u64,
-}
-
-bitflags! {
-    #[derive(Debug, RequiredMem)]
-    #[repr(C)]
-    pub struct EPOLL_EVENTS: u32 {
-        const EPOLLIN = 0x001;
-        const EPOLLPRI = 0x002;
-        const EPOLLOUT = 0x004;
-        const EPOLLRDNORM = 0x040;
-        const EPOLLRDBAND = 0x080;
-        const EPOLLWRNORM = 0x100;
-        const EPOLLWRBAND = 0x200;
-        const EPOLLMSG = 0x400;
-        const EPOLLERR = 0x008;
-        const EPOLLHUP = 0x010;
-        const EPOLLRDHUP = 0x2000;
-        const EPOLLEXCLUSIVE = 1 << 28;
-        const EPOLLWAKEUP = 1 << 29;
-        const EPOLLONESHOT = 1 << 30;
-        const EPOLLET = 1 << 31;
-    }
-}
-
-impl Decode for EPOLL_EVENTS {
-    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
-        Self::from_bits(Endianness::read_u32(val)).ok_or(MemoryError::ConversionError)
-    }
-}
-
-impl Encode for EPOLL_EVENTS {
-    fn encode<Endianness: ByteOrder>(
-        &self,
-        buffer: &mut Vec<u8>,
-    ) {
-        self.bits().encode::<Endianness>(buffer)
-    }
 }
 
 #[allow(non_camel_case_types)]
@@ -249,6 +266,13 @@ impl EpollOps {
 }
 
 impl FileDescriptorOps for EpollOps {
+    fn poll(
+        &self,
+        fd: &mut FileDescriptorData,
+    ) -> Option<FileOperationsReady> {
+        todo!()
+    }
+
     fn supports_poll(
         &self,
         fd: &mut FileDescriptorData,

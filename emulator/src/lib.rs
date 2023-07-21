@@ -6,6 +6,7 @@
 #![feature(try_blocks)]
 #![feature(map_try_insert)]
 #![feature(iterator_try_collect)]
+#![feature(min_specialization)]
 #![allow(dead_code)]
 #![allow(unused)]
 #![allow(unused_variables)]
