@@ -1,5 +1,6 @@
 use crate::emulator::abstractions::cpu::CPUError;
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
+use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
 use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 use crate::emulator::system::filesystem::FSError;
@@ -334,6 +335,20 @@ impl From<GenericError> for LinuxKernelError {
             GenericErrorKind::MemoryError(e) => (*e).into(),
             GenericErrorKind::Unknown => LinuxKernelError::EINVAL,
             GenericErrorKind::NotImplemented => LinuxKernelError::EINVAL,
+        }
+    }
+}
+
+impl From<FileDescriptorError> for LinuxKernelError {
+    fn from(value: FileDescriptorError) -> Self {
+        match value {
+            FileDescriptorError::FileNotFound => LinuxKernelError::ENOENT,
+            FileDescriptorError::NotSupported => LinuxKernelError::EOPNOTSUPP,
+            FileDescriptorError::NotASocket => LinuxKernelError::ENOTSOCK,
+            FileDescriptorError::OperationFailed => LinuxKernelError::EINVAL,
+            FileDescriptorError::Unknown => LinuxKernelError::EINVAL,
+            FileDescriptorError::MemoryError(e) => e.into(),
+            FileDescriptorError::FSError(e) => e.into(),
         }
     }
 }

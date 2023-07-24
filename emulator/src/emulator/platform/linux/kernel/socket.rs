@@ -4,13 +4,14 @@ use byteorder::ByteOrder;
 
 use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 
-use crate::emulator::abstractions::cpu::address::EVAddr;
+use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
 use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::mmu::encoding::{Decode, RequiredMem};
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::fd::{FileDescriptorData, FD};
+use crate::emulator::platform::linux::fd::FD;
+use crate::emulator::platform::linux::kernel::net::inet6::tcp::listener::TcpListenerOps;
 use crate::emulator::platform::linux::kernel::net::unix::UnixSocketOps;
 use crate::emulator::platform::linux::kernel::net::{inet6, netlink, Sockaddr, SocketDomain, SocketFlags, SocketType};
 use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask, SyscallResult};
@@ -30,13 +31,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let typ = SocketType::try_from(typ)?;
         debug!("Creating socket ({:?} {:?})", family, typ);
         use SocketDomain::*;
-        let socket_ops: Box<dyn FileDescriptorOps<FileDescriptorData>> = match family {
+        let fd = match family {
             AF_NETLINK => netlink::from_protocol::<Endianness>(protocol)?,
-            AF_UNIX => Box::new(UnixSocketOps::new()),
+            AF_UNIX => FileDescriptor::new(Box::new(UnixSocketOps::new())),
             AF_INET6 => inet6::from_type(typ)?,
             _ => todo!(),
         };
-        let fd = FileDescriptor::new(socket_ops);
         Ok(self
             .system
             .fd_map
@@ -47,28 +47,55 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
 
     pub fn connect(
         &mut self,
-        _: &mut impl CPU,
+        mmu: &mut impl MMU,
         fd: FD,
         uservaddr: EVAddr,
         addrlen: u64,
     ) -> SyscallResult {
+        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = memory.accessor(mmu, self.task_id);
+
         let mut file_descriptor_map = self.system.fd_map.borrow_mut();
         let mut fd = file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADFD)?;
         let fd = &mut *fd;
-        fd.ops.connect(&mut fd.data)?;
+
+        let sockaddr: Sockaddr = memory.read_bounded(uservaddr, addrlen as usize)?;
+
+        fd.ops.connect(&mut fd.data, sockaddr)?;
         Ok(0)
     }
 
     pub fn accept(
         &mut self,
-        _: &mut impl CPU,
-        fd: u64,
+        mmu: &mut impl MMU,
+        fd: FD,
         upeer_sockaddr: EVAddr, // sockaddr*
         upeer_addrlen: EVAddr,  // int*
     ) -> SyscallResult {
-        todo!()
+        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = memory.accessor(mmu, self.task_id);
+
+        let mut fd_map = self.system.fd_map.borrow_mut();
+
+        let new_fd = {
+            let mut fd = fd_map
+                .get_mut(&self.task_id, &fd)
+                .ok_or(LinuxKernelError::EBADF)?;
+            let fd = &mut *fd;
+
+            let (new_fd, peer) = fd.ops.accept(&mut fd.data)?;
+
+            let addrlen: i32 = memory.read(upeer_addrlen)?;
+            if addrlen > 0 && upeer_sockaddr != EVA_NULL {
+                let (_, total) = memory.write_bounded(upeer_sockaddr, peer, addrlen as usize)?;
+                memory.write(upeer_addrlen, total as i32);
+            }
+            new_fd
+        };
+
+        Ok(fd_map.insert(&self.task_id, new_fd)?.into())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -99,7 +126,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     pub fn recvfrom(
         &mut self,
         _: &mut impl CPU,
-        fd: u64,
+        fd: FD,
         ubuf: EVAddr,     // void*
         size: u64,        // size_t
         flags: u64,       // unsigned int
@@ -112,7 +139,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     pub fn sendmsg(
         &mut self,
         _: &mut impl CPU,
-        fd: u64,
+        fd: FD,
         msg: EVAddr, // msghdr*
         flags: u64,  // unsigned int
     ) -> SyscallResult {
@@ -156,7 +183,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     pub fn shutdown(
         &mut self,
         _: &mut impl CPU,
-        fd: u64,
+        fd: FD,
         how: u64,
     ) -> SyscallResult {
         todo!()
@@ -189,11 +216,22 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     pub fn listen(
         &mut self,
         _: &mut impl CPU,
-        fd: u64,
+        fd: FD,
         backlog: u64,
     ) -> SyscallResult {
-        error!("TODO: Listen only has a dummy implementation for now!");
-        Ok(0)
+        let mut fd_map = self.system.fd_map.borrow_mut();
+        let mut fd = fd_map
+            .get_mut(&self.task_id, &fd)
+            .ok_or(LinuxKernelError::EBADF)?;
+
+        // TODO: Other socket types may also need handling here.
+        if fd.data.tcp.is_some() {
+            // TODO: Check if already listener
+            fd.ops = Box::new(TcpListenerOps::new());
+            Ok(0)
+        } else {
+            Err(LinuxKernelError::ENOTSOCK)
+        }
     }
 
     pub fn getsockname(
@@ -220,7 +258,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     pub fn getpeername(
         &mut self,
         _: &mut impl CPU,
-        fd: u64,
+        fd: FD,
         usockaddr: EVAddr,     // sockaddr*
         usockaddr_len: EVAddr, // int*
     ) -> SyscallResult {
@@ -263,7 +301,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     pub fn getsockopt(
         &mut self,
         _: &mut impl CPU,
-        fd: u64,
+        fd: FD,
         level: u64,
         optname: u64,
         optval: EVAddr, // char*
@@ -275,7 +313,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     pub fn accept4(
         &mut self,
         _: &mut impl CPU,
-        fd: u64,
+        fd: FD,
         upeer_sockaddr: EVAddr, // sockaddr*
         upeer_addrlen: EVAddr,  // int*
         flags: u64,
@@ -286,7 +324,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     pub fn recvmmsg(
         &mut self,
         _: &mut impl CPU,
-        fd: u64,
+        fd: FD,
         mmsg: EVAddr,    // mmsghdr*
         vlen: u64,       // unsigned int
         flags: u64,      // unsigned int
@@ -298,7 +336,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     pub fn sendmmsg(
         &mut self,
         _: &mut impl CPU,
-        fd: u64,
+        fd: FD,
         mmsg: EVAddr, // mmsghdr*
         vlen: u64,    // unsigned int
         flags: u64,   // unsigned int

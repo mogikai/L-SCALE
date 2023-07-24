@@ -9,7 +9,7 @@ use num_enum::{FromPrimitive, IntoPrimitive};
 use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
-use crate::emulator::abstractions::file_descriptors::{FileDescriptorOps, FileOperationsReady};
+use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, Encoder, RequiredMem};
 use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
@@ -19,6 +19,7 @@ use crate::emulator::platform::linux::kernel::net::netlink::rtnetlink::nla_type:
 use crate::emulator::platform::linux::kernel::net::netlink::{nlmsghdr, NetlinkMessageFlags};
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::platform::linux::kernel::net::SocketDomain::{AF_INET, AF_INET6};
+use crate::emulator::system::fd_map::FileDescriptor;
 
 #[derive(Debug, Default)]
 pub struct RTNetlinkSocket<Endianness: ByteOrder> {
@@ -56,7 +57,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for RTNetlinkS
         &mut self,
         fd: &mut FileDescriptorData,
         sockaddr: Sockaddr,
-    ) -> Result<(), GenericError> {
+    ) -> Result<(), FileDescriptorError> {
         // TODO: What needs to be done here?
         self.sockaddr = Some(sockaddr);
         Ok(())
@@ -65,10 +66,10 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for RTNetlinkS
     fn getsockname(
         &self,
         fd: &mut FileDescriptorData,
-    ) -> Result<&Sockaddr, GenericError> {
+    ) -> Result<&Sockaddr, FileDescriptorError> {
         match &self.sockaddr {
             Some(s) => Ok(s),
-            None => Err(GenericError::new(GenericErrorKind::Unknown, "")),
+            None => Err(FileDescriptorError::Unknown),
         }
     }
 
@@ -76,7 +77,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for RTNetlinkS
         &mut self,
         fd: &mut FileDescriptorData,
         data: &[u8],
-    ) -> Result<usize, GenericError> {
+    ) -> Result<usize, FileDescriptorError> {
         let hdr = nlmsghdr::decode::<Endianness>(&data[..nlmsghdr::required_mem()])?;
         let payload = &data[nlmsghdr::required_mem()..];
         match hdr.nlmsg_type {
@@ -91,9 +92,9 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for RTNetlinkS
 
         let Sockaddr::NL { nl_pid, .. } = &self
             .sockaddr
-            .ok_or_else(|| GenericError::new(GenericErrorKind::Unknown, ""))?
+            .ok_or_else(|| FileDescriptorError::Unknown)?
         else {
-            Err(GenericError::new(GenericErrorKind::Unknown, "TODO: Replace with socket error"))?
+            Err(FileDescriptorError::Unknown)?
         };
 
         // Loopback
@@ -315,13 +316,17 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for RTNetlinkS
         &mut self,
         fd: &mut FileDescriptorData,
         len: usize,
-    ) -> Result<Vec<u8>, GenericError> {
+    ) -> Result<Vec<u8>, FileDescriptorError> {
         // TODO: EAGAIN?
 
         let msg = self.messages.pop_back().unwrap_or_default();
         // debug!("{:02x?} len {:?}", &msg, msg.len());
         Ok(msg)
         // self.messages.pop_back().ok_or_else(|| GenericError::new(GenericErrorKind::Unknown, ""))
+    }
+
+    fn accept(&mut self, fd: &mut FileDescriptorData) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
+        todo!()
     }
 }
 

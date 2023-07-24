@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::convert::Infallible;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -22,34 +23,57 @@ use crate::emulator::platform::linux::LinuxSystem;
 
 macro_rules! do_syscall {
     (0, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
-        $debug_str = format!("() ");
-        $name.$fun($uc)
+        *$debug_str = format!("() ");
+        $name.$fun($uc).map_err(|e| SyscallError::KernelError(e))
     }};
     (1, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
-        $debug_str = format!("(0x{:X}) ", rdi);
-        $name.$fun($uc, rdi.into())
+        *$debug_str = format!("(0x{:X}) ", rdi);
+        $name
+            .$fun($uc, rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?)
+            .map_err(|e| SyscallError::KernelError(e))
     }};
     (2, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
         let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
-        $debug_str = format!("(0x{:X}, 0x{:X}) ", rdi, rsi);
-        $name.$fun($uc, rdi.into(), rsi.into())
+        *$debug_str = format!("(0x{:X}, 0x{:X}) ", rdi, rsi);
+        $name
+            .$fun(
+                $uc,
+                rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+                rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            )
+            .map_err(|e| SyscallError::KernelError(e))
     }};
     (3, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
         let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
         let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
-        $debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx);
-        $name.$fun($uc, rdi.into(), rsi.into(), rdx.into())
+        *$debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx);
+        $name
+            .$fun(
+                $uc,
+                rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+                rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+                rdx.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            )
+            .map_err(|e| SyscallError::KernelError(e))
     }};
     (4, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
         let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
         let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
         let r10 = $uc.reg_read(RegisterX86::R10.into()).unwrap();
-        $debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10);
-        $name.$fun($uc, rdi.into(), rsi.into(), rdx.into(), r10.into())
+        *$debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10);
+        $name
+            .$fun(
+                $uc,
+                rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+                rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+                rdx.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+                r10.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            )
+            .map_err(|e| SyscallError::KernelError(e))
     }};
     (5, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
@@ -57,8 +81,17 @@ macro_rules! do_syscall {
         let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
         let r10 = $uc.reg_read(RegisterX86::R10.into()).unwrap();
         let r8 = $uc.reg_read(RegisterX86::R8.into()).unwrap();
-        $debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10, r8);
-        $name.$fun($uc, rdi.into(), rsi.into(), rdx.into(), r10.into(), r8.into())
+        *$debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10, r8);
+        $name
+            .$fun(
+                $uc,
+                rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+                rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+                rdx.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+                r10.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+                r8.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            )
+            .map_err(|e| SyscallError::KernelError(e))
     }};
     (6, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
@@ -67,8 +100,18 @@ macro_rules! do_syscall {
         let r10 = $uc.reg_read(RegisterX86::R10.into()).unwrap();
         let r8 = $uc.reg_read(RegisterX86::R8.into()).unwrap();
         let r9 = $uc.reg_read(RegisterX86::R9.into()).unwrap();
-        $debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10, r8, r9);
-        $name.$fun($uc, rdi.into(), rsi.into(), rdx.into(), r10.into(), r8.into(), r9.into())
+        *$debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10, r8, r9);
+        $name
+            .$fun(
+                $uc,
+                rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+                rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+                rdx.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+                r10.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+                r8.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+                r9.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            )
+            .map_err(|e| SyscallError::KernelError(e))
     }};
 }
 
@@ -164,16 +207,31 @@ where
     }
 }
 
-fn syscall<Endianness: ByteOrder + 'static>(
+enum SyscallError {
+    KernelError(LinuxKernelError),
+    NotImplemented,
+}
+
+impl From<LinuxKernelError> for SyscallError {
+    fn from(value: LinuxKernelError) -> Self {
+        SyscallError::KernelError(value)
+    }
+}
+
+impl From<Infallible> for SyscallError {
+    fn from(value: Infallible) -> Self {
+        unimplemented!()
+    }
+}
+
+fn do_syscall<Endianness: ByteOrder + 'static>(
+    syscall: SYSCALL,
     cpu: &mut (impl CPU + MMU),
+    debug_str: &mut String,
     kernel: &mut LinuxKernelTask<Endianness, X86>,
-) {
-    let rax = cpu.reg_read(RegisterX86::RAX.into()).unwrap();
-    let mut debug_str = String::new();
-    let syscall = SYSCALL::from(rax);
-    let mut unknown_syscall = false;
+) -> Result<u64, SyscallError> {
     use SYSCALL::*;
-    let result = match SYSCALL::from(rax) {
+    match syscall {
         READ => do_syscall!(3, cpu, kernel::read, debug_str),
         WRITE => do_syscall!(3, cpu, kernel::write, debug_str),
         CLOSE => do_syscall!(1, cpu, kernel::close, debug_str),
@@ -233,28 +291,35 @@ fn syscall<Endianness: ByteOrder + 'static>(
         PRLIMIT64 => do_syscall!(4, cpu, kernel::prlimit64, debug_str),
         GETRANDOM => do_syscall!(3, cpu, kernel::getrandom, debug_str),
         RSEQ => do_syscall!(4, cpu, kernel::rseq, debug_str),
-        _ => {
-            debug_str = format!("(rax: {})", rax);
-            unknown_syscall = true;
-            Err(LinuxKernelError::EINVAL)
-        }
-    };
+        _ => Err(SyscallError::NotImplemented),
+    }
+}
+
+fn syscall<Endianness: ByteOrder + 'static>(
+    cpu: &mut (impl CPU + MMU),
+    kernel: &mut LinuxKernelTask<Endianness, X86>,
+) {
+    let rax = cpu.reg_read(RegisterX86::RAX.into()).unwrap();
+    let mut debug_str = String::new();
+    let syscall = SYSCALL::from(rax);
+    let mut unknown_syscall = false;
+    let result = do_syscall(SYSCALL::from(rax), cpu, &mut debug_str, kernel);
     let rax = match result {
         Ok(rax) => {
             debug_str = format!("SYSCALL: {:?} {} -> 0x{:X}", syscall, debug_str, rax);
             rax
         }
-        Err(e) => {
+        Err(SyscallError::KernelError(e)) => {
             debug_str = format!("SYSCALL: {:?} {} -> 0x{:X} ({})", syscall, debug_str, u64::from(e), e.describe());
+            debug!("{debug_str}");
             e.into()
         }
+        Err(e) => {
+            error!("SYSCALL NOT IMPLEMENTED: {}", debug_str);
+            cpu.stop(StopReason::MissingSyscall).unwrap();
+            rax
+        }
     };
-    if unknown_syscall {
-        error!("SYSCALL NOT IMPLEMENTED: {}", debug_str);
-        cpu.stop(StopReason::MissingSyscall).unwrap();
-    } else {
-        debug!("{debug_str}");
-    }
     cpu.reg_write(RegisterX86::RAX.into(), rax).unwrap();
 }
 

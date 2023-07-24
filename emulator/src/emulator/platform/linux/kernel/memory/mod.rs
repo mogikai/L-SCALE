@@ -1,8 +1,9 @@
 use bitflags::Flags;
 use byteorder::ByteOrder;
+use enumset::__internal::EnumSetTypeRepr;
 
 use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
-use crate::emulator::abstractions::mmu::{MemoryError, MMU, MREMAP_FLAGS};
+use crate::emulator::abstractions::mmu::{MemoryError, MMU, MREMAP_FLAGS, Permission};
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::FD;
 use crate::emulator::platform::linux::kernel::memory::flags::MMAP_FLAGS;
@@ -24,7 +25,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         cpu: &mut impl MMU,
         addr: EVAddr,
         length: u64,
-        prot: u64,
+        prot: Permission,
         flags: u64,
         fd: FD,
         offset: u64,
@@ -136,7 +137,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         mmu: &mut impl MMU,
         addr: EVAddr,
         length: u64,
-        prot: u64,
+        prot: Permission,
         flags: MMAP_FLAGS,
         fd: FD,
         offset: u64,
@@ -153,7 +154,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         mmu: &mut impl MMU,
         address: EVAddr,
         size: u64,
-        prot: u64,
+        prot: Permission,
         flags: MMAP_FLAGS,
         mapping_type: MappingType,
     ) -> Result<EVAddr, LinuxKernelError> {
@@ -170,13 +171,13 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             self.system
                 .memory
                 .borrow_mut()
-                .map_fixed(self.task_id, address, size, prot.try_into()?, mapping_type)
+                .map_fixed(self.task_id, address, size, prot, mapping_type)
                 .map_err(LinuxKernelError::from)?
         } else {
             self.system
                 .memory
                 .borrow_mut()
-                .mmap(self.task_id, address, size, prot.try_into()?, mapping_type)
+                .mmap(self.task_id, address, size, prot, mapping_type)
                 .map_err(LinuxKernelError::from)?
         };
 
@@ -195,7 +196,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         mmu: &mut impl MMU,
         addr: EVAddr,
         length: u64,
-        prot: u64,
+        prot: Permission,
         flags: MMAP_FLAGS,
         fd: FD,
         offset: u64,
@@ -204,7 +205,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             Err(LinuxKernelError::EINVAL)?
         }
 
-        let addr = self.mmap_anon(mmu, addr, length, prot, flags, MappingType::PrivateAnonymous)?;
+        let addr = self.mmap_anon(mmu, addr, length, Permission::ALL, flags, MappingType::PrivateAnonymous)?;
         if addr == !EVA_NULL {
             Err(LinuxKernelError::EINVAL)?
         }
@@ -220,6 +221,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
                     .err()
                     .unwrap_or(e)
             })?;
+        self.mprotect(mmu, addr, length, prot.bits().to_u64());
         Ok(addr)
     }
 

@@ -3,6 +3,28 @@ use byteorder::ByteOrder;
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
 use crate::emulator::abstractions::mmu::MemoryError;
 
+impl RequiredMem for i32 {}
+
+impl Encode for i32 {
+    fn encode<Endianness: ByteOrder>(
+        &self,
+        buffer: &mut Vec<u8>,
+    ) {
+        let start = buffer.len();
+        buffer.resize(start + Self::required_mem(), 0);
+        Endianness::write_i32(&mut buffer[start..], *self);
+    }
+}
+
+impl Decode for i32 {
+    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
+        if val.len() != Self::required_mem() {
+            Err(MemoryError::InvalidSize)?
+        }
+        Ok(Endianness::read_i32(val))
+    }
+}
+
 impl RequiredMem for i64 {}
 
 impl Encode for i64 {

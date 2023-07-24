@@ -2,7 +2,7 @@ use std::ops::Add;
 
 use crate::emulator::platform::linux::kernel::eventpoll::EpollData;
 use crate::emulator::platform::linux::kernel::fs::FileData;
-use crate::emulator::platform::linux::kernel::net::inet6::tcp::TcpSock;
+use crate::emulator::platform::linux::kernel::net::inet6::tcp::TCPData;
 use crate::emulator::platform::linux::kernel::net::unix::UnixSocketData;
 use crate::emulator::platform::linux::signalfd::SignalFD;
 use crate::emulator::system::fd_map::FdId;
@@ -12,7 +12,7 @@ use crate::emulator::system::fd_map::FdId;
 pub struct FileDescriptorData {
     pub file: Option<FileData>,
     pub signals: Option<SignalFD>,
-    pub socket: Option<TcpSock>,
+    pub tcp: Option<TCPData>,
     pub epoll: Option<EpollData>,
     pub usock: Option<UnixSocketData>,
 }

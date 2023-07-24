@@ -2,10 +2,13 @@ use std::cell::Ref;
 use std::fmt::Debug;
 
 use bitflags::bitflags;
+use derive_more::Display;
 
 use crate::emulator::abstractions::errors::GenericError;
+use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
-use crate::emulator::system::filesystem::Stat;
+use crate::emulator::system::fd_map::FileDescriptor;
+use crate::emulator::system::filesystem::{FSError, Stat};
 
 /// The HandleOps trait contains all the functions necessary
 /// for a handle (file descriptor in linux) to function.
@@ -14,7 +17,7 @@ use crate::emulator::system::filesystem::Stat;
 ///
 /// The actual handle data is contained in the TODO struct
 ///
-pub trait FileDescriptorOps<D>: Debug {
+pub trait FileDescriptorOps<D: Default>: Debug {
     /// Can be called to query what operations can be called without blocking on the handle.
     fn poll(
         &self,
@@ -31,7 +34,7 @@ pub trait FileDescriptorOps<D>: Debug {
     fn stat(
         &self,
         fd: &mut D,
-    ) -> Result<Ref<Stat>, GenericError> {
+    ) -> Result<Ref<Stat>, FileDescriptorError> {
         todo!()
     }
 
@@ -43,7 +46,7 @@ pub trait FileDescriptorOps<D>: Debug {
         &mut self,
         fd: &mut D,
         count: u64,
-    ) -> Result<Vec<u8>, GenericError> {
+    ) -> Result<Vec<u8>, FileDescriptorError> {
         todo!()
     }
 
@@ -57,7 +60,7 @@ pub trait FileDescriptorOps<D>: Debug {
         fd: &mut D,
         offset: u64,
         length: u64,
-    ) -> Result<Vec<u8>, GenericError> {
+    ) -> Result<Vec<u8>, FileDescriptorError> {
         todo!()
     }
 
@@ -65,7 +68,7 @@ pub trait FileDescriptorOps<D>: Debug {
         &mut self,
         fd: &mut D,
         data: &[u8],
-    ) -> Result<usize, GenericError> {
+    ) -> Result<usize, FileDescriptorError> {
         todo!()
     }
 
@@ -73,14 +76,14 @@ pub trait FileDescriptorOps<D>: Debug {
         &mut self,
         fd: &mut D,
         sockaddr: Sockaddr,
-    ) -> Result<(), GenericError> {
+    ) -> Result<(), FileDescriptorError> {
         todo!()
     }
 
     fn getsockname(
         &self,
         fd: &mut D,
-    ) -> Result<&Sockaddr, GenericError> {
+    ) -> Result<&Sockaddr, FileDescriptorError> {
         todo!()
     }
 
@@ -88,7 +91,7 @@ pub trait FileDescriptorOps<D>: Debug {
         &mut self,
         fd: &mut D,
         data: &[u8],
-    ) -> Result<usize, GenericError> {
+    ) -> Result<usize, FileDescriptorError> {
         todo!()
     }
 
@@ -96,22 +99,51 @@ pub trait FileDescriptorOps<D>: Debug {
         &mut self,
         fd: &mut D,
         len: usize,
-    ) -> Result<Vec<u8>, GenericError> {
+    ) -> Result<Vec<u8>, FileDescriptorError> {
         todo!()
     }
 
     fn connect(
         &mut self,
         fd: &mut D,
-    ) -> Result<(), GenericError> {
+        sockaddr: Sockaddr,
+    ) -> Result<(), FileDescriptorError> {
         todo!()
     }
 
     fn setsockopt(
         &mut self,
         fd: &mut D,
-    ) -> Result<(), GenericError> {
+    ) -> Result<(), FileDescriptorError> {
         todo!()
+    }
+
+    fn accept(
+        &mut self,
+        fd: &mut D,
+    ) -> Result<(FileDescriptor<D>, Sockaddr), FileDescriptorError>;
+}
+
+#[derive(Debug)]
+pub enum FileDescriptorError {
+    MemoryError(MemoryError),
+    FSError(FSError),
+    NotSupported,
+    NotASocket,
+    OperationFailed,
+    Unknown,
+    FileNotFound,
+}
+
+impl From<FSError> for FileDescriptorError {
+    fn from(value: FSError) -> Self {
+        FileDescriptorError::FSError(value)
+    }
+}
+
+impl From<MemoryError> for FileDescriptorError {
+    fn from(value: MemoryError) -> Self {
+        FileDescriptorError::MemoryError(value)
     }
 }
 

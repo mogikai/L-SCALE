@@ -7,6 +7,9 @@ use crate::emulator::abstractions::mmu::encoding::{Decode, Encode};
 use crate::emulator::abstractions::mmu::{MemoryError, MMU};
 use crate::emulator::system::memory::accessor::MemoryAccessor;
 
+type Actual = usize;
+type Total = usize;
+
 pub trait DirectMemoryWrite<T, Endianness: ByteOrder> {
     fn write_direct(
         &mut self,
@@ -27,6 +30,16 @@ pub trait MemoryWrite<T: Encode, Endianness: ByteOrder> {
         address: EVAddr,
         data: T,
     ) -> Result<usize, MemoryError>;
+
+    /// Writes up to size bytes.
+    /// The result on success is a tuple containing the actually written bytes and the size
+    /// of the object that was attempted to write
+    fn write_bounded(
+        &mut self,
+        address: EVAddr,
+        data: T,
+        size: usize,
+    ) -> Result<(Actual, Total), MemoryError>;
 
     fn write_down(
         &mut self,
@@ -361,5 +374,13 @@ impl<Endianness: ByteOrder, MmuT: MMU, T: Encode> MemoryWrite<T, Endianness> for
         let mut buffer = Vec::with_capacity(data.encoded_size());
         data.encode::<Endianness>(&mut buffer);
         self.write_bytes(address, buffer.as_slice())
+    }
+
+    fn write_bounded(&mut self, address: EVAddr, data: T, size: usize) -> Result<(Actual, Total), MemoryError> {
+        let mut buffer = Vec::with_capacity(data.encoded_size());
+        data.encode::<Endianness>(&mut buffer);
+        let total = buffer.len();
+        buffer.truncate(size);
+        Ok((self.write_bytes(address, buffer.as_slice())?, total))
     }
 }

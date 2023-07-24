@@ -10,6 +10,7 @@ use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
 use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::netlink::rtnetlink::{RTNetlinkMessageType, RTNetlinkSocket};
+use crate::emulator::system::fd_map::FileDescriptor;
 
 pub mod rtnetlink;
 
@@ -18,10 +19,10 @@ pub mod rtnetlink;
 
 pub fn from_protocol<Endianness: ByteOrder + 'static>(
     protocol: u64
-) -> Result<Box<dyn FileDescriptorOps<FileDescriptorData>>, GenericError> {
+) -> Result<FileDescriptor<FileDescriptorData>, GenericError> {
     use NetlinkFamily::*;
     Ok(match NetlinkFamily::from(protocol) {
-        NETLINK_ROUTE => Box::new(RTNetlinkSocket::<Endianness>::new()),
+        NETLINK_ROUTE => FileDescriptor::new(Box::new(RTNetlinkSocket::<Endianness>::new())),
         _ => todo!(),
     })
 }

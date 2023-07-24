@@ -4,9 +4,11 @@ use std::rc::Rc;
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
-use crate::emulator::abstractions::file_descriptors::{FileDescriptorOps, FileOperationsReady};
+use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
 use crate::emulator::platform::linux::fd::FileDescriptorData;
+use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::platform::linux::LinuxSystem;
+use crate::emulator::system::fd_map::FileDescriptor;
 use crate::emulator::system::filesystem::Stat;
 
 #[derive(Debug, Clone)]
@@ -33,24 +35,23 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for FileOps<En
     fn stat(
         &self,
         fd: &mut FileDescriptorData,
-    ) -> Result<Ref<Stat>, GenericError> {
+    ) -> Result<Ref<Stat>, FileDescriptorError> {
         let fd = fd
             .file
             .as_mut()
-            .ok_or(GenericError::new(GenericErrorKind::Unknown, "not a fs backed file"))?;
-        Ref::filter_map(self.system.filesystem.borrow(), |fs| fs.stat(fd.fse_id).ok())
-            .or(Err(GenericError::new(GenericErrorKind::Unknown, "Could not stat the file")))
+            .ok_or(FileDescriptorError::NotSupported)?;
+        Ref::filter_map(self.system.filesystem.borrow(), |fs| fs.stat(fd.fse_id).ok()).or(Err(FileDescriptorError::OperationFailed))
     }
 
     fn read(
         &mut self,
         fd: &mut FileDescriptorData,
         count: u64,
-    ) -> Result<Vec<u8>, GenericError> {
+    ) -> Result<Vec<u8>, FileDescriptorError> {
         let fd = fd
             .file
             .as_mut()
-            .ok_or(GenericError::new(GenericErrorKind::Unknown, "not a fs backed file"))?;
+            .ok_or(FileDescriptorError::NotSupported)?;
         let result = self
             .system
             .filesystem
@@ -65,11 +66,11 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for FileOps<En
         fd: &mut FileDescriptorData,
         offset: u64,
         length: u64,
-    ) -> Result<Vec<u8>, GenericError> {
+    ) -> Result<Vec<u8>, FileDescriptorError> {
         let fd = fd
             .file
             .as_mut()
-            .ok_or(GenericError::new(GenericErrorKind::Unknown, "not a fs backed file"))?;
+            .ok_or(FileDescriptorError::NotSupported)?;
         Ok(self
             .system
             .filesystem
@@ -81,11 +82,11 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for FileOps<En
         &mut self,
         fd: &mut FileDescriptorData,
         data: &[u8],
-    ) -> Result<usize, GenericError> {
+    ) -> Result<usize, FileDescriptorError> {
         let fd = fd
             .file
             .as_mut()
-            .ok_or(GenericError::new(GenericErrorKind::Unknown, "not a fs backed file"))?;
+            .ok_or(FileDescriptorError::NotSupported)?;
         let written = self
             .system
             .filesystem
@@ -93,6 +94,10 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for FileOps<En
             .write(fd.fse_id, fd.pos, data)?;
         fd.pos += written;
         Ok(written)
+    }
+
+    fn accept(&mut self, fd: &mut FileDescriptorData) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
+        Err(FileDescriptorError::NotASocket)
     }
 }
 

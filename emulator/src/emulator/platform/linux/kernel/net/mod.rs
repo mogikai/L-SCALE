@@ -32,6 +32,9 @@ pub enum Sockaddr {
         sin6_scope_id: u32,
         /* IPv6 scope-id */
     },
+    UNIX {
+        path: [u8; 108],
+    },
 }
 
 impl Decode for Sockaddr {
@@ -54,8 +57,11 @@ impl Decode for Sockaddr {
                 sin6_addr: <[u8; 16]>::try_from(&val[8..24]).unwrap(),
                 sin6_scope_id: Endianness::read_u32(&val[24..28]),
             },
+            AF_UNIX => Sockaddr::UNIX {
+                path: <[u8; 108]>::try_from(&val[2..110]).map_err(|_| MemoryError::ConversionError)?,
+            },
             _ => {
-                error!("Sockaddr not implemented for type {:?}", family);
+                todo!("Sockaddr not implemented for type {:?}", family);
                 Err(MemoryError::ConversionError)?
             }
         })

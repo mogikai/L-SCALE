@@ -1,23 +1,24 @@
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::file_descriptors::{FileDescriptorOps, FileOperationsReady};
+use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
+use crate::emulator::system::fd_map::FileDescriptor;
 
 #[derive(Debug, Default)]
-pub struct TcpSock {}
+pub struct TcpSocketOps {}
 
-impl TcpSock {
+impl TcpSocketOps {
     pub fn new() -> Self {
         Self {}
     }
 }
 
-impl FileDescriptorOps<FileDescriptorData> for TcpSock {
+impl FileDescriptorOps<FileDescriptorData> for TcpSocketOps {
     fn poll(
         &self,
         fd: &mut FileDescriptorData,
     ) -> Option<FileOperationsReady> {
-        todo!();
+        // todo!();
         Some(FileOperationsReady::Read)
     }
 
@@ -32,14 +33,18 @@ impl FileDescriptorOps<FileDescriptorData> for TcpSock {
         &mut self,
         fd: &mut FileDescriptorData,
         sockaddr: Sockaddr,
-    ) -> Result<(), GenericError> {
+    ) -> Result<(), FileDescriptorError> {
         Ok(())
     }
 
     fn setsockopt(
         &mut self,
         fd: &mut FileDescriptorData,
-    ) -> Result<(), GenericError> {
+    ) -> Result<(), FileDescriptorError> {
         Ok(())
+    }
+
+    fn accept(&mut self, fd: &mut FileDescriptorData) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
+        Err(FileDescriptorError::NotSupported)
     }
 }

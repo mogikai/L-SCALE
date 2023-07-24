@@ -210,10 +210,10 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             todo!()
         }
 
-        self.map_fixed(task_id, start, size, perms, MappingType::PrivateAnonymous)?;
+        self.map_fixed(task_id, start, size, Permission::ALL, MappingType::PrivateAnonymous)?;
         self.accessor(mmu, task_id)
             .write_direct(vm_range.start, data)?;
-        Ok(())
+        self.protect(task_id, start, size, perms)
     }
 
     pub(crate) fn mmap(

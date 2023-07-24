@@ -1,9 +1,10 @@
 use std::cell::{Ref, RefCell};
 use std::cmp::min;
 
-use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::file_descriptors::{FileDescriptorOps, FileOperationsReady};
+use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
 use crate::emulator::platform::linux::fd::FileDescriptorData;
+use crate::emulator::platform::linux::kernel::net::Sockaddr;
+use crate::emulator::system::fd_map::FileDescriptor;
 use crate::emulator::system::filesystem::Stat;
 
 #[derive(Debug)]
@@ -38,7 +39,7 @@ impl FileDescriptorOps<FileDescriptorData> for WriteOnly {
     fn stat(
         &self,
         fd: &mut FileDescriptorData,
-    ) -> Result<Ref<Stat>, GenericError> {
+    ) -> Result<Ref<Stat>, FileDescriptorError> {
         Ok(self.stat.borrow())
     }
 
@@ -46,7 +47,7 @@ impl FileDescriptorOps<FileDescriptorData> for WriteOnly {
         &mut self,
         fd: &mut FileDescriptorData,
         count: u64,
-    ) -> Result<Vec<u8>, GenericError> {
+    ) -> Result<Vec<u8>, FileDescriptorError> {
         todo!()
     }
 
@@ -55,7 +56,7 @@ impl FileDescriptorOps<FileDescriptorData> for WriteOnly {
         fd: &mut FileDescriptorData,
         offset: u64,
         length: u64,
-    ) -> Result<Vec<u8>, GenericError> {
+    ) -> Result<Vec<u8>, FileDescriptorError> {
         todo!()
     }
 
@@ -63,9 +64,16 @@ impl FileDescriptorOps<FileDescriptorData> for WriteOnly {
         &mut self,
         fd: &mut FileDescriptorData,
         data: &[u8],
-    ) -> Result<usize, GenericError> {
+    ) -> Result<usize, FileDescriptorError> {
         print!("{:}", String::from_utf8_lossy(data));
         Ok(data.len())
+    }
+
+    fn accept(
+        &mut self,
+        fd: &mut FileDescriptorData,
+    ) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
+        Err(FileDescriptorError::NotSupported)
     }
 }
 
@@ -112,7 +120,7 @@ impl FileDescriptorOps<FileDescriptorData> for ReadOnly {
     fn stat(
         &self,
         fd: &mut FileDescriptorData,
-    ) -> Result<Ref<Stat>, GenericError> {
+    ) -> Result<Ref<Stat>, FileDescriptorError> {
         Ok(self.stat.borrow())
     }
 
@@ -120,7 +128,7 @@ impl FileDescriptorOps<FileDescriptorData> for ReadOnly {
         &mut self,
         fd: &mut FileDescriptorData,
         count: u64,
-    ) -> Result<Vec<u8>, GenericError> {
+    ) -> Result<Vec<u8>, FileDescriptorError> {
         let upper = min(self.pos + count as usize, self.data.len());
         let result = self.data[self.pos..upper].to_vec();
         self.pos += result.len();
@@ -132,7 +140,7 @@ impl FileDescriptorOps<FileDescriptorData> for ReadOnly {
         fd: &mut FileDescriptorData,
         offset: u64,
         length: u64,
-    ) -> Result<Vec<u8>, GenericError> {
+    ) -> Result<Vec<u8>, FileDescriptorError> {
         todo!()
     }
 
@@ -140,7 +148,11 @@ impl FileDescriptorOps<FileDescriptorData> for ReadOnly {
         &mut self,
         fd: &mut FileDescriptorData,
         data: &[u8],
-    ) -> Result<usize, GenericError> {
+    ) -> Result<usize, FileDescriptorError> {
         todo!()
+    }
+
+    fn accept(&mut self, fd: &mut FileDescriptorData) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
+        Err(FileDescriptorError::NotSupported)
     }
 }

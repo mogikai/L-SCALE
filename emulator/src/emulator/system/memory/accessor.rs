@@ -1,7 +1,8 @@
+use bitflags::Flags;
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
-use crate::emulator::abstractions::mmu::{MemoryError, MMU};
+use crate::emulator::abstractions::mmu::{MemoryError, MMU, Permission};
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 use crate::emulator::system::memory::Memory;
@@ -49,6 +50,9 @@ impl<Endianness: ByteOrder, MmuT: MMU> MemoryAccessor<'_, Endianness, MmuT> {
 
         let mut already_written = 0;
         for entry in tlb_entries {
+            if !entry.permissions.contains(Permission::WRITE) {
+                Err(MemoryError::InvalidPermission)?
+            }
             self.mmu
                 .mem_write_bytes(entry.physical_address, &bytes[already_written..already_written + entry.size])
                 .map_err(|_| MemoryError::IncompleteWrite(already_written))?;
