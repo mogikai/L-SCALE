@@ -188,7 +188,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             Err(MemoryError::Unknown)?
         }
 
-        let size: usize = helpers::align4k_up(new_heap_end - layout.heap_base);
+        let size: usize = helpers::align4k_up(new_heap_end - layout.heap_end());
         if size != 0 {
             layout.increase_heap(size)?;
         }

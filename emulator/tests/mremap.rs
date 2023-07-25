@@ -11,6 +11,7 @@ use fuzzyemu::emulator::platform::linux::architecture::x86::X86;
 use fuzzyemu::emulator::platform::linux::emulator::LinuxX86Scheduler;
 use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
 use fuzzyemu::emulator::system::clock::Clock;
+use fuzzyemu::emulator::system::fd_map::FileDescriptorMap;
 use fuzzyemu::emulator::system::filesystem::Filesystem;
 use fuzzyemu::emulator::system::hardware::unicorn::UCWrapper;
 use fuzzyemu::emulator::system::memory::Memory;
@@ -25,7 +26,8 @@ fn remap_private_anon() -> Result<(), GenericError> {
     let filesystem = Filesystem::from_disk(1_073_741_824, Path::new("systems/ubuntu2204")).unwrap();
     let memory = Memory::new();
     let clock = Clock::new(Duration::from_nanos(1662647309301240322));
-    let system = Rc::new(System::new(memory, filesystem, clock));
+    let fd_map = FileDescriptorMap::new();
+    let system = Rc::new(System::new(memory, filesystem, clock, fd_map));
 
     let vtlb_system = system.clone();
     cpu.borrow_mut()

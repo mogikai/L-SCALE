@@ -90,7 +90,7 @@ fn main() -> Result<(), GenericError> {
             system.clone(),
             initial_task,
             cpu.clone(),
-            PathBuf::from("/home/user/open62541_server"),
+            PathBuf::from("/home/user/open62541_server_release"),
             &args,
             &env,
         )
