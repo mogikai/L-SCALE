@@ -91,9 +91,8 @@ pub trait FileDescriptorOps<D: Default>: Debug {
         &mut self,
         fd: &mut D,
         data: &[u8],
-    ) -> Result<usize, FileDescriptorError> {
-        todo!()
-    }
+        target: &Option<Sockaddr>,
+    ) -> Result<usize, FileDescriptorError>;
 
     fn recvmsg(
         &mut self,
@@ -102,6 +101,12 @@ pub trait FileDescriptorOps<D: Default>: Debug {
     ) -> Result<Vec<u8>, FileDescriptorError> {
         todo!()
     }
+
+    fn recvfrom(
+        &self,
+        fd: &mut D,
+        len: usize,
+    ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError>;
 
     fn connect(
         &mut self,

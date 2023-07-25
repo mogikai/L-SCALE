@@ -77,6 +77,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for RTNetlinkS
         &mut self,
         fd: &mut FileDescriptorData,
         data: &[u8],
+        target: &Option<Sockaddr>,
     ) -> Result<usize, FileDescriptorError> {
         let hdr = nlmsghdr::decode::<Endianness>(&data[..nlmsghdr::required_mem()])?;
         let payload = &data[nlmsghdr::required_mem()..];
@@ -90,10 +91,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for RTNetlinkS
         debug!("payload: {:?}", payload);
         debug!("type: {:?}", hdr.nlmsg_type);
 
-        let Sockaddr::NL { nl_pid, .. } = &self
-            .sockaddr
-            .ok_or_else(|| FileDescriptorError::Unknown)?
-        else {
+        let Sockaddr::NL { nl_pid, .. } = &self.sockaddr.ok_or_else(|| FileDescriptorError::Unknown)? else {
             Err(FileDescriptorError::Unknown)?
         };
 
@@ -325,7 +323,18 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for RTNetlinkS
         // self.messages.pop_back().ok_or_else(|| GenericError::new(GenericErrorKind::Unknown, ""))
     }
 
-    fn accept(&mut self, fd: &mut FileDescriptorData) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
+    fn recvfrom(
+        &self,
+        fd: &mut FileDescriptorData,
+        len: usize,
+    ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError> {
+        todo!()
+    }
+
+    fn accept(
+        &mut self,
+        fd: &mut FileDescriptorData,
+    ) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
         todo!()
     }
 }

@@ -376,7 +376,12 @@ impl<Endianness: ByteOrder, MmuT: MMU, T: Encode> MemoryWrite<T, Endianness> for
         self.write_bytes(address, buffer.as_slice())
     }
 
-    fn write_bounded(&mut self, address: EVAddr, data: T, size: usize) -> Result<(Actual, Total), MemoryError> {
+    fn write_bounded(
+        &mut self,
+        address: EVAddr,
+        data: T,
+        size: usize,
+    ) -> Result<(Actual, Total), MemoryError> {
         let mut buffer = Vec::with_capacity(data.encoded_size());
         data.encode::<Endianness>(&mut buffer);
         let total = buffer.len();

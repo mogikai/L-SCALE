@@ -36,11 +36,9 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for FileOps<En
         &self,
         fd: &mut FileDescriptorData,
     ) -> Result<Ref<Stat>, FileDescriptorError> {
-        let fd = fd
-            .file
-            .as_mut()
-            .ok_or(FileDescriptorError::NotSupported)?;
-        Ref::filter_map(self.system.filesystem.borrow(), |fs| fs.stat(fd.fse_id).ok()).or(Err(FileDescriptorError::OperationFailed))
+        let fd = fd.file.as_mut().ok_or(FileDescriptorError::NotSupported)?;
+        Ref::filter_map(self.system.filesystem.borrow(), |fs| fs.stat(fd.fse_id).ok())
+            .or(Err(FileDescriptorError::OperationFailed))
     }
 
     fn read(
@@ -48,10 +46,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for FileOps<En
         fd: &mut FileDescriptorData,
         count: u64,
     ) -> Result<Vec<u8>, FileDescriptorError> {
-        let fd = fd
-            .file
-            .as_mut()
-            .ok_or(FileDescriptorError::NotSupported)?;
+        let fd = fd.file.as_mut().ok_or(FileDescriptorError::NotSupported)?;
         let result = self
             .system
             .filesystem
@@ -67,10 +62,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for FileOps<En
         offset: u64,
         length: u64,
     ) -> Result<Vec<u8>, FileDescriptorError> {
-        let fd = fd
-            .file
-            .as_mut()
-            .ok_or(FileDescriptorError::NotSupported)?;
+        let fd = fd.file.as_mut().ok_or(FileDescriptorError::NotSupported)?;
         Ok(self
             .system
             .filesystem
@@ -83,10 +75,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for FileOps<En
         fd: &mut FileDescriptorData,
         data: &[u8],
     ) -> Result<usize, FileDescriptorError> {
-        let fd = fd
-            .file
-            .as_mut()
-            .ok_or(FileDescriptorError::NotSupported)?;
+        let fd = fd.file.as_mut().ok_or(FileDescriptorError::NotSupported)?;
         let written = self
             .system
             .filesystem
@@ -96,7 +85,27 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for FileOps<En
         Ok(written)
     }
 
-    fn accept(&mut self, fd: &mut FileDescriptorData) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
+    fn sendto(
+        &mut self,
+        fd: &mut FileDescriptorData,
+        data: &[u8],
+        target: &Option<Sockaddr>,
+    ) -> Result<usize, FileDescriptorError> {
+        todo!()
+    }
+
+    fn recvfrom(
+        &self,
+        fd: &mut FileDescriptorData,
+        len: usize,
+    ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError> {
+        Err(FileDescriptorError::NotSupported)
+    }
+
+    fn accept(
+        &mut self,
+        fd: &mut FileDescriptorData,
+    ) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
         Err(FileDescriptorError::NotASocket)
     }
 }

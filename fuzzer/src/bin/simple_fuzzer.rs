@@ -31,7 +31,7 @@ fn main() -> Result<(), GenericError> {
     let duration = {
         let cpu = UCWrapper::new();
 
-        let filesystem = Filesystem::from_disk(1_073_741_824, Path::new("emulator/systems/ubuntu2204")).unwrap();
+        let filesystem = Filesystem::from_disk(1_073_741_824, Path::new("emulator/systems/ubuntu2304")).unwrap();
         let memory = Memory::new();
         let clock = Clock::new(Duration::from_nanos(1662647309301240322));
         let file_descriptor_map = FileDescriptorMap::new();
@@ -83,7 +83,7 @@ fn main() -> Result<(), GenericError> {
         // let demo_handle = Box::new(ReadOnly::from(data));
         // kernel.borrow_mut().add_replacement_handle(0, demo_handle);
         let args = [];
-        let env = ["SHELL=/bin/sh", "LD_BIND_NOW=true"]; // "LD_DEBUG=all"
+        let env = ["SHELL=/bin/sh", "LD_DEBUG=all", "LD_BIND_NOW=false"];
         // let eflags = cpu.borrow_mut().reg_read(RegisterX86::EFLAGS.into()).unwrap();
         // cpu.borrow_mut().reg_write(RegisterX86::EFLAGS.into(), eflags | (1 << 22)).unwrap();
         let mut scheduler = LinuxX86Scheduler::new(

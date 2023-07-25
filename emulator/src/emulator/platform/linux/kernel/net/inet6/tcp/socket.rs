@@ -1,4 +1,7 @@
-use crate::emulator::abstractions::errors::GenericError;
+use std::ops::Not;
+
+use bitflags::Flags;
+
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
@@ -19,7 +22,12 @@ impl FileDescriptorOps<FileDescriptorData> for TcpSocketOps {
         fd: &mut FileDescriptorData,
     ) -> Option<FileOperationsReady> {
         // todo!();
-        Some(FileOperationsReady::Read)
+        let tcp = fd.tcp.as_mut()?;
+        tcp.pending_data
+            .is_empty()
+            .not()
+            .then(|| FileOperationsReady::Read)
+            .or(Some(FileOperationsReady::empty()))
     }
 
     fn supports_poll(
@@ -37,6 +45,33 @@ impl FileDescriptorOps<FileDescriptorData> for TcpSocketOps {
         Ok(())
     }
 
+    fn sendto(
+        &mut self,
+        fd: &mut FileDescriptorData,
+        data: &[u8],
+        target: &Option<Sockaddr>,
+    ) -> Result<usize, FileDescriptorError> {
+        let tcp = fd.tcp.as_mut().ok_or(FileDescriptorError::NotASocket)?;
+        tcp.out_data.push_front(data.to_vec());
+        Ok(data.len())
+    }
+
+    fn recvfrom(
+        &self,
+        fd: &mut FileDescriptorData,
+        len: usize,
+    ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError> {
+        Ok((
+            fd.tcp.as_mut().unwrap().pending_data.pop_back().unwrap(),
+            Sockaddr::IN6 {
+                sin6_port: 5555,
+                sin6_flowinfo: 0,
+                sin6_addr: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                sin6_scope_id: 0,
+            },
+        ))
+    }
+
     fn setsockopt(
         &mut self,
         fd: &mut FileDescriptorData,
@@ -44,7 +79,10 @@ impl FileDescriptorOps<FileDescriptorData> for TcpSocketOps {
         Ok(())
     }
 
-    fn accept(&mut self, fd: &mut FileDescriptorData) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
+    fn accept(
+        &mut self,
+        fd: &mut FileDescriptorData,
+    ) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
     }
 }

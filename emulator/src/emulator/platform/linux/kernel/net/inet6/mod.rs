@@ -16,7 +16,7 @@ pub fn from_type(typ: SocketType) -> Result<FileDescriptor<FileDescriptorData>, 
             let mut fd = FileDescriptor::new(Box::new(socket::TcpSocketOps::new()));
             fd.data.tcp = Some(TCPData::new());
             fd
-        },
+        }
         _ => todo!(),
     })
 }

@@ -284,6 +284,7 @@ fn do_syscall<Endianness: ByteOrder + 'static>(
         EPOLL_CTL => do_syscall!(4, cpu, kernel::epoll_ctl, debug_str),
         OPENAT => do_syscall!(4, cpu, kernel::openat, debug_str),
         NEWFSTATAT => do_syscall!(4, cpu, kernel::newfstatat, debug_str),
+        READLINKAT => do_syscall!(4, cpu, kernel::readlinkat, debug_str),
         SET_ROBUST_LIST => do_syscall!(2, cpu, kernel::set_robust_list, debug_str),
         EPOLL_PWAIT => do_syscall!(6, cpu, kernel::epoll_pwait, debug_str),
         SIGNALFD4 => do_syscall!(4, cpu, kernel::signalfd4, debug_str),
@@ -307,6 +308,7 @@ fn syscall<Endianness: ByteOrder + 'static>(
     let rax = match result {
         Ok(rax) => {
             debug_str = format!("SYSCALL: {:?} {} -> 0x{:X}", syscall, debug_str, rax);
+            debug!("{debug_str}");
             rax
         }
         Err(SyscallError::KernelError(e)) => {
@@ -315,7 +317,7 @@ fn syscall<Endianness: ByteOrder + 'static>(
             e.into()
         }
         Err(e) => {
-            error!("SYSCALL NOT IMPLEMENTED: {}", debug_str);
+            error!("SYSCALL NOT IMPLEMENTED: {:?}", syscall);
             cpu.stop(StopReason::MissingSyscall).unwrap();
             rax
         }

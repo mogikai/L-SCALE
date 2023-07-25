@@ -69,6 +69,23 @@ impl FileDescriptorOps<FileDescriptorData> for WriteOnly {
         Ok(data.len())
     }
 
+    fn sendto(
+        &mut self,
+        fd: &mut FileDescriptorData,
+        data: &[u8],
+        target: &Option<Sockaddr>,
+    ) -> Result<usize, FileDescriptorError> {
+        todo!()
+    }
+
+    fn recvfrom(
+        &self,
+        fd: &mut FileDescriptorData,
+        len: usize,
+    ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError> {
+        Err(FileDescriptorError::NotSupported)
+    }
+
     fn accept(
         &mut self,
         fd: &mut FileDescriptorData,
@@ -152,7 +169,27 @@ impl FileDescriptorOps<FileDescriptorData> for ReadOnly {
         todo!()
     }
 
-    fn accept(&mut self, fd: &mut FileDescriptorData) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
+    fn sendto(
+        &mut self,
+        fd: &mut FileDescriptorData,
+        data: &[u8],
+        target: &Option<Sockaddr>,
+    ) -> Result<usize, FileDescriptorError> {
+        todo!()
+    }
+
+    fn recvfrom(
+        &self,
+        fd: &mut FileDescriptorData,
+        len: usize,
+    ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError> {
+        Err(FileDescriptorError::NotSupported)
+    }
+
+    fn accept(
+        &mut self,
+        fd: &mut FileDescriptorData,
+    ) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
     }
 }

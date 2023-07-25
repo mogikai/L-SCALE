@@ -112,20 +112,24 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let mut memory = self.system.memory.borrow_mut();
         let mut file_descriptor_map = self.system.fd_map.borrow_mut();
         let memory = memory.accessor(mmu, self.task_id);
-        let sockaddr: Sockaddr = memory.read_bounded(dest_addr, dest_addr_len as usize)?;
+        let sockaddr: Option<Sockaddr> = if dest_addr_len != 0 && dest_addr != EVA_NULL {
+            Some(memory.read_bounded(dest_addr, dest_addr_len as usize)?)
+        } else {
+            None
+        };
         let buf = memory.read_bytes(buf, len as usize)?;
         debug!("Buff: {:?}", &*buf);
         let mut fd = file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADFD)?;
         let fd = &mut *fd;
-        Ok(fd.ops.sendto(&mut fd.data, &buf)? as u64)
+        Ok(fd.ops.sendto(&mut fd.data, &buf, &sockaddr)? as u64)
     }
 
     #[allow(clippy::too_many_arguments)]
     pub fn recvfrom(
         &mut self,
-        _: &mut impl CPU,
+        mmu: &mut impl MMU,
         fd: FD,
         ubuf: EVAddr,     // void*
         size: u64,        // size_t
@@ -133,7 +137,25 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         addr: EVAddr,     // sockaddr*
         addr_len: EVAddr, // int*
     ) -> SyscallResult {
-        todo!()
+        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = memory.accessor(mmu, self.task_id);
+
+        let fd_map = self.system.fd_map.borrow();
+        let mut fd = fd_map
+            .get_mut(&self.task_id, &fd)
+            .ok_or(LinuxKernelError::EBADF)?;
+        let fd = &mut *fd;
+
+        let (data, sender) = fd.ops.recvfrom(&mut fd.data, size as usize)?;
+
+        let (written, _) = memory.write_bounded(ubuf, data.as_slice(), size as usize)?;
+
+        if addr_len != EVA_NULL && addr != EVA_NULL {
+            let sockaddr_len: i32 = memory.read(addr_len)?;
+            let (_, total) = memory.write_bounded(addr, sender, sockaddr_len as usize)?;
+            memory.write(addr_len, total as i32)?;
+        }
+        Ok(written as u64)
     }
 
     pub fn sendmsg(

@@ -208,6 +208,21 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         }
     }
 
+    pub fn readlinkat(
+        &mut self,
+        mmu: &mut impl MMU,
+        dirfd: FD,
+        pathname: EVAddr,
+        buf: EVAddr,
+        bufsize: usize,
+    ) -> SyscallResult {
+        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = memory.accessor(mmu, self.task_id);
+        Ok(memory
+            .write_bounded(buf, "/home/user/open62541_server_release".as_bytes(), bufsize)?
+            .0 as u64)
+    }
+
     pub fn close(
         &mut self,
         _: &mut impl CPU,

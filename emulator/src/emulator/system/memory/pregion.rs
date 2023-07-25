@@ -1,13 +1,21 @@
 use std::cmp::{min, Ordering};
+use std::fmt::{Debug, Formatter};
+use size_format::SizeFormatterBinary;
 
 use crate::emulator::abstractions::cpu::address::EPAddr;
 use crate::emulator::system::memory::helpers::is4kaligned;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct PhysicalRegion {
     pub start: EPAddr,
     pub end: EPAddr,
     pub dirty: bool,
+}
+
+impl Debug for PhysicalRegion {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PhysicalRegion {{ start: {:?}, end: {:?}, size: {}B}}", self.start, self.end, SizeFormatterBinary::new(self.size() as u64))
+    }
 }
 
 impl PhysicalRegion {
@@ -58,6 +66,13 @@ impl PhysicalRegion {
         });
 
         (front, back)
+    }
+
+    pub fn split_back(
+        self,
+        size: usize,
+    ) -> (Option<PhysicalRegion>, Option<PhysicalRegion>) {
+        self.split(self.size().saturating_sub(size))
     }
 
     pub fn size(&self) -> usize {

@@ -7,6 +7,7 @@
 #![feature(map_try_insert)]
 #![feature(iterator_try_collect)]
 #![feature(min_specialization)]
+#![feature(result_option_inspect)]
 #![allow(dead_code)]
 #![allow(unused)]
 #![allow(unused_variables)]

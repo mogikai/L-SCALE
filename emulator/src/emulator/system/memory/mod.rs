@@ -190,7 +190,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
 
         let size: usize = helpers::align4k_up(new_heap_end - layout.heap_base);
         if size != 0 {
-            layout.increase_heap(size);
+            layout.increase_heap(size)?;
         }
 
         Ok(())
@@ -210,10 +210,10 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             todo!()
         }
 
-        self.map_fixed(task_id, start, size, Permission::ALL, MappingType::PrivateAnonymous)?;
+        self.map_fixed(task_id, start, size, perms, MappingType::PrivateAnonymous)?;
         self.accessor(mmu, task_id)
-            .write_direct(vm_range.start, data)?;
-        self.protect(task_id, start, size, perms)
+            .write_bytes_unchecked(vm_range.start, data)?;
+        Ok(())
     }
 
     pub(crate) fn mmap(

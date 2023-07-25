@@ -51,6 +51,7 @@ impl Layout {
         &mut self,
         size: usize,
     ) -> Result<PhysicalRegion, MemoryError> {
+        debug!("Unused physical: {:?}", self.unused_physical_memory);
         let mut memory = self.unused_physical_memory.borrow_mut();
         let start = memory
             .iter()
@@ -66,6 +67,7 @@ impl Layout {
         &mut self,
         size: usize,
     ) -> Result<PhysicalRegion, MemoryError> {
+        debug!("Unused physical: {:?}", self.unused_physical_memory);
         let mut memory = self.unused_physical_memory.borrow_mut();
         let start = memory
             .iter()
@@ -73,7 +75,7 @@ impl Layout {
             .find(|region| size <= region.size())
             .map(|r| r.start)
             .ok_or(MemoryError::OutOfMemory)?;
-        let (front, back) = memory.take(&start).unwrap().split(size);
+        let (front, back) = memory.take(&start).unwrap().split_back(size);
         front.map(|b| memory.insert(b));
         back.ok_or(MemoryError::Unknown)
     }
@@ -116,13 +118,19 @@ impl Layout {
         }
 
         let physical_region = self.reserve_first_free_physical_region(size)?;
-        self.tlb.borrow_mut().try_map(
+        debug!("Increasing heap with physical region {:?}", physical_region);
+        let result = self.tlb.borrow_mut().try_map(
             self.heap_end,
             physical_region.start,
             size,
             Permission::READ | Permission::WRITE,
             MappingType::PrivateAnonymous,
-        )?;
+        );
+        result.map_err(|e| {
+            self.add_physical_region(physical_region);
+            e
+        })?;
+
         self.heap_end += size;
 
         Ok(())

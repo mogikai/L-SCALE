@@ -35,3 +35,5 @@ thiserror = "1.*"
 generational-arena = "0.2.8"
 im-rc = "15.1.0"
 derive_more = { version = "0.99.0", features = ["add"] }
+hex = "0.4.3"
+size_format = "1.0.2"

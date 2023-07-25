@@ -222,7 +222,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     ) -> SyscallResult {
         let mut memory = self.system.memory.borrow_mut();
         if addr != EVA_NULL {
-            memory.realloc_heap(self.task_id, addr)?;
+            memory
+                .realloc_heap(self.task_id, addr)
+                .inspect_err(|e| warn!("Error during brk: {e:?}"));
         }
         Ok(memory.heap_end(self.task_id)?.into())
     }

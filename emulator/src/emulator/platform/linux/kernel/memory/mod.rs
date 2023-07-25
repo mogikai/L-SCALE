@@ -3,7 +3,7 @@ use byteorder::ByteOrder;
 use enumset::__internal::EnumSetTypeRepr;
 
 use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
-use crate::emulator::abstractions::mmu::{MemoryError, MMU, MREMAP_FLAGS, Permission};
+use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU, MREMAP_FLAGS};
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::FD;
 use crate::emulator::platform::linux::kernel::memory::flags::MMAP_FLAGS;
@@ -186,7 +186,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             .memory
             .borrow_mut()
             .accessor(mmu, self.task_id)
-            .write_direct(addr, &vec![0u8; size]);
+            .write_bytes_unchecked(addr, &vec![0u8; size]);
         Ok(addr)
     }
 
@@ -205,7 +205,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             Err(LinuxKernelError::EINVAL)?
         }
 
-        let addr = self.mmap_anon(mmu, addr, length, Permission::ALL, flags, MappingType::PrivateAnonymous)?;
+        let addr = self.mmap_anon(mmu, addr, length, prot, flags, MappingType::PrivateAnonymous)?;
         if addr == !EVA_NULL {
             Err(LinuxKernelError::EINVAL)?
         }
@@ -221,7 +221,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
                     .err()
                     .unwrap_or(e)
             })?;
-        self.mprotect(mmu, addr, length, prot.bits().to_u64());
         Ok(addr)
     }
 
@@ -245,7 +244,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             .memory
             .borrow_mut()
             .accessor(mmu, self.task_id)
-            .write_direct(addr, data.as_slice())?;
+            .write_bytes_unchecked(addr, data.as_slice())?;
         Ok(())
     }
 }

@@ -87,6 +87,18 @@ impl Encode for Sockaddr {
                 Endianness::write_u32(&mut buffer[start + 4..start + 8], *nl_pid);
                 Endianness::write_u32(&mut buffer[start + 8..start + 12], *nl_groups);
             }
+            IN6 {
+                sin6_port,
+                sin6_flowinfo,
+                sin6_addr,
+                sin6_scope_id,
+            } => {
+                Endianness::write_u16(&mut buffer[start..start + 2], SocketDomain::AF_INET6 as u16);
+                Endianness::write_u16(&mut buffer[start + 2..start + 4], *sin6_port);
+                Endianness::write_u32(&mut buffer[start + 4..start + 8], *sin6_flowinfo);
+                buffer[start + 8..start + 24].copy_from_slice(sin6_addr.as_slice());
+                Endianness::write_u32(&mut buffer[start + 24..start + 28], *sin6_scope_id);
+            }
             _ => todo!(),
         }
     }
