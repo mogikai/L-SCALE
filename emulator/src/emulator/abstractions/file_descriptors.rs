@@ -112,9 +112,7 @@ pub trait FileDescriptorOps<D: Default>: Debug {
         &mut self,
         fd: &mut D,
         sockaddr: Sockaddr,
-    ) -> Result<(), FileDescriptorError> {
-        todo!()
-    }
+    ) -> Result<(), FileDescriptorError>;
 
     fn setsockopt(
         &mut self,

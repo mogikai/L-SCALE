@@ -59,6 +59,14 @@ impl FileDescriptorOps<FileDescriptorData> for TcpListenerOps {
         Err(FileDescriptorError::NotSupported)
     }
 
+    fn connect(
+        &mut self,
+        fd: &mut FileDescriptorData,
+        sockaddr: Sockaddr,
+    ) -> Result<(), FileDescriptorError> {
+        todo!()
+    }
+
     fn accept(
         &mut self,
         fd: &mut FileDescriptorData,

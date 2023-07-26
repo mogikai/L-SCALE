@@ -276,6 +276,21 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         Ok(0)
     }
 
+    pub fn futex(
+        &mut self,
+        mmu: &mut impl MMU,
+        uaddr: EVAddr,
+        futex_op: u64,
+        val: u64,
+        timeout: EVAddr,
+        uaddr2: EVAddr,
+        val3: u64,
+    ) -> SyscallResult {
+        // FIXME TODO
+        error!("Futex syscall not implemented. Currently only returning 0");
+        Ok(0)
+    }
+
     pub fn clock_gettime(
         &mut self,
         mmu: &mut impl MMU,

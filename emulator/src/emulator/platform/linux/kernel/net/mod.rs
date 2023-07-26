@@ -35,6 +35,9 @@ pub enum Sockaddr {
     UNIX {
         path: [u8; 108],
     },
+    UNSPEC {
+        data: [u8; 14],
+    },
 }
 
 impl Decode for Sockaddr {
@@ -59,6 +62,9 @@ impl Decode for Sockaddr {
             },
             AF_UNIX => Sockaddr::UNIX {
                 path: <[u8; 108]>::try_from(&val[2..110]).map_err(|_| MemoryError::ConversionError)?,
+            },
+            AF_UNSPEC => Sockaddr::UNSPEC {
+                data: <[u8; 14]>::try_from(&val[2..16]).map_err(|_| MemoryError::ConversionError)?,
             },
             _ => {
                 todo!("Sockaddr not implemented for type {:?}", family);

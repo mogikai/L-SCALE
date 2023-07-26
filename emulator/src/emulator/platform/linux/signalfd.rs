@@ -60,6 +60,14 @@ impl FileDescriptorOps<FileDescriptorData> for SignalFDOps {
         todo!()
     }
 
+    fn connect(
+        &mut self,
+        fd: &mut FileDescriptorData,
+        sockaddr: Sockaddr,
+    ) -> Result<(), FileDescriptorError> {
+        todo!()
+    }
+
     fn accept(
         &mut self,
         fd: &mut FileDescriptorData,

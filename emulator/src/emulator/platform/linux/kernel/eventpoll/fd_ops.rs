@@ -45,6 +45,10 @@ impl FileDescriptorOps<FileDescriptorData> for EpollOps {
         todo!()
     }
 
+    fn connect(&mut self, fd: &mut FileDescriptorData, sockaddr: Sockaddr) -> Result<(), FileDescriptorError> {
+        todo!()
+    }
+
     fn accept(
         &mut self,
         fd: &mut FileDescriptorData,

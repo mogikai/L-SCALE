@@ -57,6 +57,8 @@ impl FileDescriptorOps<FileDescriptorData> for UnixSocketOps {
         fd: &mut FileDescriptorData,
         sockaddr: Sockaddr,
     ) -> Result<(), FileDescriptorError> {
+        // FIXME TODO
+        error!("connect for unix socket not implemented");
         if let Sockaddr::UNIX { path } = sockaddr {
             debug!("Trying to connect to unix socket {:?}", CStr::from_bytes_until_nul(path.as_slice()));
         }

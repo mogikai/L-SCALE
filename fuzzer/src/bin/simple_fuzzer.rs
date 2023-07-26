@@ -44,13 +44,13 @@ fn main() -> Result<(), GenericError> {
         //     0x0000_3000_0000_0000,
         // )));
 
-        cpu.borrow_mut().add_block_hook(Box::new(|_, addr, _| {
-            total_blocks += 1;
-            *blocks.entry((prev_block2, prev_block, addr)).or_insert(0) += 1;
-            prev_block2 = prev_block;
-            prev_block = addr;
-            // TODO: Is this a performance bottleneck, do we have to use a simpler map?
-        }));
+        // cpu.borrow_mut().add_block_hook(Box::new(|_, addr, _| {
+        //     total_blocks += 1;
+        //     *blocks.entry((prev_block2, prev_block, addr)).or_insert(0) += 1;
+        //     prev_block2 = prev_block;
+        //     prev_block = addr;
+        //     // TODO: Is this a performance bottleneck, do we have to use a simpler map?
+        // }));
         let vtlb_system = system.clone();
         cpu.borrow_mut()
             .add_vtlb_hook(Box::new(move |_uc, vaddr, _action| {

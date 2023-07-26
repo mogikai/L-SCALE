@@ -86,6 +86,14 @@ impl FileDescriptorOps<FileDescriptorData> for WriteOnly {
         Err(FileDescriptorError::NotSupported)
     }
 
+    fn connect(
+        &mut self,
+        fd: &mut FileDescriptorData,
+        sockaddr: Sockaddr,
+    ) -> Result<(), FileDescriptorError> {
+        Err(FileDescriptorError::NotSupported)
+    }
+
     fn accept(
         &mut self,
         fd: &mut FileDescriptorData,
@@ -183,6 +191,16 @@ impl FileDescriptorOps<FileDescriptorData> for ReadOnly {
         fd: &mut FileDescriptorData,
         len: usize,
     ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError> {
+        Err(FileDescriptorError::NotSupported)
+    }
+
+    fn connect(
+        &mut self,
+        fd: &mut FileDescriptorData,
+        sockaddr: Sockaddr,
+    ) -> Result<(), FileDescriptorError> {
+        // TODO FIXME
+        error!("UDP connect currently unsupported / not implemented");
         Err(FileDescriptorError::NotSupported)
     }
 

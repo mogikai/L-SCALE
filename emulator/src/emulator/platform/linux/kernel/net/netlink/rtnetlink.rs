@@ -8,7 +8,6 @@ use num_enum::{FromPrimitive, IntoPrimitive};
 
 use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 
-use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, Encoder, RequiredMem};
 use crate::emulator::abstractions::mmu::MemoryError;
@@ -328,6 +327,14 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for RTNetlinkS
         fd: &mut FileDescriptorData,
         len: usize,
     ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError> {
+        todo!()
+    }
+
+    fn connect(
+        &mut self,
+        fd: &mut FileDescriptorData,
+        sockaddr: Sockaddr,
+    ) -> Result<(), FileDescriptorError> {
         todo!()
     }
 

@@ -72,6 +72,14 @@ impl FileDescriptorOps<FileDescriptorData> for TcpSocketOps {
         ))
     }
 
+    fn connect(
+        &mut self,
+        fd: &mut FileDescriptorData,
+        sockaddr: Sockaddr,
+    ) -> Result<(), FileDescriptorError> {
+        todo!()
+    }
+
     fn setsockopt(
         &mut self,
         fd: &mut FileDescriptorData,

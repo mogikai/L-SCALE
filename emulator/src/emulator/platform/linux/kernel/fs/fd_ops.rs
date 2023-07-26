@@ -3,7 +3,6 @@ use std::rc::Rc;
 
 use byteorder::ByteOrder;
 
-use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
@@ -99,6 +98,14 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for FileOps<En
         fd: &mut FileDescriptorData,
         len: usize,
     ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError> {
+        Err(FileDescriptorError::NotSupported)
+    }
+
+    fn connect(
+        &mut self,
+        fd: &mut FileDescriptorData,
+        sockaddr: Sockaddr,
+    ) -> Result<(), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
     }
 

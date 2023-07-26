@@ -272,6 +272,7 @@ fn do_syscall<Endianness: ByteOrder + 'static>(
         ARCH_PRCTL => do_syscall!(2, cpu, kernel::arch_prctl, debug_str),
         GETTID => do_syscall!(0, cpu, kernel::gettid, debug_str),
         TIME => do_syscall!(1, cpu, kernel::time, debug_str),
+        FUTEX => do_syscall!(6, cpu, kernel::futex, debug_str),
         EPOLL_CREATE => do_syscall!(1, cpu, kernel::epoll_create, debug_str),
         SET_TID_ADDRESS => do_syscall!(1, cpu, kernel::set_tid_address, debug_str),
         FADVISE64 => do_syscall!(4, cpu, kernel::fadvise64, debug_str),
