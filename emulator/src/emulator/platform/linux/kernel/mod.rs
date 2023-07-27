@@ -1,34 +1,36 @@
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
+use error::SyscallError;
 
 use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 
-use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
-use crate::emulator::abstractions::cpu::{RegisterX86, CPU};
+use crate::emulator::abstractions::cpu::{CPU, RegisterX86};
+use crate::emulator::abstractions::cpu::address::{EVA_NULL, EVAddr};
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
+use crate::emulator::abstractions::mmu::{MMU, Permission};
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
-use crate::emulator::abstractions::mmu::{Permission, MMU};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::macros::push_stack;
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::fd::{FileDescriptorData, FD};
+use crate::emulator::platform::linux::fd::{FD, FileDescriptorData};
 use crate::emulator::platform::linux::kernel::auxv::AUXVType;
 pub use crate::emulator::platform::linux::kernel::error::LinuxKernelError;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
+use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::platform::linux::signalfd::SignalFDOps;
 use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
-use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::system::default_handles;
 use crate::emulator::system::fd_map::FileDescriptor;
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
 
 pub(crate) mod auxv;
-mod error;
+pub(crate) mod error;
 pub(crate) mod eventpoll;
 pub(crate) mod fs;
 pub(crate) mod memory;
@@ -48,7 +50,7 @@ pub struct LinuxKernelTask<Endianness: ByteOrder, Arch: Architecture> {
     _arch: PhantomData<Arch>,
 }
 
-type SyscallResult = Result<u64, LinuxKernelError>;
+type SyscallResult = Result<u64, SyscallError>;
 
 impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     pub fn new(
@@ -240,7 +242,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         match code {
             0x1001 => {
                 //ARCH_SET_GS
-                Err(LinuxKernelError::EINVAL)
+                Err(LinuxKernelError::EINVAL.into())
             }
             0x1002 => {
                 //ARCH_SET_FS
@@ -249,9 +251,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
                 cpu.reg_write(RegisterX86::FS_BASE.into(), fs).unwrap();
                 Ok(0)
             }
-            0x1003 => Err(LinuxKernelError::EINVAL), //ARCH_GET_FS
-            0x1004 => Err(LinuxKernelError::EINVAL), //ARCH_GET_GS
-            _ => Err(LinuxKernelError::EINVAL),
+            0x1003 => Err(LinuxKernelError::EINVAL.into()), //ARCH_GET_FS
+            0x1004 => Err(LinuxKernelError::EINVAL.into()), //ARCH_GET_GS
+            _ => Err(LinuxKernelError::EINVAL.into()),
         }
     }
 
@@ -391,7 +393,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         _filename: u64,
         _mode: u64,
     ) -> SyscallResult {
-        Err(LinuxKernelError::EINVAL)
+        Err(LinuxKernelError::EINVAL.into())
     }
 
     pub fn set_tid_address(
@@ -448,7 +450,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             todo!("fd != -1");
         }
         if mask == EVA_NULL {
-            return Err(LinuxKernelError::EINVAL);
+            return Err(LinuxKernelError::EINVAL.into());
         }
 
         let mut memory = self.system.memory.borrow_mut();
@@ -581,7 +583,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         data: EVAddr,
     ) -> SyscallResult {
         // TODO: Implement correctly
-        Err(LinuxKernelError::ENOSYS)
+        Err(LinuxKernelError::ENOSYS.into())
     }
 
     pub fn getrandom(
@@ -611,7 +613,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         sig: u64,
     ) -> SyscallResult {
         // TODO: Implement rseq https://git.kernel.org/pub/scm/libs/librseq/librseq.git/tree/doc/man/rseq.2
-        Err(LinuxKernelError::ENOSYS)
+        Err(LinuxKernelError::ENOSYS.into())
     }
 }
 

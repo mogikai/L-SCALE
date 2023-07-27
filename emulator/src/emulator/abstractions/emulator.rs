@@ -6,6 +6,7 @@ pub enum StopReason {
     Killed,
     MissingSyscall,
     ProcessExit,
+    Yield,
 }
 
 pub trait Emulator {

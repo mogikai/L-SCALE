@@ -24,7 +24,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let mut file_descriptor_map = self.system.fd_map.borrow_mut();
         file_descriptor_map
             .get_mut(&self.task_id, &fd)
-            .map_or(Err(LinuxKernelError::EINVAL), |mut fd| {
+            .map_or(Err(LinuxKernelError::EINVAL.into()), |mut fd| {
                 let fd = &mut *fd;
                 Ok(fd
                     .ops
@@ -53,7 +53,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let memory = memory.accessor(mmu, self.task_id);
         file_descriptor_map
             .get_mut(&self.task_id, &fd)
-            .map_or(Err(LinuxKernelError::EINVAL), |mut fd| {
+            .map_or(Err(LinuxKernelError::EINVAL.into()), |mut fd| {
                 let fd = &mut *fd;
                 let mut ret: usize = 0;
                 let iovec = memory

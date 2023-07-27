@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::convert::Infallible;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -9,29 +8,30 @@ use std::time::Duration;
 use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
 
+use crate::emulator::abstractions::cpu::{ContextHandle, CPU, CPUError, RegisterX86};
 use crate::emulator::abstractions::cpu::address::EVAddr;
-use crate::emulator::abstractions::cpu::{CPUError, ContextHandle, RegisterX86, CPU};
 use crate::emulator::abstractions::emulator::{Emulator, StopReason};
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::architecture::x86::X86;
-use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask};
+use crate::emulator::platform::linux::kernel::error::SyscallError;
+use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::LinuxSystem;
 
 macro_rules! do_syscall {
     (0, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         *$debug_str = format!("() ");
-        $name.$fun($uc).map_err(|e| SyscallError::KernelError(e))
+        $name.$fun($uc)
     }};
     (1, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
         *$debug_str = format!("(0x{:X}) ", rdi);
         $name
             .$fun($uc, rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?)
-            .map_err(|e| SyscallError::KernelError(e))
+
     }};
     (2, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
@@ -43,7 +43,7 @@ macro_rules! do_syscall {
                 rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
                 rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
             )
-            .map_err(|e| SyscallError::KernelError(e))
+
     }};
     (3, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
@@ -57,7 +57,7 @@ macro_rules! do_syscall {
                 rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
                 rdx.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
             )
-            .map_err(|e| SyscallError::KernelError(e))
+
     }};
     (4, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
@@ -73,7 +73,7 @@ macro_rules! do_syscall {
                 rdx.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
                 r10.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
             )
-            .map_err(|e| SyscallError::KernelError(e))
+
     }};
     (5, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
@@ -91,7 +91,7 @@ macro_rules! do_syscall {
                 r10.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
                 r8.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
             )
-            .map_err(|e| SyscallError::KernelError(e))
+
     }};
     (6, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
@@ -111,7 +111,7 @@ macro_rules! do_syscall {
                 r8.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
                 r9.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
             )
-            .map_err(|e| SyscallError::KernelError(e))
+
     }};
 }
 
@@ -204,23 +204,6 @@ where
         } else {
             Err(StopReason::Unknown)
         }
-    }
-}
-
-enum SyscallError {
-    KernelError(LinuxKernelError),
-    NotImplemented,
-}
-
-impl From<LinuxKernelError> for SyscallError {
-    fn from(value: LinuxKernelError) -> Self {
-        SyscallError::KernelError(value)
-    }
-}
-
-impl From<Infallible> for SyscallError {
-    fn from(value: Infallible) -> Self {
-        unimplemented!()
     }
 }
 
@@ -317,7 +300,12 @@ fn syscall<Endianness: ByteOrder + 'static>(
             debug!("{debug_str}");
             e.into()
         }
-        Err(e) => {
+        Err(SyscallError::Yield) => {
+            debug!("Syscall is yielding to scheduler");
+            cpu.stop(StopReason::Yield).unwrap();
+            rax
+        }
+        Err(SyscallError::NotImplemented) => {
             error!("SYSCALL NOT IMPLEMENTED: {:?}", syscall);
             cpu.stop(StopReason::MissingSyscall).unwrap();
             rax

@@ -1,3 +1,4 @@
+use std::convert::Infallible;
 use crate::emulator::abstractions::cpu::CPUError;
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
@@ -350,5 +351,23 @@ impl From<FileDescriptorError> for LinuxKernelError {
             FileDescriptorError::MemoryError(e) => e.into(),
             FileDescriptorError::FSError(e) => e.into(),
         }
+    }
+}
+
+pub enum SyscallError {
+    KernelError(LinuxKernelError),
+    Yield,
+    NotImplemented,
+}
+
+impl<T: Into<LinuxKernelError>> From<T> for SyscallError {
+    fn from(value: T) -> Self {
+        SyscallError::KernelError(value.into())
+    }
+}
+
+impl From<Infallible> for SyscallError {
+    fn from(value: Infallible) -> Self {
+        unimplemented!()
     }
 }

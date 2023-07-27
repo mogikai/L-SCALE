@@ -8,6 +8,7 @@ use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::CPU;
+use crate::emulator::abstractions::emulator::StopReason;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
 use crate::emulator::abstractions::mmu::MMU;
@@ -16,6 +17,7 @@ use crate::emulator::platform::linux::fd::{FileDescriptorData, FD};
 use crate::emulator::platform::linux::kernel::eventpoll::events::EPOLL_EVENTS;
 use crate::emulator::platform::linux::kernel::eventpoll::fd_ops::EpollOps;
 use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask, SyscallResult};
+use crate::emulator::platform::linux::kernel::error::SyscallError;
 use crate::emulator::system::fd_map::FileDescriptor;
 use crate::emulator::system::memory::rw_interface::{MemoryRead, MemoryWrite};
 use crate::emulator::system::memory::MemoryAccessor;
@@ -84,6 +86,11 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
         fds_to_clean.into_iter().for_each(|fd| {
             epoll_data.interest_list.remove(&fd);
         });
+
+        if triggered_events.is_empty() {
+            // TODO: Yield to scheduler
+            Err(SyscallError::Yield)?
+        }
 
         let mut memory = self.system.memory.borrow_mut();
         let mut memory = memory.accessor(mmu, self.task_id);

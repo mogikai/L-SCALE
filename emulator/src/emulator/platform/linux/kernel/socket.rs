@@ -252,7 +252,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             fd.ops = Box::new(TcpListenerOps::new());
             Ok(0)
         } else {
-            Err(LinuxKernelError::ENOTSOCK)
+            Err(LinuxKernelError::ENOTSOCK.into())
         }
     }
 

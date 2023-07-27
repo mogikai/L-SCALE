@@ -52,7 +52,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         } else if flags.contains(MMAP_FLAGS::MAP_SHARED_VALIDATE) {
             todo!("Implement MAP_SHARED_VALIDATE")
         } else {
-            Err(LinuxKernelError::EINVAL)
+            Err(LinuxKernelError::EINVAL.into())
         }
     }
 
