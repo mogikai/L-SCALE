@@ -8,6 +8,8 @@
 #![feature(iterator_try_collect)]
 #![feature(min_specialization)]
 #![feature(result_option_inspect)]
+#![feature(provide_any)]
+#![feature(error_generic_member_access)]
 #![allow(dead_code)]
 #![allow(unused)]
 #![allow(unused_variables)]

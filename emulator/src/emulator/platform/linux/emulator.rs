@@ -29,35 +29,29 @@ macro_rules! do_syscall {
     (1, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
         *$debug_str = format!("(0x{:X}) ", rdi);
-        $name
-            .$fun($uc, rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?)
-
+        $name.$fun($uc, rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?)
     }};
     (2, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
         let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
         *$debug_str = format!("(0x{:X}, 0x{:X}) ", rdi, rsi);
-        $name
-            .$fun(
-                $uc,
-                rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-                rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-            )
-
+        $name.$fun(
+            $uc,
+            rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+        )
     }};
     (3, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
         let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
         let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
         *$debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx);
-        $name
-            .$fun(
-                $uc,
-                rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-                rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-                rdx.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-            )
-
+        $name.$fun(
+            $uc,
+            rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            rdx.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+        )
     }};
     (4, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
@@ -65,15 +59,13 @@ macro_rules! do_syscall {
         let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
         let r10 = $uc.reg_read(RegisterX86::R10.into()).unwrap();
         *$debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10);
-        $name
-            .$fun(
-                $uc,
-                rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-                rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-                rdx.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-                r10.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-            )
-
+        $name.$fun(
+            $uc,
+            rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            rdx.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            r10.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+        )
     }};
     (5, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
@@ -82,16 +74,14 @@ macro_rules! do_syscall {
         let r10 = $uc.reg_read(RegisterX86::R10.into()).unwrap();
         let r8 = $uc.reg_read(RegisterX86::R8.into()).unwrap();
         *$debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10, r8);
-        $name
-            .$fun(
-                $uc,
-                rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-                rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-                rdx.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-                r10.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-                r8.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-            )
-
+        $name.$fun(
+            $uc,
+            rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            rdx.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            r10.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            r8.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+        )
     }};
     (6, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
@@ -101,17 +91,15 @@ macro_rules! do_syscall {
         let r8 = $uc.reg_read(RegisterX86::R8.into()).unwrap();
         let r9 = $uc.reg_read(RegisterX86::R9.into()).unwrap();
         *$debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10, r8, r9);
-        $name
-            .$fun(
-                $uc,
-                rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-                rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-                rdx.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-                r10.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-                r8.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-                r9.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
-            )
-
+        $name.$fun(
+            $uc,
+            rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            rdx.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            r10.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            r8.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+            r9.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
+        )
     }};
 }
 
@@ -296,7 +284,7 @@ fn syscall<Endianness: ByteOrder + 'static>(
             rax
         }
         Err(SyscallError::KernelError(e)) => {
-            debug_str = format!("SYSCALL: {:?} {} -> 0x{:X} ({})", syscall, debug_str, u64::from(e), e.describe());
+            debug_str = format!("SYSCALL: {:?} {} -> 0x{:X} ({})", syscall, debug_str, u64::from(e), e);
             debug!("{debug_str}");
             e.into()
         }

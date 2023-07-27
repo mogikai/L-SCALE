@@ -15,7 +15,7 @@ pub fn derive_decode_impl(input: DeriveInput) -> TokenStream {
             fn decode<Endianness: byteorder::ByteOrder>(buffer: &[u8]) -> Result<Self, crate::emulator::abstractions::mmu::MemoryError> {
                 use crate::emulator::abstractions::mmu::encoding::RequiredMem;
                 if buffer.len() != Self::required_mem() {
-                    Err(crate::emulator::abstractions::mmu::MemoryError::InvalidSize)?
+                    Err(crate::emulator::abstractions::mmu::MemoryError::InsufficientSize)?
                 }
                 #decode
             }

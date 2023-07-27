@@ -19,7 +19,7 @@ impl Encode for i32 {
 impl Decode for i32 {
     fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
         if val.len() != Self::required_mem() {
-            Err(MemoryError::InvalidSize)?
+            Err(MemoryError::InsufficientSize)?
         }
         Ok(Endianness::read_i32(val))
     }
@@ -41,7 +41,7 @@ impl Encode for i64 {
 impl Decode for i64 {
     fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
         if val.len() != Self::required_mem() {
-            Err(MemoryError::InvalidSize)?
+            Err(MemoryError::InsufficientSize)?
         }
         Ok(Endianness::read_i64(val))
     }
@@ -61,7 +61,7 @@ impl Encode for u8 {
 impl Decode for u8 {
     fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
         if val.len() != Self::required_mem() {
-            Err(MemoryError::InvalidSize)?
+            Err(MemoryError::InsufficientSize)?
         }
         Ok(val[0])
     }
@@ -83,7 +83,7 @@ impl Encode for u16 {
 impl Decode for u16 {
     fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
         if val.len() != Self::required_mem() {
-            Err(MemoryError::InvalidSize)?
+            Err(MemoryError::InsufficientSize)?
         }
         Ok(Endianness::read_u16(val))
     }
@@ -105,7 +105,7 @@ impl Encode for u32 {
 impl Decode for u32 {
     fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
         if val.len() != Self::required_mem() {
-            Err(MemoryError::InvalidSize)?
+            Err(MemoryError::InsufficientSize)?
         }
         Ok(Endianness::read_u32(val))
     }
@@ -127,7 +127,7 @@ impl Encode for u64 {
 impl Decode for u64 {
     fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
         if val.len() != Self::required_mem() {
-            Err(MemoryError::InvalidSize)?
+            Err(MemoryError::InsufficientSize)?
         }
         Ok(Endianness::read_u64(val))
     }

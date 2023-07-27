@@ -1,4 +1,9 @@
+use std::backtrace::Backtrace;
 use std::convert::Infallible;
+use std::error::Error;
+
+use thiserror::Error;
+
 use crate::emulator::abstractions::cpu::CPUError;
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
@@ -6,139 +11,270 @@ use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 use crate::emulator::system::filesystem::FSError;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Error, Debug, Copy, Clone)]
 #[repr(i64)]
 pub enum LinuxKernelError {
+    #[error("EPERM: Operation not permitted")]
     EPERM           = -1,
+    #[error("ENOENT: No such file or directory")]
     ENOENT          = -2,
+    #[error("ESRCH: No such process")]
     ESRCH           = -3,
+    #[error("EINTR: Interrupted system call")]
     EINTR           = -4,
+    #[error("EIO: Input/output error")]
     EIO             = -5,
+    #[error("ENXIO: No such device or address")]
     ENXIO           = -6,
+    #[error("E2BIG: Argument list too long")]
     E2BIG           = -7,
+    #[error("ENOEXEC: Exec format error")]
     ENOEXEC         = -8,
+    #[error("EBADF: Bad file descriptor")]
     EBADF           = -9,
+    #[error("ECHILD: No child processes")]
     ECHILD          = -10,
+    #[error("EAGAIN: Resource temporarily unavailable")]
     EAGAIN          = -11,
+    #[error("ENOMEM: Cannot allocate memory")]
     ENOMEM          = -12,
+    #[error("EACCES: Permission denied")]
     EACCES          = -13,
+    #[error("EFAULT: Bad address")]
     EFAULT          = -14,
+    #[error("ENOTBLK: Block device required")]
     ENOTBLK         = -15,
+    #[error("EBUSY: Device or resource busy")]
     EBUSY           = -16,
+    #[error("EEXIST: File exists")]
     EEXIST          = -17,
+    #[error("EXDEV: Invalid cross-device link")]
     EXDEV           = -18,
+    #[error("ENODEV: No such device")]
     ENODEV          = -19,
+    #[error("ENOTDIR: Not a directory")]
     ENOTDIR         = -20,
+    #[error("EISDIR: Is a directory")]
     EISDIR          = -21,
+    #[error("EINVAL: Invalid argument")]
     EINVAL          = -22,
+    #[error("ENFILE: Too many open files in system")]
     ENFILE          = -23,
+    #[error("EMFILE: Too many open files")]
     EMFILE          = -24,
+    #[error("ENOTTY: Inappropriate ioctl for device")]
     ENOTTY          = -25,
+    #[error("ETXTBSY: Text file busy")]
     ETXTBSY         = -26,
+    #[error("EFBIG: File too large")]
     EFBIG           = -27,
+    #[error("ENOSPC: No space left on device")]
     ENOSPC          = -28,
+    #[error("ESPIPE: Illegal seek")]
     ESPIPE          = -29,
+    #[error("EROFS: Read-only file system")]
     EROFS           = -30,
+    #[error("EMLINK: Too many links")]
     EMLINK          = -31,
+    #[error("EPIPE: Broken pipe")]
     EPIPE           = -32,
+    #[error("EDOM: Numerical argument out of domain")]
     EDOM            = -33,
+    #[error("ERANGE: Numerical result out of range")]
     ERANGE          = -34,
+    #[error("EDEADLK: Resource deadlock avoided")]
     EDEADLK         = -35,
+    #[error("ENAMETOOLONG: File name too long")]
     ENAMETOOLONG    = -36,
+    #[error("ENOLCK: No locks available")]
     ENOLCK          = -37,
+    #[error("ENOSYS: Function not implemented")]
     ENOSYS          = -38,
+    #[error("ENOTEMPTY: Directory not empty")]
     ENOTEMPTY       = -39,
+    #[error("ELOOP: Too many levels of symbolic links")]
     ELOOP           = -40,
+    #[error("ENOMSG: No message of desired type")]
     ENOMSG          = -42,
+    #[error("EIDRM: Identifier removed")]
     EIDRM           = -43,
+    #[error("ECHRNG: Channel number out of range")]
     ECHRNG          = -44,
+    #[error("EL2NSYNC: Level 2 not synchronized")]
     EL2NSYNC        = -45,
+    #[error("EL3HLT: Level 3 halted")]
     EL3HLT          = -46,
+    #[error("EL3RST: Level 3 reset")]
     EL3RST          = -47,
+    #[error("ELNRNG: Link number out of range")]
     ELNRNG          = -48,
+    #[error("EUNATCH: Protocol driver not attached")]
     EUNATCH         = -49,
+    #[error("ENOCSI: No CSI structure available")]
     ENOCSI          = -50,
+    #[error("EL2HLT: Level 2 halted")]
     EL2HLT          = -51,
+    #[error("EBADE: Invalid exchange")]
     EBADE           = -52,
+    #[error("EBADR: Invalid request descriptor")]
     EBADR           = -53,
+    #[error("EXFULL: Exchange full")]
     EXFULL          = -54,
+    #[error("ENOANO: No anode")]
     ENOANO          = -55,
+    #[error("EBADRQC: Invalid request code")]
     EBADRQC         = -56,
+    #[error("EBADSLT: Invalid slot")]
     EBADSLT         = -57,
+    #[error("EBFONT: Bad font file format")]
     EBFONT          = -59,
+    #[error("ENOSTR: Device not a stream")]
     ENOSTR          = -60,
+    #[error("ENODATA: No data available")]
     ENODATA         = -61,
+    #[error("ETIME: Timer expired")]
     ETIME           = -62,
+    #[error("ENOSR: Out of streams resources")]
     ENOSR           = -63,
+    #[error("ENONET: Machine is not on the network")]
     ENONET          = -64,
+    #[error("ENOPKG: Package not installed")]
     ENOPKG          = -65,
+    #[error("EREMOTE: Object is remote")]
     EREMOTE         = -66,
+    #[error("ENOLINK: Link has been severed")]
     ENOLINK         = -67,
+    #[error("EADV: Advertise error")]
     EADV            = -68,
+    #[error("ESRMNT: Srmount error")]
     ESRMNT          = -69,
+    #[error("ECOMM: Communication error on send")]
     ECOMM           = -70,
+    #[error("EPROTO: Protocol error")]
     EPROTO          = -71,
+    #[error("EMULTIHOP: Multihop attempted")]
     EMULTIHOP       = -72,
+    #[error("EDOTDOT: RFS specific error")]
     EDOTDOT         = -73,
+    #[error("EBADMSG: Bad message")]
     EBADMSG         = -74,
+    #[error("EOVERFLOW: Value too large for defined data type")]
     EOVERFLOW       = -75,
+    #[error("ENOTUNIQ: Name not unique on network")]
     ENOTUNIQ        = -76,
+    #[error("EBADFD: File descriptor in bad state")]
     EBADFD          = -77,
+    #[error("EREMCHG: Remote address changed")]
     EREMCHG         = -78,
+    #[error("ELIBACC: Can not access a needed shared library")]
     ELIBACC         = -79,
+    #[error("ELIBBAD: Accessing a corrupted shared library")]
     ELIBBAD         = -80,
+    #[error("ELIBSCN: .lib section in a.out corrupted")]
     ELIBSCN         = -81,
+    #[error("ELIBMAX: Attempting to link in too many shared libraries")]
     ELIBMAX         = -82,
+    #[error("ELIBEXEC: Cannot exec a shared library directly")]
     ELIBEXEC        = -83,
+    #[error("EILSEQ: Invalid or incomplete multibyte or wide character")]
     EILSEQ          = -84,
+    #[error("ERESTART: Interrupted system call should be restarted")]
     ERESTART        = -85,
+    #[error("ESTRPIPE: Streams pipe error")]
     ESTRPIPE        = -86,
+    #[error("EUSERS: Too many users")]
     EUSERS          = -87,
+    #[error("ENOTSOCK: Socket operation on non-socket")]
     ENOTSOCK        = -88,
+    #[error("EDESTADDRREQ: Destination address required")]
     EDESTADDRREQ    = -89,
+    #[error("EMSGSIZE: Message too long")]
     EMSGSIZE        = -90,
+    #[error("EPROTOTYPE: Protocol wrong type for socket")]
     EPROTOTYPE      = -91,
+    #[error("ENOPROTOOPT: Protocol not available")]
     ENOPROTOOPT     = -92,
+    #[error("EPROTONOSUPPORT: Protocol not supported")]
     EPROTONOSUPPORT = -93,
+    #[error("ESOCKTNOSUPPORT: Socket type not supported")]
     ESOCKTNOSUPPORT = -94,
+    #[error("EOPNOTSUPP: Operation not supported")]
     EOPNOTSUPP      = -95,
+    #[error("EPFNOSUPPORT: Protocol family not supported")]
     EPFNOSUPPORT    = -96,
+    #[error("EAFNOSUPPORT: Address family not supported by protocol")]
     EAFNOSUPPORT    = -97,
+    #[error("EADDRINUSE: Address already in use")]
     EADDRINUSE      = -98,
+    #[error("EADDRNOTAVAIL: Cannot assign requested address")]
     EADDRNOTAVAIL   = -99,
+    #[error("ENETDOWN: Network is down")]
     ENETDOWN        = -100,
+    #[error("ENETUNREACH: Network is unreachable")]
     ENETUNREACH     = -101,
+    #[error("ENETRESET: Network dropped connection on reset")]
     ENETRESET       = -102,
+    #[error("ECONNABORTED: Software caused connection abort")]
     ECONNABORTED    = -103,
+    #[error("ECONNRESET: Connection reset by peer")]
     ECONNRESET      = -104,
+    #[error("ENOBUFS: No buffer space available")]
     ENOBUFS         = -105,
+    #[error("EISCONN: Transport endpoint is already connected")]
     EISCONN         = -106,
+    #[error("ENOTCONN: Transport endpoint is not connected")]
     ENOTCONN        = -107,
+    #[error("ESHUTDOWN: Cannot send after transport endpoint shutdown")]
     ESHUTDOWN       = -108,
+    #[error("ETOOMANYREFS: Too many references: cannot splice")]
     ETOOMANYREFS    = -109,
+    #[error("ETIMEDOUT: Connection timed out")]
     ETIMEDOUT       = -110,
+    #[error("ECONNREFUSED: Connection refused")]
     ECONNREFUSED    = -111,
+    #[error("EHOSTDOWN: Host is down")]
     EHOSTDOWN       = -112,
+    #[error("EHOSTUNREACH: No route to host")]
     EHOSTUNREACH    = -113,
+    #[error("EALREADY: Operation already in progress")]
     EALREADY        = -114,
+    #[error("EINPROGRESS: Operation now in progress")]
     EINPROGRESS     = -115,
+    #[error("ESTALE: Stale file handle")]
     ESTALE          = -116,
+    #[error("EUCLEAN: Structure needs cleaning")]
     EUCLEAN         = -117,
+    #[error("ENOTNAM: Not a XENIX named type file")]
     ENOTNAM         = -118,
+    #[error("ENAVAIL: No XENIX semaphores available")]
     ENAVAIL         = -119,
+    #[error("EISNAM: Is a named type file")]
     EISNAM          = -120,
+    #[error("EREMOTEIO: Remote I/O error")]
     EREMOTEIO       = -121,
+    #[error("EDQUOT: Disk quota exceeded")]
     EDQUOT          = -122,
+    #[error("ENOMEDIUM: No medium found")]
     ENOMEDIUM       = -123,
+    #[error("EMEDIUMTYPE: Wrong medium type")]
     EMEDIUMTYPE     = -124,
+    #[error("ECANCELED: Operation canceled")]
     ECANCELED       = -125,
+    #[error("ENOKEY: Required key not available")]
     ENOKEY          = -126,
+    #[error("EKEYEXPIRED: Key has expired")]
     EKEYEXPIRED     = -127,
+    #[error("EKEYREVOKED: Key has been revoked")]
     EKEYREVOKED     = -128,
+    #[error("EKEYREJECTED: Key was rejected by service")]
     EKEYREJECTED    = -129,
+    #[error("EOWNERDEAD: Owner died")]
     EOWNERDEAD      = -130,
+    #[error("ENOTRECOVERABLE: State not recoverable")]
     ENOTRECOVERABLE = -131,
+    #[error("ERFKILL: Operation not possible due to RF-kill")]
     ERFKILL         = -132,
+    #[error("EHWPOISON: Memory page has hardware error")]
     EHWPOISON       = -133,
 }
 
@@ -154,142 +290,6 @@ impl LinuxKernelError {
     pub const ENOTSUP: Self = Self::EOPNOTSUPP;
     // Operation not supported
     pub const EDEADLOCK: Self = Self::EDEADLK; // Resource deadlock avoided
-
-    pub fn describe(&self) -> &str {
-        match self {
-            LinuxKernelError::EPERM => "EPERM: Operation not permitted",
-            LinuxKernelError::ENOENT => "ENOENT: No such file or directory",
-            LinuxKernelError::ESRCH => "ESRCH: No such process",
-            LinuxKernelError::EINTR => "EINTR: Interrupted system call",
-            LinuxKernelError::EIO => "EIO: Input/output error",
-            LinuxKernelError::ENXIO => "ENXIO: No such device or address",
-            LinuxKernelError::E2BIG => "E2BIG: Argument list too long",
-            LinuxKernelError::ENOEXEC => "ENOEXEC: Exec format error",
-            LinuxKernelError::EBADF => "EBADF: Bad file descriptor",
-            LinuxKernelError::ECHILD => "ECHILD: No child processes",
-            LinuxKernelError::EAGAIN => "EAGAIN: Resource temporarily unavailable",
-            LinuxKernelError::ENOMEM => "ENOMEM: Cannot allocate memory",
-            LinuxKernelError::EACCES => "EACCES: Permission denied",
-            LinuxKernelError::EFAULT => "EFAULT: Bad address",
-            LinuxKernelError::ENOTBLK => "ENOTBLK: Block device required",
-            LinuxKernelError::EBUSY => "EBUSY: Device or resource busy",
-            LinuxKernelError::EEXIST => "EEXIST: File exists",
-            LinuxKernelError::EXDEV => "EXDEV: Invalid cross-device link",
-            LinuxKernelError::ENODEV => "ENODEV: No such device",
-            LinuxKernelError::ENOTDIR => "ENOTDIR: Not a directory",
-            LinuxKernelError::EISDIR => "EISDIR: Is a directory",
-            LinuxKernelError::EINVAL => "EINVAL: Invalid argument",
-            LinuxKernelError::ENFILE => "ENFILE: Too many open files in system",
-            LinuxKernelError::EMFILE => "EMFILE: Too many open files",
-            LinuxKernelError::ENOTTY => "ENOTTY: Inappropriate ioctl for device",
-            LinuxKernelError::ETXTBSY => "ETXTBSY: Text file busy",
-            LinuxKernelError::EFBIG => "EFBIG: File too large",
-            LinuxKernelError::ENOSPC => "ENOSPC: No space left on device",
-            LinuxKernelError::ESPIPE => "ESPIPE: Illegal seek",
-            LinuxKernelError::EROFS => "EROFS: Read-only file system",
-            LinuxKernelError::EMLINK => "EMLINK: Too many links",
-            LinuxKernelError::EPIPE => "EPIPE: Broken pipe",
-            LinuxKernelError::EDOM => "EDOM: Numerical argument out of domain",
-            LinuxKernelError::ERANGE => "ERANGE: Numerical result out of range",
-            LinuxKernelError::EDEADLK => "EDEADLK: Resource deadlock avoided",
-            LinuxKernelError::ENAMETOOLONG => "ENAMETOOLONG: File name too long",
-            LinuxKernelError::ENOLCK => "ENOLCK: No locks available",
-            LinuxKernelError::ENOSYS => "ENOSYS: Function not implemented",
-            LinuxKernelError::ENOTEMPTY => "ENOTEMPTY: Directory not empty",
-            LinuxKernelError::ELOOP => "ELOOP: Too many levels of symbolic links",
-            LinuxKernelError::ENOMSG => "ENOMSG: No message of desired type",
-            LinuxKernelError::EIDRM => "EIDRM: Identifier removed",
-            LinuxKernelError::ECHRNG => "ECHRNG: Channel number out of range",
-            LinuxKernelError::EL2NSYNC => "EL2NSYNC: Level 2 not synchronized",
-            LinuxKernelError::EL3HLT => "EL3HLT: Level 3 halted",
-            LinuxKernelError::EL3RST => "EL3RST: Level 3 reset",
-            LinuxKernelError::ELNRNG => "ELNRNG: Link number out of range",
-            LinuxKernelError::EUNATCH => "EUNATCH: Protocol driver not attached",
-            LinuxKernelError::ENOCSI => "ENOCSI: No CSI structure available",
-            LinuxKernelError::EL2HLT => "EL2HLT: Level 2 halted",
-            LinuxKernelError::EBADE => "EBADE: Invalid exchange",
-            LinuxKernelError::EBADR => "EBADR: Invalid request descriptor",
-            LinuxKernelError::EXFULL => "EXFULL: Exchange full",
-            LinuxKernelError::ENOANO => "ENOANO: No anode",
-            LinuxKernelError::EBADRQC => "EBADRQC: Invalid request code",
-            LinuxKernelError::EBADSLT => "EBADSLT: Invalid slot",
-            LinuxKernelError::EBFONT => "EBFONT: Bad font file format",
-            LinuxKernelError::ENOSTR => "ENOSTR: Device not a stream",
-            LinuxKernelError::ENODATA => "ENODATA: No data available",
-            LinuxKernelError::ETIME => "ETIME: Timer expired",
-            LinuxKernelError::ENOSR => "ENOSR: Out of streams resources",
-            LinuxKernelError::ENONET => "ENONET: Machine is not on the network",
-            LinuxKernelError::ENOPKG => "ENOPKG: Package not installed",
-            LinuxKernelError::EREMOTE => "EREMOTE: Object is remote",
-            LinuxKernelError::ENOLINK => "ENOLINK: Link has been severed",
-            LinuxKernelError::EADV => "EADV: Advertise error",
-            LinuxKernelError::ESRMNT => "ESRMNT: Srmount error",
-            LinuxKernelError::ECOMM => "ECOMM: Communication error on send",
-            LinuxKernelError::EPROTO => "EPROTO: Protocol error",
-            LinuxKernelError::EMULTIHOP => "EMULTIHOP: Multihop attempted",
-            LinuxKernelError::EDOTDOT => "EDOTDOT: RFS specific error",
-            LinuxKernelError::EBADMSG => "EBADMSG: Bad message",
-            LinuxKernelError::EOVERFLOW => "EOVERFLOW: Value too large for defined data type",
-            LinuxKernelError::ENOTUNIQ => "ENOTUNIQ: Name not unique on network",
-            LinuxKernelError::EBADFD => "EBADFD: File descriptor in bad state",
-            LinuxKernelError::EREMCHG => "EREMCHG: Remote address changed",
-            LinuxKernelError::ELIBACC => "ELIBACC: Can not access a needed shared library",
-            LinuxKernelError::ELIBBAD => "ELIBBAD: Accessing a corrupted shared library",
-            LinuxKernelError::ELIBSCN => "ELIBSCN: .lib section in a.out corrupted",
-            LinuxKernelError::ELIBMAX => "ELIBMAX: Attempting to link in too many shared libraries",
-            LinuxKernelError::ELIBEXEC => "ELIBEXEC: Cannot exec a shared library directly",
-            LinuxKernelError::EILSEQ => "EILSEQ: Invalid or incomplete multibyte or wide character",
-            LinuxKernelError::ERESTART => "ERESTART: Interrupted system call should be restarted",
-            LinuxKernelError::ESTRPIPE => "ESTRPIPE: Streams pipe error",
-            LinuxKernelError::EUSERS => "EUSERS: Too many users",
-            LinuxKernelError::ENOTSOCK => "ENOTSOCK: Socket operation on non-socket",
-            LinuxKernelError::EDESTADDRREQ => "EDESTADDRREQ: Destination address required",
-            LinuxKernelError::EMSGSIZE => "EMSGSIZE: Message too long",
-            LinuxKernelError::EPROTOTYPE => "EPROTOTYPE: Protocol wrong type for socket",
-            LinuxKernelError::ENOPROTOOPT => "ENOPROTOOPT: Protocol not available",
-            LinuxKernelError::EPROTONOSUPPORT => "EPROTONOSUPPORT: Protocol not supported",
-            LinuxKernelError::ESOCKTNOSUPPORT => "ESOCKTNOSUPPORT: Socket type not supported",
-            LinuxKernelError::EOPNOTSUPP => "EOPNOTSUPP: Operation not supported",
-            LinuxKernelError::EPFNOSUPPORT => "EPFNOSUPPORT: Protocol family not supported",
-            LinuxKernelError::EAFNOSUPPORT => "EAFNOSUPPORT: Address family not supported by protocol",
-            LinuxKernelError::EADDRINUSE => "EADDRINUSE: Address already in use",
-            LinuxKernelError::EADDRNOTAVAIL => "EADDRNOTAVAIL: Cannot assign requested address",
-            LinuxKernelError::ENETDOWN => "ENETDOWN: Network is down",
-            LinuxKernelError::ENETUNREACH => "ENETUNREACH: Network is unreachable",
-            LinuxKernelError::ENETRESET => "ENETRESET: Network dropped connection on reset",
-            LinuxKernelError::ECONNABORTED => "ECONNABORTED: Software caused connection abort",
-            LinuxKernelError::ECONNRESET => "ECONNRESET: Connection reset by peer",
-            LinuxKernelError::ENOBUFS => "ENOBUFS: No buffer space available",
-            LinuxKernelError::EISCONN => "EISCONN: Transport endpoint is already connected",
-            LinuxKernelError::ENOTCONN => "ENOTCONN: Transport endpoint is not connected",
-            LinuxKernelError::ESHUTDOWN => "ESHUTDOWN: Cannot send after transport endpoint shutdown",
-            LinuxKernelError::ETOOMANYREFS => "ETOOMANYREFS: Too many references: cannot splice",
-            LinuxKernelError::ETIMEDOUT => "ETIMEDOUT: Connection timed out",
-            LinuxKernelError::ECONNREFUSED => "ECONNREFUSED: Connection refused",
-            LinuxKernelError::EHOSTDOWN => "EHOSTDOWN: Host is down",
-            LinuxKernelError::EHOSTUNREACH => "EHOSTUNREACH: No route to host",
-            LinuxKernelError::EALREADY => "EALREADY: Operation already in progress",
-            LinuxKernelError::EINPROGRESS => "EINPROGRESS: Operation now in progress",
-            LinuxKernelError::ESTALE => "ESTALE: Stale file handle",
-            LinuxKernelError::EUCLEAN => "EUCLEAN: Structure needs cleaning",
-            LinuxKernelError::ENOTNAM => "ENOTNAM: Not a XENIX named type file",
-            LinuxKernelError::ENAVAIL => "ENAVAIL: No XENIX semaphores available",
-            LinuxKernelError::EISNAM => "EISNAM: Is a named type file",
-            LinuxKernelError::EREMOTEIO => "EREMOTEIO: Remote I/O error",
-            LinuxKernelError::EDQUOT => "EDQUOT: Disk quota exceeded",
-            LinuxKernelError::ENOMEDIUM => "ENOMEDIUM: No medium found",
-            LinuxKernelError::EMEDIUMTYPE => "EMEDIUMTYPE: Wrong medium type",
-            LinuxKernelError::ECANCELED => "ECANCELED: Operation canceled",
-            LinuxKernelError::ENOKEY => "ENOKEY: Required key not available",
-            LinuxKernelError::EKEYEXPIRED => "EKEYEXPIRED: Key has expired",
-            LinuxKernelError::EKEYREVOKED => "EKEYREVOKED: Key has been revoked",
-            LinuxKernelError::EKEYREJECTED => "EKEYREJECTED: Key was rejected by service",
-            LinuxKernelError::EOWNERDEAD => "EOWNERDEAD: Owner died",
-            LinuxKernelError::ENOTRECOVERABLE => "ENOTRECOVERABLE: State not recoverable",
-            LinuxKernelError::ERFKILL => "ERFKILL: Operation not possible due to RF-kill",
-            LinuxKernelError::EHWPOISON => "EHWPOISON: Memory page has hardware error",
-        }
-    }
 }
 
 impl From<FileDescriptorMapError> for LinuxKernelError {
@@ -354,9 +354,13 @@ impl From<FileDescriptorError> for LinuxKernelError {
     }
 }
 
+#[derive(Error, Debug)]
 pub enum SyscallError {
+    #[error("Linux Kernel error occurred")]
     KernelError(LinuxKernelError),
+    #[error("The kernel is yielding to the scheduler")]
     Yield,
+    #[error("The requested operation is not yet implemented")]
     NotImplemented,
 }
 

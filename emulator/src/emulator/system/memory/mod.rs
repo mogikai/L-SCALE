@@ -251,11 +251,11 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
                 Err(MemoryError::InvalidArguments)?
             }
             if address < new_address && address + size_aligned > new_address {
-                Err(MemoryError::Overlap)?
+                Err(MemoryError::MappingOverlaps)?
             }
 
             if new_address < address && new_address + new_size > address {
-                Err(MemoryError::Overlap)?
+                Err(MemoryError::MappingOverlaps)?
             }
             let new_size_aligned = helpers::align4k_up(new_size);
 
@@ -333,7 +333,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         size: usize,
     ) -> Result<(), MemoryError> {
         if !helpers::is4kaligned(address) || !helpers::is4kaligned(size) {
-            Err(MemoryError::NotAligned)?
+            Err(MemoryError::InvalidAlignment)?
         }
         if size == 0 {
             Err(MemoryError::ZeroSize)?

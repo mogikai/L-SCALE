@@ -2,31 +2,47 @@ use std::num::TryFromIntError;
 
 use bitflags::bitflags;
 use byteorder::ByteOrder;
+use thiserror::Error;
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode};
 
 pub mod encoding;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Error, Debug, Copy, Clone)]
 pub enum MemoryError {
+    #[error("The memory Could not be converted into the required type")]
     ConversionError,
+    #[error("Part of the memory that was attempted to map is already mapped in a different mapping")]
     AlreadyMapped,
+    #[error("The requested memory is not mapped")]
     NotMapped,
-    NotAligned,
-    ZeroSize,
-    InvalidPermission,
-    InvalidSize,
-    Unknown,
-    ProcessAlreadyExists,
-    LayoutNotFound,
-    OutOfMemory,
-    GuardRegionAccess { address: EVAddr, guard_callback_id: usize },
+    #[error("The memory address or size is not aligned")]
     InvalidAlignment,
+    #[error("The size must not be zero")]
+    ZeroSize,
+    #[error("The permissions of the memory region do not allow the requested operation")]
+    InvalidPermission,
+    #[error("The size of the supplied memory is not sufficient for the requested operation")]
+    InsufficientSize,
+    #[error("The process already exists (i.e. it already has a memory layout assigned")]
+    ProcessAlreadyExists,
+    #[error("The requested memory layout could not be found")]
+    LayoutNotFound,
+    #[error("There is no more virtual physical memory available")]
+    OutOfMemory,
+    #[error("TODO")]
+    GuardRegionAccess { address: EVAddr, guard_callback_id: usize },
+    #[error("The requested memory region is not continuously mapped (i.e. it contains unmapped addresses)")]
     NotContinuous,
+    #[error("One or more arguments are invalid")]
     InvalidArguments,
-    Overlap,
+    #[error("The mapping overlaps with itself")]
+    MappingOverlaps,
+    #[error("The requested write could only write {0} bytes")]
     IncompleteWrite(usize),
+    #[error("An unknown error has occurred")]
+    Unknown,
 }
 
 pub trait MMU {

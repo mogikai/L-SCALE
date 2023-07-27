@@ -80,7 +80,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         new_addr: EVAddr,
     ) -> SyscallResult {
         if !is4kaligned(old_addr) {
-            Err(MemoryError::NotAligned)?
+            Err(MemoryError::InvalidAlignment)?
         }
         if old_len == 0 {
             todo!(
@@ -114,7 +114,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         prot: u64,
     ) -> SyscallResult {
         if !is4kaligned(start) {
-            Err(MemoryError::NotAligned)?
+            Err(MemoryError::InvalidAlignment)?
         }
         self.system
             .memory

@@ -108,10 +108,12 @@ impl Layout {
         &mut self,
         size: usize,
     ) -> Result<(), MemoryError> {
-        if size == 0 || !is4kaligned(size) {
-            Err(MemoryError::InvalidSize)?
+        if size == 0 {
+            Err(MemoryError::ZeroSize)?
         }
-
+        if !is4kaligned(size) {
+            Err(MemoryError::InvalidAlignment)?
+        }
         if self.tlb.borrow().region_mapped(self.heap_end, size) {
             // Cannot extend the region since the address space after the region is already mapped
             Err(MemoryError::AlreadyMapped)?
