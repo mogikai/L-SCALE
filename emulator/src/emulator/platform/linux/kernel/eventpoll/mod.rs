@@ -87,8 +87,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
             epoll_data.interest_list.remove(&fd);
         });
 
-        if triggered_events.is_empty() {
-            // TODO: Yield to scheduler
+        if triggered_events.is_empty() && timeout != 0 {
             Err(SyscallError::Yield)?
         }
 

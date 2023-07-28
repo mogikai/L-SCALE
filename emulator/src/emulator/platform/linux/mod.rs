@@ -5,7 +5,7 @@ use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::System;
 
 pub mod architecture;
-pub mod emulator;
+pub mod scheduler;
 pub mod fd;
 pub mod kernel;
 pub mod signalfd;

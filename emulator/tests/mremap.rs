@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use byteorder::LittleEndian;
 
-use fuzzyemu::emulator::abstractions::emulator::{Emulator, StopReason};
+use fuzzyemu::emulator::abstractions::emulator::{Scheduler, StopReason};
 use fuzzyemu::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
 use fuzzyemu::emulator::platform::linux::architecture::x86::X86;

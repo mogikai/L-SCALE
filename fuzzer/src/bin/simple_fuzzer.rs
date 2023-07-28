@@ -7,11 +7,11 @@ use std::time::{Duration, Instant};
 
 use log::debug;
 
-use fuzzyemu::emulator::abstractions::emulator::Emulator;
+use fuzzyemu::emulator::abstractions::emulator::Scheduler;
 use fuzzyemu::emulator::abstractions::errors::GenericError;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
 use fuzzyemu::emulator::platform::linux::architecture::x86::X86;
-use fuzzyemu::emulator::platform::linux::emulator::LinuxX86Scheduler;
+use fuzzyemu::emulator::platform::linux::scheduler::LinuxX86Scheduler;
 use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
 use fuzzyemu::emulator::system::clock::Clock;
 use fuzzyemu::emulator::system::fd_map::FileDescriptorMap;

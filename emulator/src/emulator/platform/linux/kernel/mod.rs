@@ -5,8 +5,8 @@ use std::rc::Rc;
 
 use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
-use error::SyscallError;
 
+use error::SyscallError;
 use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 
 use crate::emulator::abstractions::cpu::{CPU, RegisterX86};
@@ -46,7 +46,6 @@ pub struct LinuxKernelTask<Endianness: ByteOrder, Arch: Architecture> {
     robust_list_head: Option<EVAddr>,
     signalhandler: SignalHandler<Arch::SignalFlags>,
     task_id: TaskId,
-    exited: bool,
     _arch: PhantomData<Arch>,
 }
 
@@ -64,7 +63,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             robust_list_head: None,
             signalhandler: SignalHandler::new(),
             task_id: TaskId::new(pid, tid),
-            exited: false,
             _arch: PhantomData,
         }
     }
@@ -188,10 +186,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let rsp = EVAddr::from(cpu.reg_read(RegisterX86::RSP.into())?);
 
         Ok(())
-    }
-
-    pub fn exited(&self) -> bool {
-        self.exited
     }
 
     pub fn task_id(&self) -> TaskId {

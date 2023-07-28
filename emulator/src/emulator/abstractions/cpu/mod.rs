@@ -2,6 +2,7 @@ use std::num::TryFromIntError;
 use std::time::Duration;
 
 use generational_arena::Index;
+use thiserror::Error;
 
 use address::EVAddr;
 
@@ -10,12 +11,17 @@ use crate::emulator::abstractions::restore::Restorable;
 
 pub mod address;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Error, Debug, Copy, Clone)]
 pub enum CPUError {
+    #[error("TODO")]
     InvalidArch,
+    #[error("TODO")]
     InvalidPermission,
+    #[error("TODO")]
     Stopped(StopReason),
+    #[error("TODO")]
     TaskExists,
+    #[error("TODO")]
     Unknown,
 }
 
