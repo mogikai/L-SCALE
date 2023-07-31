@@ -122,7 +122,7 @@ fn main() -> Result<(), GenericError> {
             .iter()
             .fold(0, |acc, _| acc + 1)
     );
-    debug!("Total 3-edges executed: {:?}", blocks.values().cloned().reduce(|acc, b| acc + b).unwrap());
+    debug!("Total 3-edges executed: {:?}", blocks.values().cloned().reduce(|acc, b| acc + b));
     Ok(())
 }
 

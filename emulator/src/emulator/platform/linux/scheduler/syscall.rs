@@ -1,12 +1,12 @@
 use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
 
-use crate::emulator::abstractions::cpu::{CPU, RegisterX86};
+use crate::emulator::abstractions::cpu::{RegisterX86, CPU};
 use crate::emulator::abstractions::emulator::StopReason;
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::platform::linux::architecture::x86::X86;
-use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask};
 use crate::emulator::platform::linux::kernel::error::SyscallError;
+use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask};
 
 macro_rules! do_syscall {
     (0, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{

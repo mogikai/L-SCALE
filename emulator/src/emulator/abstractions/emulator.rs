@@ -1,6 +1,6 @@
+use crate::emulator::abstractions::cpu::CPUError;
 use std::time::Duration;
 use thiserror::Error;
-use crate::emulator::abstractions::cpu::CPUError;
 
 #[derive(Error, Debug, Copy, Clone)]
 pub enum StopReason {
@@ -28,6 +28,8 @@ pub enum SchedulerError {
     Stopped(#[from] StopReason),
     #[error("The emulation stopped because a cpu error occurred")]
     CPUError(#[from] CPUError),
+    #[error("The emulation stopped because no task can be scheduled since all would block again")]
+    NoRunnableTasks,
 }
 
 pub trait Scheduler {

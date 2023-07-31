@@ -7,26 +7,36 @@ use std::time::Duration;
 
 use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
-use thiserror::Error;
 
-use crate::emulator::abstractions::cpu::{ContextHandle, CPU, CPUError, RegisterX86};
 use crate::emulator::abstractions::cpu::address::EVAddr;
+use crate::emulator::abstractions::cpu::{CPUError, ContextHandle, RegisterX86, CPU};
 use crate::emulator::abstractions::emulator::{Scheduler, SchedulerError, StopReason};
-use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::architecture::x86::X86;
-use crate::emulator::platform::linux::kernel::LinuxKernelTask;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
-use crate::emulator::platform::linux::LinuxSystem;
+use crate::emulator::platform::linux::kernel::LinuxKernelTask;
 use crate::emulator::platform::linux::scheduler::syscall::syscall;
+use crate::emulator::platform::linux::LinuxSystem;
 
 mod syscall;
 
-struct SchedulerContext<Endianness: ByteOrder> {
-    tasks: BTreeMap<TaskId, LinuxKernelTask<Endianness, X86>>,
+enum TaskState {
+    Runnable,
+    Yielded,
+}
+
+struct Task<Endianness: ByteOrder> {
+    kernel: LinuxKernelTask<Endianness, X86>,
+    state: TaskState,
+    cpu_context_handle: ContextHandle,
     yielded_syscall_rip: Option<u64>,
+}
+
+struct SchedulerContext<Endianness: ByteOrder> {
+    tasks: BTreeMap<TaskId, Task<Endianness>>,
+    current_task: Option<Task<Endianness>>,
 }
 
 pub struct LinuxX86Scheduler<'a, CpuT, Endianness>
@@ -37,7 +47,6 @@ where
     system: Rc<LinuxSystem<Endianness>>,
     context: Rc<RefCell<SchedulerContext<Endianness>>>,
     cpu: Rc<RefCell<CpuT>>,
-    cpu_context_handle: ContextHandle,
     phantom: PhantomData<&'a CpuT>,
 }
 
@@ -51,30 +60,7 @@ where
         timeout: Option<Duration>,
         instruction_count: Option<usize>,
     ) -> Result<(), SchedulerError> {
-        // TODO: Implement scheduling
-        loop {
-            self.schedule()?;
-            let mut cpu = self.cpu.borrow_mut();
-            cpu.restore_context(self.cpu_context_handle)
-                .map_err(|_| StopReason::Unknown)?;
-            if let Some(rip) = self.context.borrow_mut().yielded_syscall_rip {
-                cpu.reg_write(RegisterX86::RIP.into(), rip).unwrap();
-            }
-            let stop_reason = self.system.current_task.borrow().ok_or(StopReason::Unknown).and_then(|current_task| {
-                if let Err(CPUError::Stopped(StopReason::Yield)) = cpu.emulate(None, timeout, instruction_count) {
-                    Err(StopReason::Yield)
-                } else {
-                    Ok(())
-                }
-            });
-            cpu.save_context(self.cpu_context_handle)
-                .map_err(|_| StopReason::Unknown)?;
-            if let Err(StopReason::Yield) = stop_reason {
-                continue;
-            } else {
-                break stop_reason;
-            }
-        }.map_err(SchedulerError::from)
+        self.scheduler_loop(timeout, instruction_count)
     }
 }
 
@@ -96,10 +82,9 @@ where
             system,
             context: Rc::new(RefCell::new(SchedulerContext {
                 tasks: Default::default(),
-                yielded_syscall_rip: None,
+                current_task: None,
             })),
             cpu,
-            cpu_context_handle,
             phantom: Default::default(),
         };
 
@@ -110,8 +95,97 @@ where
         Ok(sched)
     }
 
-    fn schedule(&mut self) -> Result<(), SchedulerError> {
+    fn scheduler_loop(
+        &mut self,
+        timeout: Option<Duration>,
+        instruction_count: Option<usize>,
+    ) -> Result<(), SchedulerError> {
+        loop {
+            let task_id = self.schedule()?;
+
+            self.pre_task(&task_id)?;
+            let stop_reason = self.process_task(timeout, instruction_count)?;
+            self.post_task(stop_reason)?;
+        }
+    }
+
+    fn schedule(&mut self) -> Result<TaskId, SchedulerError> {
+        // TODO: Implement actual scheduling. Potentially delegate to fuzzer.
+        self.context
+            .borrow_mut()
+            .tasks
+            .iter()
+            .find(|(id, task)| matches!(task.state, TaskState::Runnable))
+            .map(|(id, _)| *id)
+            .ok_or(SchedulerError::NoRunnableTasks)
+    }
+
+    fn pre_task(
+        &mut self,
+        task_id: &TaskId,
+    ) -> Result<(), SchedulerError> {
+        let mut context = self.context.borrow_mut();
+        let mut cpu = self.cpu.borrow_mut();
+
+        let task = context
+            .tasks
+            .remove(task_id)
+            .expect("Scheduled task must exist");
+
+        cpu.restore_context(task.cpu_context_handle)
+            .map_err(|_| StopReason::Unknown)?;
+
+        if let Some(rip) = task.yielded_syscall_rip {
+            cpu.reg_write(RegisterX86::RIP.into(), rip).unwrap();
+        }
+        context.current_task.insert(task);
         Ok(())
+    }
+
+    fn process_task(
+        &mut self,
+        timeout: Option<Duration>,
+        instruction_count: Option<usize>,
+    ) -> Result<Option<StopReason>, CPUError> {
+        let result = self
+            .cpu
+            .borrow_mut()
+            .emulate(None, timeout, instruction_count);
+        match result {
+            Err(CPUError::Stopped(reason)) => Ok(Some(reason)),
+            Err(e) => Err(e),
+            _ => Ok(None),
+        }
+    }
+
+    fn post_task(
+        &mut self,
+        stop_reason: Option<StopReason>,
+    ) -> Result<(), SchedulerError> {
+        // Save all the context after we are done executing the scheduled task
+        let mut context = self.context.borrow_mut();
+        let mut cpu = self.cpu.borrow_mut();
+
+        let mut task = context.current_task.take().unwrap();
+        cpu.save_context(task.cpu_context_handle)
+            .map_err(|_| StopReason::Unknown)?;
+
+        let error = match stop_reason {
+            None => Ok(()),
+            Some(StopReason::Yield) => {
+                task.state = TaskState::Yielded;
+                Ok(())
+            }
+            Some(StopReason::Killed) => {
+                // TODO: Remove Task from list of runnable tasks
+                Ok(())
+            }
+            Some(reason) => Err(reason),
+        };
+
+        context.tasks.insert(task.kernel.task_id(), task);
+
+        Ok(error?)
     }
 
     fn setup_cpu(&mut self) -> Result<(), SchedulerError> {
@@ -124,18 +198,19 @@ where
         }));
 
         let syscall_context = self.context.clone();
-        let syscall_system = self.system.clone();
         cpu.add_syscall_hook(
             EVAddr::from(1),
             EVAddr::from(0),
             Box::new(move |cpu: &mut CpuT| {
                 let mut context = syscall_context.borrow_mut();
-                context.yielded_syscall_rip.take();
-                let current_task = syscall_system.current_task.borrow().unwrap();
-                let task = context.tasks.get_mut(&current_task).unwrap();
-                let result = syscall(cpu, task);
+                let task = context
+                    .current_task
+                    .as_mut()
+                    .expect("The current task must be set by the scheduler");
+                task.yielded_syscall_rip.take();
+                let result = syscall(cpu, &mut task.kernel);
                 if let Err(rip) = result {
-                    context.yielded_syscall_rip.insert(rip);
+                    task.yielded_syscall_rip.insert(rip);
                 }
             }),
         );
@@ -149,7 +224,6 @@ where
             }),
         );
 
-        cpu.save_context(self.cpu_context_handle)?;
         Ok(())
     }
 
@@ -164,12 +238,21 @@ where
 
         let mut cpu = self.cpu.borrow_mut();
         // TODO: Do more specific error mapping
-        initial_task.load_binary(&mut *cpu, binary_path.as_path(), binary_args, binary_env).map_err(|_| SchedulerError::Unknown)?;
+        initial_task
+            .load_binary(&mut *cpu, binary_path.as_path(), binary_args, binary_env)
+            .map_err(|_| SchedulerError::Unknown)?;
         *self.system.current_task.borrow_mut() = Some(initial_task.task_id());
         let mut context = self.context.borrow_mut();
+        let task = Task {
+            kernel: initial_task,
+            state: TaskState::Runnable,
+            cpu_context_handle: cpu.create_context()?,
+            yielded_syscall_rip: None,
+        };
+        cpu.save_context(task.cpu_context_handle)?;
         context
             .tasks
-            .try_insert(initial_task.task_id(), initial_task)
+            .try_insert(task.kernel.task_id(), task)
             .map_err(|_| CPUError::TaskExists)?;
         Ok(())
     }
