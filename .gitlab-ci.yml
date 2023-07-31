@@ -11,6 +11,14 @@
 # https://hub.docker.com/r/library/rust/tags/
 image: "rustlang/rust:nightly"
 
+variables:
+  GIT_SUBMODULE_STRATEGY: recursive
+  GIT_SUBMODULE_DEPTH: 1
+
+default:
+  tags:
+    - ILT
+
 # Optional: Pick zero or more services to be used on all builds.
 # Only needed when using a docker container to run your tests in.
 # Check out: https://docs.gitlab.com/ee/ci/services/index.html
@@ -21,9 +29,19 @@ image: "rustlang/rust:nightly"
 
 # Optional: Install a C compiler, cmake and git into the container.
 # You will often need this when you (or any of your dependencies) depends on C code.
-# before_script:
-#   - apt-get update -yqq
-#   - apt-get install -yqq --no-install-recommends build-essential
+before_script:
+  - apt-get update -yqq
+  - apt-get install -yqq --no-install-recommends
+    build-essential
+    cmake
+    libwebkit2gtk-4.0-dev
+    curl
+    wget
+    file
+    libssl-dev
+    libgtk-3-dev
+    libayatana-appindicator3-dev
+    librsvg2-dev
 
 # Use cargo to test the project
 test:cargo:

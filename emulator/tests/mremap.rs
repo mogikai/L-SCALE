@@ -4,11 +4,11 @@ use std::time::Duration;
 
 use byteorder::LittleEndian;
 
-use fuzzyemu::emulator::abstractions::emulator::{Scheduler, StopReason};
+use fuzzyemu::emulator::abstractions::emulator::{Scheduler, SchedulerError, StopReason};
 use fuzzyemu::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
 use fuzzyemu::emulator::platform::linux::architecture::x86::X86;
-use fuzzyemu::emulator::platform::linux::emulator::LinuxX86Scheduler;
+use fuzzyemu::emulator::platform::linux::scheduler::LinuxX86Scheduler;
 use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
 use fuzzyemu::emulator::system::clock::Clock;
 use fuzzyemu::emulator::system::fd_map::FileDescriptorMap;
@@ -57,7 +57,7 @@ fn remap_private_anon() -> Result<(), GenericError> {
     )
     .unwrap();
     match scheduler.run(None, None) {
-        Err(StopReason::ProcessExit) => Ok(()),
+        Err(SchedulerError::Stopped(StopReason::ProcessExit)) => Ok(()),
         _ => Err(GenericError::new(GenericErrorKind::Unknown, "Unexpected stop reason")),
     }
 }
