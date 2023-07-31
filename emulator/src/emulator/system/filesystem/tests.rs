@@ -3,6 +3,7 @@
 /// Unit tests for file system module
 /// TODO: Write more sensible tests
 use std::path::Path;
+use hex::ToHex;
 
 use rand::{thread_rng, RngCore};
 
@@ -107,11 +108,14 @@ fn load_file_contents() -> Result<(), GenericError> {
 
 #[test]
 fn load_fs() -> Result<(), FSError> {
-    let fs = Filesystem::from_disk(1_073_741_824, Path::new("/home/mark/projects/fraunhofer/fuzzing/prototypes/ffs"))?;
+    let reference = include_bytes!("../../../../tests/assets/ubuntu2304/home/user/mremap_priv_anon");
+    let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    dir.push(Path::new("tests/assets/ubuntu2304"));
+    let fs = Filesystem::from_disk(1_073_741_824, dir.as_path())?;
     // fs.print_tree();
-    let lib_id = fs.resolve_last(Path::new("/src/lib.rs"))?;
+    let lib_id = fs.resolve_last(Path::new("/home/user/mremap_priv_anon"))?;
     let data = fs.read(lib_id, 0, 100000)?;
-    println!("{}", String::from_utf8(data).unwrap());
+    assert_eq!(data.as_slice(), reference.as_slice());
     Ok(())
 }
 
