@@ -44,7 +44,8 @@ fn remap_private_anon() -> Result<(), GenericError> {
     )
     .unwrap();
     match scheduler.run(None, None) {
-        Err(SchedulerError::Stopped(StopReason::ProcessExit)) => Ok(()),
+        Err(SchedulerError::Stopped(StopReason::ProcessExit(0))) => Ok(()),
+        Err(SchedulerError::Stopped(StopReason::ProcessExit(_))) => Err(GenericError::new(GenericErrorKind::Unknown, "bla")),
         _ => Err(GenericError::new(GenericErrorKind::Unknown, "Unexpected stop reason")),
     }
 }

@@ -15,7 +15,7 @@ pub enum StopReason {
     #[error("The process tried to execute a syscall that is not yet implemented")]
     MissingSyscall,
     #[error("The process exited normally")]
-    ProcessExit,
+    ProcessExit(u64),
     /// The yield stop reason can be issued by any part inside a currently executed syscall.
     /// The syscall that issues the yield is responsible for being sound on being called a
     /// second time. This can be achieved either by implementing a state machine inside the

@@ -144,7 +144,8 @@ fn do_syscall<Endianness: ByteOrder + 'static>(
         FADVISE64 => do_syscall!(4, cpu, kernel::fadvise64, debug_str),
         CLOCK_GETTIME => do_syscall!(2, cpu, kernel::clock_gettime, debug_str),
         EXIT_GROUP => {
-            cpu.stop(StopReason::ProcessExit).unwrap();
+            let exitcode = cpu.reg_read(RegisterX86::RDI.into()).unwrap();
+            cpu.stop(StopReason::ProcessExit(exitcode)).unwrap();
             Ok(0)
         } // TODO: Implement properly and propagate exit code
         EPOLL_WAIT => do_syscall!(4, cpu, kernel::epoll_wait, debug_str),
