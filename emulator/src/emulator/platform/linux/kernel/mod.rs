@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use byteorder::ByteOrder;
+use goblin::elf::{Elf, program_header};
 use num_enum::FromPrimitive;
 
 use error::SyscallError;
@@ -80,8 +81,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         binary_args: &[&str],
         binary_env: &[&str],
     ) -> Result<(), LinuxKernelError> {
-        let (interpreter_path, entrypoint) = self.load_program_sections(cpu, binary_path)?;
-        self.initstack(cpu, binary_path, binary_args, binary_env, interpreter_path, entrypoint)?;
+        let (interpreter_path, entrypoint, phdr) = self.load_program_sections(cpu, binary_path)?;
+        self.initstack(cpu, binary_path, binary_args, binary_env, interpreter_path, entrypoint, phdr)?;
         cpu.reg_write(RegisterX86::RIP.into(), entrypoint.into())?;
         Ok(())
     }
@@ -90,26 +91,45 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         &mut self,
         cpu: &mut (impl CPU + MMU),
         binary_path: &Path,
-    ) -> Result<(PathBuf, EVAddr), LinuxKernelError> {
-        let mut memory = self.system.memory.borrow_mut();
+    ) -> Result<(PathBuf, EVAddr, u64), LinuxKernelError> {
+        self.system.memory.borrow_mut().new_process(cpu, self.task_id)?;
         let fs = self.system.filesystem.borrow();
 
-        memory.new_process(cpu, self.task_id)?;
-        let buffer = fs.read_all(fs.resolve_last(binary_path)?)?;
-        let elf = goblin::elf::Elf::parse(&buffer).unwrap();
-        self.entrypoint = Some(elf.entry.into());
-        let interpreter_path = Path::new(elf.interpreter.ok_or(LinuxKernelError::ENOENT)?).to_owned();
-        let buffer = fs.read_all(fs.resolve_last(&interpreter_path)?)?;
-        let interpreter = goblin::elf::Elf::parse(&buffer).unwrap();
+        let program_data = fs.read_all(fs.resolve_last(binary_path)?)?;
+        let program = goblin::elf::Elf::parse(&program_data).unwrap();
+        let program_base = EVAddr::from(0x0000_c000_0000_0000);
+        self.entrypoint = Some(EVAddr::from(program.entry));
+
+        // Load interpreter
+        let interpreter_path = Path::new(program.interpreter.ok_or(LinuxKernelError::ENOENT)?).to_owned();
+        let interpreter_data = fs.read_all(fs.resolve_last(&interpreter_path)?)?;
+        let interpreter = goblin::elf::Elf::parse(&interpreter_data).unwrap();
+        let interpreter_base = EVAddr::from(0x0000_b000_0000_0000);
         //TODO iterator
-        for ph in interpreter.program_headers {
+        drop(fs);
+        let phdr = program_base + program.program_headers.iter().find(|ph| ph.p_type == program_header::PT_PHDR).unwrap().p_offset;
+        self.system.memory.borrow_mut().map_data(cpu, self.task_id, program_base..program_base+program_data.len(), program_data.as_slice(), Permission::READ | Permission::WRITE);
+
+        self.load_interpreter(cpu, interpreter_base, &interpreter, &interpreter_data)?;
+        Ok((interpreter_path, interpreter_base + EVAddr::from(interpreter.entry), phdr.into()))
+    }
+
+    fn load_interpreter(
+        &mut self,
+        cpu: &mut (impl CPU + MMU),
+        base: EVAddr,
+        elf: &Elf,
+        elf_data: &Vec<u8>,
+    ) -> Result<(), LinuxKernelError> {
+        let mut memory = self.system.memory.borrow_mut();
+        for ph in &elf.program_headers {
             if ph.p_type == goblin::elf::program_header::PT_LOAD {
                 let perms = getperms(&ph);
-                if ph.p_offset + ph.p_filesz > buffer.len().try_into().unwrap() {
+                if ph.p_offset + ph.p_filesz > elf_data.len().try_into().unwrap() {
                     return Err(LinuxKernelError::ENOEXEC);
                 }
-                let data: &[u8] = &buffer[ph.file_range()];
-                let vm_range = EVAddr::from(ph.p_vaddr)..(EVAddr::from(ph.p_vaddr) + ph.p_memsz);
+                let data: &[u8] = &elf_data[ph.file_range()];
+                let vm_range = base + EVAddr::from(ph.p_vaddr)..(base + EVAddr::from(ph.p_vaddr) + ph.p_memsz);
                 info!("vm_range   0x{:X}..0x{:X}", vm_range.start, vm_range.end);
                 info!("file_range 0x{:X}..0x{:X}", ph.file_range().start, ph.file_range().end);
                 memory
@@ -117,8 +137,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
                     .unwrap();
             }
         }
-        drop(fs);
-        Ok((interpreter_path, interpreter.entry.into()))
+        Ok(())
     }
 
     fn initstack(
@@ -129,9 +148,10 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         binary_env: &[&str],
         interpreter_path: PathBuf,
         entrypoint: EVAddr,
+        phdr: u64,
     ) -> Result<(), LinuxKernelError> {
         let mut memory = self.system.memory.borrow_mut();
-        let mut argv_strings = vec![interpreter_path.to_str().unwrap(), binary_path.to_str().unwrap()];
+        let mut argv_strings = vec![binary_path.to_str().unwrap()];
         argv_strings.extend_from_slice(binary_args);
 
         let stack_base = memory.stack_base(self.task_id).expect("no process found");
@@ -164,17 +184,20 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
 
         aux.push((AUXVType::Pagesz as u64, 4096));
         aux.push((AUXVType::HwCap as u64, 0xbfebfbff));
-        aux.push((AUXVType::Uid as u64, 1));
-        aux.push((AUXVType::Gid as u64, 1));
-        aux.push((AUXVType::EUid as u64, 1));
-        aux.push((AUXVType::EGid as u64, 1));
+        aux.push((AUXVType::Uid as u64, 1000));
+        aux.push((AUXVType::Gid as u64, 1000));
+        aux.push((AUXVType::EUid as u64, 1000));
+        aux.push((AUXVType::EGid as u64, 1000));
         aux.push((
             AUXVType::Platform as u64,
             push_stack!(memory.accessor(cpu, self.task_id), cpu, "x86_64", RegisterX86::RSP.into())?,
         ));
-        aux.push((AUXVType::Entry as u64, entrypoint.into()));
-        aux.push((AUXVType::Phdr as u64, 56));
-        aux.push((AUXVType::Phent as u64, 11));
+        aux.push((AUXVType::Entry as u64, self.entrypoint.unwrap().into()));
+        aux.push((AUXVType::Phdr as u64, phdr));
+        aux.push((AUXVType::Phent as u64, 56));
+        aux.push((AUXVType::Phnum as u64, 12));
+        aux.push((AUXVType::Base as u64, 0x0000_b000_0000_0000));
+        aux.push((AUXVType::Flags as u64, 0));
         aux.push((AUXVType::Secure as u64, 0));
         aux.push((0, 0));
 

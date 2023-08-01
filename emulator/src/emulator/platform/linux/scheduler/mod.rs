@@ -254,6 +254,7 @@ where
         initial_task
             .load_binary(&mut *cpu, binary_path.as_path(), binary_args, binary_env)
             .map_err(|_| SchedulerError::Unknown)?;
+        debug!("Loaded initial binary");
         *self.system.current_task.borrow_mut() = Some(initial_task.task_id());
         let mut context = self.context.borrow_mut();
         let task = Task {
