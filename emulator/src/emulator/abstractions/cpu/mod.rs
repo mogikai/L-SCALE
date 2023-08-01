@@ -58,6 +58,11 @@ pub trait CPU: Restorable {
         register: Register,
     ) -> Result<u64, CPUError>;
 
+    fn add_breakpoint(
+        &mut self,
+        address: EVAddr,
+    ) -> Result<(), CPUError>;
+
     fn create_context(&mut self) -> Result<ContextHandle, CPUError>;
 
     fn save_context(

@@ -1,9 +1,9 @@
 #![cfg(test)]
 
+use hex::ToHex;
 /// Unit tests for file system module
 /// TODO: Write more sensible tests
 use std::path::Path;
-use hex::ToHex;
 
 use rand::{thread_rng, RngCore};
 

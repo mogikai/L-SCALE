@@ -1,4 +1,5 @@
 use std::cmp::{max, min};
+use std::collections::btree_set::Iter;
 use std::collections::BTreeSet;
 use std::ops::{BitOr, Not};
 
@@ -36,6 +37,12 @@ impl TLB {
             mappings: Default::default(),
             snapshots: Default::default(),
         }
+    }
+
+    pub fn mapping_iter(
+        &self,
+    ) -> Iter<Mapping> {
+        self.mappings.iter()
     }
 
     pub fn address_mapped(

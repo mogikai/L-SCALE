@@ -87,6 +87,18 @@ impl CPU for UCWrapper<'_> {
         Ok(self.uc().reg_read(register)?)
     }
 
+    fn add_breakpoint(
+        &mut self,
+        address: EVAddr,
+    ) -> Result<(), CPUError> {
+        self.uc_mut()
+            .add_code_hook(address.into(), address.into(), |uc, a, b| {
+                unsafe { (&mut **uc.get_data_mut()).stop_reason.insert(StopReason::Breakpoint); }
+                uc.emu_stop();
+            });
+        Ok(())
+    }
+
     fn create_context(&mut self) -> Result<ContextHandle, CPUError> {
         let context = self.uc_mut().context_alloc()?;
         Ok(self.contexts.insert(context))

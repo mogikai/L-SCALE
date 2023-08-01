@@ -3,6 +3,7 @@ use std::ops::Range;
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
 use crate::emulator::abstractions::mmu::{MemoryError, Permission};
+use crate::emulator::system::fd_map::InternalFD;
 use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -10,11 +11,11 @@ pub enum MappingType {
     /// Private mapping
     PrivateAnonymous,
     /// Private file backed
-    PrivateFile(usize),
+    PrivateFile(InternalFD),
     /// Shared but not file backed
     SharedAnonymous,
     /// Shared File backed
-    SharedFile(usize),
+    SharedFile(InternalFD),
 }
 
 #[derive(Copy, Clone, Debug)]

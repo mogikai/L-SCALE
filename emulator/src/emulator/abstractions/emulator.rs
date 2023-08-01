@@ -1,6 +1,9 @@
-use crate::emulator::abstractions::cpu::CPUError;
+use std::ops::Try;
 use std::time::Duration;
+
 use thiserror::Error;
+
+use crate::emulator::abstractions::cpu::CPUError;
 
 #[derive(Error, Debug, Copy, Clone)]
 pub enum StopReason {
@@ -18,6 +21,8 @@ pub enum StopReason {
     /// syscall, or by only yielding if no changes to the kernel have been made.
     #[error("The process yielded execution to the scheduler")]
     Yield,
+    #[error("A breakpoint was reached and the execution stopped")]
+    Breakpoint,
 }
 
 #[derive(Error, Debug)]
@@ -32,10 +37,15 @@ pub enum SchedulerError {
     NoRunnableTasks,
 }
 
-pub trait Scheduler {
+pub trait Scheduler<T> {
     fn run(
         &mut self,
         timeout: Option<Duration>,
         instruction_count: Option<usize>,
     ) -> Result<(), SchedulerError>;
+
+    fn try_for_each_task<F: FnMut(&T) -> R, R: Try<Output=()>>(
+        &self,
+        callback: F,
+    ) -> R;
 }

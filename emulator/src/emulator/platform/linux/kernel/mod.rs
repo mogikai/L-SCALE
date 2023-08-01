@@ -9,22 +9,22 @@ use num_enum::FromPrimitive;
 use error::SyscallError;
 use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 
-use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
-use crate::emulator::abstractions::cpu::{RegisterX86, CPU};
+use crate::emulator::abstractions::cpu::{CPU, RegisterX86};
+use crate::emulator::abstractions::cpu::address::{EVA_NULL, EVAddr};
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
+use crate::emulator::abstractions::mmu::{MMU, Permission};
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
-use crate::emulator::abstractions::mmu::{Permission, MMU};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::macros::push_stack;
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::fd::{FileDescriptorData, FD};
+use crate::emulator::platform::linux::fd::{FD, FileDescriptorData};
 use crate::emulator::platform::linux::kernel::auxv::AUXVType;
 pub use crate::emulator::platform::linux::kernel::error::LinuxKernelError;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
+use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::platform::linux::signalfd::SignalFDOps;
 use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
-use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::system::default_handles;
 use crate::emulator::system::fd_map::FileDescriptor;
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
@@ -46,6 +46,7 @@ pub struct LinuxKernelTask<Endianness: ByteOrder, Arch: Architecture> {
     robust_list_head: Option<EVAddr>,
     signalhandler: SignalHandler<Arch::SignalFlags>,
     task_id: TaskId,
+    entrypoint: Option<EVAddr>,
     _arch: PhantomData<Arch>,
 }
 
@@ -63,8 +64,13 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             robust_list_head: None,
             signalhandler: SignalHandler::new(),
             task_id: TaskId::new(pid, tid),
+            entrypoint: None,
             _arch: PhantomData,
         }
+    }
+
+    pub fn entrypoint(&self) -> Option<EVAddr> {
+        self.entrypoint
     }
 
     pub fn load_binary(
@@ -91,6 +97,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         memory.new_process(cpu, self.task_id)?;
         let buffer = fs.read_all(fs.resolve_last(binary_path)?)?;
         let elf = goblin::elf::Elf::parse(&buffer).unwrap();
+        self.entrypoint = Some(elf.entry.into());
         let interpreter_path = Path::new(elf.interpreter.ok_or(LinuxKernelError::ENOENT)?).to_owned();
         let buffer = fs.read_all(fs.resolve_last(&interpreter_path)?)?;
         let interpreter = goblin::elf::Elf::parse(&buffer).unwrap();

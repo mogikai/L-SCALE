@@ -8,8 +8,8 @@ use fuzzyemu::emulator::abstractions::emulator::{Scheduler, SchedulerError, Stop
 use fuzzyemu::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
 use fuzzyemu::emulator::platform::linux::architecture::x86::X86;
-use fuzzyemu::emulator::platform::linux::scheduler::LinuxX86Scheduler;
 use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
+use fuzzyemu::emulator::platform::linux::scheduler::LinuxX86Scheduler;
 use fuzzyemu::emulator::system::clock::Clock;
 use fuzzyemu::emulator::system::fd_map::FileDescriptorMap;
 use fuzzyemu::emulator::system::filesystem::Filesystem;

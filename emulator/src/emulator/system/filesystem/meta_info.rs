@@ -1,10 +1,10 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use crate::emulator::system::filesystem::{ContentId, FSEntryId, FSError, SnapId};
 use crate::emulator::system::filesystem::block::Block;
 use crate::emulator::system::filesystem::stat::Stat;
-use crate::emulator::system::filesystem::{ContentId, FSEntryId, FSError, SnapId};
 
 use self::FSEntryContent::{Dir, File};
 
@@ -36,6 +36,7 @@ impl MetaInfo {
                     },
                     root_stat,
                     "/".into(),
+                    0,
                 ),
             )
             .unwrap();
@@ -51,7 +52,7 @@ impl MetaInfo {
     pub(super) fn new_entry(
         &mut self,
         path: &Path,
-        new_entry: impl FnOnce(String) -> FSEntry,
+        new_entry: impl FnOnce(String, FSEntryId) -> FSEntry,
     ) -> Result<FSEntryId, FSError> {
         let dir_entry_id = self.resolve_last(None, path.parent().ok_or(FSError::Unknown)?)?;
         let dir_content_id = self.most_recent_content_id(dir_entry_id)?;
@@ -64,7 +65,7 @@ impl MetaInfo {
             if contents.contains_key(name) {
                 Err(FSError::Unknown)?
             }
-            let entry = new_entry(name.into());
+            let entry = new_entry(name.into(), dir_entry_id);
             let entry_id = self.next_fse_id;
             self.next_fse_id += 1;
             self.add_entry(entry_id, entry)?;
@@ -88,13 +89,14 @@ impl MetaInfo {
         path: &Path,
         stat: Option<Stat>,
     ) -> Result<FSEntryId, FSError> {
-        self.new_entry(path, |name| {
+        self.new_entry(path, |name, parent_id| {
             FSEntry::new(
                 File {
                     contents: BTreeSet::new(),
                 },
                 stat.unwrap_or_default(),
                 name,
+                parent_id,
             )
         })
     }
@@ -105,13 +107,14 @@ impl MetaInfo {
         path: &Path,
         stat: Option<Stat>,
     ) -> Result<FSEntryId, FSError> {
-        self.new_entry(path, |name| {
+        self.new_entry(path, |name, parent_id| {
             FSEntry::new(
                 Dir {
                     contents: BTreeMap::new(),
                 },
                 stat.unwrap_or_default(),
                 name,
+                parent_id
             )
         })
     }
@@ -182,6 +185,24 @@ impl MetaInfo {
             }
         }
         Ok(())
+    }
+
+    pub(super) fn path_from(
+        &self,
+        fse_id: FSEntryId,
+    ) -> Result<PathBuf, FSError> {
+        let mut path = vec![];
+        let mut current_id = fse_id;
+
+        while current_id != self.root_node {
+            let entry = self.most_recent_entry(current_id)?;
+            path.push(entry.name.clone());
+            current_id = entry.parent;
+        }
+
+        path.push(String::from("/"));
+
+        Ok(path.into_iter().rev().collect())
     }
 
     /// See the public api [Filesystem::resolve_path](Filesystem::resolve_path) for documentation.
@@ -400,6 +421,7 @@ pub(super) struct FSEntry {
     pub(super) contents: FSEntryContent,
     pub(super) stat: Stat,
     pub(super) name: String,
+    pub(super) parent: FSEntryId,
 }
 
 impl FSEntry {
@@ -407,8 +429,14 @@ impl FSEntry {
         contents: FSEntryContent,
         stat: Stat,
         name: String,
+        parent: FSEntryId,
     ) -> Self {
-        FSEntry { contents, stat, name }
+        FSEntry {
+            contents,
+            stat,
+            name,
+            parent,
+        }
     }
 }
 

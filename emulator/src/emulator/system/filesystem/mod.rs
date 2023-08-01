@@ -256,6 +256,13 @@ impl Filesystem {
         Ok(&self.meta_info.most_recent_entry(file_id)?.stat)
     }
 
+    pub fn path_from(
+        &self,
+        file_id: FSEntryId,
+    ) -> Result<PathBuf, FSError> {
+        self.meta_info.path_from(file_id)
+    }
+
     /// This function resolves the supplied path to a list of FSEntryId. After the lookup,
     /// the file or dirs in the path can be directly referenced by using the returned FSEntryIds.
     /// The FSEntryIds are valid for as long as the elements exist and will result in an error

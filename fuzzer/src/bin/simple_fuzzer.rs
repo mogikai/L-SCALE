@@ -7,17 +7,20 @@ use std::time::{Duration, Instant};
 
 use log::debug;
 
+use fuzzyemu::emulator::abstractions::cpu::CPU;
 use fuzzyemu::emulator::abstractions::emulator::Scheduler;
 use fuzzyemu::emulator::abstractions::errors::GenericError;
+use fuzzyemu::emulator::abstractions::file_descriptors::FileDescriptorError;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
+use fuzzyemu::emulator::abstractions::mmu::MemoryError;
 use fuzzyemu::emulator::platform::linux::architecture::x86::X86;
+use fuzzyemu::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask};
 use fuzzyemu::emulator::platform::linux::scheduler::LinuxX86Scheduler;
-use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
 use fuzzyemu::emulator::system::clock::Clock;
 use fuzzyemu::emulator::system::fd_map::FileDescriptorMap;
 use fuzzyemu::emulator::system::filesystem::Filesystem;
 use fuzzyemu::emulator::system::hardware::unicorn::UCWrapper;
-use fuzzyemu::emulator::system::memory::Memory;
+use fuzzyemu::emulator::system::memory::{MappingType, Memory};
 use fuzzyemu::emulator::system::System;
 use fuzzyemu::LittleEndian;
 
@@ -77,6 +80,7 @@ fn main() -> Result<(), GenericError> {
 
         // TODO: Only one task for now. Need to implement a scheduler that switches tasks.
         let initial_task = LinuxKernelTask::<LittleEndian, X86>::new(system.clone(), 1337, 1);
+        let task_id = initial_task.task_id();
 
         // let mut data = vec![b'A'; 0x01];
         // data.extend(vec![b'x', b'y', b'z', b'x', b'y', b'z', b'\n']);
@@ -95,8 +99,38 @@ fn main() -> Result<(), GenericError> {
             &env,
         )
         .unwrap();
+        scheduler.try_for_each_task(|task| {
+            if let Some(entrypoint) = task.entrypoint() {
+                cpu.borrow_mut().add_breakpoint(entrypoint.into())
+            } else {
+                Ok(())
+            }
+        })?;
         let start = Instant::now();
         let result = scheduler.run(None, None);
+        let mut base_address = None;
+        system
+            .memory
+            .borrow_mut()
+            .iterator_mappings(&task_id, |iter| {
+                for mapping in iter {
+                    let path = if let MappingType::PrivateFile(ref ifd) = mapping.mapping_type {
+                        let fd_map = system.fd_map.borrow_mut();
+                        let file = fd_map.get_internal(ifd).unwrap();
+                        let path = file.data.file.as_ref().unwrap().get_path(&*system.filesystem.borrow_mut()).map_err(|_| MemoryError::Unknown)?;
+                        if let Some(file_name) = path.file_name() {
+                            if file_name == "open62541_server_release" && base_address.is_none() {
+                                base_address = Some(mapping.v_start);
+                            }
+                        }
+                        Some(path)
+                    } else {
+                        None
+                    };
+                    debug!("Mapping: {:?} File: {:?}", mapping, path);
+                }
+                Ok::<(), MemoryError>(())
+            })?;
         debug!("Emulation returned {result:?}");
         start.elapsed()
     };

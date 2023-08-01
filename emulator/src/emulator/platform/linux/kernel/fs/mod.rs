@@ -1,12 +1,13 @@
 use bitflags::{bitflags, Flags};
 use byteorder::ByteOrder;
+use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
 
 use crate::emulator::macros::*;
 use crate::emulator::platform::linux::fd::{FileDescriptorData, FD};
 use crate::emulator::platform::linux::kernel::fs::fd_ops::FileOps;
 use crate::emulator::platform::linux::kernel::*;
 use crate::emulator::system::fd_map::FileDescriptor;
-use crate::emulator::system::filesystem::FSEntryId;
+use crate::emulator::system::filesystem::{Filesystem, FSEntryId};
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
 
 mod fd_ops;
@@ -255,6 +256,10 @@ pub struct FileData {
 impl FileData {
     pub fn new(fse_id: FSEntryId) -> FileData {
         FileData { fse_id, pos: 0 }
+    }
+
+    pub fn get_path(&self, system: &Filesystem) -> Result<PathBuf, FileDescriptorError> {
+        Ok(system.path_from(self.fse_id)?)
     }
 }
 

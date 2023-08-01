@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
+use std::ops::Try;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
@@ -8,17 +9,17 @@ use std::time::Duration;
 use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
 
+use crate::emulator::abstractions::cpu::{ContextHandle, CPU, CPUError, RegisterX86};
 use crate::emulator::abstractions::cpu::address::EVAddr;
-use crate::emulator::abstractions::cpu::{CPUError, ContextHandle, RegisterX86, CPU};
 use crate::emulator::abstractions::emulator::{Scheduler, SchedulerError, StopReason};
 use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::architecture::x86::X86;
-use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::kernel::LinuxKernelTask;
-use crate::emulator::platform::linux::scheduler::syscall::syscall;
+use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::LinuxSystem;
+use crate::emulator::platform::linux::scheduler::syscall::syscall;
 
 mod syscall;
 
@@ -50,7 +51,7 @@ where
     phantom: PhantomData<&'a CpuT>,
 }
 
-impl<'a, CpuT, Endianness> Scheduler for LinuxX86Scheduler<'a, CpuT, Endianness>
+impl<'a, CpuT, Endianness> Scheduler<LinuxKernelTask<Endianness, X86>> for LinuxX86Scheduler<'a, CpuT, Endianness>
 where
     CpuT: CPU + MMU + Hooks<'a>,
     Endianness: ByteOrder + 'static,
@@ -61,6 +62,18 @@ where
         instruction_count: Option<usize>,
     ) -> Result<(), SchedulerError> {
         self.scheduler_loop(timeout, instruction_count)
+    }
+
+    fn try_for_each_task<F: FnMut(&LinuxKernelTask<Endianness, X86>) -> R, R: Try<Output = ()>>(
+        &self,
+        callback: F,
+    ) -> R {
+        self.context
+            .borrow()
+            .tasks
+            .iter()
+            .map(|(_, t)| &t.kernel)
+            .try_for_each(callback)
     }
 }
 

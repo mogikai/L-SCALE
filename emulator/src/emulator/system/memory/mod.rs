@@ -1,3 +1,4 @@
+use std::collections::btree_set::Iter;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -10,11 +11,12 @@ pub use accessor::MemoryAccessor;
 use layout::Layout;
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
-use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU, MREMAP_FLAGS};
+use crate::emulator::abstractions::mmu::{MemoryError, MMU, MREMAP_FLAGS, Permission};
 // TODO: Make TaskId generic
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::memory::pregion::PhysicalRegion;
 use crate::emulator::system::memory::rw_interface::DirectMemoryWrite;
+use crate::emulator::system::memory::tlb::mapping::Mapping;
 pub use crate::emulator::system::memory::tlb::mapping::MappingType;
 pub use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 
@@ -131,6 +133,20 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             .write_direct_down(stack_end, vec![0u8; max_stack].as_slice())
             .unwrap();
         Ok(())
+    }
+
+    pub fn iterator_mappings<F, R, E>(
+        &self,
+        task_id: &TaskId,
+        mut callback: F,
+    ) -> Result<R, MemoryError>
+    where
+        F: FnMut(Iter<Mapping>) -> Result<R, E>,
+        MemoryError: From<E>,
+    {
+        let layout = layout!(self, task_id)?;
+        let tlb = layout.tlb.borrow();
+        Ok(callback(tlb.mapping_iter())?)
     }
 
     pub fn translate_vaddr(

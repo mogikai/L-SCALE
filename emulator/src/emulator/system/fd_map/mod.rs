@@ -3,10 +3,14 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::ops::Add;
 use std::rc::Rc;
 
+use generational_arena::Arena;
+
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 
 pub mod error;
+
+pub type InternalFD = generational_arena::Index;
 
 #[derive(Debug)]
 pub struct FileDescriptor<D: Default> {
@@ -42,6 +46,7 @@ where
 {
     // TODO: Use generics instead of TaskId and FileDescriptor
     file_descriptors: BTreeMap<TaskId, BTreeMap<FD, Rc<RefCell<FileDescriptor<D>>>>>,
+    internal_file_descriptors: Arena<Rc<RefCell<FileDescriptor<D>>>>,
     free_fds: BTreeMap<TaskId, Vec<FD>>,
     // TODO: Implement as a hook object that can be inserted to be called after the handle
     //       processed the call.
@@ -111,6 +116,22 @@ where
         self.file_descriptors
             .get(task_id)
             .and_then(|map| map.get(fd).map(|file_descriptor| file_descriptor.borrow()))
+    }
+
+    pub fn dup_internal(
+        &mut self,
+        task_id: &TaskId,
+        fd: &FD,
+    ) -> Result<InternalFD, FileDescriptorMapError> {
+        let file = self.file_descriptors.get(task_id).and_then(|map| map.get(fd)).ok_or(FileDescriptorMapError::InvalidFD)?;
+        Ok(self.internal_file_descriptors.insert(file.clone()))
+    }
+
+    pub fn get_internal(
+        &self,
+        ifd: &InternalFD,
+    ) -> Option<Ref<FileDescriptor<D>>> {
+        self.internal_file_descriptors.get(*ifd).map(|f| f.borrow())
     }
 
     fn get_free_fd(
