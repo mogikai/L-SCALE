@@ -4,31 +4,32 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use byteorder::ByteOrder;
-use goblin::elf::{Elf, program_header};
+use goblin::elf::{program_header, Elf};
 use num_enum::FromPrimitive;
 
 use error::SyscallError;
 use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 
-use crate::emulator::abstractions::cpu::{CPU, RegisterX86};
-use crate::emulator::abstractions::cpu::address::{EVA_NULL, EVAddr};
+use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
+use crate::emulator::abstractions::cpu::{RegisterX86, CPU};
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
-use crate::emulator::abstractions::mmu::{MMU, Permission};
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
+use crate::emulator::abstractions::mmu::{Permission, MMU};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::macros::push_stack;
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::fd::{FD, FileDescriptorData};
+use crate::emulator::platform::linux::fd::{FileDescriptorData, FD};
 use crate::emulator::platform::linux::kernel::auxv::AUXVType;
 pub use crate::emulator::platform::linux::kernel::error::LinuxKernelError;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
-use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::platform::linux::signalfd::SignalFDOps;
 use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
+use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::system::default_handles;
-use crate::emulator::system::fd_map::FileDescriptor;
+use crate::emulator::system::fd_map::{FileDescriptor, FileDescriptorMap, InternalFD};
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
+use crate::emulator::system::memory::Memory;
 
 pub(crate) mod auxv;
 pub(crate) mod error;
@@ -37,7 +38,7 @@ pub(crate) mod fs;
 pub(crate) mod memory;
 pub(crate) mod net;
 pub(crate) mod socket;
-pub(crate) mod task_id;
+pub mod task_id;
 
 /* eventuell nach task umbenennen */
 // TODO: Move thread shared data to thread specific struct that is shared between kernel task objects (rcrefcell?)
@@ -47,11 +48,21 @@ pub struct LinuxKernelTask<Endianness: ByteOrder, Arch: Architecture> {
     robust_list_head: Option<EVAddr>,
     signalhandler: SignalHandler<Arch::SignalFlags>,
     task_id: TaskId,
-    entrypoint: Option<EVAddr>,
+    program_info: Option<LoadInfo>,
+    interpreter_info: Option<LoadInfo>,
     _arch: PhantomData<Arch>,
 }
 
 type SyscallResult = Result<u64, SyscallError>;
+
+/// The LoadInfo struct contains some information about a loaded program
+struct LoadInfo {
+    /// If the interpreter is None, then the loaded file was the interpreter
+    interpreter: Option<PathBuf>,
+    /// If the program contains a phdr section this is the address to that section.
+    program_header_address: Option<EVAddr>,
+    entrypoint: EVAddr,
+}
 
 impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     pub fn new(
@@ -65,13 +76,16 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             robust_list_head: None,
             signalhandler: SignalHandler::new(),
             task_id: TaskId::new(pid, tid),
-            entrypoint: None,
+            program_info: None,
+            interpreter_info: None,
             _arch: PhantomData,
         }
     }
 
     pub fn entrypoint(&self) -> Option<EVAddr> {
-        self.entrypoint
+        self.program_info
+            .as_ref()
+            .map(|load_info| load_info.entrypoint)
     }
 
     pub fn load_binary(
@@ -81,63 +95,82 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         binary_args: &[&str],
         binary_env: &[&str],
     ) -> Result<(), LinuxKernelError> {
-        let (interpreter_path, entrypoint, phdr) = self.load_program_sections(cpu, binary_path)?;
-        self.initstack(cpu, binary_path, binary_args, binary_env, interpreter_path, entrypoint, phdr)?;
-        cpu.reg_write(RegisterX86::RIP.into(), entrypoint.into())?;
+        self.system
+            .memory
+            .borrow_mut()
+            .new_process(cpu, self.task_id)?;
+
+        self.program_info = Some(self.load_elf(cpu, binary_path, 0x0000_c000_0000_0000.into())?);
+
+        // Load interpreter
+        let interpreter_load_info = self.load_elf(
+            cpu,
+            self.program_info
+                .as_ref()
+                .expect("Set above")
+                .interpreter
+                .clone()
+                .expect("Currently we only support loading interpreted programs")
+                .as_path(),
+            0x0000_b000_0000_0000.into(),
+        )?;
+
+        self.initstack(cpu, binary_path, binary_args, binary_env)?;
+
+        // Write the interpreter entrypoint into the instruction pointer so we can start execution.
+        cpu.reg_write(RegisterX86::RIP.into(), interpreter_load_info.entrypoint.into())?;
         Ok(())
     }
 
-    fn load_program_sections(
+    fn load_elf(
         &mut self,
         cpu: &mut (impl CPU + MMU),
-        binary_path: &Path,
-    ) -> Result<(PathBuf, EVAddr, u64), LinuxKernelError> {
-        self.system.memory.borrow_mut().new_process(cpu, self.task_id)?;
-        let fs = self.system.filesystem.borrow();
-
-        let program_data = fs.read_all(fs.resolve_last(binary_path)?)?;
-        let program = goblin::elf::Elf::parse(&program_data).unwrap();
-        let program_base = EVAddr::from(0x0000_c000_0000_0000);
-        self.entrypoint = Some(EVAddr::from(program.entry));
-
-        // Load interpreter
-        let interpreter_path = Path::new(program.interpreter.ok_or(LinuxKernelError::ENOENT)?).to_owned();
-        let interpreter_data = fs.read_all(fs.resolve_last(&interpreter_path)?)?;
-        let interpreter = goblin::elf::Elf::parse(&interpreter_data).unwrap();
-        let interpreter_base = EVAddr::from(0x0000_b000_0000_0000);
-        //TODO iterator
-        drop(fs);
-        let phdr = program_base + program.program_headers.iter().find(|ph| ph.p_type == program_header::PT_PHDR).unwrap().p_offset;
-        self.system.memory.borrow_mut().map_data(cpu, self.task_id, program_base..program_base+program_data.len(), program_data.as_slice(), Permission::READ | Permission::WRITE);
-
-        self.load_interpreter(cpu, interpreter_base, &interpreter, &interpreter_data)?;
-        Ok((interpreter_path, interpreter_base + EVAddr::from(interpreter.entry), phdr.into()))
-    }
-
-    fn load_interpreter(
-        &mut self,
-        cpu: &mut (impl CPU + MMU),
+        path: &Path,
         base: EVAddr,
-        elf: &Elf,
-        elf_data: &Vec<u8>,
-    ) -> Result<(), LinuxKernelError> {
+    ) -> Result<LoadInfo, LinuxKernelError> {
+        let fd = self.open_internal(path)?;
         let mut memory = self.system.memory.borrow_mut();
+        let mut fd_map = self.system.fd_map.borrow_mut();
+        let elf_data = {
+            let mut interpreter_file = fd_map
+                .get_mut_internal(&self.task_id, &fd)
+                .ok_or(LinuxKernelError::ENOENT)?;
+            let interpreter_file = &mut *interpreter_file;
+            interpreter_file
+                .ops
+                .pread(&mut interpreter_file.data, 0, u64::MAX)?
+        };
+
+        let elf = Elf::parse(&elf_data).unwrap();
         for ph in &elf.program_headers {
             if ph.p_type == goblin::elf::program_header::PT_LOAD {
-                let perms = getperms(&ph);
+                let perms = getperms(ph);
                 if ph.p_offset + ph.p_filesz > elf_data.len().try_into().unwrap() {
                     return Err(LinuxKernelError::ENOEXEC);
                 }
-                let data: &[u8] = &elf_data[ph.file_range()];
+                // let data: &[u8] = &elf_data[ph.file_range()];
                 let vm_range = base + EVAddr::from(ph.p_vaddr)..(base + EVAddr::from(ph.p_vaddr) + ph.p_memsz);
                 info!("vm_range   0x{:X}..0x{:X}", vm_range.start, vm_range.end);
                 info!("file_range 0x{:X}..0x{:X}", ph.file_range().start, ph.file_range().end);
                 memory
-                    .map_data(cpu, self.task_id, vm_range, data, perms)
+                    .map_file(cpu, &mut fd_map, &self.task_id, vm_range, &fd, ph.file_range(), perms)
                     .unwrap();
             }
         }
-        Ok(())
+
+        let interpreter_path = elf.interpreter.map(PathBuf::from);
+        let program_header_address = elf
+            .program_headers
+            .iter()
+            .find(|ph| ph.p_type == program_header::PT_PHDR)
+            .map(|ph| base + ph.p_offset);
+        let entrypoint = base + EVAddr::from(elf.entry);
+
+        Ok(LoadInfo {
+            interpreter: interpreter_path,
+            program_header_address,
+            entrypoint,
+        })
     }
 
     fn initstack(
@@ -146,9 +179,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         binary_path: &Path,
         binary_args: &[&str],
         binary_env: &[&str],
-        interpreter_path: PathBuf,
-        entrypoint: EVAddr,
-        phdr: u64,
     ) -> Result<(), LinuxKernelError> {
         let mut memory = self.system.memory.borrow_mut();
         let mut argv_strings = vec![binary_path.to_str().unwrap()];
@@ -183,7 +213,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         };
 
         aux.push((AUXVType::Pagesz as u64, 4096));
-        aux.push((AUXVType::HwCap as u64, 0xbfebfbff));
+        aux.push((AUXVType::HwCap as u64, 0x178bfbff));
         aux.push((AUXVType::Uid as u64, 1000));
         aux.push((AUXVType::Gid as u64, 1000));
         aux.push((AUXVType::EUid as u64, 1000));
@@ -192,13 +222,36 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             AUXVType::Platform as u64,
             push_stack!(memory.accessor(cpu, self.task_id), cpu, "x86_64", RegisterX86::RSP.into())?,
         ));
-        aux.push((AUXVType::Entry as u64, self.entrypoint.unwrap().into()));
-        aux.push((AUXVType::Phdr as u64, phdr));
+        let program_info = self
+            .program_info
+            .as_ref()
+            .expect("Load is always called before initstack");
+        aux.push((AUXVType::Entry as u64, program_info.entrypoint.into()));
+        aux.push((
+            AUXVType::Phdr as u64,
+            program_info
+                .program_header_address
+                .ok_or(LinuxKernelError::EINVAL)?
+                .into(),
+        ));
         aux.push((AUXVType::Phent as u64, 56));
-        aux.push((AUXVType::Phnum as u64, 12));
+        aux.push((AUXVType::Phnum as u64, 12)); // TODO: Do not hardcode
         aux.push((AUXVType::Base as u64, 0x0000_b000_0000_0000));
         aux.push((AUXVType::Flags as u64, 0));
+        // TODO: map random data to a more appropriate place and provide an api to set the random data
+        memory
+            .map_data(
+                cpu,
+                self.task_id,
+                0xd00000000000.into()..0xd00000000100.into(),
+                [0; 16].as_slice(),
+                Permission::READ,
+            )
+            .unwrap();
+        aux.push((AUXVType::Random as u64, 0xd00000000000));
+        // TODO: Make this configurable?
         aux.push((AUXVType::Secure as u64, 0));
+        // AUXV end marker
         aux.push((0, 0));
 
         // align stack

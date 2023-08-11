@@ -46,7 +46,7 @@ where
 {
     // TODO: Use generics instead of TaskId and FileDescriptor
     file_descriptors: BTreeMap<TaskId, BTreeMap<FD, Rc<RefCell<FileDescriptor<D>>>>>,
-    internal_file_descriptors: Arena<Rc<RefCell<FileDescriptor<D>>>>,
+    internal_file_descriptors: BTreeMap<TaskId, Arena<Rc<RefCell<FileDescriptor<D>>>>>,
     free_fds: BTreeMap<TaskId, Vec<FD>>,
     // TODO: Implement as a hook object that can be inserted to be called after the handle
     //       processed the call.
@@ -84,6 +84,14 @@ where
     ) -> Result<FD, FileDescriptorMapError> {
         let fd = self.get_free_fd(task_id);
         self.insert_at(task_id, fd, file_descriptor)
+    }
+
+    pub fn insert_internal(
+        &mut self,
+        task_id: &TaskId,
+        file_descriptor: FileDescriptor<D>
+    ) -> Result<InternalFD, FileDescriptorMapError> {
+        Ok(self.internal_file_descriptors.entry(*task_id).or_insert(Default::default()).insert(Rc::new(RefCell::new(file_descriptor))))
     }
 
     pub fn remove(
@@ -124,14 +132,23 @@ where
         fd: &FD,
     ) -> Result<InternalFD, FileDescriptorMapError> {
         let file = self.file_descriptors.get(task_id).and_then(|map| map.get(fd)).ok_or(FileDescriptorMapError::InvalidFD)?;
-        Ok(self.internal_file_descriptors.insert(file.clone()))
+        Ok(self.internal_file_descriptors.entry(*task_id).or_insert(Default::default()).insert(file.clone()))
+    }
+
+    pub fn get_mut_internal(
+        &mut self,
+        task_id: &TaskId,
+        ifd: &InternalFD,
+    ) -> Option<RefMut<FileDescriptor<D>>> {
+        self.internal_file_descriptors.get(task_id).and_then(|fds| fds.get(*ifd).map(|f| f.borrow_mut()))
     }
 
     pub fn get_internal(
         &self,
+        task_id: &TaskId,
         ifd: &InternalFD,
     ) -> Option<Ref<FileDescriptor<D>>> {
-        self.internal_file_descriptors.get(*ifd).map(|f| f.borrow())
+        self.internal_file_descriptors.get(task_id).and_then(|fds| fds.get(*ifd).map(|f| f.borrow()))
     }
 
     fn get_free_fd(

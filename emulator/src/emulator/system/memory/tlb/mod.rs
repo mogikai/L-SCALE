@@ -87,6 +87,7 @@ impl TLB {
         size: usize,
         permissions: Permission,
         mapping_type: MappingType,
+        label: Option<String>
     ) -> Result<(), MemoryError> {
         if !is4kaligned(v_start) || !is4kaligned(p_start) || !is4kaligned(size) {
             Err(MemoryError::InvalidAlignment)?
@@ -96,7 +97,7 @@ impl TLB {
             .then(|| {
                 let inserted = self
                     .mappings
-                    .insert(Mapping::new(v_start, p_start, size, permissions, mapping_type));
+                    .insert(Mapping::new(v_start, p_start, size, permissions, mapping_type, label));
                 assert!(inserted)
             })
             .ok_or(MemoryError::AlreadyMapped)
@@ -109,8 +110,10 @@ impl TLB {
         &self,
         address: EVAddr,
     ) -> Result<TLBEntry, MemoryError> {
-        self.get_mapping(address)
-            .and_then(|region| region.make_tlb_entry(address))
+        let tlbe = self.get_mapping(address)
+            .and_then(|region| region.make_tlb_entry(address));
+        trace!("Translation result for {:?}: {:?}", address, tlbe);
+        tlbe
     }
 
     /// Translates the virtual address range address..address+size and returns
@@ -121,8 +124,8 @@ impl TLB {
         address: EVAddr,
         size: usize,
     ) -> Result<Vec<TLBEntry>, MemoryError> {
-        let mappings = self.get_mappings_copied(address, address + size)?;
-        if !is_continuous(&mappings) {
+        let mappings = self.get_mappings(address, address + size)?;
+        if !is_continuous_ref(&mappings) {
             Err(MemoryError::NotContinuous)?
         }
         let mappings = mappings.into_iter().rev();
@@ -146,12 +149,12 @@ impl TLB {
     pub fn get_mapping(
         &self,
         address: EVAddr,
-    ) -> Result<Mapping, MemoryError> {
+    ) -> Result<&Mapping, MemoryError> {
         self.mappings
             // First block that starts at address less than or equal to address
             .range(..=address)
             .next_back()
-            .and_then(|region| region.contains(address).then_some(*region))
+            .and_then(|mapping| mapping.contains(address).then_some(mapping))
             .ok_or(MemoryError::NotMapped)
     }
 
@@ -182,7 +185,7 @@ impl TLB {
             .range(..end)
             .rev()
             .take_while(|m| start < m.v_end())
-            .copied()
+            .cloned()
             .collect())
     }
 
@@ -229,8 +232,10 @@ impl TLB {
                     .expect("The mapping must exist since the addresses were previously gathered from the collection");
 
                 // Clamp cutout to mapping boundaries with max and min
+                let start = max(start, mapping.v_start);
+                let size = min(size, mapping.size);
                 let (front, middle, back) = mapping
-                    .cutout(max(start, mapping.v_start), min(size, mapping.size))
+                    .cutout(start, size)
                     .expect("This cutout operation should never fail if implemented correctly");
 
                 // Reinsert remainders
@@ -252,7 +257,7 @@ impl TLB {
     ) -> Result<(), MemoryError> {
         // TODO: What about the physical address space? We need to check if space is free and otherwise
         //       create a new mapping?
-        let mut region = *self.mappings.get(&addr).ok_or(MemoryError::NotMapped)?;
+        let mut region = self.mappings.get(&addr).ok_or(MemoryError::NotMapped)?.clone();
         if new_size > region.size && self.region_mapped(addr + region.size, new_size - region.size) {
             // Cannot extend the region since the address space after the region is already mapped
             Err(MemoryError::AlreadyMapped)
@@ -316,6 +321,23 @@ impl Restorable for TLB {
 /// Takes a reversed list of mappings (the list is ordered highest to lowest start address)
 /// and checks if the mappings are continuous
 fn is_continuous(mappings: &[Mapping]) -> bool {
+    if mappings.is_empty() {
+        return true;
+    }
+
+    let mut prev_mapping = mappings.last().unwrap();
+    for mapping in mappings.iter().rev().skip(1) {
+        if prev_mapping.v_end() != mapping.v_start {
+            return false;
+        }
+        prev_mapping = mapping;
+    }
+    true
+}
+
+/// Takes a reversed list of mappings (the list is ordered highest to lowest start address)
+/// and checks if the mappings are continuous
+fn is_continuous_ref(mappings: &[&Mapping]) -> bool {
     if mappings.is_empty() {
         return true;
     }

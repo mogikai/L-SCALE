@@ -127,6 +127,7 @@ impl Layout {
             size,
             Permission::READ | Permission::WRITE,
             MappingType::PrivateAnonymous,
+            Some("Heap".to_string()),
         );
         result.map_err(|e| {
             self.add_physical_region(physical_region);

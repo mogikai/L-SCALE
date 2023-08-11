@@ -12,8 +12,10 @@ use layout::Layout;
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
 use crate::emulator::abstractions::mmu::{MemoryError, MMU, MREMAP_FLAGS, Permission};
+use crate::emulator::platform::linux::fd::{FD, FileDescriptorData};
 // TODO: Make TaskId generic
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
+use crate::emulator::system::fd_map::{FileDescriptor, FileDescriptorMap, InternalFD};
 use crate::emulator::system::memory::pregion::PhysicalRegion;
 use crate::emulator::system::memory::rw_interface::DirectMemoryWrite;
 use crate::emulator::system::memory::tlb::mapping::Mapping;
@@ -119,6 +121,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             layout.max_stack,
             Permission::READ | Permission::WRITE,
             MappingType::PrivateAnonymous,
+            Some("Stack".to_string()),
         )?;
 
         mmu.mem_map(self.physical_end, self.process_mem_size, Permission::ALL)?;
@@ -229,6 +232,34 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         self.map_fixed(task_id, start, size, perms, MappingType::PrivateAnonymous)?;
         self.accessor(mmu, task_id)
             .write_bytes_unchecked(vm_range.start, data)?;
+        Ok(())
+    }
+
+    pub(crate) fn map_file(
+        &mut self,
+        mmu: &mut impl MMU,
+        fd_map: &mut FileDescriptorMap<FD, TaskId, FileDescriptorData>,
+        task_id: &TaskId,
+        vm_range: Range<EVAddr>,
+        ifd: &InternalFD,
+        file_range: Range<usize>,
+        perms: Permission,
+    ) -> Result<(), MemoryError> {
+        let start = helpers::align4k_down(vm_range.start);
+        let size = helpers::align4k_up(vm_range.end) - start;
+        if file_range.end - file_range.start > size {
+            todo!()
+        }
+        let mut file = fd_map.get_mut_internal(task_id, ifd).ok_or(MemoryError::Unknown)?;
+        let file = &mut *file;
+        let data = file
+            .ops
+            .pread(&mut file.data, file_range.start as u64, (file_range.end - file_range.start) as u64)
+            .map_err(|_| MemoryError::Unknown)?;
+
+        self.map_fixed(*task_id, start, size, perms, MappingType::PrivateFile(*ifd))?;
+        self.accessor(mmu, *task_id)
+            .write_bytes_unchecked(vm_range.start, data.as_slice())?;
         Ok(())
     }
 
@@ -395,7 +426,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         layout
             .tlb
             .borrow_mut()
-            .try_map(address, physical_region.start, size, permissions, mapping_type)?;
+            .try_map(address, physical_region.start, size, permissions, mapping_type, None)?;
 
         Ok(address)
     }

@@ -11,9 +11,10 @@ pub trait Hooks<'a> {
         syscall: Box<dyn FnMut(&mut Self) + 'a>,
     );
 
+    // TODO: This needs to be moved to the tlb since we want to hook the virtual address space
     fn add_unmapped_mem_hook(
         &mut self,
-        start: EVAddr,
+        start: EVAddr, // FIXME These are actually physical addresses
         end: EVAddr,
         hook: Box<dyn FnMut(&mut Self, MemoryAction, u64, usize, i64) -> bool + 'a>,
     );

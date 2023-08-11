@@ -5,16 +5,17 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
+use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, IntelFormatter};
 use log::debug;
 
 use fuzzyemu::emulator::abstractions::cpu::CPU;
 use fuzzyemu::emulator::abstractions::emulator::Scheduler;
 use fuzzyemu::emulator::abstractions::errors::GenericError;
-use fuzzyemu::emulator::abstractions::file_descriptors::FileDescriptorError;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
-use fuzzyemu::emulator::abstractions::mmu::MemoryError;
+use fuzzyemu::emulator::abstractions::mmu::{MemoryError, MMU};
 use fuzzyemu::emulator::platform::linux::architecture::x86::X86;
-use fuzzyemu::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask};
+use fuzzyemu::emulator::platform::linux::kernel::task_id::TaskId;
+use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
 use fuzzyemu::emulator::platform::linux::scheduler::LinuxX86Scheduler;
 use fuzzyemu::emulator::system::clock::Clock;
 use fuzzyemu::emulator::system::fd_map::FileDescriptorMap;
@@ -22,7 +23,7 @@ use fuzzyemu::emulator::system::filesystem::Filesystem;
 use fuzzyemu::emulator::system::hardware::unicorn::UCWrapper;
 use fuzzyemu::emulator::system::memory::{MappingType, Memory};
 use fuzzyemu::emulator::system::System;
-use fuzzyemu::LittleEndian;
+use fuzzyemu::{ByteOrder, LittleEndian};
 
 fn main() -> Result<(), GenericError> {
     pretty_env_logger::init();
@@ -47,13 +48,13 @@ fn main() -> Result<(), GenericError> {
         //     0x0000_3000_0000_0000,
         // )));
 
-        // cpu.borrow_mut().add_block_hook(Box::new(|_, addr, _| {
-        //     total_blocks += 1;
-        //     *blocks.entry((prev_block2, prev_block, addr)).or_insert(0) += 1;
-        //     prev_block2 = prev_block;
-        //     prev_block = addr;
-        //     // TODO: Is this a performance bottleneck, do we have to use a simpler map?
-        // }));
+        cpu.borrow_mut().add_block_hook(Box::new(|_, addr, _| {
+            total_blocks += 1;
+            *blocks.entry((prev_block2, prev_block, addr)).or_insert(0) += 1;
+            prev_block2 = prev_block;
+            prev_block = addr;
+            // TODO: Is this a performance bottleneck, do we have to use a simpler map?
+        }));
         let vtlb_system = system.clone();
         cpu.borrow_mut()
             .add_vtlb_hook(Box::new(move |_uc, vaddr, _action| {
@@ -101,7 +102,7 @@ fn main() -> Result<(), GenericError> {
         .unwrap();
         scheduler.try_for_each_task(|task| {
             if let Some(entrypoint) = task.entrypoint() {
-                cpu.borrow_mut().add_breakpoint(entrypoint.into())
+                cpu.borrow_mut().add_breakpoint(0x0.into())
             } else {
                 Ok(())
             }
@@ -116,8 +117,14 @@ fn main() -> Result<(), GenericError> {
                 for mapping in iter {
                     let path = if let MappingType::PrivateFile(ref ifd) = mapping.mapping_type {
                         let fd_map = system.fd_map.borrow_mut();
-                        let file = fd_map.get_internal(ifd).unwrap();
-                        let path = file.data.file.as_ref().unwrap().get_path(&*system.filesystem.borrow_mut()).map_err(|_| MemoryError::Unknown)?;
+                        let file = fd_map.get_internal(&task_id, ifd).unwrap();
+                        let path = file
+                            .data
+                            .file
+                            .as_ref()
+                            .unwrap()
+                            .get_path(&system.filesystem.borrow_mut())
+                            .map_err(|_| MemoryError::Unknown)?;
                         if let Some(file_name) = path.file_name() {
                             if file_name == "open62541_server_release" && base_address.is_none() {
                                 base_address = Some(mapping.v_start);
@@ -127,7 +134,7 @@ fn main() -> Result<(), GenericError> {
                     } else {
                         None
                     };
-                    debug!("Mapping: {:?} File: {:?}", mapping, path);
+                    debug!("Mapping: {} File: {:?}", mapping, path);
                 }
                 Ok::<(), MemoryError>(())
             })?;

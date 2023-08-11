@@ -6,7 +6,7 @@ use crate::emulator::macros::*;
 use crate::emulator::platform::linux::fd::{FileDescriptorData, FD};
 use crate::emulator::platform::linux::kernel::fs::fd_ops::FileOps;
 use crate::emulator::platform::linux::kernel::*;
-use crate::emulator::system::fd_map::FileDescriptor;
+use crate::emulator::system::fd_map::{FileDescriptor, InternalFD};
 use crate::emulator::system::filesystem::{Filesystem, FSEntryId};
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
 
@@ -169,6 +169,16 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             .borrow_mut()
             .insert(&self.task_id, file_descriptor)?
             .into())
+    }
+
+    pub fn open_internal(
+        &mut self,
+        filename: &Path,
+    ) -> Result<InternalFD, LinuxKernelError> {
+        let file = self.system.filesystem.borrow().resolve_last(filename)?;
+        let mut file_descriptor = FileDescriptor::new(Box::new(FileOps::new(self.system.clone())));
+        file_descriptor.data.file = Some(FileData::new(file));
+        Ok(self.system.fd_map.borrow_mut().insert_internal(&self.task_id, file_descriptor)?.into())
     }
 
     pub fn statfs(

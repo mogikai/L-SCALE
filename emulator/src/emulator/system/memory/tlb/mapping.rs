@@ -1,4 +1,5 @@
 use std::cmp::{max, min, Ordering};
+use std::fmt::{Display, Formatter};
 use std::ops::Range;
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
@@ -18,7 +19,7 @@ pub enum MappingType {
     SharedFile(InternalFD),
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct Mapping {
     pub v_start: EVAddr,
     pub p_start: Option<EPAddr>,
@@ -26,6 +27,25 @@ pub struct Mapping {
     pub permissions: Permission,
     pub guard_callback_id: Option<usize>,
     pub mapping_type: MappingType,
+    pub label: Option<String>,
+}
+
+impl Display for Mapping {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let label = if let Some(label) = &self.label {
+            format!(" [{}] ", label)
+        } else {
+            "".to_string()
+        };
+        let physical = if let Some(p_start) = self.p_start {
+            format!("{:?}..{:?}", p_start, self.p_end().unwrap())
+        } else {
+            "[nil]".to_string()
+        };
+        let perm = format!("{:?}", self.permissions);
+        let size = format!("({:#x})", self.size);
+        write!(f, "{:?}..{:?} -> {} {:>10} {:<30}{}", self.v_start, self.v_end(), physical, size, perm, label)
+    }
 }
 
 impl Mapping {
@@ -35,6 +55,7 @@ impl Mapping {
         size: usize,
         permissions: Permission,
         mapping_type: MappingType,
+        label: Option<String>,
     ) -> Self {
         Self {
             v_start,
@@ -43,6 +64,7 @@ impl Mapping {
             permissions,
             guard_callback_id: None,
             mapping_type,
+            label,
         }
     }
 
@@ -59,6 +81,7 @@ impl Mapping {
             permissions: Permission::NONE,
             guard_callback_id: Some(guard_callback_id),
             mapping_type: MappingType::PrivateAnonymous,
+            label: Some("Guard".to_string()),
         }
     }
 
@@ -112,6 +135,7 @@ impl Mapping {
             p_start: self.p_start,
             guard_callback_id: self.guard_callback_id,
             mapping_type: self.mapping_type,
+            label: self.label.clone(),
         });
 
         let middle = Mapping {
@@ -121,6 +145,7 @@ impl Mapping {
             p_start: self.p_start.map(|pa| pa + offset),
             guard_callback_id: self.guard_callback_id,
             mapping_type: self.mapping_type,
+            label: self.label.clone(),
         };
 
         let back = (self.v_start + offset + cutout_size)
@@ -132,6 +157,7 @@ impl Mapping {
                 p_start: self.p_start.map(|pa| pa + offset + cutout_size),
                 guard_callback_id: self.guard_callback_id,
                 mapping_type: self.mapping_type,
+                label: self.label.clone(),
             });
 
         Ok((front, middle, back))
