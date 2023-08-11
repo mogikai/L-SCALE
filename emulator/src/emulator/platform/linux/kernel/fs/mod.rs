@@ -1,13 +1,13 @@
+use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
 use bitflags::{bitflags, Flags};
 use byteorder::ByteOrder;
-use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
 
 use crate::emulator::macros::*;
 use crate::emulator::platform::linux::fd::{FileDescriptorData, FD};
 use crate::emulator::platform::linux::kernel::fs::fd_ops::FileOps;
 use crate::emulator::platform::linux::kernel::*;
 use crate::emulator::system::fd_map::{FileDescriptor, InternalFD};
-use crate::emulator::system::filesystem::{Filesystem, FSEntryId};
+use crate::emulator::system::filesystem::{FSEntryId, Filesystem};
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
 
 mod fd_ops;
@@ -178,7 +178,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let file = self.system.filesystem.borrow().resolve_last(filename)?;
         let mut file_descriptor = FileDescriptor::new(Box::new(FileOps::new(self.system.clone())));
         file_descriptor.data.file = Some(FileData::new(file));
-        Ok(self.system.fd_map.borrow_mut().insert_internal(&self.task_id, file_descriptor)?.into())
+        Ok(self
+            .system
+            .fd_map
+            .borrow_mut()
+            .insert_internal(&self.task_id, file_descriptor)?
+            .into())
     }
 
     pub fn statfs(
@@ -268,7 +273,10 @@ impl FileData {
         FileData { fse_id, pos: 0 }
     }
 
-    pub fn get_path(&self, system: &Filesystem) -> Result<PathBuf, FileDescriptorError> {
+    pub fn get_path(
+        &self,
+        system: &Filesystem,
+    ) -> Result<PathBuf, FileDescriptorError> {
         Ok(system.path_from(self.fse_id)?)
     }
 }

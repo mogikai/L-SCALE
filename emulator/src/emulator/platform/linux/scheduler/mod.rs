@@ -9,17 +9,17 @@ use std::time::Duration;
 use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
 
-use crate::emulator::abstractions::cpu::{ContextHandle, CPU, CPUError, RegisterX86};
 use crate::emulator::abstractions::cpu::address::EVAddr;
+use crate::emulator::abstractions::cpu::{CPUError, ContextHandle, RegisterX86, CPU};
 use crate::emulator::abstractions::emulator::{Scheduler, SchedulerError, StopReason};
 use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::architecture::x86::X86;
-use crate::emulator::platform::linux::kernel::LinuxKernelTask;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
-use crate::emulator::platform::linux::LinuxSystem;
+use crate::emulator::platform::linux::kernel::LinuxKernelTask;
 use crate::emulator::platform::linux::scheduler::syscall::syscall;
+use crate::emulator::platform::linux::LinuxSystem;
 
 mod syscall;
 
@@ -71,8 +71,8 @@ where
         self.context
             .borrow()
             .tasks
-            .iter()
-            .map(|(_, t)| &t.kernel)
+            .values()
+            .map(|t| &t.kernel)
             .try_for_each(callback)
     }
 }

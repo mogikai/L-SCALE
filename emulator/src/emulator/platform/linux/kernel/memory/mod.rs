@@ -204,7 +204,11 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         if fd <= FD::from(-1) {
             Err(LinuxKernelError::EINVAL)?
         }
-        let internal_fd = self.system.fd_map.borrow_mut().dup_internal(&self.task_id, &fd)?;
+        let internal_fd = self
+            .system
+            .fd_map
+            .borrow_mut()
+            .dup_internal(&self.task_id, &fd)?;
         let addr = self.mmap_anon(mmu, addr, length, prot, flags, MappingType::PrivateFile(internal_fd))?;
         if addr == !EVA_NULL {
             Err(LinuxKernelError::EINVAL)?

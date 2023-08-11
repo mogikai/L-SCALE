@@ -1,6 +1,8 @@
 use std::fmt::Debug;
-use std::marker::PhantomData;
+use std::marker::{PhantomData, PhantomPinned};
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
+use std::ptr::NonNull;
 use std::rc::Rc;
 
 use byteorder::ByteOrder;
@@ -58,10 +60,17 @@ type SyscallResult = Result<u64, SyscallError>;
 /// The LoadInfo struct contains some information about a loaded program
 struct LoadInfo {
     /// If the interpreter is None, then the loaded file was the interpreter
-    interpreter: Option<PathBuf>,
+    interpreter_path: Option<PathBuf>,
     /// If the program contains a phdr section this is the address to that section.
     program_header_address: Option<EVAddr>,
+    /// The base address to where this executable was loaded
+    base_address: EVAddr,
+    /// The entrypoint of the executable
     entrypoint: EVAddr,
+    /// The number of program headers
+    program_header_num: u64,
+    /// The size of a program header entry
+    program_header_entry_size: u64,
 }
 
 impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
@@ -108,7 +117,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             self.program_info
                 .as_ref()
                 .expect("Set above")
-                .interpreter
+                .interpreter_path
                 .clone()
                 .expect("Currently we only support loading interpreted programs")
                 .as_path(),
@@ -126,7 +135,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         &mut self,
         cpu: &mut (impl CPU + MMU),
         path: &Path,
-        base: EVAddr,
+        base_address: EVAddr,
     ) -> Result<LoadInfo, LinuxKernelError> {
         let fd = self.open_internal(path)?;
         let mut memory = self.system.memory.borrow_mut();
@@ -148,8 +157,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
                 if ph.p_offset + ph.p_filesz > elf_data.len().try_into().unwrap() {
                     return Err(LinuxKernelError::ENOEXEC);
                 }
-                // let data: &[u8] = &elf_data[ph.file_range()];
-                let vm_range = base + EVAddr::from(ph.p_vaddr)..(base + EVAddr::from(ph.p_vaddr) + ph.p_memsz);
+                let vm_range =
+                    base_address + EVAddr::from(ph.p_vaddr)..(base_address + EVAddr::from(ph.p_vaddr) + ph.p_memsz);
                 info!("vm_range   0x{:X}..0x{:X}", vm_range.start, vm_range.end);
                 info!("file_range 0x{:X}..0x{:X}", ph.file_range().start, ph.file_range().end);
                 memory
@@ -163,13 +172,16 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             .program_headers
             .iter()
             .find(|ph| ph.p_type == program_header::PT_PHDR)
-            .map(|ph| base + ph.p_offset);
-        let entrypoint = base + EVAddr::from(elf.entry);
+            .map(|ph| base_address + ph.p_offset);
+        let entrypoint = base_address + EVAddr::from(elf.entry);
 
         Ok(LoadInfo {
-            interpreter: interpreter_path,
+            interpreter_path,
             program_header_address,
+            base_address,
             entrypoint,
+            program_header_num: elf.header.e_phnum as u64,
+            program_header_entry_size: elf.header.e_phentsize as u64,
         })
     }
 
@@ -234,9 +246,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
                 .ok_or(LinuxKernelError::EINVAL)?
                 .into(),
         ));
-        aux.push((AUXVType::Phent as u64, 56));
-        aux.push((AUXVType::Phnum as u64, 12)); // TODO: Do not hardcode
-        aux.push((AUXVType::Base as u64, 0x0000_b000_0000_0000));
+        aux.push((AUXVType::Phent as u64, program_info.program_header_entry_size));
+        aux.push((AUXVType::Phnum as u64, program_info.program_header_num));
+        aux.push((AUXVType::Base as u64, program_info.base_address.into()));
         aux.push((AUXVType::Flags as u64, 0));
         // TODO: map random data to a more appropriate place and provide an api to set the random data
         memory
