@@ -24,6 +24,8 @@ use fuzzyemu::emulator::system::hardware::unicorn::UCWrapper;
 use fuzzyemu::emulator::system::memory::{MappingType, Memory};
 use fuzzyemu::emulator::system::System;
 use fuzzyemu::{ByteOrder, LittleEndian};
+use fuzzyemu::emulator::abstractions::emulator::SchedulerError::Stopped;
+use fuzzyemu::emulator::abstractions::emulator::StopReason::Breakpoint;
 
 fn main() -> Result<(), GenericError> {
     pretty_env_logger::init();
@@ -50,9 +52,9 @@ fn main() -> Result<(), GenericError> {
 
         cpu.borrow_mut().add_block_hook(Box::new(|_, addr, _| {
             total_blocks += 1;
-            *blocks.entry((prev_block2, prev_block, addr)).or_insert(0) += 1;
-            prev_block2 = prev_block;
-            prev_block = addr;
+            // *blocks.entry((prev_block2, prev_block, addr)).or_insert(0) += 1;
+            // prev_block2 = prev_block;
+            // prev_block = addr;
             // TODO: Is this a performance bottleneck, do we have to use a simpler map?
         }));
         let vtlb_system = system.clone();
@@ -102,13 +104,27 @@ fn main() -> Result<(), GenericError> {
         .unwrap();
         scheduler.try_for_each_task(|task| {
             if let Some(entrypoint) = task.entrypoint() {
-                cpu.borrow_mut().add_breakpoint(0x0.into())
+                cpu.borrow_mut().add_breakpoint(entrypoint)
             } else {
                 Ok(())
             }
         })?;
         let start = Instant::now();
         let result = scheduler.run(None, None);
+        debug!("Emulation returned {result:?}");
+        if let Err(Stopped(Breakpoint)) = result {
+            debug!("Removing breakpoint");
+            scheduler.try_for_each_task(|task| {
+                if let Some(entrypoint) = task.entrypoint() {
+                    cpu.borrow_mut().remove_breakpoint(entrypoint)
+                } else {
+                    Ok(())
+                }
+            })?;
+            debug!("Trying to resume");
+            let result = scheduler.run(None, None);
+            debug!("Emulation returned {result:?}");
+        }
         let mut base_address = None;
         system
             .memory
@@ -138,7 +154,6 @@ fn main() -> Result<(), GenericError> {
                 }
                 Ok::<(), MemoryError>(())
             })?;
-        debug!("Emulation returned {result:?}");
         start.elapsed()
     };
 

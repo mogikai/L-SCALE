@@ -1,11 +1,13 @@
 use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
 use generational_arena::Arena;
 use iced_x86::Formatter;
 
+use crate::emulator::abstractions::cpu::address::EVAddr;
 use unicorn_engine::unicorn_const::{Arch, Mode};
-use unicorn_engine::{Context, TlbType, Unicorn};
+use unicorn_engine::{Context, TlbType, UcHookId, Unicorn};
 
 use crate::emulator::abstractions::emulator::StopReason;
 
@@ -15,6 +17,7 @@ pub mod mmu;
 
 pub struct UCWrapper<'a> {
     uc: Option<Unicorn<'a, *mut UCWrapper<'a>>>,
+    breakpoints: BTreeMap<EVAddr, UcHookId>,
     contexts: Arena<Context>,
     // TODO: Replace with signals / interrupts?
     stop_reason: Option<StopReason>,
@@ -24,6 +27,7 @@ impl<'a> UCWrapper<'a> {
     pub fn new() -> Rc<RefCell<Self>> {
         let wrapper = Rc::new(RefCell::new(UCWrapper {
             uc: None,
+            breakpoints: Default::default(),
             contexts: Arena::new(),
             stop_reason: None,
         }));

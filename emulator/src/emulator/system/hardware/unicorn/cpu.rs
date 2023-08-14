@@ -1,11 +1,11 @@
 use std::time::Duration;
 
-use unicorn_engine::unicorn_const::uc_error;
 use unicorn_engine::RegisterX86;
+use unicorn_engine::unicorn_const::uc_error;
 
 use crate::emulator::abstractions::cpu;
-use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
-use crate::emulator::abstractions::cpu::{CPUError, ContextHandle, Register, CPU};
+use crate::emulator::abstractions::cpu::{ContextHandle, CPU, CPUError, Register};
+use crate::emulator::abstractions::cpu::address::{EVA_NULL, EVAddr};
 use crate::emulator::abstractions::emulator::StopReason;
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::restore::Restorable;
@@ -91,11 +91,27 @@ impl CPU for UCWrapper<'_> {
         &mut self,
         address: EVAddr,
     ) -> Result<(), CPUError> {
-        self.uc_mut()
-            .add_code_hook(address.into(), address.into(), |uc, a, b| {
-                unsafe { (&mut **uc.get_data_mut()).stop_reason.insert(StopReason::Breakpoint); }
-                uc.emu_stop();
-            });
+        if !self.breakpoints.contains_key(&address) {
+            let hook = self
+                .uc_mut()
+                .add_code_hook(address.into(), address.into(), |uc, a, b| {
+                    unsafe {
+                        (**uc.get_data_mut())
+                            .stop_reason
+                            .insert(StopReason::Breakpoint);
+                    }
+                    uc.emu_stop();
+                })?;
+            self.breakpoints.try_insert(address, hook).expect("Previously checked if exists");
+        }
+        Ok(())
+    }
+
+    fn remove_breakpoint(
+        &mut self,
+        address: EVAddr,
+    ) -> Result<(), CPUError> {
+        if let Some(hook_id) = self.breakpoints.remove(&address) { self.uc_mut().remove_hook(hook_id)?; }
         Ok(())
     }
 
