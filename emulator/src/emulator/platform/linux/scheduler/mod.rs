@@ -44,7 +44,7 @@ struct SchedulerContext<Endianness: ByteOrder> {
 
 pub struct LinuxX86Scheduler<'a, CpuT, Endianness>
 where
-    CpuT: CPU + MMU + Hooks<'a>,
+    CpuT: CPU + MMU + Hooks<'a> + Restorable,
     Endianness: ByteOrder,
 {
     system: LinuxSystem<Endianness>,

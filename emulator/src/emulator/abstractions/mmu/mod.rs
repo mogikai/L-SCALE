@@ -27,8 +27,6 @@ pub enum MemoryError {
     InsufficientSize,
     #[error("The process already exists (i.e. it already has a memory layout assigned")]
     ProcessAlreadyExists,
-    #[error("The requested memory layout could not be found")]
-    LayoutNotFound,
     #[error("There is no more virtual physical memory available")]
     OutOfMemory,
     #[error("TODO")]

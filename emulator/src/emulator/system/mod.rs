@@ -33,6 +33,7 @@ where
     pub memory: Rc<RefCell<Memory<Endianness>>>,
     pub filesystem: Rc<RefCell<Filesystem>>,
     pub clock: Rc<RefCell<Clock>>,
+    // TODO: Move this into scheduler. It should provide access to it via rc
     pub current_task: Rc<RefCell<Option<TaskId>>>,
     pub fd_map: Rc<RefCell<FileDescriptorMap<FD, TaskId, FDData>>>,
 }
@@ -88,7 +89,9 @@ where
     fn snapshot(&mut self) -> Result<(), GenericError> {
         self.memory.borrow_mut().snapshot()?;
         self.filesystem.borrow_mut().snapshot()?;
-        todo!()
+        self.clock.borrow_mut().snapshot()?;
+        todo!();
+        Ok(())
     }
 
     fn restore_and_discard(&mut self) -> Result<(), GenericError> {

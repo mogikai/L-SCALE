@@ -1,9 +1,13 @@
+mod restorable;
+
 use std::time::Duration;
 
 #[derive(Debug)]
 pub struct Clock {
     system_time: Duration,
     simulation_factor: f64,
+
+    snapshots: Vec<Duration>,
 }
 
 impl Clock {
@@ -11,6 +15,7 @@ impl Clock {
         Self {
             system_time: current_time,
             simulation_factor: 7f64,
+            snapshots: vec![],
         }
     }
 
