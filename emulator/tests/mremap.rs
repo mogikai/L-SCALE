@@ -27,7 +27,7 @@ fn remap_private_anon() -> Result<(), GenericError> {
     let memory = Memory::new();
     let clock = Clock::new(Duration::from_nanos(1662647309301240322));
     let fd_map = FileDescriptorMap::new();
-    let system = Rc::new(System::new(memory, filesystem, clock, fd_map));
+    let system = System::new(memory, filesystem, clock, fd_map);
 
     let vtlb_system = system.clone();
     cpu.borrow_mut()
