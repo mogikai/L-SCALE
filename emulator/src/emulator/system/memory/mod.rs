@@ -11,8 +11,8 @@ pub use accessor::MemoryAccessor;
 use layout::Layout;
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
-use crate::emulator::abstractions::mmu::{MemoryError, MMU, MREMAP_FLAGS, Permission};
-use crate::emulator::platform::linux::fd::{FD, FileDescriptorData};
+use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU, MREMAP_FLAGS};
+use crate::emulator::platform::linux::fd::{FileDescriptorData, FD};
 // TODO: Make TaskId generic
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::fd_map::{FileDescriptor, FileDescriptorMap, InternalFD};
@@ -250,7 +250,9 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         if file_range.end - file_range.start > size {
             todo!()
         }
-        let mut file = fd_map.get_mut_internal(task_id, ifd).ok_or(MemoryError::Unknown)?;
+        let mut file = fd_map
+            .get_mut_internal(task_id, ifd)
+            .ok_or(MemoryError::Unknown)?;
         let file = &mut *file;
         let data = file
             .ops
@@ -361,7 +363,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
     }
 
     pub(crate) fn protect(
-        &self,
+        &mut self,
         task_id: TaskId,
         addr: EVAddr,
         size: usize,

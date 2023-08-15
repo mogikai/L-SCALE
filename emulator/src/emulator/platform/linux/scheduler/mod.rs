@@ -12,6 +12,7 @@ use num_enum::FromPrimitive;
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::{CPUError, ContextHandle, RegisterX86, CPU};
 use crate::emulator::abstractions::emulator::{Scheduler, SchedulerError, StopReason};
+use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::restore::Restorable;
@@ -21,6 +22,7 @@ use crate::emulator::platform::linux::kernel::LinuxKernelTask;
 use crate::emulator::platform::linux::scheduler::syscall::syscall;
 use crate::emulator::platform::linux::LinuxSystem;
 
+mod restorable;
 mod syscall;
 
 enum TaskState {
@@ -45,7 +47,7 @@ where
     CpuT: CPU + MMU + Hooks<'a>,
     Endianness: ByteOrder,
 {
-    system: Rc<LinuxSystem<Endianness>>,
+    system: LinuxSystem<Endianness>,
     context: Rc<RefCell<SchedulerContext<Endianness>>>,
     cpu: Rc<RefCell<CpuT>>,
     phantom: PhantomData<&'a CpuT>,
@@ -83,7 +85,7 @@ where
     Endianness: ByteOrder + 'static,
 {
     pub fn new(
-        system: Rc<LinuxSystem<Endianness>>,
+        system: LinuxSystem<Endianness>,
         initial_task: LinuxKernelTask<Endianness, X86>,
         cpu: Rc<RefCell<CpuT>>,
         binary_path: PathBuf,
@@ -205,9 +207,9 @@ where
         let mut cpu = self.cpu.borrow_mut();
 
         // TODO: Potentially move this to the clock setup?
-        let timestep_system = self.system.clone();
+        let timestep_clock = self.system.clock.clone();
         cpu.add_block_hook(Box::new(move |_, _, instrs| {
-            timestep_system.clock.borrow_mut().do_timestep(instrs);
+            timestep_clock.borrow_mut().do_timestep(instrs);
         }));
 
         let syscall_context = self.context.clone();

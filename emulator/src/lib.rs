@@ -8,7 +8,6 @@
 #![feature(iterator_try_collect)]
 #![feature(min_specialization)]
 #![feature(result_option_inspect)]
-#![feature(provide_any)]
 #![feature(error_generic_member_access)]
 #![feature(try_trait_v2)]
 #![allow(dead_code)]

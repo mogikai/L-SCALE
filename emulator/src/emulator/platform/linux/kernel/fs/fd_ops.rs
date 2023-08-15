@@ -1,4 +1,4 @@
-use std::cell::Ref;
+use std::cell::{Ref, RefCell};
 use std::rc::Rc;
 
 use byteorder::ByteOrder;
@@ -8,15 +8,13 @@ use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::system::fd_map::FileDescriptor;
-use crate::emulator::system::filesystem::Stat;
+use crate::emulator::system::filesystem::{Filesystem, Stat};
 
 #[derive(Debug, Clone)]
-pub struct FileOps<Endianness: ByteOrder> {
-    system: Rc<LinuxSystem<Endianness>>,
-}
+pub struct FileOps {}
 
 //TODO build a trait
-impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for FileOps<Endianness> {
+impl FileDescriptorOps<FileDescriptorData> for FileOps {
     fn poll(
         &self,
         fd: &mut FileDescriptorData,
@@ -31,12 +29,12 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for FileOps<En
         false
     }
 
-    fn stat(
+    fn stat<'a>(
         &self,
-        fd: &mut FileDescriptorData,
-    ) -> Result<Ref<Stat>, FileDescriptorError> {
+        fd: &'a mut FileDescriptorData,
+    ) -> Result<Ref<'a, Stat>, FileDescriptorError> {
         let fd = fd.file.as_mut().ok_or(FileDescriptorError::NotSupported)?;
-        Ref::filter_map(self.system.filesystem.borrow(), |fs| fs.stat(fd.fse_id).ok())
+        Ref::filter_map(fd.filesystem.borrow(), |fs| fs.stat(fd.fse_id).ok())
             .or(Err(FileDescriptorError::OperationFailed))
     }
 
@@ -46,8 +44,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for FileOps<En
         count: u64,
     ) -> Result<Vec<u8>, FileDescriptorError> {
         let fd = fd.file.as_mut().ok_or(FileDescriptorError::NotSupported)?;
-        let result = self
-            .system
+        let result = fd
             .filesystem
             .borrow()
             .read(fd.fse_id, fd.pos, count as usize)?;
@@ -62,8 +59,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for FileOps<En
         length: u64,
     ) -> Result<Vec<u8>, FileDescriptorError> {
         let fd = fd.file.as_mut().ok_or(FileDescriptorError::NotSupported)?;
-        Ok(self
-            .system
+        Ok(fd
             .filesystem
             .borrow()
             .read(fd.fse_id, offset as usize, length as usize)?)
@@ -75,11 +71,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for FileOps<En
         data: &[u8],
     ) -> Result<usize, FileDescriptorError> {
         let fd = fd.file.as_mut().ok_or(FileDescriptorError::NotSupported)?;
-        let written = self
-            .system
-            .filesystem
-            .borrow_mut()
-            .write(fd.fse_id, fd.pos, data)?;
+        let written = fd.filesystem.borrow_mut().write(fd.fse_id, fd.pos, data)?;
         fd.pos += written;
         Ok(written)
     }
@@ -117,8 +109,8 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for FileOps<En
     }
 }
 
-impl<Endianness: ByteOrder> FileOps<Endianness> {
-    pub fn new(system: Rc<LinuxSystem<Endianness>>) -> FileOps<Endianness> {
-        FileOps { system }
+impl FileOps {
+    pub fn new() -> FileOps {
+        FileOps {}
     }
 }

@@ -1,5 +1,6 @@
 extern crate core;
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -10,9 +11,12 @@ use log::debug;
 
 use fuzzyemu::emulator::abstractions::cpu::CPU;
 use fuzzyemu::emulator::abstractions::emulator::Scheduler;
+use fuzzyemu::emulator::abstractions::emulator::SchedulerError::Stopped;
+use fuzzyemu::emulator::abstractions::emulator::StopReason::Breakpoint;
 use fuzzyemu::emulator::abstractions::errors::GenericError;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
 use fuzzyemu::emulator::abstractions::mmu::{MemoryError, MMU};
+use fuzzyemu::emulator::abstractions::restore::Restorable;
 use fuzzyemu::emulator::platform::linux::architecture::x86::X86;
 use fuzzyemu::emulator::platform::linux::kernel::task_id::TaskId;
 use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
@@ -24,8 +28,6 @@ use fuzzyemu::emulator::system::hardware::unicorn::UCWrapper;
 use fuzzyemu::emulator::system::memory::{MappingType, Memory};
 use fuzzyemu::emulator::system::System;
 use fuzzyemu::{ByteOrder, LittleEndian};
-use fuzzyemu::emulator::abstractions::emulator::SchedulerError::Stopped;
-use fuzzyemu::emulator::abstractions::emulator::StopReason::Breakpoint;
 
 fn main() -> Result<(), GenericError> {
     pretty_env_logger::init();
@@ -41,7 +43,7 @@ fn main() -> Result<(), GenericError> {
         let memory = Memory::new();
         let clock = Clock::new(Duration::from_nanos(1662647309301240322));
         let file_descriptor_map = FileDescriptorMap::new();
-        let system = Rc::new(System::new(memory, filesystem, clock, file_descriptor_map));
+        let system = System::new(memory, filesystem, clock, file_descriptor_map);
         // let memory = Rc::new(RefCell::new(Memory::new(
         //     &mut *cpu.borrow_mut(),
         //     0x0000_7fff_ffff_ffff,
@@ -57,12 +59,12 @@ fn main() -> Result<(), GenericError> {
             // prev_block = addr;
             // TODO: Is this a performance bottleneck, do we have to use a simpler map?
         }));
-        let vtlb_system = system.clone();
+        let vtlb_current_task = system.current_task.clone();
+        let vtlb_memory = system.memory.clone();
         cpu.borrow_mut()
             .add_vtlb_hook(Box::new(move |_uc, vaddr, _action| {
-                vtlb_system.current_task.borrow().and_then(|task_id| {
-                    vtlb_system
-                        .memory
+                vtlb_current_task.borrow().and_then(|task_id| {
+                    vtlb_memory
                         .borrow_mut()
                         .translate_vaddr(task_id, vaddr)
                         .ok()
@@ -113,6 +115,8 @@ fn main() -> Result<(), GenericError> {
         let result = scheduler.run(None, None);
         debug!("Emulation returned {result:?}");
         if let Err(Stopped(Breakpoint)) = result {
+            debug!("Creating snapshot");
+            scheduler.snapshot()?;
             debug!("Removing breakpoint");
             scheduler.try_for_each_task(|task| {
                 if let Some(entrypoint) = task.entrypoint() {

@@ -36,10 +36,10 @@ impl FileDescriptorOps<FileDescriptorData> for WriteOnly {
         false
     }
 
-    fn stat(
-        &self,
-        fd: &mut FileDescriptorData,
-    ) -> Result<Ref<Stat>, FileDescriptorError> {
+    fn stat<'a>(
+        &'a self,
+        fd: &'a mut FileDescriptorData,
+    ) -> Result<Ref<'a, Stat>, FileDescriptorError> {
         Ok(self.stat.borrow())
     }
 
@@ -142,10 +142,10 @@ impl FileDescriptorOps<FileDescriptorData> for ReadOnly {
         false
     }
 
-    fn stat(
-        &self,
-        fd: &mut FileDescriptorData,
-    ) -> Result<Ref<Stat>, FileDescriptorError> {
+    fn stat<'a>(
+        &'a self,
+        fd: &'a mut FileDescriptorData,
+    ) -> Result<Ref<'a, Stat>, FileDescriptorError> {
         Ok(self.stat.borrow())
     }
 

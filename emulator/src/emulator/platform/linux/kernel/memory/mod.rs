@@ -7,7 +7,9 @@ use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU, MREMAP_FL
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::FD;
 use crate::emulator::platform::linux::kernel::memory::flags::MMAP_FLAGS;
-use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask, SyscallResult};
+use crate::emulator::platform::linux::kernel::{
+    sys_component, sys_component_mut, LinuxKernelError, LinuxKernelTask, SyscallResult,
+};
 use crate::emulator::system::memory::helpers::{align4k_up, is4kaligned};
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
 use crate::emulator::system::memory::MappingType;
@@ -62,10 +64,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         addr: EVAddr,
         len: u64,
     ) -> SyscallResult {
-        self.system
-            .memory
-            .borrow_mut()
-            .unmap(self.task_id, addr, len as usize)?;
+        sys_component_mut!(self, memory).unmap(self.task_id, addr, len as usize)?;
         mmu.flush_tlb()?;
         Ok(0)
     }
@@ -90,10 +89,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             )
         }
 
-        Ok(self
-            .system
-            .memory
-            .borrow_mut()
+        Ok(sys_component_mut!(self, memory)
             .remap(
                 mmu,
                 self.task_id,
@@ -116,10 +112,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         if !is4kaligned(start) {
             Err(MemoryError::InvalidAlignment)?
         }
-        self.system
-            .memory
-            .borrow()
-            .protect(self.task_id, start, len as usize, prot.try_into().unwrap())?;
+        sys_component_mut!(self, memory).protect(self.task_id, start, len as usize, prot.try_into().unwrap())?;
         // Need to flush existing cache since permissions of cached entries might have changed.
         mmu.flush_tlb()?;
         Ok(0)
@@ -161,30 +154,21 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let size = align4k_up(size as usize);
         let addr = if flags.contains(MMAP_FLAGS::MAP_FIXED) {
             // map fixed overwrites any mappings that already exist in the region so we unmap here.
-            self.system
-                .memory
-                .borrow_mut()
-                .unmap(self.task_id, address, size)?;
+            sys_component_mut!(self, memory).unmap(self.task_id, address, size)?;
             // Need to flush tlb to let cpu emulator now to re-fetch the addresses
             mmu.flush_tlb()?;
 
-            self.system
-                .memory
-                .borrow_mut()
+            sys_component_mut!(self, memory)
                 .map_fixed(self.task_id, address, size, prot, mapping_type)
                 .map_err(LinuxKernelError::from)?
         } else {
-            self.system
-                .memory
-                .borrow_mut()
+            sys_component_mut!(self, memory)
                 .mmap(self.task_id, address, size, prot, mapping_type)
                 .map_err(LinuxKernelError::from)?
         };
 
         // Map anonymous requires memory being zero initialized.
-        self.system
-            .memory
-            .borrow_mut()
+        sys_component_mut!(self, memory)
             .accessor(mmu, self.task_id)
             .write_bytes_unchecked(addr, &vec![0u8; size]);
         Ok(addr)
@@ -204,11 +188,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         if fd <= FD::from(-1) {
             Err(LinuxKernelError::EINVAL)?
         }
-        let internal_fd = self
-            .system
-            .fd_map
-            .borrow_mut()
-            .dup_internal(&self.task_id, &fd)?;
+        let internal_fd = sys_component_mut!(self, fd_map).dup_internal(&self.task_id, &fd)?;
         let addr = self.mmap_anon(mmu, addr, length, prot, flags, MappingType::PrivateFile(internal_fd))?;
         if addr == !EVA_NULL {
             Err(LinuxKernelError::EINVAL)?
@@ -217,9 +197,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         self.write_file_contents(mmu, length, fd, offset, addr)
             .map_err(|e| {
                 // Unmap if we encountered an error during writing
-                self.system
-                    .memory
-                    .borrow_mut()
+                sys_component_mut!(self, memory)
                     .unmap(self.task_id, addr, length as usize)
                     .map_err(LinuxKernelError::from)
                     .err()
@@ -236,17 +214,14 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         offset: u64,
         addr: EVAddr,
     ) -> Result<(), LinuxKernelError> {
-        let mut file_descriptor_map = self.system.fd_map.borrow_mut();
+        let mut file_descriptor_map = sys_component_mut!(self, fd_map);
         let mut fd = file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EINVAL)?;
         let fd = &mut *fd;
         let data = fd.ops.pread(&mut fd.data, offset, length)?;
 
-        let mut memory = self
-            .system
-            .memory
-            .borrow_mut()
+        let mut memory = sys_component_mut!(self, memory)
             .accessor(mmu, self.task_id)
             .write_bytes_unchecked(addr, data.as_slice())?;
         Ok(())

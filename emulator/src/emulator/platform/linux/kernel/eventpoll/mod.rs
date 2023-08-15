@@ -8,7 +8,6 @@ use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::CPU;
-use crate::emulator::abstractions::emulator::StopReason;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
 use crate::emulator::abstractions::mmu::MMU;
@@ -17,7 +16,7 @@ use crate::emulator::platform::linux::fd::{FileDescriptorData, FD};
 use crate::emulator::platform::linux::kernel::error::SyscallError;
 use crate::emulator::platform::linux::kernel::eventpoll::events::EPOLL_EVENTS;
 use crate::emulator::platform::linux::kernel::eventpoll::fd_ops::EpollOps;
-use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask, SyscallResult};
+use crate::emulator::platform::linux::kernel::{sys_component_mut, LinuxKernelError, LinuxKernelTask, SyscallResult};
 use crate::emulator::system::fd_map::FileDescriptor;
 use crate::emulator::system::memory::rw_interface::{MemoryRead, MemoryWrite};
 use crate::emulator::system::memory::MemoryAccessor;
@@ -49,7 +48,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
         //       needs to be able to see which events are asked for, such that
         //       it can react accordingly and produce events. This might be
         //       possible via some kind of event loop between fuzzer and emulator?
-        let mut fd_map = self.system.fd_map.borrow_mut();
+        let mut fd_map = sys_component_mut!(self, fd_map);
 
         let mut epoll = fd_map
             .get_mut(&self.task_id, &epfd)
@@ -71,13 +70,11 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
                         .poll(&mut file.data)
                         .expect("Only pollable fds should be in interest list");
                     let ready_events = EPOLL_EVENTS::from(ready_ops);
-                    if event.events.intersects(ready_events) {
-                        if triggered_events.len() < maxevents as usize {
-                            triggered_events.push(epoll_event {
-                                events: ready_events,
-                                data: event.data,
-                            });
-                        }
+                    if event.events.intersects(ready_events) && triggered_events.len() < maxevents as usize {
+                        triggered_events.push(epoll_event {
+                            events: ready_events,
+                            data: event.data,
+                        });
                     }
                 }
             }
@@ -91,7 +88,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
             Err(SyscallError::Yield)?
         }
 
-        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = sys_component_mut!(self, memory);
         let mut memory = memory.accessor(mmu, self.task_id);
 
         memory.write(events, triggered_events.as_slice());
@@ -107,8 +104,8 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
         fd: FD,
         event: EVAddr, // epoll_event*
     ) -> SyscallResult {
-        let mut fd_map = self.system.fd_map.borrow_mut();
-        let mut memory = self.system.memory.borrow_mut();
+        let mut fd_map = sys_component_mut!(self, fd_map);
+        let mut memory = sys_component_mut!(self, memory);
         let memory = memory.accessor(mmu, self.task_id);
 
         let op = EPOLL_OPCODES::try_from_primitive(op).map_err(|_| LinuxKernelError::EINVAL)?;
@@ -226,10 +223,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
     ) -> SyscallResult {
         let mut fd = FileDescriptor::new(Box::new(EpollOps::new()));
         fd.data.epoll = Some(EpollData::new());
-        Ok(self
-            .system
-            .fd_map
-            .borrow_mut()
+        Ok(sys_component_mut!(self, fd_map)
             .insert(&self.task_id, fd)?
             .into())
     }

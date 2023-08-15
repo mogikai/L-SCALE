@@ -4,6 +4,7 @@ use std::time::Duration;
 use thiserror::Error;
 
 use crate::emulator::abstractions::cpu::CPUError;
+use crate::emulator::abstractions::restore::Restorable;
 
 #[derive(Error, Debug, Copy, Clone)]
 pub enum StopReason {
@@ -37,14 +38,14 @@ pub enum SchedulerError {
     NoRunnableTasks,
 }
 
-pub trait Scheduler<T> {
+pub trait Scheduler<T>: Restorable {
     fn run(
         &mut self,
         timeout: Option<Duration>,
         instruction_count: Option<usize>,
     ) -> Result<(), SchedulerError>;
 
-    fn try_for_each_task<F: FnMut(&T) -> R, R: Try<Output=()>>(
+    fn try_for_each_task<F: FnMut(&T) -> R, R: Try<Output = ()>>(
         &self,
         callback: F,
     ) -> R;

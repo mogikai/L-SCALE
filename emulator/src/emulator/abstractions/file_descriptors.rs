@@ -31,10 +31,10 @@ pub trait FileDescriptorOps<D: Default>: Debug {
     ) -> bool;
 
     /// returns: The stat vector of the handle this method is called on
-    fn stat(
-        &self,
-        fd: &mut D,
-    ) -> Result<Ref<Stat>, FileDescriptorError> {
+    fn stat<'a>(
+        &'a self,
+        fd: &'a mut D,
+    ) -> Result<Ref<'a, Stat>, FileDescriptorError> {
         todo!()
     }
 

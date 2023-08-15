@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::fmt::Debug;
 use std::marker::{PhantomData, PhantomPinned};
 use std::path::{Path, PathBuf};
@@ -42,10 +43,24 @@ pub(crate) mod net;
 pub(crate) mod socket;
 pub mod task_id;
 
+macro_rules! sys_component {
+    ($self:ident, $component:ident) => {
+        $self.system.$component.borrow()
+    };
+}
+
+macro_rules! sys_component_mut {
+    ($self:ident, $component:ident) => {
+        $self.system.$component.borrow_mut()
+    };
+}
+
+pub(super) use {sys_component, sys_component_mut};
+
 /* eventuell nach task umbenennen */
 // TODO: Move thread shared data to thread specific struct that is shared between kernel task objects (rcrefcell?)
 pub struct LinuxKernelTask<Endianness: ByteOrder, Arch: Architecture> {
-    system: Rc<LinuxSystem<Endianness>>,
+    system: LinuxSystem<Endianness>,
     clear_child_tid: Option<EVAddr>,
     robust_list_head: Option<EVAddr>,
     signalhandler: SignalHandler<Arch::SignalFlags>,
@@ -75,7 +90,7 @@ struct LoadInfo {
 
 impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
     pub fn new(
-        system: Rc<LinuxSystem<Endianness>>,
+        system: LinuxSystem<Endianness>,
         pid: u32,
         tid: u32,
     ) -> Self {
@@ -104,10 +119,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         binary_args: &[&str],
         binary_env: &[&str],
     ) -> Result<(), LinuxKernelError> {
-        self.system
-            .memory
-            .borrow_mut()
-            .new_process(cpu, self.task_id)?;
+        sys_component_mut!(self, memory).new_process(cpu, self.task_id)?;
 
         self.program_info = Some(self.load_elf(cpu, binary_path, 0x0000_c000_0000_0000.into())?);
 
@@ -138,8 +150,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         base_address: EVAddr,
     ) -> Result<LoadInfo, LinuxKernelError> {
         let fd = self.open_internal(path)?;
-        let mut memory = self.system.memory.borrow_mut();
-        let mut fd_map = self.system.fd_map.borrow_mut();
+        let mut memory = sys_component_mut!(self, memory);
+        let mut fd_map = sys_component_mut!(self, fd_map);
         let elf_data = {
             let mut interpreter_file = fd_map
                 .get_mut_internal(&self.task_id, &fd)
@@ -152,7 +164,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
 
         let elf = Elf::parse(&elf_data).unwrap();
         for ph in &elf.program_headers {
-            if ph.p_type == goblin::elf::program_header::PT_LOAD {
+            if ph.p_type == program_header::PT_LOAD {
                 let perms = getperms(ph);
                 if ph.p_offset + ph.p_filesz > elf_data.len().try_into().unwrap() {
                     return Err(LinuxKernelError::ENOEXEC);
@@ -192,7 +204,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         binary_args: &[&str],
         binary_env: &[&str],
     ) -> Result<(), LinuxKernelError> {
-        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = sys_component_mut!(self, memory);
         let mut argv_strings = vec![binary_path.to_str().unwrap()];
         argv_strings.extend_from_slice(binary_args);
 
@@ -288,7 +300,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     }
 
     pub fn add_stdio_handles(&mut self) {
-        let mut file_descriptor_map = self.system.fd_map.borrow_mut();
+        let mut file_descriptor_map = sys_component_mut!(self, fd_map);
         file_descriptor_map.insert_at(
             &self.task_id,
             0.into(),
@@ -311,7 +323,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         mmu: &mut impl MMU,
         addr: EVAddr,
     ) -> SyscallResult {
-        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = sys_component_mut!(self, memory);
         if addr != EVA_NULL {
             memory
                 .realloc_heap(self.task_id, addr)
@@ -326,7 +338,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         code: u64,
         addr: EVAddr,
     ) -> SyscallResult {
-        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = sys_component_mut!(self, memory);
         let memory = memory.accessor(cpu, self.task_id);
         match code {
             0x1001 => {
@@ -359,11 +371,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         mmu: &mut impl MMU,
         tloc: EVAddr,
     ) -> SyscallResult {
-        self.system
-            .memory
-            .borrow_mut()
+        sys_component_mut!(self, memory)
             .accessor(mmu, self.task_id)
-            .write_direct(tloc, &(self.system.clock.borrow().time().as_secs() as i64))?;
+            .write_direct(tloc, &(sys_component!(self, clock).time().as_secs() as i64))?;
         Ok(0)
     }
 
@@ -388,14 +398,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         clk_id: u64,
         tp: EVAddr,
     ) -> SyscallResult {
-        let time = self.system.clock.borrow().time();
+        let time = sys_component!(self, clock).time();
         let ts = Timespec {
             tv_sec: time.as_secs() as i64,
             tv_nsec: time.subsec_nanos() as i64,
         };
-        self.system
-            .memory
-            .borrow_mut()
+        sys_component_mut!(self, memory)
             .accessor(mmu, self.task_id)
             .write(tp, &ts)
             .unwrap();
@@ -427,7 +435,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         buf: EVAddr,
     ) -> SyscallResult {
         //TODO check if address is mapped and has space for struct new_utsname
-        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = sys_component_mut!(self, memory);
         let mut memory = memory.accessor(mmu, self.task_id);
         memory.write_direct(buf, "Linux")?;
         memory.write_direct(buf + 65, "ILT792")?;
@@ -447,7 +455,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     ) -> SyscallResult {
         // TODO: Implement correctly
         error!("FCNTL not implemented fully yet");
-        self.system.fd_map.borrow_mut().get(&self.task_id, &fd);
+        sys_component_mut!(self, fd_map).get(&self.task_id, &fd);
         Ok(2)
     }
 
@@ -463,14 +471,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         if tz != EVA_NULL {
             todo!("Timezone not implemented yet")
         }
-        let time = self.system.clock.borrow().time();
+        let time = sys_component!(self, clock).time();
         let timeval = Timeval {
             tv_sec: time.as_secs() as i64,
             tv_usec: time.subsec_micros() as i64,
         };
-        self.system
-            .memory
-            .borrow_mut()
+        sys_component_mut!(self, memory)
             .accessor(mmu, self.task_id)
             .write(tv, &timeval)?;
         Ok(0)
@@ -542,7 +548,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             return Err(LinuxKernelError::EINVAL.into());
         }
 
-        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = sys_component_mut!(self, memory);
         let mut memory = memory.accessor(mmu, self.task_id);
         if sizemask != 8 {
             //todo architure specific
@@ -552,10 +558,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let sigmask = memory
             .read_bytes(mask, sizemask as usize)
             .map(|s| Endianness::read_u64(&s))?;
-        let fd = self
-            .system
-            .fd_map
-            .borrow_mut()
+        let fd = sys_component_mut!(self, fd_map)
             .insert(&self.task_id, FileDescriptor::new(Box::new(SignalFDOps::new())))?;
         self.signalhandler.insert_fd(fd);
         Ok(fd.into())
@@ -571,9 +574,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
     ) -> SyscallResult {
         let new_rlim: Option<Rlimit> = if new_rlim != EVA_NULL {
             Some(
-                self.system
-                    .memory
-                    .borrow_mut()
+                sys_component_mut!(self, memory)
                     .accessor(mmu, self.task_id)
                     .read(new_rlim)?,
             )
@@ -589,8 +590,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
                     todo!("Need to implement setting stack size")
                 }
                 Rlimit {
-                    rlim_cur: self.system.memory.borrow().stack_size(self.task_id)? as u64,
-                    rlim_max: self.system.memory.borrow().stack_size(self.task_id)? as u64,
+                    rlim_cur: sys_component!(self, memory).stack_size(self.task_id)? as u64,
+                    rlim_max: sys_component!(self, memory).stack_size(self.task_id)? as u64,
                 }
             }
             RLIMIT::CORE => todo!(),
@@ -607,9 +608,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             RLIMIT::RTTIME => todo!(),
             RLIMIT::INVALID => todo!(),
         };
-        self.system
-            .memory
-            .borrow_mut()
+        sys_component_mut!(self, memory)
             .accessor(mmu, self.task_id)
             .write(old_rlim, &rlimit)?;
         Ok(0)
@@ -623,7 +622,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         old_ptr: u64,
         sigactionsize: u64,
     ) -> SyscallResult {
-        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = sys_component_mut!(self, memory);
         let memory = memory.accessor(mmu, self.task_id);
         // TODO: directly read the decoded sigaction. Use associated type for Arch and then decode this type with the
         //       generic read functions in the memory accessor
@@ -641,7 +640,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         old_set: EVAddr,
         sigsetsize: u64,
     ) -> SyscallResult {
-        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = sys_component_mut!(self, memory);
         let mut memory = memory.accessor(mmu, self.task_id);
         if sigsetsize != 8 {
             //todo architure specific
@@ -685,9 +684,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         // TODO: Get random data from !deterministic! source controlled by user (the fuzzer)
         //       Random sources are also a form of input to the SUT
         let data = vec![0u8; buflen as usize];
-        self.system
-            .memory
-            .borrow_mut()
+        sys_component_mut!(self, memory)
             .accessor(mmu, self.task_id)
             .write_direct(buf, &data)?;
         Ok(buflen)
@@ -764,7 +761,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> Restorable for LinuxKernelTask<E
     }
 }
 
-fn getperms(ph: &goblin::elf::program_header::ProgramHeader) -> Permission {
+fn getperms(ph: &program_header::ProgramHeader) -> Permission {
     let mut perms = Permission::NONE;
     if ph.is_read() {
         perms |= Permission::READ;

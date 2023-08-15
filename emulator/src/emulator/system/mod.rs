@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::rc::Rc;
 
 use byteorder::ByteOrder;
 
@@ -18,6 +19,9 @@ pub mod memory;
 
 /// This struct contains the global system state and system components like memory and filesystem or the system clock.
 /// Also, all currently running tasks are kept here.
+/// The system struct itself may not contain any data, since it is passed by cloning.
+/// Any data must be stored behind a pointer. This ensures that individual components can be
+/// accessed in a more fine grained manner, instead of having to borrow the entire system at once.
 #[derive(Debug)]
 pub struct System<FD, FDData, TaskId, Endianness>
 where
@@ -26,11 +30,29 @@ where
     TaskId: Ord + Copy + Clone + Default,
     Endianness: ByteOrder,
 {
-    pub memory: RefCell<Memory<Endianness>>,
-    pub filesystem: RefCell<Filesystem>,
-    pub clock: RefCell<Clock>,
-    pub current_task: RefCell<Option<TaskId>>,
-    pub fd_map: RefCell<FileDescriptorMap<FD, TaskId, FDData>>,
+    pub memory: Rc<RefCell<Memory<Endianness>>>,
+    pub filesystem: Rc<RefCell<Filesystem>>,
+    pub clock: Rc<RefCell<Clock>>,
+    pub current_task: Rc<RefCell<Option<TaskId>>>,
+    pub fd_map: Rc<RefCell<FileDescriptorMap<FD, TaskId, FDData>>>,
+}
+
+impl<FD, FDData, TaskId, Endianness> Clone for System<FD, FDData, TaskId, Endianness>
+where
+    FD: FdId,
+    FDData: Default,
+    TaskId: Ord + Copy + Clone + Default,
+    Endianness: ByteOrder,
+{
+    fn clone(&self) -> Self {
+        Self {
+            memory: self.memory.clone(),
+            filesystem: self.filesystem.clone(),
+            clock: self.clock.clone(),
+            current_task: self.current_task.clone(),
+            fd_map: self.fd_map.clone(),
+        }
+    }
 }
 
 impl<FD, FDData, TaskId, Endianness> System<FD, FDData, TaskId, Endianness>
@@ -47,11 +69,11 @@ where
         fd_map: FileDescriptorMap<FD, TaskId, FDData>,
     ) -> Self {
         Self {
-            memory: RefCell::new(memory),
-            filesystem: RefCell::new(filesystem),
-            clock: RefCell::new(clock),
-            current_task: RefCell::new(None),
-            fd_map: RefCell::new(fd_map),
+            memory: Rc::new(RefCell::new(memory)),
+            filesystem: Rc::new(RefCell::new(filesystem)),
+            clock: Rc::new(RefCell::new(clock)),
+            current_task: Rc::new(RefCell::new(None)),
+            fd_map: Rc::new(RefCell::new(fd_map)),
         }
     }
 }
@@ -64,8 +86,8 @@ where
     Endianness: ByteOrder,
 {
     fn snapshot(&mut self) -> Result<(), GenericError> {
-        self.memory.get_mut().snapshot()?;
-        self.filesystem.get_mut().snapshot()?;
+        self.memory.borrow_mut().snapshot()?;
+        self.filesystem.borrow_mut().snapshot()?;
         todo!()
     }
 

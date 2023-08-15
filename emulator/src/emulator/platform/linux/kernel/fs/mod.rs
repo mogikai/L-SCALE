@@ -21,8 +21,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         buf: EVAddr,
         size: u64,
     ) -> SyscallResult {
-        let mut memory = self.system.memory.borrow_mut();
-        let mut file_descriptor_map = self.system.fd_map.borrow_mut();
+        let mut memory = sys_component_mut!(self, memory);
+        let mut file_descriptor_map = sys_component_mut!(self, fd_map);
         file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .map_or(Err(LinuxKernelError::EINVAL.into()), |mut fd| {
@@ -49,8 +49,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         iovec_ptr: EVAddr,
         iovcnt: u64,
     ) -> SyscallResult {
-        let mut memory = self.system.memory.borrow_mut();
-        let mut file_descriptor_map = self.system.fd_map.borrow_mut();
+        let mut memory = sys_component_mut!(self, memory);
+        let mut file_descriptor_map = sys_component_mut!(self, fd_map);
         let memory = memory.accessor(mmu, self.task_id);
         file_descriptor_map
             .get_mut(&self.task_id, &fd)
@@ -83,8 +83,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         count: u64,
         pos: u64,
     ) -> SyscallResult {
-        let mut memory = self.system.memory.borrow_mut();
-        let mut file_descriptor_map = self.system.fd_map.borrow_mut();
+        let mut memory = sys_component_mut!(self, memory);
+        let mut file_descriptor_map = sys_component_mut!(self, fd_map);
         let mut memory = memory.accessor(mmu, self.task_id);
         let mut fd = file_descriptor_map
             .get_mut(&self.task_id, &fd)
@@ -101,8 +101,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         buf: EVAddr,
         count: u64,
     ) -> SyscallResult {
-        let mut memory = self.system.memory.borrow_mut();
-        let mut file_descriptor_map = self.system.fd_map.borrow_mut();
+        let mut memory = sys_component_mut!(self, memory);
+        let mut file_descriptor_map = sys_component_mut!(self, fd_map);
         let mut memory = memory.accessor(mmu, self.task_id);
         let mut file = file_descriptor_map
             .get_mut(&self.task_id, &fd)
@@ -117,8 +117,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         fd: FD,
         statbuf: EVAddr,
     ) -> SyscallResult {
-        let mut memory = self.system.memory.borrow_mut();
-        let mut file_descriptor_map = self.system.fd_map.borrow_mut();
+        let mut memory = sys_component_mut!(self, memory);
+        let mut file_descriptor_map = sys_component_mut!(self, fd_map);
         let mut memory = memory.accessor(mmu, self.task_id);
         let mut file = file_descriptor_map
             .get_mut(&self.task_id, &fd)
@@ -134,11 +134,11 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         filename: EVAddr,
         statbuf: EVAddr,
     ) -> SyscallResult {
-        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = sys_component_mut!(self, memory);
         let mut memory = memory.accessor(mmu, self.task_id);
         let fname = read_osstring!(memory, filename)?;
         trace!("stat file {:?}", fname);
-        let fs = self.system.filesystem.borrow();
+        let fs = sys_component!(self, filesystem);
         let file = fs.resolve_last(Path::new(&fname))?;
         memory.write(statbuf, fs.stat(file)?)?;
         Ok(0)
@@ -152,21 +152,14 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         _flags: u64,
         _mode: u64,
     ) -> SyscallResult {
-        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = sys_component_mut!(self, memory);
         let memory = memory.accessor(mmu, self.task_id);
         let fname = read_osstring!(memory, filename)?;
         trace!("openat file: {:?}", fname);
-        let file = self
-            .system
-            .filesystem
-            .borrow()
-            .resolve_last(Path::new(&fname))?;
-        let mut file_descriptor = FileDescriptor::new(Box::new(FileOps::new(self.system.clone())));
-        file_descriptor.data.file = Some(FileData::new(file));
-        Ok(self
-            .system
-            .fd_map
-            .borrow_mut()
+        let file = sys_component!(self, filesystem).resolve_last(Path::new(&fname))?;
+        let mut file_descriptor = FileDescriptor::new(Box::new(FileOps::new()));
+        file_descriptor.data.file = Some(FileData::new(self.system.filesystem.clone(), file));
+        Ok(sys_component_mut!(self, fd_map)
             .insert(&self.task_id, file_descriptor)?
             .into())
     }
@@ -175,13 +168,10 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         &mut self,
         filename: &Path,
     ) -> Result<InternalFD, LinuxKernelError> {
-        let file = self.system.filesystem.borrow().resolve_last(filename)?;
-        let mut file_descriptor = FileDescriptor::new(Box::new(FileOps::new(self.system.clone())));
-        file_descriptor.data.file = Some(FileData::new(file));
-        Ok(self
-            .system
-            .fd_map
-            .borrow_mut()
+        let file = sys_component!(self, filesystem).resolve_last(filename)?;
+        let mut file_descriptor = FileDescriptor::new(Box::new(FileOps::new()));
+        file_descriptor.data.file = Some(FileData::new(self.system.filesystem.clone(), file));
+        Ok(sys_component_mut!(self, fd_map)
             .insert_internal(&self.task_id, file_descriptor)?
             .into())
     }
@@ -203,8 +193,8 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         statbuf: EVAddr,
         flag: u64,
     ) -> SyscallResult {
-        let mut memory = self.system.memory.borrow_mut();
-        let mut file_descriptor_map = self.system.fd_map.borrow_mut();
+        let mut memory = sys_component_mut!(self, memory);
+        let mut file_descriptor_map = sys_component_mut!(self, fd_map);
         let mut memory = memory.accessor(mmu, self.task_id);
         let flags = at_flags::from_bits(flag).ok_or(LinuxKernelError::EINVAL)?;
         if flags.contains(at_flags::AT_EMPTY_PATH) {
@@ -217,7 +207,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         } else {
             let filename = read_osstring!(memory, filename)?;
             debug!("newfstatat: {filename:?}");
-            let fs = self.system.filesystem.borrow_mut();
+            let fs = sys_component_mut!(self, filesystem);
             let entry = fs.resolve_last(Path::new(&filename))?;
             memory.write(statbuf, fs.stat(entry)?)?;
             Ok(0)
@@ -232,7 +222,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         buf: EVAddr,
         bufsize: usize,
     ) -> SyscallResult {
-        let mut memory = self.system.memory.borrow_mut();
+        let mut memory = sys_component_mut!(self, memory);
         let mut memory = memory.accessor(mmu, self.task_id);
         Ok(memory
             .write_bounded(buf, "/home/user/open62541_server_release".as_bytes(), bufsize)?
@@ -244,10 +234,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         _: &mut impl CPU,
         fd: FD,
     ) -> SyscallResult {
-        Ok(self
-            .system
-            .fd_map
-            .borrow_mut()
+        Ok(sys_component_mut!(self, fd_map)
             .remove(&self.task_id, &fd)
             .map(|_| 0)?)
     }
@@ -264,13 +251,21 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
 
 #[derive(Debug, Clone)]
 pub struct FileData {
+    filesystem: Rc<RefCell<Filesystem>>,
     fse_id: FSEntryId,
     pos: usize,
 }
 
 impl FileData {
-    pub fn new(fse_id: FSEntryId) -> FileData {
-        FileData { fse_id, pos: 0 }
+    pub fn new(
+        filesystem: Rc<RefCell<Filesystem>>,
+        fse_id: FSEntryId,
+    ) -> FileData {
+        FileData {
+            filesystem,
+            fse_id,
+            pos: 0,
+        }
     }
 
     pub fn get_path(
