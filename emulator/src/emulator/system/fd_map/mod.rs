@@ -71,7 +71,7 @@ where
     ) -> Result<FD, FileDescriptorMapError> {
         self.file_descriptors
             .entry(*task_id)
-            .or_insert(Default::default())
+            .or_default()
             .try_insert(fd, Rc::new(RefCell::new(file_descriptor)))
             .map_err(|_| FileDescriptorMapError::FDExists)?;
         Ok(fd)
@@ -89,9 +89,13 @@ where
     pub fn insert_internal(
         &mut self,
         task_id: &TaskId,
-        file_descriptor: FileDescriptor<D>
+        file_descriptor: FileDescriptor<D>,
     ) -> Result<InternalFD, FileDescriptorMapError> {
-        Ok(self.internal_file_descriptors.entry(*task_id).or_insert(Default::default()).insert(Rc::new(RefCell::new(file_descriptor))))
+        Ok(self
+            .internal_file_descriptors
+            .entry(*task_id)
+            .or_default()
+            .insert(Rc::new(RefCell::new(file_descriptor))))
     }
 
     pub fn remove(
@@ -131,8 +135,16 @@ where
         task_id: &TaskId,
         fd: &FD,
     ) -> Result<InternalFD, FileDescriptorMapError> {
-        let file = self.file_descriptors.get(task_id).and_then(|map| map.get(fd)).ok_or(FileDescriptorMapError::InvalidFD)?;
-        Ok(self.internal_file_descriptors.entry(*task_id).or_insert(Default::default()).insert(file.clone()))
+        let file = self
+            .file_descriptors
+            .get(task_id)
+            .and_then(|map| map.get(fd))
+            .ok_or(FileDescriptorMapError::InvalidFD)?;
+        Ok(self
+            .internal_file_descriptors
+            .entry(*task_id)
+            .or_default()
+            .insert(file.clone()))
     }
 
     pub fn get_mut_internal(
@@ -140,7 +152,9 @@ where
         task_id: &TaskId,
         ifd: &InternalFD,
     ) -> Option<RefMut<FileDescriptor<D>>> {
-        self.internal_file_descriptors.get(task_id).and_then(|fds| fds.get(*ifd).map(|f| f.borrow_mut()))
+        self.internal_file_descriptors
+            .get(task_id)
+            .and_then(|fds| fds.get(*ifd).map(|f| f.borrow_mut()))
     }
 
     pub fn get_internal(
@@ -148,7 +162,9 @@ where
         task_id: &TaskId,
         ifd: &InternalFD,
     ) -> Option<Ref<FileDescriptor<D>>> {
-        self.internal_file_descriptors.get(task_id).and_then(|fds| fds.get(*ifd).map(|f| f.borrow()))
+        self.internal_file_descriptors
+            .get(task_id)
+            .and_then(|fds| fds.get(*ifd).map(|f| f.borrow()))
     }
 
     fn get_free_fd(
@@ -157,13 +173,13 @@ where
     ) -> FD {
         self.free_fds
             .entry(*task_id)
-            .or_insert(vec![])
+            .or_default()
             .pop()
             .unwrap_or_else(|| {
                 *self
                     .file_descriptors
                     .entry(*task_id)
-                    .or_insert(Default::default())
+                    .or_default()
                     .keys()
                     .max()
                     .unwrap_or(&FD::from(2))
