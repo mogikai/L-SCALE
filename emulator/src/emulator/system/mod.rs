@@ -33,8 +33,6 @@ where
     pub memory: Rc<RefCell<Memory<Endianness>>>,
     pub filesystem: Rc<RefCell<Filesystem>>,
     pub clock: Rc<RefCell<Clock>>,
-    // TODO: Move this into scheduler. It should provide access to it via rc
-    pub current_task: Rc<RefCell<Option<TaskId>>>,
     pub fd_map: Rc<RefCell<FileDescriptorMap<FD, TaskId, FDData>>>,
 }
 
@@ -50,7 +48,6 @@ where
             memory: self.memory.clone(),
             filesystem: self.filesystem.clone(),
             clock: self.clock.clone(),
-            current_task: self.current_task.clone(),
             fd_map: self.fd_map.clone(),
         }
     }
@@ -73,7 +70,6 @@ where
             memory: Rc::new(RefCell::new(memory)),
             filesystem: Rc::new(RefCell::new(filesystem)),
             clock: Rc::new(RefCell::new(clock)),
-            current_task: Rc::new(RefCell::new(None)),
             fd_map: Rc::new(RefCell::new(fd_map)),
         }
     }

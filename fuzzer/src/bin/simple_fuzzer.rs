@@ -58,19 +58,7 @@ fn main() -> Result<(), GenericError> {
             // prev_block2 = prev_block;
             // prev_block = addr;
             // TODO: Is this a performance bottleneck, do we have to use a simpler map?
-        }));
-        let vtlb_current_task = system.current_task.clone();
-        let vtlb_memory = system.memory.clone();
-        cpu.borrow_mut()
-            .add_vtlb_hook(Box::new(move |_uc, vaddr, _action| {
-                vtlb_current_task.borrow().and_then(|task_id| {
-                    vtlb_memory
-                        .borrow_mut()
-                        .translate_vaddr(task_id, vaddr)
-                        .ok()
-                })
-            }))
-            .unwrap();
+        }))?;
         // let code_system = system.clone();
         // cpu.borrow_mut()
         //     .add_code_hook(

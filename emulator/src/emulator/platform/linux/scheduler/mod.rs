@@ -39,7 +39,7 @@ struct Task<Endianness: ByteOrder> {
 
 struct SchedulerContext<Endianness: ByteOrder> {
     tasks: BTreeMap<TaskId, Task<Endianness>>,
-    current_task: Option<Task<Endianness>>,
+    current_task: Rc<RefCell<Option<Task<Endianness>>>>,
 }
 
 pub struct LinuxX86Scheduler<'a, CpuT, Endianness>
@@ -97,7 +97,7 @@ where
             system,
             context: Rc::new(RefCell::new(SchedulerContext {
                 tasks: Default::default(),
-                current_task: None,
+                current_task: Default::default(),
             })),
             cpu,
             phantom: Default::default(),
@@ -153,7 +153,7 @@ where
         if let Some(rip) = task.yielded_syscall_rip {
             cpu.reg_write(RegisterX86::RIP.into(), rip).unwrap();
         }
-        context.current_task.insert(task);
+        context.current_task.borrow_mut().insert(task);
         Ok(())
     }
 
@@ -212,14 +212,13 @@ where
             timestep_clock.borrow_mut().do_timestep(instrs);
         }));
 
-        let syscall_context = self.context.clone();
+        let syscall_task = self.context.borrow().current_task.clone();
         cpu.add_syscall_hook(
             EVAddr::from(1),
             EVAddr::from(0),
             Box::new(move |cpu: &mut CpuT| {
-                let mut context = syscall_context.borrow_mut();
-                let task = context
-                    .current_task
+                let mut task = syscall_task.borrow_mut();
+                let task = task
                     .as_mut()
                     .expect("The current task must be set by the scheduler");
                 task.yielded_syscall_rip.take();
@@ -229,6 +228,20 @@ where
                 }
             }),
         );
+
+        let vtlb_memory = self.system.memory.clone();
+        let vtlb_task = self.context.borrow().current_task.clone();
+        cpu.add_vtlb_hook(Box::new(move |uc, vaddr, _action| {
+            let task = vtlb_task.borrow();
+            task.as_ref()
+                .map(|task| task.kernel.task_id())
+                .and_then(|task_id| {
+                    vtlb_memory
+                        .borrow_mut()
+                        .translate_vaddr(task_id, vaddr)
+                        .ok()
+                })
+        }))?;
 
         cpu.add_unmapped_mem_hook(
             1.into(),
@@ -257,8 +270,7 @@ where
             .load_binary(&mut *cpu, binary_path.as_path(), binary_args, binary_env)
             .map_err(|_| SchedulerError::Unknown)?;
         debug!("Loaded initial binary");
-        *self.system.current_task.borrow_mut() = Some(initial_task.task_id());
-        let mut context = self.context.borrow_mut();
+        let mut scheduler_context = self.context.borrow_mut();
         let task = Task {
             kernel: initial_task,
             state: TaskState::Runnable,
@@ -266,7 +278,7 @@ where
             yielded_syscall_rip: None,
         };
         cpu.save_context(task.cpu_context_handle)?;
-        context
+        scheduler_context
             .tasks
             .try_insert(task.kernel.task_id(), task)
             .map_err(|_| CPUError::TaskExists)?;
