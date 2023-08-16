@@ -1,19 +1,21 @@
 use std::cell::{Ref, RefCell, RefMut};
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::BTreeMap;
 use std::ops::Add;
 use std::rc::Rc;
 
-use generational_arena::Arena;
+use generational_arena::{Arena, Index};
 
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
+use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 
 pub mod error;
+mod restorable;
 
 pub type InternalFD = generational_arena::Index;
 
 #[derive(Debug)]
-pub struct FileDescriptor<D: Default> {
+pub struct FileDescriptor<D: Default + Restorable> {
     /// The data field contains all state data for the fds. Each system component has
     /// its own optional field in the data struct. The HandleOps implementation
     /// is responsible for checking whether the appropriate data field exists.
@@ -26,7 +28,7 @@ pub struct FileDescriptor<D: Default> {
     pub ops: Box<dyn FileDescriptorOps<D>>,
 }
 
-impl<D: Default> FileDescriptor<D> {
+impl<D: Default + Restorable> FileDescriptor<D> {
     pub fn new(ops: Box<dyn FileDescriptorOps<D>>) -> Self {
         FileDescriptor {
             data: Default::default(),
@@ -42,22 +44,34 @@ pub struct FileDescriptorMap<FD, TaskId, D>
 where
     FD: FdId,
     TaskId: Ord + Copy + Clone + Default,
-    D: Default,
+    D: Default + Restorable,
 {
-    // TODO: Use generics instead of TaskId and FileDescriptor
-    file_descriptors: BTreeMap<TaskId, BTreeMap<FD, Rc<RefCell<FileDescriptor<D>>>>>,
-    internal_file_descriptors: BTreeMap<TaskId, Arena<Rc<RefCell<FileDescriptor<D>>>>>,
+    files: Arena<RefCell<FileDescriptor<D>>>,
+    file_descriptors: BTreeMap<TaskId, BTreeMap<FD, Index>>,
+    internal_file_descriptors: BTreeMap<TaskId, Arena<Index>>,
     free_fds: BTreeMap<TaskId, Vec<FD>>,
     // TODO: Implement as a hook object that can be inserted to be called after the handle
     //       processed the call.
-    replacement_handles: HashMap<TaskId, HashMap<FD, VecDeque<Box<dyn FileDescriptorOps<D>>>>>,
+    // hooks: HashMap<TaskId, HashMap<FD, VecDeque<Box<dyn FileDescriptorOps<D>>>>>,
+    snapshots: Vec<Snapshot<FD, TaskId>>,
+}
+
+#[derive(Debug)]
+struct Snapshot<FD, TaskId>
+where
+    FD: FdId,
+    TaskId: Ord + Copy + Clone + Default,
+{
+    file_descriptors: BTreeMap<TaskId, BTreeMap<FD, Index>>,
+    internal_file_descriptors: BTreeMap<TaskId, Arena<Index>>,
+    free_fds: BTreeMap<TaskId, Vec<FD>>,
 }
 
 impl<FD, TaskId, D> FileDescriptorMap<FD, TaskId, D>
 where
     FD: FdId,
     TaskId: Ord + Copy + Clone + Default,
-    D: Default,
+    D: Default + Restorable,
 {
     pub fn new() -> Self {
         Self { ..Default::default() }
@@ -69,11 +83,15 @@ where
         fd: FD,
         file_descriptor: FileDescriptor<D>,
     ) -> Result<FD, FileDescriptorMapError> {
+        let index = self.files.insert(RefCell::new(file_descriptor));
         self.file_descriptors
             .entry(*task_id)
             .or_default()
-            .try_insert(fd, Rc::new(RefCell::new(file_descriptor)))
-            .map_err(|_| FileDescriptorMapError::FDExists)?;
+            .try_insert(fd, index)
+            .map_err(|_| {
+                self.files.remove(index);
+                FileDescriptorMapError::FDExists
+            })?;
         Ok(fd)
     }
 
@@ -91,11 +109,12 @@ where
         task_id: &TaskId,
         file_descriptor: FileDescriptor<D>,
     ) -> Result<InternalFD, FileDescriptorMapError> {
+        let index = self.files.insert(RefCell::new(file_descriptor));
         Ok(self
             .internal_file_descriptors
             .entry(*task_id)
             .or_default()
-            .insert(Rc::new(RefCell::new(file_descriptor))))
+            .insert(index))
     }
 
     pub fn remove(
@@ -116,7 +135,7 @@ where
     ) -> Option<RefMut<FileDescriptor<D>>> {
         self.file_descriptors.get(task_id).and_then(|map| {
             map.get(fd)
-                .map(|file_descriptor| file_descriptor.borrow_mut())
+                .and_then(|fd_index| self.files.get(*fd_index).map(|fd| fd.borrow_mut()))
         })
     }
 
@@ -125,9 +144,10 @@ where
         task_id: &TaskId,
         fd: &FD,
     ) -> Option<Ref<FileDescriptor<D>>> {
-        self.file_descriptors
-            .get(task_id)
-            .and_then(|map| map.get(fd).map(|file_descriptor| file_descriptor.borrow()))
+        self.file_descriptors.get(task_id).and_then(|map| {
+            map.get(fd)
+                .and_then(|fd_index| self.files.get(*fd_index).map(|fd| fd.borrow()))
+        })
     }
 
     pub fn dup_internal(
@@ -152,9 +172,10 @@ where
         task_id: &TaskId,
         ifd: &InternalFD,
     ) -> Option<RefMut<FileDescriptor<D>>> {
-        self.internal_file_descriptors
-            .get(task_id)
-            .and_then(|fds| fds.get(*ifd).map(|f| f.borrow_mut()))
+        self.internal_file_descriptors.get(task_id).and_then(|fds| {
+            fds.get(*ifd)
+                .and_then(|fd_index| self.files.get(*fd_index).map(|fd| fd.borrow_mut()))
+        })
     }
 
     pub fn get_internal(
@@ -162,9 +183,10 @@ where
         task_id: &TaskId,
         ifd: &InternalFD,
     ) -> Option<Ref<FileDescriptor<D>>> {
-        self.internal_file_descriptors
-            .get(task_id)
-            .and_then(|fds| fds.get(*ifd).map(|f| f.borrow()))
+        self.internal_file_descriptors.get(task_id).and_then(|fds| {
+            fds.get(*ifd)
+                .and_then(|fd_index| self.files.get(*fd_index).map(|fd| fd.borrow()))
+        })
     }
 
     fn get_free_fd(

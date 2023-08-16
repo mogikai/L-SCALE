@@ -246,6 +246,11 @@ impl Filesystem {
         &mut self,
         path: &Path,
     ) -> Result<(), FSError> {
+        // FIXME: Implement separate unlink function that just removes the fs entry
+        //        from its parent, so open fds can still access the entry.
+        //        The last remaining fd can then do the final delete.
+        //        (How do we track which fd is the last one?)
+        //        This also has to be tracked across snapshots.
         self.meta_info.delete(path)
     }
 

@@ -14,6 +14,7 @@ use crate::emulator::abstractions::emulator::StopReason;
 pub mod cpu;
 pub mod hooks;
 pub mod mmu;
+mod restorable;
 
 pub struct UCWrapper<'a> {
     uc: Option<Unicorn<'a, *mut UCWrapper<'a>>>,

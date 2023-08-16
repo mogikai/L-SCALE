@@ -29,7 +29,8 @@ where
 
 impl<Endianness: ByteOrder> Restorable for SchedulerContext<Endianness> {
     fn snapshot(&mut self) -> Result<(), GenericError> {
-        todo!()
+        // TODO: For now we dont snapshot in order to experiment with the rest
+        Ok(())
     }
 
     fn restore_and_discard(&mut self) -> Result<(), GenericError> {

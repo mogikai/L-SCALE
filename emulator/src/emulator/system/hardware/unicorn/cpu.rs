@@ -1,11 +1,11 @@
 use std::time::Duration;
 
-use unicorn_engine::RegisterX86;
 use unicorn_engine::unicorn_const::uc_error;
+use unicorn_engine::RegisterX86;
 
 use crate::emulator::abstractions::cpu;
-use crate::emulator::abstractions::cpu::{ContextHandle, CPU, CPUError, Register};
-use crate::emulator::abstractions::cpu::address::{EVA_NULL, EVAddr};
+use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
+use crate::emulator::abstractions::cpu::{CPUError, ContextHandle, Register, CPU};
 use crate::emulator::abstractions::emulator::StopReason;
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::restore::Restorable;
@@ -15,22 +15,6 @@ impl From<uc_error> for CPUError {
     fn from(e: uc_error) -> Self {
         trace!("UC ERROR: {:?}", e);
         CPUError::Unknown
-    }
-}
-
-impl Restorable for UCWrapper<'_> {
-    fn snapshot(&mut self) -> Result<(), GenericError> {
-        let mut context = self.uc_mut().context_alloc()?;
-        self.uc_mut().context_save(&mut context)?;
-        Ok(())
-    }
-
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
-        todo!()
-    }
-
-    fn restore(&mut self) -> Result<(), GenericError> {
-        todo!()
     }
 }
 
@@ -102,7 +86,9 @@ impl CPU for UCWrapper<'_> {
                     }
                     uc.emu_stop();
                 })?;
-            self.breakpoints.try_insert(address, hook).expect("Previously checked if exists");
+            self.breakpoints
+                .try_insert(address, hook)
+                .expect("Previously checked if exists");
         }
         Ok(())
     }
@@ -111,7 +97,9 @@ impl CPU for UCWrapper<'_> {
         &mut self,
         address: EVAddr,
     ) -> Result<(), CPUError> {
-        if let Some(hook_id) = self.breakpoints.remove(&address) { self.uc_mut().remove_hook(hook_id)?; }
+        if let Some(hook_id) = self.breakpoints.remove(&address) {
+            self.uc_mut().remove_hook(hook_id)?;
+        }
         Ok(())
     }
 

@@ -6,6 +6,7 @@ use derive_more::Display;
 
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::mmu::MemoryError;
+use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::system::fd_map::FileDescriptor;
 use crate::emulator::system::filesystem::{FSError, Stat};
@@ -17,7 +18,7 @@ use crate::emulator::system::filesystem::{FSError, Stat};
 ///
 /// The actual handle data is contained in the TODO struct
 ///
-pub trait FileDescriptorOps<D: Default>: Debug {
+pub trait FileDescriptorOps<D: Default + Restorable>: Debug {
     /// Can be called to query what operations can be called without blocking on the handle.
     fn poll(
         &self,

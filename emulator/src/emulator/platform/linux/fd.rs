@@ -1,3 +1,5 @@
+use crate::emulator::abstractions::errors::GenericError;
+use crate::emulator::abstractions::restore::Restorable;
 use std::ops::Add;
 
 use crate::emulator::platform::linux::kernel::eventpoll::EpollData;
@@ -17,6 +19,21 @@ pub struct FileDescriptorData {
     pub udp: Option<UDPData>,
     pub epoll: Option<EpollData>,
     pub usock: Option<UnixSocketData>,
+}
+
+impl Restorable for FileDescriptorData {
+    fn snapshot(&mut self) -> Result<(), GenericError> {
+        // todo!("Delegate snapshots to individual data structs")
+        Ok(())
+    }
+
+    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
+        todo!()
+    }
+
+    fn restore(&mut self) -> Result<(), GenericError> {
+        todo!()
+    }
 }
 
 #[derive(Hash, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Default)]

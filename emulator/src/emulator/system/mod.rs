@@ -26,7 +26,7 @@ pub mod memory;
 pub struct System<FD, FDData, TaskId, Endianness>
 where
     FD: FdId,
-    FDData: Default,
+    FDData: Default + Restorable,
     TaskId: Ord + Copy + Clone + Default,
     Endianness: ByteOrder,
 {
@@ -39,7 +39,7 @@ where
 impl<FD, FDData, TaskId, Endianness> Clone for System<FD, FDData, TaskId, Endianness>
 where
     FD: FdId,
-    FDData: Default,
+    FDData: Default + Restorable,
     TaskId: Ord + Copy + Clone + Default,
     Endianness: ByteOrder,
 {
@@ -56,7 +56,7 @@ where
 impl<FD, FDData, TaskId, Endianness> System<FD, FDData, TaskId, Endianness>
 where
     FD: FdId,
-    FDData: Default,
+    FDData: Default + Restorable,
     TaskId: Ord + Copy + Clone + Default,
     Endianness: ByteOrder,
 {
@@ -78,7 +78,7 @@ where
 impl<FD, FDData, TaskId, Endianness> Restorable for System<FD, FDData, TaskId, Endianness>
 where
     FD: FdId,
-    FDData: Default,
+    FDData: Default + Restorable,
     TaskId: Ord + Copy + Clone + Default,
     Endianness: ByteOrder,
 {
@@ -86,7 +86,7 @@ where
         self.memory.borrow_mut().snapshot()?;
         self.filesystem.borrow_mut().snapshot()?;
         self.clock.borrow_mut().snapshot()?;
-        todo!();
+        self.fd_map.borrow_mut().snapshot()?;
         Ok(())
     }
 
