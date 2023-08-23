@@ -25,6 +25,5 @@ int main() {
 	for (int i = 0; i < 0x3000; ++i) mapping3[i] = 'C';
 	assert(mapping3[0xfff] == 'C');
     assert(mapping3[0x1000] == 'C');
-    assert(0);
 	return 0;
 }
