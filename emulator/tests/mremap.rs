@@ -29,19 +29,6 @@ fn remap_private_anon() -> Result<(), GenericError> {
     let fd_map = FileDescriptorMap::new();
     let system = System::new(memory, filesystem, clock, fd_map);
 
-    let vtlb_system = system.clone();
-    cpu.borrow_mut()
-        .add_vtlb_hook(Box::new(move |_uc, vaddr, _action| {
-            vtlb_system.current_task.borrow().and_then(|task_id| {
-                vtlb_system
-                    .memory
-                    .borrow_mut()
-                    .translate_vaddr(task_id, vaddr)
-                    .ok()
-            })
-        }))
-        .unwrap();
-
     // TODO: Only one task for now. Need to implement a scheduler that switches tasks.
     let initial_task = LinuxKernelTask::<LittleEndian, X86>::new(system.clone(), 1337, 1);
 

@@ -44,13 +44,6 @@ fn main() -> Result<(), GenericError> {
         let clock = Clock::new(Duration::from_nanos(1662647309301240322));
         let file_descriptor_map = FileDescriptorMap::new();
         let system = System::new(memory, filesystem, clock, file_descriptor_map);
-        // let memory = Rc::new(RefCell::new(Memory::new(
-        //     &mut *cpu.borrow_mut(),
-        //     0x0000_7fff_ffff_ffff,
-        //     10 * 1024 * 1024, // 10 MiB
-        //     0x0000_5000_0000_0000,
-        //     0x0000_3000_0000_0000,
-        // )));
 
         cpu.borrow_mut().add_block_hook(Box::new(|_, addr, _| {
             total_blocks += 1;
@@ -81,13 +74,11 @@ fn main() -> Result<(), GenericError> {
         // kernel.borrow_mut().add_replacement_handle(0, demo_handle);
         let args = [];
         let env = ["SHELL=/bin/sh", "LD_DEBUG=all", "LD_BIND_NOW=false"];
-        // let eflags = cpu.borrow_mut().reg_read(RegisterX86::EFLAGS.into()).unwrap();
-        // cpu.borrow_mut().reg_write(RegisterX86::EFLAGS.into(), eflags | (1 << 22)).unwrap();
         let mut scheduler = LinuxX86Scheduler::new(
             system.clone(),
             initial_task,
             cpu.clone(),
-            PathBuf::from("/home/user/open62541_server_release"),
+            PathBuf::from("/home/user/open62541_server2"),
             &args,
             &env,
         )

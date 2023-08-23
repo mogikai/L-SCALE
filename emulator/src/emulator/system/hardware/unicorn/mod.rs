@@ -22,6 +22,11 @@ pub struct UCWrapper<'a> {
     contexts: Arena<Context>,
     // TODO: Replace with signals / interrupts?
     stop_reason: Option<StopReason>,
+    snapshots: Vec<Snapshot>,
+}
+
+struct Snapshot {
+    uc_context: Context,
 }
 
 impl<'a> UCWrapper<'a> {
@@ -31,6 +36,7 @@ impl<'a> UCWrapper<'a> {
             breakpoints: Default::default(),
             contexts: Arena::new(),
             stop_reason: None,
+            snapshots: vec![],
         }));
         wrapper.borrow_mut().uc = Some(Unicorn::new_with_data(Arch::X86, Mode::MODE_64, wrapper.as_ptr()).unwrap());
         if let Some(uc) = wrapper.borrow_mut().uc.as_ref() {

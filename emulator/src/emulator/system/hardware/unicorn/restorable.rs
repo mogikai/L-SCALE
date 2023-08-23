@@ -1,12 +1,19 @@
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::restore::Restorable;
-use crate::emulator::system::hardware::unicorn::UCWrapper;
+use crate::emulator::system::hardware::unicorn::{Snapshot, UCWrapper};
 use unicorn_engine::ContextMode;
 
 impl Restorable for UCWrapper<'_> {
     fn snapshot(&mut self) -> Result<(), GenericError> {
-        let mut context = self.uc_mut().context_alloc()?;
-        self.uc_mut().context_save(&mut context)?;
+        let context = self.uc_mut().context_alloc()?;
+        self.snapshots.push(Snapshot { uc_context: context });
+        self.uc_mut()
+            .ctl_context_mode(ContextMode::CPU | ContextMode::Memory);
+        self.uc
+            .as_mut()
+            .unwrap()
+            .context_save(&mut self.snapshots.last_mut().unwrap().uc_context)?;
+        self.uc_mut().ctl_context_mode(ContextMode::CPU);
         Ok(())
     }
 
