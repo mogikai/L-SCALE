@@ -20,8 +20,6 @@ pub fn emulate(
     sys_path: &Path,
     target_path: &Path,
 ) -> Result<(), TestFailure> {
-    pretty_env_logger::init();
-
     let cpu = UCWrapper::new();
 
     let filesystem = Filesystem::from_disk(1_073_741_824, sys_path).unwrap();
