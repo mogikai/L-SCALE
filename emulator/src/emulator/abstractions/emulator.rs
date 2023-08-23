@@ -11,7 +11,7 @@ pub enum StopReason {
     #[error("An unknown error occurred")]
     Unknown,
     #[error("The process was killed by a signal")]
-    Killed,
+    Killed(u64),
     #[error("The process tried to execute a syscall that is not yet implemented")]
     MissingSyscall,
     #[error("The process exited normally")]

@@ -150,6 +150,18 @@ fn do_syscall<Endianness: ByteOrder + 'static>(
         } // TODO: Implement properly and propagate exit code
         EPOLL_WAIT => do_syscall!(4, cpu, kernel::epoll_wait, debug_str),
         EPOLL_CTL => do_syscall!(4, cpu, kernel::epoll_ctl, debug_str),
+        TGKILL => {
+            // TODO: Implement properly by sending a signal to the thread in question
+            //       Currently we just stop the calling process for the integration
+            //       tests to work with the assert macro
+            let signal = cpu.reg_read(RegisterX86::RDX.into()).unwrap();
+            if signal == 6 {
+                cpu.stop(StopReason::Killed(signal)).unwrap();
+                Ok(0)
+            } else {
+                todo!()
+            }
+        }
         OPENAT => do_syscall!(4, cpu, kernel::openat, debug_str),
         NEWFSTATAT => do_syscall!(4, cpu, kernel::newfstatat, debug_str),
         READLINKAT => do_syscall!(4, cpu, kernel::readlinkat, debug_str),

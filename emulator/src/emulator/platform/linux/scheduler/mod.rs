@@ -20,10 +20,15 @@ use crate::emulator::platform::linux::architecture::x86::X86;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::kernel::LinuxKernelTask;
 use crate::emulator::platform::linux::scheduler::syscall::syscall;
+use crate::emulator::platform::linux::scheduler::trace::trace_hook;
 use crate::emulator::platform::linux::LinuxSystem;
+use crate::emulator::system::memory::Memory;
 
+mod main_loop;
 mod restorable;
+mod setup;
 mod syscall;
+mod trace;
 
 enum TaskState {
     Runnable,
@@ -110,178 +115,17 @@ where
         Ok(sched)
     }
 
-    fn scheduler_loop(
-        &mut self,
-        timeout: Option<Duration>,
-        instruction_count: Option<usize>,
-    ) -> Result<(), SchedulerError> {
-        loop {
-            let task_id = self.schedule()?;
-
-            self.pre_task(&task_id)?;
-            let stop_reason = self.process_task(timeout, instruction_count)?;
-            self.post_task(stop_reason)?;
-        }
-    }
-
-    fn schedule(&mut self) -> Result<TaskId, SchedulerError> {
-        // TODO: Implement actual scheduling. Potentially delegate to fuzzer.
-        self.context
-            .borrow_mut()
-            .tasks
-            .iter()
-            .find(|(id, task)| matches!(task.state, TaskState::Runnable))
-            .map(|(id, _)| *id)
-            .ok_or(SchedulerError::NoRunnableTasks)
-    }
-
-    fn pre_task(
-        &mut self,
-        task_id: &TaskId,
-    ) -> Result<(), SchedulerError> {
-        let mut context = self.context.borrow_mut();
-        let mut cpu = self.cpu.borrow_mut();
-
-        let task = context
-            .tasks
-            .remove(task_id)
-            .expect("Scheduled task must exist");
-
-        cpu.restore_context(task.cpu_context_handle)
-            .map_err(|_| StopReason::Unknown)?;
-
-        if let Some(rip) = task.yielded_syscall_rip {
-            cpu.reg_write(RegisterX86::RIP.into(), rip).unwrap();
-        }
-        context.current_task.borrow_mut().insert(task);
-        Ok(())
-    }
-
-    fn process_task(
-        &mut self,
-        timeout: Option<Duration>,
-        instruction_count: Option<usize>,
-    ) -> Result<Option<StopReason>, CPUError> {
-        let result = self
-            .cpu
-            .borrow_mut()
-            .emulate(None, timeout, instruction_count);
-        match result {
-            Err(CPUError::Stopped(reason)) => Ok(Some(reason)),
-            Err(e) => Err(e),
-            _ => Ok(None),
-        }
-    }
-
-    fn post_task(
-        &mut self,
-        stop_reason: Option<StopReason>,
-    ) -> Result<(), SchedulerError> {
-        // Save all the context after we are done executing the scheduled task
-        let mut context = self.context.borrow_mut();
-        let mut cpu = self.cpu.borrow_mut();
-
-        let mut task = context.current_task.take().unwrap();
-        cpu.save_context(task.cpu_context_handle)
-            .map_err(|_| StopReason::Unknown)?;
-
-        let error = match stop_reason {
-            None => Ok(()),
-            Some(StopReason::Yield) => {
-                task.state = TaskState::Yielded;
-                Ok(())
-            }
-            Some(StopReason::Killed) => {
-                // TODO: Remove Task from list of runnable tasks
-                Ok(())
-            }
-            Some(reason) => Err(reason),
-        };
-
-        context.tasks.insert(task.kernel.task_id(), task);
-
-        Ok(error?)
-    }
-
-    fn setup_cpu(&mut self) -> Result<(), SchedulerError> {
-        let mut cpu = self.cpu.borrow_mut();
-
-        // TODO: Potentially move this to the clock setup?
-        let timestep_clock = self.system.clock.clone();
-        cpu.add_block_hook(Box::new(move |_, _, instrs| {
-            timestep_clock.borrow_mut().do_timestep(instrs);
-        }));
-
-        let syscall_task = self.context.borrow().current_task.clone();
-        cpu.add_syscall_hook(
-            EVAddr::from(1),
-            EVAddr::from(0),
-            Box::new(move |cpu: &mut CpuT| {
-                let mut task = syscall_task.borrow_mut();
-                let task = task
-                    .as_mut()
-                    .expect("The current task must be set by the scheduler");
-                task.yielded_syscall_rip.take();
-                let result = syscall(cpu, &mut task.kernel);
-                if let Err(rip) = result {
-                    task.yielded_syscall_rip.insert(rip);
-                }
-            }),
-        );
-
-        let vtlb_memory = self.system.memory.clone();
-        let vtlb_task = self.context.borrow().current_task.clone();
-        cpu.add_vtlb_hook(Box::new(move |uc, vaddr, _action| {
-            let task = vtlb_task.borrow();
-            task.as_ref()
-                .map(|task| task.kernel.task_id())
-                .and_then(|task_id| {
-                    vtlb_memory
-                        .borrow_mut()
-                        .translate_vaddr(task_id, vaddr)
-                        .ok()
-                })
-        }))?;
-
-        cpu.add_unmapped_mem_hook(
+    pub fn enable_trace(&mut self) -> Result<(), SchedulerError> {
+        let trace_memory = self.system.memory.clone();
+        let current_task = self.context.borrow_mut().current_task.clone();
+        self.cpu.borrow_mut().add_code_hook(
             1.into(),
             0.into(),
-            Box::new(move |_, action, addr, size, _| {
-                trace!("{:?} on {:#X} with size {} ", action, addr, size);
-                false
+            Box::new(move |uc, address, size| {
+                let mut memory = trace_memory.borrow_mut();
+                trace_hook(uc, &mut memory, current_task.borrow().as_ref().unwrap().kernel.task_id(), address, size)
             }),
-        );
-
-        Ok(())
-    }
-
-    fn setup_initial_task(
-        &mut self,
-        mut initial_task: LinuxKernelTask<Endianness, X86>,
-        binary_path: PathBuf,
-        binary_args: &[&str],
-        binary_env: &[&str],
-    ) -> Result<(), SchedulerError> {
-        initial_task.add_stdio_handles();
-
-        let mut cpu = self.cpu.borrow_mut();
-        // TODO: Do more specific error mapping
-        initial_task
-            .load_binary(&mut *cpu, binary_path.as_path(), binary_args, binary_env)
-            .map_err(|_| SchedulerError::Unknown)?;
-        debug!("Loaded initial binary");
-        let mut scheduler_context = self.context.borrow_mut();
-        let task = Task {
-            kernel: initial_task,
-            state: TaskState::Runnable,
-            cpu_context_handle: cpu.create_context()?,
-            yielded_syscall_rip: None,
-        };
-        cpu.save_context(task.cpu_context_handle)?;
-        scheduler_context
-            .tasks
-            .try_insert(task.kernel.task_id(), task)
-            .map_err(|_| CPUError::TaskExists)?;
+        )?;
         Ok(())
     }
 }
