@@ -15,6 +15,7 @@ pub mod cpu;
 pub mod hooks;
 pub mod mmu;
 mod restorable;
+mod tests;
 
 pub struct UCWrapper<'a> {
     uc: Option<Unicorn<'a, *mut UCWrapper<'a>>>,
