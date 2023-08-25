@@ -1,9 +1,8 @@
 #![cfg(test)]
 
-use crate::emulator::system::hardware::unicorn::UCWrapper;
-use crate::emulator::abstractions::mmu::Permission;
-use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::cpu::address;
+use crate::emulator::abstractions::mmu::{Permission, MMU};
+use crate::emulator::system::hardware::unicorn::UCWrapper;
 use crate::emulator::system::GenericError;
 
 #[test]

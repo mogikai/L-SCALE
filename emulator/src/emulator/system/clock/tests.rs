@@ -1,7 +1,7 @@
 #![cfg(test)]
 
-use crate::emulator::system::clock::*;
 use crate::emulator::abstractions::restore::Restorable;
+use crate::emulator::system::clock::*;
 use std::time::Duration;
 
 #[test]

@@ -1,8 +1,7 @@
 use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::hardware::unicorn::{Snapshot, UCWrapper};
-use unicorn_engine::Context;
-use unicorn_engine::ContextMode;
+use unicorn_engine::{Context, ContextMode};
 
 impl Restorable for UCWrapper<'_> {
     fn snapshot(&mut self) -> Result<(), GenericError> {
@@ -27,7 +26,9 @@ impl Restorable for UCWrapper<'_> {
     fn restore(&mut self) -> Result<(), GenericError> {
         self.uc_mut()
             .ctl_context_mode(ContextMode::CPU | ContextMode::Memory);
-        let context: &Context = &self.snapshots.last()
+        let context: &Context = &self
+            .snapshots
+            .last()
             .ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot to restore"))?
             .uc_context;
         self.uc().context_restore(context);

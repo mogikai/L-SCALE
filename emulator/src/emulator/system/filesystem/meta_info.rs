@@ -2,9 +2,9 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
-use crate::emulator::system::filesystem::{ContentId, FSEntryId, FSError, SnapId};
 use crate::emulator::system::filesystem::block::Block;
 use crate::emulator::system::filesystem::stat::Stat;
+use crate::emulator::system::filesystem::{ContentId, FSEntryId, FSError, SnapId};
 
 use self::FSEntryContent::{Dir, File};
 
@@ -114,7 +114,7 @@ impl MetaInfo {
                 },
                 stat.unwrap_or_default(),
                 name,
-                parent_id
+                parent_id,
             )
         })
     }

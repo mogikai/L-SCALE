@@ -39,9 +39,7 @@ impl TLB {
         }
     }
 
-    pub fn mapping_iter(
-        &self,
-    ) -> Iter<Mapping> {
+    pub fn mapping_iter(&self) -> Iter<Mapping> {
         self.mappings.iter()
     }
 
@@ -87,7 +85,7 @@ impl TLB {
         size: usize,
         permissions: Permission,
         mapping_type: MappingType,
-        label: Option<String>
+        label: Option<String>,
     ) -> Result<(), MemoryError> {
         if !is4kaligned(v_start) || !is4kaligned(p_start) || !is4kaligned(size) {
             Err(MemoryError::InvalidAlignment)?
@@ -95,9 +93,9 @@ impl TLB {
         self.region_mapped(v_start, size)
             .not()
             .then(|| {
-                let inserted = self
-                    .mappings
-                    .insert(Mapping::new(v_start, p_start, size, permissions, mapping_type, label));
+                let inserted =
+                    self.mappings
+                        .insert(Mapping::new(v_start, p_start, size, permissions, mapping_type, label));
                 assert!(inserted)
             })
             .ok_or(MemoryError::AlreadyMapped)
@@ -110,7 +108,8 @@ impl TLB {
         &self,
         address: EVAddr,
     ) -> Result<TLBEntry, MemoryError> {
-        let tlbe = self.get_mapping(address)
+        let tlbe = self
+            .get_mapping(address)
             .and_then(|region| region.make_tlb_entry(address));
         trace!("Translation result for {:?}: {:?}", address, tlbe);
         tlbe
@@ -257,7 +256,11 @@ impl TLB {
     ) -> Result<(), MemoryError> {
         // TODO: What about the physical address space? We need to check if space is free and otherwise
         //       create a new mapping?
-        let mut region = self.mappings.get(&addr).ok_or(MemoryError::NotMapped)?.clone();
+        let mut region = self
+            .mappings
+            .get(&addr)
+            .ok_or(MemoryError::NotMapped)?
+            .clone();
         if new_size > region.size && self.region_mapped(addr + region.size, new_size - region.size) {
             // Cannot extend the region since the address space after the region is already mapped
             Err(MemoryError::AlreadyMapped)

@@ -31,7 +31,10 @@ pub struct Mapping {
 }
 
 impl Display for Mapping {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
         let label = if let Some(label) = &self.label {
             format!(" [{}] ", label)
         } else {

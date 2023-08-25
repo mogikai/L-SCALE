@@ -9,12 +9,18 @@ impl Restorable for Clock {
     }
 
     fn restore_and_discard(&mut self) -> Result<(), GenericError> {
-        self.system_time = self.snapshots.pop().ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot to restor"))?;
+        self.system_time = self
+            .snapshots
+            .pop()
+            .ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot to restor"))?;
         return Ok(());
     }
 
     fn restore(&mut self) -> Result<(), GenericError> {
-        self.system_time = *self.snapshots.last().ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot to restor"))?;
+        self.system_time = *self
+            .snapshots
+            .last()
+            .ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot to restor"))?;
         return Ok(());
     }
 }
