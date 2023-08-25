@@ -20,7 +20,7 @@ impl Restorable for UCWrapper<'_> {
     fn restore_and_discard(&mut self) -> Result<(), GenericError> {
         self.restore()?;
         self.snapshots.pop();
-        return Ok(());
+        Ok(())
     }
 
     fn restore(&mut self) -> Result<(), GenericError> {
@@ -34,6 +34,6 @@ impl Restorable for UCWrapper<'_> {
         self.uc().context_restore(context);
         self.uc_mut().ctl_context_mode(ContextMode::CPU);
         self.uc_mut().ctl_flush_tlb();
-        return Ok(());
+        Ok(())
     }
 }

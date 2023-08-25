@@ -13,6 +13,7 @@
 #![allow(dead_code)]
 #![allow(unused)]
 #![allow(unused_variables)]
+#![allow(clippy::four_forward_slashes)]
 // #![warn(missing_docs)]
 
 extern crate core;

@@ -60,7 +60,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
         let mut fds_to_clean = vec![];
         for (fd, event) in &epoll_data.interest_list {
             // If we can't find the fd it means it was closed in the meantime. Remove it.
-            let file = fd_map.get_mut(&self.task_id, &fd);
+            let file = fd_map.get_mut(&self.task_id, fd);
             match file {
                 None => fds_to_clean.push(*fd),
                 Some(mut file) => {
@@ -138,6 +138,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
         }
     }
 
+    #[allow(clippy::needless_pass_by_ref_mut)] // In the future mutable access will be needed
     fn epoll_ctl_add(
         &self,
         memory: &MemoryAccessor<Endianness, impl MMU + Sized>,
@@ -167,7 +168,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
     ) -> SyscallResult {
         epoll
             .interest_list
-            .remove(&fd)
+            .remove(fd)
             .ok_or(LinuxKernelError::ENOENT)?;
         Ok(0)
     }
@@ -187,7 +188,7 @@ impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch
 
         let current_event = epoll
             .interest_list
-            .get_mut(&fd)
+            .get_mut(fd)
             .ok_or(LinuxKernelError::EINVAL)?;
 
         if current_event.events.contains(EPOLL_EVENTS::EPOLLEXCLUSIVE) {

@@ -12,6 +12,7 @@ pub mod netlink;
 pub mod unix;
 
 #[derive(Copy, Clone, Debug, RequiredMem)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum Sockaddr {
     IN {
         sin_port: u16,
@@ -68,7 +69,7 @@ impl Decode for Sockaddr {
             },
             _ => {
                 todo!("Sockaddr not implemented for type {:?}", family);
-                Err(MemoryError::ConversionError)?
+                // Err(MemoryError::ConversionError)?
             }
         })
     }

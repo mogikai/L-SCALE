@@ -1,9 +1,7 @@
 use std::cell::RefCell;
 use std::fmt::Debug;
-use std::marker::{PhantomData, PhantomPinned};
+use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-use std::pin::Pin;
-use std::ptr::NonNull;
 use std::rc::Rc;
 
 use byteorder::ByteOrder;
@@ -30,9 +28,8 @@ use crate::emulator::platform::linux::signalfd::SignalFDOps;
 use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
 use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::system::default_handles;
-use crate::emulator::system::fd_map::{FileDescriptor, FileDescriptorMap, InternalFD};
+use crate::emulator::system::fd_map::{FileDescriptor, InternalFD};
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
-use crate::emulator::system::memory::Memory;
 
 pub(crate) mod auxv;
 pub(crate) mod error;
@@ -322,7 +319,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
 
     pub fn brk(
         &mut self,
-        mmu: &mut impl MMU,
+        mmu: &impl MMU,
         addr: EVAddr,
     ) -> SyscallResult {
         let mut memory = sys_component_mut!(self, memory);
@@ -379,9 +376,10 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         Ok(0)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn futex(
         &mut self,
-        mmu: &mut impl MMU,
+        mmu: &impl MMU,
         uaddr: EVAddr,
         futex_op: u64,
         val: u64,
@@ -505,7 +503,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
 
     pub fn fadvise64(
         &mut self,
-        uc: &mut impl CPU,
+        uc: &impl CPU,
         fd: u64,
         offset: u64,
         len: u64,

@@ -26,7 +26,7 @@ use crate::emulator::system::memory::rw_interface::DirectMemoryWrite;
 use crate::emulator::system::memory::tlb::mapping::Mapping;
 pub use crate::emulator::system::memory::tlb::mapping::MappingType;
 pub use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
-use crate::emulator::system::memory::tlb::TLB;
+use crate::emulator::system::memory::tlb::Tlb;
 
 mod accessor;
 pub mod helpers;
@@ -98,7 +98,7 @@ pub struct Memory<Endianness: ByteOrder> {
     /// The virtual address layout of each process/thread (stack, heap, mappings, etc.)
     /// and the VTLB containing the mappings from emulated virtual addresses to emulated physical addresses.
     layouts: HashMap<TaskId, Layout>,
-    tlbs: Arena<TLB>,
+    tlbs: Arena<Tlb>,
     unused_physical_sets: Arena<BTreeSet<PhysicalRegion>>,
 
     /// The end of the allocated Emulated Physical address space.
@@ -117,7 +117,7 @@ pub struct Memory<Endianness: ByteOrder> {
 #[derive(Debug)]
 struct MemorySnapshot {
     layouts: HashMap<TaskId, Layout>,
-    tlbs: Arena<TLB>,
+    tlbs: Arena<Tlb>,
     unused_physical_sets: Arena<BTreeSet<PhysicalRegion>>,
     physical_end: EPAddr,
 }
@@ -168,7 +168,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
                 self.physical_end,
                 self.physical_end + self.process_mem_size,
             ))));
-        let tlb = self.tlbs.insert(TLB::new());
+        let tlb = self.tlbs.insert(Tlb::new());
         let mut layout = Layout::new(
             0x0000_7fff_ffff_0000.into(),
             10 * 1024 * 1024, // 10 MiB
@@ -341,6 +341,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn map_file(
         &mut self,
         mmu: &mut impl MMU,

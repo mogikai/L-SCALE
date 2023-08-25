@@ -12,7 +12,7 @@ use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 pub mod error;
 mod restorable;
 
-pub type InternalFD = generational_arena::Index;
+pub type InternalFD = Index;
 
 #[derive(Debug)]
 pub struct FileDescriptor<D: Default + Restorable> {
@@ -164,7 +164,7 @@ where
             .internal_file_descriptors
             .entry(*task_id)
             .or_default()
-            .insert(file.clone()))
+            .insert(*file))
     }
 
     pub fn get_mut_internal(

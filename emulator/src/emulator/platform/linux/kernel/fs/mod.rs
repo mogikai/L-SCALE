@@ -171,9 +171,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let file = sys_component!(self, filesystem).resolve_last(filename)?;
         let mut file_descriptor = FileDescriptor::new(Box::new(FileOps::new()));
         file_descriptor.data.file = Some(FileData::new(self.system.filesystem.clone(), file));
-        Ok(sys_component_mut!(self, fd_map)
-            .insert_internal(&self.task_id, file_descriptor)?
-            .into())
+        Ok(sys_component_mut!(self, fd_map).insert_internal(&self.task_id, file_descriptor)?)
     }
 
     pub fn statfs(

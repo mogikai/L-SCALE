@@ -90,7 +90,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for RTNetlinkS
         debug!("payload: {:?}", payload);
         debug!("type: {:?}", hdr.nlmsg_type);
 
-        let Sockaddr::NL { nl_pid, .. } = &self.sockaddr.ok_or_else(|| FileDescriptorError::Unknown)? else {
+        let Sockaddr::NL { nl_pid, .. } = &self.sockaddr.ok_or(FileDescriptorError::Unknown)? else {
             Err(FileDescriptorError::Unknown)?
         };
 
@@ -443,7 +443,7 @@ struct ifaddrmsg {
 }
 
 #[repr(u16)]
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Debug, FromPrimitive, IntoPrimitive, Copy, Clone, RequiredMem)]
 pub enum RTNetlinkMessageType {
     NLMSG_NOOP           = 0x1,

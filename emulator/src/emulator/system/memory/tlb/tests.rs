@@ -4,7 +4,7 @@ use crate::emulator::system::memory::tlb::*;
 
 #[test]
 fn basic_map_succeeds() {
-    let mut tlb = TLB::new();
+    let mut tlb = Tlb::new();
     let result =
         tlb.try_map(0x2000.into(), 0x1000.into(), 0x1000, Permission::ALL, MappingType::PrivateAnonymous, None);
     assert!(result.is_ok());
@@ -12,7 +12,7 @@ fn basic_map_succeeds() {
 
 #[test]
 fn unaligned_map_fails() {
-    let mut tlb = TLB::new();
+    let mut tlb = Tlb::new();
     let result =
         tlb.try_map(0x2020.into(), 0x1000.into(), 0x1000, Permission::ALL, MappingType::PrivateAnonymous, None);
     assert!(result.is_err());
@@ -28,7 +28,7 @@ fn unaligned_map_fails() {
 
 #[test]
 fn double_map_fails() {
-    let mut tlb = TLB::new();
+    let mut tlb = Tlb::new();
     let result =
         tlb.try_map(0x2000.into(), 0x1000.into(), 0x1000, Permission::ALL, MappingType::PrivateAnonymous, None);
     assert!(result.is_ok());
@@ -40,7 +40,7 @@ fn double_map_fails() {
 
 #[test]
 fn overlapping_map_fails() {
-    let mut tlb = TLB::new();
+    let mut tlb = Tlb::new();
     let result =
         tlb.try_map(0x2000.into(), 0x1000.into(), 0x4000, Permission::ALL, MappingType::PrivateAnonymous, None);
     assert!(result.is_ok());
@@ -52,7 +52,7 @@ fn overlapping_map_fails() {
 
 #[test]
 fn adjacent_mapping_succeeds() {
-    let mut tlb = TLB::new();
+    let mut tlb = Tlb::new();
     let result =
         tlb.try_map(0x2000.into(), 0x1000.into(), 0x1000, Permission::ALL, MappingType::PrivateAnonymous, None);
     assert!(result.is_ok());

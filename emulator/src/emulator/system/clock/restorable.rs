@@ -13,7 +13,7 @@ impl Restorable for Clock {
             .snapshots
             .pop()
             .ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot to restor"))?;
-        return Ok(());
+        Ok(())
     }
 
     fn restore(&mut self) -> Result<(), GenericError> {
@@ -21,6 +21,6 @@ impl Restorable for Clock {
             .snapshots
             .last()
             .ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot to restor"))?;
-        return Ok(());
+        Ok(())
     }
 }

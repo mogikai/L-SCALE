@@ -20,20 +20,20 @@ mod tests;
 pub mod tlb_entry;
 
 #[derive(Clone, Debug)]
-pub struct TLB {
+pub struct Tlb {
     mappings: BTreeSet<Mapping>,
     snapshots: Vector<BTreeSet<Mapping>>,
 }
 
-impl Default for TLB {
+impl Default for Tlb {
     fn default() -> Self {
-        TLB::new()
+        Tlb::new()
     }
 }
 
-impl TLB {
-    pub fn new() -> TLB {
-        TLB {
+impl Tlb {
+    pub fn new() -> Tlb {
+        Tlb {
             mappings: Default::default(),
             snapshots: Default::default(),
         }
@@ -297,7 +297,7 @@ impl TLB {
     }
 }
 
-impl Restorable for TLB {
+impl Restorable for Tlb {
     fn snapshot(&mut self) -> Result<(), GenericError> {
         self.snapshots.push_back(self.mappings.clone());
         Ok(())

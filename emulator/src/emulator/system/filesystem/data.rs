@@ -119,7 +119,7 @@ impl Data {
             if b.snap_id == self.current_snap {
                 self.free_blocks[self.current_snap]
                     .entry(b.size)
-                    .or_insert(Vec::new())
+                    .or_default()
                     .push(b);
             }
         });

@@ -10,7 +10,7 @@ use crate::emulator::abstractions::mmu::{MemoryError, Permission};
 use crate::emulator::system::memory::helpers::is4kaligned;
 use crate::emulator::system::memory::pregion::PhysicalRegion;
 use crate::emulator::system::memory::tlb::mapping::MappingType;
-use crate::emulator::system::memory::tlb::TLB;
+use crate::emulator::system::memory::tlb::Tlb;
 
 /// Each Process/Thread has its own memory layout in the virtual address space
 /// The mapping from virtual address to physical address is managed in the (shared) TLB
