@@ -30,6 +30,7 @@ impl<Flags: Debug + Clone + Copy> SignalAction<Flags> {
     }
 }
 
+#[derive(Debug)]
 pub struct SignalHandler<Flags: Debug + Clone + Copy> {
     signals: [Option<SignalAction<Flags>>; 64],
     mask: u64,

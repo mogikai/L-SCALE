@@ -20,6 +20,7 @@ mod tests;
 pub struct UCWrapper<'a> {
     uc: Option<Unicorn<'a, *mut UCWrapper<'a>>>,
     breakpoints: BTreeMap<EVAddr, UcHookId>,
+    /// The Context is wrapped in an Rc because this makes saving a copy of the contexts arena easy.
     contexts: Arena<Context>,
     // TODO: Replace with signals / interrupts?
     stop_reason: Option<StopReason>,

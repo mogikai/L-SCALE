@@ -6,6 +6,7 @@ use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::kernel::LinuxKernelError;
 use crate::emulator::platform::linux::signals::{Signal, SignalAction};
 
+#[derive(Debug)]
 pub enum X86 {}
 
 bitflags! {

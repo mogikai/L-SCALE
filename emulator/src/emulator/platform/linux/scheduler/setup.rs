@@ -14,15 +14,15 @@ where
             timestep_clock.borrow_mut().do_timestep(instruction_count);
         }));
 
-        let syscall_task = self.context.borrow().current_task.clone();
+        let syscall_sched_context = self.context.clone();
         cpu.add_syscall_hook(
             EVAddr::from(1),
             EVAddr::from(0),
             Box::new(move |cpu: &mut CpuT| {
-                let mut task = syscall_task.borrow_mut();
-                let task = task
-                    .as_mut()
-                    .expect("The current task must be set by the scheduler");
+                let mut context = syscall_sched_context.borrow_mut();
+                let task = context
+                    .current_task_mut()
+                    .expect("The current task must be in the set of tasks");
                 task.yielded_syscall_rip.take();
                 let result = syscall(cpu, &mut task.kernel);
                 if let Err(rip) = result {
@@ -32,17 +32,16 @@ where
         );
 
         let vtlb_memory = self.system.memory.clone();
-        let vtlb_task = self.context.borrow().current_task.clone();
+        let vtlb_sched_context = self.context.clone();
         cpu.add_vtlb_hook(Box::new(move |uc, vaddr, _action| {
-            let task = vtlb_task.borrow();
-            task.as_ref()
-                .map(|task| task.kernel.task_id())
-                .and_then(|task_id| {
-                    vtlb_memory
-                        .borrow_mut()
-                        .translate_vaddr(task_id, vaddr)
-                        .ok()
-                })
+            let mut context = vtlb_sched_context.borrow_mut();
+            let tlb_entry = context.current_task().and_then(|task| {
+                vtlb_memory
+                    .borrow_mut()
+                    .translate_vaddr(task.kernel.task_id(), vaddr)
+                    .ok()
+            });
+            tlb_entry
         }))?;
 
         cpu.add_unmapped_mem_hook(
@@ -80,10 +79,15 @@ where
             yielded_syscall_rip: None,
         };
         cpu.save_context(task.cpu_context_handle)?;
+
+        // Insert the mapping. If this doesn't fail we can then insert the actual task at the end
+        // of the tasks vector
+        let task_index = scheduler_context.tasks.len();
         scheduler_context
-            .tasks
-            .try_insert(task.kernel.task_id(), task)
+            .task_map
+            .try_insert(task.kernel.task_id(), task_index)
             .map_err(|_| CPUError::TaskExists)?;
+        scheduler_context.tasks.push(task.into());
         Ok(())
     }
 }

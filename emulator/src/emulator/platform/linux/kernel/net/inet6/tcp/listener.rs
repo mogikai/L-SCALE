@@ -31,7 +31,7 @@ impl FileDescriptorOps<FileDescriptorData> for TcpListenerOps {
             .pending_connections
             .is_empty()
             .not()
-            .then(|| FileOperationsReady::Read)
+            .then_some(FileOperationsReady::Read)
             .or(Some(FileOperationsReady::empty()))
     }
 

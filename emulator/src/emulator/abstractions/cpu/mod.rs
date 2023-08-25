@@ -79,6 +79,11 @@ pub trait CPU: Restorable {
         &mut self,
         context_handle: ContextHandle,
     ) -> Result<(), CPUError>;
+
+    fn remove_context(
+        &mut self,
+        context_handle: ContextHandle,
+    ) -> Result<(), CPUError>;
 }
 
 impl From<TryFromIntError> for CPUError {

@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::time::Duration;
 
 use unicorn_engine::unicorn_const::uc_error;
@@ -122,6 +124,16 @@ impl CPU for UCWrapper<'_> {
     ) -> Result<(), CPUError> {
         let context = &self.contexts[context_handle];
         Ok(self.uc.as_mut().unwrap().context_restore(context)?)
+    }
+
+    fn remove_context(
+        &mut self,
+        context_handle: ContextHandle,
+    ) -> Result<(), CPUError> {
+        self.contexts
+            .remove(context_handle)
+            .ok_or(CPUError::Unknown)?;
+        Ok(())
     }
 }
 

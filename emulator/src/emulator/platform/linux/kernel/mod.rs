@@ -59,6 +59,7 @@ pub(super) use {sys_component, sys_component_mut};
 
 /* eventuell nach task umbenennen */
 // TODO: Move thread shared data to thread specific struct that is shared between kernel task objects (rcrefcell?)
+#[derive(Debug)]
 pub struct LinuxKernelTask<Endianness: ByteOrder, Arch: Architecture> {
     system: LinuxSystem<Endianness>,
     clear_child_tid: Option<EVAddr>,
@@ -73,6 +74,7 @@ pub struct LinuxKernelTask<Endianness: ByteOrder, Arch: Architecture> {
 type SyscallResult = Result<u64, SyscallError>;
 
 /// The LoadInfo struct contains some information about a loaded program
+#[derive(Debug)]
 struct LoadInfo {
     /// If the interpreter is None, then the loaded file was the interpreter
     interpreter_path: Option<PathBuf>,
