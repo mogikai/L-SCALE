@@ -1,4 +1,4 @@
-use crate::emulator::abstractions::errors::GenericError;
+use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::clock::Clock;
 
@@ -9,10 +9,12 @@ impl Restorable for Clock {
     }
 
     fn restore_and_discard(&mut self) -> Result<(), GenericError> {
-        todo!()
+        self.system_time = self.snapshots.pop().ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot to restor"))?;
+        return Ok(());
     }
 
     fn restore(&mut self) -> Result<(), GenericError> {
-        todo!()
+        self.system_time = *self.snapshots.last().ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot to restor"))?;
+        return Ok(());
     }
 }

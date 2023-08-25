@@ -1,4 +1,5 @@
 mod restorable;
+mod tests;
 
 use std::time::Duration;
 
