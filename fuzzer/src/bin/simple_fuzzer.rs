@@ -116,7 +116,6 @@ fn main() -> Result<(), GenericError> {
             let result = scheduler.run(None, None);
             debug!("Emulation returned {result:?}");
         }
-        let mut base_address = None;
         system
             .memory
             .borrow_mut()
@@ -132,11 +131,6 @@ fn main() -> Result<(), GenericError> {
                             .unwrap()
                             .get_path(&system.filesystem.borrow_mut())
                             .map_err(|_| MemoryError::Unknown)?;
-                        if let Some(file_name) = path.file_name() {
-                            if file_name == "open62541_server_release" && base_address.is_none() {
-                                base_address = Some(mapping.v_start);
-                            }
-                        }
                         Some(path)
                     } else {
                         None

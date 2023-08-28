@@ -19,7 +19,7 @@ use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::architecture::x86::X86;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::kernel::LinuxKernelTask;
-use crate::emulator::platform::linux::scheduler::restorable::SchedulerContextSnapshot;
+use crate::emulator::platform::linux::scheduler::restorable::{SchedulerContextSnapshot, TaskSnapshot};
 use crate::emulator::platform::linux::scheduler::syscall::syscall;
 use crate::emulator::platform::linux::scheduler::trace::trace_hook;
 use crate::emulator::platform::linux::LinuxSystem;
@@ -31,7 +31,7 @@ mod setup;
 mod syscall;
 mod trace;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 enum TaskState {
     Runnable,
     Yielded,
@@ -43,6 +43,7 @@ struct Task<Endianness: ByteOrder> {
     state: TaskState,
     cpu_context_handle: ContextHandle,
     yielded_syscall_rip: Option<u64>,
+    snapshots: Vec<TaskSnapshot>,
 }
 
 #[derive(Debug)]

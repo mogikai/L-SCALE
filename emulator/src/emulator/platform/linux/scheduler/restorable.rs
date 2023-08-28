@@ -4,7 +4,7 @@ use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
-use crate::emulator::platform::linux::scheduler::{LinuxX86Scheduler, SchedulerContext, Task, TaskEntry};
+use crate::emulator::platform::linux::scheduler::{LinuxX86Scheduler, SchedulerContext, Task, TaskEntry, TaskState};
 use byteorder::ByteOrder;
 use std::collections::BTreeMap;
 use std::mem::take;
@@ -70,7 +70,11 @@ impl<Endianness: ByteOrder> Restorable for Task<Endianness> {
         // TODO: Does the actual kernel task have any set that needs to be reset?
         //       It probably makes sense to put this state into the system struct
         //       or somewhere similar.
-        todo!()
+        self.snapshots.push(TaskSnapshot {
+            state: self.state,
+            yielded_syscall_rip: self.yielded_syscall_rip,
+        });
+        Ok(())
     }
 
     fn restore_and_discard(&mut self) -> Result<(), GenericError> {
@@ -80,4 +84,10 @@ impl<Endianness: ByteOrder> Restorable for Task<Endianness> {
     fn restore(&mut self) -> Result<(), GenericError> {
         todo!()
     }
+}
+
+#[derive(Debug)]
+pub(super) struct TaskSnapshot {
+    state: TaskState,
+    yielded_syscall_rip: Option<u64>,
 }

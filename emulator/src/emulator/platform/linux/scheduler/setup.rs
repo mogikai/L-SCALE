@@ -77,6 +77,7 @@ where
             state: TaskState::Runnable,
             cpu_context_handle: cpu.create_context()?,
             yielded_syscall_rip: None,
+            snapshots: Default::default(),
         };
         cpu.save_context(task.cpu_context_handle)?;
 

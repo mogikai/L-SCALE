@@ -1,6 +1,5 @@
 use bitflags::Flags;
 use byteorder::ByteOrder;
-use enumset::__internal::EnumSetTypeRepr;
 
 use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
 use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU, MREMAP_FLAGS};
