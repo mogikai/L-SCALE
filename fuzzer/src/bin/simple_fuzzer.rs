@@ -8,9 +8,8 @@ use clap::Parser;
 use log::debug;
 
 use fuzzyemu::emulator::abstractions::cpu::CPU;
-use fuzzyemu::emulator::abstractions::emulator::Scheduler;
-use fuzzyemu::emulator::abstractions::emulator::SchedulerError::Stopped;
 use fuzzyemu::emulator::abstractions::emulator::StopReason::Breakpoint;
+use fuzzyemu::emulator::abstractions::emulator::{Scheduler, SchedulerError};
 use fuzzyemu::emulator::abstractions::errors::GenericError;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
 use fuzzyemu::emulator::abstractions::mmu::MemoryError;
@@ -99,22 +98,20 @@ fn main() -> Result<(), GenericError> {
             }
         })?;
         let start = Instant::now();
-        let result = scheduler.run(None, None);
+        let mut result = scheduler.run(None, None);
         debug!("Emulation returned {result:?}");
-        if let Err(Stopped(Breakpoint)) = result {
+        if let Err(SchedulerError::Stopped(Breakpoint)) = result {
             debug!("Creating snapshot");
             scheduler.snapshot()?;
-            debug!("Removing breakpoint");
-            scheduler.try_for_each_task(|task| {
-                if let Some(entrypoint) = task.entrypoint() {
-                    cpu.borrow_mut().remove_breakpoint(entrypoint)
-                } else {
-                    Ok(())
-                }
-            })?;
             debug!("Trying to resume");
-            let result = scheduler.run(None, None);
+            result = scheduler.run(None, None);
             debug!("Emulation returned {result:?}");
+        }
+        for _ in 0..10 {
+            if let Err(SchedulerError::NoRunnableTasks) = result {
+                scheduler.restore()?;
+                result = scheduler.run(None, None);
+            }
         }
         system
             .memory

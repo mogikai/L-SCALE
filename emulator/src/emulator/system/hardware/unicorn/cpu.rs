@@ -1,5 +1,3 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::time::Duration;
 
 use unicorn_engine::unicorn_const::uc_error;
@@ -81,12 +79,19 @@ impl CPU for UCWrapper<'_> {
             let hook = self
                 .uc_mut()
                 .add_code_hook(address.into(), address.into(), |uc, a, b| {
-                    unsafe {
-                        (**uc.get_data_mut())
-                            .stop_reason
-                            .insert(StopReason::Breakpoint);
+                    let uc_wrapper = unsafe { &mut **uc.get_data_mut() };
+                    match uc_wrapper.stop_reason {
+                        Some(StopReason::Breakpoint) => {
+                            // The breakpoint was triggered and we are trying to resume.
+                            // Do not stop emulation in this case. However, we remove the stop
+                            // reason, such that the breakpoint can be triggered again.
+                            uc_wrapper.stop_reason.take();
+                        }
+                        _ => {
+                            uc_wrapper.stop_reason.insert(StopReason::Breakpoint);
+                            uc.emu_stop();
+                        }
                     }
-                    uc.emu_stop();
                 })?;
             self.breakpoints
                 .try_insert(address, hook)

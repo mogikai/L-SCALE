@@ -86,8 +86,7 @@ where
         self.memory.borrow_mut().snapshot()?;
         self.filesystem.borrow_mut().snapshot()?;
         self.clock.borrow_mut().snapshot()?;
-        self.fd_map.borrow_mut().snapshot()?;
-        Ok(())
+        self.fd_map.borrow_mut().snapshot()
     }
 
     fn restore_and_discard(&mut self) -> Result<(), GenericError> {
@@ -95,6 +94,9 @@ where
     }
 
     fn restore(&mut self) -> Result<(), GenericError> {
-        todo!()
+        self.memory.borrow_mut().restore()?;
+        self.filesystem.borrow_mut().restore()?;
+        self.clock.borrow_mut().restore()?;
+        self.fd_map.borrow_mut().restore()
     }
 }

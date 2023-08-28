@@ -1,5 +1,5 @@
 use crate::emulator::abstractions::cpu::CPU;
-use crate::emulator::abstractions::errors::GenericError;
+use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::restore::Restorable;
@@ -17,8 +17,7 @@ where
     fn snapshot(&mut self) -> Result<(), GenericError> {
         self.system.snapshot()?;
         self.context.borrow_mut().snapshot()?;
-        self.cpu.borrow_mut().snapshot()?;
-        Ok(())
+        self.cpu.borrow_mut().snapshot()
     }
 
     fn restore_and_discard(&mut self) -> Result<(), GenericError> {
@@ -26,25 +25,21 @@ where
     }
 
     fn restore(&mut self) -> Result<(), GenericError> {
-        todo!()
+        self.system.restore()?;
+        self.context.borrow_mut().restore()?;
+        self.cpu.borrow_mut().restore()
     }
 }
 
 impl<Endianness: ByteOrder> Restorable for SchedulerContext<Endianness> {
     fn snapshot(&mut self) -> Result<(), GenericError> {
-        let previous_end = self.snapshots.last().map_or(0, |s| s.tasks_size);
-        // Snapshot all tasks that are not in any previous snapshots
         self.tasks
             .iter_mut()
-            .skip(previous_end)
             .filter_map(TaskEntry::task_mut)
             .try_for_each(Task::snapshot)?;
-        self.deleted_tasks.iter().for_each(|index| {
-            self.tasks.get_mut(*index).unwrap().delete();
-        });
+
         self.snapshots.push(SchedulerContextSnapshot {
-            tasks_size: self.tasks.len(),
-            deleted_tasks: take(&mut self.deleted_tasks),
+            tasks_end: self.tasks.len(),
             task_map: self.task_map.clone(),
         });
         Ok(())
@@ -55,13 +50,26 @@ impl<Endianness: ByteOrder> Restorable for SchedulerContext<Endianness> {
     }
 
     fn restore(&mut self) -> Result<(), GenericError> {
-        todo!()
+        let snapshot = self
+            .snapshots
+            .last()
+            .ok_or(GenericError::new(GenericErrorKind::Unknown, "No snapshot available"))?;
+
+        // Discard all tasks that were created after the snapshot.
+        self.tasks.truncate(snapshot.tasks_end);
+
+        self.tasks
+            .iter_mut()
+            .filter_map(TaskEntry::task_mut)
+            .try_for_each(Task::restore)?;
+
+        self.task_map.clone_from(&snapshot.task_map);
+        Ok(())
     }
 }
 
 pub(super) struct SchedulerContextSnapshot {
-    tasks_size: usize,
-    deleted_tasks: Vec<usize>,
+    tasks_end: usize,
     task_map: BTreeMap<TaskId, usize>,
 }
 
@@ -82,7 +90,14 @@ impl<Endianness: ByteOrder> Restorable for Task<Endianness> {
     }
 
     fn restore(&mut self) -> Result<(), GenericError> {
-        todo!()
+        let snapshot = self
+            .snapshots
+            .last()
+            .ok_or(GenericError::new(GenericErrorKind::Unknown, "No Snapshot available"))?;
+
+        self.state = snapshot.state;
+        self.yielded_syscall_rip = snapshot.yielded_syscall_rip;
+        Ok(())
     }
 }
 

@@ -32,7 +32,8 @@ impl Restorable for FileDescriptorData {
     }
 
     fn restore(&mut self) -> Result<(), GenericError> {
-        todo!()
+        // todo!("Delegate snapshots to individual data structs")
+        Ok(())
     }
 }
 

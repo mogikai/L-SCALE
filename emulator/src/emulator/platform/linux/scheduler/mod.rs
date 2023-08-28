@@ -95,9 +95,6 @@ struct SchedulerContext<Endianness: ByteOrder> {
     /// snapshot can be removed from this vector. When a snapshot occurs, each entry in the
     /// vector is also snapshot.
     tasks: Vec<TaskEntry<Endianness>>,
-    // We want to save which tasks we deleted that are contained in some snapshot. We will have
-    // to restore these if we decide to snapshot the current state.
-    deleted_tasks: Vec<usize>,
     /// This is simply a mapping of `TaskId` to an index into the tasks vector.
     /// This makes it possible to do an expensive lookup once, and then simply access by index.
     task_map: BTreeMap<TaskId, usize>,

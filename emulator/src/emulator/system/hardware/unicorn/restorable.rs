@@ -26,7 +26,8 @@ impl Restorable for UCWrapper<'_> {
     fn restore(&mut self) -> Result<(), GenericError> {
         self.uc_mut()
             .ctl_context_mode(ContextMode::CPU | ContextMode::Memory);
-        let context: &Context = &self
+        // FIXME: This leaves the context mode in the wrong mode when failing to get the last element
+        let context = &self
             .snapshots
             .last()
             .ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot to restore"))?
