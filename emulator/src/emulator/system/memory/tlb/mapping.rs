@@ -165,6 +165,17 @@ impl Mapping {
 
         Ok((front, middle, back))
     }
+
+    pub fn overlaps(
+        &self,
+        range: Range<EVAddr>,
+    ) -> bool {
+        if self.v_end() <= range.start {
+            false
+        } else {
+            range.end > self.v_start
+        }
+    }
 }
 
 impl PartialEq for Mapping {

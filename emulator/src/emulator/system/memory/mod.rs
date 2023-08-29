@@ -392,16 +392,6 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         )
     }
 
-    /// Finds free space for a requested virtual memory region.
-    /// The returned address is always larger than the layouts map_base.
-    // pub fn find_free_virtual_memory(
-    //     &self,
-    //     hint: EVAddr,
-    //     size: usize,
-    // ) -> Result<EVAddr, MemoryError> {
-    //         .find_free_space(max(hint, self.map_base), size)
-    // }
-
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn remap(
         &mut self,

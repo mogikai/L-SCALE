@@ -25,7 +25,7 @@ pub enum CPUError {
     Unknown,
 }
 
-pub type ContextHandle = Index;
+pub type ContextHandle = u64;
 
 pub trait CPU: Restorable {
     /// # Arguments

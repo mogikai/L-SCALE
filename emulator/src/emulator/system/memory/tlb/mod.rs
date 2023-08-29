@@ -280,7 +280,7 @@ impl Tlb {
         size: usize,
     ) -> Result<EVAddr, MemoryError> {
         for mapping in self.mappings.range(hint..) {
-            if mapping.contains(hint) || mapping.contains(hint + size - 1) {
+            if mapping.overlaps(hint..hint + size - 1) {
                 hint = mapping.v_end();
             } else {
                 break;

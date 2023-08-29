@@ -17,29 +17,27 @@ pub mod mmu;
 mod restorable;
 mod tests;
 
+#[derive(Default, Debug)]
 pub struct UCWrapper<'a> {
     uc: Option<Unicorn<'a, *mut UCWrapper<'a>>>,
     breakpoints: BTreeMap<EVAddr, UcHookId>,
-    /// The Context is wrapped in an Rc because this makes saving a copy of the contexts arena easy.
-    contexts: Arena<Context>,
+    contexts: BTreeMap<u64, Context>,
+    next_key: u64,
     // TODO: Replace with signals / interrupts?
     stop_reason: Option<StopReason>,
     snapshots: Vec<Snapshot>,
 }
 
+#[derive(Debug)]
 struct Snapshot {
     uc_context: Context,
+    contexts: BTreeMap<u64, Context>,
+    next_key: u64,
 }
 
 impl<'a> UCWrapper<'a> {
     pub fn new() -> Rc<RefCell<Self>> {
-        let wrapper = Rc::new(RefCell::new(UCWrapper {
-            uc: None,
-            breakpoints: Default::default(),
-            contexts: Arena::new(),
-            stop_reason: None,
-            snapshots: vec![],
-        }));
+        let wrapper = Rc::new(RefCell::new(UCWrapper { ..Default::default() }));
         wrapper.borrow_mut().uc = Some(Unicorn::new_with_data(Arch::X86, Mode::MODE_64, wrapper.as_ptr()).unwrap());
         if let Some(uc) = wrapper.borrow_mut().uc.as_ref() {
             uc.ctl_tlb_type(TlbType::VIRTUAL).unwrap()

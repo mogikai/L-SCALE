@@ -111,6 +111,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             .map(|load_info| load_info.entrypoint)
     }
 
+    pub fn load_base(&self) -> Option<EVAddr> {
+        self.program_info
+            .as_ref()
+            .map(|load_info| load_info.base_address)
+    }
+
     pub fn load_binary(
         &mut self,
         cpu: &mut (impl CPU + MMU),

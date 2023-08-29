@@ -91,8 +91,8 @@ fn main() -> Result<(), GenericError> {
         }
 
         scheduler.try_for_each_task(|task| {
-            if let Some(entrypoint) = task.entrypoint() {
-                cpu.borrow_mut().add_breakpoint(entrypoint)
+            if let Some(load_base) = task.load_base() {
+                cpu.borrow_mut().add_breakpoint(load_base + 0xf3fb6)
             } else {
                 Ok(())
             }
@@ -103,16 +103,25 @@ fn main() -> Result<(), GenericError> {
         if let Err(SchedulerError::Stopped(Breakpoint)) = result {
             debug!("Creating snapshot");
             scheduler.snapshot()?;
+            scheduler.try_for_each_task(|task| {
+                if let Some(load_base) = task.load_base() {
+                    cpu.borrow_mut().remove_breakpoint(load_base + 0xf3fb6)
+                } else {
+                    Ok(())
+                }
+            })?;
             debug!("Trying to resume");
             result = scheduler.run(None, None);
             debug!("Emulation returned {result:?}");
         }
-        for _ in 0..10 {
+        let start_iterations = Instant::now();
+        for _ in 0..100 {
             if let Err(SchedulerError::NoRunnableTasks) = result {
                 scheduler.restore()?;
                 result = scheduler.run(None, None);
             }
         }
+        println!("Iterations per second: {:?}", 100f64 / start_iterations.elapsed().as_secs_f64());
         system
             .memory
             .borrow_mut()

@@ -112,14 +112,21 @@ impl CPU for UCWrapper<'_> {
 
     fn create_context(&mut self) -> Result<ContextHandle, CPUError> {
         let context = self.uc_mut().context_alloc()?;
-        Ok(self.contexts.insert(context))
+        let key = self.next_key;
+        let existing = self.contexts.insert(key, context);
+        assert!(existing.is_none());
+        self.next_key += 1;
+        Ok(key)
     }
 
     fn save_context(
         &mut self,
         context_handle: ContextHandle,
     ) -> Result<(), CPUError> {
-        let context = &mut self.contexts[context_handle];
+        let context = &mut self
+            .contexts
+            .get_mut(&context_handle)
+            .ok_or(CPUError::Unknown)?;
         Ok(self.uc.as_mut().unwrap().context_save(context)?)
     }
 
@@ -127,7 +134,7 @@ impl CPU for UCWrapper<'_> {
         &mut self,
         context_handle: ContextHandle,
     ) -> Result<(), CPUError> {
-        let context = &self.contexts[context_handle];
+        let context = &self.contexts[&context_handle];
         Ok(self.uc.as_mut().unwrap().context_restore(context)?)
     }
 
@@ -136,7 +143,7 @@ impl CPU for UCWrapper<'_> {
         context_handle: ContextHandle,
     ) -> Result<(), CPUError> {
         self.contexts
-            .remove(context_handle)
+            .remove(&context_handle)
             .ok_or(CPUError::Unknown)?;
         Ok(())
     }
