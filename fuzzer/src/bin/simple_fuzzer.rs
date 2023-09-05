@@ -12,6 +12,7 @@ use fuzzyemu::emulator::abstractions::emulator::StopReason::Breakpoint;
 use fuzzyemu::emulator::abstractions::emulator::{Scheduler, SchedulerError};
 use fuzzyemu::emulator::abstractions::errors::GenericError;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
+use fuzzyemu::emulator::abstractions::kernel_task::KernelTask;
 use fuzzyemu::emulator::abstractions::mmu::MemoryError;
 use fuzzyemu::emulator::abstractions::restore::Restorable;
 use fuzzyemu::emulator::platform::linux::architecture::x86::X86;
@@ -22,6 +23,7 @@ use fuzzyemu::emulator::system::fd_map::FileDescriptorMap;
 use fuzzyemu::emulator::system::filesystem::Filesystem;
 use fuzzyemu::emulator::system::hardware::unicorn::UCWrapper;
 use fuzzyemu::emulator::system::memory::{MappingType, Memory};
+use fuzzyemu::emulator::system::task_manager::TaskManager;
 use fuzzyemu::emulator::system::System;
 use fuzzyemu::LittleEndian;
 
@@ -52,11 +54,12 @@ fn main() -> Result<(), GenericError> {
     let duration = {
         let cpu = UCWrapper::new();
 
+        let task_manager = TaskManager::new(cpu.clone());
         let filesystem = Filesystem::from_disk(1_073_741_824, Path::new(&pargs.system_root)).unwrap();
         let memory = Memory::new();
         let clock = Clock::new(Duration::from_nanos(1662647309301240322));
         let file_descriptor_map = FileDescriptorMap::new();
-        let system = System::new(memory, filesystem, clock, file_descriptor_map);
+        let system = System::new(memory, filesystem, clock, file_descriptor_map, task_manager);
 
         cpu.borrow_mut().add_block_hook(Box::new(|_, addr, _| {
             total_blocks += 1;
@@ -67,7 +70,7 @@ fn main() -> Result<(), GenericError> {
         }))?;
 
         // TODO: Only one task for now. Need to implement a scheduler that switches tasks.
-        let initial_task = LinuxKernelTask::<LittleEndian, X86>::new(system.clone(), 1337, 1);
+        let initial_task = LinuxKernelTask::<LittleEndian, X86, UCWrapper>::new(system.clone(), 1337, 1);
         let task_id = initial_task.task_id();
 
         // let mut data = vec![b'A'; 0x01];
@@ -90,8 +93,8 @@ fn main() -> Result<(), GenericError> {
             scheduler.enable_trace().unwrap();
         }
 
-        scheduler.try_for_each_task(|task| {
-            if let Some(load_base) = task.load_base() {
+        system.task_manager.borrow().tasks().try_for_each(|task| {
+            if let Some(load_base) = task.kernel().load_base() {
                 cpu.borrow_mut().add_breakpoint(load_base + 0xf3fb6)
             } else {
                 Ok(())
@@ -103,8 +106,8 @@ fn main() -> Result<(), GenericError> {
         if let Err(SchedulerError::Stopped(Breakpoint)) = result {
             debug!("Creating snapshot");
             scheduler.snapshot()?;
-            scheduler.try_for_each_task(|task| {
-                if let Some(load_base) = task.load_base() {
+            system.task_manager.borrow().tasks().try_for_each(|task| {
+                if let Some(load_base) = task.kernel().load_base() {
                     cpu.borrow_mut().remove_breakpoint(load_base + 0xf3fb6)
                 } else {
                     Ok(())

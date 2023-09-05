@@ -1,6 +1,7 @@
 use std::ops::Try;
 use std::time::Duration;
 
+use crate::emulator::abstractions::cpu::address::EVAddr;
 use thiserror::Error;
 
 use crate::emulator::abstractions::cpu::CPUError;
@@ -13,7 +14,7 @@ pub enum StopReason {
     #[error("The process was killed by a signal")]
     Killed(u64),
     #[error("The process tried to execute a syscall that is not yet implemented")]
-    MissingSyscall,
+    MissingSyscall(EVAddr),
     #[error("The process exited normally")]
     ProcessExit(u64),
     /// The yield stop reason can be issued by any part inside a currently executed syscall.
@@ -21,7 +22,7 @@ pub enum StopReason {
     /// second time. This can be achieved either by implementing a state machine inside the
     /// syscall, or by only yielding if no changes to the kernel have been made.
     #[error("The process yielded execution to the scheduler")]
-    Yield,
+    Yield(EVAddr),
     #[error("A breakpoint was reached and the execution stopped")]
     Breakpoint,
 }
@@ -44,9 +45,4 @@ pub trait Scheduler<T>: Restorable {
         timeout: Option<Duration>,
         instruction_count: Option<usize>,
     ) -> Result<(), SchedulerError>;
-
-    fn try_for_each_task<F: FnMut(&T) -> R, R: Try<Output = ()>>(
-        &self,
-        callback: F,
-    ) -> R;
 }

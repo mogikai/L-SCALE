@@ -20,7 +20,7 @@ use crate::emulator::platform::linux::kernel::{
 use crate::emulator::system::fd_map::FileDescriptor;
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
 
-impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
+impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> LinuxKernelTask<Endianness, Arch, CpuT> {
     pub fn socket(
         &mut self,
         _: &mut impl CPU,

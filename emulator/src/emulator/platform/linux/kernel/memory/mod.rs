@@ -2,6 +2,7 @@ use bitflags::Flags;
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
+use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU, MREMAP_FLAGS};
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::FD;
@@ -19,7 +20,7 @@ pub mod flags;
 //// Public Implementations ////
 ////////////////////////////////
 
-impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
+impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> LinuxKernelTask<Endianness, Arch, CpuT> {
     #[allow(clippy::too_many_arguments)]
     pub fn mmap(
         &mut self,
@@ -122,7 +123,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
 //// Private Implementations ////
 /////////////////////////////////
 
-impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
+impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> LinuxKernelTask<Endianness, Arch, CpuT> {
     #[allow(clippy::too_many_arguments)]
     fn mmap_private(
         &mut self,

@@ -1,14 +1,19 @@
 use std::cell::RefCell;
+use std::fmt::Debug;
 use std::rc::Rc;
 
+use crate::emulator::abstractions::cpu::CPU;
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::errors::GenericError;
+use crate::emulator::abstractions::kernel_task::KernelTask;
+use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::clock::Clock;
 use crate::emulator::system::fd_map::{FdId, FileDescriptorMap};
 use crate::emulator::system::filesystem::Filesystem;
 use crate::emulator::system::memory::Memory;
+use crate::emulator::system::task_manager::TaskManager;
 
 pub mod clock;
 pub mod default_handles;
@@ -16,6 +21,7 @@ pub mod fd_map;
 pub mod filesystem;
 pub mod hardware;
 pub mod memory;
+pub mod task_manager;
 
 /// This struct contains the global system state and system components like memory and filesystem or the system clock.
 /// Also, all currently running tasks are kept here.
@@ -23,25 +29,31 @@ pub mod memory;
 /// Any data must be stored behind a pointer. This ensures that individual components can be
 /// accessed in a more fine grained manner, instead of having to borrow the entire system at once.
 #[derive(Debug)]
-pub struct System<FD, FDData, TaskId, Endianness>
+pub struct System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT>
 where
     FD: FdId,
     FDData: Default + Restorable,
     TaskId: Ord + Copy + Clone + Default,
+    KernelTaskT: KernelTask<TaskId> + Debug,
     Endianness: ByteOrder,
+    CpuT: CPU + MMU,
 {
     pub memory: Rc<RefCell<Memory<Endianness>>>,
     pub filesystem: Rc<RefCell<Filesystem>>,
     pub clock: Rc<RefCell<Clock>>,
     pub fd_map: Rc<RefCell<FileDescriptorMap<FD, TaskId, FDData>>>,
+    pub task_manager: Rc<RefCell<TaskManager<TaskId, KernelTaskT, CpuT>>>,
 }
 
-impl<FD, FDData, TaskId, Endianness> Clone for System<FD, FDData, TaskId, Endianness>
+impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT> Clone
+    for System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT>
 where
     FD: FdId,
     FDData: Default + Restorable,
     TaskId: Ord + Copy + Clone + Default,
+    KernelTaskT: KernelTask<TaskId> + Debug,
     Endianness: ByteOrder,
+    CpuT: CPU + MMU,
 {
     fn clone(&self) -> Self {
         Self {
@@ -49,44 +61,53 @@ where
             filesystem: self.filesystem.clone(),
             clock: self.clock.clone(),
             fd_map: self.fd_map.clone(),
+            task_manager: self.task_manager.clone(),
         }
     }
 }
 
-impl<FD, FDData, TaskId, Endianness> System<FD, FDData, TaskId, Endianness>
+impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT> System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT>
 where
     FD: FdId,
     FDData: Default + Restorable,
     TaskId: Ord + Copy + Clone + Default,
+    KernelTaskT: KernelTask<TaskId> + Debug,
     Endianness: ByteOrder,
+    CpuT: CPU + MMU,
 {
     pub fn new(
         memory: Memory<Endianness>,
         filesystem: Filesystem,
         clock: Clock,
         fd_map: FileDescriptorMap<FD, TaskId, FDData>,
+        task_manager: TaskManager<TaskId, KernelTaskT, CpuT>,
     ) -> Self {
         Self {
             memory: Rc::new(RefCell::new(memory)),
             filesystem: Rc::new(RefCell::new(filesystem)),
             clock: Rc::new(RefCell::new(clock)),
             fd_map: Rc::new(RefCell::new(fd_map)),
+            task_manager: Rc::new(RefCell::new(task_manager)),
         }
     }
 }
 
-impl<FD, FDData, TaskId, Endianness> Restorable for System<FD, FDData, TaskId, Endianness>
+impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT> Restorable
+    for System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT>
 where
     FD: FdId,
     FDData: Default + Restorable,
     TaskId: Ord + Copy + Clone + Default,
+    KernelTaskT: KernelTask<TaskId> + Debug,
     Endianness: ByteOrder,
+    CpuT: CPU + MMU,
 {
     fn snapshot(&mut self) -> Result<(), GenericError> {
         self.memory.borrow_mut().snapshot()?;
         self.filesystem.borrow_mut().snapshot()?;
         self.clock.borrow_mut().snapshot()?;
-        self.fd_map.borrow_mut().snapshot()
+        self.fd_map.borrow_mut().snapshot()?;
+        self.task_manager.borrow_mut().snapshot()
     }
 
     fn restore_and_discard(&mut self) -> Result<(), GenericError> {
@@ -97,6 +118,7 @@ where
         self.memory.borrow_mut().restore()?;
         self.filesystem.borrow_mut().restore()?;
         self.clock.borrow_mut().restore()?;
-        self.fd_map.borrow_mut().restore()
+        self.fd_map.borrow_mut().restore()?;
+        self.task_manager.borrow_mut().restore()
     }
 }

@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::fmt::Debug;
+use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -52,13 +52,13 @@ macro_rules! sys_component_mut {
     };
 }
 
+use crate::emulator::abstractions::kernel_task::KernelTask;
 pub(super) use {sys_component, sys_component_mut};
 
 /* eventuell nach task umbenennen */
 // TODO: Move thread shared data to thread specific struct that is shared between kernel task objects (rcrefcell?)
-#[derive(Debug)]
-pub struct LinuxKernelTask<Endianness: ByteOrder, Arch: Architecture> {
-    system: LinuxSystem<Endianness>,
+pub struct LinuxKernelTask<Endianness: ByteOrder, Arch: Architecture, CpuT: CPU + MMU> {
+    system: LinuxSystem<Endianness, CpuT>,
     clear_child_tid: Option<EVAddr>,
     robust_list_head: Option<EVAddr>,
     signalhandler: SignalHandler<Arch::SignalFlags>,
@@ -66,6 +66,34 @@ pub struct LinuxKernelTask<Endianness: ByteOrder, Arch: Architecture> {
     program_info: Option<LoadInfo>,
     interpreter_info: Option<LoadInfo>,
     _arch: PhantomData<Arch>,
+}
+
+impl<Endianness: ByteOrder, Arch: Architecture, CpuT: CPU + MMU> Debug for LinuxKernelTask<Endianness, Arch, CpuT> {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "TODO")
+    }
+}
+
+impl<Endianness: ByteOrder, Arch: Architecture, CpuT: CPU + MMU> KernelTask<TaskId>
+    for LinuxKernelTask<Endianness, Arch, CpuT>
+{
+    fn task_id(&self) -> TaskId {
+        self.task_id
+    }
+    fn entrypoint(&self) -> Option<EVAddr> {
+        self.program_info
+            .as_ref()
+            .map(|load_info| load_info.entrypoint)
+    }
+
+    fn load_base(&self) -> Option<EVAddr> {
+        self.program_info
+            .as_ref()
+            .map(|load_info| load_info.base_address)
+    }
 }
 
 type SyscallResult = Result<u64, SyscallError>;
@@ -87,9 +115,9 @@ struct LoadInfo {
     program_header_entry_size: u64,
 }
 
-impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
+impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> LinuxKernelTask<Endianness, Arch, CpuT> {
     pub fn new(
-        system: LinuxSystem<Endianness>,
+        system: LinuxSystem<Endianness, CpuT>,
         pid: u32,
         tid: u32,
     ) -> Self {
@@ -103,18 +131,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
             interpreter_info: None,
             _arch: PhantomData,
         }
-    }
-
-    pub fn entrypoint(&self) -> Option<EVAddr> {
-        self.program_info
-            .as_ref()
-            .map(|load_info| load_info.entrypoint)
-    }
-
-    pub fn load_base(&self) -> Option<EVAddr> {
-        self.program_info
-            .as_ref()
-            .map(|load_info| load_info.base_address)
     }
 
     pub fn load_binary(
@@ -298,10 +314,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture> LinuxKernelTask<Endian
         let rsp = EVAddr::from(cpu.reg_read(RegisterX86::RSP.into())?);
 
         Ok(())
-    }
-
-    pub fn task_id(&self) -> TaskId {
-        self.task_id
     }
 
     pub fn add_stdio_handles(&mut self) {
@@ -753,7 +765,9 @@ enum RLIMIT {
     INVALID,
 }
 
-impl<Endianness: ByteOrder, Arch: Architecture> Restorable for LinuxKernelTask<Endianness, Arch> {
+impl<Endianness: ByteOrder, Arch: Architecture, CpuT: CPU + MMU> Restorable
+    for LinuxKernelTask<Endianness, Arch, CpuT>
+{
     fn snapshot(&mut self) -> Result<(), GenericError> {
         todo!()
     }

@@ -6,7 +6,9 @@ use crate::emulator::abstractions::emulator::StopReason;
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::platform::linux::architecture::x86::X86;
 use crate::emulator::platform::linux::kernel::error::SyscallError;
+use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask};
+use crate::emulator::system::task_manager::Task;
 
 macro_rules! do_syscall {
     (0, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
@@ -90,11 +92,11 @@ macro_rules! do_syscall {
     }};
 }
 
-fn do_syscall<Endianness: ByteOrder + 'static>(
+fn do_syscall<Endianness: ByteOrder + 'static, CpuT: CPU + MMU>(
     syscall: SYSCALL,
     cpu: &mut (impl CPU + MMU),
     debug_str: &mut String,
-    kernel: &mut LinuxKernelTask<Endianness, X86>,
+    kernel: &mut LinuxKernelTask<Endianness, X86, CpuT>,
 ) -> Result<u64, SyscallError> {
     use SYSCALL::*;
     match syscall {
@@ -176,40 +178,42 @@ fn do_syscall<Endianness: ByteOrder + 'static>(
     }
 }
 
-pub(super) fn syscall<Endianness: ByteOrder + 'static>(
-    cpu: &mut (impl CPU + MMU),
-    kernel: &mut LinuxKernelTask<Endianness, X86>,
-) -> Result<u64, u64> {
+pub(super) fn syscall<Endianness: ByteOrder + 'static, CpuT: CPU + MMU>(
+    cpu: &mut CpuT,
+    task: &mut Task<TaskId, LinuxKernelTask<Endianness, X86, CpuT>>,
+) {
     let rax = cpu.reg_read(RegisterX86::RAX.into()).unwrap();
     let mut debug_str = String::new();
     let syscall = SYSCALL::from(rax);
-    let result = do_syscall(SYSCALL::from(rax), cpu, &mut debug_str, kernel);
+    let result = do_syscall(SYSCALL::from(rax), cpu, &mut debug_str, task.kernel_mut());
     let rax = match result {
         Ok(rax) => {
             debug_str = format!("SYSCALL: {:?} {} -> 0x{:X}", syscall, debug_str, rax);
             debug!("{debug_str}");
-            Ok(rax)
+            Some(rax)
         }
         Err(SyscallError::KernelError(e)) => {
             debug_str = format!("SYSCALL: {:?} {} -> 0x{:X} ({})", syscall, debug_str, u64::from(e), e);
             debug!("{debug_str}");
-            Ok(e.into())
+            Some(e.into())
         }
         Err(SyscallError::Yield) => {
             debug!("Syscall is yielding to scheduler");
-            cpu.stop(StopReason::Yield).unwrap();
-            Err(cpu.reg_read(RegisterX86::RIP.into()).unwrap())
+            let rip = cpu.reg_read(RegisterX86::RIP.into()).unwrap().into();
+            task.suspend(rip);
+            cpu.stop(StopReason::Yield(rip)).unwrap();
+            None
         }
         Err(SyscallError::NotImplemented) => {
             error!("SYSCALL NOT IMPLEMENTED: {:?}", syscall);
-            cpu.stop(StopReason::MissingSyscall).unwrap();
-            Err(cpu.reg_read(RegisterX86::RIP.into()).unwrap())
+            cpu.stop(StopReason::MissingSyscall(cpu.reg_read(RegisterX86::RIP.into()).unwrap().into()))
+                .unwrap();
+            None
         }
     };
-    if let Ok(rax) = rax {
+    if let Some(rax) = rax {
         cpu.reg_write(RegisterX86::RAX.into(), rax).unwrap();
     }
-    rax
 }
 
 #[repr(u64)]

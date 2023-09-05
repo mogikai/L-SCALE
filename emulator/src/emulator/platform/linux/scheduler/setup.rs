@@ -14,31 +14,27 @@ where
             timestep_clock.borrow_mut().do_timestep(instruction_count);
         }));
 
-        let syscall_sched_context = self.context.clone();
+        let task_manager = self.system.task_manager.clone();
         cpu.add_syscall_hook(
             EVAddr::from(1),
             EVAddr::from(0),
             Box::new(move |cpu: &mut CpuT| {
-                let mut context = syscall_sched_context.borrow_mut();
-                let task = context
+                let mut task_manager = task_manager.borrow_mut();
+                let task = task_manager
                     .current_task_mut()
                     .expect("The current task must be in the set of tasks");
-                task.yielded_syscall_rip.take();
-                let result = syscall(cpu, &mut task.kernel);
-                if let Err(rip) = result {
-                    task.yielded_syscall_rip.insert(rip);
-                }
+                syscall(cpu, task);
             }),
         );
 
         let vtlb_memory = self.system.memory.clone();
-        let vtlb_sched_context = self.context.clone();
+        let vtlb_task_manager = self.system.task_manager.clone();
         cpu.add_vtlb_hook(Box::new(move |uc, vaddr, _action| {
-            let mut context = vtlb_sched_context.borrow_mut();
-            let tlb_entry = context.current_task().and_then(|task| {
+            let mut task_manager = vtlb_task_manager.borrow();
+            let tlb_entry = task_manager.current_task().and_then(|task| {
                 vtlb_memory
                     .borrow_mut()
-                    .translate_vaddr(task.kernel.task_id(), vaddr)
+                    .translate_vaddr(task.task_id(), vaddr)
                     .ok()
             });
             tlb_entry
@@ -58,7 +54,7 @@ where
 
     pub(super) fn setup_initial_task(
         &mut self,
-        mut initial_task: LinuxKernelTask<Endianness, X86>,
+        mut initial_task: LinuxKernelTask<Endianness, X86, CpuT>,
         binary_path: PathBuf,
         binary_args: &[&str],
         binary_env: &[&str],
@@ -71,24 +67,10 @@ where
             .load_binary(&mut *cpu, binary_path.as_path(), binary_args, binary_env)
             .map_err(|_| SchedulerError::Unknown)?;
         debug!("Loaded initial binary");
-        let mut scheduler_context = self.context.borrow_mut();
-        let task = Task {
-            kernel: initial_task,
-            state: TaskState::Runnable,
-            cpu_context_handle: cpu.create_context()?,
-            yielded_syscall_rip: None,
-            snapshots: Default::default(),
-        };
-        cpu.save_context(task.cpu_context_handle)?;
+        drop(cpu);
+        let mut task_manager = self.system.task_manager.borrow_mut();
 
-        // Insert the mapping. If this doesn't fail we can then insert the actual task at the end
-        // of the tasks vector
-        let task_index = scheduler_context.tasks.len();
-        scheduler_context
-            .task_map
-            .try_insert(task.kernel.task_id(), task_index)
-            .map_err(|_| CPUError::TaskExists)?;
-        scheduler_context.tasks.push(task.into());
+        task_manager.new_task(initial_task)?;
         Ok(())
     }
 }

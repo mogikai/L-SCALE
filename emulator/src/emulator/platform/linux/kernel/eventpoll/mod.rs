@@ -24,7 +24,7 @@ use crate::emulator::system::memory::MemoryAccessor;
 mod events;
 mod fd_ops;
 
-impl<Endianness: ByteOrder, Arch: Architecture> LinuxKernelTask<Endianness, Arch> {
+impl<Endianness: ByteOrder, Arch: Architecture, CpuT: CPU + MMU> LinuxKernelTask<Endianness, Arch, CpuT> {
     pub fn epoll_create(
         &mut self,
         _: &mut impl CPU,
