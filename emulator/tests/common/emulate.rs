@@ -12,6 +12,7 @@ use fuzzyemu::emulator::system::fd_map::FileDescriptorMap;
 use fuzzyemu::emulator::system::filesystem::Filesystem;
 use fuzzyemu::emulator::system::hardware::unicorn::UCWrapper;
 use fuzzyemu::emulator::system::memory::Memory;
+use fuzzyemu::emulator::system::task_manager::TaskManager;
 use fuzzyemu::emulator::system::System;
 
 use crate::common::TestFailure;
@@ -22,13 +23,14 @@ pub fn emulate(
 ) -> Result<(), TestFailure> {
     let cpu = UCWrapper::new();
 
+    let task_manager = TaskManager::new(cpu.clone());
     let filesystem = Filesystem::from_disk(1_073_741_824, sys_path).unwrap();
     let memory = Memory::new();
     let clock = Clock::new(Duration::from_nanos(1662647309301240322));
     let fd_map = FileDescriptorMap::new();
-    let system = System::new(memory, filesystem, clock, fd_map);
+    let system = System::new(memory, filesystem, clock, fd_map, task_manager);
 
-    let initial_task = LinuxKernelTask::<LittleEndian, X86>::new(system.clone(), 1337, 1);
+    let initial_task = LinuxKernelTask::<LittleEndian, X86, UCWrapper>::new(system.clone(), 1337, 1);
 
     let args = [];
     let env = ["SHELL=/bin/sh", "LD_BIND_NOW=true"];
