@@ -38,11 +38,12 @@ where
     Endianness: ByteOrder,
     CpuT: CPU + MMU,
 {
+    pub cpu: Rc<RefCell<CpuT>>,
     pub memory: Rc<RefCell<Memory<Endianness>>>,
     pub filesystem: Rc<RefCell<Filesystem>>,
     pub clock: Rc<RefCell<Clock>>,
     pub fd_map: Rc<RefCell<FileDescriptorMap<FD, TaskId, FDData>>>,
-    pub task_manager: Rc<RefCell<TaskManager<TaskId, KernelTaskT, CpuT>>>,
+    pub task_manager: Rc<RefCell<TaskManager<TaskId, KernelTaskT>>>,
 }
 
 impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT> Clone
@@ -57,6 +58,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
+            cpu: self.cpu.clone(),
             memory: self.memory.clone(),
             filesystem: self.filesystem.clone(),
             clock: self.clock.clone(),
@@ -76,13 +78,15 @@ where
     CpuT: CPU + MMU,
 {
     pub fn new(
+        cpu: Rc<RefCell<CpuT>>,
         memory: Memory<Endianness>,
         filesystem: Filesystem,
         clock: Clock,
         fd_map: FileDescriptorMap<FD, TaskId, FDData>,
-        task_manager: TaskManager<TaskId, KernelTaskT, CpuT>,
+        task_manager: TaskManager<TaskId, KernelTaskT>,
     ) -> Self {
         Self {
+            cpu,
             memory: Rc::new(RefCell::new(memory)),
             filesystem: Rc::new(RefCell::new(filesystem)),
             clock: Rc::new(RefCell::new(clock)),
@@ -103,6 +107,7 @@ where
     CpuT: CPU + MMU,
 {
     fn snapshot(&mut self) -> Result<(), GenericError> {
+        self.cpu.borrow_mut().snapshot()?;
         self.memory.borrow_mut().snapshot()?;
         self.filesystem.borrow_mut().snapshot()?;
         self.clock.borrow_mut().snapshot()?;
@@ -115,6 +120,7 @@ where
     }
 
     fn restore(&mut self) -> Result<(), GenericError> {
+        self.cpu.borrow_mut().restore()?;
         self.memory.borrow_mut().restore()?;
         self.filesystem.borrow_mut().restore()?;
         self.clock.borrow_mut().restore()?;

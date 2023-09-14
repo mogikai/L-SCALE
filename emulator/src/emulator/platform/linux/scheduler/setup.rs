@@ -67,10 +67,12 @@ where
             .load_binary(&mut *cpu, binary_path.as_path(), binary_args, binary_env)
             .map_err(|_| SchedulerError::Unknown)?;
         debug!("Loaded initial binary");
-        drop(cpu);
         let mut task_manager = self.system.task_manager.borrow_mut();
 
-        task_manager.new_task(initial_task)?;
+        let context_handle = cpu.create_context()?;
+        let inserted = task_manager.new_task(initial_task, context_handle)?;
+        cpu.save_context(inserted.context_handle())?;
+
         Ok(())
     }
 }

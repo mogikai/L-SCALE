@@ -54,12 +54,12 @@ fn main() -> Result<(), GenericError> {
     let duration = {
         let cpu = UCWrapper::new();
 
-        let task_manager = TaskManager::new(cpu.clone());
+        let task_manager = TaskManager::new();
         let filesystem = Filesystem::from_disk(1_073_741_824, Path::new(&pargs.system_root)).unwrap();
         let memory = Memory::new();
         let clock = Clock::new(Duration::from_nanos(1662647309301240322));
         let file_descriptor_map = FileDescriptorMap::new();
-        let system = System::new(memory, filesystem, clock, file_descriptor_map, task_manager);
+        let system = System::new(cpu.clone(), memory, filesystem, clock, file_descriptor_map, task_manager);
 
         cpu.borrow_mut().add_block_hook(Box::new(|_, addr, _| {
             total_blocks += 1;

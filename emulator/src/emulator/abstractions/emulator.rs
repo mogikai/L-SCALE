@@ -39,7 +39,7 @@ pub enum SchedulerError {
     NoRunnableTasks,
 }
 
-pub trait Scheduler<T>: Restorable {
+pub trait Scheduler: Restorable {
     fn run(
         &mut self,
         timeout: Option<Duration>,

@@ -3,11 +3,10 @@ use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::restore::Restorable;
 use std::collections::BTreeMap;
 
-impl<TaskId, T, CpuT> Restorable for TaskManager<TaskId, T, CpuT>
+impl<TaskId, T> Restorable for TaskManager<TaskId, T>
 where
     TaskId: Ord + Copy + Clone + Default,
     T: KernelTask<TaskId> + Debug,
-    CpuT: CPU + MMU,
 {
     fn snapshot(&mut self) -> Result<(), GenericError> {
         self.tasks

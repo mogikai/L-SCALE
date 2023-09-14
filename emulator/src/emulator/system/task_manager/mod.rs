@@ -102,13 +102,11 @@ impl<TaskId, T: KernelTask<TaskId>> TaskEntry<TaskId, T> {
 }
 
 #[derive(Debug)]
-pub struct TaskManager<TaskId, T, CpuT>
+pub struct TaskManager<TaskId, T>
 where
     TaskId: Ord + Copy + Clone + Default,
     T: KernelTask<TaskId> + Debug,
-    CpuT: CPU + MMU,
 {
-    cpu: Rc<RefCell<CpuT>>,
     /// The tasks are stored in a simple vector. Only elements that are newer than the latest
     /// snapshot can be removed from this vector. When a snapshot occurs, each entry in the
     /// vector is also snapshot.
@@ -121,15 +119,13 @@ where
     snapshots: Vec<TaskManagerSnapshot<TaskId>>,
 }
 
-impl<TaskId, T, CpuT> TaskManager<TaskId, T, CpuT>
+impl<TaskId, T> TaskManager<TaskId, T>
 where
     TaskId: Ord + Copy + Clone + Default,
     T: KernelTask<TaskId> + Debug,
-    CpuT: CPU + MMU,
 {
-    pub fn new(cpu: Rc<RefCell<CpuT>>) -> Self {
+    pub fn new() -> Self {
         TaskManager {
-            cpu,
             tasks: Default::default(),
             task_map: Default::default(),
             current_task: Default::default(),
@@ -137,19 +133,20 @@ where
         }
     }
 
+    /// Adds the provided task to the currently active tasks.
+    /// Returns a reference to the created task object upon success.
     pub(crate) fn new_task(
         &mut self,
         kernel_task: T,
-    ) -> Result<(), CPUError> {
-        let mut cpu = self.cpu.borrow_mut();
+        cpu_context_handle: ContextHandle,
+    ) -> Result<&Task<TaskId, T>, CPUError> {
         let task = Task {
             kernel: kernel_task,
             state: TaskState::Runnable,
-            cpu_context_handle: cpu.create_context()?,
+            cpu_context_handle,
             snapshots: Default::default(),
             _phantom: Default::default(),
         };
-        cpu.save_context(task.cpu_context_handle)?;
         // Insert the mapping. If this doesn't fail we can then insert the actual task at the end
         // of the tasks vector
         let task_index = self.tasks.len();
@@ -157,7 +154,11 @@ where
             .try_insert(task.kernel.task_id(), task_index)
             .map_err(|_| CPUError::TaskExists)?;
         self.tasks.push(task.into());
-        Ok(())
+        Ok(self
+            .tasks
+            .last()
+            .and_then(TaskEntry::task)
+            .expect("We just inserted this"))
     }
 
     pub fn current_task(&self) -> Option<&Task<TaskId, T>> {
@@ -182,5 +183,15 @@ where
 
     pub fn tasks(&self) -> impl Iterator<Item = &Task<TaskId, T>> {
         self.tasks.iter().filter_map(TaskEntry::task)
+    }
+
+    /// Get the task with id `task_id`. Returns `None` if no task with this id exists.
+    pub fn task(
+        &self,
+        task_id: &TaskId,
+    ) -> Option<&Task<TaskId, T>> {
+        self.task_map
+            .get(task_id)
+            .and_then(|task_index| self.tasks.get(*task_index).and_then(TaskEntry::task))
     }
 }

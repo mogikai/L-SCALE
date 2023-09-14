@@ -44,7 +44,7 @@ where
     phantom: PhantomData<&'a CpuT>,
 }
 
-impl<'a, CpuT, Endianness> Scheduler<LinuxKernelTask<Endianness, X86, CpuT>> for LinuxX86Scheduler<'a, CpuT, Endianness>
+impl<'a, CpuT, Endianness> Scheduler for LinuxX86Scheduler<'a, CpuT, Endianness>
 where
     CpuT: CPU + MMU + Hooks<'a>,
     Endianness: ByteOrder + 'static,
