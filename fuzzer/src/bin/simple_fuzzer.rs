@@ -8,8 +8,7 @@ use clap::Parser;
 use log::debug;
 
 use fuzzyemu::emulator::abstractions::cpu::CPU;
-use fuzzyemu::emulator::abstractions::emulator::StopReason::Breakpoint;
-use fuzzyemu::emulator::abstractions::emulator::{Scheduler, SchedulerError};
+use fuzzyemu::emulator::abstractions::emulator::{Scheduler, SchedulerError, StopReason};
 use fuzzyemu::emulator::abstractions::errors::GenericError;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
 use fuzzyemu::emulator::abstractions::kernel_task::KernelTask;
@@ -35,7 +34,7 @@ struct Args {
     system_root: String,
 
     /// The path on the emulated system to the binary that will be emulated initially.
-    #[arg(long, default_value = "/home/user/open62541_server2")]
+    #[arg(long, default_value = "/home/user/open62541_server_release")]
     binary: String,
 
     /// If set to true, the entire execution will be traced and a disassembly is printed for each instruction that is executed.
@@ -103,7 +102,7 @@ fn main() -> Result<(), GenericError> {
         let start = Instant::now();
         let mut result = scheduler.run(None, None);
         debug!("Emulation returned {result:?}");
-        if let Err(SchedulerError::Stopped(Breakpoint)) = result {
+        if let Err(SchedulerError::Stopped(StopReason::Breakpoint)) = result {
             debug!("Creating snapshot");
             scheduler.snapshot()?;
             system.task_manager.borrow().tasks().try_for_each(|task| {

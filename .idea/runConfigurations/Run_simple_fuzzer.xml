@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Run simple_fuzzer" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
-    <option name="command" value="run --package fuzzyfuzz --bin simple_fuzzer -- --binary $PROJECT_DIR$/../../../../../../user/open62541_server_release" />
+    <option name="command" value="run --package fuzzyfuzz --bin simple_fuzzer" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <option name="emulateTerminal" value="true" />
     <option name="channel" value="DEFAULT" />
