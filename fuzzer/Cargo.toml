@@ -10,4 +10,4 @@ fuzzyemu = { path = "../emulator" }
 pretty_env_logger = "*"
 log = "*"
 iced-x86 = "*"
-clap = { version = "4.3.21", features = ["derive"] }
+clap = { version = "4.4.3", features = ["derive"] }

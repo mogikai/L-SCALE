@@ -30,6 +30,10 @@ mod setup;
 mod syscall;
 mod trace;
 
+// TODO: This can probably be generalized to not depend on the system.
+//       For example, we could make the System a generic type and also
+//       provide a generic syscall callback from the outside.
+//       This needs further investigation
 pub struct LinuxX86Scheduler<'a, CpuT, Endianness>
 where
     CpuT: CPU + MMU + Hooks<'a> + Restorable,
@@ -81,6 +85,11 @@ where
         Ok(sched)
     }
 
+    /// Enables trace output for each cpu instruction that is executed.
+    /// This is introduces a very large overhead, so only use it when
+    /// absolutely necessary. It will also most likely quickly flood
+    /// your terminal, so it is recommended to pipe the output into a
+    /// file for later analysis.
     pub fn enable_trace(&mut self) -> Result<(), SchedulerError> {
         let trace_memory = self.system.memory.clone();
         let task_manager = self.system.task_manager.clone();
