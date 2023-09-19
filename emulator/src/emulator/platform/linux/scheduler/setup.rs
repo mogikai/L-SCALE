@@ -14,16 +14,16 @@ where
             timestep_clock.borrow_mut().do_timestep(instruction_count);
         }));
 
-        let task_manager = self.system.task_manager.clone();
+        let syscall_system = self.system.clone();
         cpu.add_syscall_hook(
             EVAddr::from(1),
             EVAddr::from(0),
-            Box::new(move |cpu: &mut CpuT| {
-                let mut task_manager = task_manager.borrow_mut();
+            Box::new(move || {
+                let mut task_manager = syscall_system.task_manager.borrow_mut();
                 let task = task_manager
                     .current_task_mut()
                     .expect("The current task must be in the set of tasks");
-                syscall(cpu, task);
+                syscall(&syscall_system, task);
             }),
         );
 

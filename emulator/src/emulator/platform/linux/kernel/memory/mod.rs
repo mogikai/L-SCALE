@@ -24,7 +24,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
     #[allow(clippy::too_many_arguments)]
     pub fn mmap(
         &mut self,
-        cpu: &mut impl MMU,
         addr: EVAddr,
         length: u64,
         prot: Permission,
@@ -49,7 +48,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
             todo!("Implement MAP_SHARED")
         } else if flags.contains(MMAP_FLAGS::MAP_PRIVATE) {
             Ok(self
-                .mmap_private(cpu, addr, length, prot, flags, fd, offset)?
+                .mmap_private(addr, length, prot, flags, fd, offset)?
                 .into())
         } else if flags.contains(MMAP_FLAGS::MAP_SHARED_VALIDATE) {
             todo!("Implement MAP_SHARED_VALIDATE")
@@ -60,18 +59,16 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn munmap(
         &mut self,
-        mmu: &mut impl MMU,
         addr: EVAddr,
         len: u64,
     ) -> SyscallResult {
         sys_component_mut!(self, memory).unmap(self.task_id, addr, len as usize)?;
-        mmu.flush_tlb()?;
+        sys_component_mut!(self, cpu).flush_tlb()?;
         Ok(0)
     }
 
     pub fn mremap(
         &mut self,
-        mmu: &mut impl MMU,
         old_addr: EVAddr,
         old_len: u64,
         new_len: u64,
@@ -89,9 +86,10 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
             )
         }
 
+        let mut cpu = sys_component_mut!(self, cpu);
         Ok(sys_component_mut!(self, memory)
             .remap(
-                mmu,
+                &mut *cpu,
                 self.task_id,
                 old_addr,
                 old_len as usize,
@@ -104,7 +102,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn mprotect(
         &mut self,
-        mmu: &mut impl MMU,
         start: EVAddr,
         len: u64,
         prot: u64,
@@ -114,7 +111,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
         }
         sys_component_mut!(self, memory).protect(self.task_id, start, len as usize, prot.try_into().unwrap())?;
         // Need to flush existing cache since permissions of cached entries might have changed.
-        mmu.flush_tlb()?;
+        sys_component_mut!(self, cpu).flush_tlb()?;
         Ok(0)
     }
 }
@@ -127,7 +124,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
     #[allow(clippy::too_many_arguments)]
     fn mmap_private(
         &mut self,
-        mmu: &mut impl MMU,
         addr: EVAddr,
         length: u64,
         prot: Permission,
@@ -136,27 +132,27 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
         offset: u64,
     ) -> Result<EVAddr, LinuxKernelError> {
         if flags.contains(MMAP_FLAGS::MAP_ANONYMOUS) {
-            self.mmap_anon(mmu, addr, length, prot, flags, MappingType::PrivateAnonymous)
+            self.mmap_anon(addr, length, prot, flags, MappingType::PrivateAnonymous)
         } else {
-            self.mmap_file_private(mmu, addr, length, prot, flags, fd, offset)
+            self.mmap_file_private(addr, length, prot, flags, fd, offset)
         }
     }
 
     fn mmap_anon(
         &mut self,
-        mmu: &mut impl MMU,
         address: EVAddr,
         size: u64,
         prot: Permission,
         flags: MMAP_FLAGS,
         mapping_type: MappingType,
     ) -> Result<EVAddr, LinuxKernelError> {
+        let mut cpu = sys_component_mut!(self, cpu);
         let size = align4k_up(size as usize);
         let addr = if flags.contains(MMAP_FLAGS::MAP_FIXED) {
             // map fixed overwrites any mappings that already exist in the region so we unmap here.
             sys_component_mut!(self, memory).unmap(self.task_id, address, size)?;
             // Need to flush tlb to let cpu emulator now to re-fetch the addresses
-            mmu.flush_tlb()?;
+            cpu.flush_tlb()?;
 
             sys_component_mut!(self, memory)
                 .map_fixed(self.task_id, address, size, prot, mapping_type)
@@ -169,7 +165,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
         // Map anonymous requires memory being zero initialized.
         sys_component_mut!(self, memory)
-            .accessor(mmu, self.task_id)
+            .accessor(&mut *cpu, self.task_id)
             .write_bytes_unchecked(addr, &vec![0u8; size]);
         Ok(addr)
     }
@@ -177,7 +173,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
     #[allow(clippy::too_many_arguments)]
     fn mmap_file_private(
         &mut self,
-        mmu: &mut impl MMU,
         addr: EVAddr,
         length: u64,
         prot: Permission,
@@ -189,12 +184,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
             Err(LinuxKernelError::EINVAL)?
         }
         let internal_fd = sys_component_mut!(self, fd_map).dup_internal(&self.task_id, &fd)?;
-        let addr = self.mmap_anon(mmu, addr, length, prot, flags, MappingType::PrivateFile(internal_fd))?;
+        let addr = self.mmap_anon(addr, length, prot, flags, MappingType::PrivateFile(internal_fd))?;
         if addr == !EVA_NULL {
             Err(LinuxKernelError::EINVAL)?
         }
 
-        self.write_file_contents(mmu, length, fd, offset, addr)
+        self.write_file_contents(length, fd, offset, addr)
             .map_err(|e| {
                 // Unmap if we encountered an error during writing
                 sys_component_mut!(self, memory)
@@ -208,7 +203,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     fn write_file_contents(
         &mut self,
-        mmu: &mut impl MMU,
         length: u64,
         fd: FD,
         offset: u64,
@@ -221,8 +215,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
         let fd = &mut *fd;
         let data = fd.ops.pread(&mut fd.data, offset, length)?;
 
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory)
-            .accessor(mmu, self.task_id)
+            .accessor(&mut *cpu, self.task_id)
             .write_bytes_unchecked(addr, data.as_slice())?;
         Ok(())
     }

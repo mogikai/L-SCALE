@@ -16,11 +16,11 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
     /// Write syscall. See `man write` for details
     pub fn write(
         &mut self,
-        mmu: &mut impl MMU,
         fd: FD,
         buf: EVAddr,
         size: u64,
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
         file_descriptor_map
@@ -32,7 +32,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
                     .write(
                         &mut fd.data,
                         memory
-                            .accessor(mmu, self.task_id)
+                            .accessor(&mut *cpu, self.task_id)
                             .read_bytes(buf, size as usize)?
                             .as_slice(),
                     )
@@ -44,14 +44,14 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn writev(
         &mut self,
-        mmu: &mut impl MMU,
         fd: FD,
         iovec_ptr: EVAddr,
         iovcnt: u64,
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let memory = memory.accessor(mmu, self.task_id);
+        let memory = memory.accessor(&mut *cpu, self.task_id);
         file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .map_or(Err(LinuxKernelError::EINVAL.into()), |mut fd| {
@@ -77,15 +77,15 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn pread64(
         &mut self,
-        mmu: &mut impl MMU,
         fd: FD,
         buf: EVAddr,
         count: u64,
         pos: u64,
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let mut memory = memory.accessor(mmu, self.task_id);
+        let mut memory = memory.accessor(&mut *cpu, self.task_id);
         let mut fd = file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADF)?;
@@ -96,14 +96,14 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn read(
         &mut self,
-        mmu: &mut impl MMU,
         fd: FD,
         buf: EVAddr,
         count: u64,
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let mut memory = memory.accessor(mmu, self.task_id);
+        let mut memory = memory.accessor(&mut *cpu, self.task_id);
         let mut file = file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EINVAL)?;
@@ -113,13 +113,13 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn fstat(
         &mut self,
-        mmu: &mut impl MMU,
         fd: FD,
         statbuf: EVAddr,
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let mut memory = memory.accessor(mmu, self.task_id);
+        let mut memory = memory.accessor(&mut *cpu, self.task_id);
         let mut file = file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADF)?;
@@ -130,12 +130,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn stat(
         &mut self,
-        mmu: &mut impl MMU,
         filename: EVAddr,
         statbuf: EVAddr,
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(mmu, self.task_id);
+        let mut memory = memory.accessor(&mut *cpu, self.task_id);
         let fname = read_osstring!(memory, filename)?;
         trace!("stat file {:?}", fname);
         let fs = sys_component!(self, filesystem);
@@ -146,14 +146,14 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn openat(
         &mut self,
-        mmu: &mut impl MMU,
         _dfd: FD,
         filename: EVAddr,
         _flags: u64,
         _mode: u64,
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let memory = memory.accessor(mmu, self.task_id);
+        let memory = memory.accessor(&mut *cpu, self.task_id);
         let fname = read_osstring!(memory, filename)?;
         trace!("openat file: {:?}", fname);
         let file = sys_component!(self, filesystem).resolve_last(Path::new(&fname))?;
@@ -176,7 +176,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn statfs(
         &mut self,
-        _: &mut impl CPU,
         path: EVAddr,
         buf: EVAddr,
     ) -> SyscallResult {
@@ -185,15 +184,15 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn newfstatat(
         &mut self,
-        mmu: &mut impl MMU,
         dfd: FD,
         filename: EVAddr,
         statbuf: EVAddr,
         flag: u64,
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let mut memory = memory.accessor(mmu, self.task_id);
+        let mut memory = memory.accessor(&mut *cpu, self.task_id);
         let flags = at_flags::from_bits(flag).ok_or(LinuxKernelError::EINVAL)?;
         if flags.contains(at_flags::AT_EMPTY_PATH) {
             let mut fd = file_descriptor_map
@@ -214,14 +213,14 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn readlinkat(
         &mut self,
-        mmu: &mut impl MMU,
         dirfd: FD,
         pathname: EVAddr,
         buf: EVAddr,
         bufsize: usize,
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(mmu, self.task_id);
+        let mut memory = memory.accessor(&mut *cpu, self.task_id);
         Ok(memory
             .write_bounded(buf, "/home/user/open62541_server_release".as_bytes(), bufsize)?
             .0 as u64)
@@ -229,7 +228,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn close(
         &mut self,
-        _: &mut impl CPU,
         fd: FD,
     ) -> SyscallResult {
         Ok(sys_component_mut!(self, fd_map)

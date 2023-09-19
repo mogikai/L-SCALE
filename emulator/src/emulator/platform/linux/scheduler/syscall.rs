@@ -1,5 +1,7 @@
 use byteorder::ByteOrder;
+use goblin::container::Endian;
 use num_enum::FromPrimitive;
+use std::rc::Rc;
 
 use crate::emulator::abstractions::cpu::{RegisterX86, CPU};
 use crate::emulator::abstractions::emulator::StopReason;
@@ -8,63 +10,70 @@ use crate::emulator::platform::linux::architecture::x86::X86;
 use crate::emulator::platform::linux::kernel::error::SyscallError;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask};
+use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::system::task_manager::Task;
 
 macro_rules! do_syscall {
-    (0, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
+    (0, $system:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
         *$debug_str = format!("() ");
-        $name.$fun($uc)
+        $name.$fun()
     }};
-    (1, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
-        let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
+    (1, $system:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
+        let cpu = $system.cpu.borrow_mut();
+        let rdi = cpu.reg_read(RegisterX86::RDI.into()).unwrap();
+        drop(cpu);
         *$debug_str = format!("(0x{:X}) ", rdi);
-        $name.$fun($uc, rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?)
+        $name.$fun(rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?)
     }};
-    (2, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
-        let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
-        let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
+    (2, $system:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
+        let cpu = $system.cpu.borrow_mut();
+        let rdi = cpu.reg_read(RegisterX86::RDI.into()).unwrap();
+        let rsi = cpu.reg_read(RegisterX86::RSI.into()).unwrap();
+        drop(cpu);
         *$debug_str = format!("(0x{:X}, 0x{:X}) ", rdi, rsi);
         $name.$fun(
-            $uc,
             rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
             rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
         )
     }};
-    (3, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
-        let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
-        let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
-        let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
+    (3, $system:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
+        let cpu = $system.cpu.borrow_mut();
+        let rdi = cpu.reg_read(RegisterX86::RDI.into()).unwrap();
+        let rsi = cpu.reg_read(RegisterX86::RSI.into()).unwrap();
+        let rdx = cpu.reg_read(RegisterX86::RDX.into()).unwrap();
+        drop(cpu);
         *$debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx);
         $name.$fun(
-            $uc,
             rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
             rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
             rdx.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
         )
     }};
-    (4, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
-        let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
-        let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
-        let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
-        let r10 = $uc.reg_read(RegisterX86::R10.into()).unwrap();
+    (4, $system:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
+        let cpu = $system.cpu.borrow_mut();
+        let rdi = cpu.reg_read(RegisterX86::RDI.into()).unwrap();
+        let rsi = cpu.reg_read(RegisterX86::RSI.into()).unwrap();
+        let rdx = cpu.reg_read(RegisterX86::RDX.into()).unwrap();
+        let r10 = cpu.reg_read(RegisterX86::R10.into()).unwrap();
+        drop(cpu);
         *$debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10);
         $name.$fun(
-            $uc,
             rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
             rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
             rdx.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
             r10.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
         )
     }};
-    (5, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
-        let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
-        let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
-        let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
-        let r10 = $uc.reg_read(RegisterX86::R10.into()).unwrap();
-        let r8 = $uc.reg_read(RegisterX86::R8.into()).unwrap();
+    (5, $system:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
+        let cpu = $system.cpu.borrow_mut();
+        let rdi = cpu.reg_read(RegisterX86::RDI.into()).unwrap();
+        let rsi = cpu.reg_read(RegisterX86::RSI.into()).unwrap();
+        let rdx = cpu.reg_read(RegisterX86::RDX.into()).unwrap();
+        let r10 = cpu.reg_read(RegisterX86::R10.into()).unwrap();
+        let r8 = cpu.reg_read(RegisterX86::R8.into()).unwrap();
+        drop(cpu);
         *$debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10, r8);
         $name.$fun(
-            $uc,
             rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
             rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
             rdx.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
@@ -72,16 +81,17 @@ macro_rules! do_syscall {
             r8.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
         )
     }};
-    (6, $uc:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
-        let rdi = $uc.reg_read(RegisterX86::RDI.into()).unwrap();
-        let rsi = $uc.reg_read(RegisterX86::RSI.into()).unwrap();
-        let rdx = $uc.reg_read(RegisterX86::RDX.into()).unwrap();
-        let r10 = $uc.reg_read(RegisterX86::R10.into()).unwrap();
-        let r8 = $uc.reg_read(RegisterX86::R8.into()).unwrap();
-        let r9 = $uc.reg_read(RegisterX86::R9.into()).unwrap();
+    (6, $system:ident, $name:ident::$fun:ident, $debug_str:ident) => {{
+        let cpu = $system.cpu.borrow_mut();
+        let rdi = cpu.reg_read(RegisterX86::RDI.into()).unwrap();
+        let rsi = cpu.reg_read(RegisterX86::RSI.into()).unwrap();
+        let rdx = cpu.reg_read(RegisterX86::RDX.into()).unwrap();
+        let r10 = cpu.reg_read(RegisterX86::R10.into()).unwrap();
+        let r8 = cpu.reg_read(RegisterX86::R8.into()).unwrap();
+        let r9 = cpu.reg_read(RegisterX86::R9.into()).unwrap();
+        drop(cpu);
         *$debug_str = format!("(0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}, 0x{:X}) ", rdi, rsi, rdx, r10, r8, r9);
         $name.$fun(
-            $uc,
             rdi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
             rsi.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
             rdx.try_into().map_err(|_| LinuxKernelError::EINVAL)?,
@@ -94,98 +104,118 @@ macro_rules! do_syscall {
 
 fn do_syscall<Endianness: ByteOrder + 'static, CpuT: CPU + MMU>(
     syscall: SYSCALL,
-    cpu: &mut (impl CPU + MMU),
+    system: &LinuxSystem<Endianness, CpuT>,
     debug_str: &mut String,
     kernel: &mut LinuxKernelTask<Endianness, X86, CpuT>,
 ) -> Result<u64, SyscallError> {
     use SYSCALL::*;
     match syscall {
-        READ => do_syscall!(3, cpu, kernel::read, debug_str),
-        WRITE => do_syscall!(3, cpu, kernel::write, debug_str),
-        CLOSE => do_syscall!(1, cpu, kernel::close, debug_str),
-        STAT => do_syscall!(2, cpu, kernel::stat, debug_str),
-        FSTAT => do_syscall!(2, cpu, kernel::fstat, debug_str),
-        MMAP => do_syscall!(6, cpu, kernel::mmap, debug_str),
-        MPROTECT => do_syscall!(3, cpu, kernel::mprotect, debug_str),
-        MUNMAP => do_syscall!(2, cpu, kernel::munmap, debug_str),
-        BRK => do_syscall!(1, cpu, kernel::brk, debug_str),
-        RT_SIGACTION => do_syscall!(4, cpu, kernel::rt_sigaction, debug_str),
-        RT_SIGPROCMASK => do_syscall!(4, cpu, kernel::rt_sigprocmask, debug_str),
-        IOCTL => do_syscall!(3, cpu, kernel::ioctl, debug_str),
-        PREAD64 => do_syscall!(4, cpu, kernel::pread64, debug_str),
-        WRITEV => do_syscall!(3, cpu, kernel::writev, debug_str),
-        ACCESS => do_syscall!(2, cpu, kernel::access, debug_str),
-        MREMAP => do_syscall!(5, cpu, kernel::mremap, debug_str),
-        GETPID => do_syscall!(0, cpu, kernel::getpid, debug_str),
-        SOCKET => do_syscall!(3, cpu, kernel::socket, debug_str),
-        CONNECT => do_syscall!(3, cpu, kernel::connect, debug_str),
-        ACCEPT => do_syscall!(3, cpu, kernel::accept, debug_str),
-        SENDTO => do_syscall!(6, cpu, kernel::sendto, debug_str),
-        RECVFROM => do_syscall!(6, cpu, kernel::recvfrom, debug_str),
-        SENDMSG => do_syscall!(3, cpu, kernel::sendmsg, debug_str),
-        RECVMSG => do_syscall!(3, cpu, kernel::recvmsg, debug_str),
-        SHUTDOWN => do_syscall!(2, cpu, kernel::shutdown, debug_str),
-        BIND => do_syscall!(3, cpu, kernel::bind, debug_str),
-        LISTEN => do_syscall!(2, cpu, kernel::listen, debug_str),
-        GETSOCKNAME => do_syscall!(3, cpu, kernel::getsockname, debug_str),
-        GETPEERNAME => do_syscall!(3, cpu, kernel::getpeername, debug_str),
-        SOCKETPAIR => do_syscall!(4, cpu, kernel::socketpair, debug_str),
-        SETSOCKOPT => do_syscall!(5, cpu, kernel::setsockopt, debug_str),
-        GETSOCKOPT => do_syscall!(5, cpu, kernel::getsockopt, debug_str),
-        EXECVE => do_syscall!(3, cpu, kernel::execve, debug_str),
-        UNAME => do_syscall!(1, cpu, kernel::uname, debug_str),
-        FCNTL => do_syscall!(3, cpu, kernel::fcntl, debug_str),
-        GETTIMEOFDAY => do_syscall!(2, cpu, kernel::gettimeofday, debug_str),
-        STATFS => do_syscall!(2, cpu, kernel::statfs, debug_str),
-        ARCH_PRCTL => do_syscall!(2, cpu, kernel::arch_prctl, debug_str),
-        GETTID => do_syscall!(0, cpu, kernel::gettid, debug_str),
-        TIME => do_syscall!(1, cpu, kernel::time, debug_str),
-        FUTEX => do_syscall!(6, cpu, kernel::futex, debug_str),
-        EPOLL_CREATE => do_syscall!(1, cpu, kernel::epoll_create, debug_str),
-        SET_TID_ADDRESS => do_syscall!(1, cpu, kernel::set_tid_address, debug_str),
-        FADVISE64 => do_syscall!(4, cpu, kernel::fadvise64, debug_str),
-        CLOCK_GETTIME => do_syscall!(2, cpu, kernel::clock_gettime, debug_str),
+        READ => do_syscall!(3, system, kernel::read, debug_str),
+        WRITE => do_syscall!(3, system, kernel::write, debug_str),
+        CLOSE => do_syscall!(1, system, kernel::close, debug_str),
+        STAT => do_syscall!(2, system, kernel::stat, debug_str),
+        FSTAT => do_syscall!(2, system, kernel::fstat, debug_str),
+        MMAP => do_syscall!(6, system, kernel::mmap, debug_str),
+        MPROTECT => do_syscall!(3, system, kernel::mprotect, debug_str),
+        MUNMAP => do_syscall!(2, system, kernel::munmap, debug_str),
+        BRK => do_syscall!(1, system, kernel::brk, debug_str),
+        RT_SIGACTION => do_syscall!(4, system, kernel::rt_sigaction, debug_str),
+        RT_SIGPROCMASK => do_syscall!(4, system, kernel::rt_sigprocmask, debug_str),
+        IOCTL => do_syscall!(3, system, kernel::ioctl, debug_str),
+        PREAD64 => do_syscall!(4, system, kernel::pread64, debug_str),
+        WRITEV => do_syscall!(3, system, kernel::writev, debug_str),
+        ACCESS => do_syscall!(2, system, kernel::access, debug_str),
+        MREMAP => do_syscall!(5, system, kernel::mremap, debug_str),
+        GETPID => do_syscall!(0, system, kernel::getpid, debug_str),
+        SOCKET => do_syscall!(3, system, kernel::socket, debug_str),
+        CONNECT => do_syscall!(3, system, kernel::connect, debug_str),
+        ACCEPT => do_syscall!(3, system, kernel::accept, debug_str),
+        SENDTO => do_syscall!(6, system, kernel::sendto, debug_str),
+        RECVFROM => do_syscall!(6, system, kernel::recvfrom, debug_str),
+        SENDMSG => do_syscall!(3, system, kernel::sendmsg, debug_str),
+        RECVMSG => do_syscall!(3, system, kernel::recvmsg, debug_str),
+        SHUTDOWN => do_syscall!(2, system, kernel::shutdown, debug_str),
+        BIND => do_syscall!(3, system, kernel::bind, debug_str),
+        LISTEN => do_syscall!(2, system, kernel::listen, debug_str),
+        GETSOCKNAME => do_syscall!(3, system, kernel::getsockname, debug_str),
+        GETPEERNAME => do_syscall!(3, system, kernel::getpeername, debug_str),
+        SOCKETPAIR => do_syscall!(4, system, kernel::socketpair, debug_str),
+        SETSOCKOPT => do_syscall!(5, system, kernel::setsockopt, debug_str),
+        GETSOCKOPT => do_syscall!(5, system, kernel::getsockopt, debug_str),
+        EXECVE => do_syscall!(3, system, kernel::execve, debug_str),
+        UNAME => do_syscall!(1, system, kernel::uname, debug_str),
+        FCNTL => do_syscall!(3, system, kernel::fcntl, debug_str),
+        GETTIMEOFDAY => do_syscall!(2, system, kernel::gettimeofday, debug_str),
+        STATFS => do_syscall!(2, system, kernel::statfs, debug_str),
+        ARCH_PRCTL => do_syscall!(2, system, kernel::arch_prctl, debug_str),
+        GETTID => do_syscall!(0, system, kernel::gettid, debug_str),
+        TIME => do_syscall!(1, system, kernel::time, debug_str),
+        FUTEX => do_syscall!(6, system, kernel::futex, debug_str),
+        EPOLL_CREATE => do_syscall!(1, system, kernel::epoll_create, debug_str),
+        SET_TID_ADDRESS => do_syscall!(1, system, kernel::set_tid_address, debug_str),
+        FADVISE64 => do_syscall!(4, system, kernel::fadvise64, debug_str),
+        CLOCK_GETTIME => do_syscall!(2, system, kernel::clock_gettime, debug_str),
         EXIT_GROUP => {
-            let exitcode = cpu.reg_read(RegisterX86::RDI.into()).unwrap();
-            cpu.stop(StopReason::ProcessExit(exitcode)).unwrap();
+            let exitcode = system
+                .cpu
+                .borrow_mut()
+                .reg_read(RegisterX86::RDI.into())
+                .unwrap();
+            system
+                .cpu
+                .borrow_mut()
+                .stop(StopReason::ProcessExit(exitcode))
+                .unwrap();
             Ok(0)
         } // TODO: Implement properly and propagate exit code
-        EPOLL_WAIT => do_syscall!(4, cpu, kernel::epoll_wait, debug_str),
-        EPOLL_CTL => do_syscall!(4, cpu, kernel::epoll_ctl, debug_str),
+        EPOLL_WAIT => do_syscall!(4, system, kernel::epoll_wait, debug_str),
+        EPOLL_CTL => do_syscall!(4, system, kernel::epoll_ctl, debug_str),
         TGKILL => {
             // TODO: Implement properly by sending a signal to the thread in question
             //       Currently we just stop the calling process for the integration
             //       tests to work with the assert macro
-            let signal = cpu.reg_read(RegisterX86::RDX.into()).unwrap();
+            let signal = system
+                .cpu
+                .borrow_mut()
+                .reg_read(RegisterX86::RDX.into())
+                .unwrap();
             if signal == 6 {
-                cpu.stop(StopReason::Killed(signal)).unwrap();
+                system
+                    .cpu
+                    .borrow_mut()
+                    .stop(StopReason::Killed(signal))
+                    .unwrap();
                 Ok(0)
             } else {
                 todo!()
             }
         }
-        OPENAT => do_syscall!(4, cpu, kernel::openat, debug_str),
-        NEWFSTATAT => do_syscall!(4, cpu, kernel::newfstatat, debug_str),
-        READLINKAT => do_syscall!(4, cpu, kernel::readlinkat, debug_str),
-        SET_ROBUST_LIST => do_syscall!(2, cpu, kernel::set_robust_list, debug_str),
-        EPOLL_PWAIT => do_syscall!(6, cpu, kernel::epoll_pwait, debug_str),
-        SIGNALFD4 => do_syscall!(4, cpu, kernel::signalfd4, debug_str),
-        EPOLL_CREATE1 => do_syscall!(1, cpu, kernel::epoll_create1, debug_str),
-        PRLIMIT64 => do_syscall!(4, cpu, kernel::prlimit64, debug_str),
-        GETRANDOM => do_syscall!(3, cpu, kernel::getrandom, debug_str),
-        RSEQ => do_syscall!(4, cpu, kernel::rseq, debug_str),
+        OPENAT => do_syscall!(4, system, kernel::openat, debug_str),
+        NEWFSTATAT => do_syscall!(4, system, kernel::newfstatat, debug_str),
+        READLINKAT => do_syscall!(4, system, kernel::readlinkat, debug_str),
+        SET_ROBUST_LIST => do_syscall!(2, system, kernel::set_robust_list, debug_str),
+        EPOLL_PWAIT => do_syscall!(6, system, kernel::epoll_pwait, debug_str),
+        SIGNALFD4 => do_syscall!(4, system, kernel::signalfd4, debug_str),
+        EPOLL_CREATE1 => do_syscall!(1, system, kernel::epoll_create1, debug_str),
+        PRLIMIT64 => do_syscall!(4, system, kernel::prlimit64, debug_str),
+        GETRANDOM => do_syscall!(3, system, kernel::getrandom, debug_str),
+        RSEQ => do_syscall!(4, system, kernel::rseq, debug_str),
         _ => Err(SyscallError::NotImplemented),
     }
 }
 
 pub(super) fn syscall<Endianness: ByteOrder + 'static, CpuT: CPU + MMU>(
-    cpu: &mut CpuT,
+    system: &LinuxSystem<Endianness, CpuT>,
     task: &mut Task<TaskId, LinuxKernelTask<Endianness, X86, CpuT>>,
 ) {
-    let rax = cpu.reg_read(RegisterX86::RAX.into()).unwrap();
+    let rax = system
+        .cpu
+        .borrow_mut()
+        .reg_read(RegisterX86::RAX.into())
+        .unwrap();
     let mut debug_str = String::new();
     let syscall = SYSCALL::from(rax);
-    let result = do_syscall(SYSCALL::from(rax), cpu, &mut debug_str, task.kernel_mut());
+    let result = do_syscall(SYSCALL::from(rax), &system, &mut debug_str, task.kernel_mut());
     let rax = match result {
         Ok(rax) => {
             debug_str = format!("SYSCALL: {:?} {} -> 0x{:X}", syscall, debug_str, rax);
@@ -199,20 +229,43 @@ pub(super) fn syscall<Endianness: ByteOrder + 'static, CpuT: CPU + MMU>(
         }
         Err(SyscallError::Yield) => {
             debug!("Syscall is yielding to scheduler");
-            let rip = cpu.reg_read(RegisterX86::RIP.into()).unwrap().into();
+            let rip = system
+                .cpu
+                .borrow_mut()
+                .reg_read(RegisterX86::RIP.into())
+                .unwrap()
+                .into();
             task.suspend(rip);
-            cpu.stop(StopReason::Yield(rip)).unwrap();
+            system
+                .cpu
+                .borrow_mut()
+                .stop(StopReason::Yield(rip))
+                .unwrap();
             None
         }
         Err(SyscallError::NotImplemented) => {
             error!("SYSCALL NOT IMPLEMENTED: {:?}", syscall);
-            cpu.stop(StopReason::MissingSyscall(cpu.reg_read(RegisterX86::RIP.into()).unwrap().into()))
+            system
+                .cpu
+                .borrow_mut()
+                .stop(StopReason::MissingSyscall(
+                    system
+                        .cpu
+                        .borrow_mut()
+                        .reg_read(RegisterX86::RIP.into())
+                        .unwrap()
+                        .into(),
+                ))
                 .unwrap();
             None
         }
     };
     if let Some(rax) = rax {
-        cpu.reg_write(RegisterX86::RAX.into(), rax).unwrap();
+        system
+            .cpu
+            .borrow_mut()
+            .reg_write(RegisterX86::RAX.into(), rax)
+            .unwrap();
     }
 }
 

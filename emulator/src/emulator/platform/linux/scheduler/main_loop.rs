@@ -55,10 +55,14 @@ where
         timeout: Option<Duration>,
         instruction_count: Option<usize>,
     ) -> Result<Option<StopReason>, CPUError> {
-        let result = self
-            .cpu
-            .borrow_mut()
-            .emulate(None, timeout, instruction_count);
+        // We make sure that cpu is not already mutable borrowed.
+        // Then we take the pointer and call emulate, such that callbacks inside
+        // the emulation can still borrow the cpu where needed.
+        let cpu = unsafe {
+            self.cpu.try_borrow_mut().map_err(|_| CPUError::Unknown)?;
+            &mut *self.cpu.as_ptr()
+        };
+        let result = cpu.emulate(None, timeout, instruction_count);
         match result {
             Err(CPUError::Stopped(reason)) => Ok(Some(reason)),
             Err(e) => Err(e),

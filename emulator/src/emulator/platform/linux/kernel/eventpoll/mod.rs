@@ -27,7 +27,6 @@ mod fd_ops;
 impl<Endianness: ByteOrder, Arch: Architecture, CpuT: CPU + MMU> LinuxKernelTask<Endianness, Arch, CpuT> {
     pub fn epoll_create(
         &mut self,
-        _: &mut impl CPU,
         size: u64,
     ) -> SyscallResult {
         todo!()
@@ -35,7 +34,6 @@ impl<Endianness: ByteOrder, Arch: Architecture, CpuT: CPU + MMU> LinuxKernelTask
 
     pub fn epoll_wait(
         &mut self,
-        mmu: &mut impl MMU,
         epfd: FD,
         events: EVAddr, // epoll_event*
         maxevents: u64,
@@ -88,8 +86,9 @@ impl<Endianness: ByteOrder, Arch: Architecture, CpuT: CPU + MMU> LinuxKernelTask
             Err(SyscallError::Yield)?
         }
 
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(mmu, self.task_id);
+        let mut memory = memory.accessor(&mut *cpu, self.task_id);
 
         memory.write(events, triggered_events.as_slice());
 
@@ -98,15 +97,15 @@ impl<Endianness: ByteOrder, Arch: Architecture, CpuT: CPU + MMU> LinuxKernelTask
 
     pub fn epoll_ctl(
         &mut self,
-        mmu: &mut impl MMU,
         epfd: FD,
         op: u64,
         fd: FD,
         event: EVAddr, // epoll_event*
     ) -> SyscallResult {
         let mut fd_map = sys_component_mut!(self, fd_map);
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let memory = memory.accessor(mmu, self.task_id);
+        let memory = memory.accessor(&mut *cpu, self.task_id);
 
         let op = EPOLL_OPCODES::try_from_primitive(op).map_err(|_| LinuxKernelError::EINVAL)?;
 
@@ -202,7 +201,6 @@ impl<Endianness: ByteOrder, Arch: Architecture, CpuT: CPU + MMU> LinuxKernelTask
     #[allow(clippy::too_many_arguments)]
     pub fn epoll_pwait(
         &mut self,
-        _: &mut impl CPU,
         epfd: u64,
         events: EVAddr, // epoll_event*
         maxevents: u64,
@@ -219,7 +217,6 @@ impl<Endianness: ByteOrder, Arch: Architecture, CpuT: CPU + MMU> LinuxKernelTask
 
     pub fn epoll_create1(
         &mut self,
-        _: &mut impl CPU,
         flags: u64,
     ) -> SyscallResult {
         let mut fd = FileDescriptor::new(Box::new(EpollOps::new()));

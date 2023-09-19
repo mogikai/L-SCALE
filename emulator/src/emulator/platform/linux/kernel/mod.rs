@@ -337,7 +337,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn brk(
         &mut self,
-        mmu: &impl MMU,
         addr: EVAddr,
     ) -> SyscallResult {
         let mut memory = sys_component_mut!(self, memory);
@@ -351,12 +350,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn arch_prctl(
         &mut self,
-        cpu: &mut (impl CPU + MMU),
         code: u64,
         addr: EVAddr,
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let memory = memory.accessor(cpu, self.task_id);
+        let memory = memory.accessor(&mut *cpu, self.task_id);
         match code {
             0x1001 => {
                 //ARCH_SET_GS
@@ -375,21 +374,18 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
         }
     }
 
-    pub fn gettid(
-        &mut self,
-        _: &mut impl CPU,
-    ) -> SyscallResult {
+    pub fn gettid(&mut self) -> SyscallResult {
         // TODO: Handle tid separately once threads are implemented
         Ok(self.task_id.tid.into())
     }
 
     pub fn time(
         &mut self,
-        mmu: &mut impl MMU,
         tloc: EVAddr,
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         sys_component_mut!(self, memory)
-            .accessor(mmu, self.task_id)
+            .accessor(&mut *cpu, self.task_id)
             .write_direct(tloc, &(sys_component!(self, clock).time().as_secs() as i64))?;
         Ok(0)
     }
@@ -397,7 +393,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
     #[allow(clippy::too_many_arguments)]
     pub fn futex(
         &mut self,
-        mmu: &impl MMU,
         uaddr: EVAddr,
         futex_op: u64,
         val: u64,
@@ -412,7 +407,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn clock_gettime(
         &mut self,
-        mmu: &mut impl MMU,
         clk_id: u64,
         tp: EVAddr,
     ) -> SyscallResult {
@@ -421,24 +415,21 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
             tv_sec: time.as_secs() as i64,
             tv_nsec: time.subsec_nanos() as i64,
         };
+        let mut cpu = sys_component_mut!(self, cpu);
         sys_component_mut!(self, memory)
-            .accessor(mmu, self.task_id)
+            .accessor(&mut *cpu, self.task_id)
             .write(tp, &ts)
             .unwrap();
         Ok(0)
     }
 
-    pub fn getpid(
-        &mut self,
-        _: &mut impl CPU,
-    ) -> SyscallResult {
+    pub fn getpid(&mut self) -> SyscallResult {
         // TODO: Implement multi threading / processing
         Ok(self.task_id.pid.into())
     }
 
     pub fn execve(
         &mut self,
-        _: &mut impl CPU,
         filename: EVAddr,
         argv: EVAddr,
         envp: EVAddr,
@@ -449,12 +440,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn uname(
         &mut self,
-        mmu: &mut impl MMU,
         buf: EVAddr,
     ) -> SyscallResult {
         //TODO check if address is mapped and has space for struct new_utsname
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(mmu, self.task_id);
+        let mut memory = memory.accessor(&mut *cpu, self.task_id);
         memory.write_direct(buf, "Linux")?;
         memory.write_direct(buf + 65, "ILT792")?;
         memory.write_direct(buf + 2 * 65, "5.4.0-110-generic")?;
@@ -466,7 +457,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn fcntl(
         &mut self,
-        _: &mut impl CPU,
         fd: FD,
         cmd: u64,
         arg: u64,
@@ -479,7 +469,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn gettimeofday(
         &mut self,
-        mmu: &mut impl MMU,
         tv: EVAddr,
         tz: EVAddr,
     ) -> SyscallResult {
@@ -494,15 +483,15 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
             tv_sec: time.as_secs() as i64,
             tv_usec: time.subsec_micros() as i64,
         };
+        let mut cpu = sys_component_mut!(self, cpu);
         sys_component_mut!(self, memory)
-            .accessor(mmu, self.task_id)
+            .accessor(&mut *cpu, self.task_id)
             .write(tv, &timeval)?;
         Ok(0)
     }
 
     pub fn access(
         &mut self,
-        _: &mut impl CPU,
         _filename: u64,
         _mode: u64,
     ) -> SyscallResult {
@@ -511,17 +500,15 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn set_tid_address(
         &mut self,
-        uc: &mut impl CPU,
         tidptr: EVAddr,
     ) -> SyscallResult {
         /* todo NULL check */
         self.clear_child_tid = Some(tidptr);
-        self.getpid(uc)
+        self.getpid()
     }
 
     pub fn fadvise64(
         &mut self,
-        uc: &impl CPU,
         fd: u64,
         offset: u64,
         len: u64,
@@ -536,7 +523,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn set_robust_list(
         &mut self,
-        _: &mut impl CPU,
         robust_list_head: EVAddr,
         size: u64,
     ) -> SyscallResult {
@@ -552,7 +538,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn signalfd4(
         &mut self,
-        mmu: &mut impl MMU,
         fd: u64,
         mask: EVAddr,
         sizemask: u64,
@@ -566,8 +551,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
             return Err(LinuxKernelError::EINVAL.into());
         }
 
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(mmu, self.task_id);
+        let mut memory = memory.accessor(&mut *cpu, self.task_id);
         if sizemask != 8 {
             //todo architure specific
             Err(LinuxKernelError::EINVAL)?
@@ -584,16 +570,16 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn prlimit64(
         &mut self,
-        mmu: &mut impl MMU,
         pid: u64,
         resource: u64,
         new_rlim: EVAddr,
         old_rlim: EVAddr,
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let new_rlim: Option<Rlimit> = if new_rlim != EVA_NULL {
             Some(
                 sys_component_mut!(self, memory)
-                    .accessor(mmu, self.task_id)
+                    .accessor(&mut *cpu, self.task_id)
                     .read(new_rlim)?,
             )
         } else {
@@ -627,21 +613,21 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
             RLIMIT::INVALID => todo!(),
         };
         sys_component_mut!(self, memory)
-            .accessor(mmu, self.task_id)
+            .accessor(&mut *cpu, self.task_id)
             .write(old_rlim, &rlimit)?;
         Ok(0)
     }
 
     pub fn rt_sigaction(
         &mut self,
-        mmu: &mut impl MMU,
         signum: u64,
         act_ptr: EVAddr,
         old_ptr: u64,
         sigactionsize: u64,
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let memory = memory.accessor(mmu, self.task_id);
+        let memory = memory.accessor(&mut *cpu, self.task_id);
         // TODO: directly read the decoded sigaction. Use associated type for Arch and then decode this type with the
         //       generic read functions in the memory accessor
         let action = memory.read_bytes(act_ptr, 32)?; //todo make arch dependent
@@ -652,14 +638,14 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn rt_sigprocmask(
         &mut self,
-        mmu: &mut impl MMU,
         how: u64,
         new_set: EVAddr,
         old_set: EVAddr,
         sigsetsize: u64,
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(mmu, self.task_id);
+        let mut memory = memory.accessor(&mut *cpu, self.task_id);
         if sigsetsize != 8 {
             //todo architure specific
             Err(LinuxKernelError::EINVAL)?
@@ -683,7 +669,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn ioctl(
         &mut self,
-        _: &mut impl CPU,
         fd: u64,
         request: u64,
         data: EVAddr,
@@ -694,7 +679,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn getrandom(
         &mut self,
-        mmu: &mut impl MMU,
         buf: EVAddr,
         buflen: u64,
         flags: u64,
@@ -702,15 +686,15 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
         // TODO: Get random data from !deterministic! source controlled by user (the fuzzer)
         //       Random sources are also a form of input to the SUT
         let data = vec![0u8; buflen as usize];
+        let mut cpu = sys_component_mut!(self, cpu);
         sys_component_mut!(self, memory)
-            .accessor(mmu, self.task_id)
+            .accessor(&mut *cpu, self.task_id)
             .write_direct(buf, &data)?;
         Ok(buflen)
     }
 
     pub fn rseq(
         &mut self,
-        _: &mut impl CPU,
         rseq: EVAddr,
         rseq_len: u64,
         flags: u64,

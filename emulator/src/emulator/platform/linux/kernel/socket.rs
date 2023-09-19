@@ -23,7 +23,6 @@ use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRea
 impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> LinuxKernelTask<Endianness, Arch, CpuT> {
     pub fn socket(
         &mut self,
-        _: &mut impl CPU,
         family: u64,
         typ: u64,
         protocol: u64,
@@ -46,13 +45,13 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn connect(
         &mut self,
-        mmu: &mut impl MMU,
         fd: FD,
         uservaddr: EVAddr,
         addrlen: u64,
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(mmu, self.task_id);
+        let mut memory = memory.accessor(&mut *cpu, self.task_id);
 
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
         let mut fd = file_descriptor_map
@@ -68,13 +67,13 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn accept(
         &mut self,
-        mmu: &mut impl MMU,
         fd: FD,
         upeer_sockaddr: EVAddr, // sockaddr*
         upeer_addrlen: EVAddr,  // int*
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(mmu, self.task_id);
+        let mut memory = memory.accessor(&mut *cpu, self.task_id);
 
         let mut fd_map = sys_component_mut!(self, fd_map);
 
@@ -100,7 +99,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
     #[allow(clippy::too_many_arguments)]
     pub fn sendto(
         &mut self,
-        mmu: &mut impl MMU,
         fd: FD,
         buf: EVAddr,       // void*
         len: u64,          // size_t
@@ -108,9 +106,10 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
         dest_addr: EVAddr, // sockaddr*
         dest_addr_len: u64,
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let memory = memory.accessor(mmu, self.task_id);
+        let memory = memory.accessor(&mut *cpu, self.task_id);
         let sockaddr: Option<Sockaddr> = if dest_addr_len != 0 && dest_addr != EVA_NULL {
             Some(memory.read_bounded(dest_addr, dest_addr_len as usize)?)
         } else {
@@ -128,7 +127,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
     #[allow(clippy::too_many_arguments)]
     pub fn recvfrom(
         &mut self,
-        mmu: &mut impl MMU,
         fd: FD,
         ubuf: EVAddr,     // void*
         size: u64,        // size_t
@@ -136,8 +134,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
         addr: EVAddr,     // sockaddr*
         addr_len: EVAddr, // int*
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(mmu, self.task_id);
+        let mut memory = memory.accessor(&mut *cpu, self.task_id);
 
         let fd_map = sys_component!(self, fd_map);
         let mut fd = fd_map
@@ -159,7 +158,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn sendmsg(
         &mut self,
-        _: &mut impl CPU,
         fd: FD,
         msg: EVAddr, // msghdr*
         flags: u64,  // unsigned int
@@ -169,14 +167,14 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn recvmsg(
         &mut self,
-        mmu: &mut impl MMU,
         fd: FD,
         msg: EVAddr, // msghdr*
         flags: u64,  // unsigned int
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let mut memory = memory.accessor(mmu, self.task_id);
+        let mut memory = memory.accessor(&mut *cpu, self.task_id);
         let msghdr: user_msghdr = memory.read(msg)?;
         let addr: Sockaddr = memory.read(msghdr.msg_name)?;
         let iovec: Vec<iovec> = memory.read_n(msghdr.msg_iov, msghdr.msg_iovlen as usize)?;
@@ -203,7 +201,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn shutdown(
         &mut self,
-        _: &mut impl CPU,
         fd: FD,
         how: u64,
     ) -> SyscallResult {
@@ -212,14 +209,14 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn bind(
         &mut self,
-        mmu: &mut impl MMU,
         fd: FD,
         umyaddr: EVAddr, // sockaddr*
         addrlen: u64,
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let memory = memory.accessor(mmu, self.task_id);
+        let memory = memory.accessor(&mut *cpu, self.task_id);
         let mut fd = file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADF)?;
@@ -236,7 +233,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn listen(
         &mut self,
-        _: &mut impl CPU,
         fd: FD,
         backlog: u64,
     ) -> SyscallResult {
@@ -257,7 +253,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn getsockname(
         &mut self,
-        mmu: &mut impl MMU,
         fd: FD,
         usockaddr: EVAddr,     // sockaddr*
         usockaddr_len: EVAddr, // int*
@@ -268,15 +263,15 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
             .ok_or(LinuxKernelError::EBADFD)?;
         let fd = &mut *fd;
         let sockaddr = fd.ops.getsockname(&mut fd.data)?;
+        let mut cpu = sys_component_mut!(self, cpu);
         sys_component_mut!(self, memory)
-            .accessor(mmu, self.task_id)
+            .accessor(&mut *cpu, self.task_id)
             .write(usockaddr, sockaddr)?;
         Ok(0)
     }
 
     pub fn getpeername(
         &mut self,
-        _: &mut impl CPU,
         fd: FD,
         usockaddr: EVAddr,     // sockaddr*
         usockaddr_len: EVAddr, // int*
@@ -286,7 +281,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn socketpair(
         &mut self,
-        _: &mut impl CPU,
         family: u64,
         typ: u64,
         protocol: u64,
@@ -297,16 +291,16 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn setsockopt(
         &mut self,
-        mmu: &mut impl MMU,
         fd: FD,
         level: u64,
         optname: u64,
         optval: EVAddr, // char*
         optlen: u64,
     ) -> SyscallResult {
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let memory = memory.accessor(mmu, self.task_id);
+        let memory = memory.accessor(&mut *cpu, self.task_id);
         let opt_data = memory.read_bytes(optval, optlen as usize)?;
         // TODO: Handle sockopts correctly
         let mut fd = file_descriptor_map
@@ -319,7 +313,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn getsockopt(
         &mut self,
-        _: &mut impl CPU,
         fd: FD,
         level: u64,
         optname: u64,
@@ -331,7 +324,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn accept4(
         &mut self,
-        _: &mut impl CPU,
         fd: FD,
         upeer_sockaddr: EVAddr, // sockaddr*
         upeer_addrlen: EVAddr,  // int*
@@ -342,7 +334,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn recvmmsg(
         &mut self,
-        _: &mut impl CPU,
         fd: FD,
         mmsg: EVAddr,    // mmsghdr*
         vlen: u64,       // unsigned int
@@ -354,7 +345,6 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn sendmmsg(
         &mut self,
-        _: &mut impl CPU,
         fd: FD,
         mmsg: EVAddr, // mmsghdr*
         vlen: u64,    // unsigned int

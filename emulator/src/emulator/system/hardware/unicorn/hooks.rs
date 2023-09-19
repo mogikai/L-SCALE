@@ -14,17 +14,12 @@ impl<'a> Hooks<'a> for UCWrapper<'a> {
         &mut self,
         start: EVAddr,
         end: EVAddr,
-        mut hook: Box<dyn FnMut(&mut Self) + 'a>,
+        mut hook: Box<dyn FnMut() + 'a>,
     ) -> Result<(), CPUError> {
         // The trampoline takes ownership of the hook. The trampoline is then owned by the unicorn instance for as long
         // as the UCWrapper instance is alive.
         let trampoline = move |uc: &mut Unicorn<*mut UCWrapper<'a>>| {
-            // This is safe because the lifetime of unicorn and UCWrapper have a  1:1 relationship
-            // Mutable access is also fine, since the unicorn callback is expected
-            // to mutate stuff in the unicorn instance during callbacks.
-            // The only other mutable access can come from UCWrapper itself
-            let data = unsafe { &mut **uc.get_data_mut() };
-            hook(data);
+            hook();
         };
         // TODO: Store hook id so we can remove it?
         let _hook = self

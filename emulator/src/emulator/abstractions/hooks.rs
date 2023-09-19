@@ -14,7 +14,7 @@ pub trait Hooks<'a> {
         &mut self,
         start: EVAddr,
         end: EVAddr,
-        syscall: Box<dyn FnMut(&mut Self) + 'a>,
+        syscall: Box<dyn FnMut() + 'a>,
     ) -> Result<(), CPUError>;
 
     // TODO: This needs to be moved to the tlb since we want to hook the virtual address space

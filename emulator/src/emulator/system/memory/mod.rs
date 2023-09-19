@@ -485,7 +485,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         address: EVAddr,
         size: usize,
     ) -> Result<(), MemoryError> {
-        if !helpers::is4kaligned(address) || !helpers::is4kaligned(size) {
+        if !is4kaligned(address) || !is4kaligned(size) {
             Err(MemoryError::InvalidAlignment)?
         }
         if size == 0 {
