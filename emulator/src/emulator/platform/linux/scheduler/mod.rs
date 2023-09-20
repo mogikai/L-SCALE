@@ -40,7 +40,6 @@ where
     Endianness: ByteOrder,
 {
     system: LinuxSystem<Endianness, CpuT>,
-    cpu: Rc<RefCell<CpuT>>,
     phantom: PhantomData<&'a CpuT>,
 }
 
@@ -66,15 +65,12 @@ where
     pub fn new(
         system: LinuxSystem<Endianness, CpuT>,
         initial_task: LinuxKernelTask<Endianness, X86, CpuT>,
-        cpu: Rc<RefCell<CpuT>>,
         binary_path: PathBuf,
         binary_args: &[&str],
         binary_env: &[&str],
     ) -> Result<LinuxX86Scheduler<'a, CpuT, Endianness>, SchedulerError> {
-        let cpu_context_handle = cpu.borrow_mut().create_context()?;
         let mut sched = LinuxX86Scheduler {
             system,
-            cpu,
             phantom: Default::default(),
         };
 
@@ -93,7 +89,7 @@ where
     pub fn enable_trace(&mut self) -> Result<(), SchedulerError> {
         let trace_memory = self.system.memory.clone();
         let task_manager = self.system.task_manager.clone();
-        self.cpu.borrow_mut().add_code_hook(
+        self.system.cpu.borrow_mut().add_code_hook(
             1.into(),
             0.into(),
             Box::new(move |uc, address, size| {

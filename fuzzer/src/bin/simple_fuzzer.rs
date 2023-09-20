@@ -78,15 +78,8 @@ fn main() -> Result<(), GenericError> {
         // kernel.borrow_mut().add_replacement_handle(0, demo_handle);
         let args = [];
         let env = ["SHELL=/bin/sh", "LD_DEBUG=all", "LD_BIND_NOW=false"];
-        let mut scheduler = LinuxX86Scheduler::new(
-            system.clone(),
-            initial_task,
-            cpu.clone(),
-            PathBuf::from(&pargs.binary),
-            &args,
-            &env,
-        )
-        .unwrap();
+        let mut scheduler =
+            LinuxX86Scheduler::new(system.clone(), initial_task, PathBuf::from(&pargs.binary), &args, &env).unwrap();
 
         if pargs.decode {
             scheduler.enable_trace().unwrap();

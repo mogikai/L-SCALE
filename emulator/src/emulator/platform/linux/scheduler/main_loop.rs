@@ -34,7 +34,7 @@ where
 
     fn pre_task(&mut self) -> Result<(), SchedulerError> {
         let mut task_manager = self.system.task_manager.borrow_mut();
-        let mut cpu = self.cpu.borrow_mut();
+        let mut cpu = self.system.cpu.borrow_mut();
 
         let task = task_manager
             .current_task()
@@ -55,12 +55,12 @@ where
         timeout: Option<Duration>,
         instruction_count: Option<usize>,
     ) -> Result<Option<StopReason>, CPUError> {
-        // We make sure that cpu is not already mutable borrowed.
+        // We make sure that cpu is not already mutably borrowed.
         // Then we take the pointer and call emulate, such that callbacks inside
         // the emulation can still borrow the cpu where needed.
         let cpu = unsafe {
-            self.cpu.try_borrow_mut().map_err(|_| CPUError::Unknown)?;
-            &mut *self.cpu.as_ptr()
+            self.system.cpu.borrow_mut();
+            &mut *self.system.cpu.as_ptr()
         };
         let result = cpu.emulate(None, timeout, instruction_count);
         match result {
@@ -76,7 +76,7 @@ where
     ) -> Result<(), SchedulerError> {
         // Save all the context after we are done executing the scheduled task
         let mut task_manager = self.system.task_manager.borrow_mut();
-        let mut cpu = self.cpu.borrow_mut();
+        let mut cpu = self.system.cpu.borrow_mut();
 
         let task = task_manager
             .current_task_mut()

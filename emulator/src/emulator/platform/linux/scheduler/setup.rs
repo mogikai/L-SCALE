@@ -6,7 +6,7 @@ where
     Endianness: ByteOrder + 'static,
 {
     pub(super) fn setup_cpu(&mut self) -> Result<(), SchedulerError> {
-        let mut cpu = self.cpu.borrow_mut();
+        let mut cpu = self.system.cpu.borrow_mut();
 
         // TODO: Potentially move this to the clock setup?
         let timestep_clock = self.system.clock.clone();
@@ -61,14 +61,14 @@ where
     ) -> Result<(), SchedulerError> {
         initial_task.add_stdio_handles();
 
-        let mut cpu = self.cpu.borrow_mut();
         // TODO: Do more specific error mapping
         initial_task
-            .load_binary(&mut *cpu, binary_path.as_path(), binary_args, binary_env)
+            .load_binary(binary_path.as_path(), binary_args, binary_env)
             .map_err(|_| SchedulerError::Unknown)?;
         debug!("Loaded initial binary");
-        let mut task_manager = self.system.task_manager.borrow_mut();
 
+        let mut task_manager = self.system.task_manager.borrow_mut();
+        let mut cpu = self.system.cpu.borrow_mut();
         let context_handle = cpu.create_context()?;
         let inserted = task_manager.new_task(initial_task, context_handle)?;
         cpu.save_context(inserted.context_handle())?;

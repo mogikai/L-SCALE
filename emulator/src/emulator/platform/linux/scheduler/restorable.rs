@@ -15,8 +15,7 @@ where
     Endianness: 'static + ByteOrder,
 {
     fn snapshot(&mut self) -> Result<(), GenericError> {
-        self.system.snapshot()?;
-        self.cpu.borrow_mut().snapshot()
+        self.system.snapshot()
     }
 
     fn restore_and_discard(&mut self) -> Result<(), GenericError> {
@@ -24,7 +23,6 @@ where
     }
 
     fn restore(&mut self) -> Result<(), GenericError> {
-        self.system.restore()?;
-        self.cpu.borrow_mut().restore()
+        self.system.restore()
     }
 }

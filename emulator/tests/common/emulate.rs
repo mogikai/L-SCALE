@@ -34,8 +34,7 @@ pub fn emulate(
 
     let args = [];
     let env = ["SHELL=/bin/sh", "LD_BIND_NOW=true"];
-    let mut scheduler =
-        LinuxX86Scheduler::new(system, initial_task, cpu.clone(), target_path.to_path_buf(), &args, &env).unwrap();
+    let mut scheduler = LinuxX86Scheduler::new(system, initial_task, target_path.to_path_buf(), &args, &env).unwrap();
     match scheduler.run(None, None) {
         Err(SchedulerError::Stopped(StopReason::ProcessExit(0))) => Ok(()),
         Err(SchedulerError::Stopped(reason)) => Err(TestFailure::ProcessFailure(reason)),

@@ -153,6 +153,8 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         }
     }
 
+    /// Creates a new process with the supplied TaskId. The mmu is needed to map in the physical
+    /// memory that will be used by the process.
     pub fn new_process(
         &mut self,
         mmu: &mut impl MMU,

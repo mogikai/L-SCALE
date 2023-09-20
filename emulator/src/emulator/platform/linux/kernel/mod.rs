@@ -135,18 +135,19 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     pub fn load_binary(
         &mut self,
-        cpu: &mut (impl CPU + MMU),
         binary_path: &Path,
         binary_args: &[&str],
         binary_env: &[&str],
     ) -> Result<(), LinuxKernelError> {
-        sys_component_mut!(self, memory).new_process(cpu, self.task_id)?;
+        {
+            let mut cpu = sys_component_mut!(self, cpu);
+            sys_component_mut!(self, memory).new_process(&mut *cpu, self.task_id)?;
+        }
 
-        self.program_info = Some(self.load_elf(cpu, binary_path, 0x0000_c000_0000_0000.into())?);
+        self.program_info = Some(self.load_elf(binary_path, 0x0000_c000_0000_0000.into())?);
 
         // Load interpreter
         let interpreter_load_info = self.load_elf(
-            cpu,
             self.program_info
                 .as_ref()
                 .expect("Set above")
@@ -157,20 +158,20 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
             0x0000_b000_0000_0000.into(),
         )?;
 
-        self.initstack(cpu, binary_path, binary_args, binary_env)?;
+        self.initstack(binary_path, binary_args, binary_env)?;
 
         // Write the interpreter entrypoint into the instruction pointer so we can start execution.
-        cpu.reg_write(RegisterX86::RIP.into(), interpreter_load_info.entrypoint.into())?;
+        sys_component_mut!(self, cpu).reg_write(RegisterX86::RIP.into(), interpreter_load_info.entrypoint.into())?;
         Ok(())
     }
 
     fn load_elf(
         &mut self,
-        cpu: &mut (impl CPU + MMU),
         path: &Path,
         base_address: EVAddr,
     ) -> Result<LoadInfo, LinuxKernelError> {
         let fd = self.open_internal(path)?;
+        let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut fd_map = sys_component_mut!(self, fd_map);
         let elf_data = {
@@ -195,7 +196,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
                 info!("vm_range   0x{:X}..0x{:X}", vm_range.start, vm_range.end);
                 info!("file_range 0x{:X}..0x{:X}", ph.file_range().start, ph.file_range().end);
                 memory
-                    .map_file(cpu, &mut fd_map, &self.task_id, vm_range, &fd, ph.file_range(), perms)
+                    .map_file(&mut *cpu, &mut fd_map, &self.task_id, vm_range, &fd, ph.file_range(), perms)
                     .unwrap();
             }
         }
@@ -220,11 +221,12 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 
     fn initstack(
         &mut self,
-        cpu: &mut (impl CPU + MMU),
         binary_path: &Path,
         binary_args: &[&str],
         binary_env: &[&str],
     ) -> Result<(), LinuxKernelError> {
+        let mut cpu = sys_component_mut!(self, cpu);
+        let cpu = &mut *cpu;
         let mut memory = sys_component_mut!(self, memory);
         let mut argv_strings = vec![binary_path.to_str().unwrap()];
         argv_strings.extend_from_slice(binary_args);
