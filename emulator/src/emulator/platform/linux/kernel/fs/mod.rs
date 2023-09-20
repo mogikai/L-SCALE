@@ -1,12 +1,13 @@
 use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
 use bitflags::{bitflags, Flags};
 use byteorder::ByteOrder;
+use std::cell::RefMut;
 
 use crate::emulator::macros::*;
 use crate::emulator::platform::linux::fd::{FileDescriptorData, FD};
 use crate::emulator::platform::linux::kernel::fs::fd_ops::FileOps;
 use crate::emulator::platform::linux::kernel::*;
-use crate::emulator::system::fd_map::{FileDescriptor, InternalFD};
+use crate::emulator::system::fd_map::{FileDescriptor, FileDescriptorMap, InternalFD};
 use crate::emulator::system::filesystem::{FSEntryId, Filesystem};
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
 
@@ -164,6 +165,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
             .into())
     }
 
+    /// Opens the supplied file and associates an internal file descriptor with it.
+    /// This can be used for kernel internal file operations when the fd does not
+    /// have to be passed to user space.
     pub fn open_internal(
         &mut self,
         filename: &Path,
@@ -193,6 +197,7 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
         let mut memory = memory.accessor(&mut *cpu, self.task_id);
+
         let flags = at_flags::from_bits(flag).ok_or(LinuxKernelError::EINVAL)?;
         if flags.contains(at_flags::AT_EMPTY_PATH) {
             let mut fd = file_descriptor_map
@@ -203,9 +208,14 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
             Ok(0)
         } else {
             let filename = read_osstring!(memory, filename)?;
-            debug!("newfstatat: {filename:?}");
+            let path = Path::new(&filename);
+            let dir = if !path.is_absolute() {
+                Some(get_dir_fse_id(file_descriptor_map, &self.task_id, &dfd)?)
+            } else {
+                None
+            };
             let fs = sys_component_mut!(self, filesystem);
-            let entry = fs.resolve_last(Path::new(&filename))?;
+            let entry = fs.resolve_last_relative(dir, path)?;
             memory.write(statbuf, fs.stat(entry)?)?;
             Ok(0)
         }
@@ -242,6 +252,26 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
     ) {
         todo!()
         // self.fd_map.add_replacement_handle(fd, handle);
+    }
+}
+
+/// Get the fs entry id for the supplied file descriptor if it is a directory.
+fn get_dir_fse_id(
+    map: RefMut<FileDescriptorMap<FD, TaskId, FileDescriptorData>>,
+    task_id: &TaskId,
+    fd: &FD,
+) -> Result<FSEntryId, LinuxKernelError> {
+    let mut fd = map.get_mut(task_id, fd).ok_or(LinuxKernelError::EBADFD)?;
+    let fd = &mut *fd;
+    let is_dir = fd.ops.stat(&mut fd.data)?.S_ISDIR();
+    if is_dir {
+        fd.data
+            .file
+            .as_ref()
+            .ok_or(LinuxKernelError::ENOTDIR)
+            .map(|d| d.fse_id)
+    } else {
+        Err(LinuxKernelError::ENOTDIR)
     }
 }
 

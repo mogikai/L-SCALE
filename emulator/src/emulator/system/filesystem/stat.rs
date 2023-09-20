@@ -31,6 +31,43 @@ pub struct Stat {
     _unused3: u64,
 }
 
+pub const S_IFMT: u32 = 0o0170000;
+pub const S_IFSOCK: u32 = 0o140000;
+pub const S_IFLNK: u32 = 0o120000;
+pub const S_IFREG: u32 = 0o100000;
+pub const S_IFBLK: u32 = 0o060000;
+pub const S_IFDIR: u32 = 0o040000;
+pub const S_IFCHR: u32 = 0o020000;
+pub const S_IFIFO: u32 = 0o010000;
+pub const S_ISUID: u32 = 0o004000;
+pub const S_ISGID: u32 = 0o002000;
+pub const S_ISVTX: u32 = 0o001000;
+
+#[allow(non_snake_case)]
+impl Stat {
+    pub fn S_ISLNK(&self) -> bool {
+        (((self.st_mode) & S_IFMT) == S_IFLNK)
+    }
+    pub fn S_ISREG(&self) -> bool {
+        (((self.st_mode) & S_IFMT) == S_IFREG)
+    }
+    pub fn S_ISDIR(&self) -> bool {
+        (((self.st_mode) & S_IFMT) == S_IFDIR)
+    }
+    pub fn S_ISCHR(&self) -> bool {
+        (((self.st_mode) & S_IFMT) == S_IFCHR)
+    }
+    pub fn S_ISBLK(&self) -> bool {
+        (((self.st_mode) & S_IFMT) == S_IFBLK)
+    }
+    pub fn S_ISFIFO(&self) -> bool {
+        (((self.st_mode) & S_IFMT) == S_IFIFO)
+    }
+    pub fn S_ISSOCK(&self) -> bool {
+        (((self.st_mode) & S_IFMT) == S_IFSOCK)
+    }
+}
+
 impl From<Metadata> for Stat {
     fn from(m: Metadata) -> Self {
         Self {

@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use crate::emulator::system::filesystem::block::Block;
-use crate::emulator::system::filesystem::stat::Stat;
+use crate::emulator::system::filesystem::stat::{Stat, S_IFDIR, S_IFREG};
 use crate::emulator::system::filesystem::{ContentId, FSEntryId, FSError, SnapId};
 
 use self::FSEntryContent::{Dir, File};
@@ -90,14 +90,16 @@ impl MetaInfo {
         stat: Option<Stat>,
     ) -> Result<FSEntryId, FSError> {
         self.new_entry(path, |name, parent_id| {
-            FSEntry::new(
+            let mut entry = FSEntry::new(
                 File {
                     contents: BTreeSet::new(),
                 },
                 stat.unwrap_or_default(),
                 name,
                 parent_id,
-            )
+            );
+            entry.stat.st_mode = S_IFREG;
+            entry
         })
     }
 
@@ -108,14 +110,16 @@ impl MetaInfo {
         stat: Option<Stat>,
     ) -> Result<FSEntryId, FSError> {
         self.new_entry(path, |name, parent_id| {
-            FSEntry::new(
+            let mut entry = FSEntry::new(
                 Dir {
                     contents: BTreeMap::new(),
                 },
                 stat.unwrap_or_default(),
                 name,
                 parent_id,
-            )
+            );
+            entry.stat.st_mode = S_IFDIR;
+            entry
         })
     }
 

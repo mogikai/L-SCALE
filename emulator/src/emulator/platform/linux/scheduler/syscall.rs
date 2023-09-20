@@ -215,7 +215,7 @@ pub(super) fn syscall<Endianness: ByteOrder + 'static, CpuT: CPU + MMU>(
         .unwrap();
     let mut debug_str = String::new();
     let syscall = SYSCALL::from(rax);
-    let result = do_syscall(SYSCALL::from(rax), &system, &mut debug_str, task.kernel_mut());
+    let result = do_syscall(SYSCALL::from(rax), system, &mut debug_str, task.kernel_mut());
     let rax = match result {
         Ok(rax) => {
             debug_str = format!("SYSCALL: {:?} {} -> 0x{:X}", syscall, debug_str, rax);

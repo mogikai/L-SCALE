@@ -12,6 +12,8 @@ use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 pub mod error;
 mod restorable;
 
+/// The internal file descriptors are used for internal file operations where a 'real'
+/// file descriptor is not needed. These are never exposed to the user space application.
 pub type InternalFD = Index;
 
 #[derive(Debug)]

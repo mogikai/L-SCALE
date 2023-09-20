@@ -294,6 +294,19 @@ impl Filesystem {
         self.meta_info.resolve_last(None, path)
     }
 
+    /// This function resolves the supplied path to an FSEntryId. The lookup is performed
+    /// relative to the supplied directory id, if the id is not None.
+    /// See also [Filesystem::resolve_last()]
+    ///
+    /// returns: The FSEntryId of the last element in the path if it resolves. Otherwise an Error is returned.
+    pub fn resolve_last_relative(
+        &self,
+        dir: Option<FSEntryId>,
+        path: &Path,
+    ) -> Result<FSEntryId, FSError> {
+        self.meta_info.resolve_last(dir, path)
+    }
+
     fn print_tree(&self) {
         self.meta_info.print_tree(self.meta_info.root(), None);
     }
