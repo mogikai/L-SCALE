@@ -193,6 +193,9 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
         statbuf: EVAddr,
         flag: u64,
     ) -> SyscallResult {
+        if statbuf == EVA_NULL {
+            Err(LinuxKernelError::EINVAL)?
+        }
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
