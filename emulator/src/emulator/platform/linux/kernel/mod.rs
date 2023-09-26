@@ -53,12 +53,19 @@ macro_rules! sys_component_mut {
 }
 
 use crate::emulator::abstractions::kernel_task::KernelTask;
+use crate::emulator::abstractions::tcp_system::TCPSystem;
 pub(super) use {sys_component, sys_component_mut};
 
 /* eventuell nach task umbenennen */
 // TODO: Move thread shared data to thread specific struct that is shared between kernel task objects (rcrefcell?)
-pub struct LinuxKernelTask<Endianness: ByteOrder, Arch: Architecture, CpuT: CPU + MMU> {
-    system: LinuxSystem<Endianness, CpuT>,
+pub struct LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+where
+    Endianness: ByteOrder,
+    Arch: Architecture,
+    CpuT: CPU + MMU,
+    TcpT: TCPSystem,
+{
+    system: LinuxSystem<Endianness, CpuT, TcpT>,
     clear_child_tid: Option<EVAddr>,
     robust_list_head: Option<EVAddr>,
     signalhandler: SignalHandler<Arch::SignalFlags>,
@@ -68,7 +75,13 @@ pub struct LinuxKernelTask<Endianness: ByteOrder, Arch: Architecture, CpuT: CPU 
     _arch: PhantomData<Arch>,
 }
 
-impl<Endianness: ByteOrder, Arch: Architecture, CpuT: CPU + MMU> Debug for LinuxKernelTask<Endianness, Arch, CpuT> {
+impl<Endianness, Arch, CpuT, TcpT> Debug for LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+where
+    Endianness: ByteOrder,
+    Arch: Architecture,
+    CpuT: CPU + MMU,
+    TcpT: TCPSystem,
+{
     fn fmt(
         &self,
         f: &mut Formatter<'_>,
@@ -77,8 +90,12 @@ impl<Endianness: ByteOrder, Arch: Architecture, CpuT: CPU + MMU> Debug for Linux
     }
 }
 
-impl<Endianness: ByteOrder, Arch: Architecture, CpuT: CPU + MMU> KernelTask<TaskId>
-    for LinuxKernelTask<Endianness, Arch, CpuT>
+impl<Endianness, Arch, CpuT, TcpT> KernelTask<TaskId> for LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+where
+    Endianness: ByteOrder,
+    Arch: Architecture,
+    CpuT: CPU + MMU,
+    TcpT: TCPSystem,
 {
     fn task_id(&self) -> TaskId {
         self.task_id
@@ -115,9 +132,15 @@ struct LoadInfo {
     program_header_entry_size: u64,
 }
 
-impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> LinuxKernelTask<Endianness, Arch, CpuT> {
+impl<Endianness, Arch, CpuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+where
+    Endianness: ByteOrder + 'static,
+    Arch: Architecture,
+    CpuT: CPU + MMU,
+    TcpT: TCPSystem,
+{
     pub fn new(
-        system: LinuxSystem<Endianness, CpuT>,
+        system: LinuxSystem<Endianness, CpuT, TcpT>,
         pid: u32,
         tid: u32,
     ) -> Self {
@@ -751,8 +774,12 @@ enum RLIMIT {
     INVALID,
 }
 
-impl<Endianness: ByteOrder, Arch: Architecture, CpuT: CPU + MMU> Restorable
-    for LinuxKernelTask<Endianness, Arch, CpuT>
+impl<Endianness, Arch, CpuT, TcpT> Restorable for LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+where
+    Endianness: ByteOrder,
+    Arch: Architecture,
+    CpuT: CPU + MMU,
+    TcpT: TCPSystem,
 {
     fn snapshot(&mut self) -> Result<(), GenericError> {
         todo!()

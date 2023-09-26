@@ -9,6 +9,7 @@ use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::mmu::encoding::{Decode, RequiredMem};
 use crate::emulator::abstractions::mmu::MMU;
+use crate::emulator::abstractions::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::FD;
 use crate::emulator::platform::linux::kernel::net::inet6::tcp::listener::TcpListenerOps;
@@ -20,7 +21,13 @@ use crate::emulator::platform::linux::kernel::{
 use crate::emulator::system::fd_map::FileDescriptor;
 use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
 
-impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> LinuxKernelTask<Endianness, Arch, CpuT> {
+impl<Endianness, Arch, CpuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+where
+    Endianness: ByteOrder + 'static,
+    Arch: Architecture,
+    CpuT: CPU + MMU,
+    TcpT: TCPSystem,
+{
     pub fn socket(
         &mut self,
         family: u64,

@@ -14,5 +14,5 @@ pub mod signalfd;
 mod signals;
 
 /// Linux specific system task. Parametrizes the generics with linux specific types
-pub(crate) type LinuxSystem<Endianness, CpuT> =
-    System<FD, FileDescriptorData, TaskId, LinuxKernelTask<Endianness, X86, CpuT>, Endianness, CpuT>;
+pub(crate) type LinuxSystem<Endianness, CpuT, TcpT> =
+    System<FD, FileDescriptorData, TaskId, LinuxKernelTask<Endianness, X86, CpuT, TcpT>, Endianness, CpuT, TcpT>;

@@ -14,7 +14,6 @@ use fuzzyemu::emulator::abstractions::hooks::Hooks;
 use fuzzyemu::emulator::abstractions::kernel_task::KernelTask;
 use fuzzyemu::emulator::abstractions::mmu::MemoryError;
 use fuzzyemu::emulator::abstractions::restore::Restorable;
-use fuzzyemu::emulator::platform::linux::architecture::x86::X86;
 use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
 use fuzzyemu::emulator::platform::linux::scheduler::LinuxX86Scheduler;
 use fuzzyemu::emulator::system::clock::Clock;
@@ -25,6 +24,7 @@ use fuzzyemu::emulator::system::memory::{MappingType, Memory};
 use fuzzyemu::emulator::system::task_manager::TaskManager;
 use fuzzyemu::emulator::system::System;
 use fuzzyemu::LittleEndian;
+use fuzzyfuzz::io::tcp::TCP;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -55,10 +55,11 @@ fn main() -> Result<(), GenericError> {
 
         let task_manager = TaskManager::new();
         let filesystem = Filesystem::from_disk(1_073_741_824, Path::new(&pargs.system_root)).unwrap();
-        let memory = Memory::new();
+        let memory = Memory::<LittleEndian>::new();
         let clock = Clock::new(Duration::from_nanos(1662647309301240322));
         let file_descriptor_map = FileDescriptorMap::new();
-        let system = System::new(cpu.clone(), memory, filesystem, clock, file_descriptor_map, task_manager);
+        let tcp = TCP::new();
+        let system = System::new(cpu.clone(), memory, filesystem, clock, file_descriptor_map, task_manager, tcp);
 
         cpu.borrow_mut().add_block_hook(Box::new(|_, addr, _| {
             total_blocks += 1;
@@ -69,7 +70,7 @@ fn main() -> Result<(), GenericError> {
         }))?;
 
         // TODO: Only one task for now. Need to implement a scheduler that switches tasks.
-        let initial_task = LinuxKernelTask::<LittleEndian, X86, UCWrapper>::new(system.clone(), 1337, 1);
+        let initial_task = LinuxKernelTask::new(system.clone(), 1337, 1);
         let task_id = initial_task.task_id();
 
         // let mut data = vec![b'A'; 0x01];

@@ -11,6 +11,7 @@ use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
 use crate::emulator::abstractions::mmu::MMU;
+use crate::emulator::abstractions::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::{FileDescriptorData, FD};
 use crate::emulator::platform::linux::kernel::error::SyscallError;
@@ -24,7 +25,13 @@ use crate::emulator::system::memory::MemoryAccessor;
 mod events;
 mod fd_ops;
 
-impl<Endianness: ByteOrder, Arch: Architecture, CpuT: CPU + MMU> LinuxKernelTask<Endianness, Arch, CpuT> {
+impl<Endianness, Arch, CpuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+where
+    Endianness: ByteOrder,
+    Arch: Architecture,
+    CpuT: CPU + MMU,
+    TcpT: TCPSystem,
+{
     pub fn epoll_create(
         &mut self,
         size: u64,

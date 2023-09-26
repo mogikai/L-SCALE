@@ -9,6 +9,7 @@ use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::kernel_task::KernelTask;
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::restore::Restorable;
+use crate::emulator::abstractions::tcp_system::TCPSystem;
 use crate::emulator::system::clock::Clock;
 use crate::emulator::system::fd_map::{FdId, FileDescriptorMap};
 use crate::emulator::system::filesystem::Filesystem;
@@ -29,7 +30,7 @@ pub mod task_manager;
 /// Any data must be stored behind a pointer. This ensures that individual components can be
 /// accessed in a more fine grained manner, instead of having to borrow the entire system at once.
 #[derive(Debug)]
-pub struct System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT>
+pub struct System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>
 where
     FD: FdId,
     FDData: Default + Restorable,
@@ -37,6 +38,7 @@ where
     KernelTaskT: KernelTask<TaskId> + Debug,
     Endianness: ByteOrder,
     CpuT: CPU + MMU,
+    TcpT: TCPSystem,
 {
     pub cpu: Rc<RefCell<CpuT>>,
     pub memory: Rc<RefCell<Memory<Endianness>>>,
@@ -44,10 +46,11 @@ where
     pub clock: Rc<RefCell<Clock>>,
     pub fd_map: Rc<RefCell<FileDescriptorMap<FD, TaskId, FDData>>>,
     pub task_manager: Rc<RefCell<TaskManager<TaskId, KernelTaskT>>>,
+    pub tcp: Rc<RefCell<TcpT>>,
 }
 
-impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT> Clone
-    for System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT>
+impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT> Clone
+    for System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>
 where
     FD: FdId,
     FDData: Default + Restorable,
@@ -55,6 +58,7 @@ where
     KernelTaskT: KernelTask<TaskId> + Debug,
     Endianness: ByteOrder,
     CpuT: CPU + MMU,
+    TcpT: TCPSystem,
 {
     fn clone(&self) -> Self {
         Self {
@@ -64,11 +68,13 @@ where
             clock: self.clock.clone(),
             fd_map: self.fd_map.clone(),
             task_manager: self.task_manager.clone(),
+            tcp: self.tcp.clone(),
         }
     }
 }
 
-impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT> System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT>
+impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>
+    System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>
 where
     FD: FdId,
     FDData: Default + Restorable,
@@ -76,6 +82,7 @@ where
     KernelTaskT: KernelTask<TaskId> + Debug,
     Endianness: ByteOrder,
     CpuT: CPU + MMU,
+    TcpT: TCPSystem,
 {
     pub fn new(
         cpu: Rc<RefCell<CpuT>>,
@@ -84,6 +91,7 @@ where
         clock: Clock,
         fd_map: FileDescriptorMap<FD, TaskId, FDData>,
         task_manager: TaskManager<TaskId, KernelTaskT>,
+        tcp: TcpT,
     ) -> Self {
         Self {
             cpu,
@@ -92,12 +100,13 @@ where
             clock: Rc::new(RefCell::new(clock)),
             fd_map: Rc::new(RefCell::new(fd_map)),
             task_manager: Rc::new(RefCell::new(task_manager)),
+            tcp: Rc::new(RefCell::new(tcp)),
         }
     }
 }
 
-impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT> Restorable
-    for System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT>
+impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT> Restorable
+    for System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>
 where
     FD: FdId,
     FDData: Default + Restorable,
@@ -105,6 +114,7 @@ where
     KernelTaskT: KernelTask<TaskId> + Debug,
     Endianness: ByteOrder,
     CpuT: CPU + MMU,
+    TcpT: TCPSystem,
 {
     fn snapshot(&mut self) -> Result<(), GenericError> {
         self.cpu.borrow_mut().snapshot()?;
@@ -112,7 +122,8 @@ where
         self.filesystem.borrow_mut().snapshot()?;
         self.clock.borrow_mut().snapshot()?;
         self.fd_map.borrow_mut().snapshot()?;
-        self.task_manager.borrow_mut().snapshot()
+        self.task_manager.borrow_mut().snapshot()?;
+        self.tcp.borrow_mut().snapshot()
     }
 
     fn restore_and_discard(&mut self) -> Result<(), GenericError> {
@@ -125,6 +136,7 @@ where
         self.filesystem.borrow_mut().restore()?;
         self.clock.borrow_mut().restore()?;
         self.fd_map.borrow_mut().restore()?;
-        self.task_manager.borrow_mut().restore()
+        self.task_manager.borrow_mut().restore()?;
+        self.tcp.borrow_mut().restore()
     }
 }

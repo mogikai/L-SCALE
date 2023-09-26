@@ -13,7 +13,13 @@ use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWri
 
 mod fd_ops;
 
-impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> LinuxKernelTask<Endianness, Arch, CpuT> {
+impl<Endianness, Arch, CpuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+where
+    Endianness: ByteOrder + 'static,
+    Arch: Architecture,
+    CpuT: CPU + MMU,
+    TcpT: TCPSystem,
+{
     /// Write syscall. See `man write` for details
     pub fn write(
         &mut self,

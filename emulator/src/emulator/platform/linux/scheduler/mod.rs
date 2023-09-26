@@ -16,6 +16,7 @@ use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::restore::Restorable;
+use crate::emulator::abstractions::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::x86::X86;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::kernel::LinuxKernelTask;
@@ -34,18 +35,20 @@ mod trace;
 //       For example, we could make the System a generic type and also
 //       provide a generic syscall callback from the outside.
 //       This needs further investigation
-pub struct LinuxX86Scheduler<'a, CpuT, Endianness>
+pub struct LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where
     CpuT: CPU + MMU + Hooks<'a> + Restorable,
+    TcpT: TCPSystem,
     Endianness: ByteOrder,
 {
-    system: LinuxSystem<Endianness, CpuT>,
+    system: LinuxSystem<Endianness, CpuT, TcpT>,
     phantom: PhantomData<&'a CpuT>,
 }
 
-impl<'a, CpuT, Endianness> Scheduler for LinuxX86Scheduler<'a, CpuT, Endianness>
+impl<'a, CpuT, TcpT, Endianness> Scheduler for LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where
     CpuT: CPU + MMU + Hooks<'a>,
+    TcpT: TCPSystem,
     Endianness: ByteOrder + 'static,
 {
     fn run(
@@ -57,18 +60,19 @@ where
     }
 }
 
-impl<'a, CpuT, Endianness> LinuxX86Scheduler<'a, CpuT, Endianness>
+impl<'a, CpuT, TcpT, Endianness> LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where
     CpuT: CPU + MMU + Hooks<'a>,
+    TcpT: TCPSystem + 'a,
     Endianness: ByteOrder + 'static,
 {
     pub fn new(
-        system: LinuxSystem<Endianness, CpuT>,
-        initial_task: LinuxKernelTask<Endianness, X86, CpuT>,
+        system: LinuxSystem<Endianness, CpuT, TcpT>,
+        initial_task: LinuxKernelTask<Endianness, X86, CpuT, TcpT>,
         binary_path: PathBuf,
         binary_args: &[&str],
         binary_env: &[&str],
-    ) -> Result<LinuxX86Scheduler<'a, CpuT, Endianness>, SchedulerError> {
+    ) -> Result<LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>, SchedulerError> {
         let mut sched = LinuxX86Scheduler {
             system,
             phantom: Default::default(),

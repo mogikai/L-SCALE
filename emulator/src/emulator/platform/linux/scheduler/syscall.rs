@@ -6,6 +6,7 @@ use std::rc::Rc;
 use crate::emulator::abstractions::cpu::{RegisterX86, CPU};
 use crate::emulator::abstractions::emulator::StopReason;
 use crate::emulator::abstractions::mmu::MMU;
+use crate::emulator::abstractions::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::x86::X86;
 use crate::emulator::platform::linux::kernel::error::SyscallError;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
@@ -102,12 +103,17 @@ macro_rules! do_syscall {
     }};
 }
 
-fn do_syscall<Endianness: ByteOrder + 'static, CpuT: CPU + MMU>(
+fn do_syscall<Endianness, CpuT, TcpT>(
     syscall: SYSCALL,
-    system: &LinuxSystem<Endianness, CpuT>,
+    system: &LinuxSystem<Endianness, CpuT, TcpT>,
     debug_str: &mut String,
-    kernel: &mut LinuxKernelTask<Endianness, X86, CpuT>,
-) -> Result<u64, SyscallError> {
+    kernel: &mut LinuxKernelTask<Endianness, X86, CpuT, TcpT>,
+) -> Result<u64, SyscallError>
+where
+    Endianness: ByteOrder + 'static,
+    CpuT: CPU + MMU,
+    TcpT: TCPSystem,
+{
     use SYSCALL::*;
     match syscall {
         READ => do_syscall!(3, system, kernel::read, debug_str),
@@ -204,10 +210,14 @@ fn do_syscall<Endianness: ByteOrder + 'static, CpuT: CPU + MMU>(
     }
 }
 
-pub(super) fn syscall<Endianness: ByteOrder + 'static, CpuT: CPU + MMU>(
-    system: &LinuxSystem<Endianness, CpuT>,
-    task: &mut Task<TaskId, LinuxKernelTask<Endianness, X86, CpuT>>,
-) {
+pub(super) fn syscall<Endianness, CpuT, TcpT>(
+    system: &LinuxSystem<Endianness, CpuT, TcpT>,
+    task: &mut Task<TaskId, LinuxKernelTask<Endianness, X86, CpuT, TcpT>>,
+) where
+    Endianness: ByteOrder + 'static,
+    CpuT: CPU + MMU,
+    TcpT: TCPSystem,
+{
     let rax = system
         .cpu
         .borrow_mut()

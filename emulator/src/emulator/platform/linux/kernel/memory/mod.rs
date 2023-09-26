@@ -4,6 +4,7 @@ use byteorder::ByteOrder;
 use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
 use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU, MREMAP_FLAGS};
+use crate::emulator::abstractions::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::FD;
 use crate::emulator::platform::linux::kernel::memory::flags::MMAP_FLAGS;
@@ -20,7 +21,13 @@ pub mod flags;
 //// Public Implementations ////
 ////////////////////////////////
 
-impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> LinuxKernelTask<Endianness, Arch, CpuT> {
+impl<Endianness, Arch, CpuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+where
+    Endianness: ByteOrder + 'static,
+    Arch: Architecture,
+    CpuT: CPU + MMU,
+    TcpT: TCPSystem,
+{
     #[allow(clippy::too_many_arguments)]
     pub fn mmap(
         &mut self,
@@ -120,7 +127,13 @@ impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> Linux
 //// Private Implementations ////
 /////////////////////////////////
 
-impl<Endianness: ByteOrder + 'static, Arch: Architecture, CpuT: CPU + MMU> LinuxKernelTask<Endianness, Arch, CpuT> {
+impl<Endianness, Arch, CpuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+where
+    Endianness: ByteOrder + 'static,
+    Arch: Architecture,
+    CpuT: CPU + MMU,
+    TcpT: TCPSystem,
+{
     #[allow(clippy::too_many_arguments)]
     fn mmap_private(
         &mut self,

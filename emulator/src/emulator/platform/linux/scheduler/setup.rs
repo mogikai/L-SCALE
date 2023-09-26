@@ -1,8 +1,9 @@
 use super::*;
 
-impl<'a, CpuT, Endianness> LinuxX86Scheduler<'a, CpuT, Endianness>
+impl<'a, CpuT, TcpT, Endianness> LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where
     CpuT: CPU + MMU + Hooks<'a>,
+    TcpT: TCPSystem + 'a,
     Endianness: ByteOrder + 'static,
 {
     pub(super) fn setup_cpu(&mut self) -> Result<(), SchedulerError> {
@@ -19,6 +20,9 @@ where
             EVAddr::from(1),
             EVAddr::from(0),
             Box::new(move || {
+                // TODO: Currently the task manager cannot be borrowed anywhere else because
+                //       it is borrowed here. Need to find some way to allow the task itself
+                //       to for example add new tasks spawned with fork()
                 let mut task_manager = syscall_system.task_manager.borrow_mut();
                 let task = task_manager
                     .current_task_mut()
@@ -54,7 +58,7 @@ where
 
     pub(super) fn setup_initial_task(
         &mut self,
-        mut initial_task: LinuxKernelTask<Endianness, X86, CpuT>,
+        mut initial_task: LinuxKernelTask<Endianness, X86, CpuT, TcpT>,
         binary_path: PathBuf,
         binary_args: &[&str],
         binary_env: &[&str],

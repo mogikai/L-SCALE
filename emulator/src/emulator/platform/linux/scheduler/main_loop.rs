@@ -1,9 +1,10 @@
 use super::*;
 use crate::emulator::system::task_manager::TaskState;
 
-impl<'a, CpuT, Endianness> LinuxX86Scheduler<'a, CpuT, Endianness>
+impl<'a, CpuT, TcpT, Endianness> LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where
     CpuT: CPU + MMU + Hooks<'a>,
+    TcpT: TCPSystem,
     Endianness: ByteOrder + 'static,
 {
     pub(super) fn scheduler_loop(
