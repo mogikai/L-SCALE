@@ -63,7 +63,7 @@ where
 impl<'a, CpuT, TcpT, Endianness> LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where
     CpuT: CPU + MMU + Hooks<'a>,
-    TcpT: TCPSystem + 'a,
+    TcpT: TCPSystem + 'static,
     Endianness: ByteOrder + 'static,
 {
     pub fn new(

@@ -26,7 +26,7 @@ where
     Endianness: ByteOrder + 'static,
     Arch: Architecture,
     CpuT: CPU + MMU,
-    TcpT: TCPSystem,
+    TcpT: TCPSystem + 'static,
 {
     pub fn socket(
         &mut self,
@@ -42,7 +42,7 @@ where
         let fd = match family {
             AF_NETLINK => netlink::from_protocol::<Endianness>(protocol)?,
             AF_UNIX => FileDescriptor::new(Box::new(UnixSocketOps::new())),
-            AF_INET | AF_INET6 => inet6::from_type(typ)?,
+            AF_INET | AF_INET6 => inet6::from_type(typ, &self.system)?,
             _ => todo!(),
         };
         Ok(sys_component_mut!(self, fd_map)

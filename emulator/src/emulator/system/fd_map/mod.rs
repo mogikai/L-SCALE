@@ -27,11 +27,11 @@ pub struct FileDescriptor<D: Default + Restorable> {
     /// The ops implementation may contain pointers to system components.
     /// It must however be stateless. All data pertaining to state or
     /// similar fd related info must be contained in the data field.
-    pub ops: Box<dyn FileDescriptorOps<D>>,
+    pub ops: Box<dyn FileDescriptorOps<D = D>>,
 }
 
 impl<D: Default + Restorable> FileDescriptor<D> {
-    pub fn new(ops: Box<dyn FileDescriptorOps<D>>) -> Self {
+    pub fn new(ops: Box<dyn FileDescriptorOps<D = D>>) -> Self {
         FileDescriptor {
             data: Default::default(),
             ops,

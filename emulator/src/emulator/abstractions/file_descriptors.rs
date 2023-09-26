@@ -18,23 +18,24 @@ use crate::emulator::system::filesystem::{FSError, Stat};
 ///
 /// The actual handle data is contained in the TODO struct
 ///
-pub trait FileDescriptorOps<D: Default + Restorable>: Debug {
+pub trait FileDescriptorOps: Debug {
+    type D: Default + Restorable;
     /// Can be called to query what operations can be called without blocking on the handle.
     fn poll(
         &self,
-        fd: &mut D,
+        fd: &mut Self::D,
     ) -> Option<FileOperationsReady>;
 
     /// Returns true if the file descriptor supports polling.
     fn supports_poll(
         &self,
-        fd: &mut D,
+        fd: &mut Self::D,
     ) -> bool;
 
     /// returns: The stat vector of the handle this method is called on
     fn stat<'a>(
         &'a self,
-        fd: &'a mut D,
+        fd: &'a mut Self::D,
     ) -> Result<Ref<'a, Stat>, FileDescriptorError> {
         todo!()
     }
@@ -45,7 +46,7 @@ pub trait FileDescriptorOps<D: Default + Restorable>: Debug {
     /// returns: A reference to the data that is accessed by the read call
     fn read(
         &mut self,
-        fd: &mut D,
+        fd: &mut Self::D,
         count: u64,
     ) -> Result<Vec<u8>, FileDescriptorError> {
         todo!()
@@ -58,7 +59,7 @@ pub trait FileDescriptorOps<D: Default + Restorable>: Debug {
     /// returns: A reference to the data that is accessed by the pread call
     fn pread(
         &self,
-        fd: &mut D,
+        fd: &mut Self::D,
         offset: u64,
         length: u64,
     ) -> Result<Vec<u8>, FileDescriptorError> {
@@ -67,7 +68,7 @@ pub trait FileDescriptorOps<D: Default + Restorable>: Debug {
 
     fn write(
         &mut self,
-        fd: &mut D,
+        fd: &mut Self::D,
         data: &[u8],
     ) -> Result<usize, FileDescriptorError> {
         todo!()
@@ -75,7 +76,7 @@ pub trait FileDescriptorOps<D: Default + Restorable>: Debug {
 
     fn bind(
         &mut self,
-        fd: &mut D,
+        fd: &mut Self::D,
         sockaddr: Sockaddr,
     ) -> Result<(), FileDescriptorError> {
         todo!()
@@ -83,21 +84,21 @@ pub trait FileDescriptorOps<D: Default + Restorable>: Debug {
 
     fn getsockname(
         &self,
-        fd: &mut D,
+        fd: &mut Self::D,
     ) -> Result<&Sockaddr, FileDescriptorError> {
         todo!()
     }
 
     fn sendto(
         &mut self,
-        fd: &mut D,
+        fd: &mut Self::D,
         data: &[u8],
         target: &Option<Sockaddr>,
     ) -> Result<usize, FileDescriptorError>;
 
     fn recvmsg(
         &mut self,
-        fd: &mut D,
+        fd: &mut Self::D,
         len: usize,
     ) -> Result<Vec<u8>, FileDescriptorError> {
         todo!()
@@ -105,27 +106,27 @@ pub trait FileDescriptorOps<D: Default + Restorable>: Debug {
 
     fn recvfrom(
         &self,
-        fd: &mut D,
+        fd: &mut Self::D,
         len: usize,
     ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError>;
 
     fn connect(
         &mut self,
-        fd: &mut D,
+        fd: &mut Self::D,
         sockaddr: Sockaddr,
     ) -> Result<(), FileDescriptorError>;
 
     fn setsockopt(
         &mut self,
-        fd: &mut D,
+        fd: &mut Self::D,
     ) -> Result<(), FileDescriptorError> {
         todo!()
     }
 
     fn accept(
         &mut self,
-        fd: &mut D,
-    ) -> Result<(FileDescriptor<D>, Sockaddr), FileDescriptorError>;
+        fd: &mut Self::D,
+    ) -> Result<(FileDescriptor<Self::D>, Sockaddr), FileDescriptorError>;
 }
 
 #[derive(Debug)]

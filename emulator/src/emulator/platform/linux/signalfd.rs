@@ -1,6 +1,7 @@
 use bitflags::Flags;
 
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
+use crate::emulator::abstractions::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::system::fd_map::FileDescriptor;
@@ -27,10 +28,12 @@ impl SignalFDOps {
     }
 }
 
-impl FileDescriptorOps<FileDescriptorData> for SignalFDOps {
+impl FileDescriptorOps for SignalFDOps {
+    type D = FileDescriptorData;
+
     fn poll(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
     ) -> Option<FileOperationsReady> {
         // TODO: Implement poll operation instead of never signaling
         Some(FileOperationsReady::empty())
@@ -38,14 +41,14 @@ impl FileDescriptorOps<FileDescriptorData> for SignalFDOps {
 
     fn supports_poll(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
     ) -> bool {
         true
     }
 
     fn sendto(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         data: &[u8],
         target: &Option<Sockaddr>,
     ) -> Result<usize, FileDescriptorError> {
@@ -54,7 +57,7 @@ impl FileDescriptorOps<FileDescriptorData> for SignalFDOps {
 
     fn recvfrom(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         len: usize,
     ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError> {
         todo!()
@@ -62,7 +65,7 @@ impl FileDescriptorOps<FileDescriptorData> for SignalFDOps {
 
     fn connect(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         sockaddr: Sockaddr,
     ) -> Result<(), FileDescriptorError> {
         todo!()
@@ -70,8 +73,8 @@ impl FileDescriptorOps<FileDescriptorData> for SignalFDOps {
 
     fn accept(
         &mut self,
-        fd: &mut FileDescriptorData,
-    ) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
+        fd: &mut Self::D,
+    ) -> Result<(FileDescriptor<Self::D>, Sockaddr), FileDescriptorError> {
         todo!()
     }
 }

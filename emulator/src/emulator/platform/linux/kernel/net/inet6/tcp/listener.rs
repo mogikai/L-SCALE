@@ -3,6 +3,7 @@ use std::ops::Not;
 use bitflags::Flags;
 
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
+use crate::emulator::abstractions::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::inet6::tcp::socket::TcpSocketOps;
 use crate::emulator::platform::linux::kernel::net::inet6::tcp::TCPData;
@@ -18,10 +19,12 @@ impl TcpListenerOps {
     }
 }
 
-impl FileDescriptorOps<FileDescriptorData> for TcpListenerOps {
+impl FileDescriptorOps for TcpListenerOps {
+    type D = FileDescriptorData;
+
     fn poll(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
     ) -> Option<FileOperationsReady> {
         // TODO: Delegate to event system whether or not this socket is ready?
         warn!("Poll currently only has dummy implementation for tcp listener");
@@ -37,14 +40,14 @@ impl FileDescriptorOps<FileDescriptorData> for TcpListenerOps {
 
     fn supports_poll(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
     ) -> bool {
         true
     }
 
     fn sendto(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         data: &[u8],
         target: &Option<Sockaddr>,
     ) -> Result<usize, FileDescriptorError> {
@@ -53,7 +56,7 @@ impl FileDescriptorOps<FileDescriptorData> for TcpListenerOps {
 
     fn recvfrom(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         len: usize,
     ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
@@ -61,7 +64,7 @@ impl FileDescriptorOps<FileDescriptorData> for TcpListenerOps {
 
     fn connect(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         sockaddr: Sockaddr,
     ) -> Result<(), FileDescriptorError> {
         todo!()
@@ -69,19 +72,12 @@ impl FileDescriptorOps<FileDescriptorData> for TcpListenerOps {
 
     fn accept(
         &mut self,
-        fd: &mut FileDescriptorData,
-    ) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
+        fd: &mut Self::D,
+    ) -> Result<(FileDescriptor<Self::D>, Sockaddr), FileDescriptorError> {
+        let fd = fd.tcp.as_mut().ok_or(FileDescriptorError::NotASocket)?;
         let mut new_fd = FileDescriptor::new(Box::new(TcpSocketOps::new()));
-        new_fd.data.tcp = Some(TCPData::new());
+        new_fd.data.tcp = Some(TCPData::new(fd.tcp_system.clone()));
 
-        Ok((
-            new_fd,
-            fd.tcp
-                .as_mut()
-                .ok_or(FileDescriptorError::NotASocket)?
-                .pending_connections
-                .pop()
-                .unwrap(),
-        ))
+        Ok((new_fd, fd.pending_connections.pop().unwrap()))
     }
 }

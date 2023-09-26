@@ -2,6 +2,7 @@ use std::cell::{Ref, RefCell};
 use std::cmp::min;
 
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
+use crate::emulator::abstractions::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::system::fd_map::FileDescriptor;
@@ -21,31 +22,33 @@ impl WriteOnly {
 }
 
 // TODO: This probably should be handled via callbacks
-impl FileDescriptorOps<FileDescriptorData> for WriteOnly {
+impl FileDescriptorOps for WriteOnly {
+    type D = FileDescriptorData;
+
     fn poll(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
     ) -> Option<FileOperationsReady> {
         None
     }
 
     fn supports_poll(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
     ) -> bool {
         false
     }
 
     fn stat<'a>(
         &'a self,
-        fd: &'a mut FileDescriptorData,
+        fd: &'a mut Self::D,
     ) -> Result<Ref<'a, Stat>, FileDescriptorError> {
         Ok(self.stat.borrow())
     }
 
     fn read(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         count: u64,
     ) -> Result<Vec<u8>, FileDescriptorError> {
         todo!()
@@ -53,7 +56,7 @@ impl FileDescriptorOps<FileDescriptorData> for WriteOnly {
 
     fn pread(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         offset: u64,
         length: u64,
     ) -> Result<Vec<u8>, FileDescriptorError> {
@@ -62,7 +65,7 @@ impl FileDescriptorOps<FileDescriptorData> for WriteOnly {
 
     fn write(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         data: &[u8],
     ) -> Result<usize, FileDescriptorError> {
         print!("{:}", String::from_utf8_lossy(data));
@@ -71,7 +74,7 @@ impl FileDescriptorOps<FileDescriptorData> for WriteOnly {
 
     fn sendto(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         data: &[u8],
         target: &Option<Sockaddr>,
     ) -> Result<usize, FileDescriptorError> {
@@ -80,7 +83,7 @@ impl FileDescriptorOps<FileDescriptorData> for WriteOnly {
 
     fn recvfrom(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         len: usize,
     ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
@@ -88,7 +91,7 @@ impl FileDescriptorOps<FileDescriptorData> for WriteOnly {
 
     fn connect(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         sockaddr: Sockaddr,
     ) -> Result<(), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
@@ -96,8 +99,8 @@ impl FileDescriptorOps<FileDescriptorData> for WriteOnly {
 
     fn accept(
         &mut self,
-        fd: &mut FileDescriptorData,
-    ) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
+        fd: &mut Self::D,
+    ) -> Result<(FileDescriptor<Self::D>, Sockaddr), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
     }
 }
@@ -127,31 +130,33 @@ impl ReadOnly {
     }
 }
 
-impl FileDescriptorOps<FileDescriptorData> for ReadOnly {
+impl FileDescriptorOps for ReadOnly {
+    type D = FileDescriptorData;
+
     fn poll(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
     ) -> Option<FileOperationsReady> {
         None
     }
 
     fn supports_poll(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
     ) -> bool {
         false
     }
 
     fn stat<'a>(
         &'a self,
-        fd: &'a mut FileDescriptorData,
+        fd: &'a mut Self::D,
     ) -> Result<Ref<'a, Stat>, FileDescriptorError> {
         Ok(self.stat.borrow())
     }
 
     fn read(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         count: u64,
     ) -> Result<Vec<u8>, FileDescriptorError> {
         let upper = min(self.pos + count as usize, self.data.len());
@@ -162,7 +167,7 @@ impl FileDescriptorOps<FileDescriptorData> for ReadOnly {
 
     fn pread(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         offset: u64,
         length: u64,
     ) -> Result<Vec<u8>, FileDescriptorError> {
@@ -171,7 +176,7 @@ impl FileDescriptorOps<FileDescriptorData> for ReadOnly {
 
     fn write(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         data: &[u8],
     ) -> Result<usize, FileDescriptorError> {
         todo!()
@@ -179,7 +184,7 @@ impl FileDescriptorOps<FileDescriptorData> for ReadOnly {
 
     fn sendto(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         data: &[u8],
         target: &Option<Sockaddr>,
     ) -> Result<usize, FileDescriptorError> {
@@ -188,7 +193,7 @@ impl FileDescriptorOps<FileDescriptorData> for ReadOnly {
 
     fn recvfrom(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         len: usize,
     ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
@@ -196,7 +201,7 @@ impl FileDescriptorOps<FileDescriptorData> for ReadOnly {
 
     fn connect(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         sockaddr: Sockaddr,
     ) -> Result<(), FileDescriptorError> {
         // TODO FIXME
@@ -206,8 +211,8 @@ impl FileDescriptorOps<FileDescriptorData> for ReadOnly {
 
     fn accept(
         &mut self,
-        fd: &mut FileDescriptorData,
-    ) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
+        fd: &mut Self::D,
+    ) -> Result<(FileDescriptor<Self::D>, Sockaddr), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
     }
 }

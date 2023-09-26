@@ -257,7 +257,7 @@ where
     pub fn add_replacement_handle(
         &mut self,
         fd: FD,
-        handle: Box<dyn FileDescriptorOps<FileDescriptorData>>,
+        handle: Box<dyn FileDescriptorOps<D = FileDescriptorData>>,
     ) {
         todo!()
         // self.fd_map.add_replacement_handle(fd, handle);

@@ -4,6 +4,7 @@ use std::rc::Rc;
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
+use crate::emulator::abstractions::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::platform::linux::LinuxSystem;
@@ -14,24 +15,25 @@ use crate::emulator::system::filesystem::{Filesystem, Stat};
 pub struct FileOps {}
 
 //TODO build a trait
-impl FileDescriptorOps<FileDescriptorData> for FileOps {
+impl FileDescriptorOps for FileOps {
+    type D = FileDescriptorData;
     fn poll(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
     ) -> Option<FileOperationsReady> {
         None
     }
 
     fn supports_poll(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
     ) -> bool {
         false
     }
 
     fn stat<'a>(
         &self,
-        fd: &'a mut FileDescriptorData,
+        fd: &'a mut Self::D,
     ) -> Result<Ref<'a, Stat>, FileDescriptorError> {
         let fd = fd.file.as_mut().ok_or(FileDescriptorError::NotSupported)?;
         Ref::filter_map(fd.filesystem.borrow(), |fs| fs.stat(fd.fse_id).ok())
@@ -40,7 +42,7 @@ impl FileDescriptorOps<FileDescriptorData> for FileOps {
 
     fn read(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         count: u64,
     ) -> Result<Vec<u8>, FileDescriptorError> {
         let fd = fd.file.as_mut().ok_or(FileDescriptorError::NotSupported)?;
@@ -54,7 +56,7 @@ impl FileDescriptorOps<FileDescriptorData> for FileOps {
 
     fn pread(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         offset: u64,
         length: u64,
     ) -> Result<Vec<u8>, FileDescriptorError> {
@@ -67,7 +69,7 @@ impl FileDescriptorOps<FileDescriptorData> for FileOps {
 
     fn write(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         data: &[u8],
     ) -> Result<usize, FileDescriptorError> {
         let fd = fd.file.as_mut().ok_or(FileDescriptorError::NotSupported)?;
@@ -78,7 +80,7 @@ impl FileDescriptorOps<FileDescriptorData> for FileOps {
 
     fn sendto(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         data: &[u8],
         target: &Option<Sockaddr>,
     ) -> Result<usize, FileDescriptorError> {
@@ -87,7 +89,7 @@ impl FileDescriptorOps<FileDescriptorData> for FileOps {
 
     fn recvfrom(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         len: usize,
     ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
@@ -95,7 +97,7 @@ impl FileDescriptorOps<FileDescriptorData> for FileOps {
 
     fn connect(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         sockaddr: Sockaddr,
     ) -> Result<(), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
@@ -103,8 +105,8 @@ impl FileDescriptorOps<FileDescriptorData> for FileOps {
 
     fn accept(
         &mut self,
-        fd: &mut FileDescriptorData,
-    ) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
+        fd: &mut Self::D,
+    ) -> Result<(FileDescriptor<Self::D>, Sockaddr), FileDescriptorError> {
         Err(FileDescriptorError::NotASocket)
     }
 }

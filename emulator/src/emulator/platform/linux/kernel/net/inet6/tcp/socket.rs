@@ -3,6 +3,7 @@ use std::ops::Not;
 use bitflags::Flags;
 
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
+use crate::emulator::abstractions::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::system::fd_map::FileDescriptor;
@@ -16,10 +17,12 @@ impl TcpSocketOps {
     }
 }
 
-impl FileDescriptorOps<FileDescriptorData> for TcpSocketOps {
+impl FileDescriptorOps for TcpSocketOps {
+    type D = FileDescriptorData;
+
     fn poll(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
     ) -> Option<FileOperationsReady> {
         // todo!();
         let tcp = fd.tcp.as_mut()?;
@@ -32,14 +35,14 @@ impl FileDescriptorOps<FileDescriptorData> for TcpSocketOps {
 
     fn supports_poll(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
     ) -> bool {
         true
     }
 
     fn bind(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         sockaddr: Sockaddr,
     ) -> Result<(), FileDescriptorError> {
         Ok(())
@@ -47,7 +50,7 @@ impl FileDescriptorOps<FileDescriptorData> for TcpSocketOps {
 
     fn sendto(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         data: &[u8],
         target: &Option<Sockaddr>,
     ) -> Result<usize, FileDescriptorError> {
@@ -58,7 +61,7 @@ impl FileDescriptorOps<FileDescriptorData> for TcpSocketOps {
 
     fn recvfrom(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         len: usize,
     ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError> {
         Ok((
@@ -74,7 +77,7 @@ impl FileDescriptorOps<FileDescriptorData> for TcpSocketOps {
 
     fn connect(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         sockaddr: Sockaddr,
     ) -> Result<(), FileDescriptorError> {
         todo!()
@@ -82,15 +85,15 @@ impl FileDescriptorOps<FileDescriptorData> for TcpSocketOps {
 
     fn setsockopt(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
     ) -> Result<(), FileDescriptorError> {
         Ok(())
     }
 
     fn accept(
         &mut self,
-        fd: &mut FileDescriptorData,
-    ) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
+        fd: &mut Self::D,
+    ) -> Result<(FileDescriptor<Self::D>, Sockaddr), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
     }
 }

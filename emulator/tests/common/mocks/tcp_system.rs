@@ -5,6 +5,7 @@ use fuzzyemu::emulator::abstractions::restore::Restorable;
 use fuzzyemu::emulator::abstractions::tcp_system::TCPSystem;
 
 mock! {
+    #[derive(Debug)]
     pub TCPSystem {}
     impl TCPSystem for TCPSystem {}
     impl Restorable for TCPSystem {

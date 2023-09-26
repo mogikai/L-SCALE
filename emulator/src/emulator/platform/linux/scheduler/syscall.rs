@@ -112,7 +112,7 @@ fn do_syscall<Endianness, CpuT, TcpT>(
 where
     Endianness: ByteOrder + 'static,
     CpuT: CPU + MMU,
-    TcpT: TCPSystem,
+    TcpT: TCPSystem + 'static,
 {
     use SYSCALL::*;
     match syscall {
@@ -216,7 +216,7 @@ pub(super) fn syscall<Endianness, CpuT, TcpT>(
 ) where
     Endianness: ByteOrder + 'static,
     CpuT: CPU + MMU,
-    TcpT: TCPSystem,
+    TcpT: TCPSystem + 'static,
 {
     let rax = system
         .cpu

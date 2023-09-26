@@ -11,6 +11,7 @@ use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, Encoder, RequiredMem};
 use crate::emulator::abstractions::mmu::MemoryError;
+use crate::emulator::abstractions::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::netlink::rtnetlink::nla_type::{
     IFA_ADDRESS, IFA_BROADCAST, IFA_FLAGS, IFA_LABEL, IFA_LOCAL,
@@ -37,24 +38,26 @@ impl<Endianness: ByteOrder> RTNetlinkSocket<Endianness> {
     }
 }
 
-impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for RTNetlinkSocket<Endianness> {
+impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
+    type D = FileDescriptorData;
+
     fn poll(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
     ) -> Option<FileOperationsReady> {
         todo!()
     }
 
     fn supports_poll(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
     ) -> bool {
         todo!()
     }
 
     fn bind(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         sockaddr: Sockaddr,
     ) -> Result<(), FileDescriptorError> {
         // TODO: What needs to be done here?
@@ -64,7 +67,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for RTNetlinkS
 
     fn getsockname(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
     ) -> Result<&Sockaddr, FileDescriptorError> {
         match &self.sockaddr {
             Some(s) => Ok(s),
@@ -74,7 +77,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for RTNetlinkS
 
     fn sendto(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         data: &[u8],
         target: &Option<Sockaddr>,
     ) -> Result<usize, FileDescriptorError> {
@@ -311,7 +314,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for RTNetlinkS
 
     fn recvmsg(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         len: usize,
     ) -> Result<Vec<u8>, FileDescriptorError> {
         // TODO: EAGAIN?
@@ -324,7 +327,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for RTNetlinkS
 
     fn recvfrom(
         &self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         len: usize,
     ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError> {
         todo!()
@@ -332,7 +335,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for RTNetlinkS
 
     fn connect(
         &mut self,
-        fd: &mut FileDescriptorData,
+        fd: &mut Self::D,
         sockaddr: Sockaddr,
     ) -> Result<(), FileDescriptorError> {
         todo!()
@@ -340,8 +343,8 @@ impl<Endianness: ByteOrder> FileDescriptorOps<FileDescriptorData> for RTNetlinkS
 
     fn accept(
         &mut self,
-        fd: &mut FileDescriptorData,
-    ) -> Result<(FileDescriptor<FileDescriptorData>, Sockaddr), FileDescriptorError> {
+        fd: &mut Self::D,
+    ) -> Result<(FileDescriptor<Self::D>, Sockaddr), FileDescriptorError> {
         todo!()
     }
 }
