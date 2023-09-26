@@ -16,6 +16,7 @@ publish = false
 
 [dev-dependencies]
 rand = "0.8.5"
+mockall = "*"
 
 [dependencies]
 fuzzyemu-derive = { path = "../emulator-derive" }

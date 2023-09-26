@@ -4,7 +4,6 @@ use std::time::Duration;
 use byteorder::LittleEndian;
 
 use fuzzyemu::emulator::abstractions::emulator::{Scheduler, SchedulerError, StopReason};
-use fuzzyemu::emulator::platform::linux::architecture::x86::X86;
 use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
 use fuzzyemu::emulator::platform::linux::scheduler::LinuxX86Scheduler;
 use fuzzyemu::emulator::system::clock::Clock;
@@ -15,6 +14,7 @@ use fuzzyemu::emulator::system::memory::Memory;
 use fuzzyemu::emulator::system::task_manager::TaskManager;
 use fuzzyemu::emulator::system::System;
 
+use crate::common::mocks::tcp_system::MockTCPSystem;
 use crate::common::TestFailure;
 
 pub fn emulate(
@@ -25,12 +25,13 @@ pub fn emulate(
 
     let task_manager = TaskManager::new();
     let filesystem = Filesystem::from_disk(1_073_741_824, sys_path).unwrap();
-    let memory = Memory::new();
+    let memory = Memory::<LittleEndian>::new();
     let clock = Clock::new(Duration::from_nanos(1662647309301240322));
     let fd_map = FileDescriptorMap::new();
-    let system = System::new(cpu.clone(), memory, filesystem, clock, fd_map, task_manager);
+    let tcp = MockTCPSystem::new();
+    let system = System::new(cpu.clone(), memory, filesystem, clock, fd_map, task_manager, tcp);
 
-    let initial_task = LinuxKernelTask::<LittleEndian, X86, UCWrapper>::new(system.clone(), 1337, 1);
+    let initial_task = LinuxKernelTask::new(system.clone(), 1337, 1);
 
     let args = [];
     let env = ["SHELL=/bin/sh", "LD_BIND_NOW=true"];

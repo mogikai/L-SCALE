@@ -1,4 +1,5 @@
 mod emulate;
+mod mocks;
 
 pub use emulate::emulate;
 use fuzzyemu::emulator::abstractions::emulator::StopReason;
