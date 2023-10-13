@@ -146,7 +146,7 @@ where
         let fname = read_osstring!(memory, filename)?;
         trace!("stat file {:?}", fname);
         let fs = sys_component!(self, filesystem);
-        let file = fs.resolve_last(Path::new(&fname))?;
+        let file = fs.resolve_last(Path::new(&fname), false)?; //TODO symlinks
         memory.write(statbuf, fs.stat(file)?)?;
         Ok(0)
     }
@@ -163,7 +163,7 @@ where
         let memory = memory.accessor(&mut *cpu, self.task_id);
         let fname = read_osstring!(memory, filename)?;
         trace!("openat file: {:?}", fname);
-        let file = sys_component!(self, filesystem).resolve_last(Path::new(&fname))?;
+        let file = sys_component!(self, filesystem).resolve_last(Path::new(&fname), false)?; //TODO symlinks
         let mut file_descriptor = FileDescriptor::new(Box::new(FileOps::new()));
         file_descriptor.data.file = Some(FileData::new(self.system.filesystem.clone(), file));
         Ok(sys_component_mut!(self, fd_map)
@@ -178,10 +178,13 @@ where
         &mut self,
         filename: &Path,
     ) -> Result<InternalFD, LinuxKernelError> {
-        let file = sys_component!(self, filesystem).resolve_last(filename)?;
+        trace!("open internal {:?}", filename);
+        let file = sys_component!(self, filesystem).resolve_last(filename, true)?;
         let mut file_descriptor = FileDescriptor::new(Box::new(FileOps::new()));
         file_descriptor.data.file = Some(FileData::new(self.system.filesystem.clone(), file));
-        Ok(sys_component_mut!(self, fd_map).insert_internal(&self.task_id, file_descriptor)?)
+        let r = sys_component_mut!(self, fd_map).insert_internal(&self.task_id, file_descriptor)?;
+        trace!("open internal result: {:?}", r);
+        return Ok(r);
     }
 
     pub fn statfs(
@@ -224,7 +227,7 @@ where
                 None
             };
             let fs = sys_component_mut!(self, filesystem);
-            let entry = fs.resolve_last_relative(dir, path)?;
+            let entry = fs.resolve_last_relative(dir, path, false)?; //TODO symlinks
             memory.write(statbuf, fs.stat(entry)?)?;
             Ok(0)
         }

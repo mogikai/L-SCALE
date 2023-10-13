@@ -16,7 +16,7 @@ pub use stat::Stat;
 
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::restore::Restorable;
-use crate::emulator::system::filesystem::meta_info::FSEntryContent::File;
+use crate::emulator::system::filesystem::meta_info::FSEntryContent::{File, Symlink};
 
 mod block;
 mod data;
@@ -24,7 +24,7 @@ mod meta_info;
 mod stat;
 mod tests;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum FSError {
     NotFound,
@@ -98,6 +98,19 @@ impl Filesystem {
         self.read(file_id, 0, size)
     }
 
+    pub fn read_symlink(
+        &self,
+        file_id: FSEntryId,
+    ) -> Result<Option<PathBuf>, FSError> {
+        let entry = self.meta_info.most_recent_entry(file_id)?;
+        if let Symlink { contents } = &entry.contents {
+            return Ok(Some(contents.clone()));
+        } else {
+            return Ok(None);
+        }
+        return Err(FSError::Unknown);
+    }
+
     pub fn read(
         &self,
         file_id: FSEntryId,
@@ -127,6 +140,7 @@ impl Filesystem {
             }
             Ok(buffer)
         } else {
+            trace!("cant read: {:?}", entry.contents);
             Err(FSError::Invalid)
         }
     }
@@ -249,6 +263,15 @@ impl Filesystem {
         self.meta_info.create_dir(path, stat)
     }
 
+    pub fn create_symlink(
+        &mut self,
+        path: &Path,
+        target: PathBuf,
+        stat: Option<Stat>,
+    ) -> Result<FSEntryId, FSError> {
+        self.meta_info.create_link(path, stat, target)
+    }
+
     pub fn delete(
         &mut self,
         path: &Path,
@@ -284,8 +307,9 @@ impl Filesystem {
     pub fn resolve_path(
         &self,
         path: &Path,
+        follow_symlink: bool,
     ) -> Result<Vec<FSEntryId>, FSError> {
-        self.meta_info.resolve_path(None, path)
+        return Ok(self.resolve_relative(None, path, true)?);
     }
 
     /// This function resolves the supplied path to an FSEntryId. After the lookup,
@@ -297,8 +321,9 @@ impl Filesystem {
     pub fn resolve_last(
         &self,
         path: &Path,
+        follow_symlink: bool,
     ) -> Result<FSEntryId, FSError> {
-        self.meta_info.resolve_last(None, path)
+        self.resolve_last_relative(None, path, follow_symlink)
     }
 
     /// This function resolves the supplied path to an FSEntryId. The lookup is performed
@@ -310,8 +335,82 @@ impl Filesystem {
         &self,
         dir: Option<FSEntryId>,
         path: &Path,
+        follow_symlink: bool,
     ) -> Result<FSEntryId, FSError> {
-        self.meta_info.resolve_last(dir, path)
+        Ok(*self
+            .resolve_relative(dir, path, follow_symlink)?
+            .last()
+            .expect("Empty paths cannot occur"))
+    }
+
+    fn resolve_symlink(
+        &self,
+        dir: Option<FSEntryId>,
+        link: FSEntryId,
+        mut loopcount: &mut u8,
+    ) -> Result<FSEntryId, FSError> {
+        *loopcount -= 1;
+        let target = self
+            .read_symlink(link)?
+            .expect("link target cannot be None at this point");
+        let mut dir = if target.is_relative() { dir } else { None };
+        let (mut ids, mut remain) = self.meta_info.resolve_path(dir, &target)?;
+        while remain.is_some() && *loopcount > 0 {
+            let link = ids.pop().expect("Empty paths cannot occur");
+            let target = self
+                .read_symlink(link)?
+                .expect("link target cannot be None at this point");
+            let dir = if target.is_relative() {
+                ids.last().copied()
+            } else {
+                None
+            };
+            remain = Some(target.join(remain.expect("").as_path()));
+            (ids, remain) = self
+                .meta_info
+                .resolve_path(dir, remain.expect("").as_path())?;
+            *loopcount -= 1;
+        }
+
+        if remain.is_some() {
+            return Err(FSError::Loop);
+        }
+        return Ok(*ids.last().expect("Empty paths cannot occur"));
+    }
+
+    fn resolve_relative(
+        &self,
+        dir: Option<FSEntryId>,
+        path: &Path,
+        follow_symlink: bool,
+    ) -> Result<Vec<FSEntryId>, FSError> {
+        trace!("open at: {:?} {:?} follow_symlink: {}", dir, path, follow_symlink);
+        let mut loopcount: u8 = 30;
+        let (mut ids, mut remain) = self.meta_info.resolve_path(dir, path)?;
+        while remain.is_some() {
+            trace!("remain: {:?}", remain);
+            let link = ids.pop().expect("Empty paths cannot occur");
+            let result = self.resolve_symlink(ids.last().copied(), link, &mut loopcount)?;
+            ids.push(result);
+            let (mut a, r) = self
+                .meta_info
+                .resolve_path(Some(result), remain.expect("").as_path())?;
+            ids.append(&mut a);
+            remain = r;
+        }
+        while follow_symlink
+            && self
+                .read_symlink(*ids.last().expect("Empty paths cannot occur"))?
+                .is_some()
+        {
+            if loopcount == 0 {
+                return Err(FSError::Loop);
+            }
+            let link = ids.pop().expect("Empty paths cannot occur");
+            let result = self.resolve_symlink(ids.last().copied(), link, &mut loopcount)?;
+            ids.push(result);
+        }
+        return Ok(ids);
     }
 
     fn print_tree(&self) {
@@ -372,12 +471,19 @@ fn load_dir(
             let entry = entry?;
             let path = entry.path();
             let stat = entry.metadata().unwrap();
-            if path.is_dir() {
+            if path.is_symlink() {
+                trace!("symlink {}", path.display());
+                let link = fs::read_link(entry.path())?;
+                fs.create_symlink(&Path::new("/").join(path.strip_prefix(root).unwrap()), link, Some(stat.into()))
+                    .unwrap();
+            } else if path.is_dir() {
+                trace!("dir {}", path.display());
                 fs.create_dir(&Path::new("/").join(path.strip_prefix(root).unwrap()), Some(stat.into()))
                     .unwrap();
                 load_dir(fs, &path, root)?;
                 // FSEntry::DirEntry(Dir {}, Stats::from(stats))
-            } else {
+            } else if path.is_file() {
+                trace!("file {}", path.display());
                 let data = read(entry.path())?;
                 fs.create_file_with_contents(
                     &Path::new("/").join(path.strip_prefix(root).unwrap()),
@@ -386,6 +492,8 @@ fn load_dir(
                 )
                 .unwrap();
                 // FSEntry::FileEntry(File::new(&path), Stats::from(stats))
+            } else {
+                info!("ignore file {}: unsuported file type", path.strip_prefix(root).unwrap().display());
             };
             // println!("{:?}", Path::new("/").join(path.strip_prefix(root).unwrap().to_path_buf()));
         }

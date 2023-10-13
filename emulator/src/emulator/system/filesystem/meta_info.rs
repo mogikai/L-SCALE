@@ -3,10 +3,10 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 use crate::emulator::system::filesystem::block::Block;
-use crate::emulator::system::filesystem::stat::{Stat, S_IFDIR, S_IFREG};
+use crate::emulator::system::filesystem::stat::{Stat, S_IFDIR, S_IFLNK, S_IFREG};
 use crate::emulator::system::filesystem::{ContentId, FSEntryId, FSError, SnapId};
 
-use self::FSEntryContent::{Dir, File};
+use self::FSEntryContent::{Dir, File, Symlink};
 
 #[derive(Debug)]
 pub struct MetaInfo {
@@ -123,13 +123,27 @@ impl MetaInfo {
         })
     }
 
+    pub(super) fn create_link(
+        &mut self,
+        path: &Path,
+        stat: Option<Stat>,
+        target: PathBuf,
+    ) -> Result<FSEntryId, FSError> {
+        self.new_entry(path, |name, parent_id| {
+            let mut entry = FSEntry::new(Symlink { contents: target }, stat.unwrap_or_default(), name, parent_id);
+            entry.stat.st_mode = S_IFLNK;
+            entry
+        })
+    }
+
     /// See the public api [Filesystem::delete](Filesystem::delete) for documentation.
+    /// TODO check if change argument to fsentryid
     pub(super) fn delete(
         &mut self,
         path: &Path,
     ) -> Result<(), FSError> {
         // TODO: Handle deleting relative paths.
-        let fse_ids = self.resolve_path(None, path)?;
+        let (fse_ids, _) = self.resolve_path(None, path)?;
 
         let (entry, snap_id) =
             self.most_recent_entry_and_snap_id(*fse_ids.last().expect("Will always contain at least one id"))?;
@@ -145,6 +159,7 @@ impl MetaInfo {
                     // TODO: take out blocks that are from current snapshot and add them to free set
                 }
             }
+            Symlink { .. } => {}
         }
 
         // Remove the historical index for the current snapshot if it exists.
@@ -214,7 +229,7 @@ impl MetaInfo {
         &self,
         root: Option<FSEntryId>,
         path: &Path,
-    ) -> Result<Vec<FSEntryId>, FSError> {
+    ) -> Result<(Vec<FSEntryId>, Option<PathBuf>), FSError> {
         trace!("meta_info: resolve_path: {:?} {:?}", self.most_recent_entry(root.unwrap_or(self.root_node)), path);
         let path = if path.is_absolute() {
             if root.is_some() {
@@ -228,31 +243,51 @@ impl MetaInfo {
         };
 
         let mut path_ids = Vec::new();
+        let mut found_symlink: bool = false;
+        let mut remaining = PathBuf::new();
         path_ids.push(root.unwrap_or(self.root_node));
         for component in path {
-            if let Dir { contents } = &self
+            if found_symlink {
+                remaining.push(component);
+                continue;
+            }
+            match &self
                 .most_recent_entry(*path_ids.last().expect("Path always contains root"))?
                 .contents
             {
-                let child = *contents
-                    .get(component.to_str().unwrap())
-                    .ok_or(FSError::Unknown)?;
-                path_ids.push(child);
+                Dir { contents } => {
+                    let child = *contents
+                        .get(component.to_str().unwrap())
+                        .ok_or(FSError::Unknown)?;
+                    path_ids.push(child);
+                }
+                File { contents: _ } => {
+                    return Err(FSError::NoEntry);
+                }
+                Symlink { contents: _ } => {
+                    found_symlink = true;
+                    remaining.push(component);
+                }
             }
         }
-        Ok(path_ids)
+        if found_symlink {
+            return Ok((path_ids, Some(remaining)));
+        } else {
+            return Ok((path_ids, None));
+        }
     }
 
     /// See the public api [Filesystem::resolve_last](Filesystem::resolve_last) for documentation.
-    pub(super) fn resolve_last(
+    fn resolve_last(
         &self,
         root: Option<FSEntryId>,
         path: &Path,
     ) -> Result<FSEntryId, FSError> {
-        Ok(*self
-            .resolve_path(root, path)?
-            .last()
-            .expect("Empty paths cannot occur"))
+        let (ids, remain) = self.resolve_path(root, path)?;
+        if remain.is_some() {
+            return Err(FSError::Unknown);
+        }
+        return Ok(*ids.last().expect("Empty paths cannot occur"));
     }
 
     pub(super) fn root(&self) -> FSEntryId {
@@ -374,6 +409,7 @@ impl MetaInfo {
         );
         match &node.contents {
             File { .. } => {}
+            Symlink { .. } => {}
             Dir { contents } => {
                 for entry in contents.values() {
                     self.print_tree(*entry, Some(depth + 1));
@@ -419,6 +455,7 @@ pub(super) enum FSEntryContent {
     File { contents: BTreeSet<Block> },
     // Block ids
     Dir { contents: BTreeMap<String, FSEntryId> },
+    Symlink { contents: PathBuf },
 }
 
 #[derive(Clone, Debug)]

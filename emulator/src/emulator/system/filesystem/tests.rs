@@ -39,7 +39,7 @@ fn basic() -> Result<(), GenericError> {
         .is_err());
 
     fs.restore_and_discard()?;
-    let resolved = fs.resolve_path(Path::new("/home/mark/my_stuff/my_file.txt"))?;
+    let resolved = fs.resolve_path(Path::new("/home/mark/my_stuff/my_file.txt"), false)?;
     assert_eq!(resolved.len(), 5);
     fs.restore()?;
     for i in 0..10_000 {
@@ -54,7 +54,7 @@ fn basic() -> Result<(), GenericError> {
         }
     }
     fs.restore()?;
-    let my_file = fs.resolve_last(Path::new("/my_file.txt"))?;
+    let my_file = fs.resolve_last(Path::new("/my_file.txt"), false)?;
     fs.write(my_file, 0, "asdf".as_bytes())?;
     fs.delete(Path::new("/my_file.txt"))?;
     assert!(fs.write(my_file, 0, "asdf".as_bytes()).is_err());
@@ -113,7 +113,7 @@ fn load_fs() -> Result<(), FSError> {
     dir.push(Path::new("tests/assets/ubuntu2304"));
     let fs = Filesystem::from_disk(1_073_741_824, dir.as_path())?;
     // fs.print_tree();
-    let lib_id = fs.resolve_last(Path::new("/home/user/mremap_private_anon"))?;
+    let lib_id = fs.resolve_last(Path::new("/home/user/mremap_private_anon"), false)?;
     let data = fs.read(lib_id, 0, 100000)?;
     assert_eq!(data.as_slice(), reference.as_slice());
     Ok(())
@@ -124,7 +124,55 @@ fn size_after_reset_is_correct() -> Result<(), FSError> {
     let mut fs = Filesystem::new(1000);
     let test_file = Path::new("/test.txt");
     fs.create_file(test_file, None)?;
-    let test_file_id = fs.resolve_last(test_file)?;
+    let test_file_id = fs.resolve_last(test_file, false)?;
     // TODO: Implement check
+    Ok(())
+}
+
+#[test]
+fn symlink() -> Result<(), FSError> {
+    let mut fs = Filesystem::new(1000);
+    let test_file = Path::new("/test.txt");
+    fs.create_file(test_file, None)?;
+    let test_file_id = fs.resolve_last(test_file, false)?;
+    let test_link = Path::new("/link");
+    fs.create_symlink(test_link, test_file.to_path_buf(), None)?;
+    let test_link_id = fs.resolve_last(test_link, true)?;
+    assert!(test_file_id == test_link_id);
+    // TODO: Implement check
+    Ok(())
+}
+
+#[test]
+fn symlink_loop() -> Result<(), FSError> {
+    let mut fs = Filesystem::new(1000);
+    let test_link = Path::new("/link");
+    fs.create_symlink(test_link, test_link.to_path_buf(), None)?;
+    let err = fs.resolve_last(test_link, true);
+    assert!(err == Err(FSError::Loop));
+    Ok(())
+}
+
+#[test]
+fn symlink_complex() -> Result<(), FSError> {
+    let mut fs = Filesystem::new(1000);
+    let realpath = Path::new("/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2");
+    let dir = realpath.parent().expect("");
+    let mut pb = PathBuf::new();
+    for d in dir {
+        pb.push(d);
+        fs.create_dir(pb.as_path(), None);
+    }
+    let real_file_id = fs.create_file(realpath, None)?;
+    fs.create_symlink(Path::new("/lib64"), PathBuf::from("usr/lib64"), None)?;
+    fs.create_dir(Path::new("/usr/lib64"), None);
+    fs.create_symlink(
+        Path::new("/usr/lib64/ld-linux-x86-64.so.2"),
+        PathBuf::from("/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2"),
+        None,
+    );
+    fs.create_symlink(Path::new("/lib"), PathBuf::from("/usr/lib"), None)?;
+    let link_id = fs.resolve_last(Path::new("/lib64/ld-linux-x86-64.so.2"), true)?;
+    assert!(link_id == real_file_id);
     Ok(())
 }
