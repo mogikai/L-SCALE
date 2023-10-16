@@ -22,7 +22,7 @@ impl Block {
             || !filesystem::is_4k_aligned(size)
             || !filesystem::is_4k_aligned(data_offset)
         {
-            return Err(FSError::Unknown);
+            return Err(FSError::Not4kAlligned);
         }
         Ok(Self {
             start,
@@ -57,7 +57,7 @@ impl Block {
         end: usize,
     ) -> Result<(Option<Block>, Block, Option<Block>), FSError> {
         if !filesystem::is_4k_aligned(start) || !filesystem::is_4k_aligned(end) {
-            return Err(FSError::Unknown);
+            return Err(FSError::Not4kAlligned);
         }
         assert!(self.start <= start);
         assert!(end <= self.end());

@@ -28,12 +28,19 @@ mod tests;
 #[non_exhaustive]
 pub enum FSError {
     NotFound,
+    NoEntry,
+    Not4kAlligned,
+    NoAddress,
+    IO,
+    Invalid,
+    Loop,
     Unknown,
 }
 
 impl From<io::Error> for FSError {
-    fn from(_: io::Error) -> Self {
-        FSError::Unknown
+    fn from(e: io::Error) -> Self {
+        trace!("{}", e);
+        FSError::IO
     }
 }
 
@@ -100,7 +107,7 @@ impl Filesystem {
         let entry = self.meta_info.most_recent_entry(file_id)?;
         if let File { contents } = &entry.contents {
             if pos > entry.stat.st_size as usize {
-                return Err(FSError::Unknown);
+                return Err(FSError::NoAddress);
             }
             let len = min(len, entry.stat.st_size as usize - pos);
             let mut read = 0;
@@ -120,7 +127,7 @@ impl Filesystem {
             }
             Ok(buffer)
         } else {
-            Err(FSError::Unknown)
+            Err(FSError::Invalid)
         }
     }
 

@@ -93,7 +93,7 @@ impl Data {
         buffer: &mut [MaybeUninit<u8>],
     ) -> Result<usize, FSError> {
         if !block.contains(pos) {
-            return Err(FSError::Unknown);
+            return Err(FSError::NoAddress);
         }
         let to_read = min(buffer.len(), block.end() - pos);
         let offset = block.data_offset + (pos - block.start);

@@ -215,6 +215,7 @@ impl MetaInfo {
         root: Option<FSEntryId>,
         path: &Path,
     ) -> Result<Vec<FSEntryId>, FSError> {
+        trace!("meta_info: resolve_path: {:?} {:?}", self.most_recent_entry(root.unwrap_or(self.root_node)), path);
         let path = if path.is_absolute() {
             if root.is_some() {
                 // Absolute paths with supplied root is not allowed
