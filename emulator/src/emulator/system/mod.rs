@@ -8,8 +8,8 @@ use byteorder::ByteOrder;
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::kernel_task::KernelTask;
 use crate::emulator::abstractions::mmu::MMU;
+use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::restore::Restorable;
-use crate::emulator::abstractions::tcp_system::TCPSystem;
 use crate::emulator::system::clock::Clock;
 use crate::emulator::system::fd_map::{FdId, FileDescriptorMap};
 use crate::emulator::system::filesystem::Filesystem;
@@ -91,7 +91,7 @@ where
         clock: Clock,
         fd_map: FileDescriptorMap<FD, TaskId, FDData>,
         task_manager: TaskManager<TaskId, KernelTaskT>,
-        tcp: TcpT,
+        tcp: Rc<RefCell<TcpT>>,
     ) -> Self {
         Self {
             cpu,
@@ -100,7 +100,7 @@ where
             clock: Rc::new(RefCell::new(clock)),
             fd_map: Rc::new(RefCell::new(fd_map)),
             task_manager: Rc::new(RefCell::new(task_manager)),
-            tcp: Rc::new(RefCell::new(tcp)),
+            tcp,
         }
     }
 }

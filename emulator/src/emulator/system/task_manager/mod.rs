@@ -17,6 +17,7 @@ use std::rc::Rc;
 #[derive(Debug, Copy, Clone)]
 pub enum TaskState {
     Runnable,
+    WakeUp(EVAddr),
     Yielded(EVAddr),
 }
 
@@ -55,6 +56,14 @@ impl<TaskId, T: KernelTask<TaskId>> Task<TaskId, T> {
         rip: EVAddr,
     ) {
         self.state = TaskState::Yielded(rip);
+    }
+
+    pub fn wake_up(&mut self) {
+        self.state = match self.state {
+            TaskState::Runnable => panic!(),
+            TaskState::WakeUp(addr) => TaskState::WakeUp(addr),
+            TaskState::Yielded(addr) => TaskState::WakeUp(addr),
+        }
     }
 }
 
@@ -183,6 +192,10 @@ where
 
     pub fn tasks(&self) -> impl Iterator<Item = &Task<TaskId, T>> {
         self.tasks.iter().filter_map(TaskEntry::task)
+    }
+
+    pub fn tasks_mut(&mut self) -> impl Iterator<Item = &mut Task<TaskId, T>> {
+        self.tasks.iter_mut().filter_map(TaskEntry::task_mut)
     }
 
     /// Get the task with id `task_id`. Returns `None` if no task with this id exists.

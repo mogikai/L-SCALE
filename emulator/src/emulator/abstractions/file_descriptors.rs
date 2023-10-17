@@ -21,9 +21,14 @@ use crate::emulator::system::filesystem::{FSError, Stat};
 pub trait FileDescriptorOps: Debug {
     type D: Default + Restorable;
     /// Can be called to query what operations can be called without blocking on the handle.
+    /// The interest parameter notifies the subsystems what the caller was interested in.
+    /// This parameter should not influence the output and is there to let fuzzer components
+    /// know what the last interest for a specific file descriptor was.
+    /// That way the fuzzer can provide these demands in the future.
     fn poll(
         &self,
         fd: &mut Self::D,
+        interest: FileOperationsReady,
     ) -> Option<FileOperationsReady>;
 
     /// Returns true if the file descriptor supports polling.
@@ -31,6 +36,11 @@ pub trait FileDescriptorOps: Debug {
         &self,
         fd: &mut Self::D,
     ) -> bool;
+
+    // fn close(
+    //     &self,
+    //     fd: &mut Self::D,
+    // );
 
     /// returns: The stat vector of the handle this method is called on
     fn stat<'a>(
@@ -127,6 +137,14 @@ pub trait FileDescriptorOps: Debug {
         &mut self,
         fd: &mut Self::D,
     ) -> Result<(FileDescriptor<Self::D>, Sockaddr), FileDescriptorError>;
+
+    fn listen(
+        &mut self,
+        fd: &mut Self::D,
+        backlog: usize,
+    ) -> Result<(), FileDescriptorError> {
+        todo!()
+    }
 }
 
 #[derive(Debug)]
@@ -154,6 +172,7 @@ impl From<MemoryError> for FileDescriptorError {
 
 bitflags! {
     #[repr(C)]
+    #[derive(Debug, Copy, Clone)]
     pub struct FileOperationsReady: u64 {
         const Read              = 0x0001;
         const Priority          = 0x0002;

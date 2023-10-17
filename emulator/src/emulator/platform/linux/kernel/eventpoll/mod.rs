@@ -8,10 +8,10 @@ use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::CPU;
-use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
+use crate::emulator::abstractions::file_descriptors::{FileDescriptorOps, FileOperationsReady};
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
 use crate::emulator::abstractions::mmu::MMU;
-use crate::emulator::abstractions::tcp_system::TCPSystem;
+use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::{FileDescriptorData, FD};
 use crate::emulator::platform::linux::kernel::error::SyscallError;
@@ -72,7 +72,7 @@ where
                     let file = &mut *file;
                     let ready_ops = file
                         .ops
-                        .poll(&mut file.data)
+                        .poll(&mut file.data, FileOperationsReady::from(event.events))
                         .expect("Only pollable fds should be in interest list");
                     let ready_events = EPOLL_EVENTS::from(ready_ops);
                     if event.events.intersects(ready_events) && triggered_events.len() < maxevents as usize {

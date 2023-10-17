@@ -53,7 +53,7 @@ macro_rules! sys_component_mut {
 }
 
 use crate::emulator::abstractions::kernel_task::KernelTask;
-use crate::emulator::abstractions::tcp_system::TCPSystem;
+use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 pub(super) use {sys_component, sys_component_mut};
 
 /* eventuell nach task umbenennen */

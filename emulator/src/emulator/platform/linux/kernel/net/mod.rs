@@ -3,8 +3,10 @@ use num_enum::FromPrimitive;
 
 use fuzzyemu_derive::RequiredMem;
 
+use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
 use crate::emulator::abstractions::mmu::MemoryError;
+use crate::emulator::abstractions::network::{IPAddress, NetworkError, SocketAddress};
 use crate::emulator::platform::linux::kernel::LinuxKernelError;
 
 pub mod inet6;
@@ -39,6 +41,62 @@ pub enum Sockaddr {
     UNSPEC {
         data: [u8; 14],
     },
+}
+
+impl From<SocketAddress> for Sockaddr {
+    fn from(value: SocketAddress) -> Self {
+        match value {
+            SocketAddress::IP(addr) => match addr {
+                IPAddress::V6 {
+                    port,
+                    flowinfo,
+                    addr,
+                    scope_id,
+                } => Sockaddr::IN6 {
+                    sin6_port: port,
+                    sin6_flowinfo: flowinfo,
+                    sin6_addr: addr,
+                    sin6_scope_id: scope_id,
+                },
+                IPAddress::V4 { port, addr } => Sockaddr::IN {
+                    sin_port: port,
+                    sin_addr: addr,
+                },
+            },
+            _ => todo!(),
+        }
+    }
+}
+
+impl From<Sockaddr> for SocketAddress {
+    fn from(value: Sockaddr) -> Self {
+        match value {
+            Sockaddr::IN { sin_port, sin_addr } => SocketAddress::IP(IPAddress::V4 {
+                port: sin_port,
+                addr: sin_addr,
+            }),
+            Sockaddr::NL { .. } => {
+                todo!()
+            }
+            Sockaddr::IN6 {
+                sin6_port,
+                sin6_flowinfo,
+                sin6_addr,
+                sin6_scope_id,
+            } => SocketAddress::IP(IPAddress::V6 {
+                port: sin6_port,
+                flowinfo: sin6_flowinfo,
+                addr: sin6_addr,
+                scope_id: sin6_scope_id,
+            }),
+            Sockaddr::UNIX { .. } => {
+                todo!()
+            }
+            Sockaddr::UNSPEC { .. } => {
+                todo!()
+            }
+        }
+    }
 }
 
 impl Decode for Sockaddr {
@@ -331,4 +389,12 @@ impl SockOpt {
     pub const SCM_WIFI_STATUS: Self = Self::SO_WIFI_STATUS;
     pub const SO_DETACH_BPF: Self = Self::SO_DETACH_FILTER;
     pub const SCM_TXTIME: Self = Self::SO_TXTIME;
+}
+
+impl From<NetworkError> for FileDescriptorError {
+    fn from(error: NetworkError) -> Self {
+        match error {
+            NetworkError::Unknown => FileDescriptorError::Unknown,
+        }
+    }
 }

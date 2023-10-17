@@ -80,3 +80,40 @@ impl From<FileOperationsReady> for EPOLL_EVENTS {
         out
     }
 }
+
+impl From<EPOLL_EVENTS> for FileOperationsReady {
+    fn from(val: EPOLL_EVENTS) -> Self {
+        let mut out = FileOperationsReady::empty();
+        if val.contains(EPOLL_EVENTS::EPOLLIN) {
+            out |= FileOperationsReady::Read;
+        }
+        if val.contains(EPOLL_EVENTS::EPOLLPRI) {
+            out |= FileOperationsReady::Priority;
+        }
+        if val.contains(EPOLL_EVENTS::EPOLLOUT) {
+            out |= FileOperationsReady::Write;
+        }
+        if val.contains(EPOLL_EVENTS::EPOLLERR) {
+            out |= FileOperationsReady::Error;
+        }
+        if val.contains(EPOLL_EVENTS::EPOLLHUP) {
+            out |= FileOperationsReady::HangUp;
+        }
+        if val.contains(EPOLL_EVENTS::EPOLLRDNORM) {
+            out |= FileOperationsReady::ReadNormal;
+        }
+        if val.contains(EPOLL_EVENTS::EPOLLRDBAND) {
+            out |= FileOperationsReady::ReadOutOfBand;
+        }
+        if val.contains(EPOLL_EVENTS::EPOLLWRNORM) {
+            out |= FileOperationsReady::WriteNormal;
+        }
+        if val.contains(EPOLL_EVENTS::EPOLLWRBAND) {
+            out |= FileOperationsReady::WriteOutOfBand;
+        }
+        if val.contains(EPOLL_EVENTS::EPOLLRDHUP) {
+            out |= FileOperationsReady::ReadHangUp;
+        }
+        out
+    }
+}

@@ -25,7 +25,7 @@ where
         let mut task_manager = self.system.task_manager.borrow_mut();
         let task_id = task_manager
             .tasks()
-            .find(|task| matches!(task.state(), TaskState::Runnable))
+            .find(|task| matches!(task.state(), TaskState::Runnable | TaskState::WakeUp(_)))
             .ok_or(SchedulerError::NoRunnableTasks)?
             .task_id();
 
@@ -44,7 +44,7 @@ where
         cpu.restore_context(task.context_handle())
             .map_err(|_| StopReason::Unknown)?;
 
-        if let TaskState::Yielded(rip) = task.state() {
+        if let TaskState::WakeUp(rip) = task.state() {
             cpu.reg_write(RegisterX86::RIP.into(), rip.into())?;
         }
 

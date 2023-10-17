@@ -11,7 +11,7 @@ use fuzzyemu_derive::{Decode, Encode, RequiredMem};
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
 use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, Encoder, RequiredMem};
 use crate::emulator::abstractions::mmu::MemoryError;
-use crate::emulator::abstractions::tcp_system::TCPSystem;
+use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::netlink::rtnetlink::nla_type::{
     IFA_ADDRESS, IFA_BROADCAST, IFA_FLAGS, IFA_LABEL, IFA_LOCAL,
@@ -44,6 +44,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
     fn poll(
         &self,
         fd: &mut Self::D,
+        interest: FileOperationsReady,
     ) -> Option<FileOperationsReady> {
         todo!()
     }

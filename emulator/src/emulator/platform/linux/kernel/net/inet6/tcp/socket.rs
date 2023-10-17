@@ -3,8 +3,9 @@ use std::ops::Not;
 use bitflags::Flags;
 
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
-use crate::emulator::abstractions::tcp_system::TCPSystem;
+use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
+use crate::emulator::platform::linux::kernel::net::inet6::tcp::TCPData;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::system::fd_map::FileDescriptor;
 
@@ -23,14 +24,11 @@ impl FileDescriptorOps for TcpSocketOps {
     fn poll(
         &self,
         fd: &mut Self::D,
+        interest: FileOperationsReady,
     ) -> Option<FileOperationsReady> {
         // todo!();
-        let tcp = fd.tcp.as_mut()?;
-        tcp.pending_data
-            .is_empty()
-            .not()
-            .then_some(FileOperationsReady::Read)
-            .or(Some(FileOperationsReady::empty()))
+        let tcp = fd.tcp.as_mut().unwrap();
+        tcp.tcp_system.borrow_mut().poll(tcp.id, interest).ok()
     }
 
     fn supports_poll(
@@ -45,7 +43,8 @@ impl FileDescriptorOps for TcpSocketOps {
         fd: &mut Self::D,
         sockaddr: Sockaddr,
     ) -> Result<(), FileDescriptorError> {
-        Ok(())
+        let tcp = fd.tcp.as_mut().unwrap();
+        Ok(tcp.tcp_system.borrow_mut().bind(tcp.id, sockaddr.into())?)
     }
 
     fn sendto(
@@ -55,8 +54,7 @@ impl FileDescriptorOps for TcpSocketOps {
         target: &Option<Sockaddr>,
     ) -> Result<usize, FileDescriptorError> {
         let tcp = fd.tcp.as_mut().ok_or(FileDescriptorError::NotASocket)?;
-        tcp.out_data.push_front(data.to_vec());
-        Ok(data.len())
+        Ok(tcp.tcp_system.borrow_mut().send(tcp.id, data)?)
     }
 
     fn recvfrom(
@@ -64,15 +62,18 @@ impl FileDescriptorOps for TcpSocketOps {
         fd: &mut Self::D,
         len: usize,
     ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError> {
-        Ok((
-            fd.tcp.as_mut().unwrap().pending_data.pop_back().unwrap(),
-            Sockaddr::IN6 {
-                sin6_port: 5555,
-                sin6_flowinfo: 0,
-                sin6_addr: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-                sin6_scope_id: 0,
-            },
-        ))
+        let tcp = fd.tcp.as_mut().ok_or(FileDescriptorError::NotASocket)?;
+        let (data, addr) = tcp.tcp_system.borrow_mut().recvfrom(tcp.id, len)?;
+        Ok((data, addr.into()))
+        // Ok((
+        //     fd.tcp.as_mut().unwrap().pending_data.pop_back().unwrap(),
+        //     Sockaddr::IN6 {
+        //         sin6_port: 5555,
+        //         sin6_flowinfo: 0,
+        //         sin6_addr: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        //         sin6_scope_id: 0,
+        //     },
+        // ))
     }
 
     fn connect(
@@ -94,6 +95,20 @@ impl FileDescriptorOps for TcpSocketOps {
         &mut self,
         fd: &mut Self::D,
     ) -> Result<(FileDescriptor<Self::D>, Sockaddr), FileDescriptorError> {
-        Err(FileDescriptorError::NotSupported)
+        let fd = fd.tcp.as_mut().ok_or(FileDescriptorError::NotASocket)?;
+        let (new_id, sockaddr) = fd.tcp_system.borrow_mut().accept(fd.id)?;
+        let mut new_fd = FileDescriptor::new(Box::new(TcpSocketOps::new()));
+        new_fd.data.tcp = Some(TCPData::new(fd.tcp_system.clone(), new_id));
+
+        Ok((new_fd, sockaddr.into()))
+    }
+
+    fn listen(
+        &mut self,
+        fd: &mut Self::D,
+        backlog: usize,
+    ) -> Result<(), FileDescriptorError> {
+        let tcp = fd.tcp.as_mut().unwrap();
+        Ok(tcp.tcp_system.borrow_mut().listen(tcp.id, backlog)?)
     }
 }

@@ -1,7 +1,7 @@
 use bitflags::Flags;
 
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
-use crate::emulator::abstractions::tcp_system::TCPSystem;
+use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::system::fd_map::FileDescriptor;
@@ -34,6 +34,7 @@ impl FileDescriptorOps for SignalFDOps {
     fn poll(
         &self,
         fd: &mut Self::D,
+        interest: FileOperationsReady,
     ) -> Option<FileOperationsReady> {
         // TODO: Implement poll operation instead of never signaling
         Some(FileOperationsReady::empty())

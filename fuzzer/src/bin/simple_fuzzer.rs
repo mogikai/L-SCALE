@@ -1,18 +1,23 @@
 extern crate core;
 
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
-
 use clap::Parser;
 use log::debug;
+use rand::seq::SliceRandom;
+use rand::Rng;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use fuzzyemu::emulator::abstractions::cpu::CPU;
 use fuzzyemu::emulator::abstractions::emulator::{Scheduler, SchedulerError, StopReason};
 use fuzzyemu::emulator::abstractions::errors::GenericError;
+use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
 use fuzzyemu::emulator::abstractions::kernel_task::KernelTask;
 use fuzzyemu::emulator::abstractions::mmu::MemoryError;
+use fuzzyemu::emulator::abstractions::network::{IPAddress, SocketAddress};
 use fuzzyemu::emulator::abstractions::restore::Restorable;
 use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
 use fuzzyemu::emulator::platform::linux::scheduler::LinuxX86Scheduler;
@@ -58,8 +63,9 @@ fn main() -> Result<(), GenericError> {
         let memory = Memory::<LittleEndian>::new();
         let clock = Clock::new(Duration::from_nanos(1662647309301240322));
         let file_descriptor_map = FileDescriptorMap::new();
-        let tcp = TCP::new();
-        let system = System::new(cpu.clone(), memory, filesystem, clock, file_descriptor_map, task_manager, tcp);
+        let tcp = Rc::new(RefCell::new(TCP::new()));
+        let system =
+            System::new(cpu.clone(), memory, filesystem, clock, file_descriptor_map, task_manager, tcp.clone());
 
         cpu.borrow_mut().add_block_hook(Box::new(|_, addr, _| {
             total_blocks += 1;
@@ -110,14 +116,80 @@ fn main() -> Result<(), GenericError> {
             result = scheduler.run(None, None);
             debug!("Emulation returned {result:?}");
         }
-        let start_iterations = Instant::now();
-        for _ in 0..100 {
-            if let Err(SchedulerError::NoRunnableTasks) = result {
-                scheduler.restore()?;
-                result = scheduler.run(None, None);
+        //////////////// DEMO FUZZING ////////////////
+        // 100k fuzzing iterations
+        let mut active_connections = vec![];
+        for _ in 0..5 {
+            let mut tcp = tcp.borrow_mut();
+            if active_connections.is_empty() {
+                let listener_id = *tcp
+                    .sockets()
+                    .find(|(sid, s)| s.is_listener() && s.interest().contains(FileOperationsReady::Read))
+                    .map(|(sid, s)| sid)
+                    .unwrap();
+
+                active_connections.push(
+                    tcp.new_connection(
+                        &listener_id,
+                        SocketAddress::IP(IPAddress::V6 {
+                            port: 1337,
+                            flowinfo: 0,
+                            addr: [0, 0, 0, 0, 0, 0, 0, 123, 0, 0, 0, 0, 0, 0, 0, 0],
+                            scope_id: 0,
+                        }),
+                    )
+                    .unwrap(),
+                );
+
+                active_connections.push(
+                    tcp.new_connection(
+                        &listener_id,
+                        SocketAddress::IP(IPAddress::V6 {
+                            port: 1338,
+                            flowinfo: 0,
+                            addr: [0, 0, 0, 0, 0, 0, 0, 123, 0, 0, 0, 0, 0, 0, 0, 0],
+                            scope_id: 0,
+                        }),
+                    )
+                    .unwrap(),
+                );
             }
+
+            // let mut data = VecDeque::new();
+            // data.push_front(hex::decode("48454c463800000000000000ffff0000ffff00000000000000000000180000006f70632e7463703a2f2f6c6f63616c686f73743a34383430").unwrap());
+            // data.push_front(hex::decode("4f504e4684000000000000002f000000687474703a2f2f6f7063666f756e646174696f6e2e6f72672f55412f5365637572697479506f6c696379234e6f6e65ffffffffffffffff01000000010000000100be0100005d738f5c000000000000000000000000ffffffff00000000000000000000000000000001000000ffffffffc0270900").unwrap());
+
+            if let Some(sock) = active_connections.choose(&mut rand::thread_rng()) {
+                tcp.push_data(
+                    *sock,
+                    (0..rand::thread_rng().gen_range(0..500))
+                        .map(|_| rand::thread_rng().gen::<u8>())
+                        .collect::<Vec<_>>()
+                        .as_slice(),
+                )
+                .unwrap();
+            }
+
+            drop(tcp);
+            // TODO: only wake up relevant tasks instead of every task.
+            system
+                .task_manager
+                .borrow_mut()
+                .tasks_mut()
+                .for_each(|mut t| t.wake_up());
+            debug!("Trying to resume");
+            result = scheduler.run(None, None);
+            debug!("Emulation returned {result:?}");
         }
-        println!("Iterations per second: {:?}", 100f64 / start_iterations.elapsed().as_secs_f64());
+        //////////////// DEMO FUZZING ////////////////
+        let start_iterations = Instant::now();
+        // for _ in 0..100 {
+        //     if let Err(SchedulerError::NoRunnableTasks) = result {
+        //         scheduler.restore()?;
+        //         result = scheduler.run(None, None);
+        //     }
+        // }
+        // println!("Iterations per second: {:?}", 100f64 / start_iterations.elapsed().as_secs_f64());
         system
             .memory
             .borrow_mut()

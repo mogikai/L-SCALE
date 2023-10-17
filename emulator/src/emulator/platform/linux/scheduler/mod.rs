@@ -15,8 +15,8 @@ use crate::emulator::abstractions::emulator::{Scheduler, SchedulerError, StopRea
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::mmu::MMU;
+use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::restore::Restorable;
-use crate::emulator::abstractions::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::x86::X86;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::kernel::LinuxKernelTask;

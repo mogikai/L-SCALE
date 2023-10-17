@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::emulator::abstractions::cpu::{RegisterX86, CPU};
 use crate::emulator::abstractions::emulator::StopReason;
 use crate::emulator::abstractions::mmu::MMU;
-use crate::emulator::abstractions::tcp_system::TCPSystem;
+use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::x86::X86;
 use crate::emulator::platform::linux::kernel::error::SyscallError;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;

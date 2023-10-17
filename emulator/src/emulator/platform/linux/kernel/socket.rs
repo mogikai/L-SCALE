@@ -9,10 +9,9 @@ use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::mmu::encoding::{Decode, RequiredMem};
 use crate::emulator::abstractions::mmu::MMU;
-use crate::emulator::abstractions::tcp_system::TCPSystem;
+use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::FD;
-use crate::emulator::platform::linux::kernel::net::inet6::tcp::listener::TcpListenerOps;
 use crate::emulator::platform::linux::kernel::net::unix::UnixSocketOps;
 use crate::emulator::platform::linux::kernel::net::{inet6, netlink, Sockaddr, SocketDomain, SocketFlags, SocketType};
 use crate::emulator::platform::linux::kernel::{
@@ -241,21 +240,15 @@ where
     pub fn listen(
         &mut self,
         fd: FD,
-        backlog: u64,
+        backlog: usize,
     ) -> SyscallResult {
         let mut fd_map = sys_component_mut!(self, fd_map);
         let mut fd = fd_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADF)?;
-
-        // TODO: Other socket types may also need handling here.
-        if fd.data.tcp.is_some() {
-            // TODO: Check if already listener
-            fd.ops = Box::new(TcpListenerOps::new());
-            Ok(0)
-        } else {
-            Err(LinuxKernelError::ENOTSOCK.into())
-        }
+        let fd = &mut *fd;
+        fd.ops.listen(&mut fd.data, backlog)?;
+        Ok(0)
     }
 
     pub fn getsockname(
