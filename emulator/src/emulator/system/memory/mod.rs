@@ -365,8 +365,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             .ok_or(MemoryError::Unknown)?;
         let file = &mut *file;
         let data = file
-            .ops
-            .pread(&mut file.data, file_range.start as u64, (file_range.end - file_range.start) as u64)
+            .pread(file_range.start as u64, (file_range.end - file_range.start) as u64)
             .map_err(|_| MemoryError::Unknown)?;
 
         self.map_fixed(*task_id, start, size, perms, MappingType::PrivateFile(*ifd))?;

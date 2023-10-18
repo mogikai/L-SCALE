@@ -6,6 +6,7 @@ use derive_more::Display;
 
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::mmu::MemoryError;
+use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::system::fd_map::FileDescriptor;
@@ -37,10 +38,10 @@ pub trait FileDescriptorOps: Debug {
         fd: &mut Self::D,
     ) -> bool;
 
-    // fn close(
-    //     &self,
-    //     fd: &mut Self::D,
-    // );
+    fn close(
+        &self,
+        fd: &mut Self::D,
+    ) -> Result<(), FileDescriptorError>;
 
     /// returns: The stat vector of the handle this method is called on
     fn stat<'a>(
@@ -87,7 +88,7 @@ pub trait FileDescriptorOps: Debug {
     fn bind(
         &mut self,
         fd: &mut Self::D,
-        sockaddr: Sockaddr,
+        sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError> {
         todo!()
     }
@@ -95,7 +96,7 @@ pub trait FileDescriptorOps: Debug {
     fn getsockname(
         &self,
         fd: &mut Self::D,
-    ) -> Result<&Sockaddr, FileDescriptorError> {
+    ) -> Result<&SocketAddress, FileDescriptorError> {
         todo!()
     }
 
@@ -103,7 +104,7 @@ pub trait FileDescriptorOps: Debug {
         &mut self,
         fd: &mut Self::D,
         data: &[u8],
-        target: &Option<Sockaddr>,
+        target: &Option<SocketAddress>,
     ) -> Result<usize, FileDescriptorError>;
 
     fn recvmsg(
@@ -118,12 +119,12 @@ pub trait FileDescriptorOps: Debug {
         &self,
         fd: &mut Self::D,
         len: usize,
-    ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError>;
+    ) -> Result<(Vec<u8>, SocketAddress), FileDescriptorError>;
 
     fn connect(
         &mut self,
         fd: &mut Self::D,
-        sockaddr: Sockaddr,
+        sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError>;
 
     fn setsockopt(
@@ -136,7 +137,7 @@ pub trait FileDescriptorOps: Debug {
     fn accept(
         &mut self,
         fd: &mut Self::D,
-    ) -> Result<(FileDescriptor<Self::D>, Sockaddr), FileDescriptorError>;
+    ) -> Result<(FileDescriptor<Self::D>, SocketAddress), FileDescriptorError>;
 
     fn listen(
         &mut self,

@@ -202,9 +202,7 @@ where
                 .get_mut_internal(&self.task_id, &fd)
                 .ok_or(LinuxKernelError::ENOENT)?;
             let interpreter_file = &mut *interpreter_file;
-            interpreter_file
-                .ops
-                .pread(&mut interpreter_file.data, 0, u64::MAX)?
+            interpreter_file.pread(0, u64::MAX)?
         };
 
         let elf = Elf::parse(&elf_data).unwrap();

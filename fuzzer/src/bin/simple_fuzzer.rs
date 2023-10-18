@@ -119,8 +119,9 @@ fn main() -> Result<(), GenericError> {
         //////////////// DEMO FUZZING ////////////////
         // 100k fuzzing iterations
         let mut active_connections = vec![];
-        for _ in 0..5 {
+        for _ in 0..100_000 {
             let mut tcp = tcp.borrow_mut();
+            active_connections.retain(|sock| tcp.socket(*sock).is_some());
             if active_connections.is_empty() {
                 let listener_id = *tcp
                     .sockets()

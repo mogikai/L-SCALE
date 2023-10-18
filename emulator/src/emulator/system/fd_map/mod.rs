@@ -5,9 +5,11 @@ use std::rc::Rc;
 
 use generational_arena::{Arena, Index};
 
-use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
+use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
+use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::fd_map::error::FileDescriptorMapError;
+use crate::emulator::system::filesystem::Stat;
 
 pub mod error;
 mod restorable;
@@ -27,7 +29,9 @@ pub struct FileDescriptor<D: Default + Restorable> {
     /// The ops implementation may contain pointers to system components.
     /// It must however be stateless. All data pertaining to state or
     /// similar fd related info must be contained in the data field.
-    pub ops: Box<dyn FileDescriptorOps<D = D>>,
+    ops: Box<dyn FileDescriptorOps<D = D>>,
+
+    fd_count: usize,
 }
 
 impl<D: Default + Restorable> FileDescriptor<D> {
@@ -35,7 +39,112 @@ impl<D: Default + Restorable> FileDescriptor<D> {
         FileDescriptor {
             data: Default::default(),
             ops,
+            fd_count: 0,
         }
+    }
+
+    pub fn poll(
+        &mut self,
+        interest: FileOperationsReady,
+    ) -> Option<FileOperationsReady> {
+        self.ops.poll(&mut self.data, interest)
+    }
+
+    pub fn supports_poll(&mut self) -> bool {
+        self.ops.supports_poll(&mut self.data)
+    }
+
+    fn close(&mut self) -> Result<(), FileDescriptorError> {
+        self.fd_count = self
+            .fd_count
+            .checked_sub(1)
+            .expect("fd_count would have underflowed. Programming error!");
+        if self.fd_count == 0 {
+            self.ops.close(&mut self.data)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn stat(&mut self) -> Result<Ref<Stat>, FileDescriptorError> {
+        self.ops.stat(&mut self.data)
+    }
+
+    pub fn read(
+        &mut self,
+        count: u64,
+    ) -> Result<Vec<u8>, FileDescriptorError> {
+        self.ops.read(&mut self.data, count)
+    }
+
+    pub fn pread(
+        &mut self,
+        offset: u64,
+        length: u64,
+    ) -> Result<Vec<u8>, FileDescriptorError> {
+        self.ops.pread(&mut self.data, offset, length)
+    }
+
+    pub fn write(
+        &mut self,
+        data: &[u8],
+    ) -> Result<usize, FileDescriptorError> {
+        self.ops.write(&mut self.data, data)
+    }
+
+    pub fn bind(
+        &mut self,
+        sockaddr: SocketAddress,
+    ) -> Result<(), FileDescriptorError> {
+        self.ops.bind(&mut self.data, sockaddr)
+    }
+
+    pub fn getsockname(&mut self) -> Result<&SocketAddress, FileDescriptorError> {
+        self.ops.getsockname(&mut self.data)
+    }
+
+    pub fn sendto(
+        &mut self,
+        data: &[u8],
+        target: &Option<SocketAddress>,
+    ) -> Result<usize, FileDescriptorError> {
+        self.ops.sendto(&mut self.data, data, target)
+    }
+
+    pub fn recvmsg(
+        &mut self,
+        len: usize,
+    ) -> Result<Vec<u8>, FileDescriptorError> {
+        self.ops.recvmsg(&mut self.data, len)
+    }
+
+    pub fn recvfrom(
+        &mut self,
+        len: usize,
+    ) -> Result<(Vec<u8>, SocketAddress), FileDescriptorError> {
+        self.ops.recvfrom(&mut self.data, len)
+    }
+
+    pub fn connect(
+        &mut self,
+        sockaddr: SocketAddress,
+    ) -> Result<(), FileDescriptorError> {
+        self.ops.connect(&mut self.data, sockaddr)
+    }
+
+    pub fn setsockopt(&mut self) -> Result<(), FileDescriptorError> {
+        self.ops.setsockopt(&mut self.data)
+    }
+
+    pub fn accept(&mut self) -> Result<(FileDescriptor<D>, SocketAddress), FileDescriptorError> {
+        self.ops.accept(&mut self.data)
+    }
+
+    pub fn listen(
+        &mut self,
+        backlog: usize,
+    ) -> Result<(), FileDescriptorError> {
+        self.ops.listen(&mut self.data, backlog)
     }
 }
 
@@ -83,8 +192,9 @@ where
         &mut self,
         task_id: &TaskId,
         fd: FD,
-        file_descriptor: FileDescriptor<D>,
+        mut file_descriptor: FileDescriptor<D>,
     ) -> Result<FD, FileDescriptorMapError> {
+        file_descriptor.fd_count += 1;
         let index = self.files.insert(RefCell::new(file_descriptor));
         self.file_descriptors
             .entry(*task_id)
@@ -124,10 +234,17 @@ where
         task_id: &TaskId,
         fd: &FD,
     ) -> Result<(), FileDescriptorMapError> {
-        self.file_descriptors
+        let removed_index = self
+            .file_descriptors
             .get_mut(task_id)
-            .and_then(|map| map.remove(fd).map(|_| ()))
-            .ok_or(FileDescriptorMapError::InvalidFD)
+            .and_then(|map| map.remove(fd))
+            .ok_or(FileDescriptorMapError::InvalidFD)?;
+        self.files
+            .get_mut(removed_index)
+            .unwrap()
+            .borrow_mut()
+            .close();
+        Ok(())
     }
 
     pub fn get_mut(

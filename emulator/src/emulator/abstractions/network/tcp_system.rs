@@ -13,6 +13,11 @@ pub trait TCPSystem: Restorable + Debug {
         address: SocketAddress,
     ) -> Result<(), NetworkError>;
 
+    fn close(
+        &mut self,
+        id: SocketId,
+    ) -> Result<(), NetworkError>;
+
     fn accept(
         &mut self,
         id: SocketId,

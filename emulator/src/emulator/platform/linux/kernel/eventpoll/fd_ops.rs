@@ -1,8 +1,6 @@
-use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
-use crate::emulator::abstractions::network::tcp_system::TCPSystem;
+use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
-use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::system::fd_map::FileDescriptor;
 
 #[derive(Debug)]
@@ -32,11 +30,18 @@ impl FileDescriptorOps for EpollOps {
         true
     }
 
+    fn close(
+        &self,
+        fd: &mut Self::D,
+    ) -> Result<(), FileDescriptorError> {
+        Ok(())
+    }
+
     fn sendto(
         &mut self,
         fd: &mut Self::D,
         data: &[u8],
-        target: &Option<Sockaddr>,
+        target: &Option<SocketAddress>,
     ) -> Result<usize, FileDescriptorError> {
         todo!()
     }
@@ -45,14 +50,14 @@ impl FileDescriptorOps for EpollOps {
         &self,
         fd: &mut Self::D,
         len: usize,
-    ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError> {
+    ) -> Result<(Vec<u8>, SocketAddress), FileDescriptorError> {
         todo!()
     }
 
     fn connect(
         &mut self,
         fd: &mut Self::D,
-        sockaddr: Sockaddr,
+        sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError> {
         todo!()
     }
@@ -60,7 +65,7 @@ impl FileDescriptorOps for EpollOps {
     fn accept(
         &mut self,
         fd: &mut Self::D,
-    ) -> Result<(FileDescriptor<Self::D>, Sockaddr), FileDescriptorError> {
+    ) -> Result<(FileDescriptor<Self::D>, SocketAddress), FileDescriptorError> {
         todo!()
     }
 }

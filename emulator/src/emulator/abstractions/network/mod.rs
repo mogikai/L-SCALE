@@ -30,4 +30,7 @@ pub enum IPAddress {
 #[derive(Debug, Copy, Clone)]
 pub enum SocketAddress {
     IP(IPAddress),
+    Netlink { pad: u16, pid: u32, groups: u32 },
+    Unix { path: [u8; 108] },
+    Unspecified { data: [u8; 14] },
 }

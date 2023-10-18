@@ -63,7 +63,13 @@ impl From<SocketAddress> for Sockaddr {
                     sin_addr: addr,
                 },
             },
-            _ => todo!(),
+            SocketAddress::Netlink { pad, pid, groups } => Sockaddr::NL {
+                nl_pad: pad,
+                nl_pid: pid,
+                nl_groups: groups,
+            },
+            SocketAddress::Unix { path } => Sockaddr::UNIX { path },
+            SocketAddress::Unspecified { data } => Sockaddr::UNSPEC { data },
         }
     }
 }
@@ -75,9 +81,15 @@ impl From<Sockaddr> for SocketAddress {
                 port: sin_port,
                 addr: sin_addr,
             }),
-            Sockaddr::NL { .. } => {
-                todo!()
-            }
+            Sockaddr::NL {
+                nl_pad,
+                nl_pid,
+                nl_groups,
+            } => SocketAddress::Netlink {
+                pad: nl_pad,
+                pid: nl_pid,
+                groups: nl_groups,
+            },
             Sockaddr::IN6 {
                 sin6_port,
                 sin6_flowinfo,
@@ -89,12 +101,8 @@ impl From<Sockaddr> for SocketAddress {
                 addr: sin6_addr,
                 scope_id: sin6_scope_id,
             }),
-            Sockaddr::UNIX { .. } => {
-                todo!()
-            }
-            Sockaddr::UNSPEC { .. } => {
-                todo!()
-            }
+            Sockaddr::UNIX { path } => SocketAddress::Unix { path },
+            Sockaddr::UNSPEC { data } => SocketAddress::Unspecified { data },
         }
     }
 }

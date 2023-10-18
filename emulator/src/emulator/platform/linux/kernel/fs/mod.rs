@@ -33,11 +33,8 @@ where
         file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .map_or(Err(LinuxKernelError::EINVAL.into()), |mut fd| {
-                let fd = &mut *fd;
                 Ok(fd
-                    .ops
                     .write(
-                        &mut fd.data,
                         memory
                             .accessor(&mut *cpu, self.task_id)
                             .read_bytes(buf, size as usize)?
@@ -62,7 +59,6 @@ where
         file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .map_or(Err(LinuxKernelError::EINVAL.into()), |mut fd| {
-                let fd = &mut *fd;
                 let mut ret: usize = 0;
                 let iovec = memory
                     .read_bytes(iovec_ptr, (iovcnt * 16) as usize)
@@ -71,7 +67,7 @@ where
                     let ptr = EVAddr::from(Endianness::read_u64(&iovec[(i * 16)..((i * 16) + 8)]));
                     let size = Endianness::read_u64(&iovec[i * 16 + 8..i * 16 + 16]) as usize;
                     let data = memory.read_bytes(ptr, size)?;
-                    let written: usize = fd.ops.write(&mut fd.data, data.as_ref())?;
+                    let written: usize = fd.write(data.as_ref())?;
                     ret += written;
                     // Early return if not all bytes were written. We need to stop writing in this case
                     if written != data.len() {
@@ -97,7 +93,7 @@ where
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADF)?;
         let fd = &mut *fd;
-        let d = fd.ops.pread(&mut fd.data, pos, count).unwrap();
+        let d = fd.pread(pos, count).unwrap();
         Ok(memory.write_direct(buf, d.as_slice())? as u64)
     }
 
@@ -115,7 +111,7 @@ where
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EINVAL)?;
         let file = &mut *file;
-        Ok(memory.write_direct(buf, file.ops.read(&mut file.data, count).unwrap().as_slice())? as u64)
+        Ok(memory.write_direct(buf, file.read(count).unwrap().as_slice())? as u64)
     }
 
     pub fn fstat(
@@ -131,7 +127,7 @@ where
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADF)?;
         let file = &mut *file;
-        memory.write(statbuf, file.ops.stat(&mut file.data)?)?;
+        memory.write(statbuf, file.stat()?)?;
         Ok(0)
     }
 
@@ -215,8 +211,7 @@ where
             let mut fd = file_descriptor_map
                 .get_mut(&self.task_id, &dfd)
                 .ok_or(LinuxKernelError::EBADFD)?;
-            let fd = &mut *fd;
-            memory.write(statbuf, fd.ops.stat(&mut fd.data)?)?;
+            memory.write(statbuf, fd.stat()?)?;
             Ok(0)
         } else {
             let filename = read_osstring!(memory, filename)?;
@@ -275,7 +270,7 @@ fn get_dir_fse_id(
 ) -> Result<FSEntryId, LinuxKernelError> {
     let mut fd = map.get_mut(task_id, fd).ok_or(LinuxKernelError::EBADFD)?;
     let fd = &mut *fd;
-    let is_dir = fd.ops.stat(&mut fd.data)?.S_ISDIR();
+    let is_dir = fd.stat()?.S_ISDIR();
     if is_dir {
         fd.data
             .file

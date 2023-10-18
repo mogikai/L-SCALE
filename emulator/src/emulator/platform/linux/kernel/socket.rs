@@ -10,6 +10,7 @@ use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::mmu::encoding::{Decode, RequiredMem};
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
+use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::FD;
 use crate::emulator::platform::linux::kernel::net::unix::UnixSocketOps;
@@ -67,7 +68,7 @@ where
 
         let sockaddr: Sockaddr = memory.read_bounded(uservaddr, addrlen as usize)?;
 
-        fd.ops.connect(&mut fd.data, sockaddr)?;
+        fd.connect(sockaddr.into())?;
         Ok(0)
     }
 
@@ -89,11 +90,11 @@ where
                 .ok_or(LinuxKernelError::EBADF)?;
             let fd = &mut *fd;
 
-            let (new_fd, peer) = fd.ops.accept(&mut fd.data)?;
+            let (new_fd, peer) = fd.accept()?;
 
             let addrlen: i32 = memory.read(upeer_addrlen)?;
             if addrlen > 0 && upeer_sockaddr != EVA_NULL {
-                let (_, total) = memory.write_bounded(upeer_sockaddr, peer, addrlen as usize)?;
+                let (_, total) = memory.write_bounded(upeer_sockaddr, Sockaddr::from(peer), addrlen as usize)?;
                 memory.write(upeer_addrlen, total as i32);
             }
             new_fd
@@ -127,7 +128,7 @@ where
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADFD)?;
         let fd = &mut *fd;
-        Ok(fd.ops.sendto(&mut fd.data, &buf, &sockaddr)? as u64)
+        Ok(fd.sendto(&buf, &sockaddr.map(SocketAddress::from))? as u64)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -150,13 +151,13 @@ where
             .ok_or(LinuxKernelError::EBADF)?;
         let fd = &mut *fd;
 
-        let (data, sender) = fd.ops.recvfrom(&mut fd.data, size as usize)?;
+        let (data, sender) = fd.recvfrom(size as usize)?;
 
         let (written, _) = memory.write_bounded(ubuf, data.as_slice(), size as usize)?;
 
         if addr_len != EVA_NULL && addr != EVA_NULL {
             let sockaddr_len: i32 = memory.read(addr_len)?;
-            let (_, total) = memory.write_bounded(addr, sender, sockaddr_len as usize)?;
+            let (_, total) = memory.write_bounded(addr, Sockaddr::from(sender), sockaddr_len as usize)?;
             memory.write(addr_len, total as i32)?;
         }
         Ok(written as u64)
@@ -192,7 +193,7 @@ where
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADFD)?;
         let fd = &mut *fd;
-        let data = fd.ops.recvmsg(&mut fd.data, to_read)?;
+        let data = fd.recvmsg(to_read)?;
         let mut offset = 0;
         for vec in iovec {
             let to_write = &data[offset..];
@@ -233,7 +234,7 @@ where
                 *nl_pid = self.task_id.pid;
             }
         }
-        fd.ops.bind(&mut fd.data, sockaddr)?;
+        fd.bind(sockaddr.into())?;
         Ok(0)
     }
 
@@ -247,7 +248,7 @@ where
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADF)?;
         let fd = &mut *fd;
-        fd.ops.listen(&mut fd.data, backlog)?;
+        fd.listen(backlog)?;
         Ok(0)
     }
 
@@ -262,7 +263,7 @@ where
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADFD)?;
         let fd = &mut *fd;
-        let sockaddr = fd.ops.getsockname(&mut fd.data)?;
+        let sockaddr = Sockaddr::from(*fd.getsockname()?);
         let mut cpu = sys_component_mut!(self, cpu);
         sys_component_mut!(self, memory)
             .accessor(&mut *cpu, self.task_id)
@@ -307,7 +308,7 @@ where
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADFD)?;
         let fd = &mut *fd;
-        fd.ops.setsockopt(&mut fd.data)?;
+        fd.setsockopt()?;
         Ok(0)
     }
 

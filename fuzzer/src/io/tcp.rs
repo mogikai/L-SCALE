@@ -192,6 +192,14 @@ impl TCPSystem for TCP {
         Ok(())
     }
 
+    fn close(
+        &mut self,
+        id: SocketId,
+    ) -> Result<(), NetworkError> {
+        self.sockets.remove(&id);
+        Ok(())
+    }
+
     fn accept(
         &mut self,
         id: SocketId,

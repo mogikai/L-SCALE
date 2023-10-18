@@ -69,10 +69,8 @@ where
             match file {
                 None => fds_to_clean.push(*fd),
                 Some(mut file) => {
-                    let file = &mut *file;
                     let ready_ops = file
-                        .ops
-                        .poll(&mut file.data, FileOperationsReady::from(event.events))
+                        .poll(FileOperationsReady::from(event.events))
                         .expect("Only pollable fds should be in interest list");
                     let ready_events = EPOLL_EVENTS::from(ready_ops);
                     if event.events.intersects(ready_events) && triggered_events.len() < maxevents as usize {
@@ -133,7 +131,7 @@ where
         let epoll = epfd.data.epoll.as_mut().ok_or(LinuxKernelError::EINVAL)?;
 
         // Can fd be polled?
-        if !file_descriptor.ops.supports_poll(&mut file_descriptor.data) {
+        if !file_descriptor.supports_poll() {
             Err(LinuxKernelError::EINVAL)?
         }
 

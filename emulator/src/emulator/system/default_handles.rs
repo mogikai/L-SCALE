@@ -3,6 +3,7 @@ use std::cmp::min;
 
 use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
+use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::system::fd_map::FileDescriptor;
@@ -38,6 +39,13 @@ impl FileDescriptorOps for WriteOnly {
         fd: &mut Self::D,
     ) -> bool {
         false
+    }
+
+    fn close(
+        &self,
+        fd: &mut Self::D,
+    ) -> Result<(), FileDescriptorError> {
+        Ok(())
     }
 
     fn stat<'a>(
@@ -77,7 +85,7 @@ impl FileDescriptorOps for WriteOnly {
         &mut self,
         fd: &mut Self::D,
         data: &[u8],
-        target: &Option<Sockaddr>,
+        target: &Option<SocketAddress>,
     ) -> Result<usize, FileDescriptorError> {
         todo!()
     }
@@ -86,14 +94,14 @@ impl FileDescriptorOps for WriteOnly {
         &self,
         fd: &mut Self::D,
         len: usize,
-    ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError> {
+    ) -> Result<(Vec<u8>, SocketAddress), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
     }
 
     fn connect(
         &mut self,
         fd: &mut Self::D,
-        sockaddr: Sockaddr,
+        sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
     }
@@ -101,7 +109,7 @@ impl FileDescriptorOps for WriteOnly {
     fn accept(
         &mut self,
         fd: &mut Self::D,
-    ) -> Result<(FileDescriptor<Self::D>, Sockaddr), FileDescriptorError> {
+    ) -> Result<(FileDescriptor<Self::D>, SocketAddress), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
     }
 }
@@ -149,6 +157,13 @@ impl FileDescriptorOps for ReadOnly {
         false
     }
 
+    fn close(
+        &self,
+        fd: &mut Self::D,
+    ) -> Result<(), FileDescriptorError> {
+        Ok(())
+    }
+
     fn stat<'a>(
         &'a self,
         fd: &'a mut Self::D,
@@ -188,7 +203,7 @@ impl FileDescriptorOps for ReadOnly {
         &mut self,
         fd: &mut Self::D,
         data: &[u8],
-        target: &Option<Sockaddr>,
+        target: &Option<SocketAddress>,
     ) -> Result<usize, FileDescriptorError> {
         todo!()
     }
@@ -197,14 +212,14 @@ impl FileDescriptorOps for ReadOnly {
         &self,
         fd: &mut Self::D,
         len: usize,
-    ) -> Result<(Vec<u8>, Sockaddr), FileDescriptorError> {
+    ) -> Result<(Vec<u8>, SocketAddress), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
     }
 
     fn connect(
         &mut self,
         fd: &mut Self::D,
-        sockaddr: Sockaddr,
+        sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError> {
         // TODO FIXME
         error!("UDP connect currently unsupported / not implemented");
@@ -214,7 +229,7 @@ impl FileDescriptorOps for ReadOnly {
     fn accept(
         &mut self,
         fd: &mut Self::D,
-    ) -> Result<(FileDescriptor<Self::D>, Sockaddr), FileDescriptorError> {
+    ) -> Result<(FileDescriptor<Self::D>, SocketAddress), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
     }
 }
