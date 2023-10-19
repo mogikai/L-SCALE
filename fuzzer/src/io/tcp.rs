@@ -3,10 +3,12 @@ use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
 use fuzzyemu::emulator::abstractions::network::tcp_system::TCPSystem;
 use fuzzyemu::emulator::abstractions::network::{NetworkError, SocketAddress, SocketId};
 use fuzzyemu::emulator::abstractions::restore::Restorable;
+use fuzzyemu::util::rcow::RCow;
 use fuzzyemu::util::restorable_hash_map::RestorableHashMap;
 use std::cell::{Ref, RefCell, RefMut};
 use std::cmp::min;
 use std::collections::VecDeque;
+use std::rc::Rc;
 
 #[derive(Debug)]
 pub struct TCP {
@@ -14,24 +16,38 @@ pub struct TCP {
 }
 
 #[derive(Debug)]
+struct TCPSocketSnapshot {
+    incoming: RCow<VecDeque<u8>>,
+    outgoing: RCow<VecDeque<Vec<u8>>>,
+    pending_connections: RCow<Option<VecDeque<SocketId>>>,
+    local_address: RCow<Option<SocketAddress>>,
+    remote_address: RCow<Option<SocketAddress>>,
+
+    last_interest: RCow<RefCell<FileOperationsReady>>,
+}
+
+#[derive(Debug)]
 pub struct TCPSocket {
-    incoming: VecDeque<u8>,
-    outgoing: VecDeque<Vec<u8>>,
+    // TODO: Maybe we can use a restorable data structure here, instead of cloning the whole thing?
+    incoming: RCow<VecDeque<u8>>,
+    outgoing: RCow<VecDeque<Vec<u8>>>,
     /// If the socket is listening, it has a vector of incoming connections.
     /// The connections will already have a new socket associated with them
     /// in the socket map. We simply store the new ids here.
-    pending_connections: Option<VecDeque<SocketId>>,
+    pending_connections: RCow<Option<VecDeque<SocketId>>>,
 
     /// The socket may not have an address assigned to it initially.
     /// If it is created by the application with socket() then the
     /// address is only assigned once bind() is called
-    local_address: Option<SocketAddress>,
+    local_address: RCow<Option<SocketAddress>>,
 
     /// Sockets that are fully connected have both a socket and a remote address.
     /// Listeners only have a socket address.
-    remote_address: Option<SocketAddress>,
+    remote_address: RCow<Option<SocketAddress>>,
 
-    last_interest: RefCell<FileOperationsReady>,
+    last_interest: RCow<RefCell<FileOperationsReady>>,
+
+    snapshots: Vec<TCPSocketSnapshot>,
 }
 
 impl TCPSocket {
@@ -43,7 +59,7 @@ impl TCPSocket {
         if !self.incoming.is_empty() {
             ops_ready |= FileOperationsReady::Read;
         }
-        if let Some(pending) = &self.pending_connections {
+        if let Some(pending) = self.pending_connections.as_ref() {
             if !pending.is_empty() {
                 ops_ready |= FileOperationsReady::Read;
             }
@@ -58,7 +74,7 @@ impl TCPSocket {
     }
 
     pub fn address(&self) -> Option<SocketAddress> {
-        self.local_address
+        *self.local_address
     }
 
     pub fn is_listener(&self) -> bool {
@@ -71,7 +87,7 @@ impl TCPSocket {
         &mut self,
         socket_id: SocketId,
     ) -> Result<(), NetworkError> {
-        if let Some(pending) = &mut self.pending_connections {
+        if let Some(pending) = &mut *self.pending_connections {
             pending.push_front(socket_id);
             Ok(())
         } else {
@@ -82,7 +98,15 @@ impl TCPSocket {
 
 impl Restorable for TCPSocket {
     fn snapshot(&mut self) -> Result<(), GenericError> {
-        todo!()
+        self.snapshots.push(TCPSocketSnapshot {
+            incoming: self.incoming.clone(),
+            outgoing: self.outgoing.clone(),
+            pending_connections: self.pending_connections.clone(),
+            local_address: self.local_address.clone(),
+            remote_address: self.remote_address.clone(),
+            last_interest: self.last_interest.clone(),
+        });
+        Ok(())
     }
 
     fn restore_and_discard(&mut self) -> Result<(), GenericError> {
@@ -90,7 +114,16 @@ impl Restorable for TCPSocket {
     }
 
     fn restore(&mut self) -> Result<(), GenericError> {
-        todo!()
+        let Some(snap) = self.snapshots.last() else {
+            panic!();
+        };
+        self.incoming = snap.incoming.clone();
+        self.outgoing = snap.outgoing.clone();
+        self.pending_connections = snap.pending_connections.clone();
+        self.local_address = snap.local_address.clone();
+        self.remote_address = snap.remote_address.clone();
+        self.last_interest = snap.last_interest.clone();
+        Ok(())
     }
 }
 
@@ -112,10 +145,11 @@ impl TCP {
             TCPSocket {
                 incoming: Default::default(),
                 outgoing: Default::default(),
-                pending_connections: None,
-                local_address: Some(listener.local_address.ok_or(NetworkError::Unknown)?),
-                remote_address: Some(remote_address),
-                last_interest: RefCell::new(FileOperationsReady::empty()),
+                pending_connections: RCow::new(None),
+                local_address: RCow::new(Some(listener.local_address.ok_or(NetworkError::Unknown)?)),
+                remote_address: RCow::new(Some(remote_address)),
+                last_interest: RCow::new(RefCell::new(FileOperationsReady::empty())),
+                snapshots: vec![],
             }
         };
         let id = self.sockets.insert(socket);
@@ -167,10 +201,11 @@ impl TCPSystem for TCP {
         Ok(self.sockets.insert(TCPSocket {
             incoming: Default::default(),
             outgoing: Default::default(),
-            pending_connections: None,
-            local_address: None,
-            remote_address: None,
-            last_interest: RefCell::new(FileOperationsReady::empty()),
+            pending_connections: RCow::new(None),
+            local_address: RCow::new(None),
+            remote_address: RCow::new(None),
+            last_interest: RCow::new(RefCell::new(FileOperationsReady::empty())),
+            snapshots: vec![],
         }))
     }
 
@@ -188,7 +223,7 @@ impl TCPSystem for TCP {
         if local_addr.is_some() {
             Err(NetworkError::Unknown)?
         }
-        *local_addr = Some(address);
+        **local_addr = Some(address);
         Ok(())
     }
 
@@ -227,7 +262,8 @@ impl TCPSystem for TCP {
         id: SocketId,
         backlog: usize,
     ) -> Result<(), NetworkError> {
-        self.sockets
+        *self
+            .sockets
             .get_mut(&id)
             .ok_or(NetworkError::Unknown)?
             .pending_connections = Some(VecDeque::with_capacity(backlog));
@@ -268,7 +304,7 @@ impl TCPSystem for TCP {
 
 impl Restorable for TCP {
     fn snapshot(&mut self) -> Result<(), GenericError> {
-        Ok(())
+        self.sockets.snapshot()
     }
 
     fn restore_and_discard(&mut self) -> Result<(), GenericError> {
@@ -276,6 +312,6 @@ impl Restorable for TCP {
     }
 
     fn restore(&mut self) -> Result<(), GenericError> {
-        Ok(())
+        self.sockets.restore()
     }
 }

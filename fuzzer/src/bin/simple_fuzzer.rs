@@ -1,14 +1,15 @@
 extern crate core;
 
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::time::{Duration, Instant};
+
 use clap::Parser;
 use log::debug;
 use rand::seq::SliceRandom;
 use rand::Rng;
-use std::cell::RefCell;
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::{Path, PathBuf};
-use std::rc::Rc;
-use std::time::{Duration, Instant};
 
 use fuzzyemu::emulator::abstractions::cpu::CPU;
 use fuzzyemu::emulator::abstractions::emulator::{Scheduler, SchedulerError, StopReason};
@@ -119,43 +120,46 @@ fn main() -> Result<(), GenericError> {
         //////////////// DEMO FUZZING ////////////////
         // 100k fuzzing iterations
         let mut active_connections = vec![];
-        for _ in 0..100_000 {
-            let mut tcp = tcp.borrow_mut();
-            active_connections.retain(|sock| tcp.socket(*sock).is_some());
-            if active_connections.is_empty() {
-                let listener_id = *tcp
-                    .sockets()
-                    .find(|(sid, s)| s.is_listener() && s.interest().contains(FileOperationsReady::Read))
-                    .map(|(sid, s)| sid)
-                    .unwrap();
+        scheduler.snapshot()?;
+        for _ in 0..10 {
+            {
+                let mut tcp = tcp.borrow_mut();
+                active_connections.retain(|sock| tcp.socket(*sock).is_some());
+                if active_connections.is_empty() {
+                    let listener_id = *tcp
+                        .sockets()
+                        .find(|(sid, s)| s.is_listener() && s.interest().contains(FileOperationsReady::Read))
+                        .map(|(sid, s)| sid)
+                        .unwrap();
 
-                active_connections.push(
-                    tcp.new_connection(
-                        &listener_id,
-                        SocketAddress::IP(IPAddress::V6 {
-                            port: 1337,
-                            flowinfo: 0,
-                            addr: [0, 0, 0, 0, 0, 0, 0, 123, 0, 0, 0, 0, 0, 0, 0, 0],
-                            scope_id: 0,
-                        }),
-                    )
-                    .unwrap(),
-                );
+                    active_connections.push(
+                        tcp.new_connection(
+                            &listener_id,
+                            SocketAddress::IP(IPAddress::V6 {
+                                port: 1337,
+                                flowinfo: 0,
+                                addr: [0, 0, 0, 0, 0, 0, 0, 123, 0, 0, 0, 0, 0, 0, 0, 0],
+                                scope_id: 0,
+                            }),
+                        )
+                        .unwrap(),
+                    );
 
-                active_connections.push(
-                    tcp.new_connection(
-                        &listener_id,
-                        SocketAddress::IP(IPAddress::V6 {
-                            port: 1338,
-                            flowinfo: 0,
-                            addr: [0, 0, 0, 0, 0, 0, 0, 123, 0, 0, 0, 0, 0, 0, 0, 0],
-                            scope_id: 0,
-                        }),
-                    )
-                    .unwrap(),
-                );
+                    active_connections.push(
+                        tcp.new_connection(
+                            &listener_id,
+                            SocketAddress::IP(IPAddress::V6 {
+                                port: 1338,
+                                flowinfo: 0,
+                                addr: [0, 0, 0, 0, 0, 0, 0, 123, 0, 0, 0, 0, 0, 0, 0, 0],
+                                scope_id: 0,
+                            }),
+                        )
+                        .unwrap(),
+                    );
+                }
             }
-
+            let mut tcp = tcp.borrow_mut();
             // let mut data = VecDeque::new();
             // data.push_front(hex::decode("48454c463800000000000000ffff0000ffff00000000000000000000180000006f70632e7463703a2f2f6c6f63616c686f73743a34383430").unwrap());
             // data.push_front(hex::decode("4f504e4684000000000000002f000000687474703a2f2f6f7063666f756e646174696f6e2e6f72672f55412f5365637572697479506f6c696379234e6f6e65ffffffffffffffff01000000010000000100be0100005d738f5c000000000000000000000000ffffffff00000000000000000000000000000001000000ffffffffc0270900").unwrap());
@@ -163,12 +167,17 @@ fn main() -> Result<(), GenericError> {
             if let Some(sock) = active_connections.choose(&mut rand::thread_rng()) {
                 tcp.push_data(
                     *sock,
-                    (0..rand::thread_rng().gen_range(0..500))
-                        .map(|_| rand::thread_rng().gen::<u8>())
-                        .collect::<Vec<_>>()
-                        .as_slice(),
-                )
-                .unwrap();
+                    hex::decode("48454c463800000000000000ffff0000ffff00000000000000000000180000006f70632e7463703a2f2f6c6f63616c686f73743a34383430").unwrap().as_slice()
+                ).unwrap();
+                tcp.push_data(*sock, hex::decode("4f504e4684000000000000002f000000687474703a2f2f6f7063666f756e646174696f6e2e6f72672f55412f5365637572697479506f6c696379234e6f6e65ffffffffffffffff01000000010000000100be0100005d738f5c000000000000000000000000ffffffff00000000000000000000000000000001000000ffffffffc0270900").unwrap().as_slice()).unwrap();
+                // tcp.push_data(
+                //     *sock,
+                //     (0..rand::thread_rng().gen_range(0..500))
+                //         .map(|_| rand::thread_rng().gen::<u8>())
+                //         .collect::<Vec<_>>()
+                //         .as_slice(),
+                // )
+                // .unwrap();
             }
 
             drop(tcp);
@@ -181,6 +190,7 @@ fn main() -> Result<(), GenericError> {
             debug!("Trying to resume");
             result = scheduler.run(None, None);
             debug!("Emulation returned {result:?}");
+            scheduler.restore()?;
         }
         //////////////// DEMO FUZZING ////////////////
         let start_iterations = Instant::now();

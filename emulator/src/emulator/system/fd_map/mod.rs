@@ -32,6 +32,8 @@ pub struct FileDescriptor<D: Default + Restorable> {
     ops: Box<dyn FileDescriptorOps<D = D>>,
 
     fd_count: usize,
+
+    saved_fd_counts: Vec<usize>,
 }
 
 impl<D: Default + Restorable> FileDescriptor<D> {
@@ -40,6 +42,7 @@ impl<D: Default + Restorable> FileDescriptor<D> {
             data: Default::default(),
             ops,
             fd_count: 0,
+            saved_fd_counts: vec![],
         }
     }
 
