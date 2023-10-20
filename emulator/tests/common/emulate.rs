@@ -1,4 +1,6 @@
+use std::cell::RefCell;
 use std::path::Path;
+use std::rc::Rc;
 use std::time::Duration;
 
 use byteorder::LittleEndian;
@@ -28,7 +30,7 @@ pub fn emulate(
     let memory = Memory::<LittleEndian>::new();
     let clock = Clock::new(Duration::from_nanos(1662647309301240322));
     let fd_map = FileDescriptorMap::new();
-    let tcp = MockTCPSystem::new();
+    let tcp = Rc::new(RefCell::new(MockTCPSystem::new()));
     let system = System::new(cpu.clone(), memory, filesystem, clock, fd_map, task_manager, tcp);
 
     let initial_task = LinuxKernelTask::new(system.clone(), 1337, 1);

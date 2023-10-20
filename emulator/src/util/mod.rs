@@ -1,2 +1,2 @@
+pub mod auto_key;
 pub mod rcow;
-pub mod restorable_hash_map;

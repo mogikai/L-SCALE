@@ -9,7 +9,6 @@ use std::time::{Duration, Instant};
 use clap::Parser;
 use log::debug;
 use rand::seq::SliceRandom;
-use rand::Rng;
 
 use fuzzyemu::emulator::abstractions::cpu::CPU;
 use fuzzyemu::emulator::abstractions::emulator::{Scheduler, SchedulerError, StopReason};

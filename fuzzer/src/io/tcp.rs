@@ -1,32 +1,21 @@
+use std::cell::RefCell;
+use std::cmp::min;
+use std::collections::VecDeque;
+
 use fuzzyemu::emulator::abstractions::errors::GenericError;
 use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
 use fuzzyemu::emulator::abstractions::network::tcp_system::TCPSystem;
 use fuzzyemu::emulator::abstractions::network::{NetworkError, SocketAddress, SocketId};
 use fuzzyemu::emulator::abstractions::restore::Restorable;
+use fuzzyemu::util::auto_key::lazy_clone_map::LazyCloneMap;
 use fuzzyemu::util::rcow::RCow;
-use fuzzyemu::util::restorable_hash_map::RestorableHashMap;
-use std::cell::{Ref, RefCell, RefMut};
-use std::cmp::min;
-use std::collections::VecDeque;
-use std::rc::Rc;
 
 #[derive(Debug)]
 pub struct TCP {
-    sockets: RestorableHashMap<TCPSocket>,
+    sockets: LazyCloneMap<TCPSocket>,
 }
 
-#[derive(Debug)]
-struct TCPSocketSnapshot {
-    incoming: RCow<VecDeque<u8>>,
-    outgoing: RCow<VecDeque<Vec<u8>>>,
-    pending_connections: RCow<Option<VecDeque<SocketId>>>,
-    local_address: RCow<Option<SocketAddress>>,
-    remote_address: RCow<Option<SocketAddress>>,
-
-    last_interest: RCow<RefCell<FileOperationsReady>>,
-}
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TCPSocket {
     // TODO: Maybe we can use a restorable data structure here, instead of cloning the whole thing?
     incoming: RCow<VecDeque<u8>>,
@@ -46,8 +35,6 @@ pub struct TCPSocket {
     remote_address: RCow<Option<SocketAddress>>,
 
     last_interest: RCow<RefCell<FileOperationsReady>>,
-
-    snapshots: Vec<TCPSocketSnapshot>,
 }
 
 impl TCPSocket {
@@ -96,37 +83,6 @@ impl TCPSocket {
     }
 }
 
-impl Restorable for TCPSocket {
-    fn snapshot(&mut self) -> Result<(), GenericError> {
-        self.snapshots.push(TCPSocketSnapshot {
-            incoming: self.incoming.clone(),
-            outgoing: self.outgoing.clone(),
-            pending_connections: self.pending_connections.clone(),
-            local_address: self.local_address.clone(),
-            remote_address: self.remote_address.clone(),
-            last_interest: self.last_interest.clone(),
-        });
-        Ok(())
-    }
-
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
-        todo!()
-    }
-
-    fn restore(&mut self) -> Result<(), GenericError> {
-        let Some(snap) = self.snapshots.last() else {
-            panic!();
-        };
-        self.incoming = snap.incoming.clone();
-        self.outgoing = snap.outgoing.clone();
-        self.pending_connections = snap.pending_connections.clone();
-        self.local_address = snap.local_address.clone();
-        self.remote_address = snap.remote_address.clone();
-        self.last_interest = snap.last_interest.clone();
-        Ok(())
-    }
-}
-
 impl TCP {
     pub fn new() -> Self {
         TCP {
@@ -149,7 +105,6 @@ impl TCP {
                 local_address: RCow::new(Some(listener.local_address.ok_or(NetworkError::Unknown)?)),
                 remote_address: RCow::new(Some(remote_address)),
                 last_interest: RCow::new(RefCell::new(FileOperationsReady::empty())),
-                snapshots: vec![],
             }
         };
         let id = self.sockets.insert(socket);
@@ -163,22 +118,22 @@ impl TCP {
     pub fn socket(
         &self,
         id: SocketId,
-    ) -> Option<Ref<TCPSocket>> {
+    ) -> Option<&TCPSocket> {
         self.sockets.get(&id)
     }
 
     pub fn socket_mut(
         &mut self,
         id: SocketId,
-    ) -> Option<RefMut<TCPSocket>> {
+    ) -> Option<&mut TCPSocket> {
         self.sockets.get_mut(&id)
     }
 
-    pub fn sockets(&self) -> impl Iterator<Item = (&SocketId, Ref<TCPSocket>)> {
+    pub fn sockets(&self) -> impl Iterator<Item = (&SocketId, &TCPSocket)> {
         self.sockets.iter()
     }
 
-    pub fn sockets_mut(&mut self) -> impl Iterator<Item = (&SocketId, RefMut<TCPSocket>)> {
+    pub fn sockets_mut(&mut self) -> impl Iterator<Item = (&SocketId, &mut TCPSocket)> {
         self.sockets.iter_mut()
     }
 
@@ -205,7 +160,6 @@ impl TCPSystem for TCP {
             local_address: RCow::new(None),
             remote_address: RCow::new(None),
             last_interest: RCow::new(RefCell::new(FileOperationsReady::empty())),
-            snapshots: vec![],
         }))
     }
 

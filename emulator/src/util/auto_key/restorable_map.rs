@@ -5,16 +5,14 @@ use im_rc::HashMap;
 
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::restore::Restorable;
-
-#[derive(Hash, Eq, PartialEq, Copy, Clone, Debug)]
-pub struct Key(usize);
+use crate::util::auto_key::AutoKey;
 
 #[derive(Debug)]
 struct Snapshot<T>
 where
     T: Restorable,
 {
-    data: HashMap<Key, Rc<RefCell<T>>>,
+    data: HashMap<AutoKey, Rc<RefCell<T>>>,
 }
 
 #[derive(Debug)]
@@ -22,8 +20,8 @@ pub struct RestorableHashMap<T>
 where
     T: Restorable,
 {
-    data: HashMap<Key, Rc<RefCell<T>>>,
-    next_key: Key,
+    data: HashMap<AutoKey, Rc<RefCell<T>>>,
+    next_key: AutoKey,
     snapshots: Vec<Snapshot<T>>,
 }
 
@@ -43,7 +41,7 @@ where
     pub fn new() -> Self {
         Self {
             data: Default::default(),
-            next_key: Key(0),
+            next_key: AutoKey(0),
             snapshots: vec![],
         }
     }
@@ -51,12 +49,12 @@ where
     pub fn insert(
         &mut self,
         element: T,
-    ) -> Key {
+    ) -> AutoKey {
         let key = self.next_key;
         let old = self.data.insert(key, Rc::new(RefCell::new(element)));
         // Due to our key always incrementing, there will never be an old element.
         assert!(old.is_none());
-        self.next_key = Key(key.0.checked_add(1).expect("We exhausted 2^64 keys. How?"));
+        self.next_key = AutoKey(key.0.checked_add(1).expect("We exhausted 2^64 keys. How?"));
         key
     }
 
@@ -70,30 +68,30 @@ where
 
     pub fn get(
         &self,
-        key: &Key,
+        key: &AutoKey,
     ) -> Option<Ref<T>> {
         self.data.get(key).map(|v| v.borrow())
     }
 
     pub fn get_mut(
         &mut self,
-        key: &Key,
+        key: &AutoKey,
     ) -> Option<RefMut<T>> {
         self.data.get_mut(key).map(|v| v.borrow_mut())
     }
 
     pub fn remove(
         &mut self,
-        key: &Key,
+        key: &AutoKey,
     ) {
         self.data.remove(key);
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&Key, Ref<T>)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&AutoKey, Ref<T>)> {
         self.data.iter().map(|(k, v)| (k, v.borrow()))
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&Key, RefMut<T>)> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&AutoKey, RefMut<T>)> {
         self.data.iter().map(|(k, v)| (k, v.borrow_mut()))
     }
 

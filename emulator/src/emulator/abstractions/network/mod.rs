@@ -1,7 +1,9 @@
-use crate::util::restorable_hash_map::Key;
 use std::fmt::Debug;
 use std::hash::Hash;
+
 use thiserror::Error;
+
+use crate::util::auto_key::AutoKey;
 
 pub mod tcp_system;
 
@@ -11,7 +13,7 @@ pub enum NetworkError {
     Unknown,
 }
 
-pub type SocketId = Key;
+pub type SocketId = AutoKey;
 
 #[derive(Debug, Copy, Clone)]
 pub enum IPAddress {
