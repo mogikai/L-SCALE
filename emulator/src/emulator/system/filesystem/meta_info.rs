@@ -242,13 +242,11 @@ impl MetaInfo {
             path
         };
 
-        let mut path_ids = Vec::new();
-        let mut found_symlink: bool = false;
-        let mut remaining = PathBuf::new();
-        path_ids.push(root.unwrap_or(self.root_node));
+        let mut path_ids = vec![root.unwrap_or(self.root_node)];
+        let mut remainder = Option::<PathBuf>::None;
         for component in path {
-            if found_symlink {
-                remaining.push(component);
+            if let Some(remainder) = &mut remainder {
+                remainder.push(component);
                 continue;
             }
             match &self
@@ -261,20 +259,15 @@ impl MetaInfo {
                         .ok_or(FSError::Unknown)?;
                     path_ids.push(child);
                 }
-                File { contents: _ } => {
-                    return Err(FSError::NoEntry);
+                File { .. } => {
+                    Err(FSError::NoEntry)?;
                 }
-                Symlink { contents: _ } => {
-                    found_symlink = true;
-                    remaining.push(component);
+                Symlink { .. } => {
+                    remainder.get_or_insert(PathBuf::new()).push(component);
                 }
             }
         }
-        if found_symlink {
-            return Ok((path_ids, Some(remaining)));
-        } else {
-            return Ok((path_ids, None));
-        }
+        Ok((path_ids, remainder))
     }
 
     /// See the public api [Filesystem::resolve_last](Filesystem::resolve_last) for documentation.

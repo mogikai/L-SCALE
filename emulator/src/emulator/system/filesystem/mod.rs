@@ -103,12 +103,11 @@ impl Filesystem {
         file_id: FSEntryId,
     ) -> Result<Option<PathBuf>, FSError> {
         let entry = self.meta_info.most_recent_entry(file_id)?;
-        if let Symlink { contents } = &entry.contents {
-            return Ok(Some(contents.clone()));
+        Ok(if let Symlink { contents } = &entry.contents {
+            Some(contents.clone())
         } else {
-            return Ok(None);
-        }
-        return Err(FSError::Unknown);
+            None
+        })
     }
 
     pub fn read(
@@ -309,7 +308,42 @@ impl Filesystem {
         path: &Path,
         follow_symlink: bool,
     ) -> Result<Vec<FSEntryId>, FSError> {
-        return Ok(self.resolve_relative(None, path, true)?);
+        self.resolve_path_relative(None, path, follow_symlink)
+    }
+
+    pub fn resolve_path_relative(
+        &self,
+        dir: Option<FSEntryId>,
+        path: &Path,
+        follow_symlink: bool,
+    ) -> Result<Vec<FSEntryId>, FSError> {
+        trace!("open at: {:?} {:?} follow_symlink: {}", dir, path, follow_symlink);
+        let mut loopcount = 30u8;
+        let (mut ids, mut remain) = self.meta_info.resolve_path(dir, path)?;
+        while remain.is_some() {
+            trace!("remain: {:?}", remain);
+            let link = ids.pop().expect("Empty paths cannot occur");
+            let result = self.resolve_symlink(ids.last().copied(), link, &mut loopcount)?;
+            ids.push(result);
+            let (mut a, r) = self
+                .meta_info
+                .resolve_path(Some(result), remain.expect("").as_path())?;
+            ids.append(&mut a);
+            remain = r;
+        }
+        while follow_symlink
+            && self
+                .read_symlink(*ids.last().expect("Empty paths cannot occur"))?
+                .is_some()
+        {
+            if loopcount == 0 {
+                Err(FSError::Loop)?;
+            }
+            let link = ids.pop().expect("Empty paths cannot occur");
+            let result = self.resolve_symlink(ids.last().copied(), link, &mut loopcount)?;
+            ids.push(result);
+        }
+        Ok(ids)
     }
 
     /// This function resolves the supplied path to an FSEntryId. After the lookup,
@@ -338,7 +372,7 @@ impl Filesystem {
         follow_symlink: bool,
     ) -> Result<FSEntryId, FSError> {
         Ok(*self
-            .resolve_relative(dir, path, follow_symlink)?
+            .resolve_path_relative(dir, path, follow_symlink)?
             .last()
             .expect("Empty paths cannot occur"))
     }
@@ -347,7 +381,7 @@ impl Filesystem {
         &self,
         dir: Option<FSEntryId>,
         link: FSEntryId,
-        mut loopcount: &mut u8,
+        loopcount: &mut u8,
     ) -> Result<FSEntryId, FSError> {
         *loopcount -= 1;
         let target = self
@@ -360,7 +394,7 @@ impl Filesystem {
             let target = self
                 .read_symlink(link)?
                 .expect("link target cannot be None at this point");
-            let dir = if target.is_relative() {
+            dir = if target.is_relative() {
                 ids.last().copied()
             } else {
                 None
@@ -373,44 +407,10 @@ impl Filesystem {
         }
 
         if remain.is_some() {
-            return Err(FSError::Loop);
+            Err(FSError::Loop)
+        } else {
+            Ok(*ids.last().expect("Empty paths cannot occur"))
         }
-        return Ok(*ids.last().expect("Empty paths cannot occur"));
-    }
-
-    fn resolve_relative(
-        &self,
-        dir: Option<FSEntryId>,
-        path: &Path,
-        follow_symlink: bool,
-    ) -> Result<Vec<FSEntryId>, FSError> {
-        trace!("open at: {:?} {:?} follow_symlink: {}", dir, path, follow_symlink);
-        let mut loopcount: u8 = 30;
-        let (mut ids, mut remain) = self.meta_info.resolve_path(dir, path)?;
-        while remain.is_some() {
-            trace!("remain: {:?}", remain);
-            let link = ids.pop().expect("Empty paths cannot occur");
-            let result = self.resolve_symlink(ids.last().copied(), link, &mut loopcount)?;
-            ids.push(result);
-            let (mut a, r) = self
-                .meta_info
-                .resolve_path(Some(result), remain.expect("").as_path())?;
-            ids.append(&mut a);
-            remain = r;
-        }
-        while follow_symlink
-            && self
-                .read_symlink(*ids.last().expect("Empty paths cannot occur"))?
-                .is_some()
-        {
-            if loopcount == 0 {
-                return Err(FSError::Loop);
-            }
-            let link = ids.pop().expect("Empty paths cannot occur");
-            let result = self.resolve_symlink(ids.last().copied(), link, &mut loopcount)?;
-            ids.push(result);
-        }
-        return Ok(ids);
     }
 
     fn print_tree(&self) {

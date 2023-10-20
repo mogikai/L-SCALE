@@ -110,7 +110,7 @@ impl<TaskId, T: KernelTask<TaskId>> TaskEntry<TaskId, T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TaskManager<TaskId, T>
 where
     TaskId: Ord + Copy + Clone + Default,

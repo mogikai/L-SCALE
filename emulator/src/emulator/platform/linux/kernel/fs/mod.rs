@@ -178,9 +178,9 @@ where
         let file = sys_component!(self, filesystem).resolve_last(filename, true)?;
         let mut file_descriptor = FileDescriptor::new(Box::new(FileOps::new()));
         file_descriptor.data.file = Some(FileData::new(self.system.filesystem.clone(), file));
-        let r = sys_component_mut!(self, fd_map).insert_internal(&self.task_id, file_descriptor)?;
-        trace!("open internal result: {:?}", r);
-        return Ok(r);
+        let fd = sys_component_mut!(self, fd_map).insert_internal(&self.task_id, file_descriptor)?;
+        trace!("open internal result: {:?}", fd);
+        Ok(fd)
     }
 
     pub fn statfs(
