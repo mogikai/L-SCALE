@@ -35,7 +35,7 @@ enumset = "1.0.11"
 hexdump = "0.1.1"
 thiserror = "1.*"
 generational-arena = "0.2.8"
-imbl = { path = "/home/mark/projects/fraunhofer/github/imbl" }
+imbl = { git = "https://github.com/mlgiraud/imbl.git", branch = "feature/get" }
 derive_more = { version = "0.99.0", features = ["add"] }
 hex = "0.4.3"
 size_format = "1.0.2"
