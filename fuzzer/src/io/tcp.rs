@@ -13,6 +13,7 @@ use fuzzyemu::util::rcow::RCow;
 #[derive(Debug)]
 pub struct TCP {
     sockets: LazyCloneMap<TCPSocket>,
+    snapshots: Vec<LazyCloneMap<TCPSocket>>,
 }
 
 #[derive(Debug, Clone)]
@@ -87,6 +88,7 @@ impl TCP {
     pub fn new() -> Self {
         TCP {
             sockets: Default::default(),
+            snapshots: vec![],
         }
     }
 
@@ -258,14 +260,19 @@ impl TCPSystem for TCP {
 
 impl Restorable for TCP {
     fn snapshot(&mut self) -> Result<(), GenericError> {
-        self.sockets.snapshot()
+        self.snapshots.push(self.sockets.clone());
+        Ok(())
     }
 
     fn restore_and_discard(&mut self) -> Result<(), GenericError> {
-        todo!()
+        self.restore()?;
+        self.snapshots.pop();
+        Ok(())
     }
 
     fn restore(&mut self) -> Result<(), GenericError> {
-        self.sockets.restore()
+        self.sockets
+            .clone_from(self.snapshots.last().unwrap_or(&Default::default()));
+        Ok(())
     }
 }

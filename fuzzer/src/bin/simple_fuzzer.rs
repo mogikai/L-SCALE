@@ -185,7 +185,7 @@ fn main() -> Result<(), GenericError> {
                 .task_manager
                 .borrow_mut()
                 .tasks_mut()
-                .for_each(|mut t| t.wake_up());
+                .for_each(|t| t.wake_up());
             debug!("Trying to resume");
             result = scheduler.run(None, None);
             debug!("Emulation returned {result:?}");
@@ -203,24 +203,23 @@ fn main() -> Result<(), GenericError> {
         system
             .memory
             .borrow_mut()
-            .iterator_mappings(&task_id, |iter| {
-                for mapping in iter {
-                    let path = if let MappingType::PrivateFile(ref ifd) = mapping.mapping_type {
-                        let fd_map = system.fd_map.borrow_mut();
-                        let file = fd_map.get_internal(&task_id, ifd).unwrap();
-                        let path = file
-                            .data
-                            .file
-                            .as_ref()
-                            .unwrap()
-                            .get_path(&system.filesystem.borrow_mut())
-                            .map_err(|_| MemoryError::Unknown)?;
-                        Some(path)
-                    } else {
-                        None
-                    };
-                    debug!("Mapping: {} File: {:?}", mapping, path);
-                }
+            .mappings(&task_id)
+            .try_for_each(|mapping| {
+                let path = if let MappingType::PrivateFile(ref ifd) = mapping.mapping_type {
+                    let fd_map = system.fd_map.borrow_mut();
+                    let file = fd_map.get_internal(&task_id, ifd).unwrap();
+                    let path = file
+                        .data
+                        .file
+                        .as_ref()
+                        .unwrap()
+                        .get_path(&system.filesystem.borrow_mut())
+                        .map_err(|_| MemoryError::Unknown)?;
+                    Some(path)
+                } else {
+                    None
+                };
+                debug!("Mapping: {} File: {:?}", mapping, path);
                 Ok::<(), MemoryError>(())
             })?;
         start.elapsed()

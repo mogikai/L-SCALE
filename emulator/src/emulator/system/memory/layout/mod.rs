@@ -11,6 +11,7 @@ use crate::emulator::system::memory::helpers::is4kaligned;
 use crate::emulator::system::memory::pregion::PhysicalRegion;
 use crate::emulator::system::memory::tlb::mapping::MappingType;
 use crate::emulator::system::memory::tlb::Tlb;
+use crate::util::auto_key::AutoKey;
 
 /// Each Process/Thread has its own memory layout in the virtual address space
 /// The mapping from virtual address to physical address is managed in the (shared) TLB
@@ -23,10 +24,10 @@ pub(super) struct Layout {
     pub heap_base: EVAddr,
     pub heap_end: EVAddr,
     pub map_base: EVAddr,
-    pub tlb: Index,
+    pub tlb: AutoKey,
     /// A set of unused physical memory regions, shared between threads.
     /// TODO: Might make sense to sort the regions into buckets of different sizes for optimization
-    pub unused_physical_memory: Index,
+    pub unused_physical_memory: AutoKey,
 }
 
 impl Layout {
@@ -35,8 +36,8 @@ impl Layout {
         max_stack: usize,
         heap_base: EVAddr,
         map_base: EVAddr,
-        unused_physical_memory: Index,
-        tlb: Index,
+        unused_physical_memory: AutoKey,
+        tlb: AutoKey,
     ) -> Self {
         Self {
             stack_end: stack_base,

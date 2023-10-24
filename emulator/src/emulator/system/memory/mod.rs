@@ -1,6 +1,7 @@
+use std::cell::Ref;
 use std::cmp::max;
 use std::collections::btree_set::Iter;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::iter::once;
@@ -10,6 +11,7 @@ use std::ops::{Add, BitAnd, Not, Range};
 use bitflags::Flags;
 use byteorder::ByteOrder;
 use generational_arena::{Arena, Index};
+use imbl::{HashMap, OrdSet};
 
 pub use accessor::MemoryAccessor;
 use layout::Layout;
@@ -28,6 +30,8 @@ use crate::emulator::system::memory::tlb::mapping::Mapping;
 pub use crate::emulator::system::memory::tlb::mapping::MappingType;
 pub use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 use crate::emulator::system::memory::tlb::Tlb;
+use crate::util::auto_key::lazy_clone_map::LazyCloneMap;
+use crate::util::rcow::RCow;
 
 mod accessor;
 pub mod helpers;
@@ -59,7 +63,7 @@ macro_rules! tlb {
     ($self:ident, $task_id:ident) => {
         $self
             .tlbs
-            .get(layout!($self, $task_id).tlb)
+            .get(&layout!($self, $task_id).tlb)
             .expect("Error in emulator! The tlb associated with the layout was not found!")
     };
 }
@@ -68,7 +72,7 @@ macro_rules! l_tlb {
     ($self:ident, $layout:ident) => {
         $self
             .tlbs
-            .get($layout.tlb)
+            .get(&$layout.tlb)
             .expect("Error in emulator! The layout associated with the task_id could not be found!")
     };
 }
@@ -77,7 +81,7 @@ macro_rules! tlb_mut {
     ($self:ident, $task_id:ident) => {
         $self
             .tlbs
-            .get_mut(layout!($self, $task_id).tlb)
+            .get_mut(&layout!($self, $task_id).tlb)
             .expect("Error in emulator! The tlb associated with the layout was not found!")
     };
 }
@@ -86,7 +90,7 @@ macro_rules! l_tlb_mut {
     ($self:ident, $layout:ident) => {
         $self
             .tlbs
-            .get_mut($layout.tlb)
+            .get_mut(&$layout.tlb)
             .expect("Error in emulator! The layout associated with the task_id could not be found!")
     };
 }
@@ -98,9 +102,9 @@ macro_rules! l_tlb_mut {
 pub struct Memory<Endianness: ByteOrder> {
     /// The virtual address layout of each process/thread (stack, heap, mappings, etc.)
     /// and the VTLB containing the mappings from emulated virtual addresses to emulated physical addresses.
-    layouts: HashMap<TaskId, Layout>,
-    tlbs: Arena<Tlb>,
-    unused_physical_sets: Arena<BTreeSet<PhysicalRegion>>,
+    layouts: HashMap<TaskId, RCow<Layout>>,
+    tlbs: LazyCloneMap<Tlb>,
+    unused_physical_sets: LazyCloneMap<OrdSet<PhysicalRegion>>,
 
     /// The end of the allocated Emulated Physical address space.
     /// New processes are placed here and the end is then extended to after the new process.
@@ -117,9 +121,9 @@ pub struct Memory<Endianness: ByteOrder> {
 /// A memory snapshot. Currently we just create a deep copy of the entire layouts map.
 #[derive(Debug)]
 struct MemorySnapshot {
-    layouts: HashMap<TaskId, Layout>,
-    tlbs: Arena<Tlb>,
-    unused_physical_sets: Arena<BTreeSet<PhysicalRegion>>,
+    layouts: HashMap<TaskId, RCow<Layout>>,
+    tlbs: LazyCloneMap<Tlb>,
+    unused_physical_sets: LazyCloneMap<OrdSet<PhysicalRegion>>,
     physical_end: EPAddr,
 }
 
@@ -167,24 +171,24 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
 
         let unused_physical = self
             .unused_physical_sets
-            .insert(BTreeSet::from_iter(once(PhysicalRegion::new(
+            .insert(OrdSet::from_iter(once(PhysicalRegion::new(
                 self.physical_end,
                 self.physical_end + self.process_mem_size,
             ))));
         let tlb = self.tlbs.insert(Tlb::new());
-        let mut layout = Layout::new(
+        let layout = RCow::new(Layout::new(
             0x0000_7fff_ffff_0000.into(),
             10 * 1024 * 1024, // 10 MiB
             0x0000_5000_0000_0000.into(),
             0x0000_3000_0000_0000.into(),
             unused_physical,
             tlb,
-        );
+        ));
 
         // stack
         let stack_physical_region = reserve_last_free_physical_region(
             self.unused_physical_sets
-                .get_mut(unused_physical)
+                .get_mut(&unused_physical)
                 .expect("We just inserted this index"),
             layout.max_stack,
         )?;
@@ -212,16 +216,11 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         Ok(())
     }
 
-    pub fn iterator_mappings<F, R, E>(
+    pub fn mappings(
         &self,
         task_id: &TaskId,
-        mut callback: F,
-    ) -> Result<R, MemoryError>
-    where
-        F: FnMut(Iter<Mapping>) -> Result<R, E>,
-        MemoryError: From<E>,
-    {
-        Ok(callback(tlb!(self, task_id).mapping_iter())?)
+    ) -> impl Iterator<Item = &Mapping> {
+        tlb!(self, task_id).mappings()
     }
 
     pub fn translate_vaddr(
@@ -297,7 +296,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
 
         let physical_region = reserve_first_free_physical_region(
             self.unused_physical_sets
-                .get_mut(layout.unused_physical_memory)
+                .get_mut(&layout.unused_physical_memory)
                 .expect("Emulator Error! The unused set must exist"),
             size,
         )?;
@@ -313,7 +312,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         );
         result.map_err(|e| {
             self.unused_physical_sets
-                .get_mut(layout.unused_physical_memory)
+                .get_mut(&layout.unused_physical_memory)
                 .expect("Emulator Error! The unused physical set must exist")
                 .insert(physical_region);
             e
@@ -505,7 +504,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             .into_iter()
             .for_each(|physical_region| {
                 self.unused_physical_sets
-                    .get_mut(layout.unused_physical_memory)
+                    .get_mut(&layout.unused_physical_memory)
                     .expect("Emulator Error! The unused physical set must exist")
                     .insert(physical_region);
             });
@@ -523,7 +522,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         permissions: Permission,
         mapping_type: MappingType,
     ) -> Result<EVAddr, MemoryError> {
-        if !helpers::is4kaligned(address) || !helpers::is4kaligned(size) {
+        if !is4kaligned(address) || !is4kaligned(size) {
             Err(MemoryError::InvalidAlignment)?
         }
 
@@ -538,7 +537,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
 
         let physical_region = reserve_first_free_physical_region(
             self.unused_physical_sets
-                .get_mut(layout.unused_physical_memory)
+                .get_mut(&layout.unused_physical_memory)
                 .expect("Emulator Error! The unused physical memory index should point to a valid entry"),
             size,
         )?;
@@ -559,7 +558,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
 /// * `memory`: A set of `PhysicalRegion` objects to search
 /// * `size`: The size of the requested memory area
 fn reserve_first_free_physical_region(
-    memory: &mut BTreeSet<PhysicalRegion>,
+    memory: &mut OrdSet<PhysicalRegion>,
     size: usize,
 ) -> Result<PhysicalRegion, MemoryError> {
     debug!("Unused physical: {:?}", memory);
@@ -568,7 +567,7 @@ fn reserve_first_free_physical_region(
         .find(|region| size <= region.size())
         .map(|r| r.start)
         .ok_or(MemoryError::OutOfMemory)?;
-    let (front, back) = memory.take(&start).unwrap().split(size);
+    let (front, back) = memory.remove(&start).unwrap().split(size);
     back.map(|b| memory.insert(b));
     front.ok_or(MemoryError::Unknown)
 }
@@ -583,7 +582,7 @@ fn reserve_first_free_physical_region(
 /// * `memory`: A set of `PhysicalRegion` objects to search
 /// * `size`: The size of the requested memory area
 fn reserve_last_free_physical_region(
-    memory: &mut BTreeSet<PhysicalRegion>,
+    memory: &mut OrdSet<PhysicalRegion>,
     size: usize,
 ) -> Result<PhysicalRegion, MemoryError> {
     debug!("Unused physical: {:?}", memory);
@@ -593,7 +592,7 @@ fn reserve_last_free_physical_region(
         .find(|region| size <= region.size())
         .map(|r| r.start)
         .ok_or(MemoryError::OutOfMemory)?;
-    let (front, back) = memory.take(&start).unwrap().split_back(size);
+    let (front, back) = memory.remove(&start).unwrap().split_back(size);
     front.map(|b| memory.insert(b));
     back.ok_or(MemoryError::Unknown)
 }

@@ -3,7 +3,7 @@ use std::collections::btree_set::Iter;
 use std::collections::BTreeSet;
 use std::ops::{BitOr, Not};
 
-use im_rc::Vector;
+use imbl::{OrdSet, Vector};
 use itertools::{Itertools, PeekingNext};
 
 use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
@@ -21,8 +21,7 @@ pub mod tlb_entry;
 
 #[derive(Clone, Debug)]
 pub struct Tlb {
-    mappings: BTreeSet<Mapping>,
-    snapshots: Vector<BTreeSet<Mapping>>,
+    mappings: OrdSet<Mapping>,
 }
 
 impl Default for Tlb {
@@ -35,11 +34,10 @@ impl Tlb {
     pub fn new() -> Tlb {
         Tlb {
             mappings: Default::default(),
-            snapshots: Default::default(),
         }
     }
 
-    pub fn mapping_iter(&self) -> Iter<Mapping> {
+    pub fn mappings(&self) -> impl Iterator<Item = &Mapping> {
         self.mappings.iter()
     }
 
@@ -96,7 +94,7 @@ impl Tlb {
                 let inserted =
                     self.mappings
                         .insert(Mapping::new(v_start, p_start, size, permissions, mapping_type, label));
-                assert!(inserted)
+                assert!(inserted.is_none())
             })
             .ok_or(MemoryError::AlreadyMapped)
     }
@@ -201,7 +199,7 @@ impl Tlb {
 
         for mapping in mappings.iter().rev() {
             let vaddr = mapping.v_start;
-            let mapping = self.mappings.take(&vaddr).unwrap();
+            let mapping = self.mappings.remove(&vaddr).unwrap();
             let (front, mut middle, back) = mapping.cutout(start, size)?;
             middle.permissions = permissions;
             front.map(|r| self.mappings.insert(r));
@@ -227,7 +225,7 @@ impl Tlb {
                 // Remove the original mapping so we can modify it
                 let mapping = self
                     .mappings
-                    .take(&m.v_start)
+                    .remove(&m.v_start)
                     .expect("The mapping must exist since the addresses were previously gathered from the collection");
 
                 // Clamp cutout to mapping boundaries with max and min
@@ -267,7 +265,7 @@ impl Tlb {
         } else {
             region.size = new_size;
             self.mappings
-                .replace(region)
+                .insert(region)
                 .expect("This operation should replace an existing mapping");
             Ok(())
         }
@@ -293,31 +291,7 @@ impl Tlb {
         &mut self,
         mapping: Mapping,
     ) -> bool {
-        self.mappings.remove(&mapping)
-    }
-}
-
-impl Restorable for Tlb {
-    fn snapshot(&mut self) -> Result<(), GenericError> {
-        self.snapshots.push_back(self.mappings.clone());
-        Ok(())
-    }
-
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
-        self.restore()?;
-        self.snapshots
-            .pop_back()
-            .ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot available"))?;
-        Ok(())
-    }
-
-    fn restore(&mut self) -> Result<(), GenericError> {
-        self.mappings = self
-            .snapshots
-            .last()
-            .ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot available"))?
-            .clone();
-        Ok(())
+        self.mappings.remove(&mapping).is_some()
     }
 }
 

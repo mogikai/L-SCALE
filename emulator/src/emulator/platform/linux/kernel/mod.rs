@@ -56,8 +56,13 @@ use crate::emulator::abstractions::kernel_task::KernelTask;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 pub(super) use {sys_component, sys_component_mut};
 
-/* eventuell nach task umbenennen */
-// TODO: Move thread shared data to thread specific struct that is shared between kernel task objects (rcrefcell?)
+/// The kernel task object does not contain any state.
+/// Any state must be stored in the system struct that
+/// is available to all tasks.
+/// TODO: Currently the task is not truly immutable.
+///       However, it would be nice to have, and we
+///       don't have to change much to achieve
+///       immutability.
 pub struct LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
 where
     Endianness: ByteOrder,
