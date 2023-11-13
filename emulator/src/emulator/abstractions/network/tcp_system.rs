@@ -1,7 +1,11 @@
 use crate::emulator::abstractions::file_descriptors::FileOperationsReady;
 use std::fmt::Debug;
 
-use crate::emulator::abstractions::network::{NetworkError, SocketAddress, SocketId};
+use crate::emulator::abstractions::network::{
+    NetworkError,
+    SocketAddress,
+    SocketId,
+};
 use crate::emulator::abstractions::restore::Restorable;
 
 pub trait TCPSystem: Restorable + Debug {

@@ -1,15 +1,31 @@
 use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
-use bitflags::{bitflags, Flags};
+use bitflags::{
+    bitflags,
+    Flags,
+};
 use byteorder::ByteOrder;
 use std::cell::RefMut;
 
 use crate::emulator::macros::*;
-use crate::emulator::platform::linux::fd::{FileDescriptorData, FD};
+use crate::emulator::platform::linux::fd::{
+    FileDescriptorData,
+    FD,
+};
 use crate::emulator::platform::linux::kernel::fs::fd_ops::FileOps;
 use crate::emulator::platform::linux::kernel::*;
-use crate::emulator::system::fd_map::{FileDescriptor, FileDescriptorMap, InternalFD};
-use crate::emulator::system::filesystem::{FSEntryId, Filesystem};
-use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
+use crate::emulator::system::fd_map::{
+    FileDescriptor,
+    FileDescriptorMap,
+    InternalFD,
+};
+use crate::emulator::system::filesystem::{
+    FSEntryId,
+    Filesystem,
+};
+use crate::emulator::system::memory::rw_interface::{
+    DirectMemoryWrite,
+    MemoryWrite,
+};
 
 mod fd_ops;
 
@@ -264,7 +280,7 @@ where
 
 /// Get the fs entry id for the supplied file descriptor if it is a directory.
 fn get_dir_fse_id(
-    map: RefMut<FileDescriptorMap<FD, TaskId, FileDescriptorData>>,
+    map: RefMut<'_, FileDescriptorMap<FD, TaskId, FileDescriptorData>>,
     task_id: &TaskId,
     fd: &FD,
 ) -> Result<FSEntryId, LinuxKernelError> {

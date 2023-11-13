@@ -1,11 +1,22 @@
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{
+    Ref,
+    RefCell,
+    RefMut,
+};
 use std::collections::BTreeMap;
 use std::ops::Add;
 use std::rc::Rc;
 
-use generational_arena::{Arena, Index};
+use generational_arena::{
+    Arena,
+    Index,
+};
 
-use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
+use crate::emulator::abstractions::file_descriptors::{
+    FileDescriptorError,
+    FileDescriptorOps,
+    FileOperationsReady,
+};
 use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::fd_map::error::FileDescriptorMapError;
@@ -69,7 +80,7 @@ impl<D: Default + Restorable> FileDescriptor<D> {
         }
     }
 
-    pub fn stat(&mut self) -> Result<Ref<Stat>, FileDescriptorError> {
+    pub fn stat(&mut self) -> Result<Ref<'_, Stat>, FileDescriptorError> {
         self.ops.stat(&mut self.data)
     }
 
@@ -254,7 +265,7 @@ where
         &self,
         task_id: &TaskId,
         fd: &FD,
-    ) -> Option<RefMut<FileDescriptor<D>>> {
+    ) -> Option<RefMut<'_, FileDescriptor<D>>> {
         self.file_descriptors.get(task_id).and_then(|map| {
             map.get(fd)
                 .and_then(|fd_index| self.files.get(*fd_index).map(|fd| fd.borrow_mut()))
@@ -265,7 +276,7 @@ where
         &self,
         task_id: &TaskId,
         fd: &FD,
-    ) -> Option<Ref<FileDescriptor<D>>> {
+    ) -> Option<Ref<'_, FileDescriptor<D>>> {
         self.file_descriptors.get(task_id).and_then(|map| {
             map.get(fd)
                 .and_then(|fd_index| self.files.get(*fd_index).map(|fd| fd.borrow()))
@@ -293,7 +304,7 @@ where
         &mut self,
         task_id: &TaskId,
         ifd: &InternalFD,
-    ) -> Option<RefMut<FileDescriptor<D>>> {
+    ) -> Option<RefMut<'_, FileDescriptor<D>>> {
         self.internal_file_descriptors.get(task_id).and_then(|fds| {
             fds.get(*ifd)
                 .and_then(|fd_index| self.files.get(*fd_index).map(|fd| fd.borrow_mut()))
@@ -304,7 +315,7 @@ where
         &self,
         task_id: &TaskId,
         ifd: &InternalFD,
-    ) -> Option<Ref<FileDescriptor<D>>> {
+    ) -> Option<Ref<'_, FileDescriptor<D>>> {
         self.internal_file_descriptors.get(task_id).and_then(|fds| {
             fds.get(*ifd)
                 .and_then(|fd_index| self.files.get(*fd_index).map(|fd| fd.borrow()))

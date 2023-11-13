@@ -1,35 +1,74 @@
 use std::cell::RefCell;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{
+    Debug,
+    Formatter,
+};
 use std::marker::PhantomData;
-use std::path::{Path, PathBuf};
+use std::path::{
+    Path,
+    PathBuf,
+};
 use std::rc::Rc;
 
 use byteorder::ByteOrder;
-use goblin::elf::{program_header, Elf};
+use goblin::elf::{
+    program_header,
+    Elf,
+};
 use num_enum::FromPrimitive;
 
 use error::SyscallError;
-use fuzzyemu_derive::{Decode, Encode, RequiredMem};
+use fuzzyemu_derive::{
+    Decode,
+    Encode,
+    RequiredMem,
+};
 
-use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
-use crate::emulator::abstractions::cpu::{RegisterX86, CPU};
+use crate::emulator::abstractions::cpu::address::{
+    EVAddr,
+    EVA_NULL,
+};
+use crate::emulator::abstractions::cpu::{
+    RegisterX86,
+    CPU,
+};
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
-use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
-use crate::emulator::abstractions::mmu::{Permission, MMU};
+use crate::emulator::abstractions::mmu::encoding::{
+    Decode,
+    Encode,
+    RequiredMem,
+};
+use crate::emulator::abstractions::mmu::{
+    Permission,
+    MMU,
+};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::macros::push_stack;
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::fd::{FileDescriptorData, FD};
+use crate::emulator::platform::linux::fd::{
+    FileDescriptorData,
+    FD,
+};
 use crate::emulator::platform::linux::kernel::auxv::AUXVType;
 pub use crate::emulator::platform::linux::kernel::error::LinuxKernelError;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::signalfd::SignalFDOps;
-use crate::emulator::platform::linux::signals::{SignalHandler, SignalMaskFlags};
+use crate::emulator::platform::linux::signals::{
+    SignalHandler,
+    SignalMaskFlags,
+};
 use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::system::default_handles;
-use crate::emulator::system::fd_map::{FileDescriptor, InternalFD};
-use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
+use crate::emulator::system::fd_map::{
+    FileDescriptor,
+    InternalFD,
+};
+use crate::emulator::system::memory::rw_interface::{
+    DirectMemoryWrite,
+    MemoryRead,
+    MemoryWrite,
+};
 
 pub(crate) mod auxv;
 pub(crate) mod error;
@@ -54,7 +93,10 @@ macro_rules! sys_component_mut {
 
 use crate::emulator::abstractions::kernel_task::KernelTask;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
-pub(super) use {sys_component, sys_component_mut};
+pub(super) use {
+    sys_component,
+    sys_component_mut,
+};
 
 /// The kernel task object does not contain any state.
 /// Any state must be stored in the system struct that
@@ -733,13 +775,13 @@ where
     }
 }
 
-#[derive(Encode, Decode, RequiredMem)]
+#[derive(Encode, Decode, RequiredMem, Debug)]
 pub struct Timeval {
     pub tv_sec: i64,
     pub tv_usec: i64,
 }
 
-#[derive(Encode, Decode, RequiredMem)]
+#[derive(Encode, Decode, RequiredMem, Debug)]
 pub struct Timespec {
     pub tv_sec: i64,
     pub tv_nsec: i64,

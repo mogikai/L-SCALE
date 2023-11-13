@@ -1,4 +1,12 @@
+#![feature(return_position_impl_trait_in_trait)]
+
+pub mod executor;
+pub mod feedback;
+pub mod inputs;
 pub mod io;
+pub mod mutators;
+pub mod observers;
+pub mod state;
 
 pub fn add(
     left: usize,

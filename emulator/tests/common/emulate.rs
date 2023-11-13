@@ -5,7 +5,11 @@ use std::time::Duration;
 
 use byteorder::LittleEndian;
 
-use fuzzyemu::emulator::abstractions::emulator::{Scheduler, SchedulerError, StopReason};
+use fuzzyemu::emulator::abstractions::emulator::{
+    Scheduler,
+    SchedulerError,
+    StopReason,
+};
 use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
 use fuzzyemu::emulator::platform::linux::scheduler::LinuxX86Scheduler;
 use fuzzyemu::emulator::system::clock::Clock;

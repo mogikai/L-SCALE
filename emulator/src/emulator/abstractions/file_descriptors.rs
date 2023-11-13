@@ -10,7 +10,10 @@ use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::system::fd_map::FileDescriptor;
-use crate::emulator::system::filesystem::{FSError, Stat};
+use crate::emulator::system::filesystem::{
+    FSError,
+    Stat,
+};
 
 /// The HandleOps trait contains all the functions necessary
 /// for a handle (file descriptor in linux) to function.
@@ -173,7 +176,7 @@ impl From<MemoryError> for FileDescriptorError {
 
 bitflags! {
     #[repr(C)]
-    #[derive(Debug, Copy, Clone)]
+    #[derive(Debug, Copy, Clone, Default)]
     pub struct FileOperationsReady: u64 {
         const Read              = 0x0001;
         const Priority          = 0x0002;

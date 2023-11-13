@@ -1,10 +1,20 @@
 use std::collections::BTreeMap;
 
-use unicorn_engine::{Context, ContextMode, Unicorn};
+use unicorn_engine::{
+    Context,
+    ContextMode,
+    Unicorn,
+};
 
-use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
+use crate::emulator::abstractions::errors::{
+    GenericError,
+    GenericErrorKind,
+};
 use crate::emulator::abstractions::restore::Restorable;
-use crate::emulator::system::hardware::unicorn::{Snapshot, UCWrapper};
+use crate::emulator::system::hardware::unicorn::{
+    Snapshot,
+    UCWrapper,
+};
 
 impl Restorable for UCWrapper<'_> {
     fn snapshot(&mut self) -> Result<(), GenericError> {
@@ -53,7 +63,7 @@ impl Restorable for UCWrapper<'_> {
 }
 fn clone_contexts(
     contexts: &BTreeMap<u64, Context>,
-    uc: &mut Unicorn<*mut UCWrapper>,
+    uc: &mut Unicorn<'_, *mut UCWrapper<'_>>,
 ) -> Result<BTreeMap<u64, Context>, GenericError> {
     // Create a temporary context to which we save the current state.
     let mut tmp_context = uc.context_alloc()?;
@@ -78,7 +88,7 @@ fn clone_contexts(
 }
 
 fn restore_helper(
-    uc: &mut Unicorn<*mut UCWrapper>,
+    uc: &mut Unicorn<'_, *mut UCWrapper<'_>>,
     snapshot: &Snapshot,
 ) -> Result<(), GenericError> {
     uc.context_restore(&snapshot.uc_context)?;

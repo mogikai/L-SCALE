@@ -1,5 +1,9 @@
 use unicorn_engine::unicorn_const::HookType;
-use unicorn_engine::{InsnSysX86, TlbEntry, Unicorn};
+use unicorn_engine::{
+    InsnSysX86,
+    TlbEntry,
+    Unicorn,
+};
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::CPUError;
@@ -18,7 +22,7 @@ impl<'a> Hooks<'a> for UCWrapper<'a> {
     ) -> Result<(), CPUError> {
         // The trampoline takes ownership of the hook. The trampoline is then owned by the unicorn instance for as long
         // as the UCWrapper instance is alive.
-        let trampoline = move |uc: &mut Unicorn<*mut UCWrapper<'a>>| {
+        let trampoline = move |uc: &mut Unicorn<'_, *mut UCWrapper<'a>>| {
             hook();
         };
         // TODO: Store hook id so we can remove it?
@@ -34,7 +38,7 @@ impl<'a> Hooks<'a> for UCWrapper<'a> {
         end: EVAddr,
         mut hook: Box<dyn FnMut(&mut Self, MemoryAction, u64, usize, i64) -> bool + 'a>,
     ) -> Result<(), CPUError> {
-        let trampoline = move |uc: &mut Unicorn<*mut UCWrapper<'a>>, mem_type, address, size, value| {
+        let trampoline = move |uc: &mut Unicorn<'_, *mut UCWrapper<'a>>, mem_type, address, size, value| {
             hook(unsafe { &mut **uc.get_data_mut() }, MemoryAction::from(mem_type), address, size, value)
         };
         // TODO: Store hook id to be able to remove hook later on
@@ -46,10 +50,11 @@ impl<'a> Hooks<'a> for UCWrapper<'a> {
 
     fn add_block_hook(
         &mut self,
-        mut hook: Box<dyn FnMut(&mut Self, u64, u32) + 'a>,
+        mut hook: Box<dyn FnMut(&mut Self, EVAddr, u32) + 'a>,
     ) -> Result<(), CPUError> {
-        let trampoline =
-            move |uc: &mut Unicorn<*mut UCWrapper<'a>>, a, b| hook(unsafe { &mut **uc.get_data_mut() }, a, b);
+        let trampoline = move |uc: &mut Unicorn<'_, *mut UCWrapper<'a>>, address: u64, instruction_count: u32| {
+            hook(unsafe { &mut **uc.get_data_mut() }, address.into(), instruction_count)
+        };
         // TODO: Store hook id so we can remove it later
         let _hook = self.uc_mut().add_block_hook(trampoline)?;
         Ok(())
@@ -59,7 +64,7 @@ impl<'a> Hooks<'a> for UCWrapper<'a> {
         &mut self,
         mut hook: Box<dyn FnMut(&mut Self, EVAddr, MemoryAction) -> Option<TLBEntry> + 'a>,
     ) -> Result<(), CPUError> {
-        let trampoline = move |uc: &mut Unicorn<*mut UCWrapper<'a>>, address: u64, access_type| {
+        let trampoline = move |uc: &mut Unicorn<'_, *mut UCWrapper<'a>>, address: u64, access_type| {
             hook(unsafe { &mut **uc.get_data_mut() }, address.into(), MemoryAction::from(access_type))
                 .map(|tlbentry| tlbentry.into())
         };
@@ -73,7 +78,7 @@ impl<'a> Hooks<'a> for UCWrapper<'a> {
         end: EVAddr,
         mut hook: Box<dyn FnMut(&mut Self, u64, u32) + 'a>,
     ) -> Result<(), CPUError> {
-        let trampoline = move |uc: &mut Unicorn<*mut UCWrapper<'a>>, address, size| {
+        let trampoline = move |uc: &mut Unicorn<'_, *mut UCWrapper<'a>>, address, size| {
             hook(unsafe { &mut **uc.get_data_mut() }, address, size)
         };
         let _hook = self

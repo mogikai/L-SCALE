@@ -2,11 +2,16 @@ use bitflags::Flags;
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
-use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU};
+use crate::emulator::abstractions::mmu::{
+    MemoryError,
+    Permission,
+    MMU,
+};
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 use crate::emulator::system::memory::Memory;
 
+#[derive(Debug)]
 pub struct MemoryAccessor<'a, Endianness: ByteOrder, MmuT: MMU> {
     pub(super) memory: &'a mut Memory<Endianness>,
     pub(super) mmu: &'a mut MmuT,

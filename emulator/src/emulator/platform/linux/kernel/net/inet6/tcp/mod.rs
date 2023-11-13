@@ -2,6 +2,7 @@ use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::network::SocketId;
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::fmt::Debug;
 use std::rc::Rc;
 
 use crate::emulator::platform::linux::kernel::net::Sockaddr;

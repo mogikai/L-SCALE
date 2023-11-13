@@ -2,16 +2,20 @@ use std::cell::RefCell;
 use std::fmt::Debug;
 use std::rc::Rc;
 
-use crate::emulator::abstractions::cpu::CPU;
 use byteorder::ByteOrder;
 
+use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::errors::GenericError;
+use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::kernel_task::KernelTask;
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::clock::Clock;
-use crate::emulator::system::fd_map::{FdId, FileDescriptorMap};
+use crate::emulator::system::fd_map::{
+    FdId,
+    FileDescriptorMap,
+};
 use crate::emulator::system::filesystem::Filesystem;
 use crate::emulator::system::memory::Memory;
 use crate::emulator::system::task_manager::TaskManager;

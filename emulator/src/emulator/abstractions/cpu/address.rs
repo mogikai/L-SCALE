@@ -1,13 +1,54 @@
-use std::fmt::{Debug, Formatter};
-use std::ops::{Add, AddAssign, BitAnd, Not, Sub};
+use std::fmt::{
+    Debug,
+    Formatter,
+};
+use std::ops::{
+    Add,
+    AddAssign,
+    BitAnd,
+    Not,
+    Sub,
+};
 
-use derive_more::{Add, BitAnd, From, Into, Not, UpperHex};
+use derive_more::{
+    Add,
+    BitAnd,
+    From,
+    Into,
+    Not,
+    UpperHex,
+};
+#[cfg(feature = "serde")]
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
-use fuzzyemu_derive::{Decode, Encode, RequiredMem};
+use fuzzyemu_derive::{
+    Decode,
+    Encode,
+    RequiredMem,
+};
 
 /// Emulated virtual address
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(
-    Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Add, From, Into, Not, UpperHex, BitAnd, Decode, Encode, RequiredMem,
+    Ord,
+    PartialOrd,
+    Eq,
+    PartialEq,
+    Copy,
+    Clone,
+    Default,
+    Add,
+    From,
+    Into,
+    Not,
+    UpperHex,
+    BitAnd,
+    Decode,
+    Encode,
+    RequiredMem,
 )]
 pub struct EVAddr(u64);
 

@@ -5,19 +5,27 @@ use std::collections::VecDeque;
 use fuzzyemu::emulator::abstractions::errors::GenericError;
 use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
 use fuzzyemu::emulator::abstractions::network::tcp_system::TCPSystem;
-use fuzzyemu::emulator::abstractions::network::{NetworkError, SocketAddress, SocketId};
+use fuzzyemu::emulator::abstractions::network::{
+    NetworkError,
+    SocketAddress,
+    SocketId,
+};
 use fuzzyemu::emulator::abstractions::restore::Restorable;
+use fuzzyemu::emulator::interface::network::tcp::{
+    TCPSocket,
+    TCPSystemControl,
+};
 use fuzzyemu::util::auto_key::lazy_clone_map::LazyCloneMap;
 use fuzzyemu::util::rcow::RCow;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TCP {
-    sockets: LazyCloneMap<TCPSocket>,
-    snapshots: Vec<LazyCloneMap<TCPSocket>>,
+    sockets: LazyCloneMap<TCPSocketImpl>,
+    snapshots: Vec<LazyCloneMap<TCPSocketImpl>>,
 }
 
-#[derive(Debug, Clone)]
-pub struct TCPSocket {
+#[derive(Debug, Clone, Default)]
+pub struct TCPSocketImpl {
     // TODO: Maybe we can use a restorable data structure here, instead of cloning the whole thing?
     incoming: RCow<VecDeque<u8>>,
     outgoing: RCow<VecDeque<Vec<u8>>>,
@@ -38,7 +46,7 @@ pub struct TCPSocket {
     last_interest: RCow<RefCell<FileOperationsReady>>,
 }
 
-impl TCPSocket {
+impl TCPSocketImpl {
     pub fn poll(
         &self,
         interest: FileOperationsReady,
@@ -84,6 +92,20 @@ impl TCPSocket {
     }
 }
 
+impl TCPSocket for TCPSocketImpl {
+    fn interest(&self) -> FileOperationsReady {
+        *self.last_interest.borrow()
+    }
+
+    fn bound_address(&self) -> Option<SocketAddress> {
+        *self.local_address
+    }
+
+    fn is_listener(&self) -> bool {
+        self.pending_connections.is_some()
+    }
+}
+
 impl TCP {
     pub fn new() -> Self {
         TCP {
@@ -100,7 +122,7 @@ impl TCP {
     ) -> Result<SocketId, NetworkError> {
         let socket = {
             let listener = self.sockets.get(&listener).ok_or(NetworkError::Unknown)?;
-            TCPSocket {
+            TCPSocketImpl {
                 incoming: Default::default(),
                 outgoing: Default::default(),
                 pending_connections: RCow::new(None),
@@ -120,23 +142,15 @@ impl TCP {
     pub fn socket(
         &self,
         id: SocketId,
-    ) -> Option<&TCPSocket> {
+    ) -> Option<&TCPSocketImpl> {
         self.sockets.get(&id)
     }
 
     pub fn socket_mut(
         &mut self,
         id: SocketId,
-    ) -> Option<&mut TCPSocket> {
+    ) -> Option<&mut TCPSocketImpl> {
         self.sockets.get_mut(&id)
-    }
-
-    pub fn sockets(&self) -> impl Iterator<Item = (&SocketId, &TCPSocket)> {
-        self.sockets.iter()
-    }
-
-    pub fn sockets_mut(&mut self) -> impl Iterator<Item = (&SocketId, &mut TCPSocket)> {
-        self.sockets.iter_mut()
     }
 
     pub fn push_data(
@@ -153,16 +167,19 @@ impl TCP {
     }
 }
 
+impl TCPSystemControl for TCP {
+    fn sockets(&self) -> impl Iterator<Item = (&SocketId, &impl TCPSocket)> {
+        self.sockets.iter()
+    }
+
+    fn sockets_mut(&mut self) -> impl Iterator<Item = (&SocketId, &mut impl TCPSocket)> {
+        self.sockets.iter_mut()
+    }
+}
+
 impl TCPSystem for TCP {
     fn new_socket(&mut self) -> Result<SocketId, NetworkError> {
-        Ok(self.sockets.insert(TCPSocket {
-            incoming: Default::default(),
-            outgoing: Default::default(),
-            pending_connections: RCow::new(None),
-            local_address: RCow::new(None),
-            remote_address: RCow::new(None),
-            last_interest: RCow::new(RefCell::new(FileOperationsReady::empty())),
-        }))
+        Ok(self.sockets.insert(TCPSocketImpl::default()))
     }
 
     fn bind(

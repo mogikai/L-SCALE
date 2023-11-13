@@ -1,5 +1,5 @@
+use core::hash::Hash;
 use std::fmt::Debug;
-use std::hash::Hash;
 
 use thiserror::Error;
 

@@ -10,18 +10,24 @@
 #![feature(result_option_inspect)]
 #![feature(error_generic_member_access)]
 #![feature(try_trait_v2)]
+#![feature(return_position_impl_trait_in_trait)]
 #![allow(dead_code)]
 #![allow(unused)]
 #![allow(unused_variables)]
 #![allow(clippy::four_forward_slashes)]
+#![deny(missing_debug_implementations)]
+#![deny(rust_2018_idioms)]
+#![deny(rust_2021_compatibility)]
 // #![warn(missing_docs)]
 
-extern crate core;
-extern crate derive_more;
 #[macro_use]
 extern crate log;
 
-pub use byteorder::{BigEndian, ByteOrder, LittleEndian};
+pub use byteorder::{
+    BigEndian,
+    ByteOrder,
+    LittleEndian,
+};
 use static_assertions::assert_eq_size;
 
 pub mod emulator;

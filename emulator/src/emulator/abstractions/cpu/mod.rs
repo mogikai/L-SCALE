@@ -92,6 +92,7 @@ impl From<TryFromIntError> for CPUError {
     }
 }
 
+#[derive(Debug)]
 pub enum Arch {
     ARM,
     ARM64,
@@ -105,7 +106,7 @@ pub enum Arch {
     MAX,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum Register {
     X86(RegisterX86),
     RISCV(RegisterRISCV),
@@ -124,7 +125,7 @@ impl From<RegisterRISCV> for Register {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum RegisterX86 {
     INVALID,
     AH,
@@ -368,7 +369,7 @@ pub enum RegisterX86 {
     ENDING,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum RegisterRISCV {
     INVALID,
     X0,

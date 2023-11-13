@@ -6,10 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-fuzzyemu = { path = "../emulator" }
+fuzzyemu = { path = "../emulator", features = ["serde"] }
 pretty_env_logger = "*"
 log = "*"
 iced-x86 = "*"
 clap = { version = "4.4.3", features = ["derive"] }
 hex = { version = "0.4.3", features = [] }
 rand = "*"
+libafl = {path = "../deps/LibAFL/libafl"}
+libafl_bolts = {path = "../deps/LibAFL/libafl_bolts"}
+serde = { version = "1.0.189", features = ["derive"] }

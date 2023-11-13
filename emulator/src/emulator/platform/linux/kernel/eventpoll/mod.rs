@@ -4,22 +4,44 @@ use bitflags::Flags;
 use byteorder::ByteOrder;
 use num_enum::TryFromPrimitive;
 
-use fuzzyemu_derive::{Decode, Encode, RequiredMem};
+use fuzzyemu_derive::{
+    Decode,
+    Encode,
+    RequiredMem,
+};
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::CPU;
-use crate::emulator::abstractions::file_descriptors::{FileDescriptorOps, FileOperationsReady};
-use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
+use crate::emulator::abstractions::file_descriptors::{
+    FileDescriptorOps,
+    FileOperationsReady,
+};
+use crate::emulator::abstractions::mmu::encoding::{
+    Decode,
+    Encode,
+    RequiredMem,
+};
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::fd::{FileDescriptorData, FD};
+use crate::emulator::platform::linux::fd::{
+    FileDescriptorData,
+    FD,
+};
 use crate::emulator::platform::linux::kernel::error::SyscallError;
 use crate::emulator::platform::linux::kernel::eventpoll::events::EPOLL_EVENTS;
 use crate::emulator::platform::linux::kernel::eventpoll::fd_ops::EpollOps;
-use crate::emulator::platform::linux::kernel::{sys_component_mut, LinuxKernelError, LinuxKernelTask, SyscallResult};
+use crate::emulator::platform::linux::kernel::{
+    sys_component_mut,
+    LinuxKernelError,
+    LinuxKernelTask,
+    SyscallResult,
+};
 use crate::emulator::system::fd_map::FileDescriptor;
-use crate::emulator::system::memory::rw_interface::{MemoryRead, MemoryWrite};
+use crate::emulator::system::memory::rw_interface::{
+    MemoryRead,
+    MemoryWrite,
+};
 use crate::emulator::system::memory::MemoryAccessor;
 
 mod events;
@@ -145,7 +167,7 @@ where
     #[allow(clippy::needless_pass_by_ref_mut)] // In the future mutable access will be needed
     fn epoll_ctl_add(
         &self,
-        memory: &MemoryAccessor<Endianness, impl MMU + Sized>,
+        memory: &MemoryAccessor<'_, Endianness, impl MMU + Sized>,
         epoll: &mut EpollData,
         fd: &FD,
         file_descriptor: &mut FileDescriptor<FileDescriptorData>,
@@ -179,7 +201,7 @@ where
 
     fn epoll_ctl_mod(
         &self,
-        memory: &MemoryAccessor<Endianness, impl MMU + Sized>,
+        memory: &MemoryAccessor<'_, Endianness, impl MMU + Sized>,
         epoll: &mut EpollData,
         fd: &FD,
         event: EVAddr,

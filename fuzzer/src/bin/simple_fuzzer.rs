@@ -1,31 +1,55 @@
 extern crate core;
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::collections::{
+    HashMap,
+    HashSet,
+};
+use std::fmt::Debug;
+use std::path::{
+    Path,
+    PathBuf,
+};
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::{
+    Duration,
+    Instant,
+};
 
 use clap::Parser;
 use log::debug;
 use rand::seq::SliceRandom;
 
 use fuzzyemu::emulator::abstractions::cpu::CPU;
-use fuzzyemu::emulator::abstractions::emulator::{Scheduler, SchedulerError, StopReason};
+use fuzzyemu::emulator::abstractions::emulator::{
+    Scheduler,
+    SchedulerError,
+    StopReason,
+};
 use fuzzyemu::emulator::abstractions::errors::GenericError;
 use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
 use fuzzyemu::emulator::abstractions::kernel_task::KernelTask;
 use fuzzyemu::emulator::abstractions::mmu::MemoryError;
-use fuzzyemu::emulator::abstractions::network::{IPAddress, SocketAddress};
+use fuzzyemu::emulator::abstractions::network::{
+    IPAddress,
+    SocketAddress,
+};
 use fuzzyemu::emulator::abstractions::restore::Restorable;
+use fuzzyemu::emulator::interface::network::tcp::{
+    TCPSocket,
+    TCPSystemControl,
+};
 use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
 use fuzzyemu::emulator::platform::linux::scheduler::LinuxX86Scheduler;
 use fuzzyemu::emulator::system::clock::Clock;
 use fuzzyemu::emulator::system::fd_map::FileDescriptorMap;
 use fuzzyemu::emulator::system::filesystem::Filesystem;
 use fuzzyemu::emulator::system::hardware::unicorn::UCWrapper;
-use fuzzyemu::emulator::system::memory::{MappingType, Memory};
+use fuzzyemu::emulator::system::memory::{
+    MappingType,
+    Memory,
+};
 use fuzzyemu::emulator::system::task_manager::TaskManager;
 use fuzzyemu::emulator::system::System;
 use fuzzyemu::LittleEndian;

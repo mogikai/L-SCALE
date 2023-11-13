@@ -5,5 +5,8 @@ members = [
     "fuzzer",
     "gui"
 ]
+exclude = [
+    "deps"
+]
 
 resolver = "2"

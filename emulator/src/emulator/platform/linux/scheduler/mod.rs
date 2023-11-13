@@ -10,8 +10,17 @@ use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
-use crate::emulator::abstractions::cpu::{CPUError, ContextHandle, RegisterX86, CPU};
-use crate::emulator::abstractions::emulator::{Scheduler, SchedulerError, StopReason};
+use crate::emulator::abstractions::cpu::{
+    CPUError,
+    ContextHandle,
+    RegisterX86,
+    CPU,
+};
+use crate::emulator::abstractions::emulator::{
+    Scheduler,
+    SchedulerError,
+    StopReason,
+};
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::mmu::MMU;
@@ -35,6 +44,7 @@ mod trace;
 //       For example, we could make the System a generic type and also
 //       provide a generic syscall callback from the outside.
 //       This needs further investigation
+#[derive(Debug)]
 pub struct LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where
     CpuT: CPU + MMU + Hooks<'a> + Restorable,

@@ -1,4 +1,8 @@
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{
+    Ref,
+    RefCell,
+    RefMut,
+};
 use std::rc::Rc;
 
 use imbl::HashMap;
@@ -69,14 +73,14 @@ where
     pub fn get(
         &self,
         key: &AutoKey,
-    ) -> Option<Ref<T>> {
+    ) -> Option<Ref<'_, T>> {
         self.data.get(key).map(|v| v.borrow())
     }
 
     pub fn get_mut(
         &mut self,
         key: &AutoKey,
-    ) -> Option<RefMut<T>> {
+    ) -> Option<RefMut<'_, T>> {
         self.data.get_mut(key).map(|v| v.borrow_mut())
     }
 
@@ -87,19 +91,19 @@ where
         self.data.remove(key);
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&AutoKey, Ref<T>)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&AutoKey, Ref<'_, T>)> {
         self.data.iter().map(|(k, v)| (k, v.borrow()))
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&AutoKey, RefMut<T>)> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&AutoKey, RefMut<'_, T>)> {
         self.data.iter().map(|(k, v)| (k, v.borrow_mut()))
     }
 
-    pub fn values(&self) -> impl Iterator<Item = Ref<T>> {
+    pub fn values(&self) -> impl Iterator<Item = Ref<'_, T>> {
         self.data.values().map(|v| v.borrow())
     }
 
-    pub fn values_mut(&mut self) -> impl Iterator<Item = RefMut<T>> {
+    pub fn values_mut(&mut self) -> impl Iterator<Item = RefMut<'_, T>> {
         self.data.values().map(|v| v.borrow_mut())
     }
 }

@@ -5,7 +5,7 @@ use crate::emulator::abstractions::mmu::MemoryAction;
 use crate::emulator::system::memory::TLBEntry;
 
 type UnmappedMemHook<'a, Slf> = Box<dyn FnMut(&mut Slf, MemoryAction, u64, usize, i64) -> bool + 'a>;
-type BlockHook<'a, Slf> = Box<dyn FnMut(&mut Slf, u64, u32) + 'a>;
+type BlockHook<'a, Slf> = Box<dyn FnMut(&mut Slf, EVAddr, u32) + 'a>;
 type VtlbHook<'a, Slf> = Box<dyn FnMut(&mut Slf, EVAddr, MemoryAction) -> Option<TLBEntry> + 'a>;
 type CodeHook<'a, Slf> = Box<dyn FnMut(&mut Slf, u64, u32) + 'a>;
 

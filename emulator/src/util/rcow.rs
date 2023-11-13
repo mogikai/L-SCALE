@@ -1,4 +1,7 @@
-use std::ops::{Deref, DerefMut};
+use std::ops::{
+    Deref,
+    DerefMut,
+};
 use std::rc::Rc;
 
 /// A wrapper for a cloneable data type `T` that performs lazy cloning only on write access to any of the
@@ -34,6 +37,26 @@ where
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         Rc::make_mut(&mut self.0)
+    }
+}
+
+impl<T> AsRef<T> for RCow<T>
+where
+    T: Clone,
+    <RCow<T> as Deref>::Target: AsRef<T>,
+{
+    fn as_ref(&self) -> &T {
+        self.deref()
+    }
+}
+
+impl<T> AsMut<T> for RCow<T>
+where
+    T: Clone,
+    <RCow<T> as Deref>::Target: AsMut<T>,
+{
+    fn as_mut(&mut self) -> &mut T {
+        self.deref_mut()
     }
 }
 
