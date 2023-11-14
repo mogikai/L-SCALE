@@ -1,5 +1,8 @@
 use crate::emulator::abstractions::cpu::CPU;
-use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
+use crate::emulator::abstractions::errors::{
+    GenericError,
+    GenericErrorKind,
+};
 use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
@@ -12,7 +15,7 @@ use std::mem::take;
 
 impl<'a, CpuT, TcpT, Endianness> Restorable for LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where
-    CpuT: CPU + Hooks<'a> + MMU,
+    CpuT: CPU + Hooks + MMU,
     TcpT: TCPSystem,
     Endianness: 'static + ByteOrder,
 {

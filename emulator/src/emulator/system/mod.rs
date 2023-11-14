@@ -11,6 +11,8 @@ use crate::emulator::abstractions::kernel_task::KernelTask;
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::restore::Restorable;
+use crate::emulator::abstractions::system::SystemControl;
+use crate::emulator::interface::network::tcp::TCPSystemControl;
 use crate::emulator::system::clock::Clock;
 use crate::emulator::system::fd_map::{
     FdId,
@@ -106,6 +108,48 @@ where
             task_manager: Rc::new(RefCell::new(task_manager)),
             tcp,
         }
+    }
+}
+
+impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT> SystemControl
+    for System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>
+where
+    FD: FdId,
+    FDData: Default + Restorable,
+    TaskId: Ord + Copy + Clone + Default,
+    KernelTaskT: KernelTask<TaskId> + Debug,
+    Endianness: ByteOrder,
+    CpuT: CPU + MMU + Hooks,
+    TcpT: TCPSystem + TCPSystemControl,
+{
+    type TaskIdT = TaskId;
+    type KernelTaskT = KernelTaskT;
+    type Endianness = Endianness;
+    type CpuT = CpuT;
+    type TcpT = TcpT;
+
+    fn cpu(&self) -> &Rc<RefCell<Self::CpuT>> {
+        &self.cpu
+    }
+
+    fn memory(&self) -> &Rc<RefCell<Memory<Self::Endianness>>> {
+        &self.memory
+    }
+
+    fn filesystem(&self) -> &Rc<RefCell<Filesystem>> {
+        &self.filesystem
+    }
+
+    fn clock(&self) -> &Rc<RefCell<Clock>> {
+        &self.clock
+    }
+
+    fn task_manager(&self) -> &Rc<RefCell<TaskManager<Self::TaskIdT, Self::KernelTaskT>>> {
+        &self.task_manager
+    }
+
+    fn tcp(&self) -> &Rc<RefCell<Self::TcpT>> {
+        &self.tcp
     }
 }
 

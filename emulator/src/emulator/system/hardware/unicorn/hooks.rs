@@ -13,7 +13,7 @@ use crate::emulator::abstractions::mmu::MemoryAction;
 use crate::emulator::system::hardware::unicorn::UCWrapper;
 use crate::emulator::system::memory::TLBEntry;
 
-impl<'a> Hooks<'a> for UCWrapper<'a> {
+impl<'a> Hooks for UCWrapper<'a> {
     fn add_syscall_hook(
         &mut self,
         start: EVAddr,

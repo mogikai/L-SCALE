@@ -76,7 +76,7 @@ fn main() -> Result<(), GenericError> {
     let mut blocks = HashMap::<(u64, u64, u64), u64>::new();
     let mut prev_block: u64 = 0;
     let mut prev_block2: u64 = 0;
-    let mut total_blocks: u64 = 0;
+    let mut total_blocks = Rc::new(RefCell::new(0));
     let pargs = Args::parse();
 
     let duration = {
@@ -91,13 +91,15 @@ fn main() -> Result<(), GenericError> {
         let system =
             System::new(cpu.clone(), memory, filesystem, clock, file_descriptor_map, task_manager, tcp.clone());
 
-        cpu.borrow_mut().add_block_hook(Box::new(|_, addr, _| {
-            total_blocks += 1;
-            // *blocks.entry((prev_block2, prev_block, addr)).or_insert(0) += 1;
-            // prev_block2 = prev_block;
-            // prev_block = addr;
-            // TODO: Is this a performance bottleneck, do we have to use a simpler map?
-        }))?;
+        let total_blocks_hook = total_blocks.clone();
+        cpu.borrow_mut()
+            .add_block_hook(Box::new(move |_, addr, _| {
+                *total_blocks_hook.borrow_mut() += 1;
+                // *blocks.entry((prev_block2, prev_block, addr)).or_insert(0) += 1;
+                // prev_block2 = prev_block;
+                // prev_block = addr;
+                // TODO: Is this a performance bottleneck, do we have to use a simpler map?
+            }))?;
 
         // TODO: Only one task for now. Need to implement a scheduler that switches tasks.
         let initial_task = LinuxKernelTask::new(system.clone(), 1337, 1);
@@ -249,7 +251,7 @@ fn main() -> Result<(), GenericError> {
         start.elapsed()
     };
 
-    debug!("BB/s: {:?}", total_blocks as f64 / duration.as_secs_f64());
+    debug!("BB/s: {:?}", *total_blocks.borrow() as f64 / duration.as_secs_f64());
     // debug!("Blocks: {:X?}", blocks);
     debug!("Unique 3-edges executed: {:?}", blocks.keys().fold(0, |acc, _| acc + 1));
     debug!(

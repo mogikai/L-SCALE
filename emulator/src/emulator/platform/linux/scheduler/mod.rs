@@ -47,7 +47,7 @@ mod trace;
 #[derive(Debug)]
 pub struct LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where
-    CpuT: CPU + MMU + Hooks<'a> + Restorable,
+    CpuT: CPU + MMU + Hooks + Restorable,
     TcpT: TCPSystem,
     Endianness: ByteOrder,
 {
@@ -57,7 +57,7 @@ where
 
 impl<'a, CpuT, TcpT, Endianness> Scheduler for LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where
-    CpuT: CPU + MMU + Hooks<'a>,
+    CpuT: CPU + MMU + Hooks,
     TcpT: TCPSystem,
     Endianness: ByteOrder + 'static,
 {
@@ -72,7 +72,7 @@ where
 
 impl<'a, CpuT, TcpT, Endianness> LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where
-    CpuT: CPU + MMU + Hooks<'a>,
+    CpuT: CPU + MMU + Hooks + 'static,
     TcpT: TCPSystem + 'static,
     Endianness: ByteOrder + 'static,
 {

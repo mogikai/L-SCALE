@@ -24,6 +24,7 @@ use fuzzyemu::emulator::abstractions::kernel_task::KernelTask;
 use fuzzyemu::emulator::abstractions::mmu::MMU;
 use fuzzyemu::emulator::abstractions::network::tcp_system::TCPSystem;
 use fuzzyemu::emulator::abstractions::restore::Restorable;
+use fuzzyemu::emulator::abstractions::system::SystemControl;
 use fuzzyemu::emulator::system::fd_map::FdId;
 use fuzzyemu::emulator::system::System;
 use fuzzyemu::ByteOrder;
@@ -31,56 +32,33 @@ use fuzzyemu::ByteOrder;
 use crate::inputs::multi_stream::MultiStreamInput;
 
 #[derive(Debug)]
-pub struct EmulatorExecutor<
-    StateT,
-    ObserversTupleT,
-    SchedulerT,
-    FD,
-    FDData,
-    TaskId,
-    KernelTaskT,
-    Endianness,
-    CpuT,
-    TcpT,
-> where
+pub struct EmulatorExecutor<StateT, ObserversTupleT, SchedulerT, SystemT>
+where
     ObserversTupleT: ObserversTuple<StateT>,
     StateT: UsesInput,
     StateT::Input: MultiStreamInput,
-    FD: FdId,
-    FDData: Default + Restorable,
-    TaskId: Ord + Copy + Clone + Default,
-    KernelTaskT: KernelTask<TaskId> + Debug,
-    Endianness: ByteOrder,
-    CpuT: CPU + MMU,
-    TcpT: TCPSystem,
+    SystemT: SystemControl,
 {
     /// The observers, observing each run
     observers: ObserversTupleT,
     scheduler: SchedulerT,
-    system: System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>,
+    system: SystemT,
     phantom: PhantomData<StateT>,
 }
 
-impl<'a, StateT, ObserversTupleT, SchedulerT, FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>
-    EmulatorExecutor<StateT, ObserversTupleT, SchedulerT, FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>
+impl<StateT, ObserversTupleT, SchedulerT, SystemT> EmulatorExecutor<StateT, ObserversTupleT, SchedulerT, SystemT>
 where
     ObserversTupleT: ObserversTuple<StateT>,
     StateT: UsesInput,
     StateT::Input: MultiStreamInput,
     SchedulerT: Scheduler,
-    FD: FdId,
-    FDData: Default + Restorable,
-    TaskId: Ord + Copy + Clone + Default,
-    KernelTaskT: KernelTask<TaskId> + Debug,
-    Endianness: ByteOrder,
-    CpuT: CPU + MMU,
-    TcpT: TCPSystem,
+    SystemT: SystemControl,
 {
     pub fn new(
         observers: ObserversTupleT,
         _state: &StateT,
         mut scheduler: SchedulerT,
-        system: System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>,
+        system: SystemT,
     ) -> Self {
         // Run until executable yields to scheduler, meaning it is waiting for input.
         if !matches!(scheduler.run(None, None), Err(SchedulerError::NoRunnableTasks)) {
@@ -96,40 +74,20 @@ where
     }
 }
 
-impl<'a, StateT, ObserversTupleT, SchedulerT, FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT> UsesState
-    for EmulatorExecutor<StateT, ObserversTupleT, SchedulerT, FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>
+impl<StateT, ObserversTupleT, SchedulerT, SystemT> UsesState
+    for EmulatorExecutor<StateT, ObserversTupleT, SchedulerT, SystemT>
 where
     ObserversTupleT: ObserversTuple<StateT>,
     StateT: UsesInput,
     StateT::Input: MultiStreamInput,
     SchedulerT: Scheduler,
-    FD: FdId,
-    FDData: Default + Restorable,
-    TaskId: Ord + Copy + Clone + Default,
-    KernelTaskT: KernelTask<TaskId> + Debug,
-    Endianness: ByteOrder,
-    CpuT: CPU + MMU,
-    TcpT: TCPSystem,
+    SystemT: SystemControl,
 {
     type State = StateT;
 }
 
-impl<
-        'a,
-        EventManagerT,
-        FuzzerT,
-        StateT,
-        ObserversTupleT,
-        SchedulerT,
-        FD,
-        FDData,
-        TaskId,
-        KernelTaskT,
-        Endianness,
-        CpuT,
-        TcpT,
-    > Executor<EventManagerT, FuzzerT>
-    for EmulatorExecutor<StateT, ObserversTupleT, SchedulerT, FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>
+impl<EventManagerT, FuzzerT, StateT, ObserversTupleT, SchedulerT, SystemT> Executor<EventManagerT, FuzzerT>
+    for EmulatorExecutor<StateT, ObserversTupleT, SchedulerT, SystemT>
 where
     EventManagerT: UsesState<State = Self::State>,
     FuzzerT: UsesState<State = Self::State>,
@@ -137,13 +95,7 @@ where
     StateT::Input: MultiStreamInput,
     ObserversTupleT: ObserversTuple<StateT>,
     SchedulerT: Scheduler + Debug,
-    FD: FdId,
-    FDData: Default + Restorable,
-    TaskId: Ord + Copy + Clone + Default,
-    KernelTaskT: KernelTask<TaskId> + Debug,
-    Endianness: ByteOrder,
-    CpuT: CPU + MMU,
-    TcpT: TCPSystem,
+    SystemT: SystemControl,
 {
     fn run_target(
         &mut self,
@@ -154,44 +106,32 @@ where
     ) -> Result<ExitKind, Error> {
         *state.executions_mut() += 1;
         let result = self.scheduler.run(None, None);
-        let tcp = self.system.tcp.borrow_mut();
+        let tcp = self.system.tcp().borrow_mut();
         self.scheduler.restore().unwrap();
         Ok(ExitKind::Ok)
     }
 }
 
-impl<'a, StateT, ObserversTupleT, SchedulerT, FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT> UsesObservers
-    for EmulatorExecutor<StateT, ObserversTupleT, SchedulerT, FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>
+impl<StateT, ObserversTupleT, SchedulerT, SystemT> UsesObservers
+    for EmulatorExecutor<StateT, ObserversTupleT, SchedulerT, SystemT>
 where
     StateT: UsesInput,
     StateT::Input: MultiStreamInput,
     ObserversTupleT: ObserversTuple<StateT>,
     SchedulerT: Scheduler,
-    FD: FdId,
-    FDData: Default + Restorable,
-    TaskId: Ord + Copy + Clone + Default,
-    KernelTaskT: KernelTask<TaskId> + Debug,
-    Endianness: ByteOrder,
-    CpuT: CPU + MMU,
-    TcpT: TCPSystem,
+    SystemT: SystemControl,
 {
     type Observers = ObserversTupleT;
 }
 
-impl<'a, StateT, ObserversTupleT, SchedulerT, FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT> HasObservers
-    for EmulatorExecutor<StateT, ObserversTupleT, SchedulerT, FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>
+impl<StateT, ObserversTupleT, SchedulerT, SystemT> HasObservers
+    for EmulatorExecutor<StateT, ObserversTupleT, SchedulerT, SystemT>
 where
     StateT: UsesInput,
     StateT::Input: MultiStreamInput,
     ObserversTupleT: ObserversTuple<StateT>,
     SchedulerT: Scheduler,
-    FD: FdId,
-    FDData: Default + Restorable,
-    TaskId: Ord + Copy + Clone + Default,
-    KernelTaskT: KernelTask<TaskId> + Debug,
-    Endianness: ByteOrder,
-    CpuT: CPU + MMU,
-    TcpT: TCPSystem,
+    SystemT: SystemControl,
 {
     fn observers(&self) -> &Self::Observers {
         &self.observers

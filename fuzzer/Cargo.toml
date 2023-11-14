@@ -16,3 +16,10 @@ rand = "*"
 libafl = {path = "../deps/LibAFL/libafl"}
 libafl_bolts = {path = "../deps/LibAFL/libafl_bolts"}
 serde = { version = "1.0.189", features = ["derive"] }
+
+[profile.release]
+opt-level = 3
+strip = "symbols"
+debug-assertions = false
+overflow-checks = false
+lto = "fat"

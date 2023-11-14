@@ -4,17 +4,17 @@ use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::mmu::MemoryAction;
 use crate::emulator::system::memory::TLBEntry;
 
-type UnmappedMemHook<'a, Slf> = Box<dyn FnMut(&mut Slf, MemoryAction, u64, usize, i64) -> bool + 'a>;
-type BlockHook<'a, Slf> = Box<dyn FnMut(&mut Slf, EVAddr, u32) + 'a>;
-type VtlbHook<'a, Slf> = Box<dyn FnMut(&mut Slf, EVAddr, MemoryAction) -> Option<TLBEntry> + 'a>;
-type CodeHook<'a, Slf> = Box<dyn FnMut(&mut Slf, u64, u32) + 'a>;
+type UnmappedMemHook<Slf> = Box<dyn FnMut(&mut Slf, MemoryAction, u64, usize, i64) -> bool + 'static>;
+type BlockHook<Slf> = Box<dyn FnMut(&mut Slf, EVAddr, u32) + 'static>;
+type VtlbHook<Slf> = Box<dyn FnMut(&mut Slf, EVAddr, MemoryAction) -> Option<TLBEntry> + 'static>;
+type CodeHook<Slf> = Box<dyn FnMut(&mut Slf, u64, u32) + 'static>;
 
-pub trait Hooks<'a> {
+pub trait Hooks {
     fn add_syscall_hook(
         &mut self,
         start: EVAddr,
         end: EVAddr,
-        syscall: Box<dyn FnMut() + 'a>,
+        syscall: Box<dyn FnMut() + 'static>,
     ) -> Result<(), CPUError>;
 
     // TODO: This needs to be moved to the tlb since we want to hook the virtual address space
@@ -22,23 +22,23 @@ pub trait Hooks<'a> {
         &mut self,
         start: EVAddr, // FIXME These are actually physical addresses
         end: EVAddr,
-        hook: UnmappedMemHook<'a, Self>,
+        hook: UnmappedMemHook<Self>,
     ) -> Result<(), CPUError>;
 
     fn add_block_hook(
         &mut self,
-        hook: BlockHook<'a, Self>,
+        hook: BlockHook<Self>,
     ) -> Result<(), CPUError>;
 
     fn add_vtlb_hook(
         &mut self,
-        hook: VtlbHook<'a, Self>,
+        hook: VtlbHook<Self>,
     ) -> Result<(), CPUError>;
 
     fn add_code_hook(
         &mut self,
         start: EVAddr,
         end: EVAddr,
-        hook: CodeHook<'a, Self>,
+        hook: CodeHook<Self>,
     ) -> Result<(), CPUError>;
 }

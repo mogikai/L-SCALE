@@ -2,7 +2,7 @@ use super::*;
 
 impl<'a, CpuT, TcpT, Endianness> LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where
-    CpuT: CPU + MMU + Hooks<'a>,
+    CpuT: CPU + MMU + Hooks + 'static,
     TcpT: TCPSystem + 'static,
     Endianness: ByteOrder + 'static,
 {

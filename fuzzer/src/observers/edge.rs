@@ -77,7 +77,7 @@ impl<'de> Deserialize<'de> for EdgeObserver {
 }
 
 impl EdgeObserver {
-    pub fn new<'a, CpuT: Hooks<'a>>(cpu: &Rc<RefCell<CpuT>>) -> Self {
+    pub fn new<CpuT: Hooks>(cpu: &Rc<RefCell<CpuT>>) -> Self {
         let observer = Self {
             inner: Default::default(),
         };

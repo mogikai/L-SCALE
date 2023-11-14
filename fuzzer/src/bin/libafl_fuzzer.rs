@@ -30,8 +30,7 @@ use libafl_bolts::rands::StdRand;
 use libafl_bolts::tuples::tuple_list;
 
 use fuzzyemu::emulator::abstractions::emulator::Scheduler;
-use fuzzyemu::emulator::abstractions::restore::Restorable;
-use fuzzyemu::emulator::abstractions::system::System;
+use fuzzyemu::emulator::abstractions::system::SystemControl;
 use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
 use fuzzyemu::emulator::platform::linux::scheduler::LinuxX86Scheduler;
 use fuzzyemu::emulator::system::clock::Clock;
@@ -91,7 +90,7 @@ fn main() {
     setup_fuzzer(scheduler, system);
 }
 
-fn setup_fuzzer<'a, SchedulerT: Scheduler + Debug, SystemT: System<'a> + Debug>(
+fn setup_fuzzer<'a, SchedulerT: Scheduler + Debug, SystemT: SystemControl<'a> + Debug>(
     emu_scheduler: SchedulerT,
     system: SystemT,
 ) {
