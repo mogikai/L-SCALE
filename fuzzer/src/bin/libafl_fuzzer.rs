@@ -46,7 +46,8 @@ use fuzzyfuzz::feedback::edge::EdgeFeedback;
 use fuzzyfuzz::inputs::emulator::EmulatorInput;
 use fuzzyfuzz::io::tcp::TCP;
 use fuzzyfuzz::mutators::multi_stream::MultiStreamMutator;
-use fuzzyfuzz::observers::edge::EdgeObserver;
+use fuzzyfuzz::observers::emulator::edge::EdgeObserver;
+use fuzzyfuzz::observers::emulator::tcp::TCPStreamObserver;
 use fuzzyfuzz::state::FUZEState;
 
 #[derive(Parser, Debug)]
@@ -90,7 +91,7 @@ fn main() {
     setup_fuzzer(scheduler, system);
 }
 
-fn setup_fuzzer<'a, SchedulerT: Scheduler + Debug, SystemT: SystemControl<'a> + Debug>(
+fn setup_fuzzer<SchedulerT: Scheduler + Debug, SystemT: SystemControl + Debug>(
     emu_scheduler: SchedulerT,
     system: SystemT,
 ) {
@@ -99,6 +100,7 @@ fn setup_fuzzer<'a, SchedulerT: Scheduler + Debug, SystemT: SystemControl<'a> + 
     let mon = SimpleMonitor::new(|s| println!("{s}"));
 
     let observer = EdgeObserver::new(system.cpu());
+    let tcp_observer = TCPStreamObserver::new(system.tcp());
 
     let mut feedback = EdgeFeedback::new(&observer);
 
@@ -118,7 +120,7 @@ fn setup_fuzzer<'a, SchedulerT: Scheduler + Debug, SystemT: SystemControl<'a> + 
 
     let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
 
-    let mut executor = EmulatorExecutor::new(tuple_list!(observer), &state, emu_scheduler, system);
+    let mut executor = EmulatorExecutor::new(tuple_list!(observer, tcp_observer), &state, emu_scheduler, system);
 
     // let mut generator = RandPrintablesGenerator::new(32);
 

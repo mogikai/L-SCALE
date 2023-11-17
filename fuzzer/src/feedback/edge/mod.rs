@@ -1,9 +1,10 @@
 mod metadata;
 
+use std::cmp::max;
 use std::fmt::Debug;
 
 use crate::feedback::edge::metadata::EdgeFeedbackMetadata;
-use crate::observers::edge::EdgeObserver;
+use crate::observers::emulator::edge::EdgeObserver;
 use libafl::events::EventFirer;
 use libafl::executors::ExitKind;
 use libafl::feedbacks::Feedback;
@@ -62,7 +63,6 @@ where
         EventManagerT: EventFirer<State = StateT>,
         ObserversTupleT: ObserversTuple<StateT>,
     {
-        let mut interesting = false;
         // TODO Replace with match_name_type when stable
         let observer = observers
             .match_name::<EdgeObserver>(&self.observer_name)
@@ -72,6 +72,22 @@ where
             .named_metadata_map_mut()
             .get_mut::<EdgeFeedbackMetadata>(self.name())
             .unwrap();
+
+        let historical_edge_counts = &mut observer_state.hit_map;
+        let current_edge_counts = observer.edges();
+
+        historical_edge_counts.resize(current_edge_counts.len(), 0);
+        let mut interesting = false;
+        for (current, maximum) in observer
+            .edges()
+            .iter()
+            .zip(historical_edge_counts.iter_mut())
+        {
+            if current > maximum {
+                *maximum = *current;
+                interesting = true;
+            }
+        }
         // let size = observer.usable_count();
         // let len = observer.len();
         // if observer_state.history_map.len() < len {

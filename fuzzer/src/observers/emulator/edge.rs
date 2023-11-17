@@ -1,7 +1,11 @@
-use std::cell::RefCell;
+use std::cell::{
+    Ref,
+    RefCell,
+};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::rc::Rc;
+use std::slice::Iter;
 
 use fuzzyemu::emulator::abstractions::cpu::address::EVAddr;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
@@ -19,6 +23,7 @@ use serde::{
 struct InnerEdgeObserver {
     edge_counts: Vec<u64>,
     edge_map: BTreeMap<(EVAddr, EVAddr), usize>,
+    /// The address fo the block that was visited most recently.
     last_address: EVAddr,
 }
 
@@ -47,6 +52,13 @@ impl InnerEdgeObserver {
             self.edge_counts.push(0);
             id
         })
+    }
+
+    /// Resets the observer data. This sets the counts of all edges to zero.
+    /// The mapping for edges to indices is kept, such that different runs
+    /// can be compared, since they have the same mapping.
+    fn reset(&mut self) {
+        self.edge_counts.iter_mut().for_each(|count| *count = 0);
     }
 }
 
@@ -88,6 +100,10 @@ impl EdgeObserver {
             }))
             .unwrap();
         observer
+    }
+
+    pub fn edges(&self) -> Ref<Vec<u64>> {
+        Ref::map(self.inner.borrow(), |inner| &inner.edge_counts)
     }
 }
 

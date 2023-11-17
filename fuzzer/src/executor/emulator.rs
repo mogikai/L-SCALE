@@ -15,19 +15,11 @@ use libafl::prelude::UsesState;
 use libafl::state::HasExecutions;
 use libafl_bolts::Error;
 
-use fuzzyemu::emulator::abstractions::cpu::CPU;
 use fuzzyemu::emulator::abstractions::emulator::{
     Scheduler,
     SchedulerError,
 };
-use fuzzyemu::emulator::abstractions::kernel_task::KernelTask;
-use fuzzyemu::emulator::abstractions::mmu::MMU;
-use fuzzyemu::emulator::abstractions::network::tcp_system::TCPSystem;
-use fuzzyemu::emulator::abstractions::restore::Restorable;
 use fuzzyemu::emulator::abstractions::system::SystemControl;
-use fuzzyemu::emulator::system::fd_map::FdId;
-use fuzzyemu::emulator::system::System;
-use fuzzyemu::ByteOrder;
 
 use crate::inputs::multi_stream::MultiStreamInput;
 
@@ -106,9 +98,12 @@ where
     ) -> Result<ExitKind, Error> {
         *state.executions_mut() += 1;
         let result = self.scheduler.run(None, None);
-        let tcp = self.system.tcp().borrow_mut();
-        self.scheduler.restore().unwrap();
+        println!("AFTER EXECUTING");
         Ok(ExitKind::Ok)
+    }
+    fn post_run_reset(&mut self) {
+        println!("IN POST RUN");
+        self.scheduler.restore().unwrap();
     }
 }
 
