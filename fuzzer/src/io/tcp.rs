@@ -104,6 +104,14 @@ impl TCPSocket for TCPSocketImpl {
     fn is_listener(&self) -> bool {
         self.pending_connections.is_some()
     }
+
+    fn push_data(
+        &mut self,
+        data: &[u8],
+    ) -> Result<(), NetworkError> {
+        self.incoming.extend(data);
+        Ok(())
+    }
 }
 
 impl TCP {
@@ -151,19 +159,6 @@ impl TCP {
         id: SocketId,
     ) -> Option<&mut TCPSocketImpl> {
         self.sockets.get_mut(&id)
-    }
-
-    pub fn push_data(
-        &mut self,
-        id: SocketId,
-        data: &[u8],
-    ) -> Result<(), NetworkError> {
-        self.sockets
-            .get_mut(&id)
-            .ok_or(NetworkError::Unknown)?
-            .incoming
-            .extend(data);
-        Ok(())
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::emulator::abstractions::file_descriptors::FileOperationsReady;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::network::{
+    NetworkError,
     SocketAddress,
     SocketId,
 };
@@ -21,4 +22,9 @@ pub trait TCPSocket {
 
     /// If this socket is a listener, the method returns true. Otherwise it will return false.
     fn is_listener(&self) -> bool;
+
+    fn push_data(
+        &mut self,
+        data: &[u8],
+    ) -> Result<(), NetworkError>;
 }

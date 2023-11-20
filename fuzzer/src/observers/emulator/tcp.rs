@@ -56,7 +56,8 @@ where
         _exit_kind: &ExitKind,
     ) -> Result<(), Error> {
         // TODO: Gather
-        self.tcp.borrow_mut();
+        let tcp = self.tcp.borrow_mut();
+        tcp.sockets().for_each(|(id, socket)| {});
         todo!()
     }
 }
