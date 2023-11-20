@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::cmp::min;
 use std::collections::VecDeque;
+use std::mem::swap;
 
 use fuzzyemu::emulator::abstractions::errors::GenericError;
 use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
@@ -111,6 +112,16 @@ impl TCPSocket for TCPSocketImpl {
     ) -> Result<(), NetworkError> {
         self.incoming.extend(data);
         Ok(())
+    }
+
+    fn take_output(&mut self) -> Result<VecDeque<Vec<u8>>, NetworkError> {
+        let mut result = Default::default();
+        swap(&mut result, &mut *self.outgoing);
+        Ok(result)
+    }
+
+    fn peek_output(&self) -> Result<&VecDeque<Vec<u8>>, NetworkError> {
+        Ok(&*self.outgoing)
     }
 }
 
@@ -253,7 +264,7 @@ impl TCPSystem for TCP {
         data: &[u8],
     ) -> Result<usize, NetworkError> {
         let mut sock = self.sockets.get_mut(&id).ok_or(NetworkError::Unknown)?;
-        sock.outgoing.push_front(data.to_vec());
+        sock.outgoing.push_back(data.to_vec());
         Ok(data.len())
     }
 

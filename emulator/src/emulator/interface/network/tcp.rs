@@ -5,6 +5,7 @@ use crate::emulator::abstractions::network::{
     SocketAddress,
     SocketId,
 };
+use std::collections::VecDeque;
 
 /// Extends upon the `TCPSystem` trait to additionally provide control methods to control the available tcp streams
 /// or send or receive data from these streams.
@@ -27,4 +28,10 @@ pub trait TCPSocket {
         &mut self,
         data: &[u8],
     ) -> Result<(), NetworkError>;
+
+    /// Takes all data that was sent to this socket by the process. This clears the outgoing buffer.
+    fn take_output(&mut self) -> Result<VecDeque<Vec<u8>>, NetworkError>;
+
+    /// Returns a reference to the output data, without removing it from the buffer.
+    fn peek_output(&self) -> Result<&VecDeque<Vec<u8>>, NetworkError>;
 }
