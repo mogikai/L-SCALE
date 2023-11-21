@@ -1,5 +1,6 @@
 use libafl::inputs::Input;
 use libafl::mutators::Mutator;
+use std::path::Component;
 
 /// A `MultiStreamInput` consists of several streams of data of the associated type `Stream: Input`
 /// In most cases the type of `Stream` will be `BytesInput`.
@@ -20,6 +21,15 @@ pub trait MultiStreamInput: Input {
         &mut self,
         component: &Self::ComponentId,
     ) -> impl Iterator<Item = &mut Self::Stream>;
+
+    /// Sets the number of available components for this input to n.
+    /// If there were previously more than n component streams, they are
+    /// truncated to n. Otherwise, additional empty streams are created.
+    fn set_available_streams(
+        &mut self,
+        component: &Self::ComponentId,
+        n: usize,
+    );
 
     fn components(&self) -> impl ExactSizeIterator<Item = &Self::ComponentId>;
     fn component(

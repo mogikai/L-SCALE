@@ -66,6 +66,17 @@ impl MultiStreamInput for EmulatorInput {
         }
     }
 
+    fn set_available_streams(
+        &mut self,
+        component: &Self::ComponentId,
+        n: usize,
+    ) {
+        match component {
+            EmulatorInputComponent::Filesystem => todo!(),
+            EmulatorInputComponent::Tcp => self.tcp_streams.resize(n, Default::default()),
+        }
+    }
+
     fn components(&self) -> impl ExactSizeIterator<Item = &Self::ComponentId> {
         COMPONENT_TYPES.iter()
     }

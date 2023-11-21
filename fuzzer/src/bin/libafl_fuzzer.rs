@@ -48,6 +48,7 @@ use fuzzyfuzz::io::tcp::TCP;
 use fuzzyfuzz::mutators::multi_stream::MultiStreamMutator;
 use fuzzyfuzz::observers::emulator::edge::EdgeObserver;
 use fuzzyfuzz::observers::emulator::tcp::TCPStreamObserver;
+use fuzzyfuzz::stages::input_primer::InputPrimerStage;
 use fuzzyfuzz::state::{
     FUZEDefaultState,
     FUZEState,
@@ -128,7 +129,7 @@ fn setup_fuzzer<SchedulerT: Scheduler + Debug, SystemT: SystemControl + Debug>(
     // let mut generator = RandPrintablesGenerator::new(32);
 
     let mutator = MultiStreamMutator::new(havoc_mutations_no_crossover());
-    let mut stages = tuple_list!(StdMutationalStage::new(mutator));
+    let mut stages = tuple_list!(InputPrimerStage::new(), StdMutationalStage::new(mutator));
 
     fuzzer
         .add_input(&mut state, &mut executor, &mut mgr, EmulatorInput::new())

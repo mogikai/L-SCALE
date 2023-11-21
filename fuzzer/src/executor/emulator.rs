@@ -122,11 +122,9 @@ where
     ) -> Result<ExitKind, Error> {
         *state.executions_mut() += 1;
         let result = self.scheduler.run(None, None);
-        println!("AFTER EXECUTING");
         Ok(ExitKind::Ok)
     }
     fn post_run_reset(&mut self) {
-        println!("IN POST RUN");
         self.scheduler.restore().unwrap();
     }
 }
