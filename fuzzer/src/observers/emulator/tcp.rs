@@ -1,4 +1,8 @@
 use std::cell::RefCell;
+use std::collections::{
+    BTreeMap,
+    VecDeque,
+};
 use std::fmt::Debug;
 use std::rc::Rc;
 
@@ -16,7 +20,21 @@ use serde::{
     Serializer,
 };
 
-use fuzzyemu::emulator::interface::network::tcp::TCPSystemControl;
+use fuzzyemu::emulator::abstractions::network::{
+    NetworkError,
+    SocketId,
+};
+use fuzzyemu::emulator::interface::network::tcp::{
+    TCPSocket,
+    TCPSystemControl,
+};
+
+#[derive(Debug, Default)]
+pub struct TCPStreamObservation {
+    /// Contains a double ended queue of outputs for each tcp stream.
+    /// New outputs are added to the back of the Deque.
+    outgoing_data: BTreeMap<SocketId, VecDeque<Vec<u8>>>,
+}
 
 #[derive(Debug)]
 pub struct TCPStreamObserver<TcpT>
@@ -24,6 +42,7 @@ where
     TcpT: TCPSystemControl,
 {
     tcp: Rc<RefCell<TcpT>>,
+    observation: TCPStreamObservation,
 }
 
 impl<TcpT> TCPStreamObserver<TcpT>
@@ -31,7 +50,10 @@ where
     TcpT: TCPSystemControl,
 {
     pub fn new(tcp: &Rc<RefCell<TcpT>>) -> Self {
-        Self { tcp: tcp.clone() }
+        Self {
+            tcp: tcp.clone(),
+            observation: Default::default(),
+        }
     }
 }
 
@@ -55,10 +77,13 @@ where
         _input: &StateT::Input,
         _exit_kind: &ExitKind,
     ) -> Result<(), Error> {
-        // TODO: Gather
-        let tcp = self.tcp.borrow_mut();
-        tcp.sockets().for_each(|(id, socket)| {});
-        todo!()
+        let mut tcp = self.tcp.borrow_mut();
+        self.observation.outgoing_data = tcp
+            .sockets_mut()
+            .map(|(&id, socket)| Ok((id, socket.take_output()?)))
+            .try_collect()
+            .map_err(|e: NetworkError| Error::unknown(""))?;
+        Ok(())
     }
 }
 
