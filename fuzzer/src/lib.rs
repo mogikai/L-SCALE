@@ -7,6 +7,7 @@ pub mod inputs;
 pub mod io;
 pub mod mutators;
 pub mod observers;
+pub mod stages;
 pub mod state;
 
 pub fn add(

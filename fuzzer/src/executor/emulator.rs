@@ -19,18 +19,20 @@ use fuzzyemu::emulator::abstractions::emulator::{
     Scheduler,
     SchedulerError,
 };
+use fuzzyemu::emulator::abstractions::restore::Restorable;
 use fuzzyemu::emulator::abstractions::system::SystemControl;
 
 use crate::inputs::multi_stream::MultiStreamInput;
 
+pub trait FUZEExecutor {
+    fn scheduler(&self) -> &impl Scheduler;
+    fn scheduler_mut(&mut self) -> &mut impl Scheduler;
+    fn system(&self) -> &impl SystemControl;
+    fn system_mut(&mut self) -> &mut impl SystemControl;
+}
+
 #[derive(Debug)]
-pub struct EmulatorExecutor<StateT, ObserversTupleT, SchedulerT, SystemT>
-where
-    ObserversTupleT: ObserversTuple<StateT>,
-    StateT: UsesInput,
-    StateT::Input: MultiStreamInput,
-    SystemT: SystemControl,
-{
+pub struct DefaultFUZEExecutor<StateT, ObserversTupleT, SchedulerT, SystemT> {
     /// The observers, observing each run
     observers: ObserversTupleT,
     scheduler: SchedulerT,
@@ -38,7 +40,7 @@ where
     phantom: PhantomData<StateT>,
 }
 
-impl<StateT, ObserversTupleT, SchedulerT, SystemT> EmulatorExecutor<StateT, ObserversTupleT, SchedulerT, SystemT>
+impl<StateT, ObserversTupleT, SchedulerT, SystemT> DefaultFUZEExecutor<StateT, ObserversTupleT, SchedulerT, SystemT>
 where
     ObserversTupleT: ObserversTuple<StateT>,
     StateT: UsesInput,
@@ -56,6 +58,7 @@ where
         if !matches!(scheduler.run(None, None), Err(SchedulerError::NoRunnableTasks)) {
             panic!()
         }
+        // TODO: Move this to state manager stage
         scheduler.snapshot().unwrap();
         Self {
             observers,
@@ -66,27 +69,48 @@ where
     }
 }
 
+impl<StateT, ObserversTupleT, SchedulerT, SystemT> FUZEExecutor
+    for DefaultFUZEExecutor<StateT, ObserversTupleT, SchedulerT, SystemT>
+where
+    SchedulerT: Scheduler,
+    SystemT: SystemControl,
+{
+    fn scheduler(&self) -> &impl Scheduler {
+        &self.scheduler
+    }
+
+    fn scheduler_mut(&mut self) -> &mut impl Scheduler {
+        &mut self.scheduler
+    }
+
+    fn system(&self) -> &impl SystemControl {
+        &self.system
+    }
+
+    fn system_mut(&mut self) -> &mut impl SystemControl {
+        &mut self.system
+    }
+}
+
 impl<StateT, ObserversTupleT, SchedulerT, SystemT> UsesState
-    for EmulatorExecutor<StateT, ObserversTupleT, SchedulerT, SystemT>
+    for DefaultFUZEExecutor<StateT, ObserversTupleT, SchedulerT, SystemT>
 where
     ObserversTupleT: ObserversTuple<StateT>,
     StateT: UsesInput,
     StateT::Input: MultiStreamInput,
-    SchedulerT: Scheduler,
-    SystemT: SystemControl,
 {
     type State = StateT;
 }
 
 impl<EventManagerT, FuzzerT, StateT, ObserversTupleT, SchedulerT, SystemT> Executor<EventManagerT, FuzzerT>
-    for EmulatorExecutor<StateT, ObserversTupleT, SchedulerT, SystemT>
+    for DefaultFUZEExecutor<StateT, ObserversTupleT, SchedulerT, SystemT>
 where
     EventManagerT: UsesState<State = Self::State>,
     FuzzerT: UsesState<State = Self::State>,
-    StateT: UsesInput + HasExecutions + Debug,
+    StateT: UsesInput + HasExecutions,
     StateT::Input: MultiStreamInput,
     ObserversTupleT: ObserversTuple<StateT>,
-    SchedulerT: Scheduler + Debug,
+    SchedulerT: Scheduler,
     SystemT: SystemControl,
 {
     fn run_target(
@@ -108,25 +132,21 @@ where
 }
 
 impl<StateT, ObserversTupleT, SchedulerT, SystemT> UsesObservers
-    for EmulatorExecutor<StateT, ObserversTupleT, SchedulerT, SystemT>
+    for DefaultFUZEExecutor<StateT, ObserversTupleT, SchedulerT, SystemT>
 where
     StateT: UsesInput,
     StateT::Input: MultiStreamInput,
     ObserversTupleT: ObserversTuple<StateT>,
-    SchedulerT: Scheduler,
-    SystemT: SystemControl,
 {
     type Observers = ObserversTupleT;
 }
 
 impl<StateT, ObserversTupleT, SchedulerT, SystemT> HasObservers
-    for EmulatorExecutor<StateT, ObserversTupleT, SchedulerT, SystemT>
+    for DefaultFUZEExecutor<StateT, ObserversTupleT, SchedulerT, SystemT>
 where
     StateT: UsesInput,
     StateT::Input: MultiStreamInput,
     ObserversTupleT: ObserversTuple<StateT>,
-    SchedulerT: Scheduler,
-    SystemT: SystemControl,
 {
     fn observers(&self) -> &Self::Observers {
         &self.observers

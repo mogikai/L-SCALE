@@ -4,7 +4,6 @@ use std::cell::{
 };
 use std::time::Duration;
 
-use crate::state::FUZEState;
 use libafl::corpus::{
     Corpus,
     CorpusId,
@@ -41,14 +40,16 @@ use serde::{
     Serializer,
 };
 
-impl<InputT, CorpusT, RandomT, SolutionsT> UsesInput for FUZEState<InputT, CorpusT, RandomT, SolutionsT>
+use crate::state::FUZEDefaultState;
+
+impl<InputT, CorpusT, RandomT, SolutionsT> UsesInput for FUZEDefaultState<InputT, CorpusT, RandomT, SolutionsT>
 where
     InputT: Input,
 {
     type Input = InputT;
 }
 
-impl<InputT, CorpusT, RandomT, SolutionsT> State for FUZEState<InputT, CorpusT, RandomT, SolutionsT>
+impl<InputT, CorpusT, RandomT, SolutionsT> State for FUZEDefaultState<InputT, CorpusT, RandomT, SolutionsT>
 where
     CorpusT: Corpus<Input = Self::Input>,
     RandomT: Rand,
@@ -58,7 +59,9 @@ where
 {
 }
 
-impl<InputT, CorpusT, RandomT, SolutionsT> HasClientPerfMonitor for FUZEState<InputT, CorpusT, RandomT, SolutionsT> {
+impl<InputT, CorpusT, RandomT, SolutionsT> HasClientPerfMonitor
+    for FUZEDefaultState<InputT, CorpusT, RandomT, SolutionsT>
+{
     fn introspection_monitor(&self) -> &ClientPerfMonitor {
         unimplemented!()
     }
@@ -68,7 +71,7 @@ impl<InputT, CorpusT, RandomT, SolutionsT> HasClientPerfMonitor for FUZEState<In
     }
 }
 
-impl<InputT, CorpusT, RandomT, SolutionsT> HasCorpus for FUZEState<InputT, CorpusT, RandomT, SolutionsT>
+impl<InputT, CorpusT, RandomT, SolutionsT> HasCorpus for FUZEDefaultState<InputT, CorpusT, RandomT, SolutionsT>
 where
     InputT: Input,
     CorpusT: Corpus<Input = Self::Input>,
@@ -84,7 +87,7 @@ where
     }
 }
 
-impl<InputT, CorpusT, RandomT, SolutionsT> HasTestcase for FUZEState<InputT, CorpusT, RandomT, SolutionsT>
+impl<InputT, CorpusT, RandomT, SolutionsT> HasTestcase for FUZEDefaultState<InputT, CorpusT, RandomT, SolutionsT>
 where
     InputT: Input,
     Self: HasCorpus,
@@ -104,7 +107,7 @@ where
     }
 }
 
-impl<InputT, CorpusT, RandomT, SolutionsT> HasExecutions for FUZEState<InputT, CorpusT, RandomT, SolutionsT> {
+impl<InputT, CorpusT, RandomT, SolutionsT> HasExecutions for FUZEDefaultState<InputT, CorpusT, RandomT, SolutionsT> {
     fn executions(&self) -> &usize {
         &self.executions
     }
@@ -114,7 +117,7 @@ impl<InputT, CorpusT, RandomT, SolutionsT> HasExecutions for FUZEState<InputT, C
     }
 }
 
-impl<InputT, CorpusT, RandomT, SolutionsT> HasImported for FUZEState<InputT, CorpusT, RandomT, SolutionsT> {
+impl<InputT, CorpusT, RandomT, SolutionsT> HasImported for FUZEDefaultState<InputT, CorpusT, RandomT, SolutionsT> {
     fn imported(&self) -> &usize {
         &self.imported
     }
@@ -124,7 +127,7 @@ impl<InputT, CorpusT, RandomT, SolutionsT> HasImported for FUZEState<InputT, Cor
     }
 }
 
-impl<InputT, CorpusT, RandomT, SolutionsT> HasRand for FUZEState<InputT, CorpusT, RandomT, SolutionsT>
+impl<InputT, CorpusT, RandomT, SolutionsT> HasRand for FUZEDefaultState<InputT, CorpusT, RandomT, SolutionsT>
 where
     RandomT: Rand,
 {
@@ -139,7 +142,7 @@ where
     }
 }
 
-impl<InputT, CorpusT, RandomT, SolutionsT> HasSolutions for FUZEState<InputT, CorpusT, RandomT, SolutionsT>
+impl<InputT, CorpusT, RandomT, SolutionsT> HasSolutions for FUZEDefaultState<InputT, CorpusT, RandomT, SolutionsT>
 where
     InputT: Input,
     SolutionsT: Corpus<Input = InputT>,
@@ -155,7 +158,7 @@ where
     }
 }
 
-impl<InputT, CorpusT, RandomT, SolutionsT> HasMaxSize for FUZEState<InputT, CorpusT, RandomT, SolutionsT> {
+impl<InputT, CorpusT, RandomT, SolutionsT> HasMaxSize for FUZEDefaultState<InputT, CorpusT, RandomT, SolutionsT> {
     fn max_size(&self) -> usize {
         self.max_size
     }
@@ -168,7 +171,7 @@ impl<InputT, CorpusT, RandomT, SolutionsT> HasMaxSize for FUZEState<InputT, Corp
     }
 }
 
-impl<InputT, CorpusT, RandomT, SolutionsT> HasMetadata for FUZEState<InputT, CorpusT, RandomT, SolutionsT> {
+impl<InputT, CorpusT, RandomT, SolutionsT> HasMetadata for FUZEDefaultState<InputT, CorpusT, RandomT, SolutionsT> {
     fn metadata_map(&self) -> &SerdeAnyMap {
         &self.metadata
     }
@@ -178,7 +181,9 @@ impl<InputT, CorpusT, RandomT, SolutionsT> HasMetadata for FUZEState<InputT, Cor
     }
 }
 
-impl<InputT, CorpusT, RandomT, SolutionsT> HasLastReportTime for FUZEState<InputT, CorpusT, RandomT, SolutionsT> {
+impl<InputT, CorpusT, RandomT, SolutionsT> HasLastReportTime
+    for FUZEDefaultState<InputT, CorpusT, RandomT, SolutionsT>
+{
     fn last_report_time(&self) -> &Option<Duration> {
         &self.last_report_time
     }
@@ -188,7 +193,7 @@ impl<InputT, CorpusT, RandomT, SolutionsT> HasLastReportTime for FUZEState<Input
     }
 }
 
-impl<InputT, CorpusT, RandomT, SolutionsT> HasNamedMetadata for FUZEState<InputT, CorpusT, RandomT, SolutionsT> {
+impl<InputT, CorpusT, RandomT, SolutionsT> HasNamedMetadata for FUZEDefaultState<InputT, CorpusT, RandomT, SolutionsT> {
     fn named_metadata_map(&self) -> &NamedSerdeAnyMap {
         &self.named_metadata
     }

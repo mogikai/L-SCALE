@@ -1,12 +1,14 @@
 use std::marker::PhantomData;
 use std::time::Duration;
 
+use crate::inputs::multi_stream::MultiStreamInput;
 use libafl::corpus::Corpus;
 use libafl::feedbacks::Feedback;
 use libafl::inputs::{
     Input,
     UsesInput,
 };
+use libafl::state::State;
 use libafl_bolts::rands::Rand;
 use libafl_bolts::serdeany::{
     NamedSerdeAnyMap,
@@ -21,6 +23,8 @@ use serde::{
 
 pub mod libafl_traits;
 
+pub trait FUZEState: State {}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(bound = "
     InputT: Serialize + DeserializeOwned,
@@ -28,7 +32,7 @@ pub mod libafl_traits;
     RandomT: Serialize + DeserializeOwned,
     SolutionsT: Serialize + DeserializeOwned,
 ")]
-pub struct FUZEState<InputT, CorpusT, RandomT, SolutionsT> {
+pub struct FUZEDefaultState<InputT, CorpusT, RandomT, SolutionsT> {
     rand: RandomT,
     /// How many times the executor ran the harness/target
     executions: usize,
@@ -60,9 +64,9 @@ pub struct FUZEState<InputT, CorpusT, RandomT, SolutionsT> {
     phantom: PhantomData<InputT>,
 }
 
-impl<InputT, CorpusT, RandomT, SolutionsT> FUZEState<InputT, CorpusT, RandomT, SolutionsT>
+impl<InputT, CorpusT, RandomT, SolutionsT> FUZEDefaultState<InputT, CorpusT, RandomT, SolutionsT>
 where
-    InputT: Input,
+    InputT: MultiStreamInput,
     RandomT: Rand,
     CorpusT: Corpus<Input = <Self as UsesInput>::Input>,
     SolutionsT: Corpus<Input = <Self as UsesInput>::Input>,
@@ -94,4 +98,14 @@ where
         feedback.init_state(&mut state)?;
         Ok(state)
     }
+}
+
+impl<InputT, CorpusT, RandomT, SolutionsT> FUZEState for FUZEDefaultState<InputT, CorpusT, RandomT, SolutionsT>
+where
+    CorpusT: Corpus<Input = Self::Input>,
+    RandomT: Rand,
+    SolutionsT: Corpus<Input = Self::Input>,
+    Self: UsesInput,
+    InputT: Serialize + DeserializeOwned,
+{
 }

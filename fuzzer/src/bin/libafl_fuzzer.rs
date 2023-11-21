@@ -41,14 +41,17 @@ use fuzzyemu::emulator::system::memory::Memory;
 use fuzzyemu::emulator::system::task_manager::TaskManager;
 use fuzzyemu::emulator::system::System;
 use fuzzyemu::LittleEndian;
-use fuzzyfuzz::executor::emulator::EmulatorExecutor;
+use fuzzyfuzz::executor::emulator::DefaultFUZEExecutor;
 use fuzzyfuzz::feedback::edge::EdgeFeedback;
 use fuzzyfuzz::inputs::emulator::EmulatorInput;
 use fuzzyfuzz::io::tcp::TCP;
 use fuzzyfuzz::mutators::multi_stream::MultiStreamMutator;
 use fuzzyfuzz::observers::emulator::edge::EdgeObserver;
 use fuzzyfuzz::observers::emulator::tcp::TCPStreamObserver;
-use fuzzyfuzz::state::FUZEState;
+use fuzzyfuzz::state::{
+    FUZEDefaultState,
+    FUZEState,
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -106,7 +109,7 @@ fn setup_fuzzer<SchedulerT: Scheduler + Debug, SystemT: SystemControl + Debug>(
 
     let mut objective = CrashFeedback::new();
 
-    let mut state = FUZEState::new(
+    let mut state = FUZEDefaultState::new(
         StdRand::with_seed(current_nanos()),
         InMemoryCorpus::new(),
         OnDiskCorpus::new(PathBuf::from("./crashes")).unwrap(),
@@ -120,7 +123,7 @@ fn setup_fuzzer<SchedulerT: Scheduler + Debug, SystemT: SystemControl + Debug>(
 
     let mut fuzzer = StdFuzzer::new(scheduler, feedback, objective);
 
-    let mut executor = EmulatorExecutor::new(tuple_list!(observer, tcp_observer), &state, emu_scheduler, system);
+    let mut executor = DefaultFUZEExecutor::new(tuple_list!(observer, tcp_observer), &state, emu_scheduler, system);
 
     // let mut generator = RandPrintablesGenerator::new(32);
 
