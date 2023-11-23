@@ -21,11 +21,7 @@ use log::debug;
 use rand::seq::SliceRandom;
 
 use fuzzyemu::emulator::abstractions::cpu::CPU;
-use fuzzyemu::emulator::abstractions::emulator::{
-    Scheduler,
-    SchedulerError,
-    StopReason,
-};
+use fuzzyemu::emulator::abstractions::emulator::Scheduler;
 use fuzzyemu::emulator::abstractions::errors::GenericError;
 use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
@@ -36,6 +32,11 @@ use fuzzyemu::emulator::abstractions::network::{
     SocketAddress,
 };
 use fuzzyemu::emulator::abstractions::restore::Restorable;
+use fuzzyemu::emulator::interface::emulator::Emulator;
+use fuzzyemu::emulator::interface::error::{
+    SchedulerError,
+    StopReason,
+};
 use fuzzyemu::emulator::interface::network::tcp::{
     TCPSocket,
     TCPSystemControl,
@@ -52,6 +53,7 @@ use fuzzyemu::emulator::system::memory::{
 };
 use fuzzyemu::emulator::system::task_manager::TaskManager;
 use fuzzyemu::emulator::system::System;
+use fuzzyemu::emulator::GenericEmulator;
 use fuzzyemu::LittleEndian;
 use fuzzyfuzz::io::tcp::TCP;
 
@@ -111,11 +113,13 @@ fn main() -> Result<(), GenericError> {
         // kernel.borrow_mut().add_replacement_handle(0, demo_handle);
         let args = [];
         let env = ["SHELL=/bin/sh", "LD_DEBUG=all", "LD_BIND_NOW=false"];
-        let mut scheduler =
+        let scheduler =
             LinuxX86Scheduler::new(system.clone(), initial_task, PathBuf::from(&pargs.binary), &args, &env).unwrap();
 
+        let mut emulator = GenericEmulator::new(scheduler, system.clone());
+
         if pargs.decode {
-            scheduler.enable_trace().unwrap();
+            emulator.enable_trace().unwrap();
         }
 
         system.task_manager.borrow().tasks().try_for_each(|task| {
@@ -126,11 +130,11 @@ fn main() -> Result<(), GenericError> {
             }
         })?;
         let start = Instant::now();
-        let mut result = scheduler.run(None, None);
+        let mut result = emulator.run(None, None);
         debug!("Emulation returned {result:?}");
         if let Err(SchedulerError::Stopped(StopReason::Breakpoint)) = result {
             debug!("Creating snapshot");
-            scheduler.snapshot()?;
+            emulator.snapshot()?;
             system.task_manager.borrow().tasks().try_for_each(|task| {
                 if let Some(load_base) = task.kernel().load_base() {
                     cpu.borrow_mut().remove_breakpoint(load_base + 0xf3fb6)
@@ -139,13 +143,13 @@ fn main() -> Result<(), GenericError> {
                 }
             })?;
             debug!("Trying to resume");
-            result = scheduler.run(None, None);
+            result = emulator.run(None, None);
             debug!("Emulation returned {result:?}");
         }
         //////////////// DEMO FUZZING ////////////////
         // 100k fuzzing iterations
         let mut active_connections = vec![];
-        scheduler.snapshot()?;
+        emulator.snapshot()?;
         for _ in 0..10 {
             {
                 let mut tcp = tcp.borrow_mut();
@@ -213,9 +217,9 @@ fn main() -> Result<(), GenericError> {
                 .tasks_mut()
                 .for_each(|t| t.wake_up());
             debug!("Trying to resume");
-            result = scheduler.run(None, None);
+            result = emulator.run(None, None);
             debug!("Emulation returned {result:?}");
-            scheduler.restore()?;
+            emulator.restore()?;
         }
         //////////////// DEMO FUZZING ////////////////
         let start_iterations = Instant::now();

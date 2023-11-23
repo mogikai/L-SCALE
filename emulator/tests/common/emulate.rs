@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use byteorder::LittleEndian;
 
-use fuzzyemu::emulator::abstractions::emulator::{
-    Scheduler,
+use fuzzyemu::emulator::abstractions::emulator::Scheduler;
+use fuzzyemu::emulator::interface::error::{
     SchedulerError,
     StopReason,
 };

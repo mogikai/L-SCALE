@@ -19,9 +19,9 @@ use std::fmt::Debug;
 use std::rc::Rc;
 
 pub trait SystemControl: Clone {
-    type TaskIdT: Ord + Copy + Clone + Default;
-    type KernelTaskT: KernelTask<Self::TaskIdT> + Debug;
-    type Endianness: ByteOrder;
+    type TaskIdT: Ord + Copy + Clone + Default + 'static;
+    type KernelTaskT: KernelTask<Self::TaskIdT> + 'static;
+    type Endianness: ByteOrder + 'static;
     type CpuT: CPU + MMU + Hooks;
     type TcpT: TCPSystem + TCPSystemControl;
 

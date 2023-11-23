@@ -6,11 +6,22 @@ use unicorn_engine::unicorn_const::uc_error;
 use unicorn_engine::RegisterX86;
 
 use crate::emulator::abstractions::cpu;
-use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
-use crate::emulator::abstractions::cpu::{CPUError, ContextHandle, Register, CPU};
-use crate::emulator::abstractions::emulator::StopReason;
-use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
+use crate::emulator::abstractions::cpu::address::{
+    EVAddr,
+    EVA_NULL,
+};
+use crate::emulator::abstractions::cpu::{
+    CPUError,
+    ContextHandle,
+    Register,
+    CPU,
+};
+use crate::emulator::abstractions::errors::{
+    GenericError,
+    GenericErrorKind,
+};
 use crate::emulator::abstractions::restore::Restorable;
+use crate::emulator::interface::error::StopReason;
 use crate::emulator::system::hardware::unicorn::UCWrapper;
 
 impl From<uc_error> for CPUError {

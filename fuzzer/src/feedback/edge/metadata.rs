@@ -7,5 +7,3 @@ use serde::{
 pub struct EdgeFeedbackMetadata {
     pub hit_map: Vec<u64>,
 }
-
-libafl_bolts::impl_serdeany!(EdgeFeedbackMetadata);

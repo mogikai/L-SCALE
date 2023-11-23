@@ -1,7 +1,18 @@
 use super::*;
-use iced_x86::{Decoder, DecoderOptions, Formatter, Instruction, IntelFormatter};
+use crate::emulator::abstractions::cpu::CPU;
+use crate::emulator::abstractions::mmu::MMU;
+use crate::emulator::platform::linux::kernel::task_id::TaskId;
+use crate::emulator::system::memory::Memory;
+use byteorder::ByteOrder;
+use iced_x86::{
+    Decoder,
+    DecoderOptions,
+    Formatter,
+    Instruction,
+    IntelFormatter,
+};
 
-pub(super) fn trace_hook<Endianness: ByteOrder>(
+pub(super) fn trace_hook<Endianness: ByteOrder + 'static>(
     uc: &mut (impl CPU + MMU),
     memory: &mut Memory<Endianness>,
     current_task: TaskId,

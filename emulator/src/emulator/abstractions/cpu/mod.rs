@@ -6,8 +6,8 @@ use thiserror::Error;
 
 use address::EVAddr;
 
-use crate::emulator::abstractions::emulator::StopReason;
 use crate::emulator::abstractions::restore::Restorable;
+use crate::emulator::interface::error::StopReason;
 
 pub mod address;
 

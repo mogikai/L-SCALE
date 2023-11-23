@@ -1,15 +1,26 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{
+    BTreeMap,
+    BTreeSet,
+};
 use std::rc::Rc;
 
 use generational_arena::Arena;
 use iced_x86::Formatter;
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
-use unicorn_engine::unicorn_const::{Arch, Mode};
-use unicorn_engine::{Context, TlbType, UcHookId, Unicorn};
+use unicorn_engine::unicorn_const::{
+    Arch,
+    Mode,
+};
+use unicorn_engine::{
+    Context,
+    TlbType,
+    UcHookId,
+    Unicorn,
+};
 
-use crate::emulator::abstractions::emulator::StopReason;
+use crate::emulator::interface::error::StopReason;
 
 pub mod cpu;
 pub mod hooks;

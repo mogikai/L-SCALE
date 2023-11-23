@@ -1,12 +1,19 @@
 mod restorable;
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
-use crate::emulator::abstractions::cpu::{CPUError, ContextHandle, CPU};
+use crate::emulator::abstractions::cpu::{
+    CPUError,
+    ContextHandle,
+    CPU,
+};
 use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::kernel_task::KernelTask;
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::restore::Restorable;
-use crate::emulator::system::task_manager::restorable::{TaskManagerSnapshot, TaskSnapshot};
+use crate::emulator::system::task_manager::restorable::{
+    TaskManagerSnapshot,
+    TaskSnapshot,
+};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
@@ -114,7 +121,7 @@ impl<TaskId, T: KernelTask<TaskId>> TaskEntry<TaskId, T> {
 pub struct TaskManager<TaskId, T>
 where
     TaskId: Ord + Copy + Clone + Default,
-    T: KernelTask<TaskId> + Debug,
+    T: KernelTask<TaskId>,
 {
     /// The tasks are stored in a simple vector. Only elements that are newer than the latest
     /// snapshot can be removed from this vector. When a snapshot occurs, each entry in the
@@ -131,7 +138,7 @@ where
 impl<TaskId, T> TaskManager<TaskId, T>
 where
     TaskId: Ord + Copy + Clone + Default,
-    T: KernelTask<TaskId> + Debug,
+    T: KernelTask<TaskId>,
 {
     pub fn new() -> Self {
         TaskManager {

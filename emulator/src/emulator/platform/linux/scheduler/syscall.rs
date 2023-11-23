@@ -3,14 +3,20 @@ use goblin::container::Endian;
 use num_enum::FromPrimitive;
 use std::rc::Rc;
 
-use crate::emulator::abstractions::cpu::{RegisterX86, CPU};
-use crate::emulator::abstractions::emulator::StopReason;
+use crate::emulator::abstractions::cpu::{
+    RegisterX86,
+    CPU,
+};
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
+use crate::emulator::interface::error::StopReason;
 use crate::emulator::platform::linux::architecture::x86::X86;
 use crate::emulator::platform::linux::kernel::error::SyscallError;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
-use crate::emulator::platform::linux::kernel::{LinuxKernelError, LinuxKernelTask};
+use crate::emulator::platform::linux::kernel::{
+    LinuxKernelError,
+    LinuxKernelTask,
+};
 use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::system::task_manager::Task;
 

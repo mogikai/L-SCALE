@@ -9,9 +9,6 @@ use std::slice::Iter;
 
 use fuzzyemu::emulator::abstractions::cpu::address::EVAddr;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
-use libafl::inputs::UsesInput;
-use libafl::observers::Observer;
-use libafl_bolts::Named;
 use serde::{
     Deserialize,
     Deserializer,
@@ -106,11 +103,3 @@ impl EdgeObserver {
         Ref::map(self.inner.borrow(), |inner| &inner.edge_counts)
     }
 }
-
-impl Named for EdgeObserver {
-    fn name(&self) -> &str {
-        "EdgeObserver"
-    }
-}
-
-impl<StateT: UsesInput> Observer<StateT> for EdgeObserver {}
