@@ -2,7 +2,18 @@ use crate::emulator::abstractions::restore::Restorable;
 use std::time::Duration;
 
 use crate::emulator::abstractions::system::SystemControl;
-use crate::emulator::interface::error::SchedulerError;
+use crate::emulator::interface::error::{
+    EmulatorError,
+    SchedulerError,
+};
+
+#[derive(Debug)]
+pub enum ExitStatus {
+    /// There are no more tasks that could be resumed (all processes exited)
+    Stopped,
+    /// All processes are in a blocked state and waiting for I/O
+    Yielded,
+}
 
 pub trait Emulator: Restorable {
     /// Runs the emulation until either the duration specified in `timeout` has elapsed,
@@ -12,7 +23,7 @@ pub trait Emulator: Restorable {
         &mut self,
         timeout: Option<Duration>,
         instruction_count: Option<usize>,
-    ) -> Result<(), SchedulerError>;
+    ) -> Result<ExitStatus, EmulatorError>;
 
     /// Gives a reference to the system control pointers.
     /// The pointer collection can be cloned if needed.
@@ -29,5 +40,5 @@ pub trait Emulator: Restorable {
     /// absolutely necessary. It will also most likely quickly flood
     /// your terminal, so it is recommended to pipe the output into a
     /// file for later analysis.
-    fn enable_trace(&mut self) -> Result<(), SchedulerError>;
+    fn enable_trace(&mut self) -> Result<(), EmulatorError>;
 }

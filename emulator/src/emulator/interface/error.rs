@@ -33,3 +33,11 @@ pub enum SchedulerError {
     #[error("The emulation stopped because no task can be scheduled since all would block again")]
     NoRunnableTasks,
 }
+
+#[derive(Error, Debug)]
+pub enum EmulatorError {
+    #[error("An unknown error occurred")]
+    Unknown,
+    #[error("The emulator encountered a cpu related error")]
+    CPUError(#[from] CPUError),
+}

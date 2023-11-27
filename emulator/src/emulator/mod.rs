@@ -7,8 +7,14 @@ use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::abstractions::system::SystemControl;
-use crate::emulator::interface::emulator::Emulator;
-use crate::emulator::interface::error::SchedulerError;
+use crate::emulator::interface::emulator::{
+    Emulator,
+    ExitStatus,
+};
+use crate::emulator::interface::error::{
+    EmulatorError,
+    SchedulerError,
+};
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::trace::trace_hook;
 
@@ -68,15 +74,23 @@ where
         &mut self,
         timeout: Option<Duration>,
         instruction_count: Option<usize>,
-    ) -> Result<(), SchedulerError> {
-        self.scheduler.run(timeout, instruction_count)
+    ) -> Result<ExitStatus, EmulatorError> {
+        match self.scheduler.run(timeout, instruction_count) {
+            Ok(_) => Ok(ExitStatus::Stopped),
+            Err(e) => match e {
+                SchedulerError::Unknown => Err(EmulatorError::Unknown),
+                SchedulerError::Stopped(_) => Ok(ExitStatus::Stopped),
+                SchedulerError::CPUError(e) => Err(EmulatorError::from(e)),
+                SchedulerError::NoRunnableTasks => Ok(ExitStatus::Yielded),
+            },
+        }
     }
 
     fn system(&self) -> &impl SystemControl {
         &self.system
     }
 
-    fn enable_trace(&mut self) -> Result<(), SchedulerError> {
+    fn enable_trace(&mut self) -> Result<(), EmulatorError> {
         let trace_memory = self.system.memory().clone();
         let task_manager = self.system.task_manager().clone();
         self.system.cpu().borrow_mut().add_code_hook(

@@ -4,24 +4,23 @@ use std::cell::{
 };
 use std::collections::BTreeMap;
 use std::fmt::Debug;
+use std::ops::Deref;
 use std::rc::Rc;
-use std::slice::Iter;
 
 use fuzzyemu::emulator::abstractions::cpu::address::EVAddr;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
-use serde::{
-    Deserialize,
-    Deserializer,
-    Serialize,
-    Serializer,
+
+use crate::api::observer::{
+    HasObservation,
+    Observer,
 };
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default)]
 struct InnerEdgeObserver {
     edge_counts: Vec<u64>,
     edge_map: BTreeMap<(EVAddr, EVAddr), usize>,
-    /// The address fo the block that was visited most recently.
-    last_address: EVAddr,
+    /// The address for the block that was visited most recently.
+    previous_address: Option<EVAddr>,
 }
 
 impl InnerEdgeObserver {
@@ -34,10 +33,13 @@ impl InnerEdgeObserver {
         &mut self,
         address: EVAddr,
     ) {
-        let edge = (self.last_address, address);
-        let id = self.edge_index(edge);
-        self.edge_counts[id] += 1;
-        self.last_address = address;
+        // The previous address does not exist if we are starting from the beginning or from a specific state.
+        if let Some(previous) = self.previous_address {
+            let edge = (previous, address);
+            let id = self.edge_index(edge);
+            self.edge_counts[id] += 1;
+        }
+        self.previous_address = Some(address);
     }
 
     fn edge_index(
@@ -64,27 +66,6 @@ pub struct EdgeObserver {
     inner: Rc<RefCell<InnerEdgeObserver>>,
 }
 
-impl Serialize for EdgeObserver {
-    fn serialize<S>(
-        &self,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        todo!()
-    }
-}
-
-impl<'de> Deserialize<'de> for EdgeObserver {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        todo!()
-    }
-}
-
 impl EdgeObserver {
     pub fn new<CpuT: Hooks>(cpu: &Rc<RefCell<CpuT>>) -> Self {
         let observer = Self {
@@ -98,8 +79,20 @@ impl EdgeObserver {
             .unwrap();
         observer
     }
+}
 
-    pub fn edges(&self) -> Ref<Vec<u64>> {
+impl Observer for EdgeObserver {
+    fn gather(&mut self) {}
+
+    fn clear(&mut self) {
+        self.inner.borrow_mut().reset();
+    }
+}
+
+impl HasObservation for EdgeObserver {
+    type Observation = Vec<u64>;
+
+    fn observation(&self) -> impl Deref<Target = Self::Observation> {
         Ref::map(self.inner.borrow(), |inner| &inner.edge_counts)
     }
 }

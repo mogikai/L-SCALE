@@ -22,6 +22,8 @@ use fuzzyemu::emulator::system::task_manager::TaskManager;
 use fuzzyemu::emulator::system::System;
 use fuzzyemu::emulator::GenericEmulator;
 use fuzzyemu::LittleEndian;
+use fuzzyfuzz::core::fuzzer;
+use fuzzyfuzz::core::fuzzer::Fuzzer;
 use fuzzyfuzz::io::tcp::TCP;
 
 #[derive(Parser, Debug)]
@@ -30,6 +32,9 @@ struct Args {
     /// The path on the host system to the root of the system directory that is used for emulation.
     #[arg(long, default_value = "emulator/systems/ubuntu2304")]
     system_root: String,
+
+    #[arg(long, default_value = "fuzzer/assets/open62541")]
+    context: String,
 
     /// The path on the emulated system to the binary that will be emulated initially.
     #[arg(long, default_value = "/home/user/open62541_server_release")]
@@ -41,10 +46,11 @@ struct Args {
 }
 
 fn main() {
-    let pargs = Args::parse();
+    pretty_env_logger::init();
+    let fuzzer_args = Args::parse();
     let cpu = UCWrapper::new();
     let task_manager = TaskManager::new();
-    let filesystem = Filesystem::from_disk(1_073_741_824, Path::new(&pargs.system_root)).unwrap();
+    let filesystem = Filesystem::from_disk(1_073_741_824, Path::new(&fuzzer_args.system_root)).unwrap();
     let memory = Memory::<LittleEndian>::new();
     let clock = Clock::new(Duration::from_nanos(1662647309301240322));
     let file_descriptor_map = FileDescriptorMap::new();
@@ -56,19 +62,23 @@ fn main() {
     let args = [];
     let env = ["SHELL=/bin/sh", "LD_DEBUG=all", "LD_BIND_NOW=true"];
     let scheduler =
-        LinuxX86Scheduler::new(system.clone(), initial_task, PathBuf::from(&pargs.binary), &args, &env).unwrap();
+        LinuxX86Scheduler::new(system.clone(), initial_task, PathBuf::from(&fuzzer_args.binary), &args, &env).unwrap();
 
     let mut emulator = GenericEmulator::new(scheduler, system);
 
-    if pargs.decode {
+    if fuzzer_args.decode {
         emulator.enable_trace().unwrap();
     }
 
-    setup_fuzzer(emulator);
+    setup_fuzzer(fuzzer_args, emulator);
 }
 
-fn setup_fuzzer<EmulatorT>(emulator: EmulatorT)
-where
+fn setup_fuzzer<EmulatorT>(
+    args: Args,
+    emulator: EmulatorT,
+) where
     EmulatorT: Emulator,
 {
+    let mut fuzzer = Fuzzer::new(emulator, PathBuf::from(args.context));
+    fuzzer.run();
 }
