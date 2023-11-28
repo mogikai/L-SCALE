@@ -132,9 +132,18 @@ impl TCP {
             snapshots: vec![],
         }
     }
+}
 
-    /// Register a new incoming connection on the listener socket identified by `listener`
-    pub fn new_connection(
+impl TCPSystemControl for TCP {
+    fn sockets(&self) -> impl Iterator<Item = (&SocketId, &impl TCPSocket)> {
+        self.sockets.iter()
+    }
+
+    fn sockets_mut(&mut self) -> impl Iterator<Item = (&SocketId, &mut impl TCPSocket)> {
+        self.sockets.iter_mut()
+    }
+
+    fn new_connection(
         &mut self,
         listener: &SocketId,
         remote_address: SocketAddress,
@@ -158,28 +167,18 @@ impl TCP {
         Ok(id)
     }
 
-    pub fn socket(
+    fn socket(
         &self,
         id: SocketId,
     ) -> Option<&TCPSocketImpl> {
         self.sockets.get(&id)
     }
 
-    pub fn socket_mut(
+    fn socket_mut(
         &mut self,
         id: SocketId,
     ) -> Option<&mut TCPSocketImpl> {
         self.sockets.get_mut(&id)
-    }
-}
-
-impl TCPSystemControl for TCP {
-    fn sockets(&self) -> impl Iterator<Item = (&SocketId, &impl TCPSocket)> {
-        self.sockets.iter()
-    }
-
-    fn sockets_mut(&mut self) -> impl Iterator<Item = (&SocketId, &mut impl TCPSocket)> {
-        self.sockets.iter_mut()
     }
 }
 
