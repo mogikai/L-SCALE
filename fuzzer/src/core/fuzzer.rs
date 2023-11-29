@@ -1,8 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{
-    BTreeMap,
-    BTreeSet,
-};
+use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fs;
 use std::path::PathBuf;
@@ -30,7 +27,6 @@ use slotmap::{
 };
 
 use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
-use fuzzyemu::emulator::abstractions::network::tcp_system::TCPSystem;
 use fuzzyemu::emulator::abstractions::network::{
     IPAddress,
     SocketAddress,
@@ -51,7 +47,7 @@ use crate::api::reducer::Reducer;
 use crate::feedback::edge::InterestingEdgesReducer;
 use crate::observers::emulator::edge::EdgeObserver;
 
-/// Testcases have an associated input and some metadata. Each testcase belongs to one state.
+/// Testcases have an associated input and some metadata.
 /// The input data may be shared across testcases.
 #[derive(Debug, Serialize, Deserialize)]
 struct TestCase {
@@ -65,6 +61,8 @@ impl TestCase {
         Self { executions: 0, input }
     }
 }
+
+new_key_type! { struct TestCaseId; }
 
 /// An emulator input. The input may have multiple streams for each input component of the emulator.
 /// The fuzzer will prepare the inputs such that the number of streams matches the amount
@@ -107,7 +105,7 @@ struct State {
     /// How often the target was executed in this state.
     executions: usize,
     /// The testcases associated with this state.
-    corpus: Vec<TestCase>,
+    corpus: Vec<TestCaseId>,
 }
 
 impl State {
@@ -130,6 +128,10 @@ pub struct FuzzerState {
     /// A map of various input data blobs that are used by inputs. Multiple inputs may
     /// refer to the same input data blob.
     input_data: SlotMap<InputDataId, InputData>,
+    /// A map of testcases that are associated with states.
+    /// By having the map here globally and only storing indices into the map
+    /// it is easily possible to iterate across all testcases of all states.
+    test_cases: SlotMap<TestCaseId, TestCase>,
     /// The path through the state graph that the fuzzer has currently taken.
     /// The fuzzer can backtrack along this path.
     state_path: Vec<NodeIndex>,
@@ -194,9 +196,9 @@ where
             .expect("Error setting handler");
         }
         self.setup();
-        while do_fuzzing.load(Ordering::SeqCst) {
-            self.fuzz();
-        }
+        // while do_fuzzing.load(Ordering::SeqCst) {
+        //     self.fuzz();
+        // }
     }
 
     fn setup(&mut self) {
@@ -211,9 +213,9 @@ where
         self.emulator.snapshot().unwrap();
         // Reduce once, so that any state of the reducers can be filled with the initial observations.
         assert!(matches!(res, ExitStatus::Yielded));
-        self.gather_observations();
-        self.reduce_is_interesting();
-        self.clear_observers();
+        Self::gather_observations(&mut self.observers);
+        Self::reduce_is_interesting(&mut self.is_interesting_reducers);
+        Self::clear_observers(&mut self.observers);
         self.load_initial_state();
         self.evaluate_initial_state();
     }
@@ -232,7 +234,8 @@ where
                     let mut input = Input::new();
                     input.tcp_streams.push(Some(input_data_id));
                     let testcase = TestCase::new(input);
-                    state.corpus.push(testcase);
+                    let testcase_id = self.state.test_cases.insert(testcase);
+                    state.corpus.push(testcase_id);
                 }
             }
         }
@@ -244,9 +247,10 @@ where
         self.input_info.tcp.listeners.clear();
         self.input_info.tcp.streams_writable.clear();
         for (&sock_id, sock) in self.emulator.system().tcp().borrow().sockets() {
+            debug!("{:?}", sock.interest());
             if sock
                 .interest()
-                .contains(FileOperationsReady::Read | FileOperationsReady::ReadNormal)
+                .intersects(FileOperationsReady::Read | FileOperationsReady::ReadNormal)
             {
                 if sock.is_listener() {
                     self.input_info.tcp.listeners.push(sock_id);
@@ -260,14 +264,9 @@ where
     fn evaluate_initial_state(&mut self) {
         self.update_input_info();
         let current_state = self.current_state_id();
-        for testcase in self
-            .state
-            .states
-            .get_mut(&current_state)
-            .unwrap()
-            .corpus
-            .iter_mut()
-        {
+        let current_state = self.state.states.get_mut(&current_state).unwrap();
+        for &testcase in current_state.corpus.iter() {
+            let testcase = self.state.test_cases.get_mut(testcase).unwrap();
             // Check if we need to instruct the emulator to open new streams
             let requested_streams = testcase
                 .input
@@ -300,12 +299,15 @@ where
                     sock.push_data(&data.data).unwrap();
                 }
             }
-            // TODO: Run emulation
-            // TODO: Gather observations
+            drop(tcp);
+            let status = self.emulator.run(None, None).unwrap();
+            assert!(matches!(status, ExitStatus::Yielded));
+            Self::gather_observations(&mut self.observers);
             // TODO: Store state specific reducer states?
-            // TODO: Reset observation channels
-            // TODO: Restore emulator snapshot
+            Self::clear_observers(&mut self.observers);
+            self.emulator.restore().unwrap();
             testcase.executions += 1;
+            current_state.executions += 1;
         }
     }
 
@@ -314,31 +316,31 @@ where
     }
 
     fn fuzz(&mut self) {
-        self.clear_observers();
+        Self::clear_observers(&mut self.observers);
         // Select state
         // Select input from state corpus
         // Do mutations
         // Execute the target with the input(s)
         //
-        self.gather_observations();
+        Self::gather_observations(&mut self.observers);
         sleep(Duration::from_millis(100));
         debug!("Current fuzzer state: {:?}", self.state);
     }
 
-    fn clear_observers(&mut self) {
-        for observer in self.observers.iter_mut() {
+    fn clear_observers(observers: &mut Vec<Rc<RefCell<dyn DebuggableObserver>>>) {
+        for observer in observers.iter_mut() {
             observer.borrow_mut().clear();
         }
     }
 
-    fn gather_observations(&mut self) {
-        for observer in self.observers.iter_mut() {
+    fn gather_observations(observers: &mut Vec<Rc<RefCell<dyn DebuggableObserver>>>) {
+        for observer in observers.iter_mut() {
             observer.borrow_mut().gather();
         }
     }
 
-    fn reduce_is_interesting(&mut self) -> bool {
-        self.is_interesting_reducers
+    fn reduce_is_interesting(reducers: &mut Vec<Rc<RefCell<dyn DebuggableReducer<Output = bool>>>>) -> bool {
+        reducers
             .iter_mut()
             .map(|r| r.borrow_mut().reduce().unwrap())
             .reduce(|acc, interesting| acc | interesting)
