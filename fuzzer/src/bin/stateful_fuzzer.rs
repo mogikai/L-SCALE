@@ -33,7 +33,7 @@ struct Args {
     #[arg(long, default_value = "emulator/systems/ubuntu2304")]
     system_root: String,
 
-    #[arg(long, default_value = "fuzzer/assets/open62541")]
+    #[arg(long, default_value = "fuzzer/assets/opcua")]
     context: String,
 
     /// The path on the emulated system to the binary that will be emulated initially.
