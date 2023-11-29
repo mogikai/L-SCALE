@@ -23,6 +23,7 @@ use serde::{
 };
 use slotmap::{
     new_key_type,
+    SecondaryMap,
     SlotMap,
 };
 
@@ -44,8 +45,8 @@ use fuzzyemu::emulator::interface::network::tcp::{
 
 use crate::api::observer::Observer;
 use crate::api::reducer::Reducer;
-use crate::feedback::edge::InterestingEdgesReducer;
 use crate::observers::emulator::edge::EdgeObserver;
+use crate::reducers::edge::InterestingEdgesReducer;
 
 /// Testcases have an associated input and some metadata.
 /// The input data may be shared across testcases.
@@ -99,6 +100,14 @@ impl From<Vec<u8>> for InputData {
 
 new_key_type! { struct InputDataId; }
 
+/// The behavior of a testcase in a specific state.
+/// The behavior for now is just a hash of the edge
+/// observation for the testcase in the associated state
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct TestCaseBehavior {
+    edge_map_hash: usize,
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct State {
     label: Option<String>,
@@ -106,6 +115,8 @@ struct State {
     executions: usize,
     /// The testcases associated with this state.
     corpus: Vec<TestCaseId>,
+    /// Maps the testcases in this state to their associated behavior.
+    testcase_behaviors: SecondaryMap<TestCaseId, TestCaseBehavior>,
 }
 
 impl State {
@@ -283,8 +294,21 @@ where
                     .find(|(_, sock)| sock.is_listener())
                     .unwrap()
                     .0;
-                tcp.new_connection(&listener_id, SocketAddress::IP(IPAddress::V4 { port: 1337, addr: 42 }))
+                let new_stream_id = tcp
+                    .new_connection(
+                        &listener_id,
+                        SocketAddress::IP(IPAddress::V6 {
+                            port: 1337,
+                            flowinfo: 0,
+                            addr: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+                            scope_id: 0,
+                        }),
+                    )
                     .unwrap();
+                self.input_info.tcp.streams_writable.push(new_stream_id);
+                // TODO: We need to split stream creation and applying inputs to them into separate testcases.
+                // TODO: The fuzzer needs to know that creating new streams causes a different state, even
+                // TODO: without applying any input.
             }
             // Apply all the inputs, skipping over empty streams
             for (input_data_id, socket_id) in testcase
@@ -300,6 +324,14 @@ where
                 }
             }
             drop(tcp);
+            // TODO: Wake up the correct tasks. Might make sense to put this feature into the fuzzer and that
+            // TODO: The system components register the wake up request in some list?
+            self.emulator
+                .system()
+                .task_manager()
+                .borrow_mut()
+                .tasks_mut()
+                .for_each(|task| task.wake_up());
             let status = self.emulator.run(None, None).unwrap();
             assert!(matches!(status, ExitStatus::Yielded));
             Self::gather_observations(&mut self.observers);
@@ -308,6 +340,11 @@ where
             self.emulator.restore().unwrap();
             testcase.executions += 1;
             current_state.executions += 1;
+            // TODO: Remove this once we have split up the socket creation and applying input into separate testcases.
+            self.input_info
+                .tcp
+                .streams_writable
+                .truncate(self.input_info.tcp.streams_writable.len() - requested_streams);
         }
     }
 

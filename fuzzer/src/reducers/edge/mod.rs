@@ -13,7 +13,9 @@ use std::rc::Rc;
 pub struct InterestingEdgesReducer {
     observer: Rc<RefCell<EdgeObserver>>,
     // TODO: Make this (and all reducer state) target state specific. I.e. we need to refactor this into the
-    //       global fuzzer state and pass it in from the outside.
+    //       global fuzzer state and pass it in from the outside. Alternatively we can make this stateless
+    //       by passing in the historical map from the outside via a HistoryObserver. That way the reducers
+    //       would always be stateless, and only observers would need to have state.
     hit_map: Vec<u64>,
 }
 

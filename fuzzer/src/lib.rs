@@ -3,6 +3,6 @@
 
 pub mod api;
 pub mod core;
-pub mod feedback;
 pub mod io;
 pub mod observers;
+pub mod reducers;
