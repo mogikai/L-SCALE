@@ -4,6 +4,7 @@ use bitflags::{
     bitflags,
     Flags,
 };
+use crate::emulator::abstractions::filesystem::FileId;
 use byteorder::ByteOrder;
 
 use fuzzyemu_derive::unfinished;
@@ -329,7 +330,7 @@ fn get_dir_fse_id(
     mut map: RefMut<'_, FileDescriptorMap<FD, TaskId, FileDescriptorData>>,
     task_id: &TaskId,
     fd: &FD,
-) -> Result<FSEntryId, LinuxKernelError> {
+) -> Result<FileId, LinuxKernelError> {
     let mut fd = map.get_mut(task_id, fd).ok_or(LinuxKernelError::EBADFD)?;
     let fd = &mut *fd;
     let is_dir = fd.stat()?.S_ISDIR();
@@ -347,7 +348,7 @@ fn get_dir_fse_id(
 #[derive(Clone)]
 pub struct FileData {
     filesystem: Rc<RefCell<Filesystem>>,
-    fse_id: FSEntryId,
+    fse_id: FileId,
     pub pos: usize,
 }
 
@@ -366,20 +367,13 @@ impl Debug for FileData {
 impl FileData {
     pub fn new(
         filesystem: Rc<RefCell<Filesystem>>,
-        fse_id: FSEntryId,
+        fse_id: FileId,
     ) -> FileData {
         FileData {
             filesystem,
             fse_id,
             pos: 0,
         }
-    }
-
-    pub fn get_path(
-        &self,
-        system: &Filesystem,
-    ) -> Result<PathBuf, FileDescriptorError> {
-        Ok(system.path_from(self.fse_id)?)
     }
 }
 

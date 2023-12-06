@@ -75,6 +75,6 @@ pub enum TestFailure {
 
 impl From<SchedulerError> for TestFailure {
     fn from(e: SchedulerError) -> Self {
-        return Self::SchedulerFailure(e);
+        Self::SchedulerFailure(e)
     }
 }

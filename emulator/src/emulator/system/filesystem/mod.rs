@@ -36,15 +36,15 @@ use meta_info::{
 pub use stat::Stat;
 
 use crate::emulator::abstractions::errors::GenericError;
+use crate::emulator::abstractions::filesystem::{FSEntry, FSId, FileId, Mountpoint};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::filesystem::meta_info::FSEntryContent::{
     File,
     Symlink,
 };
+use crate::emulator::system::filesystem::persistent::PersistendFS;
 
-mod block;
-mod data;
-mod meta_info;
+mod persistent;
 mod stat;
 mod tests;
 
@@ -59,6 +59,9 @@ pub enum FSError {
     Invalid,
     Loop,
     Unknown,
+    Exist,
+    Busy,
+    NotEmpty,
 }
 
 impl From<io::Error> for FSError {
@@ -75,24 +78,15 @@ type SnapId = usize;
 #[derive(Debug)]
 pub struct Filesystem {
     on_disk_root: Option<PathBuf>,
-    data: Data,
-    meta_info: MetaInfo,
-    snap_markers: Vec<SnapMarker>,
-    current_size: usize,
-    max_size: usize,
-    current_snap: usize,
+    mountpoints: Vec<Box<dyn Mountpoint>>,
 }
 
 impl Filesystem {
     pub fn new(size: usize) -> Self {
+        let mountpoints: Vec<Box<dyn Mountpoint>> = vec![Box::new(PersistendFS::new(size))];
         Filesystem {
             on_disk_root: None,
-            data: Data::new(),
-            snap_markers: Vec::new(),
-            meta_info: MetaInfo::new(),
-            current_size: 0,
-            max_size: size,
-            current_snap: 0,
+            mountpoints,
         }
     }
 
@@ -116,7 +110,7 @@ impl Filesystem {
 
     pub fn read_all(
         &self,
-        file_id: FSEntryId,
+        file_id: FileId,
     ) -> Result<Vec<u8>, FSError> {
         let size = self.stat(file_id)?.st_size as usize;
         self.read(file_id, 0, size)
@@ -124,11 +118,16 @@ impl Filesystem {
 
     pub fn read_symlink(
         &self,
-        file_id: FSEntryId,
+        file_id: FileId,
     ) -> Result<Option<PathBuf>, FSError> {
-        let entry = self.meta_info.most_recent_entry(file_id)?;
-        Ok(if let Symlink { contents } = &entry.contents {
-            Some(contents.clone())
+        let mountpoint = self
+            .mountpoints
+            .get(file_id.fs)
+            .ok_or(FSError::Invalid)?
+            .as_ref();
+        let entry = mountpoint.get_entry(file_id.file)?;
+        Ok(if let FSEntry::Symlink { contents } = entry {
+            Some(contents)
         } else {
             None
         })
@@ -136,135 +135,58 @@ impl Filesystem {
 
     pub fn read(
         &self,
-        file_id: FSEntryId,
+        file_id: FileId,
         pos: usize,
         len: usize,
     ) -> Result<Vec<u8>, FSError> {
-        let entry = self.meta_info.most_recent_entry(file_id)?;
-        if let File { contents } = &entry.contents {
-            if pos > entry.stat.st_size as usize {
-                return Err(FSError::NoAddress);
-            }
-            let len = min(len, entry.stat.st_size as usize - pos);
-            let mut read = 0;
-            let start_block = contents
-                .range(..=pos)
-                .last()
-                .expect("Must exist since pos < size");
-            let mut buffer = Vec::with_capacity(len);
-
-            for block in contents.range(start_block.start..pos + len) {
-                read += self
-                    .data
-                    .read_block(pos + read, block, buffer.spare_capacity_mut())?;
-                unsafe {
-                    buffer.set_len(read);
-                }
-            }
-            Ok(buffer)
-        } else {
-            trace!("cant read: {:?}", entry.contents);
-            Err(FSError::Invalid)
-        }
+        let mountpoint = self
+            .mountpoints
+            .get(file_id.fs)
+            .ok_or(FSError::Invalid)?
+            .as_ref();
+        mountpoint.read(file_id.file, pos, len)
     }
 
     pub fn write(
         &mut self,
-        file_id: FSEntryId,
+        file_id: FileId,
         pos: usize,
         data: &[u8],
     ) -> Result<usize, FSError> {
-        let entry = self.meta_info.most_recent_entry_mut(file_id)?;
-        let size = entry.stat.st_size as usize;
-        if let File { contents } = &mut entry.contents {
-            if (pos + data.len()).saturating_sub(size) > self.max_size - self.current_size {
-                // No space available
-                debug!(
-                    "NO SPACE! remaining: {}, want: {}",
-                    self.max_size - self.current_size,
-                    (pos + data.len()).saturating_sub(size)
-                );
-                Err(FSError::Unknown)?
-            }
-
-            let start_block = contents.range(..=pos).last();
-            let mut written = 0;
-            if let Some(start_block) = start_block {
-                if start_block.contains(pos) {
-                    for block_start in contents
-                        .range(start_block.start..pos + data.len())
-                        .map(|b| b.start)
-                        .collect::<Vec<_>>()
-                    {
-                        written +=
-                            self.data
-                                .write_to_block_cow(pos + written, &data[written..], contents, block_start)?;
-                    }
-                }
-            }
-
-            // Write the remaining data to a new block.
-            if data.len() > written {
-                self.data
-                    .new_block(pos + written, contents, &data[written..])?;
-                written = data.len();
-            }
-
-            let additional_size = (pos + written).saturating_sub(size);
-            entry.stat.st_size += additional_size as u64;
-            self.current_size += additional_size;
-
-            Ok(written)
-        } else {
-            Err(FSError::Unknown)
-        }
+        let mountpoint = self
+            .mountpoints
+            .get_mut(file_id.fs)
+            .ok_or(FSError::Invalid)?
+            .as_mut();
+        mountpoint.write(file_id.file, pos, data)
     }
 
     pub fn truncate(
         &mut self,
-        file_id: FSEntryId,
+        file_id: FileId,
         new_size: usize,
     ) -> Result<(), FSError> {
-        let entry = &self.meta_info.most_recent_entry(file_id)?;
-        let size = entry.stat.st_size as usize;
-        let size = if let File { .. } = &entry.contents {
-            Ok(size)
-        } else {
-            Err(FSError::Unknown)
-        }?;
-
-        if new_size > size {
-            let buf = vec![0; new_size - size];
-            self.write(file_id, new_size - size, &buf)?;
-            Ok(())
-        } else {
-            let entry = self.meta_info.most_recent_entry_mut(file_id)?;
-            if let File { contents } = &mut entry.contents {
-                self.current_size -= entry.stat.st_size as usize - new_size;
-                entry.stat.st_size = new_size as u64;
-                self.data
-                    .save_free_blocks(contents.split_off(&new_size).into_iter());
-                if let Some(block) = contents.iter().last().cloned() {
-                    self.data.write_to_block_cow(
-                        new_size,
-                        vec![0; block.end() - new_size].as_slice(),
-                        contents,
-                        block.start,
-                    )?;
-                }
-                Ok(())
-            } else {
-                Err(FSError::Unknown)
-            }
-        }
+        let mountpoint = self
+            .mountpoints
+            .get_mut(file_id.fs)
+            .ok_or(FSError::Invalid)?
+            .as_mut();
+        mountpoint.truncate(file_id.file, new_size)
     }
 
     pub fn create_file(
         &mut self,
         path: &Path,
         stat: Option<Stat>,
-    ) -> Result<FSEntryId, FSError> {
-        self.meta_info.create_file(path, stat)
+    ) -> Result<FileId, FSError> {
+        let d = self.resolve_last(path.parent().ok_or(FSError::NoEntry)?, false)?;
+        let name = path.file_name().ok_or(FSError::Unknown)?.to_os_string();
+        let mountpoint = self
+            .mountpoints
+            .get_mut(d.fs)
+            .ok_or(FSError::Invalid)?
+            .as_mut();
+        Ok(FileId::new(0, mountpoint.create_entry(d.file, name, FSEntry::File, stat)?))
     }
 
     pub fn create_file_with_contents(
@@ -272,7 +194,7 @@ impl Filesystem {
         path: &Path,
         data: &[u8],
         stat: Option<Stat>,
-    ) -> Result<FSEntryId, FSError> {
+    ) -> Result<FileId, FSError> {
         let fse_id = self.create_file(path, stat)?;
         self.write(fse_id, 0, data)?;
         Ok(fse_id)
@@ -282,8 +204,15 @@ impl Filesystem {
         &mut self,
         path: &Path,
         stat: Option<Stat>,
-    ) -> Result<FSEntryId, FSError> {
-        self.meta_info.create_dir(path, stat)
+    ) -> Result<FileId, FSError> {
+        let d = self.resolve_last(path.parent().ok_or(FSError::Invalid)?, false)?;
+        let name = path.file_name().ok_or(FSError::Invalid)?.to_os_string();
+        let mountpoint = self
+            .mountpoints
+            .get_mut(d.fs)
+            .ok_or(FSError::Invalid)?
+            .as_mut();
+        Ok(FileId::new(0, mountpoint.create_entry(d.file, name, FSEntry::Dir, stat)?))
     }
 
     pub fn create_symlink(
@@ -291,8 +220,15 @@ impl Filesystem {
         path: &Path,
         target: PathBuf,
         stat: Option<Stat>,
-    ) -> Result<FSEntryId, FSError> {
-        self.meta_info.create_link(path, stat, target)
+    ) -> Result<FileId, FSError> {
+        let d = self.resolve_last(path.parent().ok_or(FSError::Invalid)?, false)?;
+        let name = path.file_name().ok_or(FSError::Invalid)?.to_os_string();
+        let mountpoint = self
+            .mountpoints
+            .get_mut(d.fs)
+            .ok_or(FSError::Invalid)?
+            .as_mut();
+        Ok(FileId::new(0, mountpoint.create_entry(d.file, name, FSEntry::Symlink { contents: target }, stat)?))
     }
 
     pub fn delete(
@@ -304,97 +240,132 @@ impl Filesystem {
         //        The last remaining fd can then do the final delete.
         //        (How do we track which fd is the last one?)
         //        This also has to be tracked across snapshots.
-        self.meta_info.delete(path)
+        let d = self.resolve_last(path.parent().ok_or(FSError::Invalid)?, false)?;
+        let name = path.file_name().ok_or(FSError::Invalid)?.to_os_string();
+        let mountpoint = self
+            .mountpoints
+            .get_mut(d.fs)
+            .ok_or(FSError::Invalid)?
+            .as_mut();
+        mountpoint.delete(d.file, name)
     }
 
     pub fn stat(
         &self,
-        file_id: FSEntryId,
+        file_id: FileId,
     ) -> Result<&Stat, FSError> {
-        Ok(&self.meta_info.most_recent_entry(file_id)?.stat)
+        let mountpoint = self
+            .mountpoints
+            .get(file_id.fs)
+            .ok_or(FSError::Invalid)?
+            .as_ref();
+        mountpoint.stat(file_id.file)
     }
 
-    pub fn path_from(
-        &self,
-        file_id: FSEntryId,
-    ) -> Result<PathBuf, FSError> {
-        self.meta_info.path_from(file_id)
-    }
-
-    /// This function resolves the supplied path to a list of FSEntryId. After the lookup,
-    /// the file or dirs in the path can be directly referenced by using the returned FSEntryIds.
-    /// The FSEntryIds are valid for as long as the elements exist and will result in an error
+    /// This function resolves the supplied path to a list of FileId. After the lookup,
+    /// the file or dirs in the path can be directly referenced by using the returned FileIds.
+    /// The FileIds are valid for as long as the elements exist and will result in an error
     /// if the referenced element was deleted in the meantime.
     ///
-    /// returns: The FSEntryId of each element in the path if it resolves. Otherwise an Error is returned.
+    /// returns: The FileId of each element in the path if it resolves. Otherwise an Error is returned.
     pub fn resolve_path(
         &self,
         path: &Path,
         follow_symlink: bool,
-    ) -> Result<Vec<FSEntryId>, FSError> {
+    ) -> Result<Vec<FileId>, FSError> {
         self.resolve_path_relative(None, path, follow_symlink)
     }
 
     pub fn resolve_path_relative(
         &self,
-        dir: Option<FSEntryId>,
+        dir: Option<FileId>,
         path: &Path,
         follow_symlink: bool,
-    ) -> Result<Vec<FSEntryId>, FSError> {
+    ) -> Result<Vec<FileId>, FSError> {
         trace!("open at: {:?} {:?} follow_symlink: {}", dir, path, follow_symlink);
         let mut loopcount = 30u8;
-        let (mut ids, mut remain) = self.meta_info.resolve_path(dir, path)?;
+        let mut fs_id = match dir {
+            None => 0,
+            Some(FileId { fs, .. }) => fs,
+        };
+        let mut mountpoint = self
+            .mountpoints
+            .get(fs_id)
+            .ok_or(FSError::Invalid)?
+            .as_ref();
+        let dir: Option<FSEntryId> = dir.map(|x| x.file);
+        let (ids, mut remain) = mountpoint.resolve_path(dir, path)?;
+        let mut result: Vec<FileId> = ids.into_iter().map(|id| FileId::new(id, fs_id)).collect();
         while remain.is_some() {
             trace!("remain: {:?}", remain);
-            let link = ids.pop().expect("Empty paths cannot occur");
-            let result = self.resolve_symlink(ids.last().copied(), link, &mut loopcount)?;
-            ids.push(result);
-            let (mut a, r) = self
-                .meta_info
-                .resolve_path(Some(result), remain.expect("").as_path())?;
-            ids.append(&mut a);
-            remain = r;
+            let last = result.pop().expect("Empty paths cannot occur");
+            match mountpoint.get_entry(last.file)? {
+                FSEntry::Symlink { contents } => {
+                    let symlinkdir = if contents.is_relative() {
+                        Some(*result.last().unwrap())
+                    } else {
+                        None
+                    };
+                    let target = self.resolve_symlink(symlinkdir, FileId::new(last.fs, last.file), &mut loopcount)?;
+                    mountpoint = self
+                        .mountpoints
+                        .get(target.fs)
+                        .ok_or(FSError::Unknown)?
+                        .as_ref();
+                    result.push(target);
+                    let (mut a, r) = mountpoint.resolve_path(Some(target.file), remain.expect("").as_path())?;
+                    let mut b = a.into_iter().map(|id| FileId::new(target.fs, id)).collect();
+                    result.append(&mut b);
+                    remain = r;
+                }
+                _ => {}
+            }
         }
         while follow_symlink
             && self
-                .read_symlink(*ids.last().expect("Empty paths cannot occur"))?
+                .read_symlink(*result.last().expect("Empty paths cannot occur"))?
                 .is_some()
         {
             if loopcount == 0 {
                 Err(FSError::Loop)?;
             }
-            let link = ids.pop().expect("Empty paths cannot occur");
-            let result = self.resolve_symlink(ids.last().copied(), link, &mut loopcount)?;
-            ids.push(result);
+            let link = result.pop().expect("Empty paths cannot occur");
+            let symlinkdir = if self.read_symlink(link)?.unwrap().is_relative() {
+                Some(*result.last().unwrap())
+            } else {
+                None
+            };
+            let target = self.resolve_symlink(symlinkdir, link, &mut loopcount)?;
+            result.push(target);
         }
-        Ok(ids)
+        Ok(result)
     }
 
-    /// This function resolves the supplied path to an FSEntryId. After the lookup,
-    /// the file or dir at the end of the path can be directly referenced by using the returned FSEntryIds.
-    /// The FSEntryIds are valid for as long as the elements exist and will result in an error
+    /// This function resolves the supplied path to an FileId. After the lookup,
+    /// the file or dir at the end of the path can be directly referenced by using the returned FileIds.
+    /// The FileIds are valid for as long as the elements exist and will result in an error
     /// if the referenced element was deleted in the meantime.
     ///
-    /// returns: The FSEntryId of the last element in the path if it resolves. Otherwise an Error is returned.
+    /// returns: The FileId of the last element in the path if it resolves. Otherwise an Error is returned.
     pub fn resolve_last(
         &self,
         path: &Path,
         follow_symlink: bool,
-    ) -> Result<FSEntryId, FSError> {
+    ) -> Result<FileId, FSError> {
         self.resolve_last_relative(None, path, follow_symlink)
     }
 
-    /// This function resolves the supplied path to an FSEntryId. The lookup is performed
+    /// This function resolves the supplied path to an FileId. The lookup is performed
     /// relative to the supplied directory id, if the id is not None.
     /// See also [Filesystem::resolve_last()]
     ///
-    /// returns: The FSEntryId of the last element in the path if it resolves. Otherwise an Error is returned.
+    /// returns: The FileId of the last element in the path if it resolves. Otherwise an Error is returned.
     pub fn resolve_last_relative(
         &self,
-        dir: Option<FSEntryId>,
+        dir: Option<FileId>,
         path: &Path,
         follow_symlink: bool,
-    ) -> Result<FSEntryId, FSError> {
+    ) -> Result<FileId, FSError> {
         Ok(*self
             .resolve_path_relative(dir, path, follow_symlink)?
             .last()
@@ -403,20 +374,29 @@ impl Filesystem {
 
     fn resolve_symlink(
         &self,
-        dir: Option<FSEntryId>,
-        link: FSEntryId,
+        dir: Option<FileId>,
+        link: FileId,
         loopcount: &mut u8,
-    ) -> Result<FSEntryId, FSError> {
+    ) -> Result<FileId, FSError> {
         *loopcount -= 1;
         let target = self
             .read_symlink(link)?
             .expect("link target cannot be None at this point");
-        let mut dir = if target.is_relative() { dir } else { None };
-        let (mut ids, mut remain) = self.meta_info.resolve_path(dir, &target)?;
+        let (mut fs_id, mut dir) = if target.is_relative() {
+            (dir.unwrap().fs, dir.map(|x| x.file))
+        } else {
+            (0, None)
+        };
+        let mut mountpoint = self
+            .mountpoints
+            .get(fs_id)
+            .ok_or(FSError::Invalid)?
+            .as_ref();
+        let (mut ids, mut remain) = mountpoint.resolve_path(dir, &target)?;
         while remain.is_some() && *loopcount > 0 {
             let link = ids.pop().expect("Empty paths cannot occur");
             let target = self
-                .read_symlink(link)?
+                .read_symlink(FileId::new(0, link))?
                 .expect("link target cannot be None at this point");
             dir = if target.is_relative() {
                 ids.last().copied()
@@ -424,63 +404,44 @@ impl Filesystem {
                 None
             };
             remain = Some(target.join(remain.expect("").as_path()));
-            (ids, remain) = self
-                .meta_info
-                .resolve_path(dir, remain.expect("").as_path())?;
+            (ids, remain) = mountpoint.resolve_path(dir, remain.expect("").as_path())?;
             *loopcount -= 1;
         }
 
         if remain.is_some() {
             Err(FSError::Loop)
         } else {
-            Ok(*ids.last().expect("Empty paths cannot occur"))
+            Ok(FileId::new(0, *ids.last().expect("Empty paths cannot occur")))
         }
     }
 
     fn print_tree(&self) {
-        self.meta_info.print_tree(self.meta_info.root(), None);
+        todo!();
     }
 }
 
 impl Restorable for Filesystem {
     fn take_snapshot(&mut self) -> Result<(), GenericError> {
-        assert_eq!(self.snap_markers.len(), self.current_snap);
-        self.snap_markers.push(SnapMarker {
-            data_marker: self.data.snapshot(),
-            meta_info_marker: self.meta_info.snapshot(),
-            current_size: self.current_size,
-        });
-        self.current_snap += 1;
+        for mp in self.mountpoints.iter_mut() {
+            let mountpoint = mp.as_mut();
+            mountpoint.take_snapshot()?;
+        }
         Ok(())
     }
 
     fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
-        if self.current_snap == 0 {
-            Err(FSError::Unknown)?
+        for mp in self.mountpoints.iter_mut() {
+            let mountpoint = mp.as_mut();
+            mountpoint.discard_current_and_restore_previous_snapshot()?;
         }
-        let snap_marker = self
-            .snap_markers
-            .pop()
-            .expect("Must exist since current_snap > 0");
-        self.meta_info
-            .restore_and_discard(snap_marker.meta_info_marker);
-        self.data.restore_and_discard(snap_marker.data_marker);
-        self.current_size = snap_marker.current_size;
-        self.current_snap -= 1;
-        self.restore_snapshot()
+        Ok(())
     }
 
     fn restore_snapshot(&mut self) -> Result<(), GenericError> {
-        if self.current_snap == 0 {
-            Err(FSError::Unknown)?
+        for mp in self.mountpoints.iter_mut() {
+            let mountpoint = mp.as_mut();
+            mountpoint.restore_snapshot()?;
         }
-        let snap_marker = self
-            .snap_markers
-            .last()
-            .expect("Must exist since current_snap > 0");
-        self.meta_info.restore(snap_marker.meta_info_marker);
-        self.data.restore(snap_marker.data_marker);
-        self.current_size = snap_marker.current_size;
         Ok(())
     }
 }
@@ -505,7 +466,6 @@ fn load_dir(
                 fs.create_dir(&Path::new("/").join(path.strip_prefix(root).unwrap()), Some(stat.into()))
                     .unwrap();
                 load_dir(fs, &path, root)?;
-                // FSEntry::DirEntry(Dir {}, Stats::from(stats))
             } else if path.is_file() {
                 trace!("file {}", path.display());
                 let data = read(entry.path())?;
@@ -515,21 +475,12 @@ fn load_dir(
                     Some(stat.into()),
                 )
                 .unwrap();
-                // FSEntry::FileEntry(File::new(&path), Stats::from(stats))
             } else {
                 info!("ignore file {}: unsuported file type", path.strip_prefix(root).unwrap().display());
             };
-            // println!("{:?}", Path::new("/").join(path.strip_prefix(root).unwrap().to_path_buf()));
         }
     }
     Ok(())
-}
-
-#[derive(Debug, Copy, Clone)]
-struct SnapMarker {
-    data_marker: DataSnapMarker,
-    meta_info_marker: MetaInfoSnapMarker,
-    current_size: usize,
 }
 
 const MASK4K: usize = 4 * (1 << 10) - 1;

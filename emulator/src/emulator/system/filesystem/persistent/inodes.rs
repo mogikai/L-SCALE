@@ -1,3 +1,5 @@
+use crate::emulator::abstractions::filesystem::FSEntry;
+use libc::wchar_t;
 use std::cell::RefCell;
 use std::collections::{
     BTreeMap,
@@ -30,39 +32,28 @@ use self::FSEntryContent::{
     Symlink,
 };
 
+use std::ffi::OsString;
+
+use crate::emulator::system::filesystem::persistent::block::Block;
+use crate::emulator::system::filesystem::stat::{Stat, S_IFDIR, S_IFLNK, S_IFREG};
+use crate::emulator::system::filesystem::{ContentId, FSEntryId, FSError, SnapId};
+
 #[derive(Debug)]
-pub struct MetaInfo {
-    content: Vec<FSEntry>,
+pub(super) struct Inodes {
+    content: Vec<Inode>,
     fse_ids: RefCell<Vec<HashMap<FSEntryId, Index>>>,
     next_fse_id: FSEntryId,
     current_snap: usize,
-    root_node: FSEntryId,
 }
 
-impl MetaInfo {
+impl Inodes {
     pub(super) fn new() -> Self {
-        let mut meta_info = Self {
+        Self {
             content: Vec::new(),
             fse_ids: RefCell::new(vec![HashMap::new()]),
             next_fse_id: 1,
             current_snap: 0,
-            root_node: 0,
-        };
-        let root_stat = Stat::default();
-        meta_info
-            .add_entry(
-                0,
-                FSEntry::new(
-                    Dir {
-                        contents: BTreeMap::new(),
-                    },
-                    root_stat,
-                    "/".into(),
-                    0,
-                ),
-            )
-            .unwrap();
-        meta_info
+        }
     }
 
     /// Creates a new FSEntry in the file system.
@@ -73,141 +64,94 @@ impl MetaInfo {
     /// of the path already exists, an error is returned.
     pub(super) fn new_entry(
         &mut self,
-        path: &Path,
-        new_entry: impl FnOnce(String, FSEntryId) -> FSEntry,
+        parent: FSEntryId,
+        name: OsString,
+        entry: FSEntry,
+        stat: Option<Stat>,
     ) -> Result<FSEntryId, FSError> {
-        let dir_entry_id = self.resolve_last(None, path.parent().ok_or(FSError::Unknown)?)?;
-        let dir_content_id = self.most_recent_content_id(dir_entry_id)?;
-        if let Dir { contents } = &self.get_content_by_id(dir_content_id)?.contents {
-            let name = path
-                .file_name()
-                .ok_or(FSError::Unknown)?
-                .to_str()
-                .ok_or(FSError::Unknown)?;
-            if contents.contains_key(name) {
-                Err(FSError::Unknown)?
-            }
-            let entry = new_entry(name.into(), dir_entry_id);
-            let entry_id = self.next_fse_id;
-            self.next_fse_id += 1;
-            self.add_entry(entry_id, entry)?;
-            let dir_entry = self
-                .most_recent_entry_mut(dir_entry_id)
-                .expect("The entry exists at this point, since we already accessed it");
-            if let Dir { contents } = &mut dir_entry.contents {
-                contents.insert(name.into(), entry_id);
-                Ok(entry_id)
-            } else {
-                panic!("Should never happen");
-            }
-        } else {
-            Err(FSError::Unknown)
+        trace!("new entry in {} name {:?}", parent, name);
+        if name == "." || name == ".." {
+            return Err(FSError::Invalid);
         }
-    }
-
-    /// See the public api [Filesystem::create_file](Filesystem::create_file) for documentation.
-    pub(super) fn create_file(
-        &mut self,
-        path: &Path,
-        stat: Option<Stat>,
-    ) -> Result<FSEntryId, FSError> {
-        self.new_entry(path, |name, parent_id| {
-            let mut entry = FSEntry::new(
-                File {
-                    contents: BTreeSet::new(),
-                },
-                stat.unwrap_or_default(),
-                name,
-                parent_id,
-            );
-            entry.stat.st_mode = S_IFREG;
-            entry
-        })
-    }
-
-    /// See the public api [Filesystem::create_dir](Filesystem::create_dir) for documentation.
-    pub(super) fn create_dir(
-        &mut self,
-        path: &Path,
-        stat: Option<Stat>,
-    ) -> Result<FSEntryId, FSError> {
-        self.new_entry(path, |name, parent_id| {
-            let mut entry = FSEntry::new(
-                Dir {
-                    contents: BTreeMap::new(),
-                },
-                stat.unwrap_or_default(),
-                name,
-                parent_id,
-            );
-            entry.stat.st_mode = S_IFDIR;
-            entry
-        })
-    }
-
-    pub(super) fn create_link(
-        &mut self,
-        path: &Path,
-        stat: Option<Stat>,
-        target: PathBuf,
-    ) -> Result<FSEntryId, FSError> {
-        self.new_entry(path, |name, parent_id| {
-            let mut entry = FSEntry::new(Symlink { contents: target }, stat.unwrap_or_default(), name, parent_id);
-            entry.stat.st_mode = S_IFLNK;
-            entry
-        })
+        if let FSEntry::Mount { .. } = entry {
+            return Err(FSError::Invalid);
+        }
+        let entry_id = self.next_fse_id;
+        let mut p = self.most_recent_entry_mut(parent)?;
+        if p.file_type != FSEntry::Dir {
+            return Err(FSError::NoEntry);
+        }
+        if let Some(FSContent::Dir { ref mut entries }) = p.content {
+            let content = match entry {
+                FSEntry::Dir => Some(FSContent::Dir {
+                    entries: BTreeMap::new(),
+                }),
+                FSEntry::File => Some(FSContent::File {
+                    blocks: Default::default(),
+                }),
+                _ => None,
+            };
+            let e: Inode = Inode::new(entry, stat.unwrap_or_default(), content);
+            let err = entries.try_insert(name, entry_id);
+            trace!("try insert: {:?}", err);
+            err.ok().ok_or(FSError::Exist)?;
+            self.add_entry(entry_id, e);
+            self.next_fse_id += 1;
+            return Ok(entry_id);
+        }
+        Err(FSError::Unknown)
     }
 
     /// See the public api [Filesystem::delete](Filesystem::delete) for documentation.
     /// TODO check if change argument to fsentryid
     pub(super) fn delete(
         &mut self,
-        path: &Path,
+        dir_id: FSEntryId,
+        name: OsString,
     ) -> Result<(), FSError> {
         // TODO: Handle deleting relative paths.
-        let (fse_ids, _) = self.resolve_path(None, path)?;
+        trace!("delete at {:?} name: {:?}", dir_id, name);
+        let dir = self.most_recent_entry(dir_id)?;
+        if dir.file_type != FSEntry::Dir {
+            return Err(FSError::NoEntry);
+        }
+        let entry_id = match &dir.content {
+            Some(FSContent::Dir { entries }) => *entries.get(&name).ok_or(FSError::NoEntry)?,
+            _ => {
+                return Err(FSError::Unknown);
+            }
+        };
 
-        let (entry, snap_id) =
-            self.most_recent_entry_and_snap_id(*fse_ids.last().expect("Will always contain at least one id"))?;
-        match &entry.contents {
-            Dir { contents } => {
-                if !contents.is_empty() {
-                    Err(FSError::Unknown)?
+        let (entry, snap_id) = self.most_recent_entry_and_snap_id(entry_id)?;
+        if let FSEntry::Mount { .. } = entry.file_type {
+            return Err(FSError::Busy);
+        }
+        match &entry.content {
+            Some(FSContent::Dir { entries }) => {
+                if !entries.is_empty() {
+                    return Err(FSError::NotEmpty);
                 }
             }
-            File { .. } => {
+            Some(FSContent::File { .. }) => {
                 if snap_id == self.current_snap {
                     // contents.drain_filter(|b| b.snap_id == self.current_snap);
-                    // TODO: take out blocks that are from current snapshot and add them to free set
+                    //TODO: take out blocks that are from current snapshot and add them to free set
                 }
             }
-            Symlink { .. } => {}
+            None => {}
         }
-
-        // Remove the historical index for the current snapshot if it exists.
-        // This is ok, since we do not have to be able to reset this change.
-        // Old snapshots must not be touched.
-        // The entry itself will persist
-        // Instead of removing however, we insert a deleted index marker.
-        // This is needed to avoid going backwards in the snapshots and
-        // finding one where the file still exists.
-        self.fse_ids.borrow_mut()[self.current_snap].insert(*fse_ids.last().unwrap(), Index::Deleted);
-
-        // Remove entry from parent dir
-        let dir = self.most_recent_entry_mut(
-            fse_ids
-                .len()
-                .checked_sub(2)
-                .map(|i| fse_ids[i])
-                .ok_or(FSError::Unknown)?,
-        )?;
-        if let Dir { contents } = &mut dir.contents {
-            let name = path
-                .file_name()
-                .expect("The path resolved, so the name has to exist")
-                .to_str()
-                .unwrap();
-            contents.remove(name);
+        self.fse_ids.borrow_mut()[self.current_snap].insert(entry_id, Index::Deleted);
+        let mut dir = self.most_recent_entry_mut(dir_id)?;
+        match &mut dir.content {
+            Some(FSContent::Dir { ref mut entries }) => {
+                trace!("remove direntry {:?} from {}", name, dir_id);
+                entries.remove(&name).ok_or(FSError::Unknown)?;
+                trace!("after remove: content {:?}", self.content);
+                trace!("historical index: {:?}", self.fse_ids.borrow_mut()[self.current_snap]);
+            }
+            _ => {
+                return Err(FSError::Unknown);
+            }
         }
         Ok(())
     }
@@ -215,9 +159,10 @@ impl MetaInfo {
     pub(super) fn add_entry(
         &mut self,
         fse_id: FSEntryId,
-        entry: FSEntry,
+        entry: Inode,
     ) -> Result<(), FSError> {
         self.content.push(entry);
+        trace!("add entry: content: {:?}", self.content);
         let result = self.fse_ids.borrow_mut()[self.current_snap]
             .insert(fse_id, Index::new(self.content.len() - 1, self.current_snap));
         if let Some(result) = result {
@@ -232,6 +177,8 @@ impl MetaInfo {
         &self,
         fse_id: FSEntryId,
     ) -> Result<PathBuf, FSError> {
+        todo!();
+        /*
         let mut path = vec![];
         let mut current_id = fse_id;
 
@@ -244,27 +191,24 @@ impl MetaInfo {
         path.push(String::from("/"));
 
         Ok(path.into_iter().rev().collect())
+         */
     }
 
     /// See the public api [Filesystem::resolve_path](Filesystem::resolve_path) for documentation.
     pub(super) fn resolve_path(
         &self,
-        root: Option<FSEntryId>,
+        root: FSEntryId,
         path: &Path,
     ) -> Result<(Vec<FSEntryId>, Option<PathBuf>), FSError> {
-        trace!("meta_info: resolve_path: {:?} {:?}", self.most_recent_entry(root.unwrap_or(self.root_node)), path);
+        trace!("meta_info: resolve_path: {:?} {:?}", self.most_recent_entry(root), path);
         let path = if path.is_absolute() {
-            if root.is_some() {
-                // Absolute paths with supplied root is not allowed
-                return Err(FSError::Unknown);
-            }
             path.strip_prefix("/")
                 .expect("Absolute path always has / as prefix")
         } else {
             path
         };
 
-        let mut path_ids = vec![root.unwrap_or(self.root_node)];
+        let mut path_ids = vec![root];
         let mut remainder = Option::<PathBuf>::None;
         for component in path {
             if let Some(remainder) = &mut remainder {
@@ -273,29 +217,28 @@ impl MetaInfo {
             }
             match &self
                 .most_recent_entry(*path_ids.last().expect("Path always contains root"))?
-                .contents
+                .content
             {
-                Dir { contents } => {
-                    let child = *contents
-                        .get(component.to_str().unwrap())
-                        .ok_or(FSError::Unknown)?;
+                Some(FSContent::Dir { entries }) => {
+                    let child = *entries.get(component).ok_or(FSError::Unknown)?;
                     path_ids.push(child);
                 }
-                File { .. } => {
+                Some(FSContent::File { .. }) => {
                     Err(FSError::NoEntry)?;
                 }
-                Symlink { .. } => {
+                None => {
                     remainder.get_or_insert(PathBuf::new()).push(component);
                 }
             }
         }
+        trace!("resolve_path: {:?} {:?}", path_ids, remainder);
         Ok((path_ids, remainder))
     }
 
     /// See the public api [Filesystem::resolve_last](Filesystem::resolve_last) for documentation.
     fn resolve_last(
         &self,
-        root: Option<FSEntryId>,
+        root: FSEntryId,
         path: &Path,
     ) -> Result<FSEntryId, FSError> {
         let (ids, remain) = self.resolve_path(root, path)?;
@@ -305,14 +248,11 @@ impl MetaInfo {
         return Ok(*ids.last().expect("Empty paths cannot occur"));
     }
 
-    pub(super) fn root(&self) -> FSEntryId {
-        self.root_node
-    }
-
     fn most_recent_historical_index(
         &self,
         index: FSEntryId,
     ) -> Result<Index, FSError> {
+        trace!("most recent historical index: {}", index);
         let mut fse_ids = self.fse_ids.borrow_mut();
         let mut historical_index = fse_ids[self.current_snap].get(&index).cloned();
         if historical_index.is_none() {
@@ -325,6 +265,14 @@ impl MetaInfo {
                 }
             }
         };
+        trace!("result: {:?}", historical_index);
+        trace!(
+            "entry: {:?}",
+            self.content[historical_index
+                .unwrap()
+                .historical_or(FSError::Unknown)?
+                .content_id]
+        );
         historical_index.ok_or(FSError::Unknown)
     }
 
@@ -354,20 +302,29 @@ impl MetaInfo {
     pub(super) fn most_recent_entry_mut(
         &mut self,
         fse_id: FSEntryId,
-    ) -> Result<&mut FSEntry, FSError> {
+    ) -> Result<&mut Inode, FSError> {
         let historical_index = self
             .most_recent_historical_index(fse_id)?
             .historical_or(FSError::Unknown)?;
         if historical_index.snap_id < self.current_snap {
             // Historical. Cannot modify. Need to clone first.
+            trace!("update historical index: {:?}", historical_index);
             let entry = self
                 .content
                 .get(historical_index.content_id)
                 .expect("id must be valid");
             let new_entry = entry.clone();
             self.add_entry(fse_id, new_entry)?;
-            Ok(self.most_recent_entry_mut(fse_id)?)
+            trace!("updated historical index: {:?}", self.most_recent_historical_index(fse_id));
+            let r = self.most_recent_entry_mut(fse_id);
+            Ok(r?)
         } else {
+            let r = self
+                .content
+                .get_mut(historical_index.content_id)
+                .expect("id must be valid");
+            trace!("most recent mut: {:?}", r);
+            return Ok(r);
             Ok(self
                 .content
                 .get_mut(historical_index.content_id)
@@ -378,7 +335,7 @@ impl MetaInfo {
     pub(super) fn most_recent_entry(
         &self,
         index: FSEntryId,
-    ) -> Result<&FSEntry, FSError> {
+    ) -> Result<&Inode, FSError> {
         Ok(self
             .content
             .get(self.most_recent_content_id(index)?)
@@ -388,7 +345,7 @@ impl MetaInfo {
     fn most_recent_entry_and_snap_id(
         &self,
         index: FSEntryId,
-    ) -> Result<(&FSEntry, SnapId), FSError> {
+    ) -> Result<(&Inode, SnapId), FSError> {
         let historical_index = self
             .most_recent_historical_index(index)?
             .historical_or(FSError::Unknown)?;
@@ -403,10 +360,15 @@ impl MetaInfo {
     fn get_content_by_id(
         &self,
         content_id: ContentId,
-    ) -> Result<&FSEntry, FSError> {
+    ) -> Result<&Inode, FSError> {
         self.content.get(content_id).ok_or(FSError::Unknown)
     }
-
+    fn get_content_by_id_mut(
+        &mut self,
+        content_id: ContentId,
+    ) -> Result<&mut Inode, FSError> {
+        self.content.get_mut(content_id).ok_or(FSError::Unknown)
+    }
     pub(super) fn print_tree(
         &self,
         root: FSEntryId,
@@ -415,18 +377,17 @@ impl MetaInfo {
         let depth = depth.unwrap_or(0);
         let node = self.most_recent_entry(root).unwrap();
         println!(
-            "{} {}",
+            "{} todo",
             vec![' '; depth * 3]
                 .into_iter()
                 .chain("|-".chars())
-                .collect::<String>(),
-            node.name
+                .collect::<String>() //node.name
         );
-        match &node.contents {
-            File { .. } => {}
-            Symlink { .. } => {}
-            Dir { contents } => {
-                for entry in contents.values() {
+        match &node.content {
+            Some(FSContent::File { .. }) => {}
+            None => {}
+            Some(FSContent::Dir { entries }) => {
+                for entry in entries.values() {
                     self.print_tree(*entry, Some(depth + 1));
                 }
             }
@@ -466,33 +427,28 @@ impl MetaInfo {
 }
 
 #[derive(Clone, Debug)]
-pub(super) enum FSEntryContent {
-    File { contents: BTreeSet<Block> },
-    // Block ids
-    Dir { contents: BTreeMap<String, FSEntryId> },
-    Symlink { contents: PathBuf },
+pub(super) enum FSContent {
+    File { blocks: BTreeSet<Block> },
+    Dir { entries: BTreeMap<OsString, FSEntryId> },
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct FSEntry {
-    pub(super) contents: FSEntryContent,
+pub(super) struct Inode {
+    pub(super) file_type: FSEntry,
     pub(super) stat: Stat,
-    pub(super) name: String,
-    pub(super) parent: FSEntryId,
+    pub(super) content: Option<FSContent>,
 }
 
-impl FSEntry {
-    fn new(
-        contents: FSEntryContent,
+impl Inode {
+    pub(super) fn new(
+        file_type: FSEntry,
         stat: Stat,
-        name: String,
-        parent: FSEntryId,
+        content: Option<FSContent>,
     ) -> Self {
-        FSEntry {
-            contents,
+        Inode {
+            file_type,
             stat,
-            name,
-            parent,
+            content,
         }
     }
 }
