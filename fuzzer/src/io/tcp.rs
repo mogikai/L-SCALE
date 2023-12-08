@@ -149,7 +149,7 @@ impl TCPSystemControl for TCP {
         remote_address: SocketAddress,
     ) -> Result<SocketId, NetworkError> {
         let socket = {
-            let listener = self.sockets.get(&listener).ok_or(NetworkError::Unknown)?;
+            let listener = self.sockets.get(listener).ok_or(NetworkError::Unknown)?;
             TCPSocketImpl {
                 incoming: Default::default(),
                 outgoing: Default::default(),
@@ -161,7 +161,7 @@ impl TCPSystemControl for TCP {
         };
         let id = self.sockets.insert(socket);
         self.sockets
-            .get_mut(&listener)
+            .get_mut(listener)
             .unwrap()
             .register_connection(id)?;
         Ok(id)
@@ -170,14 +170,14 @@ impl TCPSystemControl for TCP {
     fn socket(
         &self,
         id: SocketId,
-    ) -> Option<&TCPSocketImpl> {
+    ) -> Option<&impl TCPSocket> {
         self.sockets.get(&id)
     }
 
     fn socket_mut(
         &mut self,
         id: SocketId,
-    ) -> Option<&mut TCPSocketImpl> {
+    ) -> Option<&mut impl TCPSocket> {
         self.sockets.get_mut(&id)
     }
 }
@@ -262,7 +262,7 @@ impl TCPSystem for TCP {
         id: SocketId,
         data: &[u8],
     ) -> Result<usize, NetworkError> {
-        let mut sock = self.sockets.get_mut(&id).ok_or(NetworkError::Unknown)?;
+        let sock = self.sockets.get_mut(&id).ok_or(NetworkError::Unknown)?;
         sock.outgoing.push_back(data.to_vec());
         Ok(data.len())
     }
@@ -272,7 +272,7 @@ impl TCPSystem for TCP {
         id: SocketId,
         len: usize,
     ) -> Result<(Vec<u8>, SocketAddress), NetworkError> {
-        let mut sock = self.sockets.get_mut(&id).ok_or(NetworkError::Unknown)?;
+        let sock = self.sockets.get_mut(&id).ok_or(NetworkError::Unknown)?;
         let len = min(sock.incoming.len(), len);
         let data = sock.incoming.drain(0..len).collect();
         let addr = sock.remote_address.unwrap();

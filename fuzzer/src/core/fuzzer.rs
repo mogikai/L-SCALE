@@ -2,10 +2,15 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::fs;
+use std::fs::{
+    create_dir_all,
+    File,
+};
 use std::hash::{
     Hash,
     Hasher,
 };
+use std::io::Write;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -18,6 +23,10 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use log::debug;
+use petgraph::dot::{
+    Config,
+    Dot,
+};
 use petgraph::graph::{
     DiGraph,
     NodeIndex,
@@ -141,7 +150,13 @@ impl PartialEq for TestCaseBehavior {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct State<Type> {
+struct StateType<Type> {
+    state: State,
+    _phantom: PhantomData<Type>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct State {
     /// The node index in the graph data structure. If the state is a candidate state, this will be None.
     node_id: Option<NodeIndex>,
     label: Option<String>,
@@ -150,7 +165,6 @@ struct State<Type> {
     /// Describes the behavior of all test case suffixes in this specific state
     suffix_behaviors: SecondaryMap<SuffixId, TestCaseBehavior>,
     pending_observations: Vec<SuffixId>,
-    _phantom: PhantomData<Type>,
 }
 
 #[derive(Debug)]
@@ -164,25 +178,29 @@ enum StateComparisonResult {
     NotEqual,
 }
 
-impl State<Candidate> {
+impl StateType<Candidate> {
     pub fn new() -> Self {
         Self {
-            node_id: None,
-            label: None,
-            executions: 0,
-            suffix_behaviors: Default::default(),
-            pending_observations: Default::default(),
+            state: State {
+                node_id: None,
+                label: None,
+                executions: 0,
+                suffix_behaviors: Default::default(),
+                pending_observations: Default::default(),
+            },
             _phantom: Default::default(),
         }
     }
 
     pub fn new_with_label(label: String) -> Self {
         Self {
-            node_id: None,
-            label: Some(label),
-            executions: 0,
-            suffix_behaviors: Default::default(),
-            pending_observations: Default::default(),
+            state: State {
+                node_id: None,
+                label: Some(label),
+                executions: 0,
+                suffix_behaviors: Default::default(),
+                pending_observations: Default::default(),
+            },
             _phantom: Default::default(),
         }
     }
@@ -190,26 +208,27 @@ impl State<Candidate> {
     pub fn into_final(
         self,
         node_id: NodeIndex,
-    ) -> State<Final> {
-        State::<Final> {
-            node_id: Some(node_id),
-            label: self.label,
-            executions: self.executions,
-            suffix_behaviors: self.suffix_behaviors,
-            pending_observations: Default::default(),
+    ) -> StateType<Final> {
+        StateType::<Final> {
+            state: State {
+                node_id: Some(node_id),
+                ..self.state
+            },
             _phantom: Default::default(),
         }
     }
 }
 
-impl State<Final> {
+impl StateType<Final> {
     pub fn new(node_id: NodeIndex) -> Self {
         Self {
-            node_id: Some(node_id),
-            label: None,
-            executions: 0,
-            suffix_behaviors: Default::default(),
-            pending_observations: Default::default(),
+            state: State {
+                node_id: Some(node_id),
+                label: None,
+                executions: 0,
+                suffix_behaviors: Default::default(),
+                pending_observations: Default::default(),
+            },
             _phantom: Default::default(),
         }
     }
@@ -219,28 +238,30 @@ impl State<Final> {
         label: String,
     ) -> Self {
         Self {
-            node_id: Some(node_id),
-            label: Some(label),
-            executions: 0,
-            suffix_behaviors: Default::default(),
-            pending_observations: Default::default(),
+            state: State {
+                node_id: Some(node_id),
+                label: Some(label),
+                executions: 0,
+                suffix_behaviors: Default::default(),
+                pending_observations: Default::default(),
+            },
             _phantom: Default::default(),
         }
     }
 
     pub fn node_id(&self) -> NodeIndex {
-        self.node_id.unwrap()
+        self.state.node_id.unwrap()
     }
 }
 
-impl<Type> State<Type> {
+impl State {
     /// States are equal if their behavior maps match. If one state has less behavior observations
     /// than the other, these observations will first have to be performed before determining whether
     /// are equal. In this case the function will return `IncompleteObservations`
     /// if the states cannot be distinguished without further observations.
-    fn equal<OtherType>(
+    fn compare_observations(
         &self,
-        other: &State<OtherType>,
+        other: &State,
     ) -> StateComparisonResult {
         let mut result = if self.suffix_behaviors.len() == other.suffix_behaviors.len() {
             StateComparisonResult::Equal
@@ -266,14 +287,30 @@ impl<Type> State<Type> {
         }
         result
     }
+
+    fn label(&self) -> &str {
+        match &self.label {
+            None => "",
+            Some(label) => label,
+        }
+    }
 }
 
 new_key_type! { struct StateId; }
 new_key_type! { struct StateCandidateId; }
 new_key_type! { struct SuffixId; }
 
+#[derive(Debug, Serialize, Deserialize)]
+enum StateUnion {
+    Final(StateId),
+    Candidate(StateCandidateId),
+}
+
+type InputDataMap = SlotMap<InputDataId, InputData>;
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct FuzzerState {
+    last_dot_file_num: usize,
     /// The state graph. Each node corresponds to an index in the prefix closed set S in Angluins L* algorithm.
     state_graph: DiGraph<(), ()>,
     suffixes: SlotMap<SuffixId, Vec<TestCaseId>>,
@@ -281,8 +318,8 @@ pub struct FuzzerState {
     states_map: BTreeMap<NodeIndex, StateId>,
     /// All known states and candidate states. Once a state is moved from the candidate set to the sate set, it
     /// will also be added into the corresponding graph structure.
-    states: SlotMap<StateId, State<Final>>,
-    state_candidates: SlotMap<StateCandidateId, State<Candidate>>,
+    states: SlotMap<StateId, StateType<Final>>,
+    state_candidates: SlotMap<StateCandidateId, StateType<Candidate>>,
     /// The state candidate set S ∪ A. Each existing state has an associated map that represents candidate
     /// states that could be reached by applying the testcase to this existing state.
     /// If any of these candidate states differ from all existing states in their behavior mapping, then it
@@ -290,14 +327,14 @@ pub struct FuzzerState {
     state_candidate_map: SecondaryMap<StateId, SecondaryMap<TestCaseId, StateCandidateId>>,
     /// A map of various input data blobs that are used by inputs. Multiple inputs may
     /// refer to the same input data blob.
-    input_data: SlotMap<InputDataId, InputData>,
+    input_data: InputDataMap,
     /// A map of testcases that are associated with states.
     /// By having the map here globally and only storing indices into the map
     /// it is easily possible to iterate across all testcases of all states.
     test_cases: SlotMap<TestCaseId, TestCase>,
     /// The path through the state graph that the fuzzer has currently taken.
     /// The fuzzer can backtrack along this path.
-    state_path: Vec<NodeIndex>,
+    state_path: Vec<StateUnion>,
 }
 
 /// A path component that the state manager will supply when asked for a path to a state.
@@ -326,11 +363,18 @@ impl StateBuilder {
         &self,
         fuzzer_state: &mut FuzzerState,
     ) {
-        let state_id = fuzzer_state
-            .state_candidates
-            .insert(State::<Candidate>::new_with_label("Initial".to_string()));
+        let mut state = StateType::<Candidate>::new_with_label("Initial".to_string());
+        // Insert each testcase as suffix and push them into the pending observations for the initial state.
+        fuzzer_state
+            .test_cases
+            .keys()
+            .map(|testcase_id| fuzzer_state.suffixes.insert(vec![testcase_id]))
+            .for_each(|suffix_id| state.state.pending_observations.push(suffix_id));
+        let state_id = fuzzer_state.state_candidates.insert(state);
+
         debug!("Added initial state");
-        self.promote_to_final_state(fuzzer_state, state_id);
+        let state_id = self.promote_to_final_state(fuzzer_state, state_id);
+        fuzzer_state.state_path.push(StateUnion::Final(state_id));
     }
 
     fn add_behavior_to_current_state(
@@ -343,7 +387,18 @@ impl StateBuilder {
     fn shortest_path_from_initial(
         &self,
         fuzzer_state: FuzzerState,
+        state_id: StateId,
     ) -> Vec<StatePathComponent> {
+        let StateUnion::Final(initial_state) = fuzzer_state.state_path[0] else {
+            panic!("The first state in the path must always be the initial state, which is final");
+        };
+        petgraph::algo::astar(
+            &fuzzer_state.state_graph,
+            fuzzer_state.states.get(initial_state).unwrap().node_id(),
+            |n| n == fuzzer_state.states.get(state_id).unwrap().node_id(),
+            |_| 1,
+            |_| 0,
+        );
         todo!()
     }
 
@@ -359,7 +414,7 @@ impl StateBuilder {
             // Add a new candidate state
             let state_candidate_id = fuzzer_state
                 .state_candidates
-                .insert(State::<Candidate>::new());
+                .insert(StateType::<Candidate>::new());
             // and insert it into the candidate set for state `state`.
             fuzzer_state
                 .state_candidate_map
@@ -373,7 +428,7 @@ impl StateBuilder {
         &self,
         fuzzer_state: &mut FuzzerState,
         candidate_id: StateCandidateId,
-    ) -> NodeIndex {
+    ) -> StateId {
         let node_id = fuzzer_state.state_graph.add_node(());
         // and add a node to the graph and then associate it with the state_id
         let state_id = fuzzer_state.states.insert(
@@ -393,11 +448,11 @@ impl StateBuilder {
         for testcase_id in fuzzer_state.test_cases.keys() {
             let new_candidate_id = fuzzer_state
                 .state_candidates
-                .insert(State::<Candidate>::new());
+                .insert(StateType::<Candidate>::new());
             candidate_map.insert(testcase_id, new_candidate_id);
             debug!("Adding new state candidate for transition <{state_id:?}--{testcase_id:?}->{new_candidate_id:?}>")
         }
-        node_id
+        state_id
     }
 
     fn fix_closed_property(
@@ -415,7 +470,8 @@ impl StateBuilder {
                 .unwrap();
             let state_id = self.promote_to_final_state(fuzzer_state, candidate_id);
             let origin = fuzzer_state.states.get(origin_id).unwrap().node_id();
-            fuzzer_state.state_graph.add_edge(origin, state_id, ());
+            let candidate = fuzzer_state.states.get(state_id).unwrap().node_id();
+            fuzzer_state.state_graph.add_edge(origin, candidate, ());
         }
     }
 
@@ -456,7 +512,7 @@ impl StateBuilder {
             // since we can only decide to add the candidate once we observe that it is
             // explicitly not equal to all existing states.
             if matches!(
-                state.equal(candidate_state),
+                state.state.compare_observations(&candidate_state.state),
                 StateComparisonResult::Equal | StateComparisonResult::IncompleteObservations
             ) {
                 closed = true;
@@ -464,6 +520,23 @@ impl StateBuilder {
             }
         }
         !closed
+    }
+
+    fn dump_dot_file(
+        &self,
+        fuzzer_state: &mut FuzzerState,
+    ) {
+        fuzzer_state.last_dot_file_num += 1;
+        let mut states_dir = PathBuf::from(".output/states/");
+        create_dir_all(&states_dir).unwrap();
+        states_dir.push(fuzzer_state.last_dot_file_num.to_string());
+        let dot = Dot::with_config(&fuzzer_state.state_graph, &[Config::NodeIndexLabel, Config::EdgeIndexLabel]);
+        let mut file = File::options()
+            .write(true)
+            .create(true)
+            .open(states_dir)
+            .unwrap();
+        file.write_fmt(format_args!("{:?}", dot)).unwrap();
     }
 }
 
@@ -571,11 +644,12 @@ where
             }
         }
         self.state_builder.initialize_state_info(&mut self.state);
+        self.state_builder.dump_dot_file(&mut self.state);
     }
 
     fn create_component_marker_inputs(&mut self) {
         // TODO: Add an individual testcase for each listener socket as soon as we can identify the sockets.
-        if self.input_info.tcp.listeners.len() > 0 {
+        if !self.input_info.tcp.listeners.is_empty() {
             let mut input = Input::new();
             input.component_markers.push(ComponentMarker::NewTcpStream);
             let testcase = TestCase::new(input);
@@ -583,6 +657,7 @@ where
         }
     }
 
+    // TODO :Refactor this into the emulator such that we can just get it from there. No need to store externally.
     fn update_input_info(&mut self) {
         self.input_info.tcp.listeners.clear();
         self.input_info.tcp.streams_writable.clear();
@@ -606,54 +681,32 @@ where
     /// to enhance the state machine based on these conflicts.
     fn evaluate_state(&mut self) {
         self.update_input_info();
-        for testcase in self.state.test_cases.values_mut() {
-            let mut tcp = self.emulator.system().tcp().borrow_mut();
-            for marker in &testcase.input.component_markers {
-                if let ComponentMarker::NewTcpStream = marker {
-                    // TODO: How to decide which one of the listeners to use? The fuzzer most likely needs to factor
-                    //       in this knowledge into its fuzzing strategy, i.e. it needs to keep track of streams?
-                    //       For now we just pick the first one we find.
-                    let listener_id = *tcp
-                        .sockets()
-                        .find(|(_, sock)| sock.is_listener())
+
+        let state = {
+            let state_id = self.state.state_path.last().unwrap();
+            match state_id {
+                StateUnion::Final(state_id) => &mut self.state.states.get_mut(*state_id).unwrap().state,
+                StateUnion::Candidate(state_id) => {
+                    &mut self
+                        .state
+                        .state_candidates
+                        .get_mut(*state_id)
                         .unwrap()
-                        .0;
-                    tcp.new_connection(
-                        &listener_id,
-                        SocketAddress::IP(IPAddress::V6 {
-                            port: 1337,
-                            flowinfo: 0,
-                            addr: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-                            scope_id: 0,
-                        }),
-                    )
-                    .unwrap();
+                        .state
                 }
             }
-            // Apply all the inputs, skipping over empty streams
-            for (input_data_id, socket_id) in testcase
-                .input
-                .tcp_streams
-                .iter()
-                .zip(self.input_info.tcp.streams_writable.iter())
-            {
-                if let Some(data_id) = input_data_id {
-                    let data = self.state.input_data.get(*data_id).unwrap();
-                    let mut sock = tcp.socket_mut(*socket_id).unwrap();
-                    sock.push_data(&data.data).unwrap();
-                }
+        };
+
+        for suffix_id in &state.pending_observations {
+            let suffix = self.state.suffixes.get(*suffix_id).unwrap();
+            // Apply each testcase in the suffix to the target.
+            for testcase_id in suffix {
+                let testcase = self.state.test_cases.get_mut(*testcase_id).unwrap();
+                // TODO: We need to update the input info after each testcase application.
+                //       otherwise we cannot correctly apply the next testcase.
+                Self::apply_testcase(&mut self.emulator, &self.input_info, &self.state.input_data, testcase);
             }
-            drop(tcp);
-            // TODO: Wake up the correct tasks. Might make sense to put this feature into the fuzzer and that
-            // TODO: The system components register the wake up request in some list?
-            self.emulator
-                .system()
-                .task_manager()
-                .borrow_mut()
-                .tasks_mut()
-                .for_each(|task| task.wake_up());
-            let status = self.emulator.run(None, None).unwrap();
-            assert!(matches!(status, ExitStatus::Yielded));
+
             Self::gather_observations(&mut self.observers);
             if Self::reduce_is_interesting(&mut self.is_interesting_reducers) {
                 debug!("THIS INTERESTING!!");
@@ -661,12 +714,66 @@ where
             // TODO: Store state specific reducer states?
             Self::clear_observers(&mut self.observers);
             self.emulator.restore().unwrap();
-            testcase.executions += 1;
-            let node_index = self.state.state_path.last().unwrap();
-            let current_state = *self.state.states_map.get(node_index).unwrap();
-            let current_state = self.state.states.get_mut(current_state).unwrap();
-            current_state.executions += 1;
+            state.executions += 1;
         }
+    }
+
+    /// Runs the emulator with the provided testcase. The emulator will not perform any
+    /// snapshot or restore operations.
+    fn apply_testcase(
+        emulator: &mut EmulatorT,
+        input_info: &EmulatorInputInfo,
+        input_data_map: &InputDataMap,
+        testcase: &mut TestCase,
+    ) {
+        let mut tcp = emulator.system().tcp().borrow_mut();
+        for marker in &testcase.input.component_markers {
+            if let ComponentMarker::NewTcpStream = marker {
+                // TODO: How to decide which one of the listeners to use? The fuzzer most likely needs to factor
+                //       in this knowledge into its fuzzing strategy, i.e. it needs to keep track of streams?
+                //       For now we just pick the first one we find.
+                let listener_id = *tcp
+                    .sockets()
+                    .find(|(_, sock)| sock.is_listener())
+                    .unwrap()
+                    .0;
+                tcp.new_connection(
+                    &listener_id,
+                    SocketAddress::IP(IPAddress::V6 {
+                        port: 1337,
+                        flowinfo: 0,
+                        addr: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+                        scope_id: 0,
+                    }),
+                )
+                .unwrap();
+            }
+        }
+        // Apply all the inputs, skipping over empty streams
+        for (input_data_id, socket_id) in testcase
+            .input
+            .tcp_streams
+            .iter()
+            .zip(input_info.tcp.streams_writable.iter())
+        {
+            if let Some(data_id) = input_data_id {
+                let data = input_data_map.get(*data_id).unwrap();
+                let mut sock = tcp.socket_mut(*socket_id).unwrap();
+                sock.push_data(&data.data).unwrap();
+            }
+        }
+        drop(tcp);
+        // TODO: Wake up the correct tasks. Might make sense to put this feature into the fuzzer and that
+        // TODO: The system components register the wake up request in some list?
+        emulator
+            .system()
+            .task_manager()
+            .borrow_mut()
+            .tasks_mut()
+            .for_each(|task| task.wake_up());
+        let status = emulator.run(None, None).unwrap();
+        assert!(matches!(status, ExitStatus::Yielded));
+        testcase.executions += 1;
     }
 
     fn fuzz(&mut self) {
@@ -681,19 +788,19 @@ where
         debug!("Current fuzzer state: {:?}", self.state);
     }
 
-    fn clear_observers(observers: &mut Vec<Rc<RefCell<dyn DebuggableObserver>>>) {
+    fn clear_observers(observers: &mut [Rc<RefCell<dyn DebuggableObserver>>]) {
         for observer in observers.iter_mut() {
             observer.borrow_mut().clear();
         }
     }
 
-    fn gather_observations(observers: &mut Vec<Rc<RefCell<dyn DebuggableObserver>>>) {
+    fn gather_observations(observers: &mut [Rc<RefCell<dyn DebuggableObserver>>]) {
         for observer in observers.iter_mut() {
             observer.borrow_mut().gather();
         }
     }
 
-    fn reduce_is_interesting(reducers: &mut Vec<Rc<RefCell<dyn DebuggableReducer<Output = bool>>>>) -> bool {
+    fn reduce_is_interesting(reducers: &mut [Rc<RefCell<dyn DebuggableReducer<Output = bool>>>]) -> bool {
         reducers
             .iter_mut()
             .map(|r| r.borrow_mut().reduce().unwrap())
