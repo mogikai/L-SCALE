@@ -6,9 +6,18 @@ use fuzzyemu::emulator::interface::error::{
     SchedulerError,
     StopReason,
 };
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{
+    fmt,
+    EnvFilter,
+};
 
 pub fn setup_logging() {
-    let _ = pretty_env_logger::try_init();
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(EnvFilter::from_env("FUZE_LOG"))
+        .init();
 }
 
 #[derive(Debug)]

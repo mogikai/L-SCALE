@@ -17,11 +17,16 @@ use std::time::{
 };
 
 use clap::Parser;
-use log::debug;
 use rand::seq::SliceRandom;
+use tracing::debug;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{
+    fmt,
+    EnvFilter,
+};
 
 use fuzzyemu::emulator::abstractions::cpu::CPU;
-use fuzzyemu::emulator::abstractions::emulator::Scheduler;
 use fuzzyemu::emulator::abstractions::errors::GenericError;
 use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
@@ -32,8 +37,12 @@ use fuzzyemu::emulator::abstractions::network::{
     SocketAddress,
 };
 use fuzzyemu::emulator::abstractions::restore::Restorable;
-use fuzzyemu::emulator::interface::emulator::Emulator;
+use fuzzyemu::emulator::interface::emulator::{
+    Emulator,
+    ExitReason,
+};
 use fuzzyemu::emulator::interface::error::{
+    EmulatorError,
     SchedulerError,
     StopReason,
 };
@@ -74,7 +83,10 @@ struct Args {
 }
 
 fn main() -> Result<(), GenericError> {
-    pretty_env_logger::init();
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(EnvFilter::from_env("FUZE_LOG"))
+        .init();
     let mut blocks = HashMap::<(u64, u64, u64), u64>::new();
     let mut prev_block: u64 = 0;
     let mut prev_block2: u64 = 0;
@@ -132,7 +144,7 @@ fn main() -> Result<(), GenericError> {
         let start = Instant::now();
         let mut result = emulator.run(None, None);
         debug!("Emulation returned {result:?}");
-        if let Err(SchedulerError::Stopped(StopReason::Breakpoint)) = result {
+        if let Ok(ExitReason::Breakpoint) = result {
             debug!("Creating snapshot");
             emulator.snapshot()?;
             system.task_manager.borrow().tasks().try_for_each(|task| {

@@ -17,27 +17,28 @@ publish = false
 [dev-dependencies]
 rand = "0.8.5"
 mockall = "*"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 
 [dependencies]
 fuzzyemu-derive = { path = "../emulator-derive" }
-itertools = "0.11.0"
+itertools = "0.12.*"
 static_assertions = "1.*"
 unicorn-engine = { path = "../deps/unicorn" }
 byteorder = "1.*"
-num_enum = "0.7.1"
+num_enum = "0.7.*"
 goblin = "0.*"
-libc = "0.2.126"
-iced-x86 = "1.19.0"
+libc = "0.2.*"
+iced-x86 = "1.19.*"
 tracing = "*"
 bitflags = "2.*"
-enumset = "1.0.11"
-hexdump = "0.1.1"
+enumset = "1.1.*"
+hexdump = "0.1.*"
 thiserror = "1.*"
 generational-arena = "0.2.8"
-imbl = "2.0.3"
-derive_more = { version = "0.99.0", features = ["add"] }
-hex = "0.4.3"
-size_format = "1.0.2"
+imbl = "2.0.*"
+derive_more = { version = "0.99.*", features = ["add"] }
+hex = "0.4.*"
+size_format = "1.0.*"
 serde = { version = "1.0.189", features = ["derive"], optional = true }
 
 [features]

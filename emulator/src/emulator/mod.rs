@@ -9,11 +9,12 @@ use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::abstractions::system::SystemControl;
 use crate::emulator::interface::emulator::{
     Emulator,
-    ExitStatus,
+    ExitReason,
 };
 use crate::emulator::interface::error::{
     EmulatorError,
     SchedulerError,
+    StopReason,
 };
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::trace::trace_hook;
@@ -74,14 +75,21 @@ where
         &mut self,
         timeout: Option<Duration>,
         instruction_count: Option<usize>,
-    ) -> Result<ExitStatus, EmulatorError> {
+    ) -> Result<ExitReason, EmulatorError> {
         match self.scheduler.run(timeout, instruction_count) {
-            Ok(_) => Ok(ExitStatus::Stopped),
+            Ok(_) => Ok(ExitReason::Stopped),
             Err(e) => match e {
                 SchedulerError::Unknown => Err(EmulatorError::Unknown),
-                SchedulerError::Stopped(_) => Ok(ExitStatus::Stopped),
+                SchedulerError::Stopped(reason) => match reason {
+                    StopReason::Unknown => Ok(ExitReason::Stopped),
+                    StopReason::Killed(_) => todo!(),
+                    StopReason::MissingSyscall(_) => todo!(),
+                    StopReason::ProcessExit(_) => todo!(),
+                    StopReason::Yield(_) => Ok(ExitReason::Yielded),
+                    StopReason::Breakpoint => Ok(ExitReason::Breakpoint),
+                },
                 SchedulerError::CPUError(e) => Err(EmulatorError::from(e)),
-                SchedulerError::NoRunnableTasks => Ok(ExitStatus::Yielded),
+                SchedulerError::NoRunnableTasks => Ok(ExitReason::Yielded),
             },
         }
     }

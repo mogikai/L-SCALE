@@ -8,11 +8,12 @@ use crate::emulator::interface::error::{
 };
 
 #[derive(Debug)]
-pub enum ExitStatus {
+pub enum ExitReason {
     /// There are no more tasks that could be resumed (all processes exited)
     Stopped,
     /// All processes are in a blocked state and waiting for I/O
     Yielded,
+    Breakpoint,
 }
 
 pub trait Emulator: Restorable {
@@ -23,7 +24,7 @@ pub trait Emulator: Restorable {
         &mut self,
         timeout: Option<Duration>,
         instruction_count: Option<usize>,
-    ) -> Result<ExitStatus, EmulatorError>;
+    ) -> Result<ExitReason, EmulatorError>;
 
     /// Gives a reference to the system control pointers.
     /// The pointer collection can be cloned if needed.

@@ -61,7 +61,7 @@ use fuzzyemu::emulator::abstractions::network::{
 use fuzzyemu::emulator::abstractions::system::SystemControl;
 use fuzzyemu::emulator::interface::emulator::{
     Emulator,
-    ExitStatus,
+    ExitReason,
 };
 use fuzzyemu::emulator::interface::network::tcp::{
     TCPSocket,
@@ -682,7 +682,7 @@ where
         // We make a snapshot now, so that we can reset to the first input request.
         self.emulator.snapshot().unwrap();
         // Reduce once, so that any state of the reducers can be filled with the initial observations.
-        assert!(matches!(res, ExitStatus::Yielded));
+        assert!(matches!(res, ExitReason::Yielded));
         Self::gather_observations(&mut self.observers);
         Self::reduce_is_interesting(&mut self.is_interesting_reducers);
         Self::clear_observers(&mut self.observers);
@@ -905,7 +905,7 @@ where
             .tasks_mut()
             .for_each(|task| task.wake_up());
         let status = emulator.run(None, None).unwrap();
-        assert!(matches!(status, ExitStatus::Yielded));
+        assert!(matches!(status, ExitReason::Yielded));
         testcase.executions += 1;
     }
 
