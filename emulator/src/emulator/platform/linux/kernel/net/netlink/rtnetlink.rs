@@ -2,24 +2,52 @@ use std::collections::VecDeque;
 use std::marker::PhantomData;
 
 use bitflags::__private::PublicFlags;
-use bitflags::{bitflags, Flags};
+use bitflags::{
+    bitflags,
+    Flags,
+};
 use byteorder::ByteOrder;
-use num_enum::{FromPrimitive, IntoPrimitive};
+use num_enum::{
+    FromPrimitive,
+    IntoPrimitive,
+};
+use tracing::debug;
 
-use fuzzyemu_derive::{Decode, Encode, RequiredMem};
+use fuzzyemu_derive::{
+    Decode,
+    Encode,
+    RequiredMem,
+};
 
-use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
-use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, Encoder, RequiredMem};
+use crate::emulator::abstractions::file_descriptors::{
+    FileDescriptorError,
+    FileDescriptorOps,
+    FileOperationsReady,
+};
+use crate::emulator::abstractions::mmu::encoding::{
+    Decode,
+    Encode,
+    Encoder,
+    RequiredMem,
+};
 use crate::emulator::abstractions::mmu::MemoryError;
-use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::netlink::rtnetlink::nla_type::{
-    IFA_ADDRESS, IFA_BROADCAST, IFA_FLAGS, IFA_LABEL, IFA_LOCAL,
+    IFA_ADDRESS,
+    IFA_BROADCAST,
+    IFA_FLAGS,
+    IFA_LABEL,
+    IFA_LOCAL,
 };
-use crate::emulator::platform::linux::kernel::net::netlink::{nlmsghdr, NetlinkMessageFlags};
-use crate::emulator::platform::linux::kernel::net::Sockaddr;
-use crate::emulator::platform::linux::kernel::net::SocketDomain::{AF_INET, AF_INET6};
+use crate::emulator::platform::linux::kernel::net::netlink::{
+    nlmsghdr,
+    NetlinkMessageFlags,
+};
+use crate::emulator::platform::linux::kernel::net::SocketDomain::{
+    AF_INET,
+    AF_INET6,
+};
 use crate::emulator::system::fd_map::FileDescriptor;
 
 #[derive(Debug, Default)]

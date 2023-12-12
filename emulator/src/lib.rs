@@ -20,9 +20,6 @@
 #![deny(rust_2021_compatibility)]
 // #![warn(missing_docs)]
 
-#[macro_use]
-extern crate log;
-
 pub use byteorder::{
     BigEndian,
     ByteOrder,

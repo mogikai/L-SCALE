@@ -7,8 +7,8 @@ edition = "2021"
 
 [dependencies]
 fuzzyemu = { path = "../emulator", features = ["serde"] }
-pretty_env_logger = "*"
-log = "*"
+tracing = "*"
+tracing-subscriber = { version = "*", features = ["env-filter"] }
 clap = { version = "4.4.3", features = ["derive"] }
 hex = { version = "0.4.3", features = [] }
 rand = "*"

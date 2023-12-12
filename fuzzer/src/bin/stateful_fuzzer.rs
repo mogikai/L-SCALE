@@ -8,8 +8,13 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use clap::Parser;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{
+    fmt,
+    EnvFilter,
+};
 
-use fuzzyemu::emulator::abstractions::system::SystemControl;
 use fuzzyemu::emulator::interface::emulator::Emulator;
 use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
 use fuzzyemu::emulator::platform::linux::scheduler::LinuxX86Scheduler;
@@ -22,7 +27,6 @@ use fuzzyemu::emulator::system::task_manager::TaskManager;
 use fuzzyemu::emulator::system::System;
 use fuzzyemu::emulator::GenericEmulator;
 use fuzzyemu::LittleEndian;
-use fuzzyfuzz::core::fuzzer;
 use fuzzyfuzz::core::fuzzer::Fuzzer;
 use fuzzyfuzz::io::tcp::TCP;
 
@@ -46,7 +50,10 @@ struct Args {
 }
 
 fn main() {
-    pretty_env_logger::init();
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(EnvFilter::from_env("FUZE_LOG"))
+        .init();
     let fuzzer_args = Args::parse();
     let cpu = UCWrapper::new();
     let task_manager = TaskManager::new();

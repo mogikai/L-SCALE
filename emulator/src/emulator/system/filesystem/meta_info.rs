@@ -1,12 +1,34 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::path::{Path, PathBuf};
+use std::collections::{
+    BTreeMap,
+    BTreeSet,
+    HashMap,
+};
+use std::path::{
+    Path,
+    PathBuf,
+};
+use tracing::trace;
 
 use crate::emulator::system::filesystem::block::Block;
-use crate::emulator::system::filesystem::stat::{Stat, S_IFDIR, S_IFLNK, S_IFREG};
-use crate::emulator::system::filesystem::{ContentId, FSEntryId, FSError, SnapId};
+use crate::emulator::system::filesystem::stat::{
+    Stat,
+    S_IFDIR,
+    S_IFLNK,
+    S_IFREG,
+};
+use crate::emulator::system::filesystem::{
+    ContentId,
+    FSEntryId,
+    FSError,
+    SnapId,
+};
 
-use self::FSEntryContent::{Dir, File, Symlink};
+use self::FSEntryContent::{
+    Dir,
+    File,
+    Symlink,
+};
 
 #[derive(Debug)]
 pub struct MetaInfo {

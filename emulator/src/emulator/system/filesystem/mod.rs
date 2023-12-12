@@ -5,18 +5,38 @@
 //! TODO: Consider memory mapping of files into ram
 use std::cmp::min;
 use std::fs::read;
-use std::path::{Path, PathBuf};
-use std::{fs, io};
+use std::path::{
+    Path,
+    PathBuf,
+};
+use std::{
+    fs,
+    io,
+};
 
 use byteorder::ByteOrder;
+use tracing::{
+    debug,
+    info,
+    trace,
+};
 
-use data::{Data, DataSnapMarker};
-use meta_info::{MetaInfo, MetaInfoSnapMarker};
+use data::{
+    Data,
+    DataSnapMarker,
+};
+use meta_info::{
+    MetaInfo,
+    MetaInfoSnapMarker,
+};
 pub use stat::Stat;
 
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::restore::Restorable;
-use crate::emulator::system::filesystem::meta_info::FSEntryContent::{File, Symlink};
+use crate::emulator::system::filesystem::meta_info::FSEntryContent::{
+    File,
+    Symlink,
+};
 
 mod block;
 mod data;

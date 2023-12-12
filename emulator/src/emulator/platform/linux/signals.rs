@@ -1,6 +1,10 @@
 use std::fmt::Debug;
 
 use enumset::EnumSetType;
+use tracing::{
+    debug,
+    error,
+};
 
 use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::platform::linux::fd::FD;

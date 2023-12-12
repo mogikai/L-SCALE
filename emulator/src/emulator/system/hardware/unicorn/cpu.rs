@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
+use tracing::trace;
 
 use unicorn_engine::unicorn_const::uc_error;
 use unicorn_engine::RegisterX86;

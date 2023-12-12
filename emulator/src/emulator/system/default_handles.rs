@@ -1,7 +1,15 @@
-use std::cell::{Ref, RefCell};
+use std::cell::{
+    Ref,
+    RefCell,
+};
 use std::cmp::min;
+use tracing::error;
 
-use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
+use crate::emulator::abstractions::file_descriptors::{
+    FileDescriptorError,
+    FileDescriptorOps,
+    FileOperationsReady,
+};
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::platform::linux::fd::FileDescriptorData;

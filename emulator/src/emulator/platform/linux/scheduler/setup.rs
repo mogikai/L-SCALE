@@ -1,4 +1,8 @@
 use super::*;
+use tracing::{
+    debug,
+    trace,
+};
 
 impl<'a, CpuT, TcpT, Endianness> LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where

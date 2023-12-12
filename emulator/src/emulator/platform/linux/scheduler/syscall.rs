@@ -2,6 +2,11 @@ use byteorder::ByteOrder;
 use goblin::container::Endian;
 use num_enum::FromPrimitive;
 use std::rc::Rc;
+use tracing::{
+    error,
+    instrument,
+    trace,
+};
 
 use crate::emulator::abstractions::cpu::{
     RegisterX86,
@@ -235,16 +240,16 @@ pub(super) fn syscall<Endianness, CpuT, TcpT>(
     let rax = match result {
         Ok(rax) => {
             debug_str = format!("SYSCALL: {:?} {} -> 0x{:X}", syscall, debug_str, rax);
-            debug!("{debug_str}");
+            trace!("{debug_str}");
             Some(rax)
         }
         Err(SyscallError::KernelError(e)) => {
             debug_str = format!("SYSCALL: {:?} {} -> 0x{:X} ({})", syscall, debug_str, u64::from(e), e);
-            debug!("{debug_str}");
+            trace!("{debug_str}");
             Some(e.into())
         }
         Err(SyscallError::Yield) => {
-            debug!("Syscall is yielding to scheduler");
+            trace!("Syscall is yielding to scheduler");
             let rip = system
                 .cpu
                 .borrow_mut()

@@ -1,8 +1,17 @@
+use tracing::trace;
 use unicorn_engine::unicorn_const as uc_const;
-use unicorn_engine::unicorn_const::{uc_error, MemType};
+use unicorn_engine::unicorn_const::{
+    uc_error,
+    MemType,
+};
 
 use crate::emulator::abstractions::cpu::address::EPAddr;
-use crate::emulator::abstractions::mmu::{MemoryAction, MemoryError, Permission, MMU};
+use crate::emulator::abstractions::mmu::{
+    MemoryAction,
+    MemoryError,
+    Permission,
+    MMU,
+};
 use crate::emulator::system::hardware::unicorn::UCWrapper;
 
 impl MMU for UCWrapper<'_> {

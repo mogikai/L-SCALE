@@ -6,23 +6,53 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::iter::once;
 use std::marker::PhantomData;
-use std::ops::{Add, BitAnd, Not, Range};
+use std::ops::{
+    Add,
+    BitAnd,
+    Not,
+    Range,
+};
 
 use bitflags::Flags;
 use byteorder::ByteOrder;
-use generational_arena::{Arena, Index};
-use imbl::{HashMap, OrdSet};
+use generational_arena::{
+    Arena,
+    Index,
+};
+use imbl::{
+    HashMap,
+    OrdSet,
+};
+use tracing::{
+    debug,
+    instrument,
+};
 
 pub use accessor::MemoryAccessor;
 use layout::Layout;
 
-use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
-use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU, MREMAP_FLAGS};
+use crate::emulator::abstractions::cpu::address::{
+    EPAddr,
+    EVAddr,
+};
+use crate::emulator::abstractions::mmu::{
+    MemoryError,
+    Permission,
+    MMU,
+    MREMAP_FLAGS,
+};
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
-use crate::emulator::platform::linux::fd::{FileDescriptorData, FD};
+use crate::emulator::platform::linux::fd::{
+    FileDescriptorData,
+    FD,
+};
 // TODO: Make TaskId generic
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
-use crate::emulator::system::fd_map::{FileDescriptor, FileDescriptorMap, InternalFD};
+use crate::emulator::system::fd_map::{
+    FileDescriptor,
+    FileDescriptorMap,
+    InternalFD,
+};
 use crate::emulator::system::memory::helpers::is4kaligned;
 use crate::emulator::system::memory::pregion::PhysicalRegion;
 use crate::emulator::system::memory::rw_interface::DirectMemoryWrite;
@@ -279,6 +309,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
 
         Ok(())
     }
+
     fn increase_heap(
         &mut self,
         task_id: TaskId,

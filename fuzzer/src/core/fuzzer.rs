@@ -22,7 +22,6 @@ use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
 
-use log::debug;
 use petgraph::dot::{
     Config,
     Dot,
@@ -40,6 +39,7 @@ use slotmap::{
     SecondaryMap,
     SlotMap,
 };
+use tracing::debug;
 
 use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
 use fuzzyemu::emulator::abstractions::network::{
@@ -621,7 +621,7 @@ where
         Self::gather_observations(&mut self.observers);
         Self::reduce_is_interesting(&mut self.is_interesting_reducers);
         Self::clear_observers(&mut self.observers);
-        self.update_input_info();
+        Self::update_input_info(&self.emulator, &mut self.input_info);
         self.load_initial_state();
         self.evaluate_state();
     }
@@ -658,19 +658,21 @@ where
     }
 
     // TODO :Refactor this into the emulator such that we can just get it from there. No need to store externally.
-    fn update_input_info(&mut self) {
-        self.input_info.tcp.listeners.clear();
-        self.input_info.tcp.streams_writable.clear();
-        for (&sock_id, sock) in self.emulator.system().tcp().borrow().sockets() {
-            debug!("{:?}", sock.interest());
+    fn update_input_info(
+        emulator: &EmulatorT,
+        input_info: &mut EmulatorInputInfo,
+    ) {
+        input_info.tcp.listeners.clear();
+        input_info.tcp.streams_writable.clear();
+        for (&sock_id, sock) in emulator.system().tcp().borrow().sockets() {
             if sock
                 .interest()
                 .intersects(FileOperationsReady::Read | FileOperationsReady::ReadNormal)
             {
                 if sock.is_listener() {
-                    self.input_info.tcp.listeners.push(sock_id);
+                    input_info.tcp.listeners.push(sock_id);
                 } else {
-                    self.input_info.tcp.streams_writable.push(sock_id);
+                    input_info.tcp.streams_writable.push(sock_id);
                 }
             }
         }
@@ -680,8 +682,6 @@ where
     /// There might occur state conflicts. These will be saved and can later be used
     /// to enhance the state machine based on these conflicts.
     fn evaluate_state(&mut self) {
-        self.update_input_info();
-
         let state = {
             let state_id = self.state.state_path.last().unwrap();
             match state_id {
@@ -704,7 +704,7 @@ where
                 let testcase = self.state.test_cases.get_mut(*testcase_id).unwrap();
                 // TODO: We need to update the input info after each testcase application.
                 //       otherwise we cannot correctly apply the next testcase.
-                Self::apply_testcase(&mut self.emulator, &self.input_info, &self.state.input_data, testcase);
+                Self::apply_testcase(&mut self.emulator, &mut self.input_info, &self.state.input_data, testcase);
             }
 
             Self::gather_observations(&mut self.observers);
@@ -722,10 +722,11 @@ where
     /// snapshot or restore operations.
     fn apply_testcase(
         emulator: &mut EmulatorT,
-        input_info: &EmulatorInputInfo,
+        input_info: &mut EmulatorInputInfo,
         input_data_map: &InputDataMap,
         testcase: &mut TestCase,
     ) {
+        Self::update_input_info(emulator, input_info);
         let mut tcp = emulator.system().tcp().borrow_mut();
         for marker in &testcase.input.component_markers {
             if let ComponentMarker::NewTcpStream = marker {

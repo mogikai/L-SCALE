@@ -4,8 +4,14 @@ use bitflags::bitflags;
 use byteorder::ByteOrder;
 use thiserror::Error;
 
-use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
-use crate::emulator::abstractions::mmu::encoding::{Decode, Encode};
+use crate::emulator::abstractions::cpu::address::{
+    EPAddr,
+    EVAddr,
+};
+use crate::emulator::abstractions::mmu::encoding::{
+    Decode,
+    Encode,
+};
 
 pub mod encoding;
 
@@ -101,6 +107,7 @@ pub struct Permission : u32 {
 
 bitflags! {
     #[allow(non_camel_case_types)]
+    #[derive(Debug)]
     pub struct
     MREMAP_FLAGS: u64 {
         const MREMAP_MAYMOVE = 1;

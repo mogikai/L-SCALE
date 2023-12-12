@@ -16,6 +16,12 @@ use goblin::elf::{
     Elf,
 };
 use num_enum::FromPrimitive;
+use tracing::{
+    error,
+    info,
+    trace,
+    warn,
+};
 
 use error::SyscallError;
 use fuzzyemu_derive::{
@@ -34,6 +40,7 @@ use crate::emulator::abstractions::cpu::{
 };
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
+use crate::emulator::abstractions::kernel_task::KernelTask;
 use crate::emulator::abstractions::mmu::encoding::{
     Decode,
     Encode,
@@ -43,6 +50,7 @@ use crate::emulator::abstractions::mmu::{
     Permission,
     MMU,
 };
+use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::macros::push_stack;
 use crate::emulator::platform::linux::architecture::Architecture;
@@ -91,8 +99,6 @@ macro_rules! sys_component_mut {
     };
 }
 
-use crate::emulator::abstractions::kernel_task::KernelTask;
-use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 pub(super) use {
     sys_component,
     sys_component_mut,

@@ -1,25 +1,51 @@
 use std::cmp::min;
 
 use byteorder::ByteOrder;
+use tracing::debug;
 
-use fuzzyemu_derive::{Decode, Encode, RequiredMem};
+use fuzzyemu_derive::{
+    Decode,
+    Encode,
+    RequiredMem,
+};
 
-use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
+use crate::emulator::abstractions::cpu::address::{
+    EVAddr,
+    EVA_NULL,
+};
 use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
-use crate::emulator::abstractions::mmu::encoding::{Decode, RequiredMem};
+use crate::emulator::abstractions::mmu::encoding::{
+    Decode,
+    RequiredMem,
+};
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::FD;
 use crate::emulator::platform::linux::kernel::net::unix::UnixSocketOps;
-use crate::emulator::platform::linux::kernel::net::{inet6, netlink, Sockaddr, SocketDomain, SocketFlags, SocketType};
+use crate::emulator::platform::linux::kernel::net::{
+    inet6,
+    netlink,
+    Sockaddr,
+    SocketDomain,
+    SocketFlags,
+    SocketType,
+};
 use crate::emulator::platform::linux::kernel::{
-    sys_component, sys_component_mut, LinuxKernelError, LinuxKernelTask, SyscallResult,
+    sys_component,
+    sys_component_mut,
+    LinuxKernelError,
+    LinuxKernelTask,
+    SyscallResult,
 };
 use crate::emulator::system::fd_map::FileDescriptor;
-use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryRead, MemoryWrite};
+use crate::emulator::system::memory::rw_interface::{
+    DirectMemoryWrite,
+    MemoryRead,
+    MemoryWrite,
+};
 
 impl<Endianness, Arch, CpuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
 where
