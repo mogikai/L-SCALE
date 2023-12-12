@@ -1,0 +1,42 @@
+use crate::api::error::FuzzerError;
+use crate::api::observer::HasObservation;
+use crate::api::reducer::Reducer;
+use crate::core::fuzzer::SuffixBehavior;
+use crate::observers::emulator::edge::EdgeObserver;
+use std::cell::RefCell;
+use std::fmt::Debug;
+use std::hash::{
+    DefaultHasher,
+    Hash,
+    Hasher,
+};
+use std::rc::Rc;
+
+/// This reducer reduces an edge observation to a testcase behavior. In the future it might be necessary
+/// to split this up into a `TestCaseEdgeBehavior` that is then consumed by a `TestCaseBehaviorReducer`
+/// that consumes multiple different TestCaseXBehaviors
+#[derive(Debug, Default)]
+pub struct EdgeBehaviorReducer {
+    observer: Rc<RefCell<EdgeObserver>>,
+}
+
+impl EdgeBehaviorReducer {
+    pub fn new(observer: Rc<RefCell<EdgeObserver>>) -> Self {
+        Self {
+            observer,
+            ..Default::default()
+        }
+    }
+}
+
+impl Reducer for EdgeBehaviorReducer {
+    type Output = SuffixBehavior;
+
+    fn reduce(&mut self) -> Result<Self::Output, FuzzerError> {
+        let observer = self.observer.borrow();
+        let current_edge_counts = observer.observation();
+        let mut hasher = DefaultHasher::new();
+        current_edge_counts.hash(&mut hasher);
+        Ok(SuffixBehavior::new(hasher.finish()))
+    }
+}

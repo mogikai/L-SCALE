@@ -1,3 +1,5 @@
+pub mod behavior;
+
 use crate::api::error::FuzzerError;
 use crate::api::observer::HasObservation;
 use crate::api::reducer::Reducer;

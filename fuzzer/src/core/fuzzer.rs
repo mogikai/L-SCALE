@@ -1,5 +1,8 @@
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{
+    BTreeMap,
+    HashSet,
+};
 use std::fmt::Debug;
 use std::fs;
 use std::fs::{
@@ -12,6 +15,8 @@ use std::hash::{
 };
 use std::io::Write;
 use std::marker::PhantomData;
+use std::mem::replace;
+use std::ops::Not;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{
@@ -39,7 +44,10 @@ use slotmap::{
     SecondaryMap,
     SlotMap,
 };
-use tracing::debug;
+use tracing::{
+    debug,
+    trace,
+};
 
 use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
 use fuzzyemu::emulator::abstractions::network::{
@@ -60,6 +68,7 @@ use fuzzyemu::emulator::interface::network::tcp::{
 use crate::api::observer::Observer;
 use crate::api::reducer::Reducer;
 use crate::observers::emulator::edge::EdgeObserver;
+use crate::reducers::edge::behavior::EdgeBehaviorReducer;
 use crate::reducers::edge::InterestingEdgesReducer;
 
 /// Testcases have an associated input and some metadata.
@@ -128,19 +137,20 @@ new_key_type! { struct InputDataId; }
 /// The behavior of a testcase in a specific state.
 /// The behavior for now is just a hash of the edge
 /// observation for the testcase in the associated state
-#[derive(Debug, Default, Serialize, Deserialize)]
-struct TestCaseBehavior {
-    /// The path on which this behavior was observed.
-    /// If we find a new path to the same state (and correspondingly
-    /// this testcases behavior), and observe a different behavior,
-    /// then we need to create a new state for the testcase.
-    discovery_path: Vec<NodeIndex>,
-    edge_map_hash: usize,
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SuffixBehavior {
+    edge_map_hash: u64,
 }
 
-impl Eq for TestCaseBehavior {}
+impl SuffixBehavior {
+    pub fn new(edge_map_hash: u64) -> Self {
+        Self { edge_map_hash }
+    }
+}
 
-impl PartialEq for TestCaseBehavior {
+impl Eq for SuffixBehavior {}
+
+impl PartialEq for SuffixBehavior {
     fn eq(
         &self,
         other: &Self,
@@ -152,7 +162,7 @@ impl PartialEq for TestCaseBehavior {
 #[derive(Debug, Serialize, Deserialize)]
 struct StateType<Type> {
     state: State,
-    _phantom: PhantomData<Type>,
+    r#type: Type,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -163,13 +173,29 @@ struct State {
     /// How often the target was executed in this state.
     executions: usize,
     /// Describes the behavior of all test case suffixes in this specific state
-    suffix_behaviors: SecondaryMap<SuffixId, TestCaseBehavior>,
+    suffix_behaviors: SecondaryMap<SuffixId, SuffixBehavior>,
     pending_observations: Vec<SuffixId>,
 }
 
-#[derive(Debug)]
-struct Candidate;
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
+struct Candidate {
+    origin_state_id: StateId,
+    transition_testcase: TestCaseId,
+}
+
+impl Candidate {
+    pub fn new(
+        origin_state_id: StateId,
+        transition_testcase: TestCaseId,
+    ) -> Self {
+        Self {
+            origin_state_id,
+            transition_testcase,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct Final;
 
 enum StateComparisonResult {
@@ -179,7 +205,10 @@ enum StateComparisonResult {
 }
 
 impl StateType<Candidate> {
-    pub fn new() -> Self {
+    pub fn new(
+        origin_state_id: StateId,
+        transition_testcase: TestCaseId,
+    ) -> Self {
         Self {
             state: State {
                 node_id: None,
@@ -188,11 +217,15 @@ impl StateType<Candidate> {
                 suffix_behaviors: Default::default(),
                 pending_observations: Default::default(),
             },
-            _phantom: Default::default(),
+            r#type: Candidate::new(origin_state_id, transition_testcase),
         }
     }
 
-    pub fn new_with_label(label: String) -> Self {
+    pub fn new_with_label(
+        label: String,
+        origin_state_id: StateId,
+        transition_testcase: TestCaseId,
+    ) -> Self {
         Self {
             state: State {
                 node_id: None,
@@ -201,8 +234,16 @@ impl StateType<Candidate> {
                 suffix_behaviors: Default::default(),
                 pending_observations: Default::default(),
             },
-            _phantom: Default::default(),
+            r#type: Candidate::new(origin_state_id, transition_testcase),
         }
+    }
+
+    pub fn origin(&self) -> StateId {
+        self.r#type.origin_state_id
+    }
+
+    pub fn reached_by(&self) -> TestCaseId {
+        self.r#type.transition_testcase
     }
 
     pub fn into_final(
@@ -214,7 +255,7 @@ impl StateType<Candidate> {
                 node_id: Some(node_id),
                 ..self.state
             },
-            _phantom: Default::default(),
+            r#type: Final,
         }
     }
 }
@@ -229,7 +270,7 @@ impl StateType<Final> {
                 suffix_behaviors: Default::default(),
                 pending_observations: Default::default(),
             },
-            _phantom: Default::default(),
+            r#type: Final,
         }
     }
 
@@ -245,7 +286,7 @@ impl StateType<Final> {
                 suffix_behaviors: Default::default(),
                 pending_observations: Default::default(),
             },
-            _phantom: Default::default(),
+            r#type: Final,
         }
     }
 
@@ -288,6 +329,19 @@ impl State {
         result
     }
 
+    fn add_suffix_behavior(
+        &mut self,
+        suffix_id: SuffixId,
+        behavior: SuffixBehavior,
+    ) {
+        trace!("Adding new behavior {behavior:?} for suffix {suffix_id:?}");
+        self.suffix_behaviors.insert(suffix_id, behavior);
+    }
+
+    fn take_pending_observations(&mut self) -> Vec<SuffixId> {
+        replace(&mut self.pending_observations, vec![])
+    }
+
     fn label(&self) -> &str {
         match &self.label {
             None => "",
@@ -300,7 +354,7 @@ new_key_type! { struct StateId; }
 new_key_type! { struct StateCandidateId; }
 new_key_type! { struct SuffixId; }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 enum StateUnion {
     Final(StateId),
     Candidate(StateCandidateId),
@@ -324,7 +378,7 @@ pub struct FuzzerState {
     /// states that could be reached by applying the testcase to this existing state.
     /// If any of these candidate states differ from all existing states in their behavior mapping, then it
     /// will need to be added to the state set.
-    state_candidate_map: SecondaryMap<StateId, SecondaryMap<TestCaseId, StateCandidateId>>,
+    state_candidate_map: SecondaryMap<StateId, HashSet<StateCandidateId>>,
     /// A map of various input data blobs that are used by inputs. Multiple inputs may
     /// refer to the same input data blob.
     input_data: InputDataMap,
@@ -363,7 +417,8 @@ impl StateBuilder {
         &self,
         fuzzer_state: &mut FuzzerState,
     ) {
-        let mut state = StateType::<Candidate>::new_with_label("Initial".to_string());
+        let mut state =
+            StateType::<Candidate>::new_with_label("Initial".to_string(), StateId::default(), TestCaseId::default());
         // Insert each testcase as suffix and push them into the pending observations for the initial state.
         fuzzer_state
             .test_cases
@@ -375,13 +430,6 @@ impl StateBuilder {
         debug!("Added initial state");
         let state_id = self.promote_to_final_state(fuzzer_state, state_id);
         fuzzer_state.state_path.push(StateUnion::Final(state_id));
-    }
-
-    fn add_behavior_to_current_state(
-        &self,
-        fuzzer_state: &mut FuzzerState,
-        behavior: TestCaseBehavior,
-    ) {
     }
 
     fn shortest_path_from_initial(
@@ -409,19 +457,30 @@ impl StateBuilder {
         fuzzer_state: &mut FuzzerState,
         test_case: TestCase,
     ) {
+        let StateUnion::Final(current_state_id) = self.current_state_id(fuzzer_state) else {
+            panic!("Can only add new testcases when  in a final state");
+        };
         let test_case_id = fuzzer_state.test_cases.insert(test_case);
         for &state in fuzzer_state.states_map.values() {
             // Add a new candidate state
             let state_candidate_id = fuzzer_state
                 .state_candidates
-                .insert(StateType::<Candidate>::new());
+                .insert(StateType::<Candidate>::new(current_state_id, test_case_id));
             // and insert it into the candidate set for state `state`.
             fuzzer_state
                 .state_candidate_map
                 .get_mut(state)
                 .unwrap()
-                .insert(test_case_id, state_candidate_id);
+                .insert(state_candidate_id);
         }
+    }
+
+    ///
+    fn current_state_id(
+        &self,
+        fuzzer_state: &FuzzerState,
+    ) -> StateUnion {
+        *fuzzer_state.state_path.last().unwrap()
     }
 
     fn promote_to_final_state(
@@ -429,30 +488,67 @@ impl StateBuilder {
         fuzzer_state: &mut FuzzerState,
         candidate_id: StateCandidateId,
     ) -> StateId {
-        let node_id = fuzzer_state.state_graph.add_node(());
+        let state_candidate = fuzzer_state.state_candidates.remove(candidate_id).unwrap();
+        let origin_id = state_candidate.origin();
+        // Remove the candidate form the origins candidate set
+        if let Some(candidates) = fuzzer_state.state_candidate_map.get_mut(origin_id) {
+            let removed = candidates.remove(&candidate_id);
+            debug_assert!(removed);
+        }
+
         // and add a node to the graph and then associate it with the state_id
-        let state_id = fuzzer_state.states.insert(
-            fuzzer_state
-                .state_candidates
-                .remove(candidate_id)
-                .unwrap()
-                .into_final(node_id),
-        );
-        debug!("Promoting state candidate {candidate_id:?} to final state {state_id:?}");
+        let node_id = fuzzer_state.state_graph.add_node(());
+        let state_id = fuzzer_state
+            .states
+            .insert(state_candidate.into_final(node_id));
         fuzzer_state.states_map.insert(node_id, state_id);
+        debug!("Promoting state candidate {candidate_id:?} to final state {state_id:?}");
+
+        // If this is the initial state we won't find any origin state.
+        let origin_state = fuzzer_state.states.get(origin_id);
+        if let Some(origin_state) = origin_state {
+            // Add corresponding edge to graph
+            fuzzer_state
+                .state_graph
+                .add_edge(origin_state.node_id(), node_id, ());
+        }
+
+        // Insert new candidates for each testcase for the new state
         let old = fuzzer_state
             .state_candidate_map
             .insert(state_id, Default::default());
         debug_assert!(old.is_none());
         let candidate_map = fuzzer_state.state_candidate_map.get_mut(state_id).unwrap();
         for testcase_id in fuzzer_state.test_cases.keys() {
-            let new_candidate_id = fuzzer_state
-                .state_candidates
-                .insert(StateType::<Candidate>::new());
-            candidate_map.insert(testcase_id, new_candidate_id);
+            let mut candidate = StateType::<Candidate>::new(state_id, testcase_id);
+            // Add the existing suffixes to the pending observation list such that we can perform them later
+            candidate
+                .state
+                .pending_observations
+                .extend(fuzzer_state.suffixes.keys());
+            let new_candidate_id = fuzzer_state.state_candidates.insert(candidate);
+            candidate_map.insert(new_candidate_id);
             debug!("Adding new state candidate for transition <{state_id:?}--{testcase_id:?}->{new_candidate_id:?}>")
         }
         state_id
+    }
+
+    fn find_states_with_missing_observations(
+        &self,
+        fuzzer_state: &FuzzerState,
+    ) -> (Vec<StateId>, HashSet<StateCandidateId>) {
+        (
+            fuzzer_state
+                .states
+                .iter()
+                .filter_map(|(k, v)| v.state.pending_observations.is_empty().not().then_some(k))
+                .collect(),
+            fuzzer_state
+                .state_candidates
+                .iter()
+                .filter_map(|(k, v)| v.state.pending_observations.is_empty().not().then_some(k))
+                .collect(),
+        )
     }
 
     fn fix_closed_property(
@@ -460,36 +556,27 @@ impl StateBuilder {
         fuzzer_state: &mut FuzzerState,
     ) {
         // As long as we can find violations we need to fix them.
-        while let Some((origin_id, test_case_id)) = self.find_closed_property_violation(fuzzer_state) {
-            // Remove from candidates
-            let candidate_id = fuzzer_state
-                .state_candidate_map
-                .get_mut(origin_id)
-                .unwrap()
-                .remove(test_case_id)
-                .unwrap();
-            let state_id = self.promote_to_final_state(fuzzer_state, candidate_id);
-            let origin = fuzzer_state.states.get(origin_id).unwrap().node_id();
-            let candidate = fuzzer_state.states.get(state_id).unwrap().node_id();
-            fuzzer_state.state_graph.add_edge(origin, candidate, ());
+        while let Some(state_candidate_id) = self.find_closed_property_violation(fuzzer_state) {
+            trace!("Found closed property violation for state candidate {state_candidate_id:?}");
+            self.promote_to_final_state(fuzzer_state, state_candidate_id);
         }
     }
 
     /// Checks the current candidates against the existing states to find possible closed property
-    /// violations. If a candidate is found that violates the closed property, the origin state
-    /// and the test_cased_id to reach the candidate are returned.
+    /// violations. If a candidate is found that violates the closed property, its state candidate id
+    /// is returned.
     /// If no violation was found, None is returned.
     /// Runtime: O(n * m) where n = #States and m = #Candidates
     fn find_closed_property_violation(
         &self,
         fuzzer_state: &FuzzerState,
-    ) -> Option<(StateId, TestCaseId)> {
-        for (origin_node, candidates) in &fuzzer_state.state_candidate_map {
-            for (test_case_id, &candidate) in candidates {
-                if self.candidate_violates_closed_property(fuzzer_state, candidate) {
+    ) -> Option<StateCandidateId> {
+        for candidates in fuzzer_state.state_candidate_map.values() {
+            for &candidate_id in candidates {
+                if self.candidate_violates_closed_property(fuzzer_state, candidate_id) {
                     // The state set is not closed. Return the origin node, and test case id that can be used
                     // to reach the candidate state.
-                    return Some((origin_node, test_case_id));
+                    return Some(candidate_id);
                 }
             }
         }
@@ -559,12 +646,14 @@ struct EmulatorInputInfo {
     tcp: TcpInfo,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Fuzzer<EmulatorT> {
     state: FuzzerState,
     state_builder: StateBuilder,
     observers: Vec<Rc<RefCell<dyn DebuggableObserver>>>,
     is_interesting_reducers: Vec<Rc<RefCell<dyn DebuggableReducer<Output = bool>>>>,
+    suffix_behavior_observer: Rc<RefCell<dyn DebuggableObserver>>,
+    suffix_behavior_reducer: Rc<RefCell<dyn DebuggableReducer<Output = SuffixBehavior>>>,
     is_crash_reducers: Vec<Rc<RefCell<dyn DebuggableReducer<Output = bool>>>>,
     emulator: EmulatorT,
     context_path: PathBuf,
@@ -579,11 +668,17 @@ where
         emulator: EmulatorT,
         context_path: PathBuf,
     ) -> Self {
+        let edge_observer = Rc::new(RefCell::new(EdgeObserver::new(emulator.system().cpu())));
+        let edge_reducer = Rc::new(RefCell::new(InterestingEdgesReducer::new(edge_observer.clone())));
+        let behavior_observer = Rc::new(RefCell::new(EdgeObserver::new(emulator.system().cpu())));
+        let behavior_reducer = Rc::new(RefCell::new(EdgeBehaviorReducer::new(behavior_observer.clone())));
         Self {
             state: Default::default(),
             state_builder: Default::default(),
-            observers: Default::default(),
-            is_interesting_reducers: Default::default(),
+            observers: vec![edge_observer],
+            suffix_behavior_observer: behavior_observer,
+            is_interesting_reducers: vec![edge_reducer],
+            suffix_behavior_reducer: behavior_reducer,
             is_crash_reducers: Default::default(),
             emulator,
             context_path,
@@ -607,10 +702,6 @@ where
     }
 
     fn setup(&mut self) {
-        let edge_observer = Rc::new(RefCell::new(EdgeObserver::new(self.emulator.system().cpu())));
-        let edge_reducer = Rc::new(RefCell::new(InterestingEdgesReducer::new(edge_observer.clone())));
-        self.observers.push(edge_observer);
-        self.is_interesting_reducers.push(edge_reducer);
         // Do setup stuff
         // Run emulator without inputs until an input is requested.
         let res = self.emulator.run(None, None).unwrap();
@@ -623,7 +714,9 @@ where
         Self::clear_observers(&mut self.observers);
         Self::update_input_info(&self.emulator, &mut self.input_info);
         self.load_initial_state();
-        self.evaluate_state();
+        self.evaluate_states_with_missing_observations();
+        self.state_builder.fix_closed_property(&mut self.state);
+        self.state_builder.dump_dot_file(&mut self.state);
     }
 
     fn load_initial_state(&mut self) {
@@ -644,7 +737,67 @@ where
             }
         }
         self.state_builder.initialize_state_info(&mut self.state);
-        self.state_builder.dump_dot_file(&mut self.state);
+    }
+
+    fn evaluate_states_with_missing_observations(&mut self) {
+        let (states, mut state_candidates) = self
+            .state_builder
+            .find_states_with_missing_observations(&self.state);
+        trace!("Evaluating states with missing observations: {states:?}, {state_candidates:?}");
+        for state_id in states {
+            // go to state state_id
+            self.go_to_state(state_id);
+            self.evaluate_current_state();
+            let candidates = self.state.state_candidate_map.get(state_id).unwrap();
+            for candidate_id in candidates
+                .iter()
+                .filter_map(|c| state_candidates.take(c))
+                .collect::<Vec<_>>()
+            {
+                self.go_to_candidate_from_current(candidate_id);
+                self.evaluate_current_state();
+                self.go_to_previous_state();
+            }
+        }
+    }
+
+    /// Move the emulator to the specified state
+    fn go_to_state(
+        &mut self,
+        state_id: StateId,
+    ) {
+        trace!("Moving to state {state_id:?}");
+        // FIXME TODO: Actually implement this
+    }
+
+    /// Goes to the candidate state if it is directly adjacent to the current state
+    fn go_to_candidate_from_current(
+        &mut self,
+        state_candidate_id: StateCandidateId,
+    ) {
+        trace!("Moving to candidate {state_candidate_id:?}");
+        let candidate = self.state.state_candidates.get(state_candidate_id).unwrap();
+        let StateUnion::Final(current_state_id) = self.state_builder.current_state_id(&self.state) else {
+            panic!("Candidates can only be visited from a final state");
+        };
+        assert_eq!(candidate.origin(), current_state_id, "The candidate must be reachable from the current state");
+
+        let testcase = self
+            .state
+            .test_cases
+            .get_mut(candidate.reached_by())
+            .unwrap();
+        Self::apply_testcase(&mut self.emulator, &mut self.input_info, &self.state.input_data, testcase);
+        self.emulator.snapshot().unwrap();
+        self.state
+            .state_path
+            .push(StateUnion::Candidate(state_candidate_id));
+    }
+
+    fn go_to_previous_state(&mut self) {
+        trace!("Moving to previous state");
+        self.emulator.restore_and_discard().unwrap();
+        self.state.state_path.pop();
     }
 
     fn create_component_marker_inputs(&mut self) {
@@ -681,7 +834,7 @@ where
     /// Execute all corpus entries in the state and gather observations for each entry.
     /// There might occur state conflicts. These will be saved and can later be used
     /// to enhance the state machine based on these conflicts.
-    fn evaluate_state(&mut self) {
+    fn evaluate_current_state(&mut self) {
         let state = {
             let state_id = self.state.state_path.last().unwrap();
             match state_id {
@@ -696,23 +849,29 @@ where
                 }
             }
         };
+        trace!("Evaluating current state {state:?}");
 
-        for suffix_id in &state.pending_observations {
-            let suffix = self.state.suffixes.get(*suffix_id).unwrap();
+        for suffix_id in state.take_pending_observations() {
+            self.suffix_behavior_observer.borrow_mut().clear();
+            trace!("Processing suffix {suffix_id:?}");
+            let suffix = self.state.suffixes.get(suffix_id).unwrap();
             // Apply each testcase in the suffix to the target.
             for testcase_id in suffix {
+                // TODO: Store state specific reducer states?
+                Self::clear_observers(&mut self.observers);
                 let testcase = self.state.test_cases.get_mut(*testcase_id).unwrap();
                 // TODO: We need to update the input info after each testcase application.
                 //       otherwise we cannot correctly apply the next testcase.
                 Self::apply_testcase(&mut self.emulator, &mut self.input_info, &self.state.input_data, testcase);
+                Self::gather_observations(&mut self.observers);
+                if Self::reduce_is_interesting(&mut self.is_interesting_reducers) {
+                    debug!("THIS INTERESTING!!");
+                }
             }
+            self.suffix_behavior_observer.borrow_mut().gather();
+            let behavior = self.suffix_behavior_reducer.borrow_mut().reduce().unwrap();
+            state.add_suffix_behavior(suffix_id, behavior);
 
-            Self::gather_observations(&mut self.observers);
-            if Self::reduce_is_interesting(&mut self.is_interesting_reducers) {
-                debug!("THIS INTERESTING!!");
-            }
-            // TODO: Store state specific reducer states?
-            Self::clear_observers(&mut self.observers);
             self.emulator.restore().unwrap();
             state.executions += 1;
         }
@@ -726,6 +885,7 @@ where
         input_data_map: &InputDataMap,
         testcase: &mut TestCase,
     ) {
+        trace!("Applying testcase {testcase:?}");
         Self::update_input_info(emulator, input_info);
         let mut tcp = emulator.system().tcp().borrow_mut();
         for marker in &testcase.input.component_markers {
