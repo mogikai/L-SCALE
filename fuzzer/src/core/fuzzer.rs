@@ -290,7 +290,7 @@ impl State {
                 // states differ.
                 None => result = StateComparisonResult::IncompleteObservations,
                 Some(other_behavior) => {
-                    if !other_behavior.eq(&behavior) {
+                    if !other_behavior.eq(behavior) {
                         // The behaviors differ, hence the states are not equal.
                         // It is ok to shortcut here, since even if there are some
                         // observations missing we can already say that the sates will
@@ -374,7 +374,7 @@ pub enum StatePathComponent {
     /// The backtrack variant signals the fuzzer to restore an older state. The number
     /// in the variant signals how many times the backtracking has to occur.
     Backtrack(usize),
-    Testcase(TestCaseId),
+    GoTo(StateId),
 }
 
 #[derive(Debug, Default)]
@@ -697,17 +697,15 @@ where
         self.create_component_marker_inputs();
         let mut corpus_dir = self.context_path.clone();
         corpus_dir.push("corpus");
-        for file in corpus_dir.read_dir().unwrap() {
-            if let Ok(file) = file {
-                if file.file_type().unwrap().is_file() {
-                    let data = fs::read(file.path()).unwrap();
-                    let input_data_id = self.state.input_data.insert(InputData::from(data));
-                    // TODO: Refactor this into more generic code and don't access private fields.
-                    let mut input = Input::new();
-                    input.tcp_streams.push(Some(input_data_id));
-                    let testcase = TestCase::new(input);
-                    self.state.test_cases.insert(testcase);
-                }
+        for file in corpus_dir.read_dir().unwrap().flatten() {
+            if file.file_type().unwrap().is_file() {
+                let data = fs::read(file.path()).unwrap();
+                let input_data_id = self.state.input_data.insert(InputData::from(data));
+                // TODO: Refactor this into more generic code and don't access private fields.
+                let mut input = Input::new();
+                input.tcp_streams.push(Some(input_data_id));
+                let testcase = TestCase::new(input);
+                self.state.test_cases.insert(testcase);
             }
         }
         self.state_builder.initialize_state_info(&mut self.state);
@@ -893,7 +891,7 @@ where
         {
             if let Some(data_id) = input_data_id {
                 let data = input_data_map.get(*data_id).unwrap();
-                let mut sock = tcp.socket_mut(*socket_id).unwrap();
+                let sock = tcp.socket_mut(*socket_id).unwrap();
                 sock.push_data(&data.data).unwrap();
             }
         }
