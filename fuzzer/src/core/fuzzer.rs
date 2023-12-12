@@ -15,7 +15,10 @@ use std::hash::{
 };
 use std::io::Write;
 use std::marker::PhantomData;
-use std::mem::replace;
+use std::mem::{
+    replace,
+    take,
+};
 use std::ops::Not;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -261,35 +264,6 @@ impl StateType<Candidate> {
 }
 
 impl StateType<Final> {
-    pub fn new(node_id: NodeIndex) -> Self {
-        Self {
-            state: State {
-                node_id: Some(node_id),
-                label: None,
-                executions: 0,
-                suffix_behaviors: Default::default(),
-                pending_observations: Default::default(),
-            },
-            r#type: Final,
-        }
-    }
-
-    pub fn new_with_label(
-        node_id: NodeIndex,
-        label: String,
-    ) -> Self {
-        Self {
-            state: State {
-                node_id: Some(node_id),
-                label: Some(label),
-                executions: 0,
-                suffix_behaviors: Default::default(),
-                pending_observations: Default::default(),
-            },
-            r#type: Final,
-        }
-    }
-
     pub fn node_id(&self) -> NodeIndex {
         self.state.node_id.unwrap()
     }
@@ -339,7 +313,7 @@ impl State {
     }
 
     fn take_pending_observations(&mut self) -> Vec<SuffixId> {
-        replace(&mut self.pending_observations, vec![])
+        take(&mut self.pending_observations)
     }
 
     fn label(&self) -> &str {
