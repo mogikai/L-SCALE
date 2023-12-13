@@ -1,6 +1,10 @@
 use std::fmt::Debug;
 
-use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
+use crate::emulator::abstractions::file_descriptors::{
+    FileDescriptorError,
+    FileDescriptorOps,
+    FileOperationsReady,
+};
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
@@ -42,7 +46,7 @@ impl FileDescriptorOps for UdpSocketOps {
     }
 
     fn sendto(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         data: &[u8],
         target: &Option<SocketAddress>,
@@ -59,7 +63,7 @@ impl FileDescriptorOps for UdpSocketOps {
     }
 
     fn connect(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError> {
@@ -67,7 +71,7 @@ impl FileDescriptorOps for UdpSocketOps {
     }
 
     fn accept(
-        &mut self,
+        &self,
         fd: &mut Self::D,
     ) -> Result<(FileDescriptor<Self::D>, SocketAddress), FileDescriptorError> {
         todo!()

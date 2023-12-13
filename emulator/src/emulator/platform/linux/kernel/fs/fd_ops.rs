@@ -1,16 +1,26 @@
-use std::cell::{Ref, RefCell};
+use std::cell::{
+    Ref,
+    RefCell,
+};
 use std::rc::Rc;
 
 use byteorder::ByteOrder;
 
-use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
+use crate::emulator::abstractions::file_descriptors::{
+    FileDescriptorError,
+    FileDescriptorOps,
+    FileOperationsReady,
+};
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::system::fd_map::FileDescriptor;
-use crate::emulator::system::filesystem::{Filesystem, Stat};
+use crate::emulator::system::filesystem::{
+    Filesystem,
+    Stat,
+};
 
 #[derive(Debug, Clone)]
 pub struct FileOps {}
@@ -50,7 +60,7 @@ impl FileDescriptorOps for FileOps {
     }
 
     fn read(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         count: u64,
     ) -> Result<Vec<u8>, FileDescriptorError> {
@@ -77,7 +87,7 @@ impl FileDescriptorOps for FileOps {
     }
 
     fn write(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         data: &[u8],
     ) -> Result<usize, FileDescriptorError> {
@@ -88,7 +98,7 @@ impl FileDescriptorOps for FileOps {
     }
 
     fn sendto(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         data: &[u8],
         target: &Option<SocketAddress>,
@@ -105,7 +115,7 @@ impl FileDescriptorOps for FileOps {
     }
 
     fn connect(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError> {
@@ -113,7 +123,7 @@ impl FileDescriptorOps for FileOps {
     }
 
     fn accept(
-        &mut self,
+        &self,
         fd: &mut Self::D,
     ) -> Result<(FileDescriptor<Self::D>, SocketAddress), FileDescriptorError> {
         Err(FileDescriptorError::NotASocket)

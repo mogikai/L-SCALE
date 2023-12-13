@@ -2,8 +2,12 @@ use crate::api::error::FuzzerError;
 use crate::api::observer::HasObservation;
 use crate::api::reducer::Reducer;
 use crate::core::fuzzer::SuffixBehavior;
-use crate::observers::emulator::edge::EdgeObserver;
+use crate::observers::emulator::edge::{
+    EdgeHitCountObserver,
+    EdgeHitObserver,
+};
 use std::cell::RefCell;
+use std::cmp::min;
 use std::fmt::Debug;
 use std::hash::{
     DefaultHasher,
@@ -17,15 +21,12 @@ use std::rc::Rc;
 /// that consumes multiple different TestCaseXBehaviors
 #[derive(Debug, Default)]
 pub struct EdgeBehaviorReducer {
-    observer: Rc<RefCell<EdgeObserver>>,
+    observer: Rc<RefCell<EdgeHitObserver>>,
 }
 
 impl EdgeBehaviorReducer {
-    pub fn new(observer: Rc<RefCell<EdgeObserver>>) -> Self {
-        Self {
-            observer,
-            ..Default::default()
-        }
+    pub fn new(observer: Rc<RefCell<EdgeHitObserver>>) -> Self {
+        Self { observer }
     }
 }
 
@@ -34,9 +35,9 @@ impl Reducer for EdgeBehaviorReducer {
 
     fn reduce(&mut self) -> Result<Self::Output, FuzzerError> {
         let observer = self.observer.borrow();
-        let current_edge_counts = observer.observation();
+        let current_edge_hits = observer.observation();
         let mut hasher = DefaultHasher::new();
-        current_edge_counts.hash(&mut hasher);
+        current_edge_hits.hash(&mut hasher);
         Ok(SuffixBehavior::new(hasher.finish()))
     }
 }

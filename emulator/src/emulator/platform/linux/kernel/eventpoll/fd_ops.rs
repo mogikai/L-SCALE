@@ -1,4 +1,8 @@
-use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
+use crate::emulator::abstractions::file_descriptors::{
+    FileDescriptorError,
+    FileDescriptorOps,
+    FileOperationsReady,
+};
 use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::system::fd_map::FileDescriptor;
@@ -38,7 +42,7 @@ impl FileDescriptorOps for EpollOps {
     }
 
     fn sendto(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         data: &[u8],
         target: &Option<SocketAddress>,
@@ -55,7 +59,7 @@ impl FileDescriptorOps for EpollOps {
     }
 
     fn connect(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError> {
@@ -63,7 +67,7 @@ impl FileDescriptorOps for EpollOps {
     }
 
     fn accept(
-        &mut self,
+        &self,
         fd: &mut Self::D,
     ) -> Result<(FileDescriptor<Self::D>, SocketAddress), FileDescriptorError> {
         todo!()

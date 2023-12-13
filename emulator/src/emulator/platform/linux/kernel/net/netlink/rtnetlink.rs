@@ -52,16 +52,18 @@ use crate::emulator::system::fd_map::FileDescriptor;
 
 #[derive(Debug, Default)]
 pub struct RTNetlinkSocket<Endianness: ByteOrder> {
+    _phantom: PhantomData<Endianness>,
+}
+
+#[derive(Debug, Clone)]
+pub struct NetlinkData {
     sockaddr: Option<SocketAddress>,
     messages: VecDeque<Vec<u8>>,
-    _phantom: PhantomData<Endianness>,
 }
 
 impl<Endianness: ByteOrder> RTNetlinkSocket<Endianness> {
     pub fn new() -> Self {
         Self {
-            sockaddr: None,
-            messages: Default::default(),
             _phantom: Default::default(),
         }
     }
@@ -93,31 +95,43 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
     }
 
     fn bind(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError> {
         // TODO: What needs to be done here?
-        self.sockaddr = Some(sockaddr);
+        let netlink = fd
+            .netlink
+            .as_mut()
+            .ok_or(FileDescriptorError::NotSupported)?;
+        netlink.sockaddr = Some(sockaddr);
         Ok(())
     }
 
-    fn getsockname(
+    fn getsockname<'a>(
         &self,
-        fd: &mut Self::D,
-    ) -> Result<&SocketAddress, FileDescriptorError> {
-        match &self.sockaddr {
-            Some(s) => Ok(s.into()),
+        fd: &'a mut Self::D,
+    ) -> Result<&'a SocketAddress, FileDescriptorError> {
+        let netlink = fd
+            .netlink
+            .as_mut()
+            .ok_or(FileDescriptorError::NotSupported)?;
+        match &netlink.sockaddr {
+            Some(s) => Ok(s),
             None => Err(FileDescriptorError::Unknown),
         }
     }
 
     fn sendto(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         data: &[u8],
         target: &Option<SocketAddress>,
     ) -> Result<usize, FileDescriptorError> {
+        let netlink = fd
+            .netlink
+            .as_mut()
+            .ok_or(FileDescriptorError::NotSupported)?;
         let hdr = nlmsghdr::decode::<Endianness>(&data[..nlmsghdr::required_mem()])?;
         let payload = &data[nlmsghdr::required_mem()..];
         match hdr.nlmsg_type {
@@ -130,7 +144,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
         debug!("payload: {:?}", payload);
         debug!("type: {:?}", hdr.nlmsg_type);
 
-        let SocketAddress::Netlink { pid, .. } = &self.sockaddr.ok_or(FileDescriptorError::Unknown)? else {
+        let SocketAddress::Netlink { pid, .. } = &netlink.sockaddr.ok_or(FileDescriptorError::Unknown)? else {
             Err(FileDescriptorError::Unknown)?
         };
 
@@ -331,7 +345,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
         let msg = msg.encode_front(&hdr).finalize();
         out.extend(msg);
 
-        self.messages.push_front(out);
+        netlink.messages.push_front(out);
 
         // Final message
         let msg = Encoder::<Endianness>::new()
@@ -344,19 +358,22 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
             })
             .encode(&payload)
             .finalize();
-        self.messages.push_front(msg);
+        netlink.messages.push_front(msg);
 
         Ok(data.len())
     }
 
     fn recvmsg(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         len: usize,
     ) -> Result<Vec<u8>, FileDescriptorError> {
         // TODO: EAGAIN?
-
-        let msg = self.messages.pop_back().unwrap_or_default();
+        let netlink = fd
+            .netlink
+            .as_mut()
+            .ok_or(FileDescriptorError::NotSupported)?;
+        let msg = netlink.messages.pop_back().unwrap_or_default();
         // debug!("{:02x?} len {:?}", &msg, msg.len());
         Ok(msg)
         // self.messages.pop_back().ok_or_else(|| GenericError::new(GenericErrorKind::Unknown, ""))
@@ -371,7 +388,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
     }
 
     fn connect(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError> {
@@ -379,7 +396,7 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
     }
 
     fn accept(
-        &mut self,
+        &self,
         fd: &mut Self::D,
     ) -> Result<(FileDescriptor<Self::D>, SocketAddress), FileDescriptorError> {
         todo!()

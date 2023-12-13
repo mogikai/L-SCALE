@@ -22,8 +22,8 @@ use crate::emulator::system::filesystem::{
 ///
 /// The actual handle data is contained in the TODO struct
 ///
-pub trait FileDescriptorOps: Debug {
-    type D: Default + Restorable;
+pub trait FileDescriptorOps {
+    type D: Default + Clone;
     /// Can be called to query what operations can be called without blocking on the handle.
     /// The interest parameter notifies the subsystems what the caller was interested in.
     /// This parameter should not influence the output and is there to let fuzzer components
@@ -59,7 +59,7 @@ pub trait FileDescriptorOps: Debug {
     ///
     /// returns: A reference to the data that is accessed by the read call
     fn read(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         count: u64,
     ) -> Result<Vec<u8>, FileDescriptorError> {
@@ -81,7 +81,7 @@ pub trait FileDescriptorOps: Debug {
     }
 
     fn write(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         data: &[u8],
     ) -> Result<usize, FileDescriptorError> {
@@ -89,29 +89,29 @@ pub trait FileDescriptorOps: Debug {
     }
 
     fn bind(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError> {
         todo!()
     }
 
-    fn getsockname(
+    fn getsockname<'a>(
         &self,
-        fd: &mut Self::D,
-    ) -> Result<&SocketAddress, FileDescriptorError> {
+        fd: &'a mut Self::D,
+    ) -> Result<&'a SocketAddress, FileDescriptorError> {
         todo!()
     }
 
     fn sendto(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         data: &[u8],
         target: &Option<SocketAddress>,
     ) -> Result<usize, FileDescriptorError>;
 
     fn recvmsg(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         len: usize,
     ) -> Result<Vec<u8>, FileDescriptorError> {
@@ -125,25 +125,25 @@ pub trait FileDescriptorOps: Debug {
     ) -> Result<(Vec<u8>, SocketAddress), FileDescriptorError>;
 
     fn connect(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError>;
 
     fn setsockopt(
-        &mut self,
+        &self,
         fd: &mut Self::D,
     ) -> Result<(), FileDescriptorError> {
         todo!()
     }
 
     fn accept(
-        &mut self,
+        &self,
         fd: &mut Self::D,
     ) -> Result<(FileDescriptor<Self::D>, SocketAddress), FileDescriptorError>;
 
     fn listen(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         backlog: usize,
     ) -> Result<(), FileDescriptorError> {

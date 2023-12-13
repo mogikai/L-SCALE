@@ -99,6 +99,7 @@ macro_rules! sys_component_mut {
     };
 }
 
+use crate::emulator::platform::linux::kernel::fs::FileData;
 pub(super) use {
     sys_component,
     sys_component_mut,
@@ -394,11 +395,10 @@ where
 
     pub fn add_stdio_handles(&mut self) {
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        file_descriptor_map.insert_at(
-            &self.task_id,
-            0.into(),
-            FileDescriptor::new(Box::new(default_handles::ReadOnly::new())),
-        );
+        let mut read_only = FileDescriptor::new(Box::new(default_handles::ReadOnly::new()));
+        // TODO: Dont use pseudo file. Instead use actual filesystem backed input
+        read_only.data.file = Some(FileData::new(self.system.filesystem.clone(), 0));
+        file_descriptor_map.insert_at(&self.task_id, 0.into(), read_only);
         file_descriptor_map.insert_at(
             &self.task_id,
             1.into(),
@@ -832,15 +832,15 @@ where
     CpuT: CPU + MMU,
     TcpT: TCPSystem,
 {
-    fn snapshot(&mut self) -> Result<(), GenericError> {
+    fn take_snapshot(&mut self) -> Result<(), GenericError> {
         todo!()
     }
 
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
+    fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
         todo!()
     }
 
-    fn restore(&mut self) -> Result<(), GenericError> {
+    fn restore_snapshot(&mut self) -> Result<(), GenericError> {
         todo!()
     }
 }

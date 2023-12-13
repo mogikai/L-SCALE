@@ -64,7 +64,7 @@ impl FileDescriptorOps for WriteOnly {
     }
 
     fn read(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         count: u64,
     ) -> Result<Vec<u8>, FileDescriptorError> {
@@ -81,7 +81,7 @@ impl FileDescriptorOps for WriteOnly {
     }
 
     fn write(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         data: &[u8],
     ) -> Result<usize, FileDescriptorError> {
@@ -90,7 +90,7 @@ impl FileDescriptorOps for WriteOnly {
     }
 
     fn sendto(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         data: &[u8],
         target: &Option<SocketAddress>,
@@ -107,7 +107,7 @@ impl FileDescriptorOps for WriteOnly {
     }
 
     fn connect(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError> {
@@ -115,7 +115,7 @@ impl FileDescriptorOps for WriteOnly {
     }
 
     fn accept(
-        &mut self,
+        &self,
         fd: &mut Self::D,
     ) -> Result<(FileDescriptor<Self::D>, SocketAddress), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
@@ -125,14 +125,12 @@ impl FileDescriptorOps for WriteOnly {
 #[derive(Debug)]
 pub struct ReadOnly {
     data: Vec<u8>,
-    pos: usize,
     stat: RefCell<Stat>,
 }
 
 impl ReadOnly {
     pub(crate) fn new() -> Self {
         Self {
-            pos: 0,
             data: vec![],
             stat: Default::default(),
         }
@@ -140,7 +138,6 @@ impl ReadOnly {
 
     pub fn from(data: Vec<u8>) -> Self {
         Self {
-            pos: 0,
             data,
             stat: Default::default(),
         }
@@ -180,13 +177,15 @@ impl FileDescriptorOps for ReadOnly {
     }
 
     fn read(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         count: u64,
     ) -> Result<Vec<u8>, FileDescriptorError> {
-        let upper = min(self.pos + count as usize, self.data.len());
-        let result = self.data[self.pos..upper].to_vec();
-        self.pos += result.len();
+        // TODO: Use special io file?
+        let file = fd.file.as_mut().ok_or(FileDescriptorError::NotSupported)?;
+        let upper = min(file.pos + count as usize, self.data.len());
+        let result = self.data[file.pos..upper].to_vec();
+        file.pos += result.len();
         Ok(result)
     }
 
@@ -200,7 +199,7 @@ impl FileDescriptorOps for ReadOnly {
     }
 
     fn write(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         data: &[u8],
     ) -> Result<usize, FileDescriptorError> {
@@ -208,7 +207,7 @@ impl FileDescriptorOps for ReadOnly {
     }
 
     fn sendto(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         data: &[u8],
         target: &Option<SocketAddress>,
@@ -225,7 +224,7 @@ impl FileDescriptorOps for ReadOnly {
     }
 
     fn connect(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError> {
@@ -235,7 +234,7 @@ impl FileDescriptorOps for ReadOnly {
     }
 
     fn accept(
-        &mut self,
+        &self,
         fd: &mut Self::D,
     ) -> Result<(FileDescriptor<Self::D>, SocketAddress), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)

@@ -9,7 +9,7 @@ pub trait Observer {
 }
 
 pub trait HasObservation: Observer {
-    type Observation;
+    type Observation: ?Sized;
 
     fn observation(&self) -> impl Deref<Target = Self::Observation>;
 }

@@ -3,7 +3,10 @@ use std::cmp::min;
 use std::collections::VecDeque;
 use std::mem::swap;
 
-use fuzzyemu::emulator::abstractions::errors::GenericError;
+use fuzzyemu::emulator::abstractions::errors::{
+    GenericError,
+    GenericErrorKind,
+};
 use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
 use fuzzyemu::emulator::abstractions::network::tcp_system::TCPSystem;
 use fuzzyemu::emulator::abstractions::network::{
@@ -281,18 +284,20 @@ impl TCPSystem for TCP {
 }
 
 impl Restorable for TCP {
-    fn snapshot(&mut self) -> Result<(), GenericError> {
+    fn take_snapshot(&mut self) -> Result<(), GenericError> {
         self.snapshots.push(self.sockets.clone());
         Ok(())
     }
 
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
-        self.restore()?;
+    fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
+        if self.snapshots.len() <= 1 {
+            Err(GenericError::new(GenericErrorKind::Unknown, "No previous snapshot available"))?;
+        }
         self.snapshots.pop();
-        Ok(())
+        self.restore_snapshot()
     }
 
-    fn restore(&mut self) -> Result<(), GenericError> {
+    fn restore_snapshot(&mut self) -> Result<(), GenericError> {
         self.sockets
             .clone_from(self.snapshots.last().unwrap_or(&Default::default()));
         Ok(())

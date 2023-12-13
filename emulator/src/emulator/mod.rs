@@ -50,19 +50,19 @@ where
     SchedulerT: Restorable,
     SystemT: Restorable,
 {
-    fn snapshot(&mut self) -> Result<(), GenericError> {
-        self.scheduler.snapshot()?;
-        self.system.snapshot()
+    fn take_snapshot(&mut self) -> Result<(), GenericError> {
+        self.scheduler.take_snapshot()?;
+        self.system.take_snapshot()
     }
 
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
-        self.scheduler.restore_and_discard()?;
-        self.system.restore_and_discard()
+    fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
+        self.scheduler.discard_current_and_restore_previous_snapshot()?;
+        self.system.discard_current_and_restore_previous_snapshot()
     }
 
-    fn restore(&mut self) -> Result<(), GenericError> {
-        self.scheduler.restore()?;
-        self.system.restore()
+    fn restore_snapshot(&mut self) -> Result<(), GenericError> {
+        self.scheduler.restore_snapshot()?;
+        self.system.restore_snapshot()
     }
 }
 

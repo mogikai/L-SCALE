@@ -39,7 +39,7 @@ pub mod task_manager;
 pub struct System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>
 where
     FD: FdId,
-    FDData: Default + Restorable,
+    FDData: Default + Clone,
     TaskId: Ord + Copy + Clone + Default,
     KernelTaskT: KernelTask<TaskId>,
     Endianness: ByteOrder,
@@ -59,7 +59,7 @@ impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT> Clone
     for System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>
 where
     FD: FdId,
-    FDData: Default + Restorable,
+    FDData: Default + Clone,
     TaskId: Ord + Copy + Clone + Default,
     KernelTaskT: KernelTask<TaskId>,
     Endianness: ByteOrder,
@@ -83,7 +83,7 @@ impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>
     System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>
 where
     FD: FdId,
-    FDData: Default + Restorable,
+    FDData: Default + Clone,
     TaskId: Ord + Copy + Clone + Default,
     KernelTaskT: KernelTask<TaskId> + Debug,
     Endianness: ByteOrder,
@@ -115,7 +115,7 @@ impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT> SystemControl
     for System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>
 where
     FD: FdId,
-    FDData: Default + Restorable,
+    FDData: Default + Clone,
     TaskId: Ord + Copy + Clone + Default + 'static,
     KernelTaskT: KernelTask<TaskId> + 'static,
     Endianness: ByteOrder + 'static,
@@ -157,34 +157,54 @@ impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT> Restorable
     for System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>
 where
     FD: FdId,
-    FDData: Default + Restorable,
+    FDData: Default + Clone,
     TaskId: Ord + Copy + Clone + Default,
     KernelTaskT: KernelTask<TaskId> + Debug,
     Endianness: ByteOrder,
     CpuT: CPU + MMU,
     TcpT: TCPSystem,
 {
-    fn snapshot(&mut self) -> Result<(), GenericError> {
-        self.cpu.borrow_mut().snapshot()?;
-        self.memory.borrow_mut().snapshot()?;
-        self.filesystem.borrow_mut().snapshot()?;
-        self.clock.borrow_mut().snapshot()?;
-        self.fd_map.borrow_mut().snapshot()?;
-        self.task_manager.borrow_mut().snapshot()?;
-        self.tcp.borrow_mut().snapshot()
+    fn take_snapshot(&mut self) -> Result<(), GenericError> {
+        self.cpu.borrow_mut().take_snapshot()?;
+        self.memory.borrow_mut().take_snapshot()?;
+        self.filesystem.borrow_mut().take_snapshot()?;
+        self.clock.borrow_mut().take_snapshot()?;
+        self.fd_map.borrow_mut().take_snapshot()?;
+        self.task_manager.borrow_mut().take_snapshot()?;
+        self.tcp.borrow_mut().take_snapshot()
     }
 
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
-        todo!()
+    fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
+        self.cpu
+            .borrow_mut()
+            .discard_current_and_restore_previous_snapshot()?;
+        self.memory
+            .borrow_mut()
+            .discard_current_and_restore_previous_snapshot()?;
+        self.filesystem
+            .borrow_mut()
+            .discard_current_and_restore_previous_snapshot()?;
+        self.clock
+            .borrow_mut()
+            .discard_current_and_restore_previous_snapshot()?;
+        self.fd_map
+            .borrow_mut()
+            .discard_current_and_restore_previous_snapshot()?;
+        self.task_manager
+            .borrow_mut()
+            .discard_current_and_restore_previous_snapshot()?;
+        self.tcp
+            .borrow_mut()
+            .discard_current_and_restore_previous_snapshot()
     }
 
-    fn restore(&mut self) -> Result<(), GenericError> {
-        self.cpu.borrow_mut().restore()?;
-        self.memory.borrow_mut().restore()?;
-        self.filesystem.borrow_mut().restore()?;
-        self.clock.borrow_mut().restore()?;
-        self.fd_map.borrow_mut().restore()?;
-        self.task_manager.borrow_mut().restore()?;
-        self.tcp.borrow_mut().restore()
+    fn restore_snapshot(&mut self) -> Result<(), GenericError> {
+        self.cpu.borrow_mut().restore_snapshot()?;
+        self.memory.borrow_mut().restore_snapshot()?;
+        self.filesystem.borrow_mut().restore_snapshot()?;
+        self.clock.borrow_mut().restore_snapshot()?;
+        self.fd_map.borrow_mut().restore_snapshot()?;
+        self.task_manager.borrow_mut().restore_snapshot()?;
+        self.tcp.borrow_mut().restore_snapshot()
     }
 }

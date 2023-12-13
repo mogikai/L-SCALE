@@ -302,7 +302,7 @@ fn get_dir_fse_id(
 pub struct FileData {
     filesystem: Rc<RefCell<Filesystem>>,
     fse_id: FSEntryId,
-    pos: usize,
+    pub pos: usize,
 }
 
 impl FileData {

@@ -439,7 +439,7 @@ impl Filesystem {
 }
 
 impl Restorable for Filesystem {
-    fn snapshot(&mut self) -> Result<(), GenericError> {
+    fn take_snapshot(&mut self) -> Result<(), GenericError> {
         assert_eq!(self.snap_markers.len(), self.current_snap);
         self.snap_markers.push(SnapMarker {
             data_marker: self.data.snapshot(),
@@ -450,7 +450,7 @@ impl Restorable for Filesystem {
         Ok(())
     }
 
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
+    fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
         if self.current_snap == 0 {
             Err(FSError::Unknown)?
         }
@@ -463,10 +463,10 @@ impl Restorable for Filesystem {
         self.data.restore_and_discard(snap_marker.data_marker);
         self.current_size = snap_marker.current_size;
         self.current_snap -= 1;
-        Ok(())
+        self.restore_snapshot()
     }
 
-    fn restore(&mut self) -> Result<(), GenericError> {
+    fn restore_snapshot(&mut self) -> Result<(), GenericError> {
         if self.current_snap == 0 {
             Err(FSError::Unknown)?
         }

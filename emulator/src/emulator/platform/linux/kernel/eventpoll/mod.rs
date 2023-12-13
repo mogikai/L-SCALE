@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use bitflags::Flags;
 use byteorder::ByteOrder;
+use imbl::OrdMap;
 use num_enum::TryFromPrimitive;
 
 use fuzzyemu_derive::{
@@ -179,11 +180,10 @@ where
         if event.events.contains(EPOLL_EVENTS::EPOLLEXCLUSIVE) && file_descriptor.data.epoll.is_some() {
             Err(LinuxKernelError::EINVAL)?
         }
-
-        epoll
-            .interest_list
-            .try_insert(*fd, event)
-            .map_err(|_| LinuxKernelError::EEXIST)?;
+        if epoll.interest_list.contains_key(fd) {
+            Err(LinuxKernelError::EEXIST)?;
+        }
+        epoll.interest_list.insert(*fd, event);
         Ok(0)
     }
 
@@ -254,9 +254,9 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EpollData {
-    interest_list: BTreeMap<FD, epoll_event>,
+    interest_list: OrdMap<FD, epoll_event>,
 }
 
 impl EpollData {

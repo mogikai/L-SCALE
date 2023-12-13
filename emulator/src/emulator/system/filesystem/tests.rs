@@ -5,7 +5,10 @@ use hex::ToHex;
 /// TODO: Write more sensible tests
 use std::path::Path;
 
-use rand::{thread_rng, RngCore};
+use rand::{
+    thread_rng,
+    RngCore,
+};
 
 use super::*;
 
@@ -15,8 +18,8 @@ fn basic() -> Result<(), GenericError> {
     fs.create_file(Path::new("/my_file.txt"), None)?;
     assert!(fs.create_file(Path::new("/my_file.txt"), None).is_err());
     fs.create_file(Path::new("/my_file2.txt"), None)?;
-    assert!(fs.restore().is_err());
-    fs.snapshot();
+    assert!(fs.restore_snapshot().is_err());
+    fs.take_snapshot();
 
     assert!(fs.create_file(Path::new("/my_file2.txt"), None).is_err());
     fs.delete(Path::new("/my_file2.txt"))?;
@@ -28,7 +31,7 @@ fn basic() -> Result<(), GenericError> {
     assert!(fs.delete(Path::new("/home")).is_err());
     fs.create_dir(Path::new("/home/mark/my_stuff"), None)?;
     fs.create_file(Path::new("/home/mark/my_stuff/my_file.txt"), None)?;
-    fs.snapshot();
+    fs.take_snapshot();
 
     fs.create_dir(Path::new("/bin/test"), None)?;
     fs.create_file(Path::new("/bin/test/my_file.bin"), None)?;
@@ -38,22 +41,22 @@ fn basic() -> Result<(), GenericError> {
         .create_dir(Path::new("/doesnotexist/test"), None)
         .is_err());
 
-    fs.restore_and_discard()?;
+    fs.discard_current_and_restore_previous_snapshot()?;
     let resolved = fs.resolve_path(Path::new("/home/mark/my_stuff/my_file.txt"), false)?;
     assert_eq!(resolved.len(), 5);
-    fs.restore()?;
+    fs.restore_snapshot()?;
     for i in 0..10_000 {
         if i % 1000 == 0 {
-            fs.snapshot();
+            fs.take_snapshot();
         }
         fs.create_file(Path::new(&format!("/test{}.txt", i)), None)?;
     }
     for i in 0..10_000 {
         if i % 1000 == 0 {
-            fs.restore_and_discard()?;
+            fs.discard_current_and_restore_previous_snapshot()?;
         }
     }
-    fs.restore()?;
+    fs.restore_snapshot()?;
     let my_file = fs.resolve_last(Path::new("/my_file.txt"), false)?;
     fs.write(my_file, 0, "asdf".as_bytes())?;
     fs.delete(Path::new("/my_file.txt"))?;
@@ -74,20 +77,20 @@ fn load_file_contents() -> Result<(), GenericError> {
     fs.write(file_id, 10000, data)?;
     fs.write(file_id2, 10000, data)?;
     fs.write(file_id, 10010, data)?;
-    fs.snapshot();
+    fs.take_snapshot();
     fs.write(file_id, 5000, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".as_bytes())?;
-    fs.restore_and_discard()?;
-    fs.snapshot();
+    fs.discard_current_and_restore_previous_snapshot()?;
+    fs.take_snapshot();
     for i in 1..1_000 {
         let mut rdata = [0u8; 10000];
         thread_rng().fill_bytes(&mut rdata);
         fs.write(file_id, i * 10, &rdata)?;
         fs.read(file_id, (i - 1) * 10, 10000)?;
         if i % 1_000 == 0 {
-            fs.restore()?;
+            fs.restore_snapshot()?;
         }
     }
-    fs.restore()?;
+    fs.restore_snapshot()?;
 
     let data3 = "Beep Boop".as_bytes();
     let file_id3 = fs.create_file_with_contents(Path::new("/test3.txt"), data3, None)?;
@@ -95,12 +98,12 @@ fn load_file_contents() -> Result<(), GenericError> {
     println!("{:?}", fs.read(file_id3, 0, 10000)?);
     fs.truncate(file_id3, 5000)?;
     println!("{:?}", fs.read(file_id3, 0, 10000)?);
-    fs.snapshot();
+    fs.take_snapshot();
     fs.truncate(file_id3, 4)?;
     println!("{:?}", fs.read(file_id3, 0, 10000)?);
     fs.truncate(file_id3, 5000)?;
     println!("{:?}", fs.read(file_id3, 0, 10000)?);
-    fs.restore()?;
+    fs.restore_snapshot()?;
     fs.truncate(file_id3, 10)?;
     println!("{:?}", fs.read(file_id3, 0, 10000)?);
     Ok(())

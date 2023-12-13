@@ -1,26 +1,29 @@
-use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
+use crate::emulator::abstractions::errors::{
+    GenericError,
+    GenericErrorKind,
+};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::clock::Clock;
 
 impl Restorable for Clock {
-    fn snapshot(&mut self) -> Result<(), GenericError> {
+    fn take_snapshot(&mut self) -> Result<(), GenericError> {
         self.snapshots.push(self.system_time);
         Ok(())
     }
 
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
-        self.system_time = self
-            .snapshots
-            .pop()
-            .ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot to restor"))?;
-        Ok(())
+    fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
+        if self.snapshots.len() <= 1 {
+            Err(GenericError::new(GenericErrorKind::Unknown, "No previous snapshot available"))?;
+        }
+        self.snapshots.pop();
+        self.restore_snapshot()
     }
 
-    fn restore(&mut self) -> Result<(), GenericError> {
+    fn restore_snapshot(&mut self) -> Result<(), GenericError> {
         self.system_time = *self
             .snapshots
             .last()
-            .ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot to restor"))?;
+            .ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot to restore"))?;
         Ok(())
     }
 }

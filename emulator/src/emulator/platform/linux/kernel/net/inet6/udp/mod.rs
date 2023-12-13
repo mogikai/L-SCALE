@@ -1,6 +1,6 @@
 pub mod socket;
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct UDPData {}
 
 impl UDPData {

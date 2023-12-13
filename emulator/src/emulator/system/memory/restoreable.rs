@@ -1,11 +1,17 @@
 use byteorder::ByteOrder;
 
-use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
+use crate::emulator::abstractions::errors::{
+    GenericError,
+    GenericErrorKind,
+};
 use crate::emulator::abstractions::restore::Restorable;
-use crate::emulator::system::memory::{Memory, MemorySnapshot};
+use crate::emulator::system::memory::{
+    Memory,
+    MemorySnapshot,
+};
 
 impl<Endianness: ByteOrder> Restorable for Memory<Endianness> {
-    fn snapshot(&mut self) -> Result<(), GenericError> {
+    fn take_snapshot(&mut self) -> Result<(), GenericError> {
         self.snapshots.push(MemorySnapshot {
             layouts: self.layouts.clone(),
             tlbs: self.tlbs.clone(),
@@ -15,11 +21,15 @@ impl<Endianness: ByteOrder> Restorable for Memory<Endianness> {
         Ok(())
     }
 
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
-        todo!()
+    fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
+        if self.snapshots.len() <= 1 {
+            Err(GenericError::new(GenericErrorKind::Unknown, "No previous snapshot available"))?;
+        }
+        self.snapshots.pop().unwrap();
+        self.restore_snapshot()
     }
 
-    fn restore(&mut self) -> Result<(), GenericError> {
+    fn restore_snapshot(&mut self) -> Result<(), GenericError> {
         let snapshot = self
             .snapshots
             .last()

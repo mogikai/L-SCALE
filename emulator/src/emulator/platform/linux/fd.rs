@@ -7,12 +7,13 @@ use crate::emulator::platform::linux::kernel::eventpoll::EpollData;
 use crate::emulator::platform::linux::kernel::fs::FileData;
 use crate::emulator::platform::linux::kernel::net::inet6::tcp::TCPData;
 use crate::emulator::platform::linux::kernel::net::inet6::udp::UDPData;
+use crate::emulator::platform::linux::kernel::net::netlink::rtnetlink::NetlinkData;
 use crate::emulator::platform::linux::kernel::net::unix::UnixSocketData;
 use crate::emulator::platform::linux::signalfd::SignalFD;
 use crate::emulator::system::fd_map::FdId;
 
 // TODO: Move to platform directory and make FileDescriptor generic
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct FileDescriptorData {
     pub file: Option<FileData>,
     pub signals: Option<SignalFD>,
@@ -20,19 +21,20 @@ pub struct FileDescriptorData {
     pub udp: Option<UDPData>,
     pub epoll: Option<EpollData>,
     pub usock: Option<UnixSocketData>,
+    pub netlink: Option<NetlinkData>,
 }
 
 impl Restorable for FileDescriptorData {
-    fn snapshot(&mut self) -> Result<(), GenericError> {
+    fn take_snapshot(&mut self) -> Result<(), GenericError> {
         // todo!("Delegate snapshots to individual data structs")
         Ok(())
     }
 
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
+    fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
         todo!()
     }
 
-    fn restore(&mut self) -> Result<(), GenericError> {
+    fn restore_snapshot(&mut self) -> Result<(), GenericError> {
         // todo!("Delegate snapshots to individual data structs")
         Ok(())
     }

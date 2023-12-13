@@ -112,9 +112,9 @@ impl<T> Restorable for RestorableHashMap<T>
 where
     T: Restorable,
 {
-    fn snapshot(&mut self) -> Result<(), GenericError> {
+    fn take_snapshot(&mut self) -> Result<(), GenericError> {
         self.data.iter().for_each(|(k, v)| {
-            v.borrow_mut().snapshot();
+            v.borrow_mut().take_snapshot();
         });
         self.snapshots.push(Snapshot {
             data: self.data.clone(),
@@ -122,17 +122,25 @@ where
         Ok(())
     }
 
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
-        self.restore()?;
+    fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
         self.snapshots.pop();
-        Ok(())
-    }
-
-    fn restore(&mut self) -> Result<(), GenericError> {
         if let Some(snapshot) = self.snapshots.last() {
             self.data = snapshot.data.clone();
             self.data.iter().for_each(|(k, v)| {
-                v.borrow_mut().restore();
+                v.borrow_mut()
+                    .discard_current_and_restore_previous_snapshot();
+            });
+        } else {
+            self.data = Default::default();
+        }
+        Ok(())
+    }
+
+    fn restore_snapshot(&mut self) -> Result<(), GenericError> {
+        if let Some(snapshot) = self.snapshots.last() {
+            self.data = snapshot.data.clone();
+            self.data.iter().for_each(|(k, v)| {
+                v.borrow_mut().restore_snapshot();
             });
         } else {
             self.data = Default::default();
@@ -170,17 +178,17 @@ mod tests {
     }
 
     impl Restorable for UInt32 {
-        fn snapshot(&mut self) -> Result<(), GenericError> {
+        fn take_snapshot(&mut self) -> Result<(), GenericError> {
             self.snaps.push(self.data);
             Ok(())
         }
 
-        fn restore_and_discard(&mut self) -> Result<(), GenericError> {
+        fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
             self.snaps.pop();
             Ok(())
         }
 
-        fn restore(&mut self) -> Result<(), GenericError> {
+        fn restore_snapshot(&mut self) -> Result<(), GenericError> {
             self.data = *self.snaps.last().unwrap();
             Ok(())
         }
@@ -204,7 +212,7 @@ mod tests {
         assert_eq!(*map.get(&key).unwrap(), 42.into());
         assert!(map.get(&key2).is_none());
 
-        map.snapshot();
+        map.take_snapshot();
         let key3 = map.insert(123.into());
         let key4 = map.insert(1337.into());
         assert_eq!(*map.get(&key).unwrap(), 42.into());
@@ -214,13 +222,13 @@ mod tests {
         assert_eq!(*map.get(&key3).unwrap(), 123.into());
         assert_eq!(*map.get(&key4).unwrap(), 1337.into());
 
-        map.restore();
+        map.restore_snapshot();
         assert_eq!(*map.get(&key).unwrap(), 42.into());
         assert!(map.get(&key2).is_none());
         assert!(map.get(&key3).is_none());
         assert!(map.get(&key4).is_none());
 
-        map.restore_and_discard();
+        map.discard_current_and_restore_previous_snapshot();
         assert_eq!(*map.get(&key).unwrap(), 42.into());
         assert!(map.get(&key2).is_none());
         assert!(map.get(&key3).is_none());
@@ -228,7 +236,7 @@ mod tests {
         assert!(!map.is_empty());
         assert_eq!(map.len(), 1);
 
-        map.restore_and_discard();
+        map.discard_current_and_restore_previous_snapshot();
         assert!(map.get(&key).is_none());
         assert!(map.get(&key2).is_none());
         assert!(map.get(&key3).is_none());

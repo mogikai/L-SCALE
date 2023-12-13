@@ -2,7 +2,11 @@ use std::ops::Not;
 
 use bitflags::Flags;
 
-use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps, FileOperationsReady};
+use crate::emulator::abstractions::file_descriptors::{
+    FileDescriptorError,
+    FileDescriptorOps,
+    FileOperationsReady,
+};
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
@@ -49,7 +53,7 @@ impl FileDescriptorOps for TcpSocketOps {
     }
 
     fn bind(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError> {
@@ -58,7 +62,7 @@ impl FileDescriptorOps for TcpSocketOps {
     }
 
     fn sendto(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         data: &[u8],
         target: &Option<SocketAddress>,
@@ -87,7 +91,7 @@ impl FileDescriptorOps for TcpSocketOps {
     }
 
     fn connect(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError> {
@@ -95,14 +99,14 @@ impl FileDescriptorOps for TcpSocketOps {
     }
 
     fn setsockopt(
-        &mut self,
+        &self,
         fd: &mut Self::D,
     ) -> Result<(), FileDescriptorError> {
         Ok(())
     }
 
     fn accept(
-        &mut self,
+        &self,
         fd: &mut Self::D,
     ) -> Result<(FileDescriptor<Self::D>, SocketAddress), FileDescriptorError> {
         let fd = fd.tcp.as_mut().ok_or(FileDescriptorError::NotASocket)?;
@@ -114,7 +118,7 @@ impl FileDescriptorOps for TcpSocketOps {
     }
 
     fn listen(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         backlog: usize,
     ) -> Result<(), FileDescriptorError> {

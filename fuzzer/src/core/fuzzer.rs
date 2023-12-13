@@ -70,7 +70,10 @@ use fuzzyemu::emulator::interface::network::tcp::{
 
 use crate::api::observer::Observer;
 use crate::api::reducer::Reducer;
-use crate::observers::emulator::edge::EdgeObserver;
+use crate::observers::emulator::edge::{
+    EdgeHitCountObserver,
+    EdgeHitObserver,
+};
 use crate::reducers::edge::behavior::EdgeBehaviorReducer;
 use crate::reducers::edge::InterestingEdgesReducer;
 
@@ -642,9 +645,9 @@ where
         emulator: EmulatorT,
         context_path: PathBuf,
     ) -> Self {
-        let edge_observer = Rc::new(RefCell::new(EdgeObserver::new(emulator.system().cpu())));
+        let edge_observer = Rc::new(RefCell::new(EdgeHitCountObserver::new(emulator.system().cpu())));
         let edge_reducer = Rc::new(RefCell::new(InterestingEdgesReducer::new(edge_observer.clone())));
-        let behavior_observer = Rc::new(RefCell::new(EdgeObserver::new(emulator.system().cpu())));
+        let behavior_observer = Rc::new(RefCell::new(EdgeHitObserver::new(emulator.system().cpu())));
         let behavior_reducer = Rc::new(RefCell::new(EdgeBehaviorReducer::new(behavior_observer.clone())));
         Self {
             state: Default::default(),
@@ -680,7 +683,7 @@ where
         // Run emulator without inputs until an input is requested.
         let res = self.emulator.run(None, None).unwrap();
         // We make a snapshot now, so that we can reset to the first input request.
-        self.emulator.snapshot().unwrap();
+        self.emulator.take_snapshot().unwrap();
         // Reduce once, so that any state of the reducers can be filled with the initial observations.
         assert!(matches!(res, ExitReason::Yielded));
         Self::gather_observations(&mut self.observers);
@@ -720,12 +723,16 @@ where
             // go to state state_id
             self.go_to_state(state_id);
             self.evaluate_current_state();
-            let candidates = self.state.state_candidate_map.get(state_id).unwrap();
-            for candidate_id in candidates
+            let mut candidates = self
+                .state
+                .state_candidate_map
+                .get(state_id)
+                .unwrap()
                 .iter()
                 .filter_map(|c| state_candidates.take(c))
-                .collect::<Vec<_>>()
-            {
+                .collect::<Vec<_>>();
+            candidates.sort();
+            for candidate_id in candidates {
                 self.go_to_candidate_from_current(candidate_id);
                 self.evaluate_current_state();
                 self.go_to_previous_state();
@@ -760,7 +767,7 @@ where
             .get_mut(candidate.reached_by())
             .unwrap();
         Self::apply_testcase(&mut self.emulator, &mut self.input_info, &self.state.input_data, testcase);
-        self.emulator.snapshot().unwrap();
+        self.emulator.take_snapshot().unwrap();
         self.state
             .state_path
             .push(StateUnion::Candidate(state_candidate_id));
@@ -768,7 +775,7 @@ where
 
     fn go_to_previous_state(&mut self) {
         trace!("Moving to previous state");
-        self.emulator.restore_and_discard().unwrap();
+        self.emulator.discard_current_and_restore_previous_snapshot().unwrap();
         self.state.state_path.pop();
     }
 
@@ -844,7 +851,7 @@ where
             let behavior = self.suffix_behavior_reducer.borrow_mut().reduce().unwrap();
             state.add_suffix_behavior(suffix_id, behavior);
 
-            self.emulator.restore().unwrap();
+            self.emulator.restore_snapshot().unwrap();
             state.executions += 1;
         }
     }

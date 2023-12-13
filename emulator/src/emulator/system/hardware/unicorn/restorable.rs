@@ -17,7 +17,7 @@ use crate::emulator::system::hardware::unicorn::{
 };
 
 impl Restorable for UCWrapper<'_> {
-    fn snapshot(&mut self) -> Result<(), GenericError> {
+    fn take_snapshot(&mut self) -> Result<(), GenericError> {
         let context = self.uc_mut().context_alloc()?;
         let saved_contexts = clone_contexts(&self.contexts, self.uc.as_mut().unwrap())?;
         self.snapshots.push(Snapshot {
@@ -35,13 +35,16 @@ impl Restorable for UCWrapper<'_> {
         Ok(())
     }
 
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
-        self.restore()?;
+    fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
+        if self.snapshots.len() <= 1 {
+            Err(GenericError::new(GenericErrorKind::Unknown, "No previous snapshot available"))?;
+        }
+        self.restore_snapshot()?;
         self.snapshots.pop();
-        Ok(())
+        self.restore_snapshot()
     }
 
-    fn restore(&mut self) -> Result<(), GenericError> {
+    fn restore_snapshot(&mut self) -> Result<(), GenericError> {
         let snapshot = self
             .snapshots
             .last()

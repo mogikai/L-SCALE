@@ -9,7 +9,7 @@ use crate::emulator::platform::linux::kernel::net::Sockaddr;
 
 pub mod socket;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TCPData {
     tcp_system: Rc<RefCell<dyn TCPSystem>>,
     id: SocketId,

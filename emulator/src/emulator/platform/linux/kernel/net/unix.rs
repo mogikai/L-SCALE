@@ -14,7 +14,7 @@ use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::system::fd_map::FileDescriptor;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UnixSocketData {}
 
 #[derive(Default, Debug)]
@@ -52,7 +52,7 @@ impl FileDescriptorOps for UnixSocketOps {
     }
 
     fn sendto(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         data: &[u8],
         target: &Option<SocketAddress>,
@@ -69,7 +69,7 @@ impl FileDescriptorOps for UnixSocketOps {
     }
 
     fn connect(
-        &mut self,
+        &self,
         fd: &mut Self::D,
         sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError> {
@@ -82,7 +82,7 @@ impl FileDescriptorOps for UnixSocketOps {
     }
 
     fn accept(
-        &mut self,
+        &self,
         fd: &mut Self::D,
     ) -> Result<(FileDescriptor<Self::D>, SocketAddress), FileDescriptorError> {
         todo!()

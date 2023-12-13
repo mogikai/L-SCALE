@@ -146,7 +146,7 @@ fn main() -> Result<(), GenericError> {
         debug!("Emulation returned {result:?}");
         if let Ok(ExitReason::Breakpoint) = result {
             debug!("Creating snapshot");
-            emulator.snapshot()?;
+            emulator.take_snapshot()?;
             system.task_manager.borrow().tasks().try_for_each(|task| {
                 if let Some(load_base) = task.kernel().load_base() {
                     cpu.borrow_mut().remove_breakpoint(load_base + 0xf3fb6)
@@ -161,7 +161,7 @@ fn main() -> Result<(), GenericError> {
         //////////////// DEMO FUZZING ////////////////
         // 100k fuzzing iterations
         let mut active_connections = vec![];
-        emulator.snapshot()?;
+        emulator.take_snapshot()?;
         for _ in 0..10 {
             {
                 let mut tcp = tcp.borrow_mut();
@@ -231,7 +231,7 @@ fn main() -> Result<(), GenericError> {
             debug!("Trying to resume");
             result = emulator.run(None, None);
             debug!("Emulation returned {result:?}");
-            emulator.restore()?;
+            emulator.restore_snapshot()?;
         }
         //////////////// DEMO FUZZING ////////////////
         let start_iterations = Instant::now();

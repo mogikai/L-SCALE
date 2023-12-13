@@ -14,15 +14,15 @@ where
     TcpT: TCPSystem,
     Endianness: 'static + ByteOrder,
 {
-    fn snapshot(&mut self) -> Result<(), GenericError> {
+    fn take_snapshot(&mut self) -> Result<(), GenericError> {
         Ok(())
     }
 
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
+    fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
         Ok(())
     }
 
-    fn restore(&mut self) -> Result<(), GenericError> {
+    fn restore_snapshot(&mut self) -> Result<(), GenericError> {
         Ok(())
     }
 }

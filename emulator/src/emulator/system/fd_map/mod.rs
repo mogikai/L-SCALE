@@ -4,6 +4,7 @@ use std::cell::{
     RefMut,
 };
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 use std::ops::Add;
 use std::rc::Rc;
 
@@ -19,8 +20,12 @@ use crate::emulator::abstractions::file_descriptors::{
 };
 use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::abstractions::restore::Restorable;
+use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 use crate::emulator::system::filesystem::Stat;
+use crate::util::auto_key::lazy_clone_map::LazyCloneMap;
+use crate::util::auto_key::restorable_map::RestorableHashMap;
+use crate::util::auto_key::AutoKey;
 
 pub mod error;
 mod restorable;
@@ -29,31 +34,34 @@ mod restorable;
 /// file descriptor is not needed. These are never exposed to the user space application.
 pub type InternalFD = Index;
 
-#[derive(Debug)]
-pub struct FileDescriptor<D: Default + Restorable> {
+pub trait DebugFileDescriptorOps: FileDescriptorOps + Debug {}
+impl<T> DebugFileDescriptorOps for T where T: FileDescriptorOps + Debug {}
+
+#[derive(Debug, Clone)]
+pub struct FileDescriptor<D: Default + Clone> {
     /// The data field contains all state data for the fds. Each system component has
     /// its own optional field in the data struct. The HandleOps implementation
     /// is responsible for checking whether the appropriate data field exists.
     /// If it does not, the user space application called the operation on an invalid
     /// handle, and the HandleOps implementation shall return an EBADF error.
+    /// The data type must implement an efficient clone operation to facilitate
+    /// efficient state loading and restoring. This can be most easily achieved
+    /// by performing copy on write cloning.
     pub data: D,
     /// The ops implementation may contain pointers to system components.
     /// It must however be stateless. All data pertaining to state or
     /// similar fd related info must be contained in the data field.
-    ops: Box<dyn FileDescriptorOps<D = D>>,
+    ops: Rc<dyn DebugFileDescriptorOps<D = D>>,
 
     fd_count: usize,
-
-    saved_fd_counts: Vec<usize>,
 }
 
-impl<D: Default + Restorable> FileDescriptor<D> {
-    pub fn new(ops: Box<dyn FileDescriptorOps<D = D>>) -> Self {
+impl<D: Default + Clone> FileDescriptor<D> {
+    pub fn new(ops: Box<dyn DebugFileDescriptorOps<D = D>>) -> Self {
         FileDescriptor {
             data: Default::default(),
-            ops,
+            ops: ops.into(),
             fd_count: 0,
-            saved_fd_counts: vec![],
         }
     }
 
@@ -169,26 +177,28 @@ pub struct FileDescriptorMap<FD, TaskId, D>
 where
     FD: FdId,
     TaskId: Ord + Copy + Clone + Default,
-    D: Default + Restorable,
+    D: Default + Clone,
 {
-    files: Arena<RefCell<FileDescriptor<D>>>,
-    file_descriptors: BTreeMap<TaskId, BTreeMap<FD, Index>>,
-    internal_file_descriptors: BTreeMap<TaskId, Arena<Index>>,
+    files: LazyCloneMap<RefCell<FileDescriptor<D>>>,
+    file_descriptors: BTreeMap<TaskId, BTreeMap<FD, AutoKey>>,
+    internal_file_descriptors: BTreeMap<TaskId, Arena<AutoKey>>,
     free_fds: BTreeMap<TaskId, Vec<FD>>,
     // TODO: Implement as a hook object that can be inserted to be called after the handle
     //       processed the call.
     // hooks: HashMap<TaskId, HashMap<FD, VecDeque<Box<dyn FileDescriptorOps<D>>>>>,
-    snapshots: Vec<Snapshot<FD, TaskId>>,
+    snapshots: Vec<Snapshot<FD, TaskId, D>>,
 }
 
 #[derive(Debug)]
-struct Snapshot<FD, TaskId>
+struct Snapshot<FD, TaskId, D>
 where
     FD: FdId,
     TaskId: Ord + Copy + Clone + Default,
+    D: Default + Clone,
 {
-    file_descriptors: BTreeMap<TaskId, BTreeMap<FD, Index>>,
-    internal_file_descriptors: BTreeMap<TaskId, Arena<Index>>,
+    files: LazyCloneMap<RefCell<FileDescriptor<D>>>,
+    file_descriptors: BTreeMap<TaskId, BTreeMap<FD, AutoKey>>,
+    internal_file_descriptors: BTreeMap<TaskId, Arena<AutoKey>>,
     free_fds: BTreeMap<TaskId, Vec<FD>>,
 }
 
@@ -196,7 +206,7 @@ impl<FD, TaskId, D> FileDescriptorMap<FD, TaskId, D>
 where
     FD: FdId,
     TaskId: Ord + Copy + Clone + Default,
-    D: Default + Restorable,
+    D: Default + Clone,
 {
     pub fn new() -> Self {
         Self { ..Default::default() }
@@ -215,7 +225,7 @@ where
             .or_default()
             .try_insert(fd, index)
             .map_err(|_| {
-                self.files.remove(index);
+                self.files.remove(&index);
                 FileDescriptorMapError::FDExists
             })?;
         Ok(fd)
@@ -254,7 +264,7 @@ where
             .and_then(|map| map.remove(fd))
             .ok_or(FileDescriptorMapError::InvalidFD)?;
         self.files
-            .get_mut(removed_index)
+            .get_mut(&removed_index)
             .unwrap()
             .borrow_mut()
             .close();
@@ -268,7 +278,7 @@ where
     ) -> Option<RefMut<'_, FileDescriptor<D>>> {
         self.file_descriptors.get(task_id).and_then(|map| {
             map.get(fd)
-                .and_then(|fd_index| self.files.get(*fd_index).map(|fd| fd.borrow_mut()))
+                .and_then(|fd_index| self.files.get(fd_index).map(|fd| fd.borrow_mut()))
         })
     }
 
@@ -279,7 +289,7 @@ where
     ) -> Option<Ref<'_, FileDescriptor<D>>> {
         self.file_descriptors.get(task_id).and_then(|map| {
             map.get(fd)
-                .and_then(|fd_index| self.files.get(*fd_index).map(|fd| fd.borrow()))
+                .and_then(|fd_index| self.files.get(fd_index).map(|fd| fd.borrow()))
         })
     }
 
@@ -307,7 +317,7 @@ where
     ) -> Option<RefMut<'_, FileDescriptor<D>>> {
         self.internal_file_descriptors.get(task_id).and_then(|fds| {
             fds.get(*ifd)
-                .and_then(|fd_index| self.files.get(*fd_index).map(|fd| fd.borrow_mut()))
+                .and_then(|fd_index| self.files.get(fd_index).map(|fd| fd.borrow_mut()))
         })
     }
 
@@ -318,7 +328,7 @@ where
     ) -> Option<Ref<'_, FileDescriptor<D>>> {
         self.internal_file_descriptors.get(task_id).and_then(|fds| {
             fds.get(*ifd)
-                .and_then(|fd_index| self.files.get(*fd_index).map(|fd| fd.borrow()))
+                .and_then(|fd_index| self.files.get(fd_index).map(|fd| fd.borrow()))
         })
     }
 

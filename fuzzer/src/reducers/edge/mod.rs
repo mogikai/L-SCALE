@@ -3,7 +3,7 @@ pub mod behavior;
 use crate::api::error::FuzzerError;
 use crate::api::observer::HasObservation;
 use crate::api::reducer::Reducer;
-use crate::observers::emulator::edge::EdgeObserver;
+use crate::observers::emulator::edge::EdgeHitCountObserver;
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::rc::Rc;
@@ -13,7 +13,7 @@ use std::rc::Rc;
 /// output true. If the edge has been observed already, it will output false.
 #[derive(Debug, Default)]
 pub struct InterestingEdgesReducer {
-    observer: Rc<RefCell<EdgeObserver>>,
+    observer: Rc<RefCell<EdgeHitCountObserver>>,
     // TODO: Make this (and all reducer state) target state specific. I.e. we need to refactor this into the
     //       global fuzzer state and pass it in from the outside. Alternatively we can make this stateless
     //       by passing in the historical map from the outside via a HistoryObserver. That way the reducers
@@ -22,7 +22,7 @@ pub struct InterestingEdgesReducer {
 }
 
 impl InterestingEdgesReducer {
-    pub fn new(observer: Rc<RefCell<EdgeObserver>>) -> Self {
+    pub fn new(observer: Rc<RefCell<EdgeHitCountObserver>>) -> Self {
         Self {
             observer,
             ..Default::default()
