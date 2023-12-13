@@ -67,7 +67,7 @@ fn main() {
     let initial_task = LinuxKernelTask::new(system.clone(), 1337, 1);
 
     let args = [];
-    let env = ["SHELL=/bin/sh", "LD_DEBUG=all", "LD_BIND_NOW=true"];
+    let env = ["SHELL=/bin/sh", "LD_DEBUG=none", "LD_BIND_NOW=true"];
     let scheduler =
         LinuxX86Scheduler::new(system.clone(), initial_task, PathBuf::from(&fuzzer_args.binary), &args, &env).unwrap();
 

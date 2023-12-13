@@ -228,7 +228,7 @@ mod tests {
         assert!(map.get(&key3).is_none());
         assert!(map.get(&key4).is_none());
 
-        map.discard_current_and_restore_previous_snapshot();
+        map.restore_snapshot();
         assert_eq!(*map.get(&key).unwrap(), 42.into());
         assert!(map.get(&key2).is_none());
         assert!(map.get(&key3).is_none());

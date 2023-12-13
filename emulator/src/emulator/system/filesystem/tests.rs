@@ -41,10 +41,10 @@ fn basic() -> Result<(), GenericError> {
         .create_dir(Path::new("/doesnotexist/test"), None)
         .is_err());
 
-    fs.discard_current_and_restore_previous_snapshot()?;
+    fs.restore_snapshot()?;
     let resolved = fs.resolve_path(Path::new("/home/mark/my_stuff/my_file.txt"), false)?;
     assert_eq!(resolved.len(), 5);
-    fs.restore_snapshot()?;
+    fs.discard_current_and_restore_previous_snapshot()?;
     for i in 0..10_000 {
         if i % 1000 == 0 {
             fs.take_snapshot();
@@ -56,7 +56,6 @@ fn basic() -> Result<(), GenericError> {
             fs.discard_current_and_restore_previous_snapshot()?;
         }
     }
-    fs.restore_snapshot()?;
     let my_file = fs.resolve_last(Path::new("/my_file.txt"), false)?;
     fs.write(my_file, 0, "asdf".as_bytes())?;
     fs.delete(Path::new("/my_file.txt"))?;
@@ -79,8 +78,8 @@ fn load_file_contents() -> Result<(), GenericError> {
     fs.write(file_id, 10010, data)?;
     fs.take_snapshot();
     fs.write(file_id, 5000, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".as_bytes())?;
-    fs.discard_current_and_restore_previous_snapshot()?;
     fs.take_snapshot();
+    fs.discard_current_and_restore_previous_snapshot()?;
     for i in 1..1_000 {
         let mut rdata = [0u8; 10000];
         thread_rng().fill_bytes(&mut rdata);
