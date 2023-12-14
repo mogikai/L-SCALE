@@ -171,7 +171,7 @@ where
         let mut memory = sys_component_mut!(self, memory);
         let mut memory = memory.accessor(&mut *cpu, self.task_id);
 
-        let fd_map = sys_component!(self, fd_map);
+        let mut fd_map = sys_component_mut!(self, fd_map);
         let mut fd = fd_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADF)?;

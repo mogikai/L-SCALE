@@ -4,6 +4,7 @@ use bitflags::Flags;
 use byteorder::ByteOrder;
 use imbl::OrdMap;
 use num_enum::TryFromPrimitive;
+use tracing::trace;
 
 use fuzzyemu_derive::{
     Decode,
@@ -38,7 +39,10 @@ use crate::emulator::platform::linux::kernel::{
     LinuxKernelTask,
     SyscallResult,
 };
-use crate::emulator::system::fd_map::FileDescriptor;
+use crate::emulator::system::fd_map::{
+    FileDescriptor,
+    TemporaryRemoveGuard,
+};
 use crate::emulator::system::memory::rw_interface::{
     MemoryRead,
     MemoryWrite,
@@ -79,35 +83,46 @@ where
         let mut fd_map = sys_component_mut!(self, fd_map);
 
         let mut epoll = fd_map
-            .get_mut(&self.task_id, &epfd)
+            .remove_temporarily(&self.task_id, &epfd)
             .ok_or(LinuxKernelError::EBADF)?;
-        let epoll = &mut *epoll;
-        let epoll_data = epoll.data.epoll.as_mut().ok_or(LinuxKernelError::EINVAL)?;
+        trace!(
+            "Epoll interest list: {:?}",
+            epoll
+                .data
+                .epoll
+                .as_mut()
+                .ok_or(LinuxKernelError::EINVAL)?
+                .interest_list
+        );
 
         let mut triggered_events = vec![];
-        let mut fds_to_clean = vec![];
-        for (fd, event) in &epoll_data.interest_list {
-            // If we can't find the fd it means it was closed in the meantime. Remove it.
-            let file = fd_map.get_mut(&self.task_id, fd);
-            match file {
-                None => fds_to_clean.push(*fd),
-                Some(mut file) => {
-                    let ready_ops = file
-                        .poll(FileOperationsReady::from(event.events))
-                        .expect("Only pollable fds should be in interest list");
-                    let ready_events = EPOLL_EVENTS::from(ready_ops);
-                    if event.events.intersects(ready_events) && triggered_events.len() < maxevents as usize {
-                        triggered_events.push(epoll_event {
-                            events: ready_events,
-                            data: event.data,
-                        });
+        epoll.with_fd_map(|fd_map, epoll| {
+            let mut fds_to_clean = vec![];
+            let epoll_data = epoll.data.epoll.as_mut().ok_or(LinuxKernelError::EINVAL)?;
+            for (fd, event) in &epoll_data.interest_list {
+                // If we can't find the fd it means it was closed in the meantime. Remove it.
+                let file = fd_map.get_mut(&self.task_id, fd);
+                match file {
+                    None => fds_to_clean.push(*fd),
+                    Some(mut file) => {
+                        let ready_ops = file
+                            .poll(FileOperationsReady::from(event.events))
+                            .expect("Only pollable fds should be in interest list");
+                        let ready_events = EPOLL_EVENTS::from(ready_ops);
+                        if event.events.intersects(ready_events) && triggered_events.len() < maxevents as usize {
+                            triggered_events.push(epoll_event {
+                                events: ready_events,
+                                data: event.data,
+                            });
+                        }
                     }
                 }
             }
-        }
 
-        fds_to_clean.into_iter().for_each(|fd| {
-            epoll_data.interest_list.remove(&fd);
+            fds_to_clean.into_iter().for_each(|fd| {
+                epoll_data.interest_list.remove(&fd);
+            });
+            SyscallResult::Ok(0)
         });
 
         if triggered_events.is_empty() && timeout != 0 {
@@ -141,28 +156,30 @@ where
             Err(LinuxKernelError::EINVAL)?
         }
 
-        // Check if fd is valid by fetching it
-        let mut file_descriptor = fd_map
-            .get_mut(&self.task_id, &fd)
-            .ok_or(LinuxKernelError::EBADF)?;
-        let file_descriptor = &mut *file_descriptor;
         let mut epfd = fd_map
-            .get_mut(&self.task_id, &epfd)
+            .remove_temporarily(&self.task_id, &epfd)
             .ok_or(LinuxKernelError::EBADF)?;
+        epfd.with_fd_map(|fd_map, epfd| {
+            // Check if fd is valid by fetching it
+            let mut file_descriptor = fd_map
+                .get_mut(&self.task_id, &fd)
+                .ok_or(LinuxKernelError::EBADF)?;
+            let file_descriptor = &mut *file_descriptor;
 
-        // Is this an epoll fd?
-        let epoll = epfd.data.epoll.as_mut().ok_or(LinuxKernelError::EINVAL)?;
+            // Is this an epoll fd?
+            let epoll = epfd.data.epoll.as_mut().ok_or(LinuxKernelError::EINVAL)?;
 
-        // Can fd be polled?
-        if !file_descriptor.supports_poll() {
-            Err(LinuxKernelError::EINVAL)?
-        }
+            // Can fd be polled?
+            if !file_descriptor.supports_poll() {
+                Err(LinuxKernelError::EINVAL)?
+            }
 
-        match op {
-            EPOLL_OPCODES::EPOLL_CTL_ADD => self.epoll_ctl_add(&memory, epoll, &fd, file_descriptor, event),
-            EPOLL_OPCODES::EPOLL_CTL_DEL => self.epoll_ctl_del(epoll, &fd),
-            EPOLL_OPCODES::EPOLL_CTL_MOD => self.epoll_ctl_mod(&memory, epoll, &fd, event),
-        }
+            match op {
+                EPOLL_OPCODES::EPOLL_CTL_ADD => self.epoll_ctl_add(&memory, epoll, &fd, file_descriptor, event),
+                EPOLL_OPCODES::EPOLL_CTL_DEL => self.epoll_ctl_del(epoll, &fd),
+                EPOLL_OPCODES::EPOLL_CTL_MOD => self.epoll_ctl_mod(&memory, epoll, &fd, event),
+            }
+        })
     }
 
     #[allow(clippy::needless_pass_by_ref_mut)] // In the future mutable access will be needed

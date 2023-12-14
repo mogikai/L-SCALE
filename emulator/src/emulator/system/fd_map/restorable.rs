@@ -8,12 +8,14 @@ use crate::emulator::system::fd_map::{
     FileDescriptorMap,
     Snapshot,
 };
+use std::fmt::Debug;
+use tracing::trace;
 
 impl<FD, TaskId, D> Restorable for FileDescriptorMap<FD, TaskId, D>
 where
-    FD: FdId,
-    TaskId: Ord + Copy + Clone + Default,
-    D: Default + Clone,
+    FD: FdId + Debug,
+    TaskId: Ord + Copy + Clone + Default + Debug,
+    D: Default + Clone + Debug,
 {
     fn take_snapshot(&mut self) -> Result<(), GenericError> {
         // TODO: How do we handle the files arena with snapshots? We need to truncate anything that
@@ -40,6 +42,8 @@ where
             .snapshots
             .last()
             .ok_or(GenericError::new(GenericErrorKind::Unknown, "No snapshot available"))?;
+        trace!("Number of snapshots: {:?}", self.snapshots.len());
+        trace!("Restoring fd map snapshot: {snapshot:?}");
         self.files.clone_from(&snapshot.files);
         self.file_descriptors.clone_from(&snapshot.file_descriptors);
         self.internal_file_descriptors

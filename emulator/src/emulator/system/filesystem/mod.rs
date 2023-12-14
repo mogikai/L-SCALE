@@ -4,6 +4,10 @@
 //! TODO: Implement update of stat struct.
 //! TODO: Consider memory mapping of files into ram
 use std::cmp::min;
+use std::fmt::{
+    Debug,
+    Formatter,
+};
 use std::fs::read;
 use std::path::{
     Path,

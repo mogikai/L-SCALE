@@ -5,13 +5,19 @@ use std::cell::{
 };
 use std::collections::BTreeMap;
 use std::fmt::Debug;
-use std::ops::Add;
+use std::mem::ManuallyDrop;
+use std::ops::{
+    Add,
+    Deref,
+    DerefMut,
+};
 use std::rc::Rc;
 
 use generational_arena::{
     Arena,
     Index,
 };
+use tracing::trace;
 
 use crate::emulator::abstractions::file_descriptors::{
     FileDescriptorError,
@@ -21,11 +27,16 @@ use crate::emulator::abstractions::file_descriptors::{
 use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
+use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 use crate::emulator::system::filesystem::Stat;
-use crate::util::auto_key::lazy_clone_map::LazyCloneMap;
+use crate::util::auto_key::lazy_clone_map::{
+    LazyCloneMap,
+    RemovedElement,
+};
 use crate::util::auto_key::restorable_map::RestorableHashMap;
 use crate::util::auto_key::AutoKey;
+use crate::util::rcow::RCow;
 
 pub mod error;
 mod restorable;
@@ -86,6 +97,10 @@ impl<D: Default + Clone> FileDescriptor<D> {
         } else {
             Ok(())
         }
+    }
+
+    fn ref_count(&self) -> usize {
+        self.fd_count
     }
 
     pub fn stat(&mut self) -> Result<Ref<'_, Stat>, FileDescriptorError> {
@@ -179,7 +194,7 @@ where
     TaskId: Ord + Copy + Clone + Default,
     D: Default + Clone,
 {
-    files: LazyCloneMap<RefCell<FileDescriptor<D>>>,
+    files: LazyCloneMap<FileDescriptor<D>>,
     file_descriptors: BTreeMap<TaskId, BTreeMap<FD, AutoKey>>,
     internal_file_descriptors: BTreeMap<TaskId, Arena<AutoKey>>,
     free_fds: BTreeMap<TaskId, Vec<FD>>,
@@ -190,13 +205,81 @@ where
 }
 
 #[derive(Debug)]
+pub struct TemporaryRemoveGuard<'a, FD, TaskId, D>
+where
+    FD: FdId,
+    TaskId: Ord + Copy + Clone + Default,
+    D: Default + Clone,
+{
+    guarded_map: &'a mut FileDescriptorMap<FD, TaskId, D>,
+    temporarily_removed: ManuallyDrop<RemovedElement<FileDescriptor<D>>>,
+}
+
+impl<'a, FD, TaskId, D> TemporaryRemoveGuard<'a, FD, TaskId, D>
+where
+    FD: FdId,
+    TaskId: Ord + Copy + Clone + Default,
+    D: Default + Clone,
+{
+    pub fn with_fd_map<ActionClosureT, ClosureReturnT>(
+        &mut self,
+        mut action: ActionClosureT,
+    ) -> ClosureReturnT
+    where
+        ActionClosureT: FnMut(&mut FileDescriptorMap<FD, TaskId, D>, &mut FileDescriptor<D>) -> ClosureReturnT,
+    {
+        action(self.guarded_map, &mut self.temporarily_removed)
+    }
+}
+
+impl<'a, FD, TaskId, D> Deref for TemporaryRemoveGuard<'a, FD, TaskId, D>
+where
+    FD: FdId,
+    TaskId: Ord + Copy + Clone + Default,
+    D: Default + Clone,
+{
+    type Target = FileDescriptor<D>;
+
+    fn deref(&self) -> &Self::Target {
+        self.temporarily_removed.deref()
+    }
+}
+
+impl<'a, FD, TaskId, D> DerefMut for TemporaryRemoveGuard<'a, FD, TaskId, D>
+where
+    FD: FdId,
+    TaskId: Ord + Copy + Clone + Default,
+    D: Default + Clone,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.temporarily_removed.deref_mut()
+    }
+}
+
+impl<'a, FD, TaskId, D> Drop for TemporaryRemoveGuard<'a, FD, TaskId, D>
+where
+    FD: FdId,
+    TaskId: Ord + Copy + Clone + Default,
+    D: Default + Clone,
+{
+    fn drop(&mut self) {
+        // Safe because no accesses can occur after this point
+        unsafe {
+            self.guarded_map
+                .files
+                .reinsert(ManuallyDrop::take(&mut self.temporarily_removed));
+        }
+    }
+}
+
+#[derive(Debug)]
 struct Snapshot<FD, TaskId, D>
 where
     FD: FdId,
     TaskId: Ord + Copy + Clone + Default,
     D: Default + Clone,
 {
-    files: LazyCloneMap<RefCell<FileDescriptor<D>>>,
+    files: LazyCloneMap<FileDescriptor<D>>,
     file_descriptors: BTreeMap<TaskId, BTreeMap<FD, AutoKey>>,
     internal_file_descriptors: BTreeMap<TaskId, Arena<AutoKey>>,
     free_fds: BTreeMap<TaskId, Vec<FD>>,
@@ -219,7 +302,7 @@ where
         mut file_descriptor: FileDescriptor<D>,
     ) -> Result<FD, FileDescriptorMapError> {
         file_descriptor.fd_count += 1;
-        let index = self.files.insert(RefCell::new(file_descriptor));
+        let index = self.files.insert(file_descriptor);
         self.file_descriptors
             .entry(*task_id)
             .or_default()
@@ -245,7 +328,7 @@ where
         task_id: &TaskId,
         file_descriptor: FileDescriptor<D>,
     ) -> Result<InternalFD, FileDescriptorMapError> {
-        let index = self.files.insert(RefCell::new(file_descriptor));
+        let index = self.files.insert(file_descriptor);
         Ok(self
             .internal_file_descriptors
             .entry(*task_id)
@@ -263,22 +346,40 @@ where
             .get_mut(task_id)
             .and_then(|map| map.remove(fd))
             .ok_or(FileDescriptorMapError::InvalidFD)?;
-        self.files
-            .get_mut(&removed_index)
-            .unwrap()
-            .borrow_mut()
-            .close();
+        let file = self.files.get_mut(&removed_index).unwrap();
+        file.close().unwrap();
+        if file.ref_count() == 0 {
+            self.files.remove(&removed_index);
+        }
         Ok(())
     }
 
     pub fn get_mut(
-        &self,
+        &mut self,
         task_id: &TaskId,
         fd: &FD,
-    ) -> Option<RefMut<'_, FileDescriptor<D>>> {
+    ) -> Option<&mut FileDescriptor<D>> {
         self.file_descriptors.get(task_id).and_then(|map| {
             map.get(fd)
-                .and_then(|fd_index| self.files.get(fd_index).map(|fd| fd.borrow_mut()))
+                .and_then(|fd_index| self.files.get_mut(fd_index))
+        })
+    }
+
+    /// FIXME: THIS BREAKS INVARIANTS IF PUT_BACK IS NOT CALLED. NEED TO FIND A MORE SOPHISTICATED WAY
+    pub fn remove_temporarily<'a>(
+        &'a mut self,
+        task_id: &TaskId,
+        fd: &FD,
+    ) -> Option<TemporaryRemoveGuard<'a, FD, TaskId, D>> {
+        let removed = self
+            .file_descriptors
+            .get(task_id)
+            .and_then(|map| map.get(fd).and_then(|fd_index| self.files.remove(fd_index)));
+        removed.and_then(|removed| {
+            Some(TemporaryRemoveGuard {
+                guarded_map: self,
+                temporarily_removed: ManuallyDrop::new(removed),
+            })
         })
     }
 
@@ -286,11 +387,10 @@ where
         &self,
         task_id: &TaskId,
         fd: &FD,
-    ) -> Option<Ref<'_, FileDescriptor<D>>> {
-        self.file_descriptors.get(task_id).and_then(|map| {
-            map.get(fd)
-                .and_then(|fd_index| self.files.get(fd_index).map(|fd| fd.borrow()))
-        })
+    ) -> Option<&FileDescriptor<D>> {
+        self.file_descriptors
+            .get(task_id)
+            .and_then(|map| map.get(fd).and_then(|fd_index| self.files.get(fd_index)))
     }
 
     pub fn dup_internal(
@@ -314,10 +414,10 @@ where
         &mut self,
         task_id: &TaskId,
         ifd: &InternalFD,
-    ) -> Option<RefMut<'_, FileDescriptor<D>>> {
+    ) -> Option<&mut FileDescriptor<D>> {
         self.internal_file_descriptors.get(task_id).and_then(|fds| {
             fds.get(*ifd)
-                .and_then(|fd_index| self.files.get(fd_index).map(|fd| fd.borrow_mut()))
+                .and_then(|fd_index| self.files.get_mut(fd_index))
         })
     }
 
@@ -325,11 +425,10 @@ where
         &self,
         task_id: &TaskId,
         ifd: &InternalFD,
-    ) -> Option<Ref<'_, FileDescriptor<D>>> {
-        self.internal_file_descriptors.get(task_id).and_then(|fds| {
-            fds.get(*ifd)
-                .and_then(|fd_index| self.files.get(fd_index).map(|fd| fd.borrow()))
-        })
+    ) -> Option<&FileDescriptor<D>> {
+        self.internal_file_descriptors
+            .get(task_id)
+            .and_then(|fds| fds.get(*ifd).and_then(|fd_index| self.files.get(fd_index)))
     }
 
     fn get_free_fd(

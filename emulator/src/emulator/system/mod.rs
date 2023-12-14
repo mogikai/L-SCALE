@@ -156,9 +156,9 @@ where
 impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT> Restorable
     for System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT>
 where
-    FD: FdId,
-    FDData: Default + Clone,
-    TaskId: Ord + Copy + Clone + Default,
+    FD: FdId + Debug,
+    FDData: Default + Clone + Debug,
+    TaskId: Ord + Copy + Clone + Default + Debug,
     KernelTaskT: KernelTask<TaskId> + Debug,
     Endianness: ByteOrder,
     CpuT: CPU + MMU,

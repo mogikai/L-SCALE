@@ -280,7 +280,7 @@ where
 
 /// Get the fs entry id for the supplied file descriptor if it is a directory.
 fn get_dir_fse_id(
-    map: RefMut<'_, FileDescriptorMap<FD, TaskId, FileDescriptorData>>,
+    mut map: RefMut<'_, FileDescriptorMap<FD, TaskId, FileDescriptorData>>,
     task_id: &TaskId,
     fd: &FD,
 ) -> Result<FSEntryId, LinuxKernelError> {
@@ -298,11 +298,23 @@ fn get_dir_fse_id(
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct FileData {
     filesystem: Rc<RefCell<Filesystem>>,
     fse_id: FSEntryId,
     pub pos: usize,
+}
+
+impl Debug for FileData {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        f.debug_struct("FileData")
+            .field("fse_id", &self.fse_id)
+            .field("pos", &self.pos)
+            .finish()
+    }
 }
 
 impl FileData {

@@ -132,11 +132,8 @@ impl Tlb {
         &self,
         address: EVAddr,
     ) -> Result<TLBEntry, MemoryError> {
-        let tlbe = self
-            .get_mapping(address)
-            .and_then(|region| region.make_tlb_entry(address));
-        trace!("Translation result for {:?}: {:?}", address, tlbe);
-        tlbe
+        self.get_mapping(address)
+            .and_then(|region| region.make_tlb_entry(address))
     }
 
     /// Translates the virtual address range address..address+size and returns

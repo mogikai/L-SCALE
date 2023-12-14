@@ -1,5 +1,8 @@
 use std::cell::RefCell;
-use std::ops::{Deref, DerefMut};
+use std::ops::{
+    Deref,
+    DerefMut,
+};
 use std::rc::Rc;
 
 use imbl::HashMap;
@@ -17,12 +20,35 @@ where
     data: HashMap<AutoKey, RCow<T>>,
 }
 
+/// A removed element. The element can be reinserted without having key conflicts.
+/// This is useful for when the data structure needs to be mutated while holding one
+/// or more other elements from the data structure simultaneously.
+#[derive(Debug)]
+pub struct RemovedElement<T> {
+    element: T,
+    index: AutoKey,
+}
+
+impl<T> Deref for RemovedElement<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.element
+    }
+}
+
+impl<T> DerefMut for RemovedElement<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.element
+    }
+}
+
 #[derive(Debug)]
 pub struct LazyCloneMap<T>
 where
     T: Clone,
 {
-    data: HashMap<AutoKey, RCow<T>>,
+    data: HashMap<AutoKey, T>,
     next_key: Rc<RefCell<AutoKey>>,
 }
 
@@ -64,7 +90,7 @@ where
         element: T,
     ) -> AutoKey {
         let mut key = self.next_key.borrow_mut();
-        let old = self.data.insert(*key, RCow::new(element));
+        let old = self.data.insert(*key, element);
         // Due to our key always incrementing, there will never be an old element.
         assert!(old.is_none());
         let current_key = *key;
@@ -84,37 +110,49 @@ where
         &self,
         key: &AutoKey,
     ) -> Option<&T> {
-        self.data.get(key).map(|v| v.deref())
+        self.data.get(key)
     }
 
     pub fn get_mut(
         &mut self,
         key: &AutoKey,
     ) -> Option<&mut T> {
-        self.data.get_mut(key).map(|v| v.deref_mut())
+        self.data.get_mut(key)
     }
 
     pub fn remove(
         &mut self,
         key: &AutoKey,
+    ) -> Option<RemovedElement<T>> {
+        self.data
+            .remove(key)
+            .and_then(|element| Some(RemovedElement { element, index: *key }))
+    }
+
+    pub fn reinsert(
+        &mut self,
+        removed_element: RemovedElement<T>,
     ) {
-        self.data.remove(key);
+        let old = self
+            .data
+            .insert(removed_element.index, removed_element.element);
+        assert!(old.is_none());
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&AutoKey, &T)> {
-        self.data.iter().map(|(k, v)| (k, v.deref()))
+        self.data.iter()
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&AutoKey, &mut T)> {
-        self.data.iter_mut().map(|(k, v)| (k, v.deref_mut()))
+        self.data.iter_mut()
     }
 
     pub fn values(&self) -> impl Iterator<Item = &T> {
-        self.data.values().map(|v| v.deref())
+        self.data.values()
     }
 
     pub fn values_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.data.iter_mut().map(|(k, v)| v.deref_mut())
+        self.data.iter_mut().map(|(_, v)| v)
     }
 
     pub fn clear(&mut self) {

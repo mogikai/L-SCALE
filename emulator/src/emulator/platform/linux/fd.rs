@@ -24,22 +24,6 @@ pub struct FileDescriptorData {
     pub netlink: Option<NetlinkData>,
 }
 
-impl Restorable for FileDescriptorData {
-    fn take_snapshot(&mut self) -> Result<(), GenericError> {
-        // todo!("Delegate snapshots to individual data structs")
-        Ok(())
-    }
-
-    fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
-        todo!()
-    }
-
-    fn restore_snapshot(&mut self) -> Result<(), GenericError> {
-        // todo!("Delegate snapshots to individual data structs")
-        Ok(())
-    }
-}
-
 #[derive(Hash, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Default)]
 pub struct FD(i64);
 

@@ -62,6 +62,8 @@ impl InnerEdgeObserver {
     /// The mapping for edges to indices is kept, such that different runs
     /// can be compared, since they have the same mapping.
     fn reset(&mut self) {
+        self.previous_address = None;
+        self.highest_observed_index = 0;
         self.edge_counts.iter_mut().for_each(|count| *count = 0);
     }
 }
@@ -149,13 +151,15 @@ impl crate::observers::emulator::edge::InnerEdgeHitObserver {
     /// The mapping for edges to indices is kept, such that different runs
     /// can be compared, since they have the same mapping.
     fn reset(&mut self) {
+        self.previous_address = None;
+        self.highest_observed_index = 0;
         self.edge_hits.iter_mut().for_each(|hit| *hit = false);
     }
 }
 
 #[derive(Debug, Default)]
 pub struct EdgeHitObserver {
-    inner: Rc<RefCell<InnerEdgeObserver>>,
+    inner: Rc<RefCell<InnerEdgeHitObserver>>,
 }
 
 impl EdgeHitObserver {
@@ -182,9 +186,9 @@ impl Observer for EdgeHitObserver {
 }
 
 impl HasObservation for EdgeHitObserver {
-    type Observation = [u64];
+    type Observation = [bool];
 
     fn observation(&self) -> impl Deref<Target = Self::Observation> {
-        Ref::map(self.inner.borrow(), |inner| &inner.edge_counts[..=inner.highest_observed_index])
+        Ref::map(self.inner.borrow(), |inner| &inner.edge_hits[..=inner.highest_observed_index])
     }
 }

@@ -35,7 +35,7 @@ pub trait TCPSystem: Restorable + Debug {
     ) -> Result<(), NetworkError>;
 
     fn poll(
-        &self,
+        &mut self,
         id: SocketId,
         interest: FileOperationsReady,
     ) -> Result<FileOperationsReady, NetworkError>;

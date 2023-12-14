@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::cmp::min;
 use std::collections::VecDeque;
 use std::mem::swap;
+use tracing::trace;
 
 use fuzzyemu::emulator::abstractions::errors::{
     GenericError,
@@ -47,12 +48,12 @@ pub struct TCPSocketImpl {
     /// Listeners only have a socket address.
     remote_address: RCow<Option<SocketAddress>>,
 
-    last_interest: RCow<RefCell<FileOperationsReady>>,
+    last_interest: RCow<FileOperationsReady>,
 }
 
 impl TCPSocketImpl {
     pub fn poll(
-        &self,
+        &mut self,
         interest: FileOperationsReady,
     ) -> FileOperationsReady {
         let mut ops_ready = FileOperationsReady::empty();
@@ -65,12 +66,12 @@ impl TCPSocketImpl {
             }
         }
         // Save the interest bits that cannot already be satisfied.
-        *self.last_interest.borrow_mut() = interest.difference(ops_ready);
+        *self.last_interest = interest.difference(ops_ready);
         ops_ready
     }
 
     pub fn interest(&self) -> FileOperationsReady {
-        *self.last_interest.borrow()
+        *self.last_interest
     }
 
     pub fn address(&self) -> Option<SocketAddress> {
@@ -98,7 +99,7 @@ impl TCPSocketImpl {
 
 impl TCPSocket for TCPSocketImpl {
     fn interest(&self) -> FileOperationsReady {
-        *self.last_interest.borrow()
+        *self.last_interest
     }
 
     fn bound_address(&self) -> Option<SocketAddress> {
@@ -114,6 +115,7 @@ impl TCPSocket for TCPSocketImpl {
         data: &[u8],
     ) -> Result<(), NetworkError> {
         self.incoming.extend(data);
+        trace!("Incoming data is {}", String::from_utf8_lossy(self.incoming.make_contiguous()));
         Ok(())
     }
 
@@ -159,7 +161,7 @@ impl TCPSystemControl for TCP {
                 pending_connections: RCow::new(None),
                 local_address: RCow::new(Some(listener.local_address.ok_or(NetworkError::Unknown)?)),
                 remote_address: RCow::new(Some(remote_address)),
-                last_interest: RCow::new(RefCell::new(FileOperationsReady::empty())),
+                last_interest: RCow::new(FileOperationsReady::empty()),
             }
         };
         let id = self.sockets.insert(socket);
@@ -252,11 +254,11 @@ impl TCPSystem for TCP {
     }
 
     fn poll(
-        &self,
+        &mut self,
         id: SocketId,
         interest: FileOperationsReady,
     ) -> Result<FileOperationsReady, NetworkError> {
-        let sock = self.sockets.get(&id).ok_or(NetworkError::Unknown)?;
+        let sock = self.sockets.get_mut(&id).ok_or(NetworkError::Unknown)?;
         Ok(sock.poll(interest))
     }
 

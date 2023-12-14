@@ -3,7 +3,11 @@ use std::collections::{
     BTreeMap,
     HashSet,
 };
-use std::fmt::Debug;
+use std::fmt::{
+    Debug,
+    Display,
+    Formatter,
+};
 use std::fs;
 use std::fs::{
     create_dir_all,
@@ -13,14 +17,15 @@ use std::hash::{
     Hash,
     Hasher,
 };
-use std::io::Write;
-use std::marker::PhantomData;
-use std::mem::{
-    replace,
-    take,
+use std::io::{
+    stdin,
+    Read,
+    Write,
 };
+use std::mem::take;
 use std::ops::Not;
 use std::path::PathBuf;
+use std::process::exit;
 use std::rc::Rc;
 use std::sync::atomic::{
     AtomicBool,
@@ -36,6 +41,7 @@ use petgraph::dot::{
 };
 use petgraph::graph::{
     DiGraph,
+    EdgeReference,
     NodeIndex,
 };
 use serde::{
@@ -126,15 +132,39 @@ impl Input {
     //       A GUI might be helpful for this. (PSE project?)
 }
 
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub enum InputDataSource {
+    File(PathBuf),
+    #[default]
+    Unknown,
+}
+
+impl Display for InputDataSource {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        match self {
+            InputDataSource::File(path) => f.write_fmt(format_args!("{}", path.file_name().unwrap().to_string_lossy())),
+            InputDataSource::Unknown => f.write_str("Unknown"),
+        }
+    }
+}
+
 /// An object that contains arbitrary bytes that can be used in any kind of input component.
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct InputData {
+    source: InputDataSource,
     data: Vec<u8>,
 }
 
-impl From<Vec<u8>> for InputData {
-    fn from(data: Vec<u8>) -> Self {
-        Self { data }
+impl From<PathBuf> for InputData {
+    fn from(file: PathBuf) -> Self {
+        let data = fs::read(file.as_path()).unwrap();
+        Self {
+            source: InputDataSource::File(file),
+            data,
+        }
     }
 }
 
@@ -331,7 +361,7 @@ new_key_type! { struct StateId; }
 new_key_type! { struct StateCandidateId; }
 new_key_type! { struct SuffixId; }
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, PartialEq, Eq)]
 enum StateUnion {
     Final(StateId),
     Candidate(StateCandidateId),
@@ -343,7 +373,7 @@ type InputDataMap = SlotMap<InputDataId, InputData>;
 pub struct FuzzerState {
     last_dot_file_num: usize,
     /// The state graph. Each node corresponds to an index in the prefix closed set S in Angluins L* algorithm.
-    state_graph: DiGraph<(), ()>,
+    state_graph: DiGraph<(), TestCaseId>,
     suffixes: SlotMap<SuffixId, Vec<TestCaseId>>,
     /// A map of node indices to their associated state id.
     states_map: BTreeMap<NodeIndex, StateId>,
@@ -411,20 +441,32 @@ impl StateBuilder {
 
     fn shortest_path_from_initial(
         &self,
-        fuzzer_state: FuzzerState,
+        fuzzer_state: &FuzzerState,
         state_id: StateId,
     ) -> Vec<StatePathComponent> {
         let StateUnion::Final(initial_state) = fuzzer_state.state_path[0] else {
             panic!("The first state in the path must always be the initial state, which is final");
         };
-        petgraph::algo::astar(
-            &fuzzer_state.state_graph,
-            fuzzer_state.states.get(initial_state).unwrap().node_id(),
-            |n| n == fuzzer_state.states.get(state_id).unwrap().node_id(),
-            |_| 1,
-            |_| 0,
+        // FIXME TODO: For now we just backtrack to initial. In the future we should only backtrack as far as needed.
+        let mut path = vec![];
+        path.push(StatePathComponent::Backtrack(fuzzer_state.state_path.len().checked_sub(1).unwrap()));
+
+        path.extend(
+            petgraph::algo::astar(
+                &fuzzer_state.state_graph,
+                fuzzer_state.states.get(initial_state).unwrap().node_id(),
+                |n| n == fuzzer_state.states.get(state_id).unwrap().node_id(),
+                |_| 1,
+                |_| 0,
+            )
+            .unwrap()
+            .1
+            .iter()
+            .map(|node_id| StatePathComponent::GoTo(*fuzzer_state.states_map.get(node_id).unwrap()))
+            .skip(1), // Skip initial state
         );
-        todo!()
+
+        path
     }
 
     /// Adds a newly discovered testcase to the testcase set and also creates new candidate states
@@ -467,6 +509,7 @@ impl StateBuilder {
     ) -> StateId {
         let state_candidate = fuzzer_state.state_candidates.remove(candidate_id).unwrap();
         let origin_id = state_candidate.origin();
+        let reached_by = state_candidate.reached_by();
         // Remove the candidate form the origins candidate set
         if let Some(candidates) = fuzzer_state.state_candidate_map.get_mut(origin_id) {
             let removed = candidates.remove(&candidate_id);
@@ -487,7 +530,7 @@ impl StateBuilder {
             // Add corresponding edge to graph
             fuzzer_state
                 .state_graph
-                .add_edge(origin_state.node_id(), node_id, ());
+                .add_edge(origin_state.node_id(), node_id, reached_by);
         }
 
         // Insert new candidates for each testcase for the new state
@@ -593,8 +636,31 @@ impl StateBuilder {
         fuzzer_state.last_dot_file_num += 1;
         let mut states_dir = PathBuf::from(".output/states/");
         create_dir_all(&states_dir).unwrap();
+        let edge_labeling = |_, edge: EdgeReference<TestCaseId>| {
+            let tc = fuzzer_state.test_cases.get(*edge.weight()).unwrap();
+            let streams = tc
+                .input
+                .tcp_streams
+                .iter()
+                .fold(String::new(), |acc, stream| {
+                    acc + ","
+                        + fuzzer_state
+                            .input_data
+                            .get(stream.unwrap())
+                            .unwrap()
+                            .source
+                            .to_string()
+                            .as_str()
+                });
+            format!("label = \"{:?} | {streams}\"", tc.input.component_markers)
+        };
         states_dir.push(fuzzer_state.last_dot_file_num.to_string());
-        let dot = Dot::with_config(&fuzzer_state.state_graph, &[Config::NodeIndexLabel, Config::EdgeIndexLabel]);
+        let dot = Dot::with_attr_getters(
+            &fuzzer_state.state_graph,
+            &[Config::NodeIndexLabel, Config::EdgeNoLabel],
+            &edge_labeling,
+            &|_, _| String::new(),
+        );
         let mut file = File::options()
             .write(true)
             .create(true)
@@ -691,9 +757,15 @@ where
         Self::clear_observers(&mut self.observers);
         Self::update_input_info(&self.emulator, &mut self.input_info);
         self.load_initial_state();
-        self.evaluate_states_with_missing_observations();
-        self.state_builder.fix_closed_property(&mut self.state);
-        self.state_builder.dump_dot_file(&mut self.state);
+        while self.evaluate_states_with_missing_observations() {
+            self.state_builder.fix_closed_property(&mut self.state);
+            self.state_builder.dump_dot_file(&mut self.state);
+            let mut input = String::new();
+            stdin().read_line(&mut input).unwrap();
+            if input.starts_with('q') {
+                exit(0);
+            }
+        }
     }
 
     fn load_initial_state(&mut self) {
@@ -702,8 +774,7 @@ where
         corpus_dir.push("corpus");
         for file in corpus_dir.read_dir().unwrap().flatten() {
             if file.file_type().unwrap().is_file() {
-                let data = fs::read(file.path()).unwrap();
-                let input_data_id = self.state.input_data.insert(InputData::from(data));
+                let input_data_id = self.state.input_data.insert(InputData::from(file.path()));
                 // TODO: Refactor this into more generic code and don't access private fields.
                 let mut input = Input::new();
                 input.tcp_streams.push(Some(input_data_id));
@@ -714,16 +785,21 @@ where
         self.state_builder.initialize_state_info(&mut self.state);
     }
 
-    fn evaluate_states_with_missing_observations(&mut self) {
+    /// Returns true if observations were performed.
+    /// If nothing had to be done, false is returned.
+    fn evaluate_states_with_missing_observations(&mut self) -> bool {
         let (states, mut state_candidates) = self
             .state_builder
             .find_states_with_missing_observations(&self.state);
+        if states.is_empty() && state_candidates.is_empty() {
+            return false;
+        }
         trace!("Evaluating states with missing observations: {states:?}, {state_candidates:?}");
         for state_id in states {
             // go to state state_id
             self.go_to_state(state_id);
             self.evaluate_current_state();
-            let mut candidates = self
+            let candidates = self
                 .state
                 .state_candidate_map
                 .get(state_id)
@@ -731,13 +807,42 @@ where
                 .iter()
                 .filter_map(|c| state_candidates.take(c))
                 .collect::<Vec<_>>();
-            candidates.sort();
             for candidate_id in candidates {
                 self.go_to_candidate_from_current(candidate_id);
                 self.evaluate_current_state();
                 self.go_to_previous_state();
             }
         }
+        // We collect all origins for the candidates such that we can visit
+        // all the candidates at once for each origin state
+        let origin_states = state_candidates
+            .iter()
+            .map(|&candidate_id| {
+                self.state
+                    .state_candidates
+                    .get(candidate_id)
+                    .unwrap()
+                    .origin()
+            })
+            .collect::<HashSet<_>>();
+        for origin_state_id in origin_states {
+            self.go_to_state(origin_state_id);
+            let candidates = self
+                .state
+                .state_candidate_map
+                .get(origin_state_id)
+                .unwrap()
+                .iter()
+                .filter_map(|c| state_candidates.take(c))
+                .collect::<Vec<_>>();
+            for candidate_id in candidates {
+                self.go_to_candidate_from_current(candidate_id);
+                self.evaluate_current_state();
+                self.go_to_previous_state();
+            }
+        }
+
+        true
     }
 
     /// Move the emulator to the specified state
@@ -745,8 +850,19 @@ where
         &mut self,
         state_id: StateId,
     ) {
-        trace!("Moving to state {state_id:?}");
-        // FIXME TODO: Actually implement this
+        trace!("Traversing to state {state_id:?}");
+        if StateUnion::Final(state_id) != *self.state.state_path.last().unwrap() {
+            let path = self
+                .state_builder
+                .shortest_path_from_initial(&self.state, state_id);
+            for component in path {
+                match component {
+                    StatePathComponent::Backtrack(n) => (0..n).for_each(|_| self.go_to_previous_state()),
+                    StatePathComponent::GoTo(state_id) => self.go_to_state_from_current(state_id),
+                }
+            }
+        }
+        // Nothing to do if we are already in the requested state
     }
 
     /// Goes to the candidate state if it is directly adjacent to the current state
@@ -773,9 +889,37 @@ where
             .push(StateUnion::Candidate(state_candidate_id));
     }
 
+    fn go_to_state_from_current(
+        &mut self,
+        state_id: StateId,
+    ) {
+        trace!("Moving to state {state_id:?}");
+        let target_state = self.state.states.get(state_id).unwrap();
+        let StateUnion::Final(current_state_id) = self.state_builder.current_state_id(&self.state) else {
+            panic!("States can only be visited from a final state");
+        };
+        let current_state = self.state.states.get(current_state_id).unwrap();
+        let mut edges = self
+            .state
+            .state_graph
+            .edges_connecting(current_state.node_id(), target_state.node_id());
+        let reached_by = edges.next().unwrap().weight();
+        assert_eq!(edges.next(), None);
+
+        let testcase = self.state.test_cases.get_mut(*reached_by).unwrap();
+        Self::apply_testcase(&mut self.emulator, &mut self.input_info, &self.state.input_data, testcase);
+        self.emulator.take_snapshot().unwrap();
+        self.state.state_path.push(StateUnion::Final(state_id));
+    }
+
     fn go_to_previous_state(&mut self) {
+        if self.state.state_path.len() <= 1 {
+            panic!("Cannot go back past the initial state");
+        }
         trace!("Moving to previous state");
-        self.emulator.discard_current_and_restore_previous_snapshot().unwrap();
+        self.emulator
+            .discard_current_and_restore_previous_snapshot()
+            .unwrap();
         self.state.state_path.pop();
     }
 
@@ -797,6 +941,7 @@ where
         input_info.tcp.listeners.clear();
         input_info.tcp.streams_writable.clear();
         for (&sock_id, sock) in emulator.system().tcp().borrow().sockets() {
+            trace!("File operations ready for socket {sock_id:?}: {:?}", sock.interest());
             if sock
                 .interest()
                 .intersects(FileOperationsReady::Read | FileOperationsReady::ReadNormal)
@@ -839,8 +984,6 @@ where
                 // TODO: Store state specific reducer states?
                 Self::clear_observers(&mut self.observers);
                 let testcase = self.state.test_cases.get_mut(*testcase_id).unwrap();
-                // TODO: We need to update the input info after each testcase application.
-                //       otherwise we cannot correctly apply the next testcase.
                 Self::apply_testcase(&mut self.emulator, &mut self.input_info, &self.state.input_data, testcase);
                 Self::gather_observations(&mut self.observers);
                 if Self::reduce_is_interesting(&mut self.is_interesting_reducers) {
@@ -867,26 +1010,29 @@ where
         trace!("Applying testcase {testcase:?}");
         Self::update_input_info(emulator, input_info);
         let mut tcp = emulator.system().tcp().borrow_mut();
-        for marker in &testcase.input.component_markers {
-            if let ComponentMarker::NewTcpStream = marker {
-                // TODO: How to decide which one of the listeners to use? The fuzzer most likely needs to factor
-                //       in this knowledge into its fuzzing strategy, i.e. it needs to keep track of streams?
-                //       For now we just pick the first one we find.
-                let listener_id = *tcp
-                    .sockets()
-                    .find(|(_, sock)| sock.is_listener())
-                    .unwrap()
-                    .0;
-                tcp.new_connection(
-                    &listener_id,
-                    SocketAddress::IP(IPAddress::V6 {
-                        port: 1337,
-                        flowinfo: 0,
-                        addr: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-                        scope_id: 0,
-                    }),
-                )
-                .unwrap();
+        // TODO: Make this configurable or adjustable by the fuzzer. For now only create streams if none are already available
+        if input_info.tcp.streams_writable.is_empty() {
+            for marker in &testcase.input.component_markers {
+                if let ComponentMarker::NewTcpStream = marker {
+                    // TODO: How to decide which one of the listeners to use? The fuzzer most likely needs to factor
+                    //       in this knowledge into its fuzzing strategy, i.e. it needs to keep track of streams?
+                    //       For now we just pick the first one we find.
+                    let listener_id = *tcp
+                        .sockets()
+                        .find(|(_, sock)| sock.is_listener())
+                        .unwrap()
+                        .0;
+                    tcp.new_connection(
+                        &listener_id,
+                        SocketAddress::IP(IPAddress::V6 {
+                            port: 1337,
+                            flowinfo: 0,
+                            addr: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+                            scope_id: 0,
+                        }),
+                    )
+                    .unwrap();
+                }
             }
         }
         // Apply all the inputs, skipping over empty streams
@@ -899,6 +1045,7 @@ where
             if let Some(data_id) = input_data_id {
                 let data = input_data_map.get(*data_id).unwrap();
                 let sock = tcp.socket_mut(*socket_id).unwrap();
+                trace!("Applying data from {}", data.source);
                 sock.push_data(&data.data).unwrap();
             }
         }
