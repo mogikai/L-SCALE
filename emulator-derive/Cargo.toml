@@ -8,7 +8,11 @@ proc-macro = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+do_not_compile_unfinished = []
+panic_on_unfinished = []
+
 [dependencies]
-syn = "*"
+syn = { version = "*", features = ["full"] }
 quote = "*"
 proc-macro2 = "*"

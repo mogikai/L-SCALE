@@ -1,11 +1,18 @@
 use quote::quote;
-use syn::{DeriveInput, parse_macro_input};
+use syn::{
+    parse_macro_input,
+    DeriveInput,
+    ItemFn,
+};
 
 use crate::decode::derive_decode_impl;
-use crate::encode::{add_trait_bounds, encode};
+use crate::encode::{
+    add_trait_bounds,
+    encode,
+};
 
-mod encode;
 mod decode;
+mod encode;
 
 #[proc_macro_derive(RequiredMem)]
 pub fn derive_required_mem(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -43,4 +50,39 @@ pub fn derive_encode(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 pub fn derive_decode(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     proc_macro::TokenStream::from(derive_decode_impl(input))
+}
+
+/// Can be used to mark code that is not feature complete and needs further implementation, but works for
+/// a few or most cases. If the feature `do_not_compile_unfinished` is enabled, the macro will result in
+/// a compilation failure. If the feature `panic_on_unfinished` is enabled, the macro will cause a panic,
+/// once the code in question is reached.
+#[proc_macro_attribute]
+pub fn unfinished(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    #[cfg(feature = "panic_on_unfinished")]
+    return {
+        let ItemFn { attrs, vis, sig, block } = parse_macro_input!(item as ItemFn);
+        let statements = &block.stmts;
+        proc_macro::TokenStream::from(quote! {
+            #(#attrs)* #vis #sig {
+                todo!("The code in this function is unfinished and lacks some functionality");
+                #(#statements)*
+            }
+        })
+    };
+    #[cfg(feature = "do_not_compile_unfinished")]
+    return {
+        let ItemFn { attrs, vis, sig, block } = parse_macro_input!(item as ItemFn);
+        let statements = &block.stmts;
+        proc_macro::TokenStream::from(quote! {
+            #(#attrs)* #vis #sig {
+                compile_error!("The code in this function is unfinished and lacks some functionality");
+                #(#statements)*
+            }
+        })
+    };
+    #[cfg(not(any(feature = "panic_on_unfinished", feature = "do_not_compile_unfinished")))]
+    return item;
 }

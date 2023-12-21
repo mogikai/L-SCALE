@@ -1,6 +1,17 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Data, DataEnum, DataStruct, DeriveInput, Fields, FieldsNamed, FieldsUnnamed, GenericParam, Generics, parse_quote};
+use syn::{
+    parse_quote,
+    Data,
+    DataEnum,
+    DataStruct,
+    DeriveInput,
+    Fields,
+    FieldsNamed,
+    FieldsUnnamed,
+    GenericParam,
+    Generics,
+};
 
 pub fn derive_decode_impl(input: DeriveInput) -> TokenStream {
     let name = input.ident;
@@ -43,12 +54,16 @@ fn decode(data: &Data) -> TokenStream {
 }
 
 fn offsets(data: &DataStruct) -> TokenStream {
-    let offsets = data.fields.iter().map(|field| {
-        let field_type = &field.ty;
-        quote! {
-            #field_type::required_mem(),
-        }
-    }).collect::<TokenStream>();
+    let offsets = data
+        .fields
+        .iter()
+        .map(|field| {
+            let field_type = &field.ty;
+            quote! {
+                #field_type::required_mem(),
+            }
+        })
+        .collect::<TokenStream>();
     quote! {
         let offsets = [0, #offsets].into_iter().scan(0, |sum, i| {*sum += i; Some(*sum)}).collect::<Vec<_>>();
     }
@@ -68,13 +83,18 @@ fn decode_struct(data: &DataStruct) -> TokenStream {
 }
 
 fn decode_struct_named(fields: &FieldsNamed) -> TokenStream {
-    let fields = fields.named.iter().enumerate().map(|(i, field)| {
-        let field_name = field.ident.as_ref().unwrap();
-        let field_type = &field.ty;
-        quote! {
-            #field_name: #field_type::decode::<Endianness>(&buffer[offsets[#i]..offsets[#i+1]])?,
-        }
-    }).collect::<TokenStream>();
+    let fields = fields
+        .named
+        .iter()
+        .enumerate()
+        .map(|(i, field)| {
+            let field_name = field.ident.as_ref().unwrap();
+            let field_type = &field.ty;
+            quote! {
+                #field_name: #field_type::decode::<Endianness>(&buffer[offsets[#i]..offsets[#i+1]])?,
+            }
+        })
+        .collect::<TokenStream>();
     quote! {
         Ok(Self {
             #fields
@@ -83,12 +103,17 @@ fn decode_struct_named(fields: &FieldsNamed) -> TokenStream {
 }
 
 fn decode_struct_unnamed(fields: &FieldsUnnamed) -> TokenStream {
-    let fields = fields.unnamed.iter().enumerate().map(|(i, field)| {
-        let field_type = &field.ty;
-        quote! {
-            #field_type::decode::<Endianness>(&buffer[offsets[#i]..offsets[#i+1]])?,
-        }
-    }).collect::<TokenStream>();
+    let fields = fields
+        .unnamed
+        .iter()
+        .enumerate()
+        .map(|(i, field)| {
+            let field_type = &field.ty;
+            quote! {
+                #field_type::decode::<Endianness>(&buffer[offsets[#i]..offsets[#i+1]])?,
+            }
+        })
+        .collect::<TokenStream>();
     quote! {
         Ok(Self(#fields))
     }
