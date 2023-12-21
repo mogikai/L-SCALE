@@ -28,7 +28,7 @@ byteorder = "1.*"
 num_enum = "0.7.*"
 goblin = "0.*"
 libc = "0.2.*"
-iced-x86 = "1.19.*"
+iced-x86 = "1.20.*"
 tracing = "*"
 bitflags = "2.*"
 enumset = "1.1.*"
@@ -40,13 +40,16 @@ derive_more = { version = "0.99.*", features = ["add"] }
 hex = "0.4.*"
 size_format = "1.0.*"
 serde = { version = "1.0.189", features = ["derive"], optional = true }
+bitvec = "1.0.1"
 
 [features]
 serde = ["dep:serde"]
+do_not_compile_unfinished = ["fuzzyemu-derive/do_not_compile_unfinished"]
+panic_on_unfinished = ["fuzzyemu-derive/panic_on_unfinished"]
 
 [profile.dev.package.unicorn-engine]
-opt-level = 3
-debug = "none"
+opt-level = 0
+debug = "full"
 
 [profile.release]
 opt-level = 3

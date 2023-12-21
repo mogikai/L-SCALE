@@ -1,6 +1,15 @@
-use byteorder::ByteOrder;
+use byteorder::{
+    BigEndian,
+    ByteOrder,
+    LittleEndian,
+};
+use static_assertions::assert_eq_size;
 
-use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
+use crate::emulator::abstractions::mmu::encoding::{
+    Decode,
+    Encode,
+    RequiredMem,
+};
 use crate::emulator::abstractions::mmu::MemoryError;
 
 impl RequiredMem for i32 {}
@@ -130,6 +139,29 @@ impl Decode for u64 {
             Err(MemoryError::InsufficientSize)?
         }
         Ok(Endianness::read_u64(val))
+    }
+}
+
+impl RequiredMem for usize {}
+impl Encode for usize {
+    fn encode<Endianness: ByteOrder>(
+        &self,
+        buffer: &mut Vec<u8>,
+    ) {
+        // This library emulates 64 bit targets and thus requires usize to be 64 bits
+        // TODO: For now at least. Maybe make generic?
+        assert_eq_size!(u64, usize);
+        let start = buffer.len();
+        buffer.resize(start + Self::required_mem(), 0);
+        Endianness::write_u64(&mut buffer[start..], *self as u64);
+    }
+}
+impl Decode for usize {
+    fn decode<Endianness: ByteOrder>(val: &[u8]) -> Result<Self, MemoryError> {
+        if val.len() != Self::required_mem() {
+            Err(MemoryError::InsufficientSize)?
+        }
+        Ok(Endianness::read_u64(val) as usize)
     }
 }
 

@@ -35,4 +35,7 @@ macro_rules! read_osstring {
     }};
 }
 
-pub(super) use {push_stack, read_osstring};
+pub(super) use {
+    push_stack,
+    read_osstring,
+};

@@ -1,7 +1,10 @@
 use std::cmp::min;
 
 use byteorder::ByteOrder;
-use tracing::debug;
+use tracing::{
+    debug,
+    error,
+};
 
 use fuzzyemu_derive::{
     Decode,
@@ -17,13 +20,18 @@ use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::mmu::encoding::{
     Decode,
+    Encode,
     RequiredMem,
 };
-use crate::emulator::abstractions::mmu::MMU;
+use crate::emulator::abstractions::mmu::{
+    MemoryError,
+    MMU,
+};
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::FD;
+use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
 use crate::emulator::platform::linux::kernel::net::unix::UnixSocketOps;
 use crate::emulator::platform::linux::kernel::net::{
     inet6,
@@ -84,7 +92,7 @@ where
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(&mut *cpu, self.task_id);
+        let mut memory = memory.accessor(&mut cpu, self.task_id);
 
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
         let mut fd = file_descriptor_map
@@ -106,7 +114,7 @@ where
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(&mut *cpu, self.task_id);
+        let mut memory = memory.accessor(&mut cpu, self.task_id);
 
         let mut fd_map = sys_component_mut!(self, fd_map);
 
@@ -142,7 +150,7 @@ where
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let memory = memory.accessor(&mut *cpu, self.task_id);
+        let memory = memory.accessor(&mut cpu, self.task_id);
         let sockaddr: Option<Sockaddr> = if dest_addr_len != 0 && dest_addr != EVA_NULL {
             Some(memory.read_bounded(dest_addr, dest_addr_len as usize)?)
         } else {
@@ -169,7 +177,7 @@ where
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(&mut *cpu, self.task_id);
+        let mut memory = memory.accessor(&mut cpu, self.task_id);
 
         let mut fd_map = sys_component_mut!(self, fd_map);
         let mut fd = fd_map
@@ -207,7 +215,7 @@ where
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let mut memory = memory.accessor(&mut *cpu, self.task_id);
+        let mut memory = memory.accessor(&mut cpu, self.task_id);
         let msghdr: user_msghdr = memory.read(msg)?;
         let addr: Sockaddr = memory.read(msghdr.msg_name)?;
         let iovec: Vec<iovec> = memory.read_n(msghdr.msg_iov, msghdr.msg_iovlen as usize)?;
@@ -249,7 +257,7 @@ where
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let memory = memory.accessor(&mut *cpu, self.task_id);
+        let memory = memory.accessor(&mut cpu, self.task_id);
         let mut fd = file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADF)?;
@@ -292,7 +300,7 @@ where
         let sockaddr = Sockaddr::from(*fd.getsockname()?);
         let mut cpu = sys_component_mut!(self, cpu);
         sys_component_mut!(self, memory)
-            .accessor(&mut *cpu, self.task_id)
+            .accessor(&mut cpu, self.task_id)
             .write(usockaddr, sockaddr)?;
         Ok(0)
     }
@@ -327,14 +335,16 @@ where
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let memory = memory.accessor(&mut *cpu, self.task_id);
-        let opt_data = memory.read_bytes(optval, optlen as usize)?;
-        // TODO: Handle sockopts correctly
+        let memory = memory.accessor(&mut cpu, self.task_id);
+        // TODO: Read the optval variant depending on level and optname
+        // let optval: Optval = memory.read_bounded(optval, optlen);
+        // FIXME: Handle sockopts correctly
         let mut fd = file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADFD)?;
         let fd = &mut *fd;
-        fd.setsockopt()?;
+        error!("setsockopt currently not implemented correctly");
+        fd.setsockopt(Sockopt::try_from((level, optname))?)?;
         Ok(0)
     }
 
@@ -343,10 +353,22 @@ where
         fd: FD,
         level: u64,
         optname: u64,
-        optval: EVAddr, // char*
-        optlen: EVAddr, // int*
+        optval_addr: EVAddr, // char*
+        optlen_ptr: EVAddr,  // int*
     ) -> SyscallResult {
-        todo!()
+        let mut cpu = sys_component_mut!(self, cpu);
+        let mut memory = sys_component_mut!(self, memory);
+        let mut file_descriptor_map = sys_component_mut!(self, fd_map);
+        let mut memory = memory.accessor(&mut cpu, self.task_id);
+        let optlen: usize = memory.read(optlen_ptr)?;
+        let mut fd = file_descriptor_map
+            .get_mut(&self.task_id, &fd)
+            .ok_or(LinuxKernelError::EBADFD)?;
+        let fd = &mut *fd;
+        let optval = fd.getsockopt(Sockopt::try_from((level, optname))?)?;
+        let (actual, _) = memory.write_bounded(optval_addr, optval, optlen)?;
+        memory.write(optlen_ptr, actual)?;
+        Ok(0)
     }
 
     pub fn accept4(
@@ -378,6 +400,34 @@ where
         flags: u64,   // unsigned int
     ) -> SyscallResult {
         todo!()
+    }
+}
+
+#[derive(Debug)]
+pub enum Optval {
+    SocketOptval(i32),
+}
+
+impl RequiredMem for Optval {
+    fn required_mem() -> usize {
+        unimplemented!()
+    }
+}
+
+impl Encode for Optval {
+    fn encode<Endianness: ByteOrder>(
+        &self,
+        buffer: &mut Vec<u8>,
+    ) {
+        match self {
+            Optval::SocketOptval(val) => val.encode::<Endianness>(buffer),
+        }
+    }
+
+    fn encoded_size(&self) -> usize {
+        match self {
+            Optval::SocketOptval(val) => val.encoded_size(),
+        }
     }
 }
 

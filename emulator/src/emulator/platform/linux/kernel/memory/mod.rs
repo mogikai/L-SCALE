@@ -1,18 +1,36 @@
 use bitflags::Flags;
 use byteorder::ByteOrder;
 
-use crate::emulator::abstractions::cpu::address::{EVAddr, EVA_NULL};
+use crate::emulator::abstractions::cpu::address::{
+    EVAddr,
+    EVA_NULL,
+};
 use crate::emulator::abstractions::cpu::CPU;
-use crate::emulator::abstractions::mmu::{MemoryError, Permission, MMU, MREMAP_FLAGS};
+use crate::emulator::abstractions::mmu::{
+    MemoryError,
+    Permission,
+    MMU,
+    MREMAP_FLAGS,
+};
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::FD;
 use crate::emulator::platform::linux::kernel::memory::flags::MMAP_FLAGS;
 use crate::emulator::platform::linux::kernel::{
-    sys_component, sys_component_mut, LinuxKernelError, LinuxKernelTask, SyscallResult,
+    sys_component,
+    sys_component_mut,
+    LinuxKernelError,
+    LinuxKernelTask,
+    SyscallResult,
 };
-use crate::emulator::system::memory::helpers::{align4k_up, is4kaligned};
-use crate::emulator::system::memory::rw_interface::{DirectMemoryWrite, MemoryWrite};
+use crate::emulator::system::memory::helpers::{
+    align4k_up,
+    is4kaligned,
+};
+use crate::emulator::system::memory::rw_interface::{
+    DirectMemoryWrite,
+    MemoryWrite,
+};
 use crate::emulator::system::memory::MappingType;
 
 pub mod flags;
@@ -178,7 +196,7 @@ where
 
         // Map anonymous requires memory being zero initialized.
         sys_component_mut!(self, memory)
-            .accessor(&mut *cpu, self.task_id)
+            .accessor(&mut cpu, self.task_id)
             .write_bytes_unchecked(addr, &vec![0u8; size]);
         Ok(addr)
     }
@@ -230,7 +248,7 @@ where
 
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory)
-            .accessor(&mut *cpu, self.task_id)
+            .accessor(&mut cpu, self.task_id)
             .write_bytes_unchecked(addr, data.as_slice())?;
         Ok(())
     }

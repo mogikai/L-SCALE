@@ -8,7 +8,9 @@ use crate::emulator::abstractions::file_descriptors::{
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
+use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
+use crate::emulator::platform::linux::kernel::socket::Optval;
 use crate::emulator::system::fd_map::FileDescriptor;
 
 #[derive(Debug)]
@@ -68,6 +70,14 @@ impl FileDescriptorOps for UdpSocketOps {
         sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
+    }
+
+    fn getsockopt(
+        &self,
+        fd: &mut Self::D,
+        sockopt: Sockopt,
+    ) -> Result<Optval, FileDescriptorError> {
+        todo!()
     }
 
     fn accept(

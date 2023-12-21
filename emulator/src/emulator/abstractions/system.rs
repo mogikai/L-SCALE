@@ -24,6 +24,8 @@ pub trait SystemControl: Clone {
     type Endianness: ByteOrder + 'static;
     type CpuT: CPU + MMU + Hooks;
     type TcpT: TCPSystem + TCPSystemControl;
+    type FDT: FdId;
+    type FDDataT: Default + Clone;
 
     fn cpu(&self) -> &Rc<RefCell<Self::CpuT>>;
     // TODO: Hide remaining system components behind traits?
@@ -32,4 +34,5 @@ pub trait SystemControl: Clone {
     fn clock(&self) -> &Rc<RefCell<Clock>>;
     fn task_manager(&self) -> &Rc<RefCell<TaskManager<Self::TaskIdT, Self::KernelTaskT>>>;
     fn tcp(&self) -> &Rc<RefCell<Self::TcpT>>;
+    fn fd_map(&self) -> &Rc<RefCell<FileDescriptorMap<Self::FDT, Self::TaskIdT, Self::FDDataT>>>;
 }

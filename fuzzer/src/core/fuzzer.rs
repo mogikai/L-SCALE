@@ -59,6 +59,7 @@ use tracing::{
 };
 
 use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
+use fuzzyemu::emulator::abstractions::mmu::MemoryError;
 use fuzzyemu::emulator::abstractions::network::{
     IPAddress,
     SocketAddress,
@@ -73,6 +74,8 @@ use fuzzyemu::emulator::interface::network::tcp::{
     TCPSocket,
     TCPSystemControl,
 };
+use fuzzyemu::emulator::platform::linux::kernel::task_id::TaskId;
+use fuzzyemu::emulator::system::memory::MappingType;
 
 use crate::api::observer::Observer;
 use crate::api::reducer::Reducer;
@@ -176,6 +179,15 @@ new_key_type! { struct InputDataId; }
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SuffixBehavior {
     edge_map_hash: u64,
+}
+
+impl Display for SuffixBehavior {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        f.write_fmt(format_args!("{:>20}", self.edge_map_hash))
+    }
 }
 
 impl SuffixBehavior {
@@ -668,6 +680,42 @@ impl StateBuilder {
             .unwrap();
         file.write_fmt(format_args!("{:?}", dot)).unwrap();
     }
+
+    fn dump_observation_table(
+        &self,
+        fuzzer_state: &FuzzerState,
+    ) {
+        for state in fuzzer_state.states.values() {
+            let mut line = String::new();
+            line += &*format!("{:>40}", format!("{:?}", state.node_id()));
+            let mut behaviors = state
+                .state
+                .suffix_behaviors
+                .iter()
+                .map(|(id, behavior)| (id, format!("{}", behavior)))
+                .collect::<Vec<_>>();
+            behaviors.sort_by(|a, b| a.0.cmp(&b.0));
+            for (_, behavior) in behaviors {
+                line += &*format!(" | {behavior}");
+            }
+            println!("{line}");
+        }
+        for state in fuzzer_state.state_candidates.values() {
+            let mut line = String::new();
+            line += &*format!("{:>40}", format!("{:?}->{:?}", state.origin(), state.reached_by()));
+            let mut behaviors = state
+                .state
+                .suffix_behaviors
+                .iter()
+                .map(|(id, behavior)| (id, format!("{}", behavior)))
+                .collect::<Vec<_>>();
+            behaviors.sort_by(|a, b| a.0.cmp(&b.0));
+            for (_, behavior) in behaviors {
+                line += &*format!(" | {behavior}");
+            }
+            println!("{line}");
+        }
+    }
 }
 
 trait DebuggableObserver: Observer + Debug {}
@@ -748,6 +796,17 @@ where
         // Do setup stuff
         // Run emulator without inputs until an input is requested.
         let res = self.emulator.run(None, None).unwrap();
+        let task_id = TaskId { pid: 1337, tid: 1 };
+        self.emulator
+            .system()
+            .memory()
+            .borrow_mut()
+            .mappings(&task_id)
+            .try_for_each(|mapping| {
+                debug!("Mapping: {}", mapping);
+                Ok::<(), MemoryError>(())
+            })
+            .unwrap();
         // We make a snapshot now, so that we can reset to the first input request.
         self.emulator.take_snapshot().unwrap();
         // Reduce once, so that any state of the reducers can be filled with the initial observations.
@@ -760,6 +819,7 @@ where
         while self.evaluate_states_with_missing_observations() {
             self.state_builder.fix_closed_property(&mut self.state);
             self.state_builder.dump_dot_file(&mut self.state);
+            self.state_builder.dump_observation_table(&self.state);
             let mut input = String::new();
             stdin().read_line(&mut input).unwrap();
             if input.starts_with('q') {

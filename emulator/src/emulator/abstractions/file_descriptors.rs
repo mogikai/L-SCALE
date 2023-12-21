@@ -5,10 +5,13 @@ use bitflags::bitflags;
 use derive_more::Display;
 
 use crate::emulator::abstractions::errors::GenericError;
+use crate::emulator::abstractions::mmu::encoding::Encode;
 use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::abstractions::restore::Restorable;
+use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
+use crate::emulator::platform::linux::kernel::socket::Optval;
 use crate::emulator::system::fd_map::FileDescriptor;
 use crate::emulator::system::filesystem::{
     FSError,
@@ -133,9 +136,16 @@ pub trait FileDescriptorOps {
     fn setsockopt(
         &self,
         fd: &mut Self::D,
+        sockopt: Sockopt,
     ) -> Result<(), FileDescriptorError> {
         todo!()
     }
+
+    fn getsockopt(
+        &self,
+        fd: &mut Self::D,
+        sockopt: Sockopt,
+    ) -> Result<Optval, FileDescriptorError>;
 
     fn accept(
         &self,

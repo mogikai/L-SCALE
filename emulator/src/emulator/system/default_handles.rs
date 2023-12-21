@@ -13,7 +13,9 @@ use crate::emulator::abstractions::file_descriptors::{
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
+use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
+use crate::emulator::platform::linux::kernel::socket::Optval;
 use crate::emulator::system::fd_map::FileDescriptor;
 use crate::emulator::system::filesystem::Stat;
 
@@ -112,6 +114,14 @@ impl FileDescriptorOps for WriteOnly {
         sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
+    }
+
+    fn getsockopt(
+        &self,
+        fd: &mut Self::D,
+        sockopt: Sockopt,
+    ) -> Result<Optval, FileDescriptorError> {
+        todo!()
     }
 
     fn accept(
@@ -231,6 +241,14 @@ impl FileDescriptorOps for ReadOnly {
         // TODO FIXME
         error!("UDP connect currently unsupported / not implemented");
         Err(FileDescriptorError::NotSupported)
+    }
+
+    fn getsockopt(
+        &self,
+        fd: &mut Self::D,
+        sockopt: Sockopt,
+    ) -> Result<Optval, FileDescriptorError> {
+        todo!()
     }
 
     fn accept(

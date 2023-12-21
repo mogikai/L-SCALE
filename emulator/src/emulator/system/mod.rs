@@ -127,6 +127,8 @@ where
     type Endianness = Endianness;
     type CpuT = CpuT;
     type TcpT = TcpT;
+    type FDT = FD;
+    type FDDataT = FDData;
 
     fn cpu(&self) -> &Rc<RefCell<Self::CpuT>> {
         &self.cpu
@@ -150,6 +152,10 @@ where
 
     fn tcp(&self) -> &Rc<RefCell<Self::TcpT>> {
         &self.tcp
+    }
+
+    fn fd_map(&self) -> &Rc<RefCell<FileDescriptorMap<Self::FDT, Self::TaskIdT, Self::FDDataT>>> {
+        &self.fd_map
     }
 }
 

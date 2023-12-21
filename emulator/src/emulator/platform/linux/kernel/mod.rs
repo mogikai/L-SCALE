@@ -84,6 +84,7 @@ pub(crate) mod eventpoll;
 pub(crate) mod fs;
 pub(crate) mod memory;
 pub(crate) mod net;
+pub mod select;
 pub(crate) mod socket;
 pub mod task_id;
 
@@ -221,8 +222,10 @@ where
             sys_component_mut!(self, memory).new_process(&mut *cpu, self.task_id)?;
         }
 
+        trace!("Loading program");
         self.program_info = Some(self.load_elf(binary_path, 0x0000_c000_0000_0000.into())?);
 
+        trace!("Loading interpreter");
         // Load interpreter
         let interpreter_load_info = self.load_elf(
             self.program_info
@@ -252,11 +255,12 @@ where
         let mut memory = sys_component_mut!(self, memory);
         let mut fd_map = sys_component_mut!(self, fd_map);
         let elf_data = {
-            let mut interpreter_file = fd_map
+            let mut elf_file = fd_map
                 .get_mut_internal(&self.task_id, &fd)
                 .ok_or(LinuxKernelError::ENOENT)?;
-            let interpreter_file = &mut *interpreter_file;
-            interpreter_file.pread(0, u64::MAX)?
+            trace!("Loading elf file {elf_file:?}");
+            let elf_file = &mut *elf_file;
+            elf_file.pread(0, u64::MAX)?
         };
 
         let elf = Elf::parse(&elf_data).unwrap();
@@ -301,7 +305,6 @@ where
         binary_env: &[&str],
     ) -> Result<(), LinuxKernelError> {
         let mut cpu = sys_component_mut!(self, cpu);
-        let cpu = &mut *cpu;
         let mut memory = sys_component_mut!(self, memory);
         let mut argv_strings = vec![binary_path.to_str().unwrap()];
         argv_strings.extend_from_slice(binary_args);
@@ -311,13 +314,13 @@ where
         cpu.reg_write(RegisterX86::RSP.into(), stack_base.into())
             .expect("failed to write RSP");
         let mut aux: Vec<(u64, u64)> = Vec::new();
-        push_stack!(memory.accessor(cpu, self.task_id), cpu, 0u64, RegisterX86::RSP.into())?; // Stack end marker
+        push_stack!(memory.accessor(&mut cpu, self.task_id), cpu, 0u64, RegisterX86::RSP.into())?; // Stack end marker
 
         // Push env strings. Pointers are saved in a null terminated env array.
         let env = {
             let mut env = Vec::<u64>::new();
             for &env_str in binary_env {
-                env.push(push_stack!(memory.accessor(cpu, self.task_id), cpu, env_str, RegisterX86::RSP.into())?);
+                env.push(push_stack!(memory.accessor(&mut cpu, self.task_id), cpu, env_str, RegisterX86::RSP.into())?);
             }
             env.push(0); // End of array nullptr
             env
@@ -328,7 +331,7 @@ where
             let mut argv = Vec::<u64>::new();
             argv.push(argv_strings.len() as u64);
             for arg in argv_strings {
-                argv.push(push_stack!(memory.accessor(cpu, self.task_id), cpu, arg, RegisterX86::RSP.into())?);
+                argv.push(push_stack!(memory.accessor(&mut cpu, self.task_id), cpu, arg, RegisterX86::RSP.into())?);
             }
             argv.push(0); // End of array nullptr
             argv
@@ -342,7 +345,7 @@ where
         aux.push((AUXVType::EGid as u64, 1000));
         aux.push((
             AUXVType::Platform as u64,
-            push_stack!(memory.accessor(cpu, self.task_id), cpu, "x86_64", RegisterX86::RSP.into())?,
+            push_stack!(memory.accessor(&mut cpu, self.task_id), cpu, "x86_64", RegisterX86::RSP.into())?,
         ));
         let program_info = self
             .program_info
@@ -363,7 +366,7 @@ where
         // TODO: map random data to a more appropriate place and provide an api to set the random data
         memory
             .map_data(
-                cpu,
+                &mut *cpu,
                 self.task_id,
                 0xd00000000000.into()..0xd00000000100.into(),
                 [0; 16].as_slice(),
@@ -384,9 +387,9 @@ where
             cpu.reg_write(RegisterX86::RSP.into(), rsp & !0xf).unwrap();
         }
 
-        push_stack!(memory.accessor(cpu, self.task_id), cpu, &aux, RegisterX86::RSP.into())?;
-        push_stack!(memory.accessor(cpu, self.task_id), cpu, &env, RegisterX86::RSP.into())?;
-        push_stack!(memory.accessor(cpu, self.task_id), cpu, &argv, RegisterX86::RSP.into())?;
+        push_stack!(memory.accessor(&mut cpu, self.task_id), cpu, &aux, RegisterX86::RSP.into())?;
+        push_stack!(memory.accessor(&mut cpu, self.task_id), cpu, &env, RegisterX86::RSP.into())?;
+        push_stack!(memory.accessor(&mut cpu, self.task_id), cpu, &argv, RegisterX86::RSP.into())?;
 
         let rsp = EVAddr::from(cpu.reg_read(RegisterX86::RSP.into())?);
 
@@ -431,7 +434,7 @@ where
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let memory = memory.accessor(&mut *cpu, self.task_id);
+        let memory = memory.accessor(&mut cpu, self.task_id);
         match code {
             0x1001 => {
                 //ARCH_SET_GS
@@ -461,7 +464,7 @@ where
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
         sys_component_mut!(self, memory)
-            .accessor(&mut *cpu, self.task_id)
+            .accessor(&mut cpu, self.task_id)
             .write_direct(tloc, &(sys_component!(self, clock).time().as_secs() as i64))?;
         Ok(0)
     }
@@ -493,7 +496,7 @@ where
         };
         let mut cpu = sys_component_mut!(self, cpu);
         sys_component_mut!(self, memory)
-            .accessor(&mut *cpu, self.task_id)
+            .accessor(&mut cpu, self.task_id)
             .write(tp, &ts)
             .unwrap();
         Ok(0)
@@ -521,7 +524,7 @@ where
         //TODO check if address is mapped and has space for struct new_utsname
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(&mut *cpu, self.task_id);
+        let mut memory = memory.accessor(&mut cpu, self.task_id);
         memory.write_direct(buf, "Linux")?;
         memory.write_direct(buf + 65, "ILT792")?;
         memory.write_direct(buf + 2 * 65, "5.4.0-110-generic")?;
@@ -561,7 +564,7 @@ where
         };
         let mut cpu = sys_component_mut!(self, cpu);
         sys_component_mut!(self, memory)
-            .accessor(&mut *cpu, self.task_id)
+            .accessor(&mut cpu, self.task_id)
             .write(tv, &timeval)?;
         Ok(0)
     }
@@ -629,7 +632,7 @@ where
 
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(&mut *cpu, self.task_id);
+        let mut memory = memory.accessor(&mut cpu, self.task_id);
         if sizemask != 8 {
             //todo architure specific
             Err(LinuxKernelError::EINVAL)?
@@ -655,7 +658,7 @@ where
         let new_rlim: Option<Rlimit> = if new_rlim != EVA_NULL {
             Some(
                 sys_component_mut!(self, memory)
-                    .accessor(&mut *cpu, self.task_id)
+                    .accessor(&mut cpu, self.task_id)
                     .read(new_rlim)?,
             )
         } else {
@@ -689,7 +692,7 @@ where
             RLIMIT::INVALID => todo!(),
         };
         sys_component_mut!(self, memory)
-            .accessor(&mut *cpu, self.task_id)
+            .accessor(&mut cpu, self.task_id)
             .write(old_rlim, &rlimit)?;
         Ok(0)
     }
@@ -703,7 +706,7 @@ where
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let memory = memory.accessor(&mut *cpu, self.task_id);
+        let memory = memory.accessor(&mut cpu, self.task_id);
         // TODO: directly read the decoded sigaction. Use associated type for Arch and then decode this type with the
         //       generic read functions in the memory accessor
         let action = memory.read_bytes(act_ptr, 32)?; //todo make arch dependent
@@ -721,7 +724,7 @@ where
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(&mut *cpu, self.task_id);
+        let mut memory = memory.accessor(&mut cpu, self.task_id);
         if sigsetsize != 8 {
             //todo architure specific
             Err(LinuxKernelError::EINVAL)?
@@ -764,7 +767,7 @@ where
         let data = vec![0u8; buflen as usize];
         let mut cpu = sys_component_mut!(self, cpu);
         sys_component_mut!(self, memory)
-            .accessor(&mut *cpu, self.task_id)
+            .accessor(&mut cpu, self.task_id)
             .write_direct(buf, &data)?;
         Ok(buflen)
     }

@@ -1,6 +1,7 @@
 use std::ops::Not;
 
 use bitflags::Flags;
+use tracing::trace;
 
 use crate::emulator::abstractions::file_descriptors::{
     FileDescriptorError,
@@ -11,7 +12,12 @@ use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::inet6::tcp::TCPData;
+use crate::emulator::platform::linux::kernel::net::sockopt::{
+    Socket_Sockopt,
+    Sockopt,
+};
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
+use crate::emulator::platform::linux::kernel::socket::Optval;
 use crate::emulator::system::fd_map::FileDescriptor;
 
 #[derive(Debug, Default)]
@@ -101,8 +107,27 @@ impl FileDescriptorOps for TcpSocketOps {
     fn setsockopt(
         &self,
         fd: &mut Self::D,
+        sockopt: Sockopt,
     ) -> Result<(), FileDescriptorError> {
+        trace!("Setting sockopt {sockopt:?}");
         Ok(())
+    }
+
+    fn getsockopt(
+        &self,
+        fd: &mut Self::D,
+        sockopt: Sockopt,
+    ) -> Result<Optval, FileDescriptorError> {
+        trace!("Get sockopts for {sockopt:?}");
+        let fd = fd.tcp.as_mut().ok_or(FileDescriptorError::NotASocket)?;
+        // FIXME: Implement correctly
+        match sockopt {
+            Sockopt::Socket(opt) => match opt {
+                Socket_Sockopt::SO_SNDBUF => Ok(Optval::SocketOptval(0)),
+                _ => todo!(),
+            },
+            Sockopt::Unknown => Err(FileDescriptorError::NotSupported),
+        }
     }
 
     fn accept(

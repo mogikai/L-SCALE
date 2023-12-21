@@ -17,6 +17,7 @@ use fuzzyemu::emulator::abstractions::network::{
 };
 use fuzzyemu::emulator::abstractions::restore::Restorable;
 use fuzzyemu::emulator::interface::network::tcp::{
+    StreamId,
     TCPSocket,
     TCPSystemControl,
 };
@@ -48,7 +49,9 @@ pub struct TCPSocketImpl {
     /// Listeners only have a socket address.
     remote_address: RCow<Option<SocketAddress>>,
 
-    last_interest: RCow<FileOperationsReady>,
+    /// Previous poll operations had interest in these operations, but couldn't
+    /// fulfil them the last time.
+    unfulfilled_interest: RCow<FileOperationsReady>,
 }
 
 impl TCPSocketImpl {
@@ -66,12 +69,12 @@ impl TCPSocketImpl {
             }
         }
         // Save the interest bits that cannot already be satisfied.
-        *self.last_interest = interest.difference(ops_ready);
+        *self.unfulfilled_interest = (interest | *self.unfulfilled_interest).difference(ops_ready);
         ops_ready
     }
 
     pub fn interest(&self) -> FileOperationsReady {
-        *self.last_interest
+        *self.unfulfilled_interest
     }
 
     pub fn address(&self) -> Option<SocketAddress> {
@@ -99,11 +102,15 @@ impl TCPSocketImpl {
 
 impl TCPSocket for TCPSocketImpl {
     fn interest(&self) -> FileOperationsReady {
-        *self.last_interest
+        *self.unfulfilled_interest
     }
 
     fn bound_address(&self) -> Option<SocketAddress> {
         *self.local_address
+    }
+
+    fn stream_id(&self) -> StreamId {
+        todo!()
     }
 
     fn is_listener(&self) -> bool {
@@ -161,7 +168,7 @@ impl TCPSystemControl for TCP {
                 pending_connections: RCow::new(None),
                 local_address: RCow::new(Some(listener.local_address.ok_or(NetworkError::Unknown)?)),
                 remote_address: RCow::new(Some(remote_address)),
-                last_interest: RCow::new(FileOperationsReady::empty()),
+                unfulfilled_interest: RCow::new(FileOperationsReady::empty()),
             }
         };
         let id = self.sockets.insert(socket);

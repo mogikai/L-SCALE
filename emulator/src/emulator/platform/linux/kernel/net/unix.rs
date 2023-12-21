@@ -12,6 +12,8 @@ use crate::emulator::abstractions::file_descriptors::{
 };
 use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
+use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
+use crate::emulator::platform::linux::kernel::socket::Optval;
 use crate::emulator::system::fd_map::FileDescriptor;
 
 #[derive(Debug, Clone)]
@@ -79,6 +81,14 @@ impl FileDescriptorOps for UnixSocketOps {
             debug!("Trying to connect to unix socket {:?}", CStr::from_bytes_until_nul(path.as_slice()));
         }
         Err(FileDescriptorError::FileNotFound)
+    }
+
+    fn getsockopt(
+        &self,
+        fd: &mut Self::D,
+        sockopt: Sockopt,
+    ) -> Result<Optval, FileDescriptorError> {
+        todo!()
     }
 
     fn accept(

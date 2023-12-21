@@ -9,6 +9,7 @@ use std::marker::PhantomData;
 use std::ops::{
     Add,
     BitAnd,
+    DerefMut,
     Not,
     Range,
 };
@@ -25,7 +26,9 @@ use imbl::{
 };
 use tracing::{
     debug,
+    error,
     instrument,
+    trace,
 };
 
 pub use accessor::MemoryAccessor;
@@ -176,14 +179,14 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         }
     }
 
-    pub fn accessor<'a, MmuT: MMU>(
+    pub fn accessor<'a, MmuRefT: DerefMut<Target = MmuT>, MmuT: MMU>(
         &'a mut self,
-        mmu: &'a mut MmuT,
+        mut mmu: &'a mut MmuRefT,
         task_id: TaskId,
     ) -> MemoryAccessor<'a, Endianness, MmuT> {
         MemoryAccessor {
             memory: self,
-            mmu,
+            mmu: &mut *mmu,
             task_id,
         }
     }
@@ -192,9 +195,10 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
     /// memory that will be used by the process.
     pub fn new_process(
         &mut self,
-        mmu: &mut impl MMU,
+        mut mmu: &mut impl MMU,
         task_id: TaskId,
     ) -> Result<(), MemoryError> {
+        trace!("Creating new process layout in memory for task_id {task_id:?}");
         if self.layouts.contains_key(&task_id) {
             Err(MemoryError::ProcessAlreadyExists)?
         }
@@ -240,7 +244,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         let old_layout = self.layouts.insert(task_id, layout);
         assert!(old_layout.is_none());
 
-        self.accessor(mmu, task_id)
+        self.accessor(&mut mmu, task_id)
             .write_direct_down(stack_end, vec![0u8; max_stack].as_slice())
             .unwrap();
         Ok(())
@@ -258,7 +262,11 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         task_id: TaskId,
         address: EVAddr,
     ) -> Result<TLBEntry, MemoryError> {
-        tlb!(self, task_id).translate_virtual_address(address)
+        let result = tlb!(self, task_id).translate_virtual_address(address);
+        if result.is_err() {
+            error!("Failed to translate memory address {address:?}");
+        }
+        result
     }
 
     pub fn translate_vaddr_range(
@@ -356,7 +364,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
 
     pub(crate) fn map_data(
         &mut self,
-        mmu: &mut impl MMU,
+        mut mmu: &mut impl MMU,
         task_id: TaskId,
         vm_range: Range<EVAddr>,
         data: &[u8],
@@ -369,7 +377,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         }
 
         self.map_fixed(task_id, start, size, perms, MappingType::PrivateAnonymous)?;
-        self.accessor(mmu, task_id)
+        self.accessor(&mut mmu, task_id)
             .write_bytes_unchecked(vm_range.start, data)?;
         Ok(())
     }
@@ -377,7 +385,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn map_file(
         &mut self,
-        mmu: &mut impl MMU,
+        mut mmu: &mut impl MMU,
         fd_map: &mut FileDescriptorMap<FD, TaskId, FileDescriptorData>,
         task_id: &TaskId,
         vm_range: Range<EVAddr>,
@@ -399,7 +407,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             .map_err(|_| MemoryError::Unknown)?;
 
         self.map_fixed(*task_id, start, size, perms, MappingType::PrivateFile(*ifd))?;
-        self.accessor(mmu, *task_id)
+        self.accessor(&mut mmu, *task_id)
             .write_bytes_unchecked(vm_range.start, data.as_slice())?;
         Ok(())
     }
@@ -427,7 +435,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn remap(
         &mut self,
-        mmu: &mut impl MMU,
+        mut mmu: &mut impl MMU,
         task_id: TaskId,
         address: EVAddr,
         size: usize,
@@ -474,7 +482,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             };
 
             // Copy the mapping data before doing anything else
-            let mapping_data = self.accessor(mmu, task_id).read_bytes(address, size)?;
+            let mapping_data = self.accessor(&mut mmu, task_id).read_bytes(address, size)?;
             // Unmap any existing mappings from the new address area as specified by the man pages
             self.unmap(task_id, new_address, new_size_aligned);
             // Map in the new area
@@ -486,7 +494,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
                 first_mapping.mapping_type,
             )?;
             // Copy over the data
-            self.accessor(mmu, task_id)
+            self.accessor(&mut mmu, task_id)
                 .write_bytes(new_address, mapping_data.as_slice())?;
             // Unmap the old area
             if unmap {

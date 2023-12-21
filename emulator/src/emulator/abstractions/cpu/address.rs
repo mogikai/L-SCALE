@@ -57,7 +57,7 @@ impl Debug for EVAddr {
         &self,
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
-        write!(f, "v{:#x?}", self.0)
+        write!(f, "v{:#018x?}", self.0)
     }
 }
 
@@ -174,7 +174,7 @@ impl Debug for EPAddr {
         &self,
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
-        write!(f, "p{:#x?}", self.0)
+        write!(f, "p{:#018x?}", self.0)
     }
 }
 

@@ -1,4 +1,8 @@
 use std::collections::BTreeMap;
+use std::fmt::{
+    Debug,
+    Formatter,
+};
 
 use bitflags::Flags;
 use byteorder::ByteOrder;
@@ -7,6 +11,7 @@ use num_enum::TryFromPrimitive;
 use tracing::trace;
 
 use fuzzyemu_derive::{
+    unfinished,
     Decode,
     Encode,
     RequiredMem,
@@ -66,6 +71,7 @@ where
         todo!()
     }
 
+    #[unfinished]
     pub fn epoll_wait(
         &mut self,
         epfd: FD,
@@ -110,10 +116,12 @@ where
                             .expect("Only pollable fds should be in interest list");
                         let ready_events = EPOLL_EVENTS::from(ready_ops);
                         if event.events.intersects(ready_events) && triggered_events.len() < maxevents as usize {
-                            triggered_events.push(epoll_event {
+                            let event = epoll_event {
                                 events: ready_events,
                                 data: event.data,
-                            });
+                            };
+                            trace!("Adding triggered event: {event:?}");
+                            triggered_events.push(event);
                         }
                     }
                 }
@@ -131,9 +139,11 @@ where
 
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(&mut *cpu, self.task_id);
+        let mut memory = memory.accessor(&mut cpu, self.task_id);
 
-        memory.write(events, triggered_events.as_slice());
+        memory.write(events, triggered_events.as_slice())?;
+        let bytes: epoll_event = memory.read(events).unwrap();
+        trace!("Written triggered events: {bytes:?}");
 
         Ok(triggered_events.len() as u64)
     }
@@ -148,7 +158,7 @@ where
         let mut fd_map = sys_component_mut!(self, fd_map);
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let memory = memory.accessor(&mut *cpu, self.task_id);
+        let memory = memory.accessor(&mut cpu, self.task_id);
 
         let op = EPOLL_OPCODES::try_from_primitive(op).map_err(|_| LinuxKernelError::EINVAL)?;
 
@@ -284,12 +294,24 @@ impl EpollData {
     }
 }
 
-#[derive(Debug, Decode, Encode, RequiredMem, Copy, Clone)]
+#[derive(Decode, Encode, RequiredMem, Copy, Clone)]
 #[repr(C)]
 #[allow(non_camel_case_types)]
 struct epoll_event {
     events: EPOLL_EVENTS,
     data: u64,
+}
+
+impl Debug for epoll_event {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        f.debug_struct("epoll_event")
+            .field("events", &self.events)
+            .field("data", &format!("{:#018x}", &self.data))
+            .finish()
+    }
 }
 
 #[allow(non_camel_case_types)]

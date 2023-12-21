@@ -1,5 +1,8 @@
 use super::*;
-use crate::emulator::abstractions::cpu::CPU;
+use crate::emulator::abstractions::cpu::{
+    RegisterX86,
+    CPU,
+};
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::memory::Memory;
@@ -13,13 +16,13 @@ use iced_x86::{
 };
 
 pub(super) fn trace_hook<Endianness: ByteOrder + 'static>(
-    uc: &mut (impl CPU + MMU),
+    mut uc: &mut (impl CPU + MMU),
     memory: &mut Memory<Endianness>,
     current_task: TaskId,
     address: u64,
     size: u32,
 ) {
-    let accessor = memory.accessor(uc, current_task);
+    let accessor = memory.accessor(&mut uc, current_task);
     let bytes: Vec<u8> = accessor
         .read_bytes(address.into(), size.try_into().unwrap())
         .unwrap();
@@ -68,17 +71,23 @@ pub(super) fn trace_hook<Endianness: ByteOrder + 'static>(
             }
         }
         println!(" {}", output);
-        // let rdi: u64 = uc.reg_read(RegisterX86::RDI.into()).unwrap();
-        // let rsp: u64 = uc.reg_read(RegisterX86::RSP.into()).unwrap();
-        // let rax: u64 = uc.reg_read(RegisterX86::RAX.into()).unwrap();
-        // let rbx: u64 = uc.reg_read(RegisterX86::RBX.into()).unwrap();
-        // let rcx: u64 = uc.reg_read(RegisterX86::RCX.into()).unwrap();
-        // let rdx: u64 = uc.reg_read(RegisterX86::RDX.into()).unwrap();
-        // println!("RDI: {rdi:x}");
-        // println!("RSP: {rsp:x}");
-        // println!("RAX: {rax:x}");
-        // println!("RBX: {rbx:x}");
-        // println!("RCX: {rcx:x}");
-        // println!("RDX: {rdx:x}");
+        if address == 0x0000C0000006A97Du64 {
+            let rdi: u64 = uc.reg_read(RegisterX86::RDI.into()).unwrap();
+            let rsp: u64 = uc.reg_read(RegisterX86::RSP.into()).unwrap();
+            let rax: u64 = uc.reg_read(RegisterX86::RAX.into()).unwrap();
+            let rbx: u64 = uc.reg_read(RegisterX86::RBX.into()).unwrap();
+            let rcx: u64 = uc.reg_read(RegisterX86::RCX.into()).unwrap();
+            let rdx: u64 = uc.reg_read(RegisterX86::RDX.into()).unwrap();
+            let rsi: u64 = uc.reg_read(RegisterX86::RSI.into()).unwrap();
+            let rbp: u64 = uc.reg_read(RegisterX86::RBP.into()).unwrap();
+            println!("RDI: {rdi:x}");
+            println!("RSP: {rsp:x}");
+            println!("RAX: {rax:x}");
+            println!("RBX: {rbx:x}");
+            println!("RCX: {rcx:x}");
+            println!("RDX: {rdx:x}");
+            println!("RSI: {rsi:x}");
+            println!("RBP: {rbp:x}");
+        }
     }
 }

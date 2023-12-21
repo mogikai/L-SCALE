@@ -12,6 +12,7 @@ use crate::emulator::platform::linux::kernel::LinuxKernelError;
 pub mod inet6;
 pub mod netlink;
 pub mod unix;
+pub mod sockopt;
 
 #[derive(Copy, Clone, Debug, RequiredMem)]
 #[allow(clippy::upper_case_acronyms)]

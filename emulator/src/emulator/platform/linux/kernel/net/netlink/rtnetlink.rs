@@ -44,10 +44,12 @@ use crate::emulator::platform::linux::kernel::net::netlink::{
     nlmsghdr,
     NetlinkMessageFlags,
 };
+use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
 use crate::emulator::platform::linux::kernel::net::SocketDomain::{
     AF_INET,
     AF_INET6,
 };
+use crate::emulator::platform::linux::kernel::socket::Optval;
 use crate::emulator::system::fd_map::FileDescriptor;
 
 #[derive(Debug, Default)]
@@ -392,6 +394,14 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
         fd: &mut Self::D,
         sockaddr: SocketAddress,
     ) -> Result<(), FileDescriptorError> {
+        todo!()
+    }
+
+    fn getsockopt(
+        &self,
+        fd: &mut Self::D,
+        sockopt: Sockopt,
+    ) -> Result<Optval, FileDescriptorError> {
         todo!()
     }
 

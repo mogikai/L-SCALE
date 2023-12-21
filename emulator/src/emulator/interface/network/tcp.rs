@@ -34,12 +34,22 @@ pub trait TCPSystemControl: TCPSystem {
     ) -> Option<&mut impl TCPSocket>;
 }
 
+/// A stream is identified by the local address in combination with the remote  address.
+/// If the remote address is None, then the stream id identifies a listener endpoint.
+#[derive(Debug)]
+pub struct StreamId {
+    address: SocketAddress,
+    remote_address: Option<SocketAddress>,
+}
+
 pub trait TCPSocket {
     /// Returns the file operations this socket is currently interested in performing.
     fn interest(&self) -> FileOperationsReady;
 
     /// Returns the (local) address that the socket is bound to.
     fn bound_address(&self) -> Option<SocketAddress>;
+
+    fn stream_id(&self) -> StreamId;
 
     /// If this socket is a listener, the method returns true. Otherwise it will return false.
     fn is_listener(&self) -> bool;

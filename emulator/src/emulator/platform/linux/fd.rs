@@ -52,6 +52,12 @@ impl From<u64> for FD {
     }
 }
 
+impl From<FD> for usize {
+    fn from(value: FD) -> Self {
+        value.0 as usize
+    }
+}
+
 impl From<FD> for u64 {
     fn from(value: FD) -> Self {
         value.0 as u64

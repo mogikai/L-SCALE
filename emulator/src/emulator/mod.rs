@@ -1,6 +1,7 @@
 //! This module contains all the emulator components of fuzzyemu.
 //! TODO: Detailed documentation
 use std::time::Duration;
+use tracing::trace;
 
 use crate::emulator::abstractions::emulator::Scheduler;
 use crate::emulator::abstractions::errors::GenericError;
@@ -51,16 +52,20 @@ where
     SystemT: Restorable,
 {
     fn take_snapshot(&mut self) -> Result<(), GenericError> {
+        trace!("Taking emulator snapshot");
         self.scheduler.take_snapshot()?;
         self.system.take_snapshot()
     }
 
     fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
-        self.scheduler.discard_current_and_restore_previous_snapshot()?;
+        trace!("Discarding current and restoring previous emulator snapshot");
+        self.scheduler
+            .discard_current_and_restore_previous_snapshot()?;
         self.system.discard_current_and_restore_previous_snapshot()
     }
 
     fn restore_snapshot(&mut self) -> Result<(), GenericError> {
+        trace!("Restoring emulator snapshot");
         self.scheduler.restore_snapshot()?;
         self.system.restore_snapshot()
     }

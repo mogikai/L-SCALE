@@ -4,6 +4,7 @@ use bitflags::{
     Flags,
 };
 use byteorder::ByteOrder;
+use fuzzyemu_derive::unfinished;
 use std::cell::RefMut;
 
 use crate::emulator::macros::*;
@@ -52,7 +53,7 @@ where
                 Ok(fd
                     .write(
                         memory
-                            .accessor(&mut *cpu, self.task_id)
+                            .accessor(&mut cpu, self.task_id)
                             .read_bytes(buf, size as usize)?
                             .as_slice(),
                     )
@@ -71,7 +72,7 @@ where
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let memory = memory.accessor(&mut *cpu, self.task_id);
+        let memory = memory.accessor(&mut cpu, self.task_id);
         file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .map_or(Err(LinuxKernelError::EINVAL.into()), |mut fd| {
@@ -104,7 +105,7 @@ where
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let mut memory = memory.accessor(&mut *cpu, self.task_id);
+        let mut memory = memory.accessor(&mut cpu, self.task_id);
         let mut fd = file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADF)?;
@@ -122,7 +123,7 @@ where
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let mut memory = memory.accessor(&mut *cpu, self.task_id);
+        let mut memory = memory.accessor(&mut cpu, self.task_id);
         let mut file = file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EINVAL)?;
@@ -138,7 +139,7 @@ where
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let mut memory = memory.accessor(&mut *cpu, self.task_id);
+        let mut memory = memory.accessor(&mut cpu, self.task_id);
         let mut file = file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADF)?;
@@ -154,7 +155,7 @@ where
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(&mut *cpu, self.task_id);
+        let mut memory = memory.accessor(&mut cpu, self.task_id);
         let fname = read_osstring!(memory, filename)?;
         trace!("stat file {:?}", fname);
         let fs = sys_component!(self, filesystem);
@@ -172,7 +173,7 @@ where
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let memory = memory.accessor(&mut *cpu, self.task_id);
+        let memory = memory.accessor(&mut cpu, self.task_id);
         let fname = read_osstring!(memory, filename)?;
         trace!("openat file: {:?}", fname);
         let file = sys_component!(self, filesystem).resolve_last(Path::new(&fname), false)?; //TODO symlinks
@@ -220,7 +221,7 @@ where
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let mut memory = memory.accessor(&mut *cpu, self.task_id);
+        let mut memory = memory.accessor(&mut cpu, self.task_id);
 
         let flags = at_flags::from_bits(flag).ok_or(LinuxKernelError::EINVAL)?;
         if flags.contains(at_flags::AT_EMPTY_PATH) {
@@ -253,7 +254,7 @@ where
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(&mut *cpu, self.task_id);
+        let mut memory = memory.accessor(&mut cpu, self.task_id);
         Ok(memory
             .write_bounded(buf, "/home/user/open62541_server_release".as_bytes(), bufsize)?
             .0 as u64)
@@ -268,13 +269,15 @@ where
             .map(|_| 0)?)
     }
 
-    pub fn add_replacement_handle(
-        &mut self,
-        fd: FD,
-        handle: Box<dyn FileDescriptorOps<D = FileDescriptorData>>,
-    ) {
-        todo!()
-        // self.fd_map.add_replacement_handle(fd, handle);
+    #[unfinished]
+    pub fn getcwd(
+        &self,
+        buf: EVAddr,
+        size: u64,
+    ) -> SyscallResult {
+        error!("getcwd currently unimplemented");
+        todo!();
+        Err(LinuxKernelError::EINVAL.into())
     }
 }
 

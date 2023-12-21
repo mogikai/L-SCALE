@@ -24,9 +24,12 @@ use crate::emulator::abstractions::file_descriptors::{
     FileDescriptorOps,
     FileOperationsReady,
 };
+use crate::emulator::abstractions::mmu::encoding::Encode;
 use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
+use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
+use crate::emulator::platform::linux::kernel::socket::Optval;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 use crate::emulator::system::filesystem::Stat;
@@ -169,8 +172,18 @@ impl<D: Default + Clone> FileDescriptor<D> {
         self.ops.connect(&mut self.data, sockaddr)
     }
 
-    pub fn setsockopt(&mut self) -> Result<(), FileDescriptorError> {
-        self.ops.setsockopt(&mut self.data)
+    pub fn setsockopt(
+        &mut self,
+        sockopt: Sockopt,
+    ) -> Result<(), FileDescriptorError> {
+        self.ops.setsockopt(&mut self.data, sockopt)
+    }
+
+    pub fn getsockopt(
+        &mut self,
+        sockopt: Sockopt,
+    ) -> Result<Optval, FileDescriptorError> {
+        self.ops.getsockopt(&mut self.data, sockopt)
     }
 
     pub fn accept(&mut self) -> Result<(FileDescriptor<D>, SocketAddress), FileDescriptorError> {

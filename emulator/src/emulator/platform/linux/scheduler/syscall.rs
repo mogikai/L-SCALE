@@ -162,6 +162,7 @@ where
         EXECVE => do_syscall!(3, system, kernel::execve, debug_str),
         UNAME => do_syscall!(1, system, kernel::uname, debug_str),
         FCNTL => do_syscall!(3, system, kernel::fcntl, debug_str),
+        GETCWD => do_syscall!(2, system, kernel::getcwd, debug_str),
         GETTIMEOFDAY => do_syscall!(2, system, kernel::gettimeofday, debug_str),
         STATFS => do_syscall!(2, system, kernel::statfs, debug_str),
         ARCH_PRCTL => do_syscall!(2, system, kernel::arch_prctl, debug_str),
@@ -210,6 +211,7 @@ where
         OPENAT => do_syscall!(4, system, kernel::openat, debug_str),
         NEWFSTATAT => do_syscall!(4, system, kernel::newfstatat, debug_str),
         READLINKAT => do_syscall!(4, system, kernel::readlinkat, debug_str),
+        PSELECT6 => do_syscall!(6, system, kernel::pselect6, debug_str),
         SET_ROBUST_LIST => do_syscall!(2, system, kernel::set_robust_list, debug_str),
         EPOLL_PWAIT => do_syscall!(6, system, kernel::epoll_pwait, debug_str),
         SIGNALFD4 => do_syscall!(4, system, kernel::signalfd4, debug_str),
@@ -266,18 +268,9 @@ pub(super) fn syscall<Endianness, CpuT, TcpT>(
         }
         Err(SyscallError::NotImplemented) => {
             error!("SYSCALL NOT IMPLEMENTED: {:?}", syscall);
-            system
-                .cpu
-                .borrow_mut()
-                .stop(StopReason::MissingSyscall(
-                    system
-                        .cpu
-                        .borrow_mut()
-                        .reg_read(RegisterX86::RIP.into())
-                        .unwrap()
-                        .into(),
-                ))
-                .unwrap();
+            let mut cpu = system.cpu.borrow_mut();
+            let rip = cpu.reg_read(RegisterX86::RIP.into()).unwrap().into();
+            cpu.stop(StopReason::MissingSyscall(rip)).unwrap();
             None
         }
     };
