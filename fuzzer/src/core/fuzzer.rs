@@ -820,11 +820,11 @@ where
             self.state_builder.fix_closed_property(&mut self.state);
             self.state_builder.dump_dot_file(&mut self.state);
             self.state_builder.dump_observation_table(&self.state);
-            let mut input = String::new();
-            stdin().read_line(&mut input).unwrap();
-            if input.starts_with('q') {
-                exit(0);
-            }
+            // let mut input = String::new();
+            // stdin().read_line(&mut input).unwrap();
+            // if input.starts_with('q') {
+            //     exit(0);
+            // }
         }
     }
 
@@ -1106,7 +1106,7 @@ where
                 let data = input_data_map.get(*data_id).unwrap();
                 let sock = tcp.socket_mut(*socket_id).unwrap();
                 trace!("Applying data from {}", data.source);
-                sock.push_data(&data.data).unwrap();
+                let _ = sock.push_data(&data.data);
             }
         }
         drop(tcp);

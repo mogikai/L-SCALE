@@ -7,6 +7,7 @@ use crate::observers::emulator::edge::EdgeHitCountObserver;
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::rc::Rc;
+use tracing::debug;
 
 /// This reducer keeps track of the edges that have been observed until now.
 /// If it finds a new edge that was not observed previously, the reducer will
@@ -37,11 +38,14 @@ impl Reducer for InterestingEdgesReducer {
         let observer = self.observer.borrow();
         let current_edge_counts = observer.observation();
 
-        self.hit_map.resize(current_edge_counts.len(), 0);
+        if self.hit_map.len() < current_edge_counts.len() {
+            self.hit_map.resize(current_edge_counts.len(), 0);
+        }
         let mut interesting = false;
         for (current, maximum) in current_edge_counts.iter().zip(self.hit_map.iter_mut()) {
             if current > maximum {
                 *maximum = *current;
+                debug!("New edge count for edge ");
                 interesting = true;
             }
         }

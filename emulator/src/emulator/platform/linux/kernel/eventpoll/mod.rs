@@ -142,8 +142,6 @@ where
         let mut memory = memory.accessor(&mut cpu, self.task_id);
 
         memory.write(events, triggered_events.as_slice())?;
-        let bytes: epoll_event = memory.read(events).unwrap();
-        trace!("Written triggered events: {bytes:?}");
 
         Ok(triggered_events.len() as u64)
     }

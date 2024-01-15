@@ -11,6 +11,8 @@ pub mod tcp_system;
 pub enum NetworkError {
     #[error("Unknown network error")]
     Unknown,
+    #[error("The buffer / connection end is closed")]
+    Closed,
 }
 
 pub type SocketId = AutoKey;
@@ -35,4 +37,11 @@ pub enum SocketAddress {
     Netlink { pad: u16, pid: u32, groups: u32 },
     Unix { path: [u8; 108] },
     Unspecified { data: [u8; 14] },
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum ShutdownMethod {
+    ShutdownReadEnd,
+    ShutdownWriteEnd,
+    ShutdownBoth,
 }

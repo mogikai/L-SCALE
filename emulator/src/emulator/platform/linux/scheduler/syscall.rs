@@ -205,7 +205,7 @@ where
                     .unwrap();
                 Ok(0)
             } else {
-                todo!()
+                todo!("TGKILL not implemented properly yet")
             }
         }
         OPENAT => do_syscall!(4, system, kernel::openat, debug_str),

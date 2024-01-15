@@ -42,8 +42,6 @@ where
             .snapshots
             .last()
             .ok_or(GenericError::new(GenericErrorKind::Unknown, "No snapshot available"))?;
-        trace!("Number of snapshots: {:?}", self.snapshots.len());
-        trace!("Restoring fd map snapshot: {snapshot:?}");
         self.files.clone_from(&snapshot.files);
         self.file_descriptors.clone_from(&snapshot.file_descriptors);
         self.internal_file_descriptors

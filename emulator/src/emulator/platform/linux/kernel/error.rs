@@ -5,7 +5,10 @@ use std::error::Error;
 use thiserror::Error;
 
 use crate::emulator::abstractions::cpu::CPUError;
-use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
+use crate::emulator::abstractions::errors::{
+    GenericError,
+    GenericErrorKind,
+};
 use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
 use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::system::fd_map::error::FileDescriptorMapError;
@@ -350,6 +353,7 @@ impl From<FileDescriptorError> for LinuxKernelError {
             FileDescriptorError::Unknown => LinuxKernelError::EINVAL,
             FileDescriptorError::MemoryError(e) => e.into(),
             FileDescriptorError::FSError(e) => e.into(),
+            FileDescriptorError::Closed => LinuxKernelError::ENOTCONN,
         }
     }
 }

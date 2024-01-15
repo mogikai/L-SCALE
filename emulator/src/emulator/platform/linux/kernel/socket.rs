@@ -36,6 +36,7 @@ use crate::emulator::platform::linux::kernel::net::unix::UnixSocketOps;
 use crate::emulator::platform::linux::kernel::net::{
     inet6,
     netlink,
+    ShutMethod,
     Sockaddr,
     SocketDomain,
     SocketFlags,
@@ -243,9 +244,14 @@ where
     pub fn shutdown(
         &mut self,
         fd: FD,
-        how: u64,
+        how: ShutMethod,
     ) -> SyscallResult {
-        todo!()
+        let mut fd_map = sys_component_mut!(self, fd_map);
+        let fd = fd_map
+            .get_mut(&self.task_id, &fd)
+            .ok_or(LinuxKernelError::EBADF)?;
+        fd.shutdown(how.into())?;
+        Ok(0)
     }
 
     pub fn bind(

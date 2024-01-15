@@ -9,7 +9,10 @@ use crate::emulator::abstractions::file_descriptors::{
     FileOperationsReady,
 };
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
-use crate::emulator::abstractions::network::SocketAddress;
+use crate::emulator::abstractions::network::{
+    ShutdownMethod,
+    SocketAddress,
+};
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::inet6::tcp::TCPData;
 use crate::emulator::platform::linux::kernel::net::sockopt::{
@@ -147,7 +150,16 @@ impl FileDescriptorOps for TcpSocketOps {
         fd: &mut Self::D,
         backlog: usize,
     ) -> Result<(), FileDescriptorError> {
-        let tcp = fd.tcp.as_mut().unwrap();
+        let tcp = fd.tcp.as_mut().ok_or(FileDescriptorError::NotASocket)?;
         Ok(tcp.tcp_system.borrow_mut().listen(tcp.id, backlog)?)
+    }
+
+    fn shutdown(
+        &self,
+        fd: &mut Self::D,
+        how: ShutdownMethod,
+    ) -> Result<(), FileDescriptorError> {
+        let tcp = fd.tcp.as_mut().ok_or(FileDescriptorError::NotASocket)?;
+        Ok(tcp.tcp_system.borrow_mut().shutdown(tcp.id, how)?)
     }
 }

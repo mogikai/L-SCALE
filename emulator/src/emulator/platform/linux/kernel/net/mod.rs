@@ -1,18 +1,60 @@
 use byteorder::ByteOrder;
-use num_enum::FromPrimitive;
+use num_enum::{
+    FromPrimitive,
+    IntoPrimitive,
+    TryFromPrimitive,
+};
 
 use fuzzyemu_derive::RequiredMem;
 
 use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
-use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
+use crate::emulator::abstractions::mmu::encoding::{
+    Decode,
+    Encode,
+    RequiredMem,
+};
 use crate::emulator::abstractions::mmu::MemoryError;
-use crate::emulator::abstractions::network::{IPAddress, NetworkError, SocketAddress};
+use crate::emulator::abstractions::network::{
+    IPAddress,
+    NetworkError,
+    ShutdownMethod,
+    SocketAddress,
+};
 use crate::emulator::platform::linux::kernel::LinuxKernelError;
 
 pub mod inet6;
 pub mod netlink;
-pub mod unix;
 pub mod sockopt;
+pub mod unix;
+
+#[derive(Copy, Clone, Debug, TryFromPrimitive, IntoPrimitive)]
+#[allow(non_camel_case_types)]
+#[repr(u64)]
+pub enum ShutMethod {
+    SHUT_RD   = 0,
+    SHUT_WR   = 1,
+    SHUT_RDWR = 2,
+}
+
+impl From<ShutdownMethod> for ShutMethod {
+    fn from(value: ShutdownMethod) -> Self {
+        match value {
+            ShutdownMethod::ShutdownReadEnd => ShutMethod::SHUT_RD,
+            ShutdownMethod::ShutdownWriteEnd => ShutMethod::SHUT_WR,
+            ShutdownMethod::ShutdownBoth => ShutMethod::SHUT_RDWR,
+        }
+    }
+}
+
+impl From<ShutMethod> for ShutdownMethod {
+    fn from(value: ShutMethod) -> Self {
+        match value {
+            ShutMethod::SHUT_RD => ShutdownMethod::ShutdownReadEnd,
+            ShutMethod::SHUT_WR => ShutdownMethod::ShutdownWriteEnd,
+            ShutMethod::SHUT_RDWR => ShutdownMethod::ShutdownBoth,
+        }
+    }
+}
 
 #[derive(Copy, Clone, Debug, RequiredMem)]
 #[allow(clippy::upper_case_acronyms)]
@@ -404,6 +446,7 @@ impl From<NetworkError> for FileDescriptorError {
     fn from(error: NetworkError) -> Self {
         match error {
             NetworkError::Unknown => FileDescriptorError::Unknown,
+            NetworkError::Closed => FileDescriptorError::Closed,
         }
     }
 }

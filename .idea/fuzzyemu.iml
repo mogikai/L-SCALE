@@ -9,6 +9,10 @@
       <sourceFolder url="file://$MODULE_DIR$/fuzzer/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/gui/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/feredast/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/deps/LibAFL/fuzzers/baby_fuzzer/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/deps/LibAFL/fuzzers/qemu_coverage/src" isTestSource="false" />
+      <excludeFolder url="file://$MODULE_DIR$/deps/LibAFL/fuzzers/baby_fuzzer/target" />
+      <excludeFolder url="file://$MODULE_DIR$/deps/LibAFL/fuzzers/qemu_coverage/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

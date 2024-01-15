@@ -6,7 +6,10 @@ use crate::emulator::abstractions::file_descriptors::{
     FileOperationsReady,
 };
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
-use crate::emulator::abstractions::network::SocketAddress;
+use crate::emulator::abstractions::network::{
+    ShutdownMethod,
+    SocketAddress,
+};
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
@@ -84,6 +87,14 @@ impl FileDescriptorOps for UdpSocketOps {
         &self,
         fd: &mut Self::D,
     ) -> Result<(FileDescriptor<Self::D>, SocketAddress), FileDescriptorError> {
+        todo!()
+    }
+
+    fn shutdown(
+        &self,
+        fd: &mut Self::D,
+        how: ShutdownMethod,
+    ) -> Result<(), FileDescriptorError> {
         todo!()
     }
 }

@@ -11,7 +11,10 @@ use crate::emulator::abstractions::file_descriptors::{
     FileOperationsReady,
 };
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
-use crate::emulator::abstractions::network::SocketAddress;
+use crate::emulator::abstractions::network::{
+    ShutdownMethod,
+    SocketAddress,
+};
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
@@ -87,7 +90,7 @@ impl FileDescriptorOps for WriteOnly {
         fd: &mut Self::D,
         data: &[u8],
     ) -> Result<usize, FileDescriptorError> {
-        print!("{:}", String::from_utf8_lossy(data));
+        // print!("{:}", String::from_utf8_lossy(data));
         Ok(data.len())
     }
 
@@ -129,6 +132,14 @@ impl FileDescriptorOps for WriteOnly {
         fd: &mut Self::D,
     ) -> Result<(FileDescriptor<Self::D>, SocketAddress), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
+    }
+
+    fn shutdown(
+        &self,
+        fd: &mut Self::D,
+        how: ShutdownMethod,
+    ) -> Result<(), FileDescriptorError> {
+        Err(FileDescriptorError::NotASocket)
     }
 }
 
@@ -256,5 +267,13 @@ impl FileDescriptorOps for ReadOnly {
         fd: &mut Self::D,
     ) -> Result<(FileDescriptor<Self::D>, SocketAddress), FileDescriptorError> {
         Err(FileDescriptorError::NotSupported)
+    }
+
+    fn shutdown(
+        &self,
+        fd: &mut Self::D,
+        how: ShutdownMethod,
+    ) -> Result<(), FileDescriptorError> {
+        Err(FileDescriptorError::NotASocket)
     }
 }

@@ -3,7 +3,10 @@ use crate::emulator::abstractions::file_descriptors::{
     FileDescriptorOps,
     FileOperationsReady,
 };
-use crate::emulator::abstractions::network::SocketAddress;
+use crate::emulator::abstractions::network::{
+    ShutdownMethod,
+    SocketAddress,
+};
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
 use crate::emulator::platform::linux::kernel::socket::Optval;
@@ -80,6 +83,14 @@ impl FileDescriptorOps for EpollOps {
         &self,
         fd: &mut Self::D,
     ) -> Result<(FileDescriptor<Self::D>, SocketAddress), FileDescriptorError> {
+        todo!()
+    }
+
+    fn shutdown(
+        &self,
+        fd: &mut Self::D,
+        how: ShutdownMethod,
+    ) -> Result<(), FileDescriptorError> {
         todo!()
     }
 }

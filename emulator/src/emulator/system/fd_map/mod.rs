@@ -25,7 +25,7 @@ use crate::emulator::abstractions::file_descriptors::{
     FileOperationsReady,
 };
 use crate::emulator::abstractions::mmu::encoding::Encode;
-use crate::emulator::abstractions::network::SocketAddress;
+use crate::emulator::abstractions::network::{ShutdownMethod, SocketAddress};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
@@ -195,6 +195,13 @@ impl<D: Default + Clone> FileDescriptor<D> {
         backlog: usize,
     ) -> Result<(), FileDescriptorError> {
         self.ops.listen(&mut self.data, backlog)
+    }
+
+    pub fn shutdown(
+        &mut self,
+        how: ShutdownMethod,
+    ) -> Result<(), FileDescriptorError> {
+        self.ops.shutdown(&mut self.data, how)
     }
 }
 

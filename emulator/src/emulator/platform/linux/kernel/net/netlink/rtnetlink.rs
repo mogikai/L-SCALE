@@ -31,7 +31,10 @@ use crate::emulator::abstractions::mmu::encoding::{
     RequiredMem,
 };
 use crate::emulator::abstractions::mmu::MemoryError;
-use crate::emulator::abstractions::network::SocketAddress;
+use crate::emulator::abstractions::network::{
+    ShutdownMethod,
+    SocketAddress,
+};
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::netlink::rtnetlink::nla_type::{
     IFA_ADDRESS,
@@ -409,6 +412,14 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
         &self,
         fd: &mut Self::D,
     ) -> Result<(FileDescriptor<Self::D>, SocketAddress), FileDescriptorError> {
+        todo!()
+    }
+
+    fn shutdown(
+        &self,
+        fd: &mut Self::D,
+        how: ShutdownMethod,
+    ) -> Result<(), FileDescriptorError> {
         todo!()
     }
 }

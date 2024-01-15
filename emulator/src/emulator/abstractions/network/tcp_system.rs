@@ -3,6 +3,7 @@ use std::fmt::Debug;
 
 use crate::emulator::abstractions::network::{
     NetworkError,
+    ShutdownMethod,
     SocketAddress,
     SocketId,
 };
@@ -32,6 +33,12 @@ pub trait TCPSystem: Restorable + Debug {
         &mut self,
         id: SocketId,
         backlog: usize,
+    ) -> Result<(), NetworkError>;
+
+    fn shutdown(
+        &mut self,
+        id: SocketId,
+        how: ShutdownMethod,
     ) -> Result<(), NetworkError>;
 
     fn poll(

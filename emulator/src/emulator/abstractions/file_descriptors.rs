@@ -7,7 +7,10 @@ use derive_more::Display;
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::mmu::encoding::Encode;
 use crate::emulator::abstractions::mmu::MemoryError;
-use crate::emulator::abstractions::network::SocketAddress;
+use crate::emulator::abstractions::network::{
+    ShutdownMethod,
+    SocketAddress,
+};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
@@ -159,6 +162,12 @@ pub trait FileDescriptorOps {
     ) -> Result<(), FileDescriptorError> {
         todo!()
     }
+
+    fn shutdown(
+        &self,
+        fd: &mut Self::D,
+        how: ShutdownMethod,
+    ) -> Result<(), FileDescriptorError>;
 }
 
 #[derive(Debug)]
@@ -170,6 +179,7 @@ pub enum FileDescriptorError {
     OperationFailed,
     Unknown,
     FileNotFound,
+    Closed,
 }
 
 impl From<FSError> for FileDescriptorError {

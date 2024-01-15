@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::cmp::min;
 use std::collections::VecDeque;
+use std::marker::PhantomData;
 use std::mem::swap;
 use tracing::trace;
 
@@ -12,6 +13,7 @@ use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
 use fuzzyemu::emulator::abstractions::network::tcp_system::TCPSystem;
 use fuzzyemu::emulator::abstractions::network::{
     NetworkError,
+    ShutdownMethod,
     SocketAddress,
     SocketId,
 };
@@ -30,11 +32,91 @@ pub struct TCP {
     snapshots: Vec<LazyCloneMap<TCPSocketImpl>>,
 }
 
+#[derive(Debug, Clone)]
+struct Buffer<T: Clone> {
+    buffer: VecDeque<T>,
+    open: bool,
+}
+
+impl<T: Clone> Default for Buffer<T> {
+    fn default() -> Self {
+        Self {
+            buffer: Default::default(),
+            open: true,
+        }
+    }
+}
+
+impl<T: Clone> Buffer<T> {
+    fn close(&mut self) {
+        self.open = false;
+    }
+
+    fn open(&mut self) {
+        self.open = true;
+    }
+
+    fn is_open(&self) -> bool {
+        self.open
+    }
+
+    fn write(
+        &mut self,
+        values: &[T],
+    ) -> Result<(), NetworkError> {
+        if !self.open {
+            Err(NetworkError::Closed)?
+        }
+        Ok(self.buffer.extend(values.iter().cloned()))
+    }
+
+    fn write_one(
+        &mut self,
+        value: T,
+    ) -> Result<(), NetworkError> {
+        if !self.open {
+            Err(NetworkError::Closed)?
+        }
+        Ok(self.buffer.push_back(value))
+    }
+
+    fn read(
+        &mut self,
+        n: usize,
+    ) -> Result<Vec<T>, NetworkError> {
+        if !self.open {
+            Err(NetworkError::Closed)?
+        }
+        let n = min(self.buffer.len(), n);
+        Ok(self.buffer.drain(0..n).collect())
+    }
+
+    fn len(&self) -> usize {
+        self.buffer.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.buffer.is_empty()
+    }
+}
+
+impl<T: Clone> From<Buffer<T>> for VecDeque<T> {
+    fn from(value: Buffer<T>) -> Self {
+        value.buffer
+    }
+}
+
+impl<T: Clone> AsRef<VecDeque<T>> for Buffer<T> {
+    fn as_ref(&self) -> &VecDeque<T> {
+        &self.buffer
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct TCPSocketImpl {
     // TODO: Maybe we can use a restorable data structure here, instead of cloning the whole thing?
-    incoming: RCow<VecDeque<u8>>,
-    outgoing: RCow<VecDeque<Vec<u8>>>,
+    incoming: RCow<Buffer<u8>>,
+    outgoing: RCow<Buffer<Vec<u8>>>,
     /// If the socket is listening, it has a vector of incoming connections.
     /// The connections will already have a new socket associated with them
     /// in the socket map. We simply store the new ids here.
@@ -55,6 +137,21 @@ pub struct TCPSocketImpl {
 }
 
 impl TCPSocketImpl {
+    pub fn shutdown(
+        &mut self,
+        how: ShutdownMethod,
+    ) -> Result<(), NetworkError> {
+        match how {
+            ShutdownMethod::ShutdownReadEnd => self.incoming.close(),
+            ShutdownMethod::ShutdownWriteEnd => self.outgoing.close(),
+            ShutdownMethod::ShutdownBoth => {
+                self.incoming.close();
+                self.outgoing.close();
+            }
+        }
+        Ok(())
+    }
+
     pub fn poll(
         &mut self,
         interest: FileOperationsReady,
@@ -121,19 +218,17 @@ impl TCPSocket for TCPSocketImpl {
         &mut self,
         data: &[u8],
     ) -> Result<(), NetworkError> {
-        self.incoming.extend(data);
-        trace!("Incoming data is {}", String::from_utf8_lossy(self.incoming.make_contiguous()));
-        Ok(())
+        self.incoming.write(data)
     }
 
     fn take_output(&mut self) -> Result<VecDeque<Vec<u8>>, NetworkError> {
         let mut result = Default::default();
         swap(&mut result, &mut *self.outgoing);
-        Ok(result)
+        Ok(result.into())
     }
 
     fn peek_output(&self) -> Result<&VecDeque<Vec<u8>>, NetworkError> {
-        Ok(&*self.outgoing)
+        Ok(self.outgoing.as_ref())
     }
 }
 
@@ -260,6 +355,15 @@ impl TCPSystem for TCP {
         Ok(())
     }
 
+    fn shutdown(
+        &mut self,
+        id: SocketId,
+        how: ShutdownMethod,
+    ) -> Result<(), NetworkError> {
+        let sock = self.sockets.get_mut(&id).ok_or(NetworkError::Unknown)?;
+        sock.shutdown(how)
+    }
+
     fn poll(
         &mut self,
         id: SocketId,
@@ -275,7 +379,7 @@ impl TCPSystem for TCP {
         data: &[u8],
     ) -> Result<usize, NetworkError> {
         let sock = self.sockets.get_mut(&id).ok_or(NetworkError::Unknown)?;
-        sock.outgoing.push_back(data.to_vec());
+        sock.outgoing.write_one(data.to_vec())?;
         Ok(data.len())
     }
 
@@ -285,9 +389,8 @@ impl TCPSystem for TCP {
         len: usize,
     ) -> Result<(Vec<u8>, SocketAddress), NetworkError> {
         let sock = self.sockets.get_mut(&id).ok_or(NetworkError::Unknown)?;
-        let len = min(sock.incoming.len(), len);
-        let data = sock.incoming.drain(0..len).collect();
         let addr = sock.remote_address.unwrap();
+        let data = sock.incoming.read(len)?;
         Ok((data, addr))
     }
 }
