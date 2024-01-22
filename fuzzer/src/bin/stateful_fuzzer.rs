@@ -8,6 +8,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use clap::Parser;
+use core_affinity::CoreId;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{
@@ -50,6 +51,7 @@ struct Args {
 }
 
 fn main() {
+    core_affinity::set_for_current(CoreId { id: 0 });
     tracing_subscriber::registry()
         .with(fmt::layer())
         .with(EnvFilter::from_env("FUZE_LOG"))

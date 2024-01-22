@@ -18,6 +18,8 @@ ctrlc = "*"
 thiserror = "*"
 slotmap = { version = "*", features = ["serde"] }
 graphviz-rust = "0.7.0"
+parking_lot = "*"
+core_affinity = "*"
 
 [profile.release]
 opt-level = 3

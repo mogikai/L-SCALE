@@ -15,7 +15,10 @@ use std::hash::{
     Hasher,
 };
 use std::rc::Rc;
-use tracing::trace;
+use tracing::{
+    debug,
+    trace,
+};
 
 /// This reducer reduces an edge observation to a testcase behavior. In the future it might be necessary
 /// to split this up into a `TestCaseEdgeBehavior` that is then consumed by a `TestCaseBehaviorReducer`
@@ -37,7 +40,7 @@ impl Reducer for EdgeBehaviorReducer {
     fn reduce(&mut self) -> Result<Self::Output, FuzzerError> {
         let observer = self.observer.borrow();
         let current_edge_hits = observer.observation();
-        // trace!(
+        // debug!(
         //     "Edge hits: {:?}",
         //     current_edge_hits
         //         .iter()

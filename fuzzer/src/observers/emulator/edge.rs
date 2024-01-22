@@ -1,3 +1,8 @@
+use core_affinity::CoreId;
+use parking_lot::{
+    Mutex,
+    MutexGuard,
+};
 use std::cell::{
     Ref,
     RefCell,
@@ -5,9 +10,23 @@ use std::cell::{
 use std::cmp::max;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
-use std::ops::Deref;
+use std::ops::{
+    Add,
+    Deref,
+};
 use std::rc::Rc;
+use std::sync::atomic::{
+    AtomicUsize,
+    Ordering,
+};
+use std::sync::{
+    mpsc,
+    Arc,
+};
+use std::thread;
+use std::thread::JoinHandle;
 
+use crate::api::observer;
 use fuzzyemu::emulator::abstractions::cpu::address::EVAddr;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
 
@@ -70,18 +89,32 @@ impl InnerEdgeObserver {
 
 #[derive(Debug, Default)]
 pub struct EdgeHitCountObserver {
-    inner: Rc<RefCell<InnerEdgeObserver>>,
+    inner: Arc<Mutex<InnerEdgeObserver>>,
+    remaining_edges: Arc<AtomicUsize>,
 }
 
 impl EdgeHitCountObserver {
     pub fn new<CpuT: Hooks>(cpu: &Rc<RefCell<CpuT>>) -> Self {
         let observer = Self {
             inner: Default::default(),
+            remaining_edges: Default::default(),
         };
-        let hook_inner = observer.inner.clone();
+        let inner = observer.inner.clone();
+        let remaining_edges = observer.remaining_edges.clone();
+        let (sender, receiver) = mpsc::channel::<EVAddr>();
+        thread::spawn(move || {
+            core_affinity::set_for_current(CoreId { id: 2 });
+            for block_addr in receiver {
+                remaining_edges.fetch_sub(1, Ordering::Release);
+                inner.lock().visit_block(block_addr);
+            }
+        });
+        let remaining_edges = observer.remaining_edges.clone();
         cpu.borrow_mut()
             .add_block_hook(Box::new(move |_cpu, address, _instruction_count| {
-                hook_inner.borrow_mut().visit_block(address);
+                remaining_edges.fetch_add(1, Ordering::Acquire);
+                sender.send(address).unwrap();
+                // hook_inner.borrow_mut().visit_block(address);
             }))
             .unwrap();
         observer
@@ -89,10 +122,12 @@ impl EdgeHitCountObserver {
 }
 
 impl Observer for EdgeHitCountObserver {
-    fn gather(&mut self) {}
+    fn gather(&mut self) {
+        while self.remaining_edges.load(Ordering::Relaxed) != 0 {}
+    }
 
     fn clear(&mut self) {
-        self.inner.borrow_mut().reset();
+        self.inner.lock().reset();
     }
 }
 
@@ -100,7 +135,7 @@ impl HasObservation for EdgeHitCountObserver {
     type Observation = [u64];
 
     fn observation(&self) -> impl Deref<Target = Self::Observation> {
-        Ref::map(self.inner.borrow(), |inner| &inner.edge_counts[..=inner.highest_observed_index])
+        MutexGuard::map(self.inner.lock(), |inner| &mut inner.edge_counts[..=inner.highest_observed_index])
     }
 }
 
@@ -116,7 +151,7 @@ struct InnerEdgeHitObserver {
     highest_observed_index: usize,
 }
 
-impl crate::observers::emulator::edge::InnerEdgeHitObserver {
+impl InnerEdgeHitObserver {
     /// Logs the address and increments the visit count for the edge (prev_address, address).
     ///
     /// # Arguments
@@ -159,18 +194,31 @@ impl crate::observers::emulator::edge::InnerEdgeHitObserver {
 
 #[derive(Debug, Default)]
 pub struct EdgeHitObserver {
-    inner: Rc<RefCell<InnerEdgeHitObserver>>,
+    inner: Arc<Mutex<InnerEdgeHitObserver>>,
+    remaining_edges: Arc<AtomicUsize>,
 }
 
 impl EdgeHitObserver {
     pub fn new<CpuT: Hooks>(cpu: &Rc<RefCell<CpuT>>) -> Self {
         let observer = Self {
             inner: Default::default(),
+            remaining_edges: Default::default(),
         };
-        let hook_inner = observer.inner.clone();
+        let inner = observer.inner.clone();
+        let remaining_edges = observer.remaining_edges.clone();
+        let (sender, receiver) = mpsc::channel::<EVAddr>();
+        thread::spawn(move || {
+            core_affinity::set_for_current(CoreId { id: 1 });
+            for block_addr in receiver {
+                remaining_edges.fetch_sub(1, Ordering::Release);
+                inner.lock().visit_block(block_addr);
+            }
+        });
+        let remaining_edges = observer.remaining_edges.clone();
         cpu.borrow_mut()
             .add_block_hook(Box::new(move |_cpu, address, _instruction_count| {
-                hook_inner.borrow_mut().visit_block(address);
+                remaining_edges.fetch_add(1, Ordering::Acquire);
+                sender.send(address).unwrap();
             }))
             .unwrap();
         observer
@@ -178,10 +226,12 @@ impl EdgeHitObserver {
 }
 
 impl Observer for EdgeHitObserver {
-    fn gather(&mut self) {}
+    fn gather(&mut self) {
+        while self.remaining_edges.load(Ordering::Relaxed) != 0 {}
+    }
 
     fn clear(&mut self) {
-        self.inner.borrow_mut().reset();
+        self.inner.lock().reset();
     }
 }
 
@@ -189,6 +239,6 @@ impl HasObservation for EdgeHitObserver {
     type Observation = [bool];
 
     fn observation(&self) -> impl Deref<Target = Self::Observation> {
-        Ref::map(self.inner.borrow(), |inner| &inner.edge_hits[..=inner.highest_observed_index])
+        MutexGuard::map(self.inner.lock(), |inner| &mut inner.edge_hits[..=inner.highest_observed_index])
     }
 }

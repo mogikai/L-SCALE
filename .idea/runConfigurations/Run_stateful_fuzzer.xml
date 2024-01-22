@@ -2,6 +2,9 @@
   <configuration default="false" name="Run stateful_fuzzer" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
     <option name="command" value="run --package fuzzyfuzz --bin stateful_fuzzer" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
+    <envs>
+      <env name="FUZE_LOG" value="fuzzyfuzz=debug" />
+    </envs>
     <option name="emulateTerminal" value="true" />
     <option name="channel" value="DEFAULT" />
     <option name="requiredFeatures" value="true" />
@@ -9,9 +12,6 @@
     <option name="withSudo" value="false" />
     <option name="buildTarget" value="REMOTE" />
     <option name="backtrace" value="SHORT" />
-    <envs>
-      <env name="FUZE_LOG" value="trace" />
-    </envs>
     <option name="isRedirectInput" value="false" />
     <option name="redirectInputPath" value="" />
     <method v="2">
