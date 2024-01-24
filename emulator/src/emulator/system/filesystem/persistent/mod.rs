@@ -9,6 +9,7 @@ use std::cmp::min;
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use tracing::{trace, debug};
 
 use crate::emulator::system::filesystem::persistent::data::{Data, DataSnapMarker};
 use crate::emulator::system::filesystem::persistent::inodes::{FSContent, Inode, Inodes, MetaInfoSnapMarker};
@@ -228,7 +229,7 @@ impl Mountpoint for PersistendFS {
 }
 
 impl Restorable for PersistendFS {
-    fn snapshot(&mut self) -> Result<(), GenericError> {
+    fn take_snapshot(&mut self) -> Result<(), GenericError> {
         assert_eq!(self.snap_markers.len(), self.current_snap);
         self.snap_markers.push(SnapMarker {
             data_marker: self.data.snapshot(),
@@ -239,7 +240,7 @@ impl Restorable for PersistendFS {
         Ok(())
     }
 
-    fn restore_and_discard(&mut self) -> Result<(), GenericError> {
+    fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
         if self.current_snap == 0 {
             Err(FSError::Unknown)?
         }
@@ -255,7 +256,7 @@ impl Restorable for PersistendFS {
         Ok(())
     }
 
-    fn restore(&mut self) -> Result<(), GenericError> {
+    fn restore_snapshot(&mut self) -> Result<(), GenericError> {
         if self.current_snap == 0 {
             Err(FSError::Unknown)?
         }

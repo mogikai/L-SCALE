@@ -4,6 +4,12 @@ use hex::ToHex;
 /// Unit tests for file system module
 /// TODO: Write more sensible tests
 use std::path::Path;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{
+    fmt,
+    EnvFilter,
+};
 
 use rand::{
     thread_rng,
@@ -14,6 +20,10 @@ use super::*;
 
 #[test]
 fn basic() -> Result<(), GenericError> {
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(EnvFilter::from_env("FUZE_LOG"))
+        .init();
     let mut fs = Filesystem::new(2_621_440);
     fs.create_file(Path::new("/my_file.txt"), None)?;
     assert!(fs.create_file(Path::new("/my_file.txt"), None).is_err());
@@ -23,7 +33,9 @@ fn basic() -> Result<(), GenericError> {
 
     assert!(fs.create_file(Path::new("/my_file2.txt"), None).is_err());
     fs.delete(Path::new("/my_file2.txt"))?;
+    println!("bla6");
     fs.create_file(Path::new("/my_file2.txt"), None)?;
+    println!("bla7");
     fs.delete(Path::new("/my_file2.txt"))?;
     fs.create_dir(Path::new("/bin"), None)?;
     fs.create_dir(Path::new("/home"), None)?;

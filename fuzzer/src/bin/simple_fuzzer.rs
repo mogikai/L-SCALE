@@ -249,6 +249,7 @@ fn main() -> Result<(), GenericError> {
             .borrow_mut()
             .mappings(&task_id)
             .try_for_each(|mapping| {
+                /*
                 let path = if let MappingType::PrivateFile(ref ifd) = mapping.mapping_type {
                     let fd_map = system.fd_map.borrow_mut();
                     let file = fd_map.get_internal(&task_id, ifd).unwrap();
@@ -264,6 +265,7 @@ fn main() -> Result<(), GenericError> {
                     None
                 };
                 debug!("Mapping: {} File: {:?}", mapping, path);
+                */
                 Ok::<(), MemoryError>(())
             })?;
         start.elapsed()

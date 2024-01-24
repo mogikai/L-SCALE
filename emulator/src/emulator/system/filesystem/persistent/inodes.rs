@@ -12,7 +12,6 @@ use std::path::{
 };
 use tracing::trace;
 
-use crate::emulator::system::filesystem::block::Block;
 use crate::emulator::system::filesystem::stat::{
     Stat,
     S_IFDIR,
@@ -26,17 +25,9 @@ use crate::emulator::system::filesystem::{
     SnapId,
 };
 
-use self::FSEntryContent::{
-    Dir,
-    File,
-    Symlink,
-};
-
 use std::ffi::OsString;
 
 use crate::emulator::system::filesystem::persistent::block::Block;
-use crate::emulator::system::filesystem::stat::{Stat, S_IFDIR, S_IFLNK, S_IFREG};
-use crate::emulator::system::filesystem::{ContentId, FSEntryId, FSError, SnapId};
 
 #[derive(Debug)]
 pub(super) struct Inodes {

@@ -25,23 +25,11 @@ use tracing::{
     trace,
 };
 
-use data::{
-    Data,
-    DataSnapMarker,
-};
-use meta_info::{
-    MetaInfo,
-    MetaInfoSnapMarker,
-};
 pub use stat::Stat;
 
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::filesystem::{FSEntry, FSId, FileId, Mountpoint};
 use crate::emulator::abstractions::restore::Restorable;
-use crate::emulator::system::filesystem::meta_info::FSEntryContent::{
-    File,
-    Symlink,
-};
 use crate::emulator::system::filesystem::persistent::PersistendFS;
 
 mod persistent;
@@ -186,7 +174,7 @@ impl Filesystem {
             .get_mut(d.fs)
             .ok_or(FSError::Invalid)?
             .as_mut();
-        Ok(FileId::new(0, mountpoint.create_entry(d.file, name, FSEntry::File, stat)?))
+        Ok(FileId::new(d.fs, mountpoint.create_entry(d.file, name, FSEntry::File, stat)?))
     }
 
     pub fn create_file_with_contents(
@@ -212,7 +200,7 @@ impl Filesystem {
             .get_mut(d.fs)
             .ok_or(FSError::Invalid)?
             .as_mut();
-        Ok(FileId::new(0, mountpoint.create_entry(d.file, name, FSEntry::Dir, stat)?))
+        Ok(FileId::new(d.fs, mountpoint.create_entry(d.file, name, FSEntry::Dir, stat)?))
     }
 
     pub fn create_symlink(
@@ -228,7 +216,7 @@ impl Filesystem {
             .get_mut(d.fs)
             .ok_or(FSError::Invalid)?
             .as_mut();
-        Ok(FileId::new(0, mountpoint.create_entry(d.file, name, FSEntry::Symlink { contents: target }, stat)?))
+        Ok(FileId::new(d.fs, mountpoint.create_entry(d.file, name, FSEntry::Symlink { contents: target }, stat)?))
     }
 
     pub fn delete(
@@ -295,7 +283,7 @@ impl Filesystem {
             .as_ref();
         let dir: Option<FSEntryId> = dir.map(|x| x.file);
         let (ids, mut remain) = mountpoint.resolve_path(dir, path)?;
-        let mut result: Vec<FileId> = ids.into_iter().map(|id| FileId::new(id, fs_id)).collect();
+        let mut result: Vec<FileId> = ids.into_iter().map(|id| FileId::new(fs_id, id)).collect();
         while remain.is_some() {
             trace!("remain: {:?}", remain);
             let last = result.pop().expect("Empty paths cannot occur");
@@ -396,7 +384,7 @@ impl Filesystem {
         while remain.is_some() && *loopcount > 0 {
             let link = ids.pop().expect("Empty paths cannot occur");
             let target = self
-                .read_symlink(FileId::new(0, link))?
+                .read_symlink(FileId::new(fs_id, link))?
                 .expect("link target cannot be None at this point");
             dir = if target.is_relative() {
                 ids.last().copied()
@@ -411,7 +399,7 @@ impl Filesystem {
         if remain.is_some() {
             Err(FSError::Loop)
         } else {
-            Ok(FileId::new(0, *ids.last().expect("Empty paths cannot occur")))
+            Ok(FileId::new(fs_id, *ids.last().expect("Empty paths cannot occur")))
         }
     }
 

@@ -41,6 +41,7 @@ use crate::emulator::abstractions::cpu::{
     CPU,
 };
 use crate::emulator::abstractions::errors::GenericError;
+use crate::emulator::abstractions::filesystem::FileId;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::kernel_task::KernelTask;
 use crate::emulator::abstractions::mmu::encoding::{
@@ -427,7 +428,7 @@ where
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
         let mut read_only = FileDescriptor::new(Box::new(default_handles::ReadOnly::new()));
         // TODO: Dont use pseudo file. Instead use actual filesystem backed input
-        read_only.data.file = Some(FileData::new(self.system.filesystem.clone(), 0));
+        read_only.data.file = Some(FileData::new(self.system.filesystem.clone(), FileId::new(0, 0)));
         file_descriptor_map.insert_at(&self.task_id, 0.into(), read_only);
         file_descriptor_map.insert_at(
             &self.task_id,
