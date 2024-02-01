@@ -14,11 +14,13 @@ use crate::emulator::platform::linux::fd::{
 };
 use crate::emulator::platform::linux::kernel::fs::fd_ops::FileOps;
 use crate::emulator::platform::linux::kernel::*;
+use crate::emulator::platform::linux::kernel::error::SyscallError::KernelError;
 use crate::emulator::system::fd_map::{
     FileDescriptor,
     FileDescriptorMap,
     InternalFD,
 };
+use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 use crate::emulator::system::filesystem::{
     FSEntryId,
     Filesystem,
@@ -267,6 +269,50 @@ where
         Ok(sys_component_mut!(self, fd_map)
             .remove(&self.task_id, &fd)
             .map(|_| 0)?)
+    }
+
+    pub fn dup(
+        &mut self,
+        fd: FD,
+    ) -> SyscallResult {
+        let newfd = sys_component_mut!(self, fd_map)
+            .dup(&self.task_id, fd)
+            .map_err(|_| LinuxKernelError::EBADF)?;
+
+        Ok(newfd.into())
+    }
+
+    pub fn dup2(
+        &mut self,
+        fd: FD,
+        newfd: FD
+    ) -> SyscallResult {
+        if fd == newfd {
+            return Ok(newfd.into());
+        }
+
+        let newfd = sys_component_mut!(self, fd_map)
+            .dup2(&self.task_id, fd, newfd)
+            .map_err(|_| LinuxKernelError::EBADF)?;
+
+        Ok(newfd.into())
+    }
+
+    pub fn dup3(
+        &mut self,
+        fd: FD,
+        newfd: FD,
+        flags: u64
+    ) -> SyscallResult {
+        if fd == newfd {
+            return Err(KernelError(LinuxKernelError::EINVAL));
+        }
+
+        let newfd = sys_component_mut!(self, fd_map)
+            .dup3(&self.task_id, fd, newfd, flags)
+            .map_err(|_| LinuxKernelError::EBADF)?;
+
+        Ok(newfd.into())
     }
 
     #[unfinished]

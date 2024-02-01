@@ -17,6 +17,7 @@ use generational_arena::{
     Arena,
     Index,
 };
+use itertools::Itertools;
 use tracing::trace;
 
 use crate::emulator::abstractions::file_descriptors::{
@@ -428,6 +429,57 @@ where
             .entry(*task_id)
             .or_default()
             .insert(*file))
+    }
+
+    pub fn dup(
+        &mut self,
+        task_id: &TaskId,
+        fd: FD,
+    ) -> Result<FD, FileDescriptorMapError> {
+        let mut task_fds = self
+            .file_descriptors
+            .get(task_id)
+            .ok_or(FileDescriptorMapError::InvalidFD)?;
+
+        // linear search for first free file descriptor
+        for _newfd in 0u64..(i32::MAX as u64) {
+            let newfd = _newfd.into();
+            if !task_fds.keys().contains(&newfd) {
+                return self.dup2(task_id, fd, newfd);
+            }
+        }
+
+        Err(FileDescriptorMapError::NoFreeFD)
+    }
+
+    pub fn dup2(
+        &mut self,
+        task_id: &TaskId,
+        fd: FD,
+        newfd: FD,
+    ) -> Result<FD, FileDescriptorMapError> {
+        // TODO dup2 should close newfd if it was previously open
+        self.dup3(task_id, fd, newfd, 0)
+    }
+
+    pub fn dup3(
+        &mut self,
+        task_id: &TaskId,
+        fd: FD,
+        newfd: FD,
+        flags: u64
+    ) -> Result<FD, FileDescriptorMapError> {
+        let mut task_fds = self
+            .file_descriptors
+            .get_mut(task_id)
+            .ok_or(FileDescriptorMapError::InvalidFD)?;
+
+        let file = task_fds
+            .get(&fd)
+            .ok_or(FileDescriptorMapError::InvalidFD)?;
+
+        task_fds.insert(newfd, *file);
+        Ok(newfd)
     }
 
     pub fn get_mut_internal(
