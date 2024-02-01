@@ -4,6 +4,7 @@ use std::cell::{
     RefMut,
 };
 use std::collections::BTreeMap;
+use std::collections::BinaryHeap;
 use std::fmt::Debug;
 use std::mem::ManuallyDrop;
 use std::ops::{
@@ -218,7 +219,7 @@ where
     files: LazyCloneMap<FileDescriptor<D>>,
     file_descriptors: BTreeMap<TaskId, BTreeMap<FD, AutoKey>>,
     internal_file_descriptors: BTreeMap<TaskId, Arena<AutoKey>>,
-    free_fds: BTreeMap<TaskId, Vec<FD>>,
+    free_fds: BTreeMap<TaskId, BinaryHeap<FD>>,
     // TODO: Implement as a hook object that can be inserted to be called after the handle
     //       processed the call.
     // hooks: HashMap<TaskId, HashMap<FD, VecDeque<Box<dyn FileDescriptorOps<D>>>>>,
@@ -248,9 +249,9 @@ where
     ) -> ClosureReturnT
     where
         ActionClosureT: FnMut(&mut FileDescriptorMap<FD, TaskId, D>, &mut FileDescriptor<D>) -> ClosureReturnT,
-    {
-        action(self.guarded_map, &mut self.temporarily_removed)
-    }
+        {
+            action(self.guarded_map, &mut self.temporarily_removed)
+        }
 }
 
 impl<'a, FD, TaskId, D> Deref for TemporaryRemoveGuard<'a, FD, TaskId, D>
@@ -289,7 +290,7 @@ where
             self.guarded_map
                 .files
                 .reinsert(ManuallyDrop::take(&mut self.temporarily_removed));
-        }
+            }
     }
 }
 
@@ -303,7 +304,7 @@ where
     files: LazyCloneMap<FileDescriptor<D>>,
     file_descriptors: BTreeMap<TaskId, BTreeMap<FD, AutoKey>>,
     internal_file_descriptors: BTreeMap<TaskId, Arena<AutoKey>>,
-    free_fds: BTreeMap<TaskId, Vec<FD>>,
+    free_fds: BTreeMap<TaskId, BinaryHeap<FD>>,
 }
 
 impl<FD, TaskId, D> FileDescriptorMap<FD, TaskId, D>
@@ -340,7 +341,7 @@ where
         task_id: &TaskId,
         file_descriptor: FileDescriptor<D>,
     ) -> Result<FD, FileDescriptorMapError> {
-        let fd = self.get_free_fd(task_id);
+        let fd = self.get_free_fd(task_id)?;
         self.insert_at(task_id, fd, file_descriptor)
     }
 
@@ -436,20 +437,8 @@ where
         task_id: &TaskId,
         fd: FD,
     ) -> Result<FD, FileDescriptorMapError> {
-        let mut task_fds = self
-            .file_descriptors
-            .get(task_id)
-            .ok_or(FileDescriptorMapError::InvalidFD)?;
-
-        // linear search for first free file descriptor
-        for _newfd in 0u64..(i32::MAX as u64) {
-            let newfd = _newfd.into();
-            if !task_fds.keys().contains(&newfd) {
-                return self.dup2(task_id, fd, newfd);
-            }
-        }
-
-        Err(FileDescriptorMapError::NoFreeFD)
+        let newfd = self.get_free_fd(task_id)?;
+        self.dup2(task_id, fd, newfd)
     }
 
     pub fn dup2(
@@ -506,20 +495,22 @@ where
     fn get_free_fd(
         &mut self,
         task_id: &TaskId,
-    ) -> FD {
+    ) -> Result<FD, FileDescriptorMapError> {
         self.free_fds
             .entry(*task_id)
             .or_default()
             .pop()
-            .unwrap_or_else(|| {
-                *self
-                    .file_descriptors
-                    .entry(*task_id)
-                    .or_default()
-                    .keys()
-                    .max()
-                    .unwrap_or(&FD::from(2))
-                    + 1
+            .or_else(|| {
+                let fds = self.file_descriptors.get(task_id)?;
+
+                // assume FD(0) in self.file_descriptors or self.free_fds
+                fds.keys()
+                    .filter(|&fd| {
+                        !fds.keys().contains(&(*fd + 1))
+                    })
+                    .map(|fd| *fd + 1)
+                .next()
             })
+        .ok_or(FileDescriptorMapError::NoFreeFD)
     }
 }

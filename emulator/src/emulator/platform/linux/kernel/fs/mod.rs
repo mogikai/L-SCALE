@@ -275,11 +275,9 @@ where
         &mut self,
         fd: FD,
     ) -> SyscallResult {
-        let newfd = sys_component_mut!(self, fd_map)
-            .dup(&self.task_id, fd)
-            .map_err(|_| LinuxKernelError::EBADF)?;
-
-        Ok(newfd.into())
+        Ok(sys_component_mut!(self, fd_map)
+            .dup(&self.task_id, fd)?
+            .into())
     }
 
     pub fn dup2(
@@ -291,11 +289,9 @@ where
             return Ok(newfd.into());
         }
 
-        let newfd = sys_component_mut!(self, fd_map)
-            .dup2(&self.task_id, fd, newfd)
-            .map_err(|_| LinuxKernelError::EBADF)?;
-
-        Ok(newfd.into())
+        Ok(sys_component_mut!(self, fd_map)
+            .dup2(&self.task_id, fd, newfd)?
+            .into())
     }
 
     pub fn dup3(
@@ -305,14 +301,13 @@ where
         flags: u64
     ) -> SyscallResult {
         if fd == newfd {
-            return Err(KernelError(LinuxKernelError::EINVAL));
+            Err(LinuxKernelError::EINVAL)?;
         }
 
-        let newfd = sys_component_mut!(self, fd_map)
+        Ok(sys_component_mut!(self, fd_map)
             .dup3(&self.task_id, fd, newfd, flags)
-            .map_err(|_| LinuxKernelError::EBADF)?;
-
-        Ok(newfd.into())
+            .map_err(|_| LinuxKernelError::EBADF)?
+            .into())
     }
 
     #[unfinished]
