@@ -79,10 +79,12 @@ use fuzzyemu::emulator::system::memory::MappingType;
 
 use crate::api::observer::Observer;
 use crate::api::reducer::Reducer;
+use crate::observers::emulator::bb::BlockHitObserver;
 use crate::observers::emulator::edge::{
     EdgeHitCountObserver,
     EdgeHitObserver,
 };
+use crate::reducers::bb::behavior::BasicBlockBehaviorReducer;
 use crate::reducers::edge::behavior::EdgeBehaviorReducer;
 use crate::reducers::edge::InterestingEdgesReducer;
 
@@ -615,6 +617,48 @@ impl StateBuilder {
         None
     }
 
+    /// Find a state that is equivalent to this candidate.
+    fn find_equivalent_state(
+        &self,
+        fuzzer_state: &FuzzerState,
+        candidate_id: &StateCandidateId,
+    ) -> Option<StateId> {
+        let state_candidate = fuzzer_state.state_candidates.get(*candidate_id).unwrap();
+        fuzzer_state
+            .states
+            .iter()
+            .find(|(_, state)| {
+                matches!(state.state.compare_observations(&state_candidate.state), StateComparisonResult::Equal)
+            })
+            .map(|(id, _)| id)
+    }
+
+    fn add_transitions_to_equivalent_states(
+        &self,
+        fuzzer_state: &mut FuzzerState,
+    ) {
+        for (candidate_id, _) in fuzzer_state
+            .state_candidates
+            .iter()
+            .filter(|(_, s)| s.state.pending_observations.is_empty())
+        {
+            debug!("Creating edges for state candidate {candidate_id:?}");
+            let equivalent_state = self
+                .find_equivalent_state(fuzzer_state, &candidate_id)
+                .unwrap();
+            let equivalent_state_node_id = fuzzer_state.states.get(equivalent_state).unwrap().node_id();
+            let candidate = fuzzer_state.state_candidates.get(candidate_id).unwrap();
+            let origin_node_id = fuzzer_state
+                .states
+                .get(candidate.origin())
+                .unwrap()
+                .node_id();
+            fuzzer_state
+                .state_graph
+                .add_edge(origin_node_id, equivalent_state_node_id, candidate.reached_by());
+        }
+    }
+
     fn candidate_violates_closed_property(
         &self,
         fuzzer_state: &FuzzerState,
@@ -702,7 +746,8 @@ impl StateBuilder {
         }
         for state in fuzzer_state.state_candidates.values() {
             let mut line = String::new();
-            line += &*format!("{:>40}", format!("{:?}->{:?}", state.origin(), state.reached_by()));
+            let node_id = fuzzer_state.states.get(state.origin()).unwrap().node_id();
+            line += &*format!("{:>40}", format!("{:?}->{:?}", node_id, state.reached_by()));
             let mut behaviors = state
                 .state
                 .suffix_behaviors
@@ -761,8 +806,8 @@ where
     ) -> Self {
         let edge_observer = Rc::new(RefCell::new(EdgeHitCountObserver::new(emulator.system().cpu())));
         let edge_reducer = Rc::new(RefCell::new(InterestingEdgesReducer::new(edge_observer.clone())));
-        let behavior_observer = Rc::new(RefCell::new(EdgeHitObserver::new(emulator.system().cpu())));
-        let behavior_reducer = Rc::new(RefCell::new(EdgeBehaviorReducer::new(behavior_observer.clone())));
+        let behavior_observer = Rc::new(RefCell::new(BlockHitObserver::new(emulator.system().cpu())));
+        let behavior_reducer = Rc::new(RefCell::new(BasicBlockBehaviorReducer::new(behavior_observer.clone())));
         Self {
             state: Default::default(),
             state_builder: Default::default(),
@@ -826,6 +871,9 @@ where
             //     exit(0);
             // }
         }
+        self.state_builder
+            .add_transitions_to_equivalent_states(&mut self.state);
+        self.state_builder.dump_dot_file(&mut self.state);
     }
 
     fn load_initial_state(&mut self) {

@@ -33,6 +33,7 @@ use fuzzyemu_derive::{
 /// Emulated virtual address
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(
+    Hash,
     Ord,
     PartialOrd,
     Eq,
