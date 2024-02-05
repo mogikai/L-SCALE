@@ -20,6 +20,7 @@ slotmap = { version = "*", features = ["serde"] }
 graphviz-rust = "0.7.0"
 parking_lot = "*"
 core_affinity = "*"
+rand_pcg = "0.3.1"
 
 [profile.release]
 opt-level = 3

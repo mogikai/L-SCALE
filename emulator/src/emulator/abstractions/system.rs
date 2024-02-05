@@ -12,8 +12,10 @@ use crate::emulator::system::fd_map::{
 };
 use crate::emulator::system::filesystem::Filesystem;
 use crate::emulator::system::memory::Memory;
+use crate::emulator::system::rng::SeedablePrngMap;
 use crate::emulator::system::task_manager::TaskManager;
 use byteorder::ByteOrder;
+use rand::{Rng, SeedableRng};
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::rc::Rc;
@@ -26,12 +28,14 @@ pub trait SystemControl: Clone {
     type TcpT: TCPSystem + TCPSystemControl;
     type FDT: FdId;
     type FDDataT: Default + Clone;
+    type PrngT: Rng + SeedableRng;
 
     fn cpu(&self) -> &Rc<RefCell<Self::CpuT>>;
     // TODO: Hide remaining system components behind traits?
     fn memory(&self) -> &Rc<RefCell<Memory<Self::Endianness>>>;
     fn filesystem(&self) -> &Rc<RefCell<Filesystem>>;
     fn clock(&self) -> &Rc<RefCell<Clock>>;
+    fn prng_map(&self) -> &Rc<RefCell<SeedablePrngMap<Self::PrngT, Self::TaskIdT>>>;
     fn task_manager(&self) -> &Rc<RefCell<TaskManager<Self::TaskIdT, Self::KernelTaskT>>>;
     fn tcp(&self) -> &Rc<RefCell<Self::TcpT>>;
     fn fd_map(&self) -> &Rc<RefCell<FileDescriptorMap<Self::FDT, Self::TaskIdT, Self::FDDataT>>>;

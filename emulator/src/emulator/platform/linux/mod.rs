@@ -1,5 +1,6 @@
 use crate::emulator::platform::linux::architecture::x86::X86;
 use byteorder::ByteOrder;
+use rand_pcg::Mcg128Xsl64;
 
 use crate::emulator::platform::linux::fd::{
     FileDescriptorData,
@@ -18,4 +19,4 @@ mod signals;
 
 /// Linux specific system task. Parametrizes the generics with linux specific types
 pub(crate) type LinuxSystem<Endianness, CpuT, TcpT> =
-    System<FD, FileDescriptorData, TaskId, LinuxKernelTask<Endianness, X86, CpuT, TcpT>, Endianness, CpuT, TcpT>;
+    System<FD, FileDescriptorData, TaskId, LinuxKernelTask<Endianness, X86, CpuT, TcpT>, Endianness, CpuT, TcpT, Mcg128Xsl64>;
