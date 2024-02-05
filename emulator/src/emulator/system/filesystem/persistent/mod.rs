@@ -3,7 +3,7 @@ mod data;
 mod inodes;
 
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::filesystem::{FSEntry, Mountpoint};
+use crate::emulator::abstractions::filesystem::{FSEntry, FSId, Mountpoint};
 use crate::emulator::abstractions::restore::Restorable;
 use std::cmp::min;
 use std::collections::BTreeMap;
@@ -28,7 +28,7 @@ pub struct PersistendFS {
 }
 
 impl PersistendFS {
-    pub fn new(size: usize) -> Self {
+    pub fn new(size: usize, parrent: FSEntryId) -> Self {
         let mut inodes = Inodes::new();
         inodes
             .add_entry(
@@ -225,6 +225,10 @@ impl Mountpoint for PersistendFS {
         name: OsString,
     ) -> Result<(), FSError> {
         self.inodes.delete(dir, name)
+    }
+
+    fn set_mountpoint(&mut self, fsentry: FSEntryId, fsid: FSId) -> Result<(), FSError> {
+        todo!()
     }
 }
 

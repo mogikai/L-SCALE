@@ -75,6 +75,12 @@ pub trait Mountpoint: Restorable + Debug {
         dir: FSEntryId,
         name: OsString,
     ) -> Result<(), FSError>;
+
+    fn set_mountpoint(
+        &mut self,
+        fsentry: FSEntryId,
+        fsid: FSId,
+    ) -> Result<(), FSError>;
     /* TODO breitensuche
     fn breadth_first_visitor(&mut self, visitor);
      */

@@ -50,6 +50,7 @@ pub enum FSError {
     Exist,
     Busy,
     NotEmpty,
+    NotDir,
 }
 
 impl From<io::Error> for FSError {
@@ -71,7 +72,7 @@ pub struct Filesystem {
 
 impl Filesystem {
     pub fn new(size: usize) -> Self {
-        let mountpoints: Vec<Box<dyn Mountpoint>> = vec![Box::new(PersistendFS::new(size))];
+        let mountpoints: Vec<Box<dyn Mountpoint>> = vec![Box::new(PersistendFS::new(size, 0) )];
         Filesystem {
             on_disk_root: None,
             mountpoints,
