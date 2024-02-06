@@ -17,6 +17,7 @@ use std::time::{
 };
 
 use clap::Parser;
+use fuzzyemu::emulator::system::prng::SeedablePrngMap;
 use rand::seq::SliceRandom;
 use tracing::debug;
 use tracing_subscriber::layer::SubscriberExt;
@@ -100,10 +101,11 @@ fn main() -> Result<(), GenericError> {
         let filesystem = Filesystem::from_disk(1_073_741_824, Path::new(&pargs.system_root)).unwrap();
         let memory = Memory::<LittleEndian>::new();
         let clock = Clock::new(Duration::from_nanos(1662647309301240322));
+        let prng_map = SeedablePrngMap::new(0xcafef00dd15ea5e5cafef00dd15ea5e5_u128.to_ne_bytes());
         let file_descriptor_map = FileDescriptorMap::new();
         let tcp = Rc::new(RefCell::new(TCP::new()));
         let system =
-            System::new(cpu.clone(), memory, filesystem, clock, file_descriptor_map, task_manager, tcp.clone());
+            System::new(cpu.clone(), memory, filesystem, clock, prng_map, file_descriptor_map, task_manager, tcp.clone());
 
         let total_blocks_hook = total_blocks.clone();
         cpu.borrow_mut()

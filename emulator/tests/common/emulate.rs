@@ -17,6 +17,7 @@ use fuzzyemu::emulator::system::fd_map::FileDescriptorMap;
 use fuzzyemu::emulator::system::filesystem::Filesystem;
 use fuzzyemu::emulator::system::hardware::unicorn::UCWrapper;
 use fuzzyemu::emulator::system::memory::Memory;
+use fuzzyemu::emulator::system::prng::SeedablePrngMap;
 use fuzzyemu::emulator::system::task_manager::TaskManager;
 use fuzzyemu::emulator::system::System;
 
@@ -38,9 +39,10 @@ pub fn emulate(
     let filesystem = Filesystem::from_disk(1_073_741_824, sys_path).unwrap();
     let memory = Memory::<LittleEndian>::new();
     let clock = Clock::new(Duration::from_nanos(1662647309301240322));
+    let prng_map = SeedablePrngMap::new(0xcafef00dd15ea5e5cafef00dd15ea5e5_u128.to_ne_bytes());
     let fd_map = FileDescriptorMap::new();
     let tcp = Rc::new(RefCell::new(MockTCPSystem::new()));
-    let system = System::new(cpu.clone(), memory, filesystem, clock, fd_map, task_manager, tcp);
+    let system = System::new(cpu.clone(), memory, filesystem, clock, prng_map, fd_map, task_manager, tcp);
 
     let initial_task = LinuxKernelTask::new(system.clone(), 1337, 1);
     let task_id = initial_task.task_id();

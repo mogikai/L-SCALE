@@ -12,7 +12,7 @@ use crate::emulator::system::fd_map::{
 };
 use crate::emulator::system::filesystem::Filesystem;
 use crate::emulator::system::memory::Memory;
-use crate::emulator::system::rng::SeedablePrngMap;
+use crate::emulator::system::prng::SeedablePrngMap;
 use crate::emulator::system::task_manager::TaskManager;
 use byteorder::ByteOrder;
 use rand::{Rng, SeedableRng};
@@ -28,7 +28,7 @@ pub trait SystemControl: Clone {
     type TcpT: TCPSystem + TCPSystemControl;
     type FDT: FdId;
     type FDDataT: Default + Clone;
-    type PrngT: Rng + SeedableRng;
+    type PrngT: Rng + SeedableRng + Clone;
 
     fn cpu(&self) -> &Rc<RefCell<Self::CpuT>>;
     // TODO: Hide remaining system components behind traits?

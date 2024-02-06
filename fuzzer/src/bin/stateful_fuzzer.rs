@@ -1,3 +1,4 @@
+use std::arch::x86_64::_mm256_undefined_si256;
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::path::{
@@ -9,6 +10,7 @@ use std::time::Duration;
 
 use clap::Parser;
 use core_affinity::CoreId;
+use fuzzyemu::emulator::system::prng::SeedablePrngMap;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{
@@ -62,9 +64,10 @@ fn main() {
     let filesystem = Filesystem::from_disk(1_073_741_824, Path::new(&fuzzer_args.system_root)).unwrap();
     let memory = Memory::<LittleEndian>::new();
     let clock = Clock::new(Duration::from_nanos(1662647309301240322));
+    let prng_map = SeedablePrngMap::new(0xcafef00dd15ea5e5cafef00dd15ea5e5_u128.to_ne_bytes());
     let file_descriptor_map = FileDescriptorMap::new();
     let tcp = Rc::new(RefCell::new(TCP::new()));
-    let system = System::new(cpu.clone(), memory, filesystem, clock, file_descriptor_map, task_manager, tcp.clone());
+    let system = System::new(cpu.clone(), memory, filesystem, clock, prng_map, file_descriptor_map, task_manager, tcp.clone());
 
     let initial_task = LinuxKernelTask::new(system.clone(), 1337, 1);
 

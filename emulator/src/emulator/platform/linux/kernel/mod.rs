@@ -791,7 +791,8 @@ where
     ) -> SyscallResult {
         // TODO: Get random data from !deterministic! source controlled by user (the fuzzer)
         //       Random sources are also a form of input to the SUT
-        let data = vec![0u8; buflen as usize];
+        let data = sys_component_mut!(self, prng_map)
+            .get_random_bytes(self.task_id, buflen as usize);
         let mut cpu = sys_component_mut!(self, cpu);
         sys_component_mut!(self, memory)
             .accessor(&mut cpu, self.task_id)

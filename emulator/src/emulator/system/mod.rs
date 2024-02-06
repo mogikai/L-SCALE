@@ -24,7 +24,7 @@ use crate::emulator::system::filesystem::Filesystem;
 use crate::emulator::system::memory::Memory;
 use crate::emulator::system::task_manager::TaskManager;
 
-use self::rng::SeedablePrngMap;
+use self::prng::SeedablePrngMap;
 
 pub mod clock;
 pub mod default_handles;
@@ -33,7 +33,7 @@ pub mod filesystem;
 pub mod hardware;
 pub mod memory;
 pub mod task_manager;
-pub mod rng;
+pub mod prng;
 
 /// This struct contains the global system state and system components like memory and filesystem or the system clock.
 /// Also, all currently running tasks are kept here.
@@ -50,7 +50,7 @@ where
     Endianness: ByteOrder,
     CpuT: CPU + MMU,
     TcpT: TCPSystem,
-    PrngT: Rng + SeedableRng
+    PrngT: Rng + SeedableRng + Clone
 {
     pub cpu: Rc<RefCell<CpuT>>,
     pub memory: Rc<RefCell<Memory<Endianness>>>,
@@ -72,7 +72,7 @@ where
     Endianness: ByteOrder,
     CpuT: CPU + MMU,
     TcpT: TCPSystem,
-    PrngT: Rng + SeedableRng
+    PrngT: Rng + SeedableRng + Clone
 {
     fn clone(&self) -> Self {
         Self {
@@ -98,7 +98,7 @@ where
     Endianness: ByteOrder,
     CpuT: CPU + MMU,
     TcpT: TCPSystem,
-    PrngT: Rng + SeedableRng
+    PrngT: Rng + SeedableRng + Clone
 {
     pub fn new(
         cpu: Rc<RefCell<CpuT>>,
@@ -133,7 +133,7 @@ where
     Endianness: ByteOrder + 'static,
     CpuT: CPU + MMU + Hooks,
     TcpT: TCPSystem + TCPSystemControl,
-    PrngT: Rng + SeedableRng
+    PrngT: Rng + SeedableRng + Clone
 {
     type TaskIdT = TaskId;
     type KernelTaskT = KernelTaskT;
@@ -187,7 +187,7 @@ where
     Endianness: ByteOrder,
     CpuT: CPU + MMU,
     TcpT: TCPSystem,
-    PrngT: Rng + SeedableRng
+    PrngT: Rng + SeedableRng + Clone
 {
     fn take_snapshot(&mut self) -> Result<(), GenericError> {
         self.cpu.borrow_mut().take_snapshot()?;
