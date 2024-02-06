@@ -44,6 +44,7 @@ use petgraph::graph::{
     EdgeReference,
     NodeIndex,
 };
+use petgraph::visit::EdgeRef;
 use serde::{
     Deserialize,
     Serialize,
@@ -387,7 +388,7 @@ type InputDataMap = SlotMap<InputDataId, InputData>;
 pub struct FuzzerState {
     last_dot_file_num: usize,
     /// The state graph. Each node corresponds to an index in the prefix closed set S in Angluins L* algorithm.
-    state_graph: DiGraph<(), TestCaseId>,
+    state_graph: DiGraph<(), Vec<TestCaseId>>,
     suffixes: SlotMap<SuffixId, Vec<TestCaseId>>,
     /// A map of node indices to their associated state id.
     states_map: BTreeMap<NodeIndex, StateId>,
@@ -417,7 +418,8 @@ pub struct FuzzerState {
 /// path currently, the path to the new state will likely contain some backtracking
 /// operations until the node is reached where the path diverges from the already taken
 /// path.
-pub enum StatePathComponent {
+#[derive(Debug)]
+enum StatePathComponent {
     /// The backtrack variant signals the fuzzer to restore an older state. The number
     /// in the variant signals how many times the backtracking has to occur.
     Backtrack(usize),
@@ -461,24 +463,53 @@ impl StateBuilder {
         let StateUnion::Final(initial_state) = fuzzer_state.state_path[0] else {
             panic!("The first state in the path must always be the initial state, which is final");
         };
-        // FIXME TODO: For now we just backtrack to initial. In the future we should only backtrack as far as needed.
-        let mut path = vec![];
-        path.push(StatePathComponent::Backtrack(fuzzer_state.state_path.len().checked_sub(1).unwrap()));
 
-        path.extend(
-            petgraph::algo::astar(
-                &fuzzer_state.state_graph,
-                fuzzer_state.states.get(initial_state).unwrap().node_id(),
-                |n| n == fuzzer_state.states.get(state_id).unwrap().node_id(),
-                |_| 1,
-                |_| 0,
-            )
-            .unwrap()
-            .1
+        let target_state_id = fuzzer_state.states.get(state_id).unwrap().node_id();
+        let full_path = petgraph::algo::astar(
+            &fuzzer_state.state_graph,
+            fuzzer_state.states.get(initial_state).unwrap().node_id(),
+            |n| n == target_state_id,
+            |_| 1,
+            |_| 0,
+        )
+        .unwrap()
+        .1
+        .iter()
+        .map(|node_id| *fuzzer_state.states_map.get(node_id).unwrap())
+        .collect::<Vec<_>>();
+        debug!("Full path is {full_path:?}");
+        debug!("Current traversal path is {:?}", fuzzer_state.state_path);
+
+        // Find the index of the path where it diverges from the current traversal path
+        let diverge_index = fuzzer_state
+            .state_path
             .iter()
-            .map(|node_id| StatePathComponent::GoTo(*fuzzer_state.states_map.get(node_id).unwrap()))
-            .skip(1), // Skip initial state
+            .filter_map(|s| {
+                let StateUnion::Final(s) = s else { return None };
+                Some(s)
+            })
+            .zip(full_path.iter())
+            .enumerate()
+            .find_map(|(i, (actual, target))| if actual != target { Some(i) } else { None })
+            .unwrap_or(fuzzer_state.state_path.len());
+
+        debug!("Paths diverge at index {diverge_index:?}");
+
+        let mut path = vec![];
+        path.push(StatePathComponent::Backtrack(
+            fuzzer_state
+                .state_path
+                .len()
+                .checked_sub(diverge_index)
+                .unwrap(),
+        ));
+        path.extend(
+            full_path
+                .iter()
+                .skip(diverge_index)
+                .map(|id| StatePathComponent::GoTo(*id)),
         );
+        debug!("Actual path is {path:?}");
 
         path
     }
@@ -544,7 +575,7 @@ impl StateBuilder {
             // Add corresponding edge to graph
             fuzzer_state
                 .state_graph
-                .add_edge(origin_state.node_id(), node_id, reached_by);
+                .add_edge(origin_state.node_id(), node_id, vec![reached_by]);
         }
 
         // Insert new candidates for each testcase for the new state
@@ -653,9 +684,22 @@ impl StateBuilder {
                 .get(candidate.origin())
                 .unwrap()
                 .node_id();
-            fuzzer_state
+            let edges: Vec<_> = fuzzer_state
                 .state_graph
-                .add_edge(origin_node_id, equivalent_state_node_id, candidate.reached_by());
+                .edges_connecting(origin_node_id, equivalent_state_node_id)
+                .map(|e| e.id())
+                .collect();
+            if edges.is_empty() {
+                fuzzer_state.state_graph.add_edge(
+                    origin_node_id,
+                    equivalent_state_node_id,
+                    vec![candidate.reached_by()],
+                );
+            } else {
+                assert_eq!(edges.len(), 1);
+                let test_cases = fuzzer_state.state_graph.edge_weight_mut(edges[0]).unwrap();
+                test_cases.push(candidate.reached_by());
+            }
         }
     }
 
@@ -692,23 +736,28 @@ impl StateBuilder {
         fuzzer_state.last_dot_file_num += 1;
         let mut states_dir = PathBuf::from(".output/states/");
         create_dir_all(&states_dir).unwrap();
-        let edge_labeling = |_, edge: EdgeReference<TestCaseId>| {
-            let tc = fuzzer_state.test_cases.get(*edge.weight()).unwrap();
-            let streams = tc
-                .input
-                .tcp_streams
-                .iter()
-                .fold(String::new(), |acc, stream| {
-                    acc + ","
-                        + fuzzer_state
+        let edge_labeling = |_, edge: EdgeReference<Vec<TestCaseId>>| {
+            let test_cases = edge.weight();
+            let mut label = String::new();
+            for test_case in test_cases {
+                let tc = fuzzer_state.test_cases.get(*test_case).unwrap();
+                let streams = tc
+                    .input
+                    .tcp_streams
+                    .iter()
+                    .fold(String::new(), |acc, stream| {
+                        acc + fuzzer_state
                             .input_data
                             .get(stream.unwrap())
                             .unwrap()
                             .source
                             .to_string()
                             .as_str()
-                });
-            format!("label = \"{:?} | {streams}\"", tc.input.component_markers)
+                            + ","
+                    });
+                label.push_str(format!("{streams} |").as_str());
+            }
+            format!("label = \"{}\"", label)
         };
         states_dir.push(fuzzer_state.last_dot_file_num.to_string());
         let dot = Dot::with_attr_getters(
@@ -811,9 +860,9 @@ where
         Self {
             state: Default::default(),
             state_builder: Default::default(),
-            observers: vec![edge_observer],
+            observers: vec![],
             suffix_behavior_observer: behavior_observer,
-            is_interesting_reducers: vec![edge_reducer],
+            is_interesting_reducers: vec![],
             suffix_behavior_reducer: behavior_reducer,
             is_crash_reducers: Default::default(),
             emulator,
@@ -852,8 +901,6 @@ where
                 Ok::<(), MemoryError>(())
             })
             .unwrap();
-        // We make a snapshot now, so that we can reset to the first input request.
-        self.emulator.take_snapshot().unwrap();
         // Reduce once, so that any state of the reducers can be filled with the initial observations.
         assert!(matches!(res, ExitReason::Yielded));
         Self::gather_observations(&mut self.observers);
@@ -861,6 +908,8 @@ where
         Self::clear_observers(&mut self.observers);
         Self::update_input_info(&self.emulator, &mut self.input_info);
         self.load_initial_state();
+        // We make a snapshot now, so that we can reset to the first input request.
+        self.emulator.take_snapshot().unwrap();
         while self.evaluate_states_with_missing_observations() {
             self.state_builder.fix_closed_property(&mut self.state);
             self.state_builder.dump_dot_file(&mut self.state);
@@ -877,7 +926,26 @@ where
     }
 
     fn load_initial_state(&mut self) {
-        self.create_component_marker_inputs();
+        // self.create_component_marker_inputs();
+        // FIXME: For now, we simply create one tcp stream in the beginning. The fuzzer is not allowed to create
+        //        any new streams at the moment (during fuzzing)
+        let mut tcp = self.emulator.system().tcp().borrow_mut();
+        let listener_id = *tcp
+            .sockets()
+            .find(|(_, sock)| sock.is_listener())
+            .unwrap()
+            .0;
+        tcp.new_connection(
+            &listener_id,
+            SocketAddress::IP(IPAddress::V6 {
+                port: 1337,
+                flowinfo: 0,
+                addr: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+                scope_id: 0,
+            }),
+        )
+        .unwrap();
+        /////////
         let mut corpus_dir = self.context_path.clone();
         corpus_dir.push("corpus");
         for file in corpus_dir.read_dir().unwrap().flatten() {
@@ -963,6 +1031,7 @@ where
             let path = self
                 .state_builder
                 .shortest_path_from_initial(&self.state, state_id);
+            trace!("Path to state is {path:?}");
             for component in path {
                 match component {
                     StatePathComponent::Backtrack(n) => (0..n).for_each(|_| self.go_to_previous_state()),
@@ -1011,7 +1080,7 @@ where
             .state
             .state_graph
             .edges_connecting(current_state.node_id(), target_state.node_id());
-        let reached_by = edges.next().unwrap().weight();
+        let reached_by = edges.next().unwrap().weight().first().unwrap();
         assert_eq!(edges.next(), None);
 
         let testcase = self.state.test_cases.get_mut(*reached_by).unwrap();
@@ -1196,10 +1265,12 @@ where
     }
 
     fn reduce_is_interesting(reducers: &mut [Rc<RefCell<dyn DebuggableReducer<Output = bool>>>]) -> bool {
-        reducers
-            .iter_mut()
-            .map(|r| r.borrow_mut().reduce().unwrap())
-            .reduce(|acc, interesting| acc | interesting)
-            .unwrap()
+        // FIXME: Re-enable this.
+        // reducers
+        //     .iter_mut()
+        //     .map(|r| r.borrow_mut().reduce().unwrap())
+        //     .reduce(|acc, interesting| acc | interesting)
+        //     .unwrap()
+        false
     }
 }

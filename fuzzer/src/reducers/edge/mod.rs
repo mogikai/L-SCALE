@@ -45,7 +45,6 @@ impl Reducer for InterestingEdgesReducer {
         for (current, maximum) in current_edge_counts.iter().zip(self.hit_map.iter_mut()) {
             if current > maximum {
                 *maximum = *current;
-                debug!("New edge count for edge ");
                 interesting = true;
             }
         }
