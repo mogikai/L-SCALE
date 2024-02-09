@@ -3,14 +3,17 @@
 //! normal program termination.
 use std::path::Path;
 
-use crate::common::{emulate, setup_logging, TestFailure};
+use crate::common::{emulate, get_sysdir, prepare_binary, setup_logging, TestFailure};
 
 mod common;
 
 #[test]
 fn test_assert_works() -> Result<(), TestFailure> {
     setup_logging();
-    assert!(emulate(Path::new("tests/assets/ubuntu2304"), Path::new("/home/user/assert_false")).is_err());
-    assert!(emulate(Path::new("tests/assets/ubuntu2304"), Path::new("/home/user/assert_true")).is_ok());
+    let d = get_sysdir();
+    prepare_binary("assert_false");
+    prepare_binary("assert_true");
+    assert!(emulate(&d, Path::new("/home/user/assert_false")).is_err());
+    assert!(emulate(&d, Path::new("/home/user/assert_true")).is_ok());
     Ok(())
 }

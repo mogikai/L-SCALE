@@ -18,6 +18,7 @@ publish = false
 rand = "0.8.5"
 mockall = "*"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+samples = { path = "../samples" }
 
 [dependencies]
 fuzzyemu-derive = { path = "../emulator-derive" }
@@ -41,6 +42,7 @@ hex = "0.4.*"
 size_format = "1.0.*"
 serde = { version = "1.0.189", features = ["derive"], optional = true }
 bitvec = "1.0.1"
+im-rc = "15.1.0"
 
 [features]
 serde = ["dep:serde"]

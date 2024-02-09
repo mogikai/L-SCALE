@@ -5,6 +5,7 @@ use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
 use fuzzyemu::emulator::abstractions::network::tcp_system::TCPSystem;
 use fuzzyemu::emulator::abstractions::network::{
     NetworkError,
+    ShutdownMethod,
     SocketAddress,
     SocketId,
 };
@@ -56,6 +57,11 @@ mock! {
         id: SocketId,
         len: usize,
     ) -> Result<(Vec<u8>, SocketAddress), NetworkError>;
+    fn shutdown(
+        &mut self,
+        id: SocketId,
+        how: ShutdownMethod,
+    ) -> Result<(), NetworkError>;
     }
     impl Restorable for TCPSystem {
         fn take_snapshot(&mut self) -> Result<(), GenericError>;

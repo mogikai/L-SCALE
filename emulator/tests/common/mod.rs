@@ -12,12 +12,47 @@ use tracing_subscriber::{
     fmt,
     EnvFilter,
 };
+use samples;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::{env, fs};
 
 pub fn setup_logging() {
     tracing_subscriber::registry()
         .with(fmt::layer())
         .with(EnvFilter::from_env("FUZE_LOG"))
         .init();
+}
+
+pub fn get_sysdir() -> PathBuf {
+    let mut r = PathBuf::from(samples::systemdir());
+    r.push(Path::new("ubuntu_23.04"));
+    return r;
+}
+
+pub fn prepare_binary(bin: &str) {
+    let sysdir = get_sysdir();
+    let homedir = sysdir.join(Path::new("home/user"));
+    let pwd = env::current_dir().unwrap();
+    let assetdir = pwd.join(Path::new("tests/assets"));
+    if !homedir.exists() {
+        fs::create_dir_all(&homedir).unwrap();
+    }
+    env::set_current_dir(homedir).unwrap();
+    let _ret = Command::new("make")
+        .arg("-f")
+        .arg(format!("{}/Makefile", assetdir.display()))
+        .arg(bin)
+        .env("VPATH", format!("{}", assetdir.display()))
+        .env("CC", "clang-13")
+        .env(
+            "CFLAGS",
+            format!("--sysroot {} -B {} -fuse-ld={} -pie", sysdir.display(), "/usr/lib/llvm-13/bin", "lld"),
+        )
+        .env("LDFLAGS", "-Wl,-allow-shlib-undefined -fPIC")
+        .status()
+        .unwrap();
+    env::set_current_dir(&pwd).unwrap();
 }
 
 #[derive(Debug)]

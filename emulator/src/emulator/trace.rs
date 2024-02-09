@@ -59,15 +59,15 @@ pub(super) fn trace_hook<Endianness: ByteOrder + 'static>(
         formatter.format(&instruction, &mut output);
 
         // Eg. "00007FFAC46ACDB2 488DAC2400FFFFFF	 lea	   rbp,[rsp-100h]"
-        print!("{:016X} ", instruction.ip());
+        let mut out = format!("{:016X} ", instruction.ip());
         let start_index = (instruction.ip() - address) as usize;
         let instr_bytes = &bytes[start_index..start_index + instruction.len()];
         for b in instr_bytes.iter() {
-            print!("{:02X}", b);
+            out.push_str(&format!("{:02X}", b));
         }
         if instr_bytes.len() < 10 {
             for _ in 0..10 - instr_bytes.len() {
-                print!("  ");
+                out.push_str("  ");
             }
         }
         println!(" {}", output);

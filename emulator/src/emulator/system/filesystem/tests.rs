@@ -110,12 +110,12 @@ fn load_file_contents() -> Result<(), GenericError> {
 
 #[test]
 fn load_fs() -> Result<(), FSError> {
-    let reference = include_bytes!("../../../../tests/assets/ubuntu2304/home/user/mremap_private_anon");
+    let reference = include_bytes!("../../../../tests/assets/mremap_private_anon.c");
     let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    dir.push(Path::new("tests/assets/ubuntu2304"));
+    dir.push(Path::new("tests"));
     let fs = Filesystem::from_disk(1_073_741_824, dir.as_path())?;
     // fs.print_tree();
-    let lib_id = fs.resolve_last(Path::new("/home/user/mremap_private_anon"), false)?;
+    let lib_id = fs.resolve_last(Path::new("/assets/mremap_private_anon.c"), false)?;
     let data = fs.read(lib_id, 0, 100000)?;
     assert_eq!(data.as_slice(), reference.as_slice());
     Ok(())

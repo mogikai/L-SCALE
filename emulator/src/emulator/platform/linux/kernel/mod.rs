@@ -12,6 +12,7 @@ use std::rc::Rc;
 
 use byteorder::ByteOrder;
 use goblin::elf::{
+    dynamic,
     program_header,
     Elf,
 };
@@ -21,6 +22,7 @@ use tracing::{
     info,
     trace,
     warn,
+    debug,
 };
 
 use error::SyscallError;
@@ -238,6 +240,8 @@ where
             0x0000_b000_0000_0000.into(),
         )?;
 
+        self.program_info.as_mut().expect("Set above").base_address = interpreter_load_info.base_address;
+
         self.initstack(binary_path, binary_args, binary_env)?;
 
         // Write the interpreter entrypoint into the instruction pointer so we can start execution.
@@ -248,7 +252,7 @@ where
     fn load_elf(
         &mut self,
         path: &Path,
-        base_address: EVAddr,
+        mut base_address: EVAddr,
     ) -> Result<LoadInfo, LinuxKernelError> {
         let fd = self.open_internal(path)?;
         let mut cpu = sys_component_mut!(self, cpu);
@@ -264,6 +268,19 @@ where
         };
 
         let elf = Elf::parse(&elf_data).unwrap();
+
+        if !elf.is_lib {
+            if let Some(ref dynamic) = elf.dynamic {
+                let dyn_info = &dynamic.info;
+                if dyn_info.flags_1 & dynamic::DF_1_PIE == 0 {
+                    trace!("not pie");
+                    base_address = EVA_NULL;
+                }
+            } else {
+                base_address = EVA_NULL;
+            }
+        }
+        debug!("base address: {:?}", base_address);
         for ph in &elf.program_headers {
             if ph.p_type == program_header::PT_LOAD {
                 let perms = getperms(ph);
@@ -285,7 +302,7 @@ where
             .program_headers
             .iter()
             .find(|ph| ph.p_type == program_header::PT_PHDR)
-            .map(|ph| base_address + ph.p_offset);
+            .map(|ph| base_address + ph.p_vaddr);
         let entrypoint = base_address + EVAddr::from(elf.entry);
 
         Ok(LoadInfo {
@@ -351,7 +368,14 @@ where
             .program_info
             .as_ref()
             .expect("Load is always called before initstack");
+        trace!("AUXVType::Entry: {:#?}", program_info.entrypoint);
         aux.push((AUXVType::Entry as u64, program_info.entrypoint.into()));
+        trace!(
+            "AUXVType::Phdr: {:#?}",
+            program_info
+                .program_header_address
+                .ok_or(LinuxKernelError::EINVAL)?
+        );
         aux.push((
             AUXVType::Phdr as u64,
             program_info
@@ -359,8 +383,11 @@ where
                 .ok_or(LinuxKernelError::EINVAL)?
                 .into(),
         ));
+        trace!("AUXVType::Phent: {:#?}", program_info.program_header_entry_size);
         aux.push((AUXVType::Phent as u64, program_info.program_header_entry_size));
+        trace!("AUXVType::Phnum: {:#?}", program_info.program_header_num);
         aux.push((AUXVType::Phnum as u64, program_info.program_header_num));
+        trace!("AUXVType::Base: {:#?}", program_info.base_address);
         aux.push((AUXVType::Base as u64, program_info.base_address.into()));
         aux.push((AUXVType::Flags as u64, 0));
         // TODO: map random data to a more appropriate place and provide an api to set the random data

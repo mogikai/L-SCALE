@@ -1,11 +1,12 @@
 use std::path::Path;
 
-use crate::common::{emulate, setup_logging, TestFailure};
+use crate::common::{emulate, get_sysdir, prepare_binary, setup_logging, TestFailure};
 
 mod common;
 
 #[test]
 fn fstatat() -> Result<(), TestFailure> {
     setup_logging();
-    emulate(Path::new("tests/assets/ubuntu2304"), Path::new("/home/user/fstatat"))
+    prepare_binary("fstatat");
+    emulate(&get_sysdir(), Path::new("/home/user/fstatat"))
 }

@@ -3,7 +3,8 @@ members = [
     "emulator",
     "emulator-derive",
     "fuzzer",
-    "gui"
+    "gui",
+    "samples"
 ]
 exclude = [
     "deps"

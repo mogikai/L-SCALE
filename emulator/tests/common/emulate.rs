@@ -22,6 +22,11 @@ use fuzzyemu::emulator::system::System;
 
 use crate::common::mocks::tcp_system::MockTCPSystem;
 use crate::common::TestFailure;
+use fuzzyemu::emulator::abstractions::kernel_task::KernelTask;
+use fuzzyemu::emulator::abstractions::mmu::MemoryError;
+use fuzzyemu::emulator::system::memory::MappingType;
+use tracing::debug;
+use tracing_subscriber::filter::LevelFilter;
 
 pub fn emulate(
     sys_path: &Path,
@@ -38,11 +43,13 @@ pub fn emulate(
     let system = System::new(cpu.clone(), memory, filesystem, clock, fd_map, task_manager, tcp);
 
     let initial_task = LinuxKernelTask::new(system.clone(), 1337, 1);
+    let task_id = initial_task.task_id();
 
     let args = [];
     let env = ["SHELL=/bin/sh", "LD_BIND_NOW=true"];
-    let mut scheduler = LinuxX86Scheduler::new(system, initial_task, target_path.to_path_buf(), &args, &env)?;
-    match scheduler.run(None, None) {
+    let mut scheduler = LinuxX86Scheduler::new(system.clone(), initial_task, target_path.to_path_buf(), &args, &env)?;
+    let r = scheduler.run(None, None);
+    match r {
         Err(SchedulerError::Stopped(StopReason::ProcessExit(0))) => Ok(()),
         Err(SchedulerError::Stopped(reason)) => Err(TestFailure::ProcessFailure(reason)),
         _ => Err(TestFailure::Unknown),
