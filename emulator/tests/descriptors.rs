@@ -1,11 +1,19 @@
 use std::path::Path;
 
-use crate::common::{emulate, setup_logging, TestFailure};
+use common::get_sysdir;
+
+use crate::common::{
+    emulate,
+    prepare_binary,
+    setup_test,
+    TestFailure,
+};
 
 mod common;
 
 #[test]
 fn dup() -> Result<(), TestFailure> {
-    setup_logging();
-    emulate(Path::new("tests/assets/ubuntu2304"), Path::new("/home/user/dup"))
+    setup_test();
+    prepare_binary("dup");
+    emulate(&get_sysdir(), Path::new("/home/user/dup"))
 }
