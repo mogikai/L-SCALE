@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 
 use rand::{Rng, RngCore, SeedableRng};
 
+use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::{abstractions::{restore::Restorable, system::SystemControl}, platform::linux::kernel::task_id::TaskId};
 
 #[derive(Debug, Default, Clone)]
@@ -11,8 +12,10 @@ where
     Prng: Rng + SeedableRng + Clone,
     TaskId: Ord + Copy + Clone + Default
 {
-    master_prng: Prng,
-    prngs: BTreeMap<TaskId, Prng>
+    master_prng: Prng, // readonly master PRNG from which others are cloned from
+    prngs: BTreeMap<TaskId, Prng>,
+
+    snapshots: Vec<BTreeMap<TaskId, Prng>>
 }
 
 impl<Prng, TaskId> SeedablePrngMap<Prng, TaskId>
@@ -23,7 +26,8 @@ where
     pub fn new(seed: Prng::Seed) -> Self {
         Self {
             master_prng: Prng::from_seed(seed),
-            prngs: BTreeMap::new()
+            prngs: BTreeMap::new(),
+            snapshots: Vec::new()
         }
     }
 
@@ -48,15 +52,25 @@ where
     TaskId: Ord + Copy + Clone + Default
 {
     fn take_snapshot(&mut self) -> Result<(), crate::emulator::abstractions::errors::GenericError> {
-        todo!()
+        self.snapshots.push(self.prngs.clone());
+        Ok(())
     }
 
     fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), crate::emulator::abstractions::errors::GenericError> {
-        todo!()
+        if self.snapshots.len() <= 1 {
+            Err(GenericError::new(GenericErrorKind::Unknown, "no previous snapshot available"))?
+        }
+
+        self.snapshots.pop();
+        self.restore_snapshot()
     }
 
     fn restore_snapshot(&mut self) -> Result<(), crate::emulator::abstractions::errors::GenericError> {
-        todo!()
+        self.prngs.clone_from(self
+            .snapshots
+            .last()
+            .ok_or(GenericError::new(GenericErrorKind::Unknown, "no snapshot to restore"))?);
+        Ok(())
     }
 }
 
