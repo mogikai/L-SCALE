@@ -6,22 +6,33 @@ use fuzzyemu::emulator::interface::error::{
     SchedulerError,
     StopReason,
 };
+use samples;
+use std::path::{
+    Path,
+    PathBuf,
+};
+use std::process::Command;
+use std::sync::Once;
+use std::{
+    env,
+    fs,
+};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{
     fmt,
     EnvFilter,
 };
-use samples;
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::{env, fs};
 
-pub fn setup_logging() {
-    tracing_subscriber::registry()
-        .with(fmt::layer())
-        .with(EnvFilter::from_env("FUZE_LOG"))
-        .init();
+static INIT: Once = Once::new();
+
+pub fn setup_test() {
+    INIT.call_once(|| {
+        tracing_subscriber::registry()
+            .with(fmt::layer())
+            .with(EnvFilter::from_env("FUZE_LOG"))
+            .init();
+    })
 }
 
 pub fn get_sysdir() -> PathBuf {
