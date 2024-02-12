@@ -134,6 +134,16 @@ fn load_fs() -> Result<(), FSError> {
 }
 
 #[test]
+fn nested_fs() -> Result<(), FSError> {
+    let vfs = Filesystem::new(1024);
+    vfs.create_dir(Path::new("/home"), None)?;
+    let fs2 = PersistendFS::new(1024);
+    vfs.mount(Path::new("/home"), fs2)?;
+    // fs.print_tree();
+    Ok(())
+}
+
+#[test]
 fn size_after_reset_is_correct() -> Result<(), FSError> {
     let mut fs = Filesystem::new(1000);
     let test_file = Path::new("/test.txt");

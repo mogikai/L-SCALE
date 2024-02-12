@@ -28,7 +28,7 @@ pub struct PersistendFS {
 }
 
 impl PersistendFS {
-    pub fn new(size: usize, parrent: FSEntryId) -> Self {
+    pub fn new(size: usize) -> Self {
         let mut inodes = Inodes::new();
         inodes
             .add_entry(
@@ -215,7 +215,7 @@ impl Mountpoint for PersistendFS {
         name: OsString,
         entry: FSEntry,
         stat: Option<Stat>,
-    ) -> Result<FSEntryId, crate::emulator::system::filesystem::FSError> {
+    ) -> Result<FSEntryId, FSError> {
         self.inodes.new_entry(dir, name, entry, stat)
     }
 
