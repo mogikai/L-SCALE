@@ -1,12 +1,14 @@
 use std::path::Path;
 
-use crate::common::{emulate, setup_logging, TestFailure};
+use common::{get_sysdir, prepare_binary, setup_test};
+
+use crate::common::{emulate, TestFailure};
 
 mod common;
 
 #[test]
-fn test_getrandom_works() -> Result<(), TestFailure> {
-    setup_logging();
-    assert!(emulate(Path::new("tests/assets/ubuntu2304"), Path::new("/home/user/getrandom")).is_ok());
-    Ok(())
+fn test_getrandom() -> Result<(), TestFailure> {
+    setup_test();
+    prepare_binary("getrandom");
+    emulate(&get_sysdir(), Path::new("/home/user/getrandom"))
 }
