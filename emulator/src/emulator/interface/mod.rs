@@ -4,4 +4,5 @@
 //! with, or to analyze the memory of a process.
 pub mod emulator;
 pub mod error;
+pub mod meter;
 pub mod network;

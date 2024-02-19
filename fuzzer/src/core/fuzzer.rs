@@ -22,6 +22,10 @@ use std::io::{
     Read,
     Write,
 };
+use std::iter::{
+    empty,
+    once,
+};
 use std::mem::take;
 use std::ops::Not;
 use std::path::PathBuf;
@@ -78,13 +82,17 @@ use fuzzyemu::emulator::interface::network::tcp::{
 use fuzzyemu::emulator::platform::linux::kernel::task_id::TaskId;
 use fuzzyemu::emulator::system::memory::MappingType;
 
-use crate::api::observer::Observer;
+use crate::api::observer::{
+    DebuggableObserver,
+    Observer,
+};
 use crate::api::reducer::Reducer;
-use crate::observers::emulator::bb::BlockHitObserver;
-use crate::observers::emulator::edge::{
+use crate::observers::bb_based::bb::BlockHitObserver;
+use crate::observers::bb_based::edge::{
     EdgeHitCountObserver,
     EdgeHitObserver,
 };
+use crate::observers::emulator::basic_block::BasicBlockCollector;
 use crate::reducers::bb::behavior::BasicBlockBehaviorReducer;
 use crate::reducers::edge::behavior::EdgeBehaviorReducer;
 use crate::reducers::edge::InterestingEdgesReducer;
@@ -812,9 +820,6 @@ impl StateBuilder {
     }
 }
 
-trait DebuggableObserver: Observer + Debug {}
-impl<T> DebuggableObserver for T where T: Observer + Debug {}
-
 trait DebuggableReducer: Reducer + Debug {}
 
 impl<T> DebuggableReducer for T where T: Reducer + Debug {}
@@ -850,19 +855,29 @@ where
     EmulatorT: Emulator,
 {
     pub fn new(
-        emulator: EmulatorT,
+        mut emulator: EmulatorT,
         context_path: PathBuf,
     ) -> Self {
-        let edge_observer = Rc::new(RefCell::new(EdgeHitCountObserver::new(emulator.system().cpu())));
+        let edge_observer = Rc::new(RefCell::new(EdgeHitCountObserver::new()));
         let edge_reducer = Rc::new(RefCell::new(InterestingEdgesReducer::new(edge_observer.clone())));
-        let behavior_observer = Rc::new(RefCell::new(BlockHitObserver::new(emulator.system().cpu())));
+        let behavior_observer = BlockHitObserver::new();
+        let bb_collector = Rc::new(RefCell::new(BasicBlockCollector::new(
+            emulator.system().cpu(),
+            [
+                &behavior_observer.shared_observe(),
+                &edge_observer.borrow().shared_observe(),
+            ]
+            .into_iter(),
+        )));
+        emulator.register_meter(bb_collector);
+        let behavior_observer = Rc::new(RefCell::new(behavior_observer));
         let behavior_reducer = Rc::new(RefCell::new(BasicBlockBehaviorReducer::new(behavior_observer.clone())));
         Self {
             state: Default::default(),
             state_builder: Default::default(),
-            observers: vec![],
+            observers: vec![edge_observer],
             suffix_behavior_observer: behavior_observer,
-            is_interesting_reducers: vec![],
+            is_interesting_reducers: vec![edge_reducer],
             suffix_behavior_reducer: behavior_reducer,
             is_crash_reducers: Default::default(),
             emulator,
@@ -1265,12 +1280,10 @@ where
     }
 
     fn reduce_is_interesting(reducers: &mut [Rc<RefCell<dyn DebuggableReducer<Output = bool>>>]) -> bool {
-        // FIXME: Re-enable this.
-        // reducers
-        //     .iter_mut()
-        //     .map(|r| r.borrow_mut().reduce().unwrap())
-        //     .reduce(|acc, interesting| acc | interesting)
-        //     .unwrap()
-        false
+        reducers
+            .iter_mut()
+            .map(|r| r.borrow_mut().reduce().unwrap())
+            .reduce(|acc, interesting| acc | interesting)
+            .unwrap()
     }
 }

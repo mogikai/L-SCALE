@@ -3,7 +3,7 @@ pub mod behavior;
 use crate::api::error::FuzzerError;
 use crate::api::observer::HasObservation;
 use crate::api::reducer::Reducer;
-use crate::observers::emulator::edge::EdgeHitCountObserver;
+use crate::observers::bb_based::edge::EdgeHitCountObserver;
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::rc::Rc;

@@ -1,10 +1,16 @@
 use crate::emulator::abstractions::restore::Restorable;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::time::Duration;
 
 use crate::emulator::abstractions::system::SystemControl;
 use crate::emulator::interface::error::{
     EmulatorError,
     SchedulerError,
+};
+use crate::emulator::interface::meter::{
+    DebuggableMeter,
+    Meter,
 };
 
 #[derive(Debug)]
@@ -42,4 +48,9 @@ pub trait Emulator: Restorable {
     /// your terminal, so it is recommended to pipe the output into a
     /// file for later analysis.
     fn enable_trace(&mut self) -> Result<(), EmulatorError>;
+
+    fn register_meter(
+        &mut self,
+        meter: Rc<RefCell<dyn DebuggableMeter>>,
+    );
 }

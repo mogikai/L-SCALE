@@ -2,7 +2,7 @@ use crate::api::error::FuzzerError;
 use crate::api::observer::HasObservation;
 use crate::api::reducer::Reducer;
 use crate::core::fuzzer::SuffixBehavior;
-use crate::observers::emulator::bb::BlockHitObserver;
+use crate::observers::bb_based::bb::BlockHitObserver;
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::hash::{

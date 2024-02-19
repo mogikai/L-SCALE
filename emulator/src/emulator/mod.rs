@@ -1,7 +1,18 @@
 //! This module contains all the emulator components of fuzzyemu.
 //! TODO: Detailed documentation
-use std::time::Duration;
-use tracing::trace;
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::time::{
+    Duration,
+    Instant,
+};
+use tracing::{
+    debug,
+    event,
+    span,
+    trace,
+    Level,
+};
 
 use crate::emulator::abstractions::emulator::Scheduler;
 use crate::emulator::abstractions::errors::GenericError;
@@ -17,6 +28,10 @@ use crate::emulator::interface::error::{
     SchedulerError,
     StopReason,
 };
+use crate::emulator::interface::meter::{
+    DebuggableMeter,
+    Meter,
+};
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::trace::trace_hook;
 
@@ -31,6 +46,7 @@ mod trace;
 pub struct GenericEmulator<SchedulerT, SystemT> {
     scheduler: SchedulerT,
     system: SystemT,
+    meters: Vec<Rc<RefCell<dyn DebuggableMeter>>>,
 }
 
 impl<SchedulerT, SystemT> GenericEmulator<SchedulerT, SystemT>
@@ -42,7 +58,11 @@ where
         scheduler: SchedulerT,
         system: SystemT,
     ) -> Self {
-        Self { scheduler, system }
+        Self {
+            scheduler,
+            system,
+            meters: vec![],
+        }
     }
 }
 
@@ -81,7 +101,9 @@ where
         timeout: Option<Duration>,
         instruction_count: Option<usize>,
     ) -> Result<ExitReason, EmulatorError> {
-        match self.scheduler.run(timeout, instruction_count) {
+        self.meters.iter().for_each(|m| m.borrow_mut().start());
+        let start = Instant::now();
+        let result = match self.scheduler.run(timeout, instruction_count) {
             Ok(_) => Ok(ExitReason::Stopped),
             Err(e) => match e {
                 SchedulerError::Unknown => Err(EmulatorError::Unknown),
@@ -96,7 +118,13 @@ where
                 SchedulerError::CPUError(e) => Err(EmulatorError::from(e)),
                 SchedulerError::NoRunnableTasks => Ok(ExitReason::Yielded),
             },
-        }
+        };
+        let elapsed = start.elapsed();
+        let _span = span!(Level::DEBUG, "elapsed");
+        let _span = _span.enter();
+        event!(Level::DEBUG, "Emulation took {} milliseconds", elapsed.as_millis());
+        self.meters.iter().rev().for_each(|m| m.borrow_mut().stop());
+        result
     }
 
     fn system(&self) -> &impl SystemControl {
@@ -115,5 +143,12 @@ where
             }),
         )?;
         Ok(())
+    }
+
+    fn register_meter(
+        &mut self,
+        meter: Rc<RefCell<dyn DebuggableMeter>>,
+    ) {
+        self.meters.push(meter);
     }
 }
