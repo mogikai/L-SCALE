@@ -3,8 +3,10 @@ use std::cell::{
     RefCell,
     RefMut,
 };
-use std::collections::BTreeMap;
-use std::collections::BinaryHeap;
+use std::collections::{
+    BTreeMap,
+    BinaryHeap,
+};
 use std::fmt::Debug;
 use std::mem::ManuallyDrop;
 use std::ops::{
@@ -14,6 +16,7 @@ use std::ops::{
 };
 use std::rc::Rc;
 
+use fuzzyemu_derive::unfinished;
 use generational_arena::{
     Arena,
     Index,
@@ -27,7 +30,10 @@ use crate::emulator::abstractions::file_descriptors::{
     FileOperationsReady,
 };
 use crate::emulator::abstractions::mmu::encoding::Encode;
-use crate::emulator::abstractions::network::{ShutdownMethod, SocketAddress};
+use crate::emulator::abstractions::network::{
+    ShutdownMethod,
+    SocketAddress,
+};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
@@ -249,9 +255,9 @@ where
     ) -> ClosureReturnT
     where
         ActionClosureT: FnMut(&mut FileDescriptorMap<FD, TaskId, D>, &mut FileDescriptor<D>) -> ClosureReturnT,
-        {
-            action(self.guarded_map, &mut self.temporarily_removed)
-        }
+    {
+        action(self.guarded_map, &mut self.temporarily_removed)
+    }
 }
 
 impl<'a, FD, TaskId, D> Deref for TemporaryRemoveGuard<'a, FD, TaskId, D>
@@ -290,7 +296,7 @@ where
             self.guarded_map
                 .files
                 .reinsert(ManuallyDrop::take(&mut self.temporarily_removed));
-            }
+        }
     }
 }
 
@@ -368,12 +374,8 @@ where
             .get_mut(task_id)
             .and_then(|map| map.remove(fd))
             .ok_or(FileDescriptorMapError::InvalidFD)?;
-        let file = self.files.get_mut(&removed_index).unwrap();
-        file.close().unwrap();
-        if file.ref_count() == 0 {
-            self.files.remove(&removed_index);
-        }
-        Ok(())
+        self.free_fds.entry(*task_id).or_default().push(*fd);
+        self.close(task_id, &removed_index)
     }
 
     pub fn get_mut(
@@ -387,7 +389,6 @@ where
         })
     }
 
-    /// FIXME: THIS BREAKS INVARIANTS IF PUT_BACK IS NOT CALLED. NEED TO FIND A MORE SOPHISTICATED WAY
     pub fn remove_temporarily<'a>(
         &'a mut self,
         task_id: &TaskId,
@@ -397,11 +398,9 @@ where
             .file_descriptors
             .get(task_id)
             .and_then(|map| map.get(fd).and_then(|fd_index| self.files.remove(fd_index)));
-        removed.and_then(|removed| {
-            Some(TemporaryRemoveGuard {
-                guarded_map: self,
-                temporarily_removed: ManuallyDrop::new(removed),
-            })
+        removed.map(|removed| TemporaryRemoveGuard {
+            guarded_map: self,
+            temporarily_removed: ManuallyDrop::new(removed),
         })
     }
 
@@ -441,14 +440,18 @@ where
         self.dup2(task_id, fd, newfd)
     }
 
+    #[unfinished]
     pub fn dup2(
         &mut self,
         task_id: &TaskId,
         fd: FD,
         newfd: FD,
     ) -> Result<FD, FileDescriptorMapError> {
-        // TODO dup2 should close newfd if it was previously open
-        self.dup3(task_id, fd, newfd, 0)
+        if fd != newfd {
+            self.dup3(task_id, fd, newfd, 0)
+        } else {
+            Ok(newfd)
+        }
     }
 
     pub fn dup3(
@@ -456,18 +459,22 @@ where
         task_id: &TaskId,
         fd: FD,
         newfd: FD,
-        flags: u64
+        flags: u64,
     ) -> Result<FD, FileDescriptorMapError> {
+        if fd == newfd {
+            Err(FileDescriptorMapError::InvalidFD)?;
+        }
         let mut task_fds = self
             .file_descriptors
             .get_mut(task_id)
             .ok_or(FileDescriptorMapError::InvalidFD)?;
 
-        let file = task_fds
-            .get(&fd)
-            .ok_or(FileDescriptorMapError::InvalidFD)?;
+        let file = task_fds.get(&fd).ok_or(FileDescriptorMapError::InvalidFD)?;
 
-        task_fds.insert(newfd, *file);
+        if let Some(previous_newfd) = task_fds.insert(newfd, *file) {
+            // We want to close the fd previously associated with newfd.
+            self.close(task_id, &previous_newfd)?;
+        }
         Ok(newfd)
     }
 
@@ -505,12 +512,25 @@ where
 
                 // assume FD(0) in self.file_descriptors or self.free_fds
                 fds.keys()
-                    .filter(|&fd| {
-                        !fds.keys().contains(&(*fd + 1))
-                    })
+                    .filter(|&fd| !fds.contains_key(&(*fd + 1)))
                     .map(|fd| *fd + 1)
-                .next()
+                    .next()
             })
-        .ok_or(FileDescriptorMapError::NoFreeFD)
+            .ok_or(FileDescriptorMapError::NoFreeFD)
+    }
+
+    /// Closes the file associated with the internal key. This function
+    /// must be called whenever an fd is released.
+    fn close(
+        &mut self,
+        task_id: &TaskId,
+        key: &AutoKey,
+    ) -> Result<(), FileDescriptorMapError> {
+        let file = self.files.get_mut(key).unwrap();
+        file.close().unwrap();
+        if file.ref_count() == 0 {
+            self.files.remove(key);
+        }
+        Ok(())
     }
 }

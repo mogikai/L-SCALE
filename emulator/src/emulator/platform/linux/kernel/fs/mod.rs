@@ -1,26 +1,28 @@
-use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
+use std::cell::RefMut;
+
 use bitflags::{
     bitflags,
     Flags,
 };
 use byteorder::ByteOrder;
-use fuzzyemu_derive::unfinished;
-use std::cell::RefMut;
 
+use fuzzyemu_derive::unfinished;
+
+use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
 use crate::emulator::macros::*;
 use crate::emulator::platform::linux::fd::{
     FileDescriptorData,
     FD,
 };
+use crate::emulator::platform::linux::kernel::error::SyscallError::KernelError;
 use crate::emulator::platform::linux::kernel::fs::fd_ops::FileOps;
 use crate::emulator::platform::linux::kernel::*;
-use crate::emulator::platform::linux::kernel::error::SyscallError::KernelError;
+use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 use crate::emulator::system::fd_map::{
     FileDescriptor,
     FileDescriptorMap,
     InternalFD,
 };
-use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 use crate::emulator::system::filesystem::{
     FSEntryId,
     Filesystem,
@@ -283,7 +285,7 @@ where
     pub fn dup2(
         &mut self,
         fd: FD,
-        newfd: FD
+        newfd: FD,
     ) -> SyscallResult {
         if fd == newfd {
             return Ok(newfd.into());
@@ -298,7 +300,7 @@ where
         &mut self,
         fd: FD,
         newfd: FD,
-        flags: u64
+        flags: u64,
     ) -> SyscallResult {
         if fd == newfd {
             Err(LinuxKernelError::EINVAL)?;
