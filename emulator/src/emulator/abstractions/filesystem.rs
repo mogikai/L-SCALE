@@ -1,17 +1,58 @@
 use crate::emulator::abstractions::restore::Restorable;
 use std::ffi::OsString;
 use std::fmt::Debug;
-use std::path::{Path, PathBuf};
+use std::ops::{AddAssign, Index};
+use std::path::{
+    Path,
+    PathBuf,
+};
+use std::slice::SliceIndex;
 
-use crate::emulator::system::filesystem::{FSEntryId, FSError, Stat};
+use crate::emulator::system::filesystem::{
+    FSError,
+    Stat,
+};
 
-pub type FSId = usize;
-//type FSEntryId = usize;
+#[derive(Default, Copy, Clone, Debug, PartialEq)]
+pub struct FSId(usize);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct FSEntryId(usize);
+
+#[derive(Default, Clone, Copy, Debug, PartialEq)]
 pub struct FileId {
     pub fs: FSId,
     pub file: FSEntryId,
+}
+
+impl From<usize> for FSId {
+    fn from(value: usize) -> Self {
+        FSId(value)
+    }
+}
+
+impl From<usize> for FSEntryId {
+    fn from(value: usize) -> Self {
+        FSEntryId(value)
+    }
+}
+
+impl From<FSId> for usize {
+    fn from(value: FSId) -> Self {
+        value.0
+    }
+}
+
+impl From<FSEntryId> for usize {
+    fn from(value: FSEntryId) -> Self {
+        value.0
+    }
+}
+
+impl AddAssign<usize> for FSEntryId {
+    fn add_assign(&mut self, rhs: usize) {
+        *self = (self.0 + rhs).into();
+    }
 }
 
 impl FileId {
@@ -19,7 +60,7 @@ impl FileId {
         fs: FSId,
         file: FSEntryId,
     ) -> Self {
-        FileId { file, fs }
+        FileId { fs, file }
     }
 }
 
@@ -37,6 +78,15 @@ pub trait Mountpoint: Restorable + Debug {
         parent: Option<FSEntryId>,
         path: &Path,
     ) -> Result<(Vec<FSEntryId>, Option<PathBuf>), FSError>;
+    fn resolve_name(
+        &self,
+        parent: FSEntryId,
+        entry: FSEntryId,
+    ) -> Result<OsString, FSError>;
+    fn resolve_children(
+        &self,
+        parent: FSEntryId,
+    ) -> Result<Vec<FSEntryId>, FSError>;
     fn get_entry(
         &self,
         entry: FSEntryId,

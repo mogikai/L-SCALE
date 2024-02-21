@@ -3,18 +3,20 @@ mod data;
 mod inodes;
 
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::filesystem::{FSEntry, FSId, Mountpoint};
+use crate::emulator::abstractions::filesystem::{FSEntry, FSEntryId, FSId, Mountpoint};
 use crate::emulator::abstractions::restore::Restorable;
 use std::cmp::min;
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use itertools::Itertools;
 use tracing::{trace, debug};
 
 use crate::emulator::system::filesystem::persistent::data::{Data, DataSnapMarker};
 use crate::emulator::system::filesystem::persistent::inodes::{FSContent, Inode, Inodes, MetaInfoSnapMarker};
 use crate::emulator::system::filesystem::stat::Stat;
-use crate::emulator::system::filesystem::{FSEntryId, FSError};
+
+use super::FSError;
 
 #[derive(Debug)]
 pub struct PersistendFS {
@@ -22,7 +24,7 @@ pub struct PersistendFS {
     data: Data,
     max_size: usize,
     current_size: usize,
-    root_node: usize,
+    root_node: FSEntryId,
     snap_markers: Vec<SnapMarker>,
     current_snap: usize,
 }
@@ -32,7 +34,7 @@ impl PersistendFS {
         let mut inodes = Inodes::new();
         inodes
             .add_entry(
-                0,
+                FSEntryId::default(),
                 Inode::new(
                     FSEntry::Dir,
                     Stat::default(),
@@ -48,7 +50,7 @@ impl PersistendFS {
         PersistendFS {
             inodes,
             data,
-            root_node: 0,
+            root_node: FSEntryId::default(),
             max_size: size,
             current_size: 0,
             current_snap: 0,
@@ -56,7 +58,7 @@ impl PersistendFS {
         }
     }
     pub(crate) fn print_tree(&self) {
-        self.inodes.print_tree(0, None);
+        self.inodes.print_tree(0.into(), None);
     }
 }
 
@@ -68,6 +70,41 @@ impl Mountpoint for PersistendFS {
     ) -> Result<(Vec<FSEntryId>, Option<PathBuf>), FSError> {
         self.inodes
             .resolve_path(parent.unwrap_or(self.root_node), path)
+    }
+
+    fn resolve_name(
+        &self,
+        parent: FSEntryId,
+        entry: FSEntryId,
+    ) -> Result<OsString, FSError> {
+        let parent = self.inodes.most_recent_entry(parent)?;
+
+        if let Some(content) = &parent.content {
+            if let FSContent::Dir { entries } = content {
+                for (key, value) in entries {
+                    if *value == entry {
+                        return Ok(key.clone());
+                    }
+                }
+            }
+        }
+
+        Err(FSError::NotFound)
+    }
+
+    fn resolve_children(
+        &self,
+        parent: FSEntryId,
+    ) -> Result<Vec<FSEntryId>, FSError> {
+        let entry = self.inodes.most_recent_entry(parent)?;
+
+        if let Some(content) = &entry.content {
+            if let FSContent::Dir { entries } = content {
+                return Ok(entries.values().map(|x| *x).collect_vec());
+            }
+        }
+
+        Err(FSError::NotFound)
     }
 
     fn get_entry(

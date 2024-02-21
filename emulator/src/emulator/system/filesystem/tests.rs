@@ -135,11 +135,14 @@ fn load_fs() -> Result<(), FSError> {
 
 #[test]
 fn nested_fs() -> Result<(), FSError> {
-    let vfs = Filesystem::new(1024);
+    let mut vfs = Filesystem::new(1024);
     vfs.create_dir(Path::new("/home"), None)?;
     let fs2 = PersistendFS::new(1024);
-    vfs.mount(Path::new("/home"), fs2)?;
-    // fs.print_tree();
+    vfs.mount(Path::new("/home"), Box::new(fs2))?;
+    vfs.create_dir(Path::new("/home/mockuser"), None)?;
+    vfs.create_file(Path::new("/home/mockuser/.zprofile"), None)?;
+    vfs.create_file(Path::new("/home/mockuser/.zshrc"), None)?;
+    vfs.print_tree();
     Ok(())
 }
 

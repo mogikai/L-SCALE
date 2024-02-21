@@ -4,6 +4,7 @@
 //! TODO: Implement update of stat struct.
 //! TODO: Consider memory mapping of files into ram
 use std::cmp::min;
+use std::ffi::OsString;
 use std::fmt::{
     Debug,
     Formatter,
@@ -28,7 +29,12 @@ use tracing::{
 pub use stat::Stat;
 
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::filesystem::{FSEntry, FSId, FileId, Mountpoint};
+use crate::emulator::abstractions::filesystem::{
+    FSEntry,
+    FSId,
+    FileId,
+    Mountpoint,
+};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::filesystem::persistent::PersistendFS;
 
@@ -60,7 +66,6 @@ impl From<io::Error> for FSError {
     }
 }
 
-pub type FSEntryId = usize;
 type ContentId = usize;
 type SnapId = usize;
 
@@ -72,7 +77,7 @@ pub struct Filesystem {
 
 impl Filesystem {
     pub fn new(size: usize) -> Self {
-        let mountpoints: Vec<Box<dyn Mountpoint>> = vec![Box::new(PersistendFS::new(size, 0) )];
+        let mountpoints: Vec<Box<dyn Mountpoint>> = vec![Box::new(PersistendFS::new(size))];
         Filesystem {
             on_disk_root: None,
             mountpoints,
@@ -111,7 +116,7 @@ impl Filesystem {
     ) -> Result<Option<PathBuf>, FSError> {
         let mountpoint = self
             .mountpoints
-            .get(file_id.fs)
+            .get(usize::from(file_id.fs))
             .ok_or(FSError::Invalid)?
             .as_ref();
         let entry = mountpoint.get_entry(file_id.file)?;
@@ -130,7 +135,7 @@ impl Filesystem {
     ) -> Result<Vec<u8>, FSError> {
         let mountpoint = self
             .mountpoints
-            .get(file_id.fs)
+            .get(usize::from(file_id.fs))
             .ok_or(FSError::Invalid)?
             .as_ref();
         mountpoint.read(file_id.file, pos, len)
@@ -144,7 +149,7 @@ impl Filesystem {
     ) -> Result<usize, FSError> {
         let mountpoint = self
             .mountpoints
-            .get_mut(file_id.fs)
+            .get_mut(usize::from(file_id.fs))
             .ok_or(FSError::Invalid)?
             .as_mut();
         mountpoint.write(file_id.file, pos, data)
@@ -157,7 +162,7 @@ impl Filesystem {
     ) -> Result<(), FSError> {
         let mountpoint = self
             .mountpoints
-            .get_mut(file_id.fs)
+            .get_mut(usize::from(file_id.fs))
             .ok_or(FSError::Invalid)?
             .as_mut();
         mountpoint.truncate(file_id.file, new_size)
@@ -172,7 +177,7 @@ impl Filesystem {
         let name = path.file_name().ok_or(FSError::Unknown)?.to_os_string();
         let mountpoint = self
             .mountpoints
-            .get_mut(d.fs)
+            .get_mut(usize::from(d.fs))
             .ok_or(FSError::Invalid)?
             .as_mut();
         Ok(FileId::new(d.fs, mountpoint.create_entry(d.file, name, FSEntry::File, stat)?))
@@ -198,7 +203,7 @@ impl Filesystem {
         let name = path.file_name().ok_or(FSError::Invalid)?.to_os_string();
         let mountpoint = self
             .mountpoints
-            .get_mut(d.fs)
+            .get_mut(usize::from(d.fs))
             .ok_or(FSError::Invalid)?
             .as_mut();
         Ok(FileId::new(d.fs, mountpoint.create_entry(d.file, name, FSEntry::Dir, stat)?))
@@ -214,10 +219,13 @@ impl Filesystem {
         let name = path.file_name().ok_or(FSError::Invalid)?.to_os_string();
         let mountpoint = self
             .mountpoints
-            .get_mut(d.fs)
+            .get_mut(usize::from(d.fs))
             .ok_or(FSError::Invalid)?
             .as_mut();
-        Ok(FileId::new(d.fs, mountpoint.create_entry(d.file, name, FSEntry::Symlink { contents: target }, stat)?))
+        Ok(FileId::new(
+            d.fs,
+            mountpoint.create_entry(d.file, name, FSEntry::Symlink { contents: target }, stat)?,
+        ))
     }
 
     pub fn delete(
@@ -233,7 +241,7 @@ impl Filesystem {
         let name = path.file_name().ok_or(FSError::Invalid)?.to_os_string();
         let mountpoint = self
             .mountpoints
-            .get_mut(d.fs)
+            .get_mut(usize::from(d.fs))
             .ok_or(FSError::Invalid)?
             .as_mut();
         mountpoint.delete(d.file, name)
@@ -245,7 +253,7 @@ impl Filesystem {
     ) -> Result<&Stat, FSError> {
         let mountpoint = self
             .mountpoints
-            .get(file_id.fs)
+            .get(usize::from(file_id.fs))
             .ok_or(FSError::Invalid)?
             .as_ref();
         mountpoint.stat(file_id.file)
@@ -273,60 +281,72 @@ impl Filesystem {
     ) -> Result<Vec<FileId>, FSError> {
         trace!("open at: {:?} {:?} follow_symlink: {}", dir, path, follow_symlink);
         let mut loopcount = 30u8;
-        let mut fs_id = match dir {
-            None => 0,
-            Some(FileId { fs, .. }) => fs,
-        };
-        let mut mountpoint = self
-            .mountpoints
-            .get(fs_id)
-            .ok_or(FSError::Invalid)?
-            .as_ref();
-        let dir: Option<FSEntryId> = dir.map(|x| x.file);
-        let (ids, mut remain) = mountpoint.resolve_path(dir, path)?;
-        let mut result: Vec<FileId> = ids.into_iter().map(|id| FileId::new(fs_id, id)).collect();
-        while remain.is_some() {
-            trace!("remain: {:?}", remain);
-            let last = result.pop().expect("Empty paths cannot occur");
+
+        let mut result = vec![dir.unwrap_or(FileId::default())];
+        let mut remain = Some(path.to_path_buf());
+        let mut last_was_symlink = false;
+
+        while remain.is_some() || last_was_symlink {
+            last_was_symlink = false;
+
+            // result.last() will be used in each iteration to continue off from
+            let mut last = *result.last().expect("Empty paths cannot occur");
+
+            let mountpoint = self
+                .mountpoints
+                .get(usize::from(last.fs))
+                .ok_or(FSError::Invalid)?
+                .as_ref();
+
+            // resolve as much as possible with current mountpoint for next iteration in case
+            // there is a remaining path
+            if let Some(some_remain) = &remain {
+                let (ids, mut new_remain) = mountpoint.resolve_path(Some(last.file), some_remain)?;
+                result.pop();
+                result.extend(ids.into_iter().map(|id| FileId::new(last.fs, id)));
+                remain = new_remain;
+                last = *result.last().expect("Empty paths cannot occur");
+            }
+
             match mountpoint.get_entry(last.file)? {
+                // if the (new) last entry is a symlink, follow
                 FSEntry::Symlink { contents } => {
+                    if !follow_symlink {
+                        break;
+                    }
+
                     let symlinkdir = if contents.is_relative() {
-                        Some(*result.last().unwrap())
+                        Some(*result.get(result.len() - 2).ok_or(FSError::Invalid)?)
                     } else {
                         None
                     };
-                    let target = self.resolve_symlink(symlinkdir, FileId::new(last.fs, last.file), &mut loopcount)?;
-                    mountpoint = self
-                        .mountpoints
-                        .get(target.fs)
-                        .ok_or(FSError::Unknown)?
-                        .as_ref();
+
+                    let target = self.resolve_symlink(symlinkdir, last, &mut loopcount)?;
+
+                    if loopcount == 0 {
+                        Err(FSError::Loop)?
+                    }
+
+                    last_was_symlink = true;
+
+                    // replace result.last() by symlink target
+                    result.pop();
                     result.push(target);
-                    let (mut a, r) = mountpoint.resolve_path(Some(target.file), remain.expect("").as_path())?;
-                    let mut b = a.into_iter().map(|id| FileId::new(target.fs, id)).collect();
-                    result.append(&mut b);
-                    remain = r;
+                }
+
+                // if the (new) last entry is a mount, continue with child mount
+                FSEntry::Mount { fs } => {
+                    let child_mountpoint = self.mountpoints.get(usize::from(fs)).ok_or(FSError::Invalid)?.as_ref();
+                    let (child_root, _) = child_mountpoint.resolve_path(None, Path::new("/"))?;
+
+                    // replace result.last() by mount target (i.e. its root)
+                    result.pop();
+                    result.push(FileId::new(fs, *child_root.first().ok_or(FSError::Invalid)?));
                 }
                 _ => {}
             }
         }
-        while follow_symlink
-            && self
-                .read_symlink(*result.last().expect("Empty paths cannot occur"))?
-                .is_some()
-        {
-            if loopcount == 0 {
-                Err(FSError::Loop)?;
-            }
-            let link = result.pop().expect("Empty paths cannot occur");
-            let symlinkdir = if self.read_symlink(link)?.unwrap().is_relative() {
-                Some(*result.last().unwrap())
-            } else {
-                None
-            };
-            let target = self.resolve_symlink(symlinkdir, link, &mut loopcount)?;
-            result.push(target);
-        }
+
         Ok(result)
     }
 
@@ -361,6 +381,39 @@ impl Filesystem {
             .expect("Empty paths cannot occur"))
     }
 
+    /// This function mounts a given Mountpoint to a Path. Path has to resolve
+    /// to a FileId with FSEntry equal to FSEntry::Dir which will be changed to
+    /// FSEntry::Mount so existing files will be lost.
+    ///
+    /// returns: The FSId of the newly mounted Mountpoint. If the Path can't be
+    /// resolved, an error is returned.
+    pub fn mount(
+        &mut self,
+        path: &Path,
+        mountpoint: Box<dyn Mountpoint>,
+    ) -> Result<FSId, FSError> {
+        let new_fs = self.mountpoints.len().into();
+        let parent_dir = self.resolve_last(path.parent().ok_or(FSError::NoEntry)?, false)?;
+
+        // parent mount is equal to filesystem of dir
+        let dir = self.resolve_last(path, false)?;
+        let parent_mountpoint = self
+            .mountpoints
+            .get_mut(usize::from(dir.fs))
+            .ok_or(FSError::Invalid)?
+            .as_mut();
+
+        // change parent_dir type to mount (delete then recreate)
+        let dir_name: OsString = path.file_name().ok_or(FSError::NoEntry)?.into();
+        let stat = parent_mountpoint.stat(parent_dir.file)?.clone();
+        parent_mountpoint.delete(parent_dir.file, dir_name.clone())?;
+        parent_mountpoint.create_entry(parent_dir.file, dir_name, FSEntry::Mount { fs: new_fs }, Some(stat));
+
+        // TODO mountpoint.set_mountpoint(parent_dir.file, fsid); (not necessary?)
+        self.mountpoints.push(mountpoint);
+        Ok(new_fs)
+    }
+
     fn resolve_symlink(
         &self,
         dir: Option<FileId>,
@@ -371,21 +424,21 @@ impl Filesystem {
         let target = self
             .read_symlink(link)?
             .expect("link target cannot be None at this point");
-        let (mut fs_id, mut dir) = if target.is_relative() {
+        let (mut fs, mut dir) = if target.is_relative() {
             (dir.unwrap().fs, dir.map(|x| x.file))
         } else {
-            (0, None)
+            (FSId::default(), None)
         };
         let mut mountpoint = self
             .mountpoints
-            .get(fs_id)
+            .get(usize::from(fs))
             .ok_or(FSError::Invalid)?
             .as_ref();
         let (mut ids, mut remain) = mountpoint.resolve_path(dir, &target)?;
         while remain.is_some() && *loopcount > 0 {
             let link = ids.pop().expect("Empty paths cannot occur");
             let target = self
-                .read_symlink(FileId::new(fs_id, link))?
+                .read_symlink(FileId::new(fs, link))?
                 .expect("link target cannot be None at this point");
             dir = if target.is_relative() {
                 ids.last().copied()
@@ -400,12 +453,69 @@ impl Filesystem {
         if remain.is_some() {
             Err(FSError::Loop)
         } else {
-            Ok(FileId::new(fs_id, *ids.last().expect("Empty paths cannot occur")))
+            Ok(FileId::new(fs, *ids.last().expect("Empty paths cannot occur")))
         }
     }
 
-    fn print_tree(&self) {
-        todo!();
+    fn print_tree(&self) -> Result<(), FSError> {
+        let root = self.resolve_last(Path::new("/"), false)?;
+
+        // stack (depth, parent, file)
+        let mut remaining_files: Vec<(u32, Option<FileId>, FileId)> = vec![(0, None, root)];
+
+        // as long as files are on the stack
+        while let Some(file) = remaining_files.pop() {
+            let (depth, parent, file) = file;
+
+            // get mountpoint and name of file
+            let mountpoint = self.mountpoints.get(usize::from(file.fs)).ok_or(FSError::NotFound)?;
+            let entry = mountpoint.get_entry(file.file)?;
+            let name = if let Some(parent) = parent {
+                mountpoint.resolve_name(parent.file, file.file)?
+            } else {
+                "/".into()
+            };
+
+            match entry {
+                // file: just print
+                FSEntry::File => println!("{:>pad$} {:#?} (f)", "", name, pad=depth as usize * 2),
+
+                // dir: push children on stack
+                FSEntry::Dir => {
+                    let children = mountpoint.resolve_children(file.file)?;
+                    remaining_files.extend(
+                        children
+                            .iter()
+                            .map(|id| (depth + 1, Some(file), FileId::new(file.fs, *id))),
+                    );
+
+                    println!("{:>pad$} {:#?} (d)", "", name, pad=depth as usize * 2);
+                }
+
+                // mount: push children of root of new file system on stack
+                FSEntry::Mount { fs } => {
+                    let child_mountpoint = self.mountpoints.get(usize::from(fs)).ok_or(FSError::NotFound)?;
+                    let (root, _) = child_mountpoint.resolve_path(None, Path::new("/"))?;
+                    let children = child_mountpoint.resolve_children(*root.last().ok_or(FSError::NotFound)?)?;
+                    remaining_files.extend(children.iter().map(|id| {
+                        (
+                            depth + 1,
+                            Some(FileId::new(fs, *root.first().expect("Root can't be None"))),
+                            FileId::new(fs, *id),
+                        )
+                    }));
+
+                    println!("{:>pad$} {:#?} (m; fs={:?})", "", name, fs, pad=depth as usize * 2);
+                }
+
+                // symlink: don't resolve; just print
+                FSEntry::Symlink { contents } => {
+                    println!("{:>pad$} {:#?} (s)", "", name, pad=depth as usize * 2);
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 

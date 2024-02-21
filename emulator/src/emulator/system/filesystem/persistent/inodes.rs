@@ -1,4 +1,4 @@
-use crate::emulator::abstractions::filesystem::FSEntry;
+use crate::emulator::abstractions::filesystem::{FSEntry, FSEntryId};
 use libc::wchar_t;
 use std::cell::RefCell;
 use std::collections::{
@@ -12,18 +12,10 @@ use std::path::{
 };
 use tracing::trace;
 
-use crate::emulator::system::filesystem::stat::{
-    Stat,
-    S_IFDIR,
-    S_IFLNK,
-    S_IFREG,
-};
-use crate::emulator::system::filesystem::{
-    ContentId,
-    FSEntryId,
-    FSError,
-    SnapId,
-};
+use crate::emulator::system::filesystem::stat::
+    Stat
+;
+use crate::emulator::system::filesystem::{ContentId, FSError, SnapId};
 
 use std::ffi::OsString;
 
@@ -42,7 +34,7 @@ impl Inodes {
         Self {
             content: Vec::new(),
             fse_ids: RefCell::new(vec![HashMap::new()]),
-            next_fse_id: 1,
+            next_fse_id: 1.into(),
             current_snap: 0,
         }
     }
@@ -60,11 +52,8 @@ impl Inodes {
         entry: FSEntry,
         stat: Option<Stat>,
     ) -> Result<FSEntryId, FSError> {
-        trace!("new entry in {} name {:?}", parent, name);
+        trace!("new entry in {:?} name {:?}", parent, name);
         if name == "." || name == ".." {
-            return Err(FSError::Invalid);
-        }
-        if let FSEntry::Mount { .. } = entry {
             return Err(FSError::Invalid);
         }
         let entry_id = self.next_fse_id;
@@ -135,7 +124,7 @@ impl Inodes {
         let mut dir = self.most_recent_entry_mut(dir_id)?;
         match &mut dir.content {
             Some(FSContent::Dir { ref mut entries }) => {
-                trace!("remove direntry {:?} from {}", name, dir_id);
+                trace!("remove direntry {:?} from {:?}", name, dir_id);
                 entries.remove(&name).ok_or(FSError::Unknown)?;
                 trace!("after remove: content {:?}", self.content);
                 trace!("historical index: {:?}", self.fse_ids.borrow_mut()[self.current_snap]);
@@ -243,7 +232,7 @@ impl Inodes {
         &self,
         index: FSEntryId,
     ) -> Result<Index, FSError> {
-        trace!("most recent historical index: {}", index);
+        trace!("most recent historical index: {:?}", index);
         let mut fse_ids = self.fse_ids.borrow_mut();
         let mut historical_index = fse_ids[self.current_snap].get(&index).cloned();
         if historical_index.is_none() {

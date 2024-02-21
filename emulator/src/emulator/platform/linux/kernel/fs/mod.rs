@@ -24,10 +24,7 @@ use crate::emulator::system::fd_map::{
     FileDescriptorMap,
     InternalFD,
 };
-use crate::emulator::system::filesystem::{
-    FSEntryId,
-    Filesystem,
-};
+use crate::emulator::system::filesystem::Filesystem;
 use crate::emulator::system::memory::rw_interface::{
     DirectMemoryWrite,
     MemoryWrite,
