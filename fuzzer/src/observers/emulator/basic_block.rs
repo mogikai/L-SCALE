@@ -3,12 +3,13 @@
 //! any collected blocks.
 //!
 use std::cell::RefCell;
+use std::ops::{Range, RangeBounds};
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::atomic::{
     AtomicUsize,
     Ordering,
 };
-use std::sync::Arc;
 use std::thread;
 
 use core_affinity::CoreId;
@@ -82,6 +83,8 @@ impl InternalCollector {
 impl BasicBlockCollector {
     pub fn new<'a, T: Iterator<Item = &'a Arc<Mutex<dyn DebuggableObserve<RawObservation = EVAddr>>>>, CpuT: Hooks>(
         cpu: &Rc<RefCell<CpuT>>,
+        start: EVAddr,
+        end: EVAddr,
         observers: T,
     ) -> Self {
         let shared_data = Arc::new(BasicBlockCollectorSharedData {
@@ -118,9 +121,11 @@ impl BasicBlockCollector {
         });
         let internal_collector = collector.internal_collector.clone();
         cpu.borrow_mut()
-            .add_block_hook(Box::new(move |_cpu, address, _instruction_count| {
-                internal_collector.borrow_mut().collect(address)
-            }))
+            .add_block_hook(
+                start,
+                end,
+                Box::new(move |_cpu, address, _instruction_count| internal_collector.borrow_mut().collect(address)),
+            )
             .unwrap();
         collector
     }

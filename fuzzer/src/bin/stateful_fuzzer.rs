@@ -1,4 +1,3 @@
-use std::arch::x86_64::_mm256_undefined_si256;
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::path::{
@@ -10,14 +9,14 @@ use std::time::Duration;
 
 use clap::Parser;
 use core_affinity::CoreId;
-use fuzzyemu::emulator::system::prng::SeedablePrngMap;
+use tracing_subscriber::{
+    EnvFilter,
+    fmt,
+};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{
-    fmt,
-    EnvFilter,
-};
 
+use fuzzyemu::emulator::GenericEmulator;
 use fuzzyemu::emulator::interface::emulator::Emulator;
 use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
 use fuzzyemu::emulator::platform::linux::scheduler::LinuxX86Scheduler;
@@ -26,9 +25,9 @@ use fuzzyemu::emulator::system::fd_map::FileDescriptorMap;
 use fuzzyemu::emulator::system::filesystem::Filesystem;
 use fuzzyemu::emulator::system::hardware::unicorn::UCWrapper;
 use fuzzyemu::emulator::system::memory::Memory;
-use fuzzyemu::emulator::system::task_manager::TaskManager;
+use fuzzyemu::emulator::system::prng::SeedablePrngMap;
 use fuzzyemu::emulator::system::System;
-use fuzzyemu::emulator::GenericEmulator;
+use fuzzyemu::emulator::system::task_manager::TaskManager;
 use fuzzyemu::LittleEndian;
 use fuzzyfuzz::core::fuzzer::Fuzzer;
 use fuzzyfuzz::io::tcp::TCP;
@@ -44,7 +43,7 @@ struct Args {
     context: String,
 
     /// The path on the emulated system to the binary that will be emulated initially.
-    #[arg(long, default_value = "/home/user/open62541_server_fuzzing2")]
+    #[arg(long, default_value = "/home/user/open62541_server_fuzzing_fixed")]
     binary: String,
 
     /// If set to true, the entire execution will be traced and a disassembly is printed for each instruction that is executed.
@@ -67,7 +66,8 @@ fn main() {
     let prng_map = SeedablePrngMap::new(0xcafef00dd15ea5e5cafef00dd15ea5e5_u128.to_ne_bytes());
     let file_descriptor_map = FileDescriptorMap::new();
     let tcp = Rc::new(RefCell::new(TCP::new()));
-    let system = System::new(cpu.clone(), memory, filesystem, clock, prng_map, file_descriptor_map, task_manager, tcp.clone());
+    let system =
+        System::new(cpu.clone(), memory, filesystem, clock, prng_map, file_descriptor_map, task_manager, tcp.clone());
 
     let initial_task = LinuxKernelTask::new(system.clone(), 1337, 1);
 

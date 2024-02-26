@@ -43,7 +43,7 @@ impl Reducer for InterestingEdgesReducer {
         }
         let mut interesting = false;
         for (current, maximum) in current_edge_counts.iter().zip(self.hit_map.iter_mut()) {
-            if current > maximum {
+            if *current > (*maximum << 1) {
                 *maximum = *current;
                 interesting = true;
             }

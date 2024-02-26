@@ -293,7 +293,7 @@ where
                 info!("vm_range   0x{:X}..0x{:X}", vm_range.start, vm_range.end);
                 info!("file_range 0x{:X}..0x{:X}", ph.file_range().start, ph.file_range().end);
                 memory
-                    .map_file(&mut *cpu, &mut fd_map, &self.task_id, vm_range, &fd, ph.file_range(), perms)
+                    .map_file(&mut *cpu, &mut fd_map, &self.task_id, vm_range, &fd, ph.file_range(), perms, path.to_str())
                     .unwrap();
             }
         }
@@ -399,6 +399,7 @@ where
                 0xd00000000000.into()..0xd00000000100.into(),
                 [0; 16].as_slice(),
                 Permission::READ,
+                Some("[random]")
             )
             .unwrap();
         aux.push((AUXVType::Random as u64, 0xd00000000000));

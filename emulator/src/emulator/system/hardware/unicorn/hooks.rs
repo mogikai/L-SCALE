@@ -50,13 +50,15 @@ impl<'a> Hooks for UCWrapper<'a> {
 
     fn add_block_hook(
         &mut self,
+        start: EVAddr,
+        end: EVAddr,
         mut hook: Box<dyn FnMut(&mut Self, EVAddr, u32) + 'a>,
     ) -> Result<(), CPUError> {
         let trampoline = move |uc: &mut Unicorn<'_, *mut UCWrapper<'a>>, address: u64, instruction_count: u32| {
             hook(unsafe { &mut **uc.get_data_mut() }, address.into(), instruction_count)
         };
         // TODO: Store hook id so we can remove it later
-        let _hook = self.uc_mut().add_block_hook(trampoline)?;
+        let _hook = self.uc_mut().add_block_hook(start.into(), end.into(), trampoline)?;
         Ok(())
     }
 

@@ -1,32 +1,25 @@
+use std::cell::RefCell;
+use std::cmp::max;
+use std::collections::BTreeMap;
+use std::fmt::Debug;
+use std::ops::Deref;
+use std::rc::Rc;
+use std::sync::{
+    Arc,
+    mpsc,
+};
+use std::sync::atomic::{
+    AtomicUsize,
+    Ordering,
+};
+use std::thread;
+
 use core_affinity::CoreId;
 use parking_lot::{
     Mutex,
     MutexGuard,
 };
-use std::cell::{
-    Ref,
-    RefCell,
-};
-use std::cmp::max;
-use std::collections::BTreeMap;
-use std::fmt::Debug;
-use std::ops::{
-    Add,
-    Deref,
-};
-use std::rc::Rc;
-use std::sync::atomic::{
-    AtomicUsize,
-    Ordering,
-};
-use std::sync::{
-    mpsc,
-    Arc,
-};
-use std::thread;
-use std::thread::JoinHandle;
 
-use crate::api::observer;
 use fuzzyemu::emulator::abstractions::cpu::address::EVAddr;
 use fuzzyemu::emulator::abstractions::hooks::Hooks;
 
@@ -122,7 +115,13 @@ impl HasObservation for EdgeHitCountObserver {
     type Observation = [u64];
 
     fn observation(&self) -> impl Deref<Target = Self::Observation> {
-        MutexGuard::map(self.shared_observer.lock(), |inner| &mut inner.edge_counts[..=inner.highest_observed_index])
+        MutexGuard::map(self.shared_observer.lock(), |inner| {
+            if inner.edge_counts.is_empty() {
+                &mut [] as &mut [u64]
+            } else {
+                &mut inner.edge_counts[..=inner.highest_observed_index]
+            }
+        })
     }
 }
 
@@ -203,10 +202,14 @@ impl EdgeHitObserver {
         });
         let remaining_edges = observer.remaining_edges.clone();
         cpu.borrow_mut()
-            .add_block_hook(Box::new(move |_cpu, address, _instruction_count| {
-                remaining_edges.fetch_add(1, Ordering::Acquire);
-                sender.send(address).unwrap();
-            }))
+            .add_block_hook(
+                EVAddr::from(1),
+                EVAddr::from(0),
+                Box::new(move |_cpu, address, _instruction_count| {
+                    remaining_edges.fetch_add(1, Ordering::Acquire);
+                    sender.send(address).unwrap();
+                }),
+            )
             .unwrap();
         observer
     }

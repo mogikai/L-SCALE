@@ -40,14 +40,14 @@ use crate::emulator::abstractions::cpu::address::{
 };
 use crate::emulator::abstractions::mmu::{
     MemoryError,
-    Permission,
     MMU,
     MREMAP_FLAGS,
+    Permission,
 };
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::fd::{
-    FileDescriptorData,
     FD,
+    FileDescriptorData,
 };
 // TODO: Make TaskId generic
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
@@ -61,8 +61,8 @@ use crate::emulator::system::memory::pregion::PhysicalRegion;
 use crate::emulator::system::memory::rw_interface::DirectMemoryWrite;
 use crate::emulator::system::memory::tlb::mapping::Mapping;
 pub use crate::emulator::system::memory::tlb::mapping::MappingType;
-pub use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 use crate::emulator::system::memory::tlb::Tlb;
+pub use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 use crate::util::auto_key::lazy_clone_map::LazyCloneMap;
 use crate::util::rcow::RCow;
 
@@ -369,6 +369,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         vm_range: Range<EVAddr>,
         data: &[u8],
         perms: Permission,
+        label: Option<impl AsRef<str>>,
     ) -> Result<(), MemoryError> {
         let start = helpers::align4k_down(vm_range.start);
         let size = helpers::align4k_up(vm_range.end) - start;
@@ -376,7 +377,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             todo!()
         }
 
-        self.map_fixed(task_id, start, size, perms, MappingType::PrivateAnonymous)?;
+        self.map_fixed(task_id, start, size, perms, MappingType::PrivateAnonymous, label)?;
         self.accessor(&mut mmu, task_id)
             .write_bytes_unchecked(vm_range.start, data)?;
         Ok(())
@@ -392,6 +393,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         ifd: &InternalFD,
         file_range: Range<usize>,
         perms: Permission,
+        label: Option<impl AsRef<str>>,
     ) -> Result<(), MemoryError> {
         let start = helpers::align4k_down(vm_range.start);
         let size = helpers::align4k_up(vm_range.end) - start;
@@ -406,7 +408,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             .pread(file_range.start as u64, (file_range.end - file_range.start) as u64)
             .map_err(|_| MemoryError::Unknown)?;
 
-        self.map_fixed(*task_id, start, size, perms, MappingType::PrivateFile(*ifd))?;
+        self.map_fixed(*task_id, start, size, perms, MappingType::PrivateFile(*ifd), label)?;
         self.accessor(&mut mmu, *task_id)
             .write_bytes_unchecked(vm_range.start, data.as_slice())?;
         Ok(())
@@ -419,6 +421,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         size: usize,
         permissions: Permission,
         mapping_type: MappingType,
+        label: Option<impl AsRef<str>>,
     ) -> Result<EVAddr, MemoryError> {
         let layout = layout!(self, task_id);
         // Clamp mmap address to map_base
@@ -429,6 +432,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             size,
             permissions,
             mapping_type,
+            label,
         )
     }
 
@@ -486,12 +490,14 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             // Unmap any existing mappings from the new address area as specified by the man pages
             self.unmap(task_id, new_address, new_size_aligned);
             // Map in the new area
+            // TODO: Carry over old label?
             self.map_fixed(
                 task_id,
                 new_address,
                 new_size_aligned,
                 first_mapping.permissions,
                 first_mapping.mapping_type,
+                Option::<String>::None,
             )?;
             // Copy over the data
             self.accessor(&mut mmu, task_id)
@@ -560,6 +566,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         size: usize,
         permissions: Permission,
         mapping_type: MappingType,
+        label: Option<impl AsRef<str>>,
     ) -> Result<EVAddr, MemoryError> {
         if !is4kaligned(address) || !is4kaligned(size) {
             Err(MemoryError::InvalidAlignment)?
@@ -581,7 +588,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             size,
         )?;
         // TODO: This will leak physical regions if try_map fails.
-        tlb_mut!(self, task_id).try_map(address, physical_region.start, size, permissions, mapping_type, None)?;
+        tlb_mut!(self, task_id).try_map(address, physical_region.start, size, permissions, mapping_type, label.map(|s| String::from(s.as_ref())))?;
 
         Ok(address)
     }

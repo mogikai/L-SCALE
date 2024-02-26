@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::cmp::min;
 use std::collections::{
     BTreeMap,
     HashSet,
@@ -18,8 +19,8 @@ use std::hash::{
     Hasher,
 };
 use std::io::{
-    stdin,
     Read,
+    stdin,
     Write,
 };
 use std::iter::{
@@ -28,17 +29,27 @@ use std::iter::{
 };
 use std::mem::take;
 use std::ops::Not;
-use std::path::PathBuf;
+use std::path::{
+    Path,
+    PathBuf,
+};
 use std::process::exit;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::atomic::{
     AtomicBool,
     Ordering,
 };
-use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
 
+use bmp::{
+    Image,
+    Pixel,
+    px,
+};
+use graphviz_rust::attributes::dimen;
+use hilbert_curve::convert_1d_to_2d;
 use petgraph::dot::{
     Config,
     Dot,
@@ -53,6 +64,7 @@ use serde::{
     Deserialize,
     Serialize,
 };
+use serde_json;
 use slotmap::{
     new_key_type,
     SecondaryMap,
@@ -63,6 +75,10 @@ use tracing::{
     trace,
 };
 
+use fuzzyemu::emulator::abstractions::cpu::address::{
+    EVA_NULL,
+    EVAddr,
+};
 use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
 use fuzzyemu::emulator::abstractions::mmu::MemoryError;
 use fuzzyemu::emulator::abstractions::network::{
@@ -84,6 +100,7 @@ use fuzzyemu::emulator::system::memory::MappingType;
 
 use crate::api::observer::{
     DebuggableObserver,
+    HasObservation,
     Observer,
 };
 use crate::api::reducer::Reducer;
@@ -255,7 +272,10 @@ impl Candidate {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Final;
+struct Final {
+    origin_state_id: StateId,
+    transition_testcase: TestCaseId,
+}
 
 enum StateComparisonResult {
     IncompleteObservations,
@@ -314,7 +334,10 @@ impl StateType<Candidate> {
                 node_id: Some(node_id),
                 ..self.state
             },
-            r#type: Final,
+            r#type: Final {
+                origin_state_id: self.r#type.origin_state_id,
+                transition_testcase: self.r#type.transition_testcase,
+            },
         }
     }
 }
@@ -322,6 +345,14 @@ impl StateType<Candidate> {
 impl StateType<Final> {
     pub fn node_id(&self) -> NodeIndex {
         self.state.node_id.unwrap()
+    }
+
+    pub fn origin(&self) -> StateId {
+        self.r#type.origin_state_id
+    }
+
+    pub fn reached_by(&self) -> TestCaseId {
+        self.r#type.transition_testcase
     }
 }
 
@@ -493,7 +524,9 @@ impl StateBuilder {
             .state_path
             .iter()
             .filter_map(|s| {
-                let StateUnion::Final(s) = s else { return None };
+                let StateUnion::Final(s) = s else {
+                    return None;
+                };
                 Some(s)
             })
             .zip(full_path.iter())
@@ -775,6 +808,7 @@ impl StateBuilder {
             &|_, _| String::new(),
         );
         let mut file = File::options()
+            .truncate(true)
             .write(true)
             .create(true)
             .open(states_dir)
@@ -818,6 +852,22 @@ impl StateBuilder {
             println!("{line}");
         }
     }
+
+    fn dump_fuzzer_state(
+        &self,
+        fuzzer_state: &FuzzerState,
+    ) {
+        let mut state_file = PathBuf::from(".output/fuzzer_state.fst");
+        create_dir_all(state_file.parent().unwrap()).unwrap();
+        let mut state_file = File::options()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(state_file)
+            .unwrap();
+        let serialized = serde_json::to_vec(fuzzer_state).unwrap();
+        state_file.write_all(serialized.as_slice()).unwrap();
+    }
 }
 
 trait DebuggableReducer: Reducer + Debug {}
@@ -841,6 +891,7 @@ pub struct Fuzzer<EmulatorT> {
     state: FuzzerState,
     state_builder: StateBuilder,
     observers: Vec<Rc<RefCell<dyn DebuggableObserver>>>,
+    block_observer: Rc<RefCell<BlockHitObserver>>,
     is_interesting_reducers: Vec<Rc<RefCell<dyn DebuggableReducer<Output = bool>>>>,
     suffix_behavior_observer: Rc<RefCell<dyn DebuggableObserver>>,
     suffix_behavior_reducer: Rc<RefCell<dyn DebuggableReducer<Output = SuffixBehavior>>>,
@@ -858,11 +909,34 @@ where
         mut emulator: EmulatorT,
         context_path: PathBuf,
     ) -> Self {
+        let memory = emulator.system().memory().borrow();
+        let exe_mappings = memory
+            .mappings(&TaskId { pid: 1337, tid: 1 })
+            .filter_map(|mapping| {
+                mapping
+                    .label
+                    .as_ref()
+                    .and_then(|label| label.contains("open62541").then_some(mapping))
+            })
+            .collect::<Vec<_>>();
+        let start = exe_mappings
+            .iter()
+            .min_by_key(|m| &m.v_start)
+            .unwrap()
+            .v_start;
+        let end = exe_mappings
+            .iter()
+            .max_by_key(|m| m.v_end())
+            .unwrap()
+            .v_end();
+        drop(memory);
         let edge_observer = Rc::new(RefCell::new(EdgeHitCountObserver::new()));
         let edge_reducer = Rc::new(RefCell::new(InterestingEdgesReducer::new(edge_observer.clone())));
         let behavior_observer = BlockHitObserver::new();
         let bb_collector = Rc::new(RefCell::new(BasicBlockCollector::new(
             emulator.system().cpu(),
+            start,
+            end,
             [
                 &behavior_observer.shared_observe(),
                 &edge_observer.borrow().shared_observe(),
@@ -876,6 +950,7 @@ where
             state: Default::default(),
             state_builder: Default::default(),
             observers: vec![edge_observer],
+            block_observer: behavior_observer.clone(),
             suffix_behavior_observer: behavior_observer,
             is_interesting_reducers: vec![edge_reducer],
             suffix_behavior_reducer: behavior_reducer,
@@ -884,6 +959,18 @@ where
             context_path,
             input_info: Default::default(),
         }
+    }
+
+    pub fn from_serialized_state(
+        emulator: EmulatorT,
+        context_path: PathBuf,
+        state_path: &Path,
+    ) -> Self {
+        let mut slf = Self::new(emulator, context_path);
+        let file = File::options().read(true).open(state_path).unwrap();
+        slf.state = serde_json::from_reader(&file).unwrap();
+        slf.state.state_path.truncate(1);
+        slf
     }
 
     pub fn run(&mut self) {
@@ -896,9 +983,84 @@ where
             .expect("Error setting handler");
         }
         self.setup();
+        self.build_state_model();
         // while do_fuzzing.load(Ordering::SeqCst) {
         //     self.fuzz();
         // }
+    }
+
+    fn build_state_model(&mut self) {
+        while self.evaluate_states_with_missing_observations() {
+            self.state_builder.fix_closed_property(&mut self.state);
+            self.state_builder.dump_dot_file(&mut self.state);
+            self.state_builder.dump_observation_table(&self.state);
+            // let mut input = String::new();
+            // stdin().read_line(&mut input).unwrap();
+            // if input.starts_with('q') {
+            //     exit(0);
+            // }
+        }
+        self.state_builder
+            .add_transitions_to_equivalent_states(&mut self.state);
+        self.state_builder.dump_dot_file(&mut self.state);
+        self.state_builder.dump_fuzzer_state(&self.state);
+    }
+
+    /// Gives an observation trace for each input that is visited on the path to `destination`.
+    pub fn trace_path(
+        &mut self,
+        destination: NodeIndex,
+    ) {
+        self.setup();
+        let destination = *self.state.states_map.get(&destination).unwrap();
+        let mut states_reversed = Vec::new();
+        let mut state_id = destination;
+        loop {
+            if state_id == StateId::default() {
+                break;
+            }
+            states_reversed.push(state_id);
+            let state = self.state.states.get(state_id).unwrap();
+            state_id = state.origin();
+        }
+
+        let mut observations = Vec::new();
+        let mut min_addr = Option::<EVAddr>::None;
+        let mut max_addr = EVA_NULL;
+        for state_id in states_reversed.iter().rev() {
+            Self::clear_observers(&mut self.observers);
+            self.go_to_state_from_current(*state_id);
+            Self::gather_observations(&mut self.observers);
+            let observer = self.block_observer.borrow();
+            let observation = &*observer.observation();
+            if let Some(current) = observation.iter().min() {
+                if let Some(min_addr) = &mut min_addr {
+                    *min_addr = (*min_addr).min(*current)
+                } else {
+                    let _ = min_addr.insert(*current);
+                }
+            }
+            if let Some(current) = observation.iter().max() {
+                max_addr = max_addr.max(*current);
+            }
+            observations.push(observation.clone());
+        }
+        let size = max_addr - min_addr.unwrap();
+        let dimension = size.isqrt().next_power_of_two();
+        let size = dimension * dimension;
+        let offset = u64::from(min_addr.unwrap()) as usize;
+        let mut i = 0;
+        for observation in observations {
+            let mut image = Image::new(dimension as u32, dimension as u32);
+            for addr in observation {
+                let (x, y) = convert_1d_to_2d(u64::from(addr - offset) as usize, size);
+                image.set_pixel(x as u32, y as u32, bmp::consts::BLACK);
+            }
+            image
+                .save(Path::new(format!(".output/replay/{i}.bmp").as_str()))
+                .unwrap();
+            i += 1;
+        }
     }
 
     fn setup(&mut self) {
@@ -925,19 +1087,6 @@ where
         self.load_initial_state();
         // We make a snapshot now, so that we can reset to the first input request.
         self.emulator.take_snapshot().unwrap();
-        while self.evaluate_states_with_missing_observations() {
-            self.state_builder.fix_closed_property(&mut self.state);
-            self.state_builder.dump_dot_file(&mut self.state);
-            self.state_builder.dump_observation_table(&self.state);
-            // let mut input = String::new();
-            // stdin().read_line(&mut input).unwrap();
-            // if input.starts_with('q') {
-            //     exit(0);
-            // }
-        }
-        self.state_builder
-            .add_transitions_to_equivalent_states(&mut self.state);
-        self.state_builder.dump_dot_file(&mut self.state);
     }
 
     fn load_initial_state(&mut self) {
@@ -961,19 +1110,23 @@ where
         )
         .unwrap();
         /////////
-        let mut corpus_dir = self.context_path.clone();
-        corpus_dir.push("corpus");
-        for file in corpus_dir.read_dir().unwrap().flatten() {
-            if file.file_type().unwrap().is_file() {
-                let input_data_id = self.state.input_data.insert(InputData::from(file.path()));
-                // TODO: Refactor this into more generic code and don't access private fields.
-                let mut input = Input::new();
-                input.tcp_streams.push(Some(input_data_id));
-                let testcase = TestCase::new(input);
-                self.state.test_cases.insert(testcase);
+        // Only load states if not loaded from state
+        // TODO: FIXME: Refactor this. This is currently very hacky. Need clean api for fuzzer state init
+        if self.state.states.is_empty() {
+            let mut corpus_dir = self.context_path.clone();
+            corpus_dir.push("corpus");
+            for file in corpus_dir.read_dir().unwrap().flatten() {
+                if file.file_type().unwrap().is_file() {
+                    let input_data_id = self.state.input_data.insert(InputData::from(file.path()));
+                    // TODO: Refactor this into more generic code and don't access private fields.
+                    let mut input = Input::new();
+                    input.tcp_streams.push(Some(input_data_id));
+                    let testcase = TestCase::new(input);
+                    self.state.test_cases.insert(testcase);
+                }
             }
+            self.state_builder.initialize_state_info(&mut self.state);
         }
-        self.state_builder.initialize_state_info(&mut self.state);
     }
 
     /// Returns true if observations were performed.
@@ -1090,6 +1243,9 @@ where
         let StateUnion::Final(current_state_id) = self.state_builder.current_state_id(&self.state) else {
             panic!("States can only be visited from a final state");
         };
+        if state_id == current_state_id {
+            return;
+        }
         let current_state = self.state.states.get(current_state_id).unwrap();
         let mut edges = self
             .state

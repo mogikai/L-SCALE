@@ -163,7 +163,7 @@ where
         offset: u64,
     ) -> Result<EVAddr, LinuxKernelError> {
         if flags.contains(MMAP_FLAGS::MAP_ANONYMOUS) {
-            self.mmap_anon(addr, length, prot, flags, MappingType::PrivateAnonymous)
+            self.mmap_anon(addr, length, prot, flags, MappingType::PrivateAnonymous, Some("unknown"))
         } else {
             self.mmap_file_private(addr, length, prot, flags, fd, offset)
         }
@@ -176,6 +176,7 @@ where
         prot: Permission,
         flags: MMAP_FLAGS,
         mapping_type: MappingType,
+        label: Option<impl AsRef<str>>,
     ) -> Result<EVAddr, LinuxKernelError> {
         let mut cpu = sys_component_mut!(self, cpu);
         let size = align4k_up(size as usize);
@@ -186,11 +187,11 @@ where
             cpu.flush_tlb()?;
 
             sys_component_mut!(self, memory)
-                .map_fixed(self.task_id, address, size, prot, mapping_type)
+                .map_fixed(self.task_id, address, size, prot, mapping_type, label)
                 .map_err(LinuxKernelError::from)?
         } else {
             sys_component_mut!(self, memory)
-                .mmap(self.task_id, address, size, prot, mapping_type)
+                .mmap(self.task_id, address, size, prot, mapping_type, label)
                 .map_err(LinuxKernelError::from)?
         };
 
@@ -214,8 +215,15 @@ where
         if fd <= FD::from(-1) {
             Err(LinuxKernelError::EINVAL)?
         }
-        let internal_fd = sys_component_mut!(self, fd_map).dup_internal(&self.task_id, &fd)?;
-        let addr = self.mmap_anon(addr, length, prot, flags, MappingType::PrivateFile(internal_fd))?;
+        let (internal_fd, path) = {
+            let mut fd_map = sys_component_mut!(self, fd_map);
+            let internal_fd = fd_map.dup_internal(&self.task_id, &fd)?;
+            let fs = sys_component!(self, filesystem);
+            let file = fd_map.get_internal(&self.task_id, &internal_fd).unwrap();
+            let path = file.data.file.as_ref().ok_or(LinuxKernelError::EBADFD)?.get_path(&*fs).unwrap();
+            (internal_fd, path)
+        };
+        let addr = self.mmap_anon(addr, length, prot, flags, MappingType::PrivateFile(internal_fd), path.to_str())?;
         if addr == !EVA_NULL {
             Err(LinuxKernelError::EINVAL)?
         }

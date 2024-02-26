@@ -1,8 +1,9 @@
-use super::*;
 use tracing::{
     debug,
     trace,
 };
+
+use super::*;
 
 impl<'a, CpuT, TcpT, Endianness> LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where
@@ -15,9 +16,13 @@ where
 
         // TODO: Potentially move this to the clock setup?
         let timestep_clock = self.system.clock.clone();
-        cpu.add_block_hook(Box::new(move |_, _, instruction_count| {
-            timestep_clock.borrow_mut().do_timestep(instruction_count);
-        }));
+        cpu.add_block_hook(
+            EVAddr::from(1),
+            EVAddr::from(0),
+            Box::new(move |_, _, instruction_count| {
+                timestep_clock.borrow_mut().do_timestep(instruction_count);
+            }),
+        );
 
         let syscall_system = self.system.clone();
         cpu.add_syscall_hook(

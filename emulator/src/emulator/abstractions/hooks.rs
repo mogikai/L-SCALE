@@ -27,6 +27,8 @@ pub trait Hooks {
 
     fn add_block_hook(
         &mut self,
+        start: EVAddr,
+        end: EVAddr,
         hook: BlockHook<Self>,
     ) -> Result<(), CPUError>;
 
