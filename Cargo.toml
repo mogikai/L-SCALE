@@ -4,7 +4,9 @@ members = [
     "emulator-derive",
     "fuzzer",
     "gui",
-    "samples"
+    "samples",
+    "glaze/cpu",
+    "glaze/mem"
 ]
 exclude = [
     "deps"
