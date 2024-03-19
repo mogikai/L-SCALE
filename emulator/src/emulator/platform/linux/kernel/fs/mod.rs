@@ -4,26 +4,26 @@ use bitflags::{
     bitflags,
     Flags,
 };
-use crate::emulator::abstractions::filesystem::FileId;
 use byteorder::ByteOrder;
 
 use fuzzyemu_derive::unfinished;
 
 use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
+use crate::emulator::abstractions::filesystem::FileId;
 use crate::emulator::macros::*;
 use crate::emulator::platform::linux::fd::{
-    FileDescriptorData,
     FD,
+    FileDescriptorData,
 };
+use crate::emulator::platform::linux::kernel::*;
 use crate::emulator::platform::linux::kernel::error::SyscallError::KernelError;
 use crate::emulator::platform::linux::kernel::fs::fd_ops::FileOps;
-use crate::emulator::platform::linux::kernel::*;
-use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 use crate::emulator::system::fd_map::{
     FileDescriptor,
     FileDescriptorMap,
     InternalFD,
 };
+use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 use crate::emulator::system::filesystem::Filesystem;
 use crate::emulator::system::memory::rw_interface::{
     DirectMemoryWrite,
@@ -166,6 +166,7 @@ where
         Ok(0)
     }
 
+    #[unfinished]
     pub fn openat(
         &mut self,
         _dfd: FD,
@@ -173,6 +174,7 @@ where
         _flags: u64,
         _mode: u64,
     ) -> SyscallResult {
+        // TODO: Need to actually use dfd
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let memory = memory.accessor(&mut cpu, self.task_id);
@@ -180,7 +182,8 @@ where
         trace!("openat file: {:?}", fname);
         let file = sys_component!(self, filesystem).resolve_last(Path::new(&fname), false)?; //TODO symlinks
         let mut file_descriptor = FileDescriptor::new(Box::new(FileOps::new()));
-        file_descriptor.data.file = Some(FileData::new(self.system.filesystem.clone(), file));
+        file_descriptor.data.file =
+            Some(FileData::new(self.system.filesystem.clone(), file, Some(PathBuf::from(fname))));
         Ok(sys_component_mut!(self, fd_map)
             .insert(&self.task_id, file_descriptor)?
             .into())
@@ -196,7 +199,8 @@ where
         trace!("open internal {:?}", filename);
         let file = sys_component!(self, filesystem).resolve_last(filename, true)?;
         let mut file_descriptor = FileDescriptor::new(Box::new(FileOps::new()));
-        file_descriptor.data.file = Some(FileData::new(self.system.filesystem.clone(), file));
+        file_descriptor.data.file =
+            Some(FileData::new(self.system.filesystem.clone(), file, Some(filename.to_path_buf())));
         let fd = sys_component_mut!(self, fd_map).insert_internal(&self.task_id, file_descriptor)?;
         trace!("open internal result: {:?}", fd);
         Ok(fd)
@@ -347,6 +351,8 @@ pub struct FileData {
     filesystem: Rc<RefCell<Filesystem>>,
     fse_id: FileId,
     pub pos: usize,
+    /// An optional path buf that was used to open this file object.
+    path: Option<PathBuf>,
 }
 
 impl Debug for FileData {
@@ -365,12 +371,18 @@ impl FileData {
     pub fn new(
         filesystem: Rc<RefCell<Filesystem>>,
         fse_id: FileId,
+        path: Option<PathBuf>,
     ) -> FileData {
         FileData {
             filesystem,
             fse_id,
             pos: 0,
+            path,
         }
+    }
+
+    pub fn get_path(&self) -> Option<&Path> {
+        self.path.as_ref().map(|p| p.as_path())
     }
 }
 

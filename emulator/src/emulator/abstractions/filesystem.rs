@@ -1,13 +1,12 @@
-use crate::emulator::abstractions::restore::Restorable;
 use std::ffi::OsString;
 use std::fmt::Debug;
-use std::ops::{AddAssign, Index};
+use std::ops::AddAssign;
 use std::path::{
     Path,
     PathBuf,
 };
-use std::slice::SliceIndex;
 
+use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::filesystem::{
     FSError,
     Stat,
@@ -50,7 +49,10 @@ impl From<FSEntryId> for usize {
 }
 
 impl AddAssign<usize> for FSEntryId {
-    fn add_assign(&mut self, rhs: usize) {
+    fn add_assign(
+        &mut self,
+        rhs: usize,
+    ) {
         *self = (self.0 + rhs).into();
     }
 }
@@ -78,31 +80,37 @@ pub trait Mountpoint: Restorable + Debug {
         parent: Option<FSEntryId>,
         path: &Path,
     ) -> Result<(Vec<FSEntryId>, Option<PathBuf>), FSError>;
+
     fn resolve_name(
         &self,
         parent: FSEntryId,
         entry: FSEntryId,
     ) -> Result<OsString, FSError>;
+
     fn resolve_children(
         &self,
         parent: FSEntryId,
     ) -> Result<Vec<FSEntryId>, FSError>;
+
     fn get_entry(
         &self,
         entry: FSEntryId,
     ) -> Result<FSEntry, FSError>;
+
     fn read(
         &self,
         entry: FSEntryId,
         pos: usize,
         len: usize,
     ) -> Result<Vec<u8>, FSError>;
+
     fn write(
         &mut self,
         entry: FSEntryId,
         pos: usize,
         data: &[u8],
     ) -> Result<usize, FSError>;
+
     fn truncate(
         &mut self,
         file_id: FSEntryId,
@@ -113,6 +121,7 @@ pub trait Mountpoint: Restorable + Debug {
         &self,
         entry: FSEntryId,
     ) -> Result<&Stat, FSError>;
+
     fn create_entry(
         &mut self,
         dir: FSEntryId,
@@ -120,6 +129,7 @@ pub trait Mountpoint: Restorable + Debug {
         entry: FSEntry,
         stat: Option<Stat>,
     ) -> Result<FSEntryId, FSError>;
+
     fn delete(
         &mut self,
         dir: FSEntryId,

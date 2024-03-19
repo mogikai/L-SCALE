@@ -13,16 +13,16 @@ use std::rc::Rc;
 use byteorder::ByteOrder;
 use goblin::elf::{
     dynamic,
-    program_header,
     Elf,
+    program_header,
 };
 use num_enum::FromPrimitive;
 use tracing::{
+    debug,
     error,
     info,
     trace,
     warn,
-    debug,
 };
 
 use error::SyscallError;
@@ -32,44 +32,45 @@ use fuzzyemu_derive::{
     RequiredMem,
 };
 
-use crate::emulator::abstractions::cpu::address::{
-    EVAddr,
-    EVA_NULL,
-};
 use crate::emulator::abstractions::cpu::{
-    RegisterX86,
     CPU,
+    RegisterX86,
+};
+use crate::emulator::abstractions::cpu::address::{
+    EVA_NULL,
+    EVAddr,
 };
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::filesystem::FileId;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
+use crate::emulator::abstractions::filesystem::FileId;
 use crate::emulator::abstractions::kernel_task::KernelTask;
+use crate::emulator::abstractions::mmu::{
+    MMU,
+    Permission,
+};
 use crate::emulator::abstractions::mmu::encoding::{
     Decode,
     Encode,
     RequiredMem,
-};
-use crate::emulator::abstractions::mmu::{
-    Permission,
-    MMU,
 };
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::macros::push_stack;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::{
-    FileDescriptorData,
     FD,
+    FileDescriptorData,
 };
 use crate::emulator::platform::linux::kernel::auxv::AUXVType;
 pub use crate::emulator::platform::linux::kernel::error::LinuxKernelError;
+use crate::emulator::platform::linux::kernel::fs::FileData;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
+use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::platform::linux::signalfd::SignalFDOps;
 use crate::emulator::platform::linux::signals::{
     SignalHandler,
     SignalMaskFlags,
 };
-use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::system::default_handles;
 use crate::emulator::system::fd_map::{
     FileDescriptor,
@@ -103,7 +104,6 @@ macro_rules! sys_component_mut {
     };
 }
 
-use crate::emulator::platform::linux::kernel::fs::FileData;
 pub(super) use {
     sys_component,
     sys_component_mut,
@@ -293,7 +293,16 @@ where
                 info!("vm_range   0x{:X}..0x{:X}", vm_range.start, vm_range.end);
                 info!("file_range 0x{:X}..0x{:X}", ph.file_range().start, ph.file_range().end);
                 memory
-                    .map_file(&mut *cpu, &mut fd_map, &self.task_id, vm_range, &fd, ph.file_range(), perms, path.to_str())
+                    .map_file(
+                        &mut *cpu,
+                        &mut fd_map,
+                        &self.task_id,
+                        vm_range,
+                        &fd,
+                        ph.file_range(),
+                        perms,
+                        path.to_str(),
+                    )
                     .unwrap();
             }
         }
@@ -399,7 +408,7 @@ where
                 0xd00000000000.into()..0xd00000000100.into(),
                 [0; 16].as_slice(),
                 Permission::READ,
-                Some("[random]")
+                Some("[random]"),
             )
             .unwrap();
         aux.push((AUXVType::Random as u64, 0xd00000000000));
@@ -429,7 +438,7 @@ where
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
         let mut read_only = FileDescriptor::new(Box::new(default_handles::ReadOnly::new()));
         // TODO: Dont use pseudo file. Instead use actual filesystem backed input
-        read_only.data.file = Some(FileData::new(self.system.filesystem.clone(), FileId::default()));
+        read_only.data.file = Some(FileData::new(self.system.filesystem.clone(), FileId::default(), None));
         file_descriptor_map.insert_at(&self.task_id, 0.into(), read_only);
         file_descriptor_map.insert_at(
             &self.task_id,
@@ -793,8 +802,7 @@ where
     ) -> SyscallResult {
         // TODO: Get random data from !deterministic! source controlled by user (the fuzzer)
         //       Random sources are also a form of input to the SUT
-        let data = sys_component_mut!(self, prng_map)
-            .get_random_bytes(self.task_id, buflen as usize);
+        let data = sys_component_mut!(self, prng_map).get_random_bytes(self.task_id, buflen as usize);
         let mut cpu = sys_component_mut!(self, cpu);
         sys_component_mut!(self, memory)
             .accessor(&mut cpu, self.task_id)

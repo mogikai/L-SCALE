@@ -2,36 +2,35 @@ use bitflags::Flags;
 use byteorder::ByteOrder;
 
 use crate::emulator::abstractions::cpu::address::{
-    EVAddr,
     EVA_NULL,
+    EVAddr,
 };
 use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::mmu::{
     MemoryError,
-    Permission,
     MMU,
     MREMAP_FLAGS,
+    Permission,
 };
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::FD;
-use crate::emulator::platform::linux::kernel::memory::flags::MMAP_FLAGS;
 use crate::emulator::platform::linux::kernel::{
-    sys_component,
-    sys_component_mut,
     LinuxKernelError,
     LinuxKernelTask,
+    sys_component_mut,
     SyscallResult,
 };
+use crate::emulator::platform::linux::kernel::memory::flags::MMAP_FLAGS;
 use crate::emulator::system::memory::helpers::{
     align4k_up,
     is4kaligned,
 };
+use crate::emulator::system::memory::MappingType;
 use crate::emulator::system::memory::rw_interface::{
     DirectMemoryWrite,
     MemoryWrite,
 };
-use crate::emulator::system::memory::MappingType;
 
 pub mod flags;
 
@@ -218,10 +217,15 @@ where
         let (internal_fd, path) = {
             let mut fd_map = sys_component_mut!(self, fd_map);
             let internal_fd = fd_map.dup_internal(&self.task_id, &fd)?;
-            let fs = sys_component!(self, filesystem);
             let file = fd_map.get_internal(&self.task_id, &internal_fd).unwrap();
-            let path = file.data.file.as_ref().ok_or(LinuxKernelError::EBADFD)?.get_path(&*fs).unwrap();
-            (internal_fd, path)
+            let path = file
+                .data
+                .file
+                .as_ref()
+                .ok_or(LinuxKernelError::EBADFD)?
+                .get_path()
+                .unwrap();
+            (internal_fd, path.to_path_buf())
         };
         let addr = self.mmap_anon(addr, length, prot, flags, MappingType::PrivateFile(internal_fd), path.to_str())?;
         if addr == !EVA_NULL {
