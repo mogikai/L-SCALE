@@ -17,15 +17,14 @@ use std::time::{
 };
 
 use clap::Parser;
-use fuzzyemu::emulator::system::prng::SeedablePrngMap;
 use rand::seq::SliceRandom;
 use tracing::debug;
+use tracing_subscriber::{
+    EnvFilter,
+    fmt,
+};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{
-    fmt,
-    EnvFilter,
-};
 
 use fuzzyemu::emulator::abstractions::cpu::CPU;
 use fuzzyemu::emulator::abstractions::errors::GenericError;
@@ -38,6 +37,7 @@ use fuzzyemu::emulator::abstractions::network::{
     SocketAddress,
 };
 use fuzzyemu::emulator::abstractions::restore::Restorable;
+use fuzzyemu::emulator::GenericEmulator;
 use fuzzyemu::emulator::interface::emulator::{
     Emulator,
     ExitReason,
@@ -61,9 +61,9 @@ use fuzzyemu::emulator::system::memory::{
     MappingType,
     Memory,
 };
-use fuzzyemu::emulator::system::task_manager::TaskManager;
+use fuzzyemu::emulator::system::prng::SeedablePrngMap;
 use fuzzyemu::emulator::system::System;
-use fuzzyemu::emulator::GenericEmulator;
+use fuzzyemu::emulator::system::task_manager::TaskManager;
 use fuzzyemu::LittleEndian;
 use fuzzyfuzz::io::tcp::TCP;
 
@@ -104,18 +104,26 @@ fn main() -> Result<(), GenericError> {
         let prng_map = SeedablePrngMap::new(0xcafef00dd15ea5e5cafef00dd15ea5e5_u128.to_ne_bytes());
         let file_descriptor_map = FileDescriptorMap::new();
         let tcp = Rc::new(RefCell::new(TCP::new()));
-        let system =
-            System::new(cpu.clone(), memory, filesystem, clock, prng_map, file_descriptor_map, task_manager, tcp.clone());
+        let system = System::new(
+            cpu.clone(),
+            memory,
+            filesystem,
+            clock,
+            prng_map,
+            file_descriptor_map,
+            task_manager,
+            tcp.clone(),
+        );
 
-        let total_blocks_hook = total_blocks.clone();
-        cpu.borrow_mut()
-            .add_block_hook(Box::new(move |_, addr, _| {
-                *total_blocks_hook.borrow_mut() += 1;
-                // *blocks.entry((prev_block2, prev_block, addr)).or_insert(0) += 1;
-                // prev_block2 = prev_block;
-                // prev_block = addr;
-                // TODO: Is this a performance bottleneck, do we have to use a simpler map?
-            }))?;
+        // let total_blocks_hook = total_blocks.clone();
+        // cpu.borrow_mut()
+        //     .add_block_hook(Box::new(move |_, addr, _| {
+        //         *total_blocks_hook.borrow_mut() += 1;
+        //         // *blocks.entry((prev_block2, prev_block, addr)).or_insert(0) += 1;
+        //         // prev_block2 = prev_block;
+        //         // prev_block = addr;
+        //         // TODO: Is this a performance bottleneck, do we have to use a simpler map?
+        //     }))?;
 
         // TODO: Only one task for now. Need to implement a scheduler that switches tasks.
         let initial_task = LinuxKernelTask::new(system.clone(), 1337, 1);

@@ -4,5 +4,8 @@
     <mapping directory="" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/deps/unicorn" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/deps/unicorn/docs/Unicorn_Engine_Documentation" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/glaze" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/glaze/Ghidra" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/glaze/Ghidra/Ghidra/Processors/xtensa" vcs="Git" />
   </component>
 </project>
