@@ -1,18 +1,14 @@
 use mockall::mock;
 
 use fuzzyemu::emulator::abstractions::errors::GenericError;
-use fuzzyemu::emulator::abstractions::file_descriptors::{
-    FileOperationsReady,
-    FileDescriptorError,
-};
-use fuzzyemu::emulator::abstractions::network::tcp_system::TCPSystem;
+use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
 use fuzzyemu::emulator::abstractions::network::{
     NetworkError,
     ShutdownMethod,
     SocketAddress,
     SocketId,
-    ShutdownMethod,
 };
+use fuzzyemu::emulator::abstractions::network::tcp_system::TCPSystem;
 use fuzzyemu::emulator::abstractions::restore::Restorable;
 
 mock! {

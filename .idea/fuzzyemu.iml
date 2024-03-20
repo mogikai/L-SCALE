@@ -12,6 +12,8 @@
       <sourceFolder url="file://$MODULE_DIR$/deps/LibAFL/fuzzers/baby_fuzzer/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/deps/LibAFL/fuzzers/qemu_coverage/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/samples/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/glaze/cpu/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/glaze/mem/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/deps/LibAFL/fuzzers/baby_fuzzer/target" />
       <excludeFolder url="file://$MODULE_DIR$/deps/LibAFL/fuzzers/qemu_coverage/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />

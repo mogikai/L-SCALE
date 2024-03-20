@@ -71,11 +71,11 @@ use fuzzyfuzz::io::tcp::TCP;
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// The path on the host system to the root of the system directory that is used for emulation.
-    #[arg(long, default_value = "emulator/systems/ubuntu2304")]
+    #[arg(long, default_value = "emulator/systems/ubuntu2310")]
     system_root: String,
 
     /// The path on the emulated system to the binary that will be emulated initially.
-    #[arg(long, default_value = "/home/user/open62541_server_release")]
+    #[arg(long, default_value = "/home/user/open62541_server_fuzzing_fixed")]
     binary: String,
 
     /// If set to true, the entire execution will be traced and a disassembly is printed for each instruction that is executed.
