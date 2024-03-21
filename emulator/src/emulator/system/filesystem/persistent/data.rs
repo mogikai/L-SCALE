@@ -6,9 +6,10 @@ use std::collections::{
 use std::mem::MaybeUninit;
 use std::ptr;
 
-use crate::emulator::system::filesystem;
-use crate::emulator::system::filesystem::persistent::block::Block;
+use addr_align::Align4k;
+
 use crate::emulator::system::filesystem::FSError;
+use crate::emulator::system::filesystem::persistent::block::Block;
 
 #[derive(Debug)]
 pub(super) struct Data {
@@ -44,7 +45,7 @@ impl Data {
             } else {
                 block.end()
             };
-            let (front, mut center, back) = block.split(filesystem::align_4k_down(pos), filesystem::align_4k(end))?;
+            let (front, mut center, back) = block.split(pos.align4k_down(), end.align4k_up())?;
             front.map(|b| contents.insert(b));
             back.map(|b| contents.insert(b));
             let new_data_offset = self.data.len();
@@ -78,7 +79,7 @@ impl Data {
         let last_block_end = contents.iter().last().map_or(0, |b| b.end());
         assert!(pos >= last_block_end);
         let fill = pos - last_block_end;
-        let alignment = filesystem::align_4k(data.len() + fill) - data.len() - fill;
+        let alignment = (data.len() + fill).align4k_up() - data.len() - fill;
         let block = Block::new(last_block_end, data.len() + fill + alignment, self.data.len(), self.current_snap)?;
         self.data.resize(self.data.len() + fill, 0);
         self.data.extend_from_slice(data);

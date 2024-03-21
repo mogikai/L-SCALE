@@ -3,6 +3,10 @@
 //! TODO: Improve error handling with more meaningful errors
 //! TODO: Implement update of stat struct.
 //! TODO: Consider memory mapping of files into ram
+use std::{
+    fs,
+    io,
+};
 use std::cmp::min;
 use std::ffi::OsString;
 use std::fmt::{
@@ -13,10 +17,6 @@ use std::fs::read;
 use std::path::{
     Path,
     PathBuf,
-};
-use std::{
-    fs,
-    io,
 };
 
 use byteorder::ByteOrder;
@@ -30,9 +30,9 @@ pub use stat::Stat;
 
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::filesystem::{
+    FileId,
     FSEntry,
     FSId,
-    FileId,
     Mountpoint,
 };
 use crate::emulator::abstractions::restore::Restorable;
@@ -336,7 +336,11 @@ impl Filesystem {
 
                 // if the (new) last entry is a mount, continue with child mount
                 FSEntry::Mount { fs } => {
-                    let child_mountpoint = self.mountpoints.get(usize::from(fs)).ok_or(FSError::Invalid)?.as_ref();
+                    let child_mountpoint = self
+                        .mountpoints
+                        .get(usize::from(fs))
+                        .ok_or(FSError::Invalid)?
+                        .as_ref();
                     let (child_root, _) = child_mountpoint.resolve_path(None, Path::new("/"))?;
 
                     // replace result.last() by mount target (i.e. its root)
@@ -468,7 +472,10 @@ impl Filesystem {
             let (depth, parent, file) = file;
 
             // get mountpoint and name of file
-            let mountpoint = self.mountpoints.get(usize::from(file.fs)).ok_or(FSError::NotFound)?;
+            let mountpoint = self
+                .mountpoints
+                .get(usize::from(file.fs))
+                .ok_or(FSError::NotFound)?;
             let entry = mountpoint.get_entry(file.file)?;
             let name = if let Some(parent) = parent {
                 mountpoint.resolve_name(parent.file, file.file)?
@@ -478,7 +485,7 @@ impl Filesystem {
 
             match entry {
                 // file: just print
-                FSEntry::File => println!("{:>pad$} {:#?} (f)", "", name, pad=depth as usize * 2),
+                FSEntry::File => println!("{:>pad$} {:#?} (f)", "", name, pad = depth as usize * 2),
 
                 // dir: push children on stack
                 FSEntry::Dir => {
@@ -489,12 +496,15 @@ impl Filesystem {
                             .map(|id| (depth + 1, Some(file), FileId::new(file.fs, *id))),
                     );
 
-                    println!("{:>pad$} {:#?} (d)", "", name, pad=depth as usize * 2);
+                    println!("{:>pad$} {:#?} (d)", "", name, pad = depth as usize * 2);
                 }
 
                 // mount: push children of root of new file system on stack
                 FSEntry::Mount { fs } => {
-                    let child_mountpoint = self.mountpoints.get(usize::from(fs)).ok_or(FSError::NotFound)?;
+                    let child_mountpoint = self
+                        .mountpoints
+                        .get(usize::from(fs))
+                        .ok_or(FSError::NotFound)?;
                     let (root, _) = child_mountpoint.resolve_path(None, Path::new("/"))?;
                     let children = child_mountpoint.resolve_children(*root.last().ok_or(FSError::NotFound)?)?;
                     remaining_files.extend(children.iter().map(|id| {
@@ -505,12 +515,12 @@ impl Filesystem {
                         )
                     }));
 
-                    println!("{:>pad$} {:#?} (m; fs={:?})", "", name, fs, pad=depth as usize * 2);
+                    println!("{:>pad$} {:#?} (m; fs={:?})", "", name, fs, pad = depth as usize * 2);
                 }
 
                 // symlink: don't resolve; just print
                 FSEntry::Symlink { contents } => {
-                    println!("{:>pad$} {:#?} (s)", "", name, pad=depth as usize * 2);
+                    println!("{:>pad$} {:#?} (s)", "", name, pad = depth as usize * 2);
                 }
             }
         }
@@ -580,18 +590,4 @@ fn load_dir(
         }
     }
     Ok(())
-}
-
-const MASK4K: usize = 4 * (1 << 10) - 1;
-
-fn is_4k_aligned(val: usize) -> bool {
-    val & MASK4K == 0
-}
-
-fn align_4k(val: usize) -> usize {
-    (val + MASK4K) & !MASK4K
-}
-
-fn align_4k_down(val: usize) -> usize {
-    val & !MASK4K
 }

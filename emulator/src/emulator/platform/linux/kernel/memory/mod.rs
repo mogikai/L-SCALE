@@ -1,3 +1,4 @@
+use addr_align::Align4k;
 use bitflags::Flags;
 use byteorder::ByteOrder;
 
@@ -22,10 +23,6 @@ use crate::emulator::platform::linux::kernel::{
     SyscallResult,
 };
 use crate::emulator::platform::linux::kernel::memory::flags::MMAP_FLAGS;
-use crate::emulator::system::memory::helpers::{
-    align4k_up,
-    is4kaligned,
-};
 use crate::emulator::system::memory::MappingType;
 use crate::emulator::system::memory::rw_interface::{
     DirectMemoryWrite,
@@ -99,7 +96,7 @@ where
         flags: u64,
         new_addr: EVAddr,
     ) -> SyscallResult {
-        if !is4kaligned(old_addr) {
+        if !old_addr.is_4kaligned() {
             Err(MemoryError::InvalidAlignment)?
         }
         if old_len == 0 {
@@ -130,7 +127,7 @@ where
         len: u64,
         prot: u64,
     ) -> SyscallResult {
-        if !is4kaligned(start) {
+        if !start.is_4kaligned() {
             Err(MemoryError::InvalidAlignment)?
         }
         sys_component_mut!(self, memory).protect(self.task_id, start, len as usize, prot.try_into().unwrap())?;
@@ -178,7 +175,7 @@ where
         label: Option<impl AsRef<str>>,
     ) -> Result<EVAddr, LinuxKernelError> {
         let mut cpu = sys_component_mut!(self, cpu);
-        let size = align4k_up(size as usize);
+        let size = size.align4k_up() as usize;
         let addr = if flags.contains(MMAP_FLAGS::MAP_FIXED) {
             // map fixed overwrites any mappings that already exist in the region so we unmap here.
             sys_component_mut!(self, memory).unmap(self.task_id, address, size)?;

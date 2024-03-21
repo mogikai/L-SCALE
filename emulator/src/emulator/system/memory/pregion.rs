@@ -1,9 +1,16 @@
+use std::cmp::{
+    min,
+    Ordering,
+};
+use std::fmt::{
+    Debug,
+    Formatter,
+};
+
+use addr_align::Align4k;
 use size_format::SizeFormatterBinary;
-use std::cmp::{min, Ordering};
-use std::fmt::{Debug, Formatter};
 
 use crate::emulator::abstractions::cpu::address::EPAddr;
-use crate::emulator::system::memory::helpers::is4kaligned;
 
 #[derive(Copy, Clone)]
 pub struct PhysicalRegion {
@@ -31,7 +38,7 @@ impl PhysicalRegion {
         start: EPAddr,
         end: EPAddr,
     ) -> Self {
-        assert!(is4kaligned(start) && is4kaligned(end));
+        assert!(start.is_4kaligned() && end.is_4kaligned());
         Self { start, end }
     }
 

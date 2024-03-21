@@ -2,37 +2,27 @@ use std::cmp::{
     max,
     min,
 };
-use std::collections::btree_set::Iter;
-use std::collections::BTreeSet;
 use std::ops::{
     BitOr,
     Not,
 };
 
-use imbl::{
-    OrdSet,
-    Vector,
-};
+use addr_align::Align4k;
+use imbl::OrdSet;
 use itertools::{
     Itertools,
     PeekingNext,
 };
-use tracing::trace;
 
 use crate::emulator::abstractions::cpu::address::{
     EPAddr,
     EVAddr,
-};
-use crate::emulator::abstractions::errors::{
-    GenericError,
-    GenericErrorKind,
 };
 use crate::emulator::abstractions::mmu::{
     MemoryError,
     Permission,
 };
 use crate::emulator::abstractions::restore::Restorable;
-use crate::emulator::system::memory::helpers::is4kaligned;
 use crate::emulator::system::memory::pregion::PhysicalRegion;
 use crate::emulator::system::memory::tlb::mapping::{
     Contains,
@@ -111,7 +101,7 @@ impl Tlb {
         mapping_type: MappingType,
         label: Option<String>,
     ) -> Result<(), MemoryError> {
-        if !is4kaligned(v_start) || !is4kaligned(p_start) || !is4kaligned(size) {
+        if !v_start.is_4kaligned() || !p_start.is_4kaligned() || !size.is_4kaligned() {
             Err(MemoryError::InvalidAlignment)?
         }
         self.region_mapped(v_start, size)

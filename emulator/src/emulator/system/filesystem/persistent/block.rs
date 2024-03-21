@@ -1,7 +1,11 @@
 use std::cmp::Ordering;
 
-use crate::emulator::system::filesystem;
-use crate::emulator::system::filesystem::{FSError, SnapId};
+use addr_align::Align4k;
+
+use crate::emulator::system::filesystem::{
+    FSError,
+    SnapId,
+};
 
 #[derive(Eq, Copy, Clone, Debug)]
 pub(super) struct Block {
@@ -18,10 +22,7 @@ impl Block {
         data_offset: usize,
         snap_id: SnapId,
     ) -> Result<Self, FSError> {
-        if !filesystem::is_4k_aligned(start)
-            || !filesystem::is_4k_aligned(size)
-            || !filesystem::is_4k_aligned(data_offset)
-        {
+        if !start.is_4kaligned() || !size.is_4kaligned() || !data_offset.is_4kaligned() {
             return Err(FSError::Not4kAlligned);
         }
         Ok(Self {
@@ -56,7 +57,7 @@ impl Block {
         start: usize,
         end: usize,
     ) -> Result<(Option<Block>, Block, Option<Block>), FSError> {
-        if !filesystem::is_4k_aligned(start) || !filesystem::is_4k_aligned(end) {
+        if !start.is_4kaligned() || !end.is_4kaligned() {
             return Err(FSError::Not4kAlligned);
         }
         assert!(self.start <= start);

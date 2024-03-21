@@ -226,7 +226,7 @@ where
         }
 
         trace!("Loading program");
-        self.program_info = Some(self.load_elf(binary_path, 0x0000_c000_0000_0000.into())?);
+        self.program_info = Some(self.load_elf(binary_path, 0x0000_c000_0000_0000u64.into())?);
 
         trace!("Loading interpreter");
         // Load interpreter
@@ -238,7 +238,7 @@ where
                 .clone()
                 .expect("Currently we only support loading interpreted programs")
                 .as_path(),
-            0x0000_b000_0000_0000.into(),
+            0x0000_b000_0000_0000u64.into(),
         )?;
 
         self.program_info.as_mut().expect("Set above").base_address = interpreter_load_info.base_address;
@@ -405,7 +405,7 @@ where
             .map_data(
                 &mut *cpu,
                 self.task_id,
-                0xd00000000000.into()..0xd00000000100.into(),
+                0xd00000000000u64.into()..0xd00000000100u64.into(),
                 [0; 16].as_slice(),
                 Permission::READ,
                 Some("[random]"),

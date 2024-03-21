@@ -14,6 +14,7 @@ use std::ops::{
     Range,
 };
 
+use addr_align::Align4k;
 use bitflags::Flags;
 use byteorder::ByteOrder;
 use generational_arena::{
@@ -56,7 +57,6 @@ use crate::emulator::system::fd_map::{
     FileDescriptorMap,
     InternalFD,
 };
-use crate::emulator::system::memory::helpers::is4kaligned;
 use crate::emulator::system::memory::pregion::PhysicalRegion;
 use crate::emulator::system::memory::rw_interface::DirectMemoryWrite;
 use crate::emulator::system::memory::tlb::mapping::Mapping;
@@ -67,7 +67,6 @@ use crate::util::auto_key::lazy_clone_map::LazyCloneMap;
 use crate::util::rcow::RCow;
 
 mod accessor;
-pub mod helpers;
 pub mod layout;
 pub mod pregion;
 mod restoreable;
@@ -172,8 +171,8 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             layouts: Default::default(),
             tlbs: Default::default(),
             unused_physical_sets: Default::default(),
-            physical_end: helpers::align4k_down(EPAddr::from(0x8_0000_0000)),
-            process_mem_size: helpers::align4k_down(1024u64 * 1024u64 * 1024u64) as usize, // 1 GiB
+            physical_end: EPAddr::from(0x8_0000_0000u64).align4k_down(),
+            process_mem_size: (1024u64 * 1024u64 * 1024u64).align4k_down() as usize, // 1 GiB
             phantom_data: Default::default(),
             snapshots: vec![],
         }
@@ -211,10 +210,10 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             ))));
         let tlb = self.tlbs.insert(Tlb::new());
         let layout = RCow::new(Layout::new(
-            0x0000_7fff_ffff_0000.into(),
+            0x0000_7fff_ffff_0000u64.into(),
             10 * 1024 * 1024, // 10 MiB
-            0x0000_5000_0000_0000.into(),
-            0x0000_3000_0000_0000.into(),
+            0x0000_5000_0000_0000u64.into(),
+            0x0000_3000_0000_0000u64.into(),
             unused_physical,
             tlb,
         ));
@@ -310,7 +309,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             Err(MemoryError::Unknown)?
         }
 
-        let size: usize = helpers::align4k_up(new_heap_end - layout.heap_end);
+        let size: usize = (new_heap_end - layout.heap_end).align4k_up();
         if size != 0 {
             self.increase_heap(task_id, size)?;
         }
@@ -371,8 +370,8 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         perms: Permission,
         label: Option<impl AsRef<str>>,
     ) -> Result<(), MemoryError> {
-        let start = helpers::align4k_down(vm_range.start);
-        let size = helpers::align4k_up(vm_range.end) - start;
+        let start = (vm_range.start).align4k_down();
+        let size = vm_range.end.align4k_up() - start;
         if data.len() > size {
             todo!()
         }
@@ -395,8 +394,8 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         perms: Permission,
         label: Option<impl AsRef<str>>,
     ) -> Result<(), MemoryError> {
-        let start = helpers::align4k_down(vm_range.start);
-        let size = helpers::align4k_up(vm_range.end) - start;
+        let start = vm_range.start.align4k_down();
+        let size = vm_range.end.align4k_up() - start;
         if file_range.end - file_range.start > size {
             todo!()
         }
@@ -447,7 +446,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         new_size: usize,
         flags: MREMAP_FLAGS,
     ) -> Result<EVAddr, MemoryError> {
-        let size_aligned = helpers::align4k_up(size);
+        let size_aligned = size.align4k_up();
 
         if flags.contains(MREMAP_FLAGS::MREMAP_FIXED) {
             if !flags.contains(MREMAP_FLAGS::MREMAP_MAYMOVE) {
@@ -460,7 +459,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             if new_address < address && new_address + new_size > address {
                 Err(MemoryError::MappingOverlaps)?
             }
-            let new_size_aligned = helpers::align4k_up(new_size);
+            let new_size_aligned = new_size.align4k_up();
 
             let mappings = tlb!(self, task_id).get_mappings_copied(address, address + size)?;
 
@@ -522,7 +521,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         size: usize,
         permissions: Permission,
     ) -> Result<(), MemoryError> {
-        tlb_mut!(self, task_id).protect(addr, helpers::align4k_up(size), permissions)
+        tlb_mut!(self, task_id).protect(addr, size.align4k_up(), permissions)
     }
 
     pub(crate) fn unmap(
@@ -531,14 +530,14 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         address: EVAddr,
         size: usize,
     ) -> Result<(), MemoryError> {
-        if !is4kaligned(address) || !is4kaligned(size) {
+        if !address.is_4kaligned() || !size.is_4kaligned() {
             Err(MemoryError::InvalidAlignment)?
         }
         if size == 0 {
             Err(MemoryError::ZeroSize)?
         }
 
-        let start = helpers::align4k_down(address);
+        let start = address.align4k_down();
 
         let layout = layout!(self, task_id);
         let tlb = l_tlb_mut!(self, layout);
@@ -568,7 +567,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         mapping_type: MappingType,
         label: Option<impl AsRef<str>>,
     ) -> Result<EVAddr, MemoryError> {
-        if !is4kaligned(address) || !is4kaligned(size) {
+        if !address.is_4kaligned() || !size.is_4kaligned() {
             Err(MemoryError::InvalidAlignment)?
         }
 
@@ -588,7 +587,14 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             size,
         )?;
         // TODO: This will leak physical regions if try_map fails.
-        tlb_mut!(self, task_id).try_map(address, physical_region.start, size, permissions, mapping_type, label.map(|s| String::from(s.as_ref())))?;
+        tlb_mut!(self, task_id).try_map(
+            address,
+            physical_region.start,
+            size,
+            permissions,
+            mapping_type,
+            label.map(|s| String::from(s.as_ref())),
+        )?;
 
         Ok(address)
     }

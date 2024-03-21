@@ -13,7 +13,6 @@ use std::ops::{
 use derive_more::{
     Add,
     BitAnd,
-    From,
     Into,
     Not,
     UpperHex,
@@ -42,7 +41,6 @@ use fuzzyemu_derive::{
     Clone,
     Default,
     Add,
-    From,
     Into,
     Not,
     UpperHex,
@@ -52,6 +50,36 @@ use fuzzyemu_derive::{
     RequiredMem,
 )]
 pub struct EVAddr(u64);
+
+impl From<u16> for EVAddr {
+    fn from(value: u16) -> Self {
+        Self(value.into())
+    }
+}
+
+impl From<u64> for EVAddr {
+    fn from(value: u64) -> Self {
+        Self(value.into())
+    }
+}
+
+impl From<i32> for EVAddr {
+    fn from(value: i32) -> Self {
+        if value.is_negative() {
+            panic!("Cannot convert negative number to EVAddr");
+        }
+        Self(value as u64)
+    }
+}
+
+impl From<i64> for EVAddr {
+    fn from(value: i64) -> Self {
+        if value.is_negative() {
+            panic!("Cannot convert negative number to EVAddr");
+        }
+        Self(value as u64)
+    }
+}
 
 impl Debug for EVAddr {
     fn fmt(
@@ -167,8 +195,38 @@ impl Sub<EVAddr> for EVAddr {
 pub const EVA_NULL: EVAddr = EVAddr(0);
 
 /// Emulated physical address
-#[derive(Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Add, From, Into, BitAnd, Not)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Add, Into, BitAnd, Not)]
 pub struct EPAddr(u64);
+
+impl From<u16> for EPAddr {
+    fn from(value: u16) -> Self {
+        Self(value.into())
+    }
+}
+
+impl From<u64> for EPAddr {
+    fn from(value: u64) -> Self {
+        Self(value.into())
+    }
+}
+
+impl From<i32> for EPAddr {
+    fn from(value: i32) -> Self {
+        if value.is_negative() {
+            panic!("Cannot convert negative number to EVAddr");
+        }
+        Self(value as u64)
+    }
+}
+
+impl From<i64> for EPAddr {
+    fn from(value: i64) -> Self {
+        if value.is_negative() {
+            panic!("Cannot convert negative number to EVAddr");
+        }
+        Self(value as u64)
+    }
+}
 
 impl Debug for EPAddr {
     fn fmt(
