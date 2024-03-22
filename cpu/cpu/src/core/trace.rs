@@ -2,8 +2,8 @@ use std::any::Any;
 use std::cell::UnsafeCell;
 
 use crate::{
-    CpuCore,
     pcode,
+    CpuCore,
 };
 
 #[derive(Default)]
@@ -278,6 +278,9 @@ impl<H: HookHandler> From<H> for InstHook {
 #[cfg(test)]
 mod test {
     use super::*;
+    use glaze_mem::Mmu;
+    use std::cell::RefCell;
+    use std::rc::Rc;
 
     #[test]
     fn call_simple() {
@@ -285,7 +288,7 @@ mod test {
         {
             let data = data.clone();
             let mut hook = InstHook::new(move |_: &mut crate::CpuCore, _addr: u64| data.set(true));
-            hook.call(&mut crate::CpuCore::new_boxed(crate::Arch::none()), 0);
+            hook.call(&mut CpuCore::new_boxed(Rc::new(RefCell::new(Mmu::new())), crate::Arch::none()), 0);
         }
         assert!(data.get())
     }
@@ -305,7 +308,7 @@ mod test {
         }
 
         let mut hook = InstHook::new(HookData(false));
-        hook.call(&mut crate::CpuCore::new_boxed(crate::Arch::none()), 0);
+        hook.call(&mut CpuCore::new_boxed(Rc::new(RefCell::new(Mmu::new())), crate::Arch::none()), 0);
 
         assert!(hook.data_mut::<HookData>().unwrap().0)
     }

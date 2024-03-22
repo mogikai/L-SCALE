@@ -24,10 +24,6 @@ use mogi_emulator::emulator::system::System;
 use crate::common::mocks::tcp_system::MockTCPSystem;
 use crate::common::TestFailure;
 use mogi_emulator::emulator::abstractions::kernel_task::KernelTask;
-use mogi_emulator::emulator::abstractions::mmu::MemoryError;
-use mogi_emulator::emulator::system::memory::MappingType;
-use tracing::debug;
-use tracing_subscriber::filter::LevelFilter;
 
 pub fn emulate(
     sys_path: &Path,

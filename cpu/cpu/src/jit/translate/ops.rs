@@ -3,21 +3,21 @@ use std::mem::size_of;
 use cranelift::prelude::*;
 use memoffset::offset_of;
 
-use crate::{
-    CpuCore,
-    ExceptionCode,
-    pcode,
+use crate::jit::translate::{
+    is_jit_supported_size,
+    sized_float,
+    sized_int,
+    Translator,
 };
 use crate::jit::{
     HookData,
     TracerMemEntry,
     VmCtx,
 };
-use crate::jit::translate::{
-    is_jit_supported_size,
-    sized_float,
-    sized_int,
-    Translator,
+use crate::{
+    pcode,
+    CpuCore,
+    ExceptionCode,
 };
 
 pub enum Overflow {
@@ -867,14 +867,16 @@ pub(super) fn float_not_equal(
 
 #[cfg(test)]
 mod test {
+    use glaze_mem::Mmu;
     use std::cell::RefCell;
+    use std::rc::Rc;
 
+    use crate::jit::*;
     use crate::{
         Arch,
         CpuCore,
         ValueSource,
     };
-    use crate::jit::*;
 
     use super::*;
 
@@ -929,7 +931,7 @@ mod test {
             op: pcode::Op,
             out_size: u8,
         ) -> Self {
-            let cpu = CpuCore::new_boxed(Arch::none());
+            let cpu = CpuCore::new_boxed(Rc::new(RefCell::new(Mmu::new())), Arch::none());
             let endianness = match cpu.arch.sleigh.big_endian {
                 true => Endianness::Little,
                 false => Endianness::Big,
@@ -973,7 +975,7 @@ mod test {
             cpu.write_trunc(self.out, 0xaaaa_aaaa_u32);
 
             let mut jit_ctx = self.jit_ctx.borrow_mut();
-            jit_ctx.tlb_ptr = cpu.mem.tlb.as_mut();
+            jit_ctx.tlb_ptr = cpu.mem.borrow_mut().tlb.as_mut();
             unsafe {
                 (self.jit_fn)((*cpu).as_mut() as *mut CpuCore, &mut jit_ctx, 0x0);
             }
