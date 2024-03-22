@@ -16,12 +16,12 @@ use std::ops::{
 };
 use std::rc::Rc;
 
-use fuzzyemu_derive::unfinished;
 use generational_arena::{
     Arena,
     Index,
 };
 use itertools::Itertools;
+use mogi_derive::unfinished;
 use tracing::trace;
 
 use crate::emulator::abstractions::file_descriptors::{
@@ -29,7 +29,6 @@ use crate::emulator::abstractions::file_descriptors::{
     FileDescriptorOps,
     FileOperationsReady,
 };
-use crate::emulator::abstractions::mmu::encoding::Encode;
 use crate::emulator::abstractions::network::{
     ShutdownMethod,
     SocketAddress,

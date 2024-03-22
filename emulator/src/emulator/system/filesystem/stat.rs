@@ -1,9 +1,9 @@
+use mogi_derive::{
+    Encode,
+    RequiredMem,
+};
 use std::fs::Metadata;
 use std::os::linux::fs::MetadataExt;
-
-use fuzzyemu_derive::{Encode, RequiredMem};
-
-use crate::emulator::abstractions::mmu::encoding::{Encode, RequiredMem};
 
 #[derive(Clone, Debug, Default, Encode, RequiredMem)]
 pub struct Stat {

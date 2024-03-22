@@ -3,9 +3,8 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ops::Deref;
 
+use crate::error::memory::MemoryError;
 use byteorder::ByteOrder;
-
-use crate::emulator::abstractions::mmu::MemoryError;
 
 pub mod basic_types;
 

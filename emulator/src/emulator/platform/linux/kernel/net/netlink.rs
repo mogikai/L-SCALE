@@ -1,16 +1,29 @@
-use bitflags::{bitflags, Flags};
+use bitflags::{
+    bitflags,
+    Flags,
+};
 use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
 
-use fuzzyemu_derive::{Decode, Encode, RequiredMem};
+use mogi_derive::{
+    Decode,
+    Encode,
+    RequiredMem,
+};
+use mogi_utilities::encoding::{
+    Decode,
+    Encode,
+};
+use mogi_utilities::error::memory::MemoryError;
 
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
-use crate::emulator::abstractions::mmu::encoding::{Decode, Encode, RequiredMem};
-use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
-use crate::emulator::platform::linux::kernel::net::netlink::rtnetlink::{RTNetlinkMessageType, RTNetlinkSocket};
+use crate::emulator::platform::linux::kernel::net::netlink::rtnetlink::{
+    RTNetlinkMessageType,
+    RTNetlinkSocket,
+};
 use crate::emulator::system::fd_map::FileDescriptor;
 
 pub mod rtnetlink;

@@ -8,9 +8,8 @@ use std::fmt::{
 };
 
 use addr_align::Align4k;
+use mogi_utilities::addresses::EPAddr;
 use size_format::SizeFormatterBinary;
-
-use crate::emulator::abstractions::cpu::address::EPAddr;
 
 #[derive(Copy, Clone)]
 pub struct PhysicalRegion {

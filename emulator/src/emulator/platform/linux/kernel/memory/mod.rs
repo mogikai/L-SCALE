@@ -1,33 +1,33 @@
 use addr_align::Align4k;
 use bitflags::Flags;
 use byteorder::ByteOrder;
-
-use crate::emulator::abstractions::cpu::address::{
-    EVA_NULL,
+use mogi_utilities::addresses::{
     EVAddr,
+    EVA_NULL,
 };
+use mogi_utilities::error::memory::MemoryError;
+
 use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::mmu::{
-    MemoryError,
+    Permission,
     MMU,
     MREMAP_FLAGS,
-    Permission,
 };
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::FD;
+use crate::emulator::platform::linux::kernel::memory::flags::MMAP_FLAGS;
 use crate::emulator::platform::linux::kernel::{
+    sys_component_mut,
     LinuxKernelError,
     LinuxKernelTask,
-    sys_component_mut,
     SyscallResult,
 };
-use crate::emulator::platform::linux::kernel::memory::flags::MMAP_FLAGS;
-use crate::emulator::system::memory::MappingType;
 use crate::emulator::system::memory::rw_interface::{
     DirectMemoryWrite,
     MemoryWrite,
 };
+use crate::emulator::system::memory::MappingType;
 
 pub mod flags;
 

@@ -19,8 +19,8 @@ use std::hash::{
     Hasher,
 };
 use std::io::{
-    Read,
     stdin,
+    Read,
     Write,
 };
 use std::iter::{
@@ -35,18 +35,18 @@ use std::path::{
 };
 use std::process::exit;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::sync::atomic::{
     AtomicBool,
     Ordering,
 };
+use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
 
 use bmp::{
+    px,
     Image,
     Pixel,
-    px,
 };
 use graphviz_rust::attributes::dimen;
 use hilbert_curve::convert_1d_to_2d;
@@ -75,28 +75,28 @@ use tracing::{
     trace,
 };
 
-use fuzzyemu::emulator::abstractions::cpu::address::{
-    EVA_NULL,
-    EVAddr,
-};
-use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
-use fuzzyemu::emulator::abstractions::mmu::MemoryError;
-use fuzzyemu::emulator::abstractions::network::{
+use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
+use mogi_emulator::emulator::abstractions::network::{
     IPAddress,
     SocketAddress,
     SocketId,
 };
-use fuzzyemu::emulator::abstractions::system::SystemControl;
-use fuzzyemu::emulator::interface::emulator::{
+use mogi_emulator::emulator::abstractions::system::SystemControl;
+use mogi_emulator::emulator::interface::emulator::{
     Emulator,
     ExitReason,
 };
-use fuzzyemu::emulator::interface::network::tcp::{
+use mogi_emulator::emulator::interface::network::tcp::{
     TCPSocket,
     TCPSystemControl,
 };
-use fuzzyemu::emulator::platform::linux::kernel::task_id::TaskId;
-use fuzzyemu::emulator::system::memory::MappingType;
+use mogi_emulator::emulator::platform::linux::kernel::task_id::TaskId;
+use mogi_emulator::emulator::system::memory::MappingType;
+use mogi_utilities::addresses::{
+    EVAddr,
+    EVA_NULL,
+};
+use mogi_utilities::error::memory::MemoryError;
 
 use crate::api::observer::{
     DebuggableObserver,

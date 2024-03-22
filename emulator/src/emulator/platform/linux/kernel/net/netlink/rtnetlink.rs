@@ -13,24 +13,24 @@ use num_enum::{
 };
 use tracing::debug;
 
-use fuzzyemu_derive::{
+use mogi_derive::{
     Decode,
     Encode,
     RequiredMem,
 };
+use mogi_utilities::encoding::{
+    Decode,
+    Encode,
+    Encoder,
+    RequiredMem,
+};
+use mogi_utilities::error::memory::MemoryError;
 
 use crate::emulator::abstractions::file_descriptors::{
     FileDescriptorError,
     FileDescriptorOps,
     FileOperationsReady,
 };
-use crate::emulator::abstractions::mmu::encoding::{
-    Decode,
-    Encode,
-    Encoder,
-    RequiredMem,
-};
-use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::abstractions::network::{
     ShutdownMethod,
     SocketAddress,

@@ -9,28 +9,28 @@ use std::time::Duration;
 
 use clap::Parser;
 use core_affinity::CoreId;
-use tracing_subscriber::{
-    EnvFilter,
-    fmt,
-};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{
+    fmt,
+    EnvFilter,
+};
 
-use fuzzyemu::emulator::GenericEmulator;
-use fuzzyemu::emulator::interface::emulator::Emulator;
-use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
-use fuzzyemu::emulator::platform::linux::scheduler::LinuxX86Scheduler;
-use fuzzyemu::emulator::system::clock::Clock;
-use fuzzyemu::emulator::system::fd_map::FileDescriptorMap;
-use fuzzyemu::emulator::system::filesystem::Filesystem;
-use fuzzyemu::emulator::system::hardware::unicorn::UCWrapper;
-use fuzzyemu::emulator::system::memory::Memory;
-use fuzzyemu::emulator::system::prng::SeedablePrngMap;
-use fuzzyemu::emulator::system::System;
-use fuzzyemu::emulator::system::task_manager::TaskManager;
-use fuzzyemu::LittleEndian;
-use fuzzyfuzz::core::fuzzer::Fuzzer;
-use fuzzyfuzz::io::tcp::TCP;
+use mogi_emulator::emulator::interface::emulator::Emulator;
+use mogi_emulator::emulator::platform::linux::kernel::LinuxKernelTask;
+use mogi_emulator::emulator::platform::linux::scheduler::LinuxX86Scheduler;
+use mogi_emulator::emulator::system::clock::Clock;
+use mogi_emulator::emulator::system::fd_map::FileDescriptorMap;
+use mogi_emulator::emulator::system::filesystem::Filesystem;
+use mogi_emulator::emulator::system::hardware::unicorn::UCWrapper;
+use mogi_emulator::emulator::system::memory::Memory;
+use mogi_emulator::emulator::system::prng::SeedablePrngMap;
+use mogi_emulator::emulator::system::task_manager::TaskManager;
+use mogi_emulator::emulator::system::System;
+use mogi_emulator::emulator::GenericEmulator;
+use mogi_emulator::LittleEndian;
+use mogi_fuzzer::core::fuzzer::Fuzzer;
+use mogi_fuzzer::io::tcp::TCP;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

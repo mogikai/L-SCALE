@@ -3,13 +3,16 @@
 //! any collected blocks.
 //!
 use std::cell::RefCell;
-use std::ops::{Range, RangeBounds};
+use std::ops::{
+    Range,
+    RangeBounds,
+};
 use std::rc::Rc;
-use std::sync::Arc;
 use std::sync::atomic::{
     AtomicUsize,
     Ordering,
 };
+use std::sync::Arc;
 use std::thread;
 
 use core_affinity::CoreId;
@@ -27,9 +30,9 @@ use tracing::{
     trace,
 };
 
-use fuzzyemu::emulator::abstractions::cpu::address::EVAddr;
-use fuzzyemu::emulator::abstractions::hooks::Hooks;
-use fuzzyemu::emulator::interface::meter::Meter;
+use mogi_emulator::emulator::abstractions::hooks::Hooks;
+use mogi_emulator::emulator::interface::meter::Meter;
+use mogi_utilities::addresses::EVAddr;
 
 use crate::api::observer::{
     DebuggableObserve,

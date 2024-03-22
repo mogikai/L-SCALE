@@ -19,7 +19,7 @@ pub fn derive_required_mem(input: proc_macro::TokenStream) -> proc_macro::TokenS
     let input = parse_macro_input!(input as DeriveInput);
     let name = input.ident;
     let expaned = quote! {
-        impl crate::emulator::abstractions::mmu::encoding::RequiredMem for #name {}
+        impl mogi_utilities::encoding::RequiredMem for #name {}
     };
     proc_macro::TokenStream::from(expaned)
 }
@@ -35,9 +35,9 @@ pub fn derive_encode(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
     let encode = encode(&input.data);
     let expanded = quote! {
         #[automatically_derived]
-        impl #impl_generics crate::emulator::abstractions::mmu::encoding::Encode for #name #ty_generics #where_clause {
+        impl #impl_generics mogi_utilities::encoding::Encode for #name #ty_generics #where_clause {
             fn encode<Endianness: byteorder::ByteOrder>(&self, buffer: &mut Vec<u8>) {
-                use crate::emulator::abstractions::mmu::encoding::RequiredMem;
+                use mogi_utilities::encoding::RequiredMem;
                 buffer.reserve(Self::required_mem());
                 #encode
             }

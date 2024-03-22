@@ -2,7 +2,7 @@ mod emulate;
 mod mocks;
 
 pub use emulate::emulate;
-use fuzzyemu::emulator::interface::error::{
+use mogi_emulator::emulator::interface::error::{
     SchedulerError,
     StopReason,
 };

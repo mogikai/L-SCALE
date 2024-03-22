@@ -1,9 +1,20 @@
-use std::cmp::{max, min, Ordering};
-use std::fmt::{Display, Formatter};
+use mogi_utilities::addresses::{
+    EPAddr,
+    EVAddr,
+};
+use mogi_utilities::error::memory::MemoryError;
+use std::cmp::{
+    max,
+    min,
+    Ordering,
+};
+use std::fmt::{
+    Display,
+    Formatter,
+};
 use std::ops::Range;
 
-use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
-use crate::emulator::abstractions::mmu::{MemoryError, Permission};
+use crate::emulator::abstractions::mmu::Permission;
 use crate::emulator::system::fd_map::InternalFD;
 use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 

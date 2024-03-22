@@ -13,8 +13,8 @@ use std::rc::Rc;
 use byteorder::ByteOrder;
 use goblin::elf::{
     dynamic,
-    Elf,
     program_header,
+    Elf,
 };
 use num_enum::FromPrimitive;
 use tracing::{
@@ -26,51 +26,42 @@ use tracing::{
 };
 
 use error::SyscallError;
-use fuzzyemu_derive::{
+use mogi_derive::{
     Decode,
     Encode,
     RequiredMem,
 };
 
 use crate::emulator::abstractions::cpu::{
-    CPU,
     RegisterX86,
-};
-use crate::emulator::abstractions::cpu::address::{
-    EVA_NULL,
-    EVAddr,
+    CPU,
 };
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::filesystem::FileId;
 use crate::emulator::abstractions::kernel_task::KernelTask;
 use crate::emulator::abstractions::mmu::{
-    MMU,
     Permission,
-};
-use crate::emulator::abstractions::mmu::encoding::{
-    Decode,
-    Encode,
-    RequiredMem,
+    MMU,
 };
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::macros::push_stack;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::{
-    FD,
     FileDescriptorData,
+    FD,
 };
 use crate::emulator::platform::linux::kernel::auxv::AUXVType;
 pub use crate::emulator::platform::linux::kernel::error::LinuxKernelError;
 use crate::emulator::platform::linux::kernel::fs::FileData;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
-use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::platform::linux::signalfd::SignalFDOps;
 use crate::emulator::platform::linux::signals::{
     SignalHandler,
     SignalMaskFlags,
 };
+use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::system::default_handles;
 use crate::emulator::system::fd_map::{
     FileDescriptor,
@@ -104,6 +95,10 @@ macro_rules! sys_component_mut {
     };
 }
 
+use mogi_utilities::addresses::{
+    EVAddr,
+    EVA_NULL,
+};
 pub(super) use {
     sys_component,
     sys_component_mut,

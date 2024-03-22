@@ -1,40 +1,13 @@
-use arrayvec::ArrayVec;
-use core_affinity::CoreId;
-use fuzzyemu::emulator::abstractions::cpu::address::{
-    EVAddr,
-    EVA_NULL,
-};
-use fuzzyemu::emulator::abstractions::hooks::Hooks;
+use std::collections::BTreeSet;
+use std::fmt::Debug;
+use std::ops::Deref;
+use std::sync::Arc;
+
+use mogi_utilities::addresses::EVAddr;
 use parking_lot::{
     Mutex,
     MutexGuard,
 };
-use std::cell::{
-    Ref,
-    RefCell,
-};
-use std::cmp::max;
-use std::collections::{
-    BTreeMap,
-    BTreeSet,
-    HashSet,
-};
-use std::fmt::Debug;
-use std::mem::take;
-use std::ops::{
-    Add,
-    Deref,
-};
-use std::rc::Rc;
-use std::sync::atomic::{
-    AtomicUsize,
-    Ordering,
-};
-use std::sync::{
-    mpsc,
-    Arc,
-};
-use std::thread;
 
 use crate::api::observer::{
     DebuggableObserve,

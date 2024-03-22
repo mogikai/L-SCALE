@@ -1,5 +1,5 @@
-use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::util::auto_key::AutoKey;
+use mogi_utilities::addresses::EVAddr;
 
 /// Each Process/Thread has its own memory layout in the virtual address space
 /// The mapping from virtual address to physical address is managed in the (shared) TLB

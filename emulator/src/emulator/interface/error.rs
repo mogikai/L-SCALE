@@ -1,5 +1,5 @@
-use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::CPUError;
+use mogi_utilities::addresses::EVAddr;
 use thiserror::Error;
 
 #[derive(Error, Debug, Copy, Clone)]

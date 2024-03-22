@@ -1,8 +1,12 @@
+use mogi_utilities::error::memory::MemoryError;
 use std::error::Error;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::{
+    Debug,
+    Display,
+    Formatter,
+};
 
 use crate::emulator::abstractions::cpu::CPUError;
-use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::platform::linux::kernel::LinuxKernelError;
 use crate::emulator::system::filesystem::FSError;
 

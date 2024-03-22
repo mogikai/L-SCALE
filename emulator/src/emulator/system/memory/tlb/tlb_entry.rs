@@ -1,5 +1,8 @@
-use crate::emulator::abstractions::cpu::address::{EPAddr, EVAddr};
 use crate::emulator::abstractions::mmu::Permission;
+use mogi_utilities::addresses::{
+    EPAddr,
+    EVAddr,
+};
 
 #[derive(Copy, Clone, Debug)]
 pub struct TLBEntry {

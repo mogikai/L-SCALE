@@ -6,8 +6,8 @@ use std::collections::{
 use std::fmt::Debug;
 use std::rc::Rc;
 
-use fuzzyemu::emulator::abstractions::network::SocketId;
-use fuzzyemu::emulator::interface::network::tcp::TCPSystemControl;
+use mogi_emulator::emulator::abstractions::network::SocketId;
+use mogi_emulator::emulator::interface::network::tcp::TCPSystemControl;
 
 #[derive(Debug, Default)]
 pub struct TCPStreamObservation {

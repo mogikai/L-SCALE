@@ -4,24 +4,19 @@ use bitvec::ptr::{
     Mut,
 };
 use byteorder::ByteOrder;
-use fuzzyemu_derive::Decode;
-use tracing::trace;
-
-use crate::emulator::abstractions::cpu::address::{
-    EPAddr,
-    EVAddr,
-};
-use crate::emulator::abstractions::cpu::CPU;
-use crate::emulator::abstractions::file_descriptors::FileOperationsReady;
-use crate::emulator::abstractions::mmu::encoding::{
+use mogi_derive::unfinished;
+use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::encoding::{
     Decode,
     Encode,
     RequiredMem,
 };
-use crate::emulator::abstractions::mmu::{
-    MemoryError,
-    MMU,
-};
+use mogi_utilities::error::memory::MemoryError;
+use tracing::trace;
+
+use crate::emulator::abstractions::cpu::CPU;
+use crate::emulator::abstractions::file_descriptors::FileOperationsReady;
+use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::FD;
@@ -36,7 +31,6 @@ use crate::emulator::system::memory::rw_interface::{
     MemoryRead,
     MemoryWrite,
 };
-use fuzzyemu_derive::unfinished;
 
 impl<Endianness, Arch, CpuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
 where

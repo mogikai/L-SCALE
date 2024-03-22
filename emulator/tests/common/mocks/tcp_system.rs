@@ -1,15 +1,15 @@
 use mockall::mock;
 
-use fuzzyemu::emulator::abstractions::errors::GenericError;
-use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
-use fuzzyemu::emulator::abstractions::network::{
+use mogi_emulator::emulator::abstractions::errors::GenericError;
+use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
+use mogi_emulator::emulator::abstractions::network::tcp_system::TCPSystem;
+use mogi_emulator::emulator::abstractions::network::{
     NetworkError,
     ShutdownMethod,
     SocketAddress,
     SocketId,
 };
-use fuzzyemu::emulator::abstractions::network::tcp_system::TCPSystem;
-use fuzzyemu::emulator::abstractions::restore::Restorable;
+use mogi_emulator::emulator::abstractions::restore::Restorable;
 
 mock! {
     #[derive(Debug)]

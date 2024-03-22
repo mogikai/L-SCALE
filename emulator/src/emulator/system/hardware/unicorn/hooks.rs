@@ -1,3 +1,4 @@
+use mogi_utilities::addresses::EVAddr;
 use unicorn_engine::unicorn_const::HookType;
 use unicorn_engine::{
     InsnSysX86,
@@ -5,7 +6,6 @@ use unicorn_engine::{
     Unicorn,
 };
 
-use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::CPUError;
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::hooks::Hooks;
@@ -58,7 +58,9 @@ impl<'a> Hooks for UCWrapper<'a> {
             hook(unsafe { &mut **uc.get_data_mut() }, address.into(), instruction_count)
         };
         // TODO: Store hook id so we can remove it later
-        let _hook = self.uc_mut().add_block_hook(start.into(), end.into(), trampoline)?;
+        let _hook = self
+            .uc_mut()
+            .add_block_hook(start.into(), end.into(), trampoline)?;
         Ok(())
     }
 

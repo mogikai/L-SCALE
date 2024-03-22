@@ -1,19 +1,20 @@
 [package]
-name = "fuzzyfuzz"
+name = "mogi_fuzzer"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-fuzzyemu = { path = "../emulator", features = ["serde"] }
+mogi_utilities = { path = "../utilities", features = ["serde"] }
+mogi_emulator = { path = "../emulator", features = ["serde"] }
 tracing = "*"
 tracing-subscriber = { version = "*", features = ["env-filter"] }
 clap = { version = "4.4.3", features = ["derive"] }
 hex = { version = "0.4.3", features = [] }
 rand = "*"
 serde = { version = "1.0.*", features = ["derive"] }
-serde_json = { version = "1.*"}
+serde_json = { version = "1.*" }
 petgraph = { version = "*", features = ["serde-1"] }
 ctrlc = "*"
 thiserror = "*"

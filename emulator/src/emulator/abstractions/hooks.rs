@@ -1,8 +1,8 @@
-use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::CPUError;
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::mmu::MemoryAction;
 use crate::emulator::system::memory::TLBEntry;
+use mogi_utilities::addresses::EVAddr;
 
 type UnmappedMemHook<Slf> = Box<dyn FnMut(&mut Slf, MemoryAction, u64, usize, i64) -> bool + 'static>;
 type BlockHook<Slf> = Box<dyn FnMut(&mut Slf, EVAddr, u32) + 'static>;

@@ -1,4 +1,4 @@
-use crate::emulator::abstractions::cpu::address::EVAddr;
+use mogi_utilities::addresses::EVAddr;
 
 pub trait KernelTask<TaskId> {
     fn task_id(&self) -> TaskId;

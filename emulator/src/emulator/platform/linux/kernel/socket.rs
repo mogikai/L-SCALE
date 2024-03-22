@@ -6,27 +6,23 @@ use tracing::{
     error,
 };
 
-use fuzzyemu_derive::{
+use mogi_derive::{
     Decode,
+    Encode,
+    RequiredMem,
+};
+use mogi_utilities::addresses::{
+    EVAddr,
+    EVA_NULL,
+};
+use mogi_utilities::encoding::{
     Encode,
     RequiredMem,
 };
 
-use crate::emulator::abstractions::cpu::address::{
-    EVAddr,
-    EVA_NULL,
-};
 use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
-use crate::emulator::abstractions::mmu::encoding::{
-    Decode,
-    Encode,
-    RequiredMem,
-};
-use crate::emulator::abstractions::mmu::{
-    MemoryError,
-    MMU,
-};
+use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::platform::linux::architecture::Architecture;

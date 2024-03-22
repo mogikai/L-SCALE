@@ -1,16 +1,15 @@
+use crate::encoding::{
+    Decode,
+    Encode,
+    RequiredMem,
+};
+use crate::error::memory::MemoryError;
 use byteorder::{
     BigEndian,
     ByteOrder,
     LittleEndian,
 };
 use static_assertions::assert_eq_size;
-
-use crate::emulator::abstractions::mmu::encoding::{
-    Decode,
-    Encode,
-    RequiredMem,
-};
-use crate::emulator::abstractions::mmu::MemoryError;
 
 impl RequiredMem for i32 {}
 

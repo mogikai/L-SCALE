@@ -8,7 +8,7 @@ use std::rc::Rc;
 use generational_arena::Arena;
 use iced_x86::Formatter;
 
-use crate::emulator::abstractions::cpu::address::EVAddr;
+use mogi_utilities::addresses::EVAddr;
 use unicorn_engine::unicorn_const::{
     Arch,
     Mode,

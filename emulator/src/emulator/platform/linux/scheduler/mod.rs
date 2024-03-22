@@ -6,7 +6,6 @@ use std::time::Duration;
 use byteorder::ByteOrder;
 use num_enum::FromPrimitive;
 
-use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::{
     CPUError,
     RegisterX86,

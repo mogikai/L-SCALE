@@ -1,16 +1,14 @@
 use std::ffi::CString;
 
 use byteorder::ByteOrder;
-
-use crate::emulator::abstractions::cpu::address::EVAddr;
-use crate::emulator::abstractions::mmu::encoding::{
+use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::encoding::{
     Decode,
     Encode,
 };
-use crate::emulator::abstractions::mmu::{
-    MemoryError,
-    MMU,
-};
+use mogi_utilities::error::memory::MemoryError;
+
+use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::system::memory::accessor::MemoryAccessor;
 
 type Actual = usize;

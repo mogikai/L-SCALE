@@ -5,27 +5,27 @@ use std::time::Duration;
 
 use byteorder::LittleEndian;
 
-use fuzzyemu::emulator::abstractions::emulator::Scheduler;
-use fuzzyemu::emulator::interface::error::{
+use mogi_emulator::emulator::abstractions::emulator::Scheduler;
+use mogi_emulator::emulator::interface::error::{
     SchedulerError,
     StopReason,
 };
-use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
-use fuzzyemu::emulator::platform::linux::scheduler::LinuxX86Scheduler;
-use fuzzyemu::emulator::system::clock::Clock;
-use fuzzyemu::emulator::system::fd_map::FileDescriptorMap;
-use fuzzyemu::emulator::system::filesystem::Filesystem;
-use fuzzyemu::emulator::system::hardware::unicorn::UCWrapper;
-use fuzzyemu::emulator::system::memory::Memory;
-use fuzzyemu::emulator::system::prng::SeedablePrngMap;
-use fuzzyemu::emulator::system::task_manager::TaskManager;
-use fuzzyemu::emulator::system::System;
+use mogi_emulator::emulator::platform::linux::kernel::LinuxKernelTask;
+use mogi_emulator::emulator::platform::linux::scheduler::LinuxX86Scheduler;
+use mogi_emulator::emulator::system::clock::Clock;
+use mogi_emulator::emulator::system::fd_map::FileDescriptorMap;
+use mogi_emulator::emulator::system::filesystem::Filesystem;
+use mogi_emulator::emulator::system::hardware::unicorn::UCWrapper;
+use mogi_emulator::emulator::system::memory::Memory;
+use mogi_emulator::emulator::system::prng::SeedablePrngMap;
+use mogi_emulator::emulator::system::task_manager::TaskManager;
+use mogi_emulator::emulator::system::System;
 
 use crate::common::mocks::tcp_system::MockTCPSystem;
 use crate::common::TestFailure;
-use fuzzyemu::emulator::abstractions::kernel_task::KernelTask;
-use fuzzyemu::emulator::abstractions::mmu::MemoryError;
-use fuzzyemu::emulator::system::memory::MappingType;
+use mogi_emulator::emulator::abstractions::kernel_task::KernelTask;
+use mogi_emulator::emulator::abstractions::mmu::MemoryError;
+use mogi_emulator::emulator::system::memory::MappingType;
 use tracing::debug;
 use tracing_subscriber::filter::LevelFilter;
 

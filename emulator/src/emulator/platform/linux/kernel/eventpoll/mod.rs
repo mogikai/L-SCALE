@@ -10,23 +10,18 @@ use imbl::OrdMap;
 use num_enum::TryFromPrimitive;
 use tracing::trace;
 
-use fuzzyemu_derive::{
+use mogi_derive::{
     unfinished,
     Decode,
     Encode,
     RequiredMem,
 };
+use mogi_utilities::addresses::EVAddr;
 
-use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::file_descriptors::{
     FileDescriptorOps,
     FileOperationsReady,
-};
-use crate::emulator::abstractions::mmu::encoding::{
-    Decode,
-    Encode,
-    RequiredMem,
 };
 use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;

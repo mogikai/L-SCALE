@@ -2,14 +2,11 @@ use std::num::TryFromIntError;
 use std::time::Duration;
 
 use generational_arena::Index;
+use mogi_utilities::addresses::EVAddr;
 use thiserror::Error;
-
-use address::EVAddr;
 
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::interface::error::StopReason;
-
-pub mod address;
 
 #[derive(Error, Debug, Copy, Clone)]
 pub enum CPUError {

@@ -5,15 +5,15 @@ use num_enum::{
     TryFromPrimitive,
 };
 
-use fuzzyemu_derive::RequiredMem;
-
-use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
-use crate::emulator::abstractions::mmu::encoding::{
+use mogi_derive::RequiredMem;
+use mogi_utilities::encoding::{
     Decode,
     Encode,
     RequiredMem,
 };
-use crate::emulator::abstractions::mmu::MemoryError;
+use mogi_utilities::error::memory::MemoryError;
+
+use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
 use crate::emulator::abstractions::network::{
     IPAddress,
     NetworkError,

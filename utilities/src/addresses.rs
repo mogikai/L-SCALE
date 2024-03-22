@@ -3,10 +3,7 @@ use std::fmt::{
     Formatter,
 };
 use std::ops::{
-    Add,
     AddAssign,
-    BitAnd,
-    Not,
     Sub,
 };
 
@@ -23,11 +20,13 @@ use serde::{
     Serialize,
 };
 
-use fuzzyemu_derive::{
+use mogi_derive::{
     Decode,
     Encode,
     RequiredMem,
 };
+
+use crate as mogi_utilities;
 
 /// Emulated virtual address
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]

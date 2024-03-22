@@ -1,10 +1,16 @@
 use bitflags::bitflags;
-use byteorder::{ByteOrder, LittleEndian};
+use byteorder::{
+    ByteOrder,
+    LittleEndian,
+};
+use mogi_utilities::addresses::EVAddr;
 
-use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::kernel::LinuxKernelError;
-use crate::emulator::platform::linux::signals::{Signal, SignalAction};
+use crate::emulator::platform::linux::signals::{
+    Signal,
+    SignalAction,
+};
 
 #[derive(Debug)]
 pub enum X86 {}

@@ -2,6 +2,7 @@ use std::backtrace::Backtrace;
 use std::convert::Infallible;
 use std::error::Error;
 
+use mogi_utilities::error::memory::MemoryError;
 use thiserror::Error;
 
 use crate::emulator::abstractions::cpu::CPUError;
@@ -10,7 +11,6 @@ use crate::emulator::abstractions::errors::{
     GenericErrorKind,
 };
 use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
-use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 use crate::emulator::system::filesystem::FSError;
 

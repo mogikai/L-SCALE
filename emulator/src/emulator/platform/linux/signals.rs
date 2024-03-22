@@ -1,12 +1,12 @@
 use std::fmt::Debug;
 
 use enumset::EnumSetType;
+use mogi_utilities::addresses::EVAddr;
 use tracing::{
     debug,
     error,
 };
 
-use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::platform::linux::fd::FD;
 use crate::emulator::platform::linux::kernel::LinuxKernelError;
 

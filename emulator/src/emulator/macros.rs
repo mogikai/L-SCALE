@@ -20,9 +20,9 @@ macro_rules! push_stack {
 
 macro_rules! read_osstring {
     ($memory:expr, $addr:expr) => {{
+        use mogi_utilities::error::memory::MemoryError;
         use std::ffi::OsString;
         use std::os::unix::ffi::OsStringExt;
-        use $crate::emulator::abstractions::mmu::MemoryError;
         //todo better define path_max
         $memory.read_bytes($addr, 4096).and_then(|bytes| {
             // TODO: This should be a more specific memory error. String not null terminated or smth

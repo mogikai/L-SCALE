@@ -4,14 +4,14 @@ use bitflags::{
 };
 use byteorder::ByteOrder;
 
-use fuzzyemu_derive::RequiredMem;
-
-use crate::emulator::abstractions::file_descriptors::FileOperationsReady;
-use crate::emulator::abstractions::mmu::encoding::{
+use mogi_derive::RequiredMem;
+use mogi_utilities::encoding::{
     Decode,
     Encode,
 };
-use crate::emulator::abstractions::mmu::MemoryError;
+use mogi_utilities::error::memory::MemoryError;
+
+use crate::emulator::abstractions::file_descriptors::FileOperationsReady;
 
 bitflags! {
     #[derive(Debug, RequiredMem, Copy, Clone)]

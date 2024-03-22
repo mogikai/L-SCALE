@@ -1,9 +1,9 @@
 use bitflags::Flags;
 use byteorder::ByteOrder;
+use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::error::memory::MemoryError;
 
-use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::mmu::{
-    MemoryError,
     Permission,
     MMU,
 };

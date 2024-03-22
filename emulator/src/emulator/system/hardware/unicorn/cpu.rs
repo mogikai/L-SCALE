@@ -3,14 +3,14 @@ use std::rc::Rc;
 use std::time::Duration;
 use tracing::trace;
 
+use mogi_utilities::addresses::{
+    EVAddr,
+    EVA_NULL,
+};
 use unicorn_engine::unicorn_const::uc_error;
 use unicorn_engine::RegisterX86;
 
 use crate::emulator::abstractions::cpu;
-use crate::emulator::abstractions::cpu::address::{
-    EVAddr,
-    EVA_NULL,
-};
 use crate::emulator::abstractions::cpu::{
     CPUError,
     ContextHandle,

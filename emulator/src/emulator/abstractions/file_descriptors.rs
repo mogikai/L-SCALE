@@ -3,10 +3,9 @@ use std::fmt::Debug;
 
 use bitflags::bitflags;
 use derive_more::Display;
+use mogi_utilities::error::memory::MemoryError;
 
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::mmu::encoding::Encode;
-use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::abstractions::network::{
     ShutdownMethod,
     SocketAddress,

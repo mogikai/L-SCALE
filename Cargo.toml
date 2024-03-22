@@ -1,13 +1,13 @@
 [workspace]
 members = [
     "emulator",
-    "emulator-derive",
+    "derive",
     "fuzzer",
     "gui",
     "samples",
     "glaze/cpu",
-    "glaze/mem"
-]
+    "glaze/mem",
+    "utilities"]
 exclude = [
     "deps"
 ]

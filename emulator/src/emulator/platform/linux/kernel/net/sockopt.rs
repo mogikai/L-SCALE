@@ -1,9 +1,3 @@
-use crate::emulator::abstractions::mmu::encoding::{
-    Decode,
-    Encode,
-    RequiredMem,
-};
-use crate::emulator::abstractions::mmu::MemoryError;
 use crate::emulator::platform::linux::kernel::LinuxKernelError;
 use byteorder::ByteOrder;
 use num_enum::{

@@ -1,0 +1,22 @@
+[package]
+name = "mogi_utilities"
+version = "0.1.0"
+edition = "2021"
+authors = ["The Mogi Project Developers"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/mlgiraud/mogi"
+description = "A set of utilities used by different parts of the FUZE emuator"
+readme = "README.md"
+keywords = ["emulation", "utilities", "mogi"]
+exclude = [".idea"]
+
+[dependencies]
+static_assertions = "1.1.0"
+byteorder = "1.5.0"
+thiserror = "1.0.58"
+mogi_derive = { path = "../derive", version = "0.1.0" }
+derive_more = { version = "1.0.0-beta.6", features = ["full"] }
+serde = { version = "1.0.197", features = ["derive"], optional = true }
+
+[features]
+serde = ["dep:serde"]

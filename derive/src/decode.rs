@@ -22,11 +22,11 @@ pub fn derive_decode_impl(input: DeriveInput) -> TokenStream {
     let decode = decode(&input.data);
     quote! {
         #[automatically_derived]
-        impl #impl_generics crate::emulator::abstractions::mmu::encoding::Decode for #name #ty_generics #where_clause {
-            fn decode<Endianness: byteorder::ByteOrder>(buffer: &[u8]) -> Result<Self, crate::emulator::abstractions::mmu::MemoryError> {
-                use crate::emulator::abstractions::mmu::encoding::RequiredMem;
+        impl #impl_generics mogi_utilities::encoding::Decode for #name #ty_generics #where_clause {
+            fn decode<Endianness: byteorder::ByteOrder>(buffer: &[u8]) -> Result<Self, mogi_utilities::error::memory::MemoryError> {
+                use mogi_utilities::encoding::RequiredMem;
                 if buffer.len() != Self::required_mem() {
-                    Err(crate::emulator::abstractions::mmu::MemoryError::InsufficientSize)?
+                    Err(mogi_utilities::error::memory::MemoryError::InsufficientSize)?
                 }
                 #decode
             }
@@ -39,7 +39,7 @@ fn trait_bounds(mut generics: Generics) -> Generics {
         if let GenericParam::Type(ref mut type_param) = *param {
             type_param
                 .bounds
-                .push(parse_quote!(fuzzyemu::emulator::abstractions::mmu::encoding::Decode));
+                .push(parse_quote!(mogi_utilities::encoding::Decode));
         }
     }
     generics

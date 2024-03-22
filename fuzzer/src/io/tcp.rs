@@ -1,30 +1,27 @@
-use std::cell::RefCell;
 use std::cmp::min;
 use std::collections::VecDeque;
-use std::marker::PhantomData;
 use std::mem::swap;
-use tracing::trace;
 
-use fuzzyemu::emulator::abstractions::errors::{
+use mogi_emulator::emulator::abstractions::errors::{
     GenericError,
     GenericErrorKind,
 };
-use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
-use fuzzyemu::emulator::abstractions::network::tcp_system::TCPSystem;
-use fuzzyemu::emulator::abstractions::network::{
+use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
+use mogi_emulator::emulator::abstractions::network::tcp_system::TCPSystem;
+use mogi_emulator::emulator::abstractions::network::{
     NetworkError,
     ShutdownMethod,
     SocketAddress,
     SocketId,
 };
-use fuzzyemu::emulator::abstractions::restore::Restorable;
-use fuzzyemu::emulator::interface::network::tcp::{
+use mogi_emulator::emulator::abstractions::restore::Restorable;
+use mogi_emulator::emulator::interface::network::tcp::{
     StreamId,
     TCPSocket,
     TCPSystemControl,
 };
-use fuzzyemu::util::auto_key::lazy_clone_map::LazyCloneMap;
-use fuzzyemu::util::rcow::RCow;
+use mogi_emulator::util::auto_key::lazy_clone_map::LazyCloneMap;
+use mogi_emulator::util::rcow::RCow;
 
 #[derive(Debug, Default)]
 pub struct TCP {

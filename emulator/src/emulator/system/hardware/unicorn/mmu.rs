@@ -1,3 +1,5 @@
+use mogi_utilities::addresses::EPAddr;
+use mogi_utilities::error::memory::MemoryError;
 use tracing::trace;
 use unicorn_engine::unicorn_const as uc_const;
 use unicorn_engine::unicorn_const::{
@@ -5,10 +7,8 @@ use unicorn_engine::unicorn_const::{
     MemType,
 };
 
-use crate::emulator::abstractions::cpu::address::EPAddr;
 use crate::emulator::abstractions::mmu::{
     MemoryAction,
-    MemoryError,
     Permission,
     MMU,
 };
@@ -23,7 +23,8 @@ impl MMU for UCWrapper<'_> {
     ) -> Result<(), MemoryError> {
         Ok(self
             .uc_mut()
-            .mem_map(address.into(), size, perms.try_into()?)?)
+            .mem_map(address.into(), size, perms.try_into()?)
+            .map_err(|_| MemoryError::Unknown)?)
     }
 
     fn mem_unmap(
@@ -31,7 +32,10 @@ impl MMU for UCWrapper<'_> {
         address: EPAddr,
         size: usize,
     ) -> Result<(), MemoryError> {
-        Ok(self.uc_mut().mem_unmap(address.into(), size)?)
+        Ok(self
+            .uc_mut()
+            .mem_unmap(address.into(), size)
+            .map_err(|_| MemoryError::Unknown)?)
     }
 
     fn mem_read_bytes(
@@ -39,7 +43,10 @@ impl MMU for UCWrapper<'_> {
         address: EPAddr,
         len: usize,
     ) -> Result<Vec<u8>, MemoryError> {
-        Ok(self.uc().mem_read_as_vec(address.into(), len)?)
+        Ok(self
+            .uc()
+            .mem_read_as_vec(address.into(), len)
+            .map_err(|_| MemoryError::Unknown)?)
     }
 
     fn mem_write_bytes(
@@ -47,12 +54,17 @@ impl MMU for UCWrapper<'_> {
         address: EPAddr,
         data: &[u8],
     ) -> Result<usize, MemoryError> {
-        self.uc_mut().mem_write(address.into(), data)?;
+        self.uc_mut()
+            .mem_write(address.into(), data)
+            .map_err(|_| MemoryError::Unknown)?;
         Ok(data.len())
     }
 
     fn flush_tlb(&mut self) -> Result<(), MemoryError> {
-        Ok(self.uc_mut().ctl_flush_tlb()?)
+        Ok(self
+            .uc_mut()
+            .ctl_flush_tlb()
+            .map_err(|_| MemoryError::Unknown)?)
     }
 }
 
@@ -70,13 +82,6 @@ impl From<MemType> for MemoryAction {
             MemType::FETCH_PROT => MemoryAction::FETCH_PROT,
             MemType::READ_AFTER => MemoryAction::READ_AFTER,
         }
-    }
-}
-
-impl From<uc_error> for MemoryError {
-    fn from(e: uc_error) -> Self {
-        trace!("UC ERROR: {:?}", e);
-        MemoryError::Unknown
     }
 }
 

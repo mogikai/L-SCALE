@@ -6,24 +6,24 @@ use bitflags::{
 };
 use byteorder::ByteOrder;
 
-use fuzzyemu_derive::unfinished;
+use mogi_derive::unfinished;
 
 use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
 use crate::emulator::abstractions::filesystem::FileId;
 use crate::emulator::macros::*;
 use crate::emulator::platform::linux::fd::{
-    FD,
     FileDescriptorData,
+    FD,
 };
-use crate::emulator::platform::linux::kernel::*;
 use crate::emulator::platform::linux::kernel::error::SyscallError::KernelError;
 use crate::emulator::platform::linux::kernel::fs::fd_ops::FileOps;
+use crate::emulator::platform::linux::kernel::*;
+use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 use crate::emulator::system::fd_map::{
     FileDescriptor,
     FileDescriptorMap,
     InternalFD,
 };
-use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 use crate::emulator::system::filesystem::Filesystem;
 use crate::emulator::system::memory::rw_interface::{
     DirectMemoryWrite,

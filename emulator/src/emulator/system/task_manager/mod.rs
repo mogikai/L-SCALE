@@ -1,6 +1,5 @@
 mod restorable;
 
-use crate::emulator::abstractions::cpu::address::EVAddr;
 use crate::emulator::abstractions::cpu::{
     CPUError,
     ContextHandle,
@@ -14,6 +13,7 @@ use crate::emulator::system::task_manager::restorable::{
     TaskManagerSnapshot,
     TaskSnapshot,
 };
+use mogi_utilities::addresses::EVAddr;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt::Debug;

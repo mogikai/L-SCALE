@@ -4,13 +4,13 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::rc::Rc;
-use std::sync::{
-    Arc,
-    mpsc,
-};
 use std::sync::atomic::{
     AtomicUsize,
     Ordering,
+};
+use std::sync::{
+    mpsc,
+    Arc,
 };
 use std::thread;
 
@@ -20,8 +20,8 @@ use parking_lot::{
     MutexGuard,
 };
 
-use fuzzyemu::emulator::abstractions::cpu::address::EVAddr;
-use fuzzyemu::emulator::abstractions::hooks::Hooks;
+use mogi_emulator::emulator::abstractions::hooks::Hooks;
+use mogi_utilities::addresses::EVAddr;
 
 use crate::api::observer::{
     DebuggableObserve,

@@ -19,53 +19,53 @@ use std::time::{
 use clap::Parser;
 use rand::seq::SliceRandom;
 use tracing::debug;
-use tracing_subscriber::{
-    EnvFilter,
-    fmt,
-};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{
+    fmt,
+    EnvFilter,
+};
 
-use fuzzyemu::emulator::abstractions::cpu::CPU;
-use fuzzyemu::emulator::abstractions::errors::GenericError;
-use fuzzyemu::emulator::abstractions::file_descriptors::FileOperationsReady;
-use fuzzyemu::emulator::abstractions::hooks::Hooks;
-use fuzzyemu::emulator::abstractions::kernel_task::KernelTask;
-use fuzzyemu::emulator::abstractions::mmu::MemoryError;
-use fuzzyemu::emulator::abstractions::network::{
+use mogi_emulator::emulator::abstractions::cpu::CPU;
+use mogi_emulator::emulator::abstractions::errors::GenericError;
+use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
+use mogi_emulator::emulator::abstractions::hooks::Hooks;
+use mogi_emulator::emulator::abstractions::kernel_task::KernelTask;
+use mogi_emulator::emulator::abstractions::network::{
     IPAddress,
     SocketAddress,
 };
-use fuzzyemu::emulator::abstractions::restore::Restorable;
-use fuzzyemu::emulator::GenericEmulator;
-use fuzzyemu::emulator::interface::emulator::{
+use mogi_emulator::emulator::abstractions::restore::Restorable;
+use mogi_emulator::emulator::interface::emulator::{
     Emulator,
     ExitReason,
 };
-use fuzzyemu::emulator::interface::error::{
+use mogi_emulator::emulator::interface::error::{
     EmulatorError,
     SchedulerError,
     StopReason,
 };
-use fuzzyemu::emulator::interface::network::tcp::{
+use mogi_emulator::emulator::interface::network::tcp::{
     TCPSocket,
     TCPSystemControl,
 };
-use fuzzyemu::emulator::platform::linux::kernel::LinuxKernelTask;
-use fuzzyemu::emulator::platform::linux::scheduler::LinuxX86Scheduler;
-use fuzzyemu::emulator::system::clock::Clock;
-use fuzzyemu::emulator::system::fd_map::FileDescriptorMap;
-use fuzzyemu::emulator::system::filesystem::Filesystem;
-use fuzzyemu::emulator::system::hardware::unicorn::UCWrapper;
-use fuzzyemu::emulator::system::memory::{
+use mogi_emulator::emulator::platform::linux::kernel::LinuxKernelTask;
+use mogi_emulator::emulator::platform::linux::scheduler::LinuxX86Scheduler;
+use mogi_emulator::emulator::system::clock::Clock;
+use mogi_emulator::emulator::system::fd_map::FileDescriptorMap;
+use mogi_emulator::emulator::system::filesystem::Filesystem;
+use mogi_emulator::emulator::system::hardware::unicorn::UCWrapper;
+use mogi_emulator::emulator::system::memory::{
     MappingType,
     Memory,
 };
-use fuzzyemu::emulator::system::prng::SeedablePrngMap;
-use fuzzyemu::emulator::system::System;
-use fuzzyemu::emulator::system::task_manager::TaskManager;
-use fuzzyemu::LittleEndian;
-use fuzzyfuzz::io::tcp::TCP;
+use mogi_emulator::emulator::system::prng::SeedablePrngMap;
+use mogi_emulator::emulator::system::task_manager::TaskManager;
+use mogi_emulator::emulator::system::System;
+use mogi_emulator::emulator::GenericEmulator;
+use mogi_emulator::LittleEndian;
+use mogi_fuzzer::io::tcp::TCP;
+use mogi_utilities::error::memory::MemoryError;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
