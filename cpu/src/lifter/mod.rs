@@ -1228,7 +1228,7 @@ pub fn register_halt_patcher(lifter: &mut BlockLifter) {
                 let [cond, next_addr] = jump.inputs.get();
                 if cond.const_eq(1) && next_addr.const_eq(current_addr) {
                     block.instructions.truncate(1);
-                    block.push((pcode::Op::Exception, (crate::ExceptionCode::Halt as u32, 0_u64)));
+                    block.push((pcode::Op::Exception, (crate::cpu::exception::ExceptionCode::Halt as u32, 0_u64)));
                 }
             }
         }

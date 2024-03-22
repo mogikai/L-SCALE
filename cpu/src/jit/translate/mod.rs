@@ -18,24 +18,24 @@ use cranelift_module::{
 };
 use memoffset::offset_of;
 
-use crate::{
-    CpuCore,
-    Exception,
-    ExceptionCode,
-    pcode,
-    Regs,
-};
 use crate::core::Fuel;
+use crate::cpu::exception::ExceptionCode;
+use crate::jit::translate::ops::Ctx;
 use crate::jit::{
     CompilationTarget,
     MemHandler,
     VmCtx,
 };
-use crate::jit::translate::ops::Ctx;
 use crate::lifter::{
     Block as IcicleBlock,
     BlockExit,
     Target,
+};
+use crate::{
+    pcode,
+    CpuCore,
+    Exception,
+    Regs,
 };
 
 mod mem;

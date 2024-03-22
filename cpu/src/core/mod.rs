@@ -16,6 +16,7 @@ use crate::core::regs::{
     ValueSource,
 };
 use crate::core::trace::Trace;
+use crate::cpu::exception::ExceptionCode;
 use crate::exec::helpers::{
     self,
     PcodeOpHelper,
@@ -32,7 +33,6 @@ use crate::pcode::PcodeDisplay;
 use crate::sleigh::runtime::SleighData;
 use crate::{
     pcode,
-    ExceptionCode,
     InstHook,
     VarSource,
 };

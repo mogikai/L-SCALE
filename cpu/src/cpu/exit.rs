@@ -1,4 +1,4 @@
-use crate::ExceptionCode;
+use crate::cpu::exception::ExceptionCode;
 
 #[derive(PartialEq, Eq, Copy, Clone)]
 pub enum CpuExitStatus {

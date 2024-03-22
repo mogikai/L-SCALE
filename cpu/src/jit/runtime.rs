@@ -1,3 +1,4 @@
+use crate::cpu::exception::ExceptionCode;
 use crate::jit::{
     JitFunction,
     VmCtx,
@@ -6,7 +7,6 @@ use crate::mem::perm;
 use crate::{
     pcode,
     CpuCore,
-    ExceptionCode,
 };
 
 pub fn call_jit_compilation_error() -> JitFunction {

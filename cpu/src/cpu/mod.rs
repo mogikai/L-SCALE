@@ -5,6 +5,7 @@ use std::collections::{
 use std::rc::Rc;
 
 use cranelift_codegen::ir::Endianness;
+use exception::ExceptionCode;
 
 use crate::cpu::injector::{
     CodeInjector,
@@ -39,7 +40,6 @@ use crate::{
     CpuSnapshot,
     DecodeError,
     Exception,
-    ExceptionCode,
     InternalError,
     ValueSource,
 };
@@ -47,6 +47,7 @@ use crate::{
 pub mod api;
 pub mod builder;
 mod debug;
+pub mod exception;
 pub mod exit;
 mod injector;
 

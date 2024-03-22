@@ -3,6 +3,7 @@ use std::mem::size_of;
 use cranelift::prelude::*;
 use memoffset::offset_of;
 
+use crate::cpu::exception::ExceptionCode;
 use crate::jit::translate::{
     is_jit_supported_size,
     sized_float,
@@ -17,7 +18,6 @@ use crate::jit::{
 use crate::{
     pcode,
     CpuCore,
-    ExceptionCode,
 };
 
 pub enum Overflow {

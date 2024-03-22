@@ -2,14 +2,12 @@ use half::f16;
 
 use glaze_mem::MemResult;
 
-use crate::{
-    ExceptionCode,
-    pcode,
-};
 use crate::core::regs::{
     resize_sxt,
     ValueSource,
 };
+use crate::cpu::exception::ExceptionCode;
+use crate::pcode;
 use crate::pcode::{
     MemId,
     Value,
