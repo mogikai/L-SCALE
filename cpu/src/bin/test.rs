@@ -2,6 +2,7 @@ extern crate core;
 
 use std::cell::RefCell;
 use std::rc::Rc;
+
 use target_lexicon::Triple;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -10,18 +11,18 @@ use tracing_subscriber::{
     EnvFilter,
 };
 
-use glaze_cpu::cpu::builder::build;
-use glaze_cpu::mem::perm::{
+use glaze_mem::Mmu;
+use mogi_cpu::cpu::builder::build;
+use mogi_cpu::mem::perm::{
     EXEC,
     READ,
     WRITE,
 };
-use glaze_cpu::mem::{
+use mogi_cpu::mem::{
     AllocLayout,
     UnallocatedMemory,
 };
-use glaze_cpu::Config;
-use glaze_mem::Mmu;
+use mogi_cpu::Config;
 
 fn main() {
     tracing_subscriber::registry()

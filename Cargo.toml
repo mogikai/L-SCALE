@@ -5,11 +5,13 @@ members = [
     "fuzzer",
     "gui",
     "samples",
-    "cpu/cpu",
-    "cpu/mem",
+    "cpu",
+    "mem",
     "utilities"]
+
 exclude = [
-    "deps"
+    "deps",
+    "cpu/Ghidra"
 ]
 
 resolver = "2"
