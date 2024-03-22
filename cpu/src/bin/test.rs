@@ -31,7 +31,7 @@ fn main() {
         .init();
     let mmu = Rc::new(RefCell::new(Mmu::new()));
     let mut cpu = build(
-        mmu,
+        mmu.clone(),
         &Config {
             triple: Triple::host(),
             enable_jit: true,
@@ -45,9 +45,7 @@ fn main() {
     )
     .unwrap();
 
-    cpu.core
-        .mem
-        .borrow_mut()
+    mmu.borrow_mut()
         .alloc_memory(
             AllocLayout {
                 addr: Some(0x100_000),
@@ -63,14 +61,10 @@ fn main() {
     cpu.write_reg("RAX", 42).unwrap();
     cpu.write_reg("RBX", 42).unwrap();
     cpu.write_pc(0x100_000).unwrap();
-    cpu.core
-        .mem
-        .borrow_mut()
+    mmu.borrow_mut()
         .write_bytes(0x100_000, &[0x48, 0x01, 0xD8], READ | WRITE | EXEC)
         .unwrap();
-    cpu.core
-        .mem
-        .borrow_mut()
+    mmu.borrow_mut()
         .write(0x100_010, [0x0f, 0x05], READ | WRITE | EXEC)
         .unwrap();
 

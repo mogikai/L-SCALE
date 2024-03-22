@@ -524,7 +524,7 @@ fn build_sleigh(config: &mut SpecConfig) -> Result<SleighData, BuildError> {
 fn get_path_to_ghidra_file(file: &str) -> std::path::PathBuf {
     std::env::var_os("GHIDRA_SRC")
         .map_or_else(|| ".".into(), std::path::PathBuf::from)
-        .join("../../../Ghidra/Ghidra/Processors")
+        .join("cpu/Ghidra/Ghidra/Processors")
         .join(file)
 }
 

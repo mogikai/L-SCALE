@@ -53,7 +53,7 @@ mod injector;
 const TRACE_EXEC: bool = false;
 
 pub struct Cpu {
-    pub core: Box<CpuCore>,
+    core: Box<CpuCore>,
     lifter: lifter::BlockLifter,
     icount_limit: u64,
     next_timer: u64,
