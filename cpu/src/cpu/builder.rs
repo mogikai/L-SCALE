@@ -191,7 +191,7 @@ fn register_helpers_for(
 }
 
 // @todo: load this from Ghidra's compiler spec?
-struct CallingCovSpec {
+struct CallingConvSpec {
     /// Represents registers used for passing integers to functions, these will be chosen before
     /// parameters on the stack
     integers: Vec<&'static str>,
@@ -221,7 +221,7 @@ struct SpecConfig {
     temp_registers: Vec<&'static str>,
     /// A specification of the default calling convention for this architecture.
     // @fixme: This can differ even for the same CPU architecture (e.g. for different compilers).
-    calling_cov: CallingCovSpec,
+    calling_cov: CallingConvSpec,
     /// Boot function for the VM to use.
     on_boot: fn(&mut CpuCore, u64),
 }
@@ -312,7 +312,7 @@ fn get_spec_config(arch: target_lexicon::Architecture) -> Option<SpecConfig> {
                     "mult_dat8",
                     "mult_dat16",
                 ],
-                calling_cov: CallingCovSpec {
+                calling_cov: CallingConvSpec {
                     integers: vec!["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7"],
                     stack_align: 4,
                     stack_offset: 0,
@@ -330,7 +330,7 @@ fn get_spec_config(arch: target_lexicon::Architecture) -> Option<SpecConfig> {
                 ("dczid_el0", 0x10), // disable DC ZVA instructions
             ],
             temp_registers: vec!["tmpCY", "tmpOV", "tmpNG", "tmpZR", "shift_carry"],
-            calling_cov: CallingCovSpec {
+            calling_cov: CallingConvSpec {
                 integers: vec!["x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7"],
                 stack_align: 8,
                 stack_offset: 0,
@@ -353,7 +353,7 @@ fn get_spec_config(arch: target_lexicon::Architecture) -> Option<SpecConfig> {
                 context: vec![generic::CTX],
                 init_registers: vec![],
                 temp_registers: vec![],
-                calling_cov: CallingCovSpec {
+                calling_cov: CallingConvSpec {
                     integers: vec!["a0", "a1", "a2", "a3"],
                     stack_align: 4,
                     stack_offset: 0,
@@ -369,7 +369,7 @@ fn get_spec_config(arch: target_lexicon::Architecture) -> Option<SpecConfig> {
             context: vec![generic::CTX],
             init_registers: vec![],
             temp_registers: vec![],
-            calling_cov: CallingCovSpec {
+            calling_cov: CallingConvSpec {
                 integers: vec!["R12", "R13", "R14", "R15"],
                 stack_align: 2,
                 stack_offset: 0,
@@ -384,7 +384,7 @@ fn get_spec_config(arch: target_lexicon::Architecture) -> Option<SpecConfig> {
             context: vec![generic::CTX],
             init_registers: vec![],
             temp_registers: vec![],
-            calling_cov: CallingCovSpec {
+            calling_cov: CallingConvSpec {
                 integers: vec!["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7"],
                 stack_align: 4,
                 stack_offset: 0,
@@ -399,7 +399,7 @@ fn get_spec_config(arch: target_lexicon::Architecture) -> Option<SpecConfig> {
             context: vec![generic::CTX],
             init_registers: vec![],
             temp_registers: vec![],
-            calling_cov: CallingCovSpec {
+            calling_cov: CallingConvSpec {
                 integers: vec!["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"],
                 stack_align: 4,
                 stack_offset: 0,
@@ -414,7 +414,7 @@ fn get_spec_config(arch: target_lexicon::Architecture) -> Option<SpecConfig> {
             context: vec![generic::CTX],
             init_registers: vec![],
             temp_registers: vec![],
-            calling_cov: CallingCovSpec {
+            calling_cov: CallingConvSpec {
                 integers: vec!["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"],
                 stack_align: 8,
                 stack_offset: 0,
@@ -429,7 +429,7 @@ fn get_spec_config(arch: target_lexicon::Architecture) -> Option<SpecConfig> {
             context: vec![],
             init_registers: vec![],
             temp_registers: vec![],
-            calling_cov: CallingCovSpec {
+            calling_cov: CallingConvSpec {
                 integers: vec![],
                 stack_align: 4,
                 stack_offset: 0,
@@ -444,7 +444,7 @@ fn get_spec_config(arch: target_lexicon::Architecture) -> Option<SpecConfig> {
             context: vec![],
             init_registers: vec![],
             temp_registers: vec![],
-            calling_cov: CallingCovSpec {
+            calling_cov: CallingConvSpec {
                 integers: vec!["RDI", "RSI", "RDX", "RCX", "R8", "R9"],
                 stack_align: 8,
                 stack_offset: 0,
@@ -459,7 +459,7 @@ fn get_spec_config(arch: target_lexicon::Architecture) -> Option<SpecConfig> {
             context: vec![generic::CTX],
             init_registers: vec![],
             temp_registers: vec![],
-            calling_cov: CallingCovSpec {
+            calling_cov: CallingConvSpec {
                 integers: vec!["a2", "a3", "a4", "a5", "a6", "a7"],
                 stack_align: 4,
                 stack_offset: 0,
@@ -474,7 +474,7 @@ fn get_spec_config(arch: target_lexicon::Architecture) -> Option<SpecConfig> {
             context: vec![generic::CTX],
             init_registers: vec![],
             temp_registers: vec![],
-            calling_cov: CallingCovSpec {
+            calling_cov: CallingConvSpec {
                 integers: vec![],
                 stack_align: 4,
                 stack_offset: 0,
