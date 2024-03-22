@@ -1,3 +1,6 @@
 [submodule "deps/unicorn"]
 	path = deps/unicorn
 	url = https://github.com/unicorn-engine/unicorn
+[submodule "cpu/Ghidra"]
+	path = cpu/Ghidra
+	url = git@github.com:icicle-emu/ghidra.git

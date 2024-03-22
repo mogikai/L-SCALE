@@ -5,8 +5,8 @@ members = [
     "fuzzer",
     "gui",
     "samples",
-    "glaze/cpu",
-    "glaze/mem",
+    "cpu/cpu",
+    "cpu/mem",
     "utilities"]
 exclude = [
     "deps"
