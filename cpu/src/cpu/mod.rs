@@ -2,6 +2,7 @@ use std::collections::{
     BTreeMap,
     HashSet,
 };
+use std::mem;
 use std::rc::Rc;
 
 use blocktable::{
@@ -12,6 +13,13 @@ use blocktable::{
 use cranelift_codegen::ir::Endianness;
 use exception::ExceptionCode;
 
+use crate::core::regs::ValueSource;
+use crate::core::{
+    CpuCore,
+    CpuSnapshot,
+    Exception,
+};
+use crate::cpu::exit::CpuExitStatus;
 use crate::cpu::injector::{
     CodeInjector,
     CodeInjectorAny,
@@ -30,20 +38,15 @@ use crate::jit::{
 };
 use crate::lifter::{
     count_instructions,
+    DecodeError,
+    InstructionSource,
     Target,
 };
 use crate::pcode::PcodeDisplay;
 use crate::{
     lifter,
-    mem,
     pcode,
-    CpuCore,
-    CpuExitStatus,
-    CpuSnapshot,
-    DecodeError,
-    Exception,
     InternalError,
-    ValueSource,
 };
 
 pub mod api;
@@ -1032,5 +1035,5 @@ impl Cpu {
 
 pub struct Snapshot {
     pub core: Box<CpuSnapshot>,
-    pub mem: mem::Snapshot,
+    pub mem: mogi_mem::Snapshot,
 }

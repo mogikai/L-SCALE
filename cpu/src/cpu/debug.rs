@@ -1,15 +1,15 @@
-use glaze_mem::perm;
+use crate::core::regs::ValueSource;
+use crate::core::CpuCore;
+use mogi_mem::{
+    perm,
+    Mmu,
+};
 
 use crate::cpu::Cpu;
-use crate::debug_info::SourceLocation;
 use crate::lifter::BlockGroup;
+use crate::pcode;
 use crate::pcode::PcodeDisplay;
 use crate::utils::get_u64;
-use crate::{
-    pcode,
-    CpuCore,
-    ValueSource,
-};
 
 pub fn dump_disasm(vm: &Cpu) -> Result<String, std::fmt::Error> {
     let sorted_groups = {
@@ -302,7 +302,7 @@ pub fn print_regs(
     output
 }
 
-pub fn get_debug_regs(cpu: &crate::CpuCore) -> Vec<pcode::VarNode> {
+pub fn get_debug_regs(cpu: &CpuCore) -> Vec<pcode::VarNode> {
     use target_lexicon::Architecture;
 
     let names = match cpu.arch.triple.architecture {
@@ -361,12 +361,12 @@ pub fn log_write(
     size: u8,
 ) {
     // @fixme: safety, make memory subsystem take CPU as a parameter.
-    let cpu_ptr = vm.core.as_mut() as *const crate::CpuCore;
+    let cpu_ptr = vm.core.as_mut() as *const CpuCore;
     let label = label.into();
     vm.core.mem.borrow_mut().add_write_hook(
         addr,
         addr + size as u64,
-        Box::new(move |_mem: &mut crate::mem::Mmu, addr: u64, value: &[u8]| {
+        Box::new(move |_mem: &mut Mmu, addr: u64, value: &[u8]| {
             let value = get_u64(value);
             let pc = unsafe { &mut (*cpu_ptr).read_pc() };
             let icount = unsafe { &mut (*cpu_ptr).icount() };

@@ -16,22 +16,21 @@ use cranelift::prelude::{
 use cranelift_codegen::ir::Endianness;
 use memoffset::offset_of;
 
+use mogi_mem::perm;
+use mogi_mem::physical::{
+    PageData,
+    OFFSET_BITS,
+};
+use mogi_mem::tlb::{
+    TLBEntry,
+    TranslationCache,
+    TLB_INDEX_BITS,
+};
+
 use crate::jit::translate::{
     is_jit_supported_size,
     sized_int,
     Translator,
-};
-use crate::mem::physical::{
-    PageData,
-    OFFSET_BITS,
-};
-use crate::mem::tlb::{
-    TLBEntry,
-    TLB_INDEX_BITS,
-};
-use crate::mem::{
-    self,
-    perm,
 };
 use crate::pcode;
 
@@ -51,12 +50,8 @@ impl AccessKind {
 
     fn tlb_offset(&self) -> i32 {
         match self {
-            Self::Load => offset_of!(mem::tlb::TranslationCache, read)
-                .try_into()
-                .unwrap(),
-            Self::Store => offset_of!(mem::tlb::TranslationCache, write)
-                .try_into()
-                .unwrap(),
+            Self::Load => offset_of!(TranslationCache, read).try_into().unwrap(),
+            Self::Store => offset_of!(TranslationCache, write).try_into().unwrap(),
         }
     }
 }
@@ -159,7 +154,7 @@ fn tlb_lookup_const(
     let tlb_entry_size: i64 = std::mem::size_of::<TLBEntry>().try_into().unwrap();
     assert_eq!(tlb_entry_size.count_ones(), 1);
 
-    let index = mem::tlb::TranslationCache::index(addr) as i64;
+    let index = TranslationCache::index(addr) as i64;
     let entry_offset = trans
         .builder
         .ins()

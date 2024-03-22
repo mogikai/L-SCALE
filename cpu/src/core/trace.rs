@@ -1,10 +1,8 @@
 use std::any::Any;
 use std::cell::UnsafeCell;
 
-use crate::{
-    pcode,
-    CpuCore,
-};
+use crate::core::CpuCore;
+use crate::pcode;
 
 #[derive(Default)]
 pub struct Trace {
@@ -130,7 +128,7 @@ impl TraceStore for (*mut u8, usize) {
     }
 }
 
-impl<T: bytemuck::Pod + bytemuck::Zeroable> TraceStore for &'static std::cell::UnsafeCell<T> {
+impl<T: bytemuck::Pod + bytemuck::Zeroable> TraceStore for &'static UnsafeCell<T> {
     fn data(&self) -> &[u8] {
         bytemuck::bytes_of(unsafe { self.get().as_ref().unwrap() })
     }
@@ -278,7 +276,8 @@ impl<H: HookHandler> From<H> for InstHook {
 #[cfg(test)]
 mod test {
     use super::*;
-    use glaze_mem::Mmu;
+    use crate::core::Arch;
+    use mogi_mem::Mmu;
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -287,8 +286,8 @@ mod test {
         let data = std::rc::Rc::new(std::cell::Cell::new(false));
         {
             let data = data.clone();
-            let mut hook = InstHook::new(move |_: &mut crate::CpuCore, _addr: u64| data.set(true));
-            hook.call(&mut CpuCore::new_boxed(Rc::new(RefCell::new(Mmu::new())), crate::Arch::none()), 0);
+            let mut hook = InstHook::new(move |_: &mut CpuCore, _addr: u64| data.set(true));
+            hook.call(&mut CpuCore::new_boxed(Rc::new(RefCell::new(Mmu::new())), Arch::none()), 0);
         }
         assert!(data.get())
     }
@@ -308,7 +307,7 @@ mod test {
         }
 
         let mut hook = InstHook::new(HookData(false));
-        hook.call(&mut CpuCore::new_boxed(Rc::new(RefCell::new(Mmu::new())), crate::Arch::none()), 0);
+        hook.call(&mut CpuCore::new_boxed(Rc::new(RefCell::new(Mmu::new())), Arch::none()), 0);
 
         assert!(hook.data_mut::<HookData>().unwrap().0)
     }

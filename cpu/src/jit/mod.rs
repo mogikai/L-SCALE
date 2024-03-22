@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::core::trace::HookTrampoline;
+use crate::core::CpuCore;
 use codegen::ir::Endianness;
 use cranelift::codegen::Context as CodeContext;
 use cranelift::prelude::*;
@@ -13,14 +15,11 @@ use cranelift_module::{
     Module,
     ModuleResult,
 };
+use mogi_mem::tlb::TranslationCache;
 
-use crate::{
-    CpuCore,
-    HookTrampoline,
-    pcode,
-};
 use crate::jit::translate::TranslatorCtx;
 use crate::lifter::Block as IcicleBlock;
+use crate::pcode;
 
 mod debug;
 pub mod runtime;
@@ -28,7 +27,7 @@ mod translate;
 
 #[repr(C)]
 pub struct VmCtx {
-    pub tlb_ptr: *mut crate::mem::tlb::TranslationCache,
+    pub tlb_ptr: *mut TranslationCache,
     pub tracer_mem: [*mut u8; MAX_TRACER_MEM],
     pub hooks: [HookData; MAX_HOOKS],
 }
@@ -153,7 +152,7 @@ pub struct JIT {
     /// The runtime functions available to the JIT.
     functions: RuntimeFunctions,
 
-    /// (debugging) Storage for writting the current IL to after compilation.
+    /// (debugging) Storage for writing the current IL to after compilation.
     /// If `None`, no IL will be written.
     pub il_dump: Option<String>,
 
@@ -236,7 +235,7 @@ impl JIT {
     ///
     /// This invalidates any references to the JITed functions.
     ///
-    /// @fixme: Prevent any references to JITed functions from occuring outside of the JIT.
+    /// @fixme: Prevent any references to JITed functions from occurring outside of the JIT.
     pub unsafe fn reset(&mut self) {
         self.clear();
 
@@ -424,7 +423,7 @@ impl JIT {
 }
 
 fn init_module(endianness: Endianness) -> (JITModule, RuntimeFunctions) {
-    let mut flag_builder = cranelift_codegen::settings::builder();
+    let mut flag_builder = settings::builder();
 
     // We will never relocate the JITed code, so we don't use position-independent-code to avoid
     // needing a GOT. (Note: this currently has a minimal impact on performance).

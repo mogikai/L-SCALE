@@ -1,3 +1,4 @@
+use crate::core::Arch;
 use crate::pcode;
 use crate::sleigh::runtime::SleighData;
 
@@ -164,14 +165,14 @@ pub fn parse_u64_with_prefix(value: &str) -> Option<u64> {
 }
 
 pub struct BasicInstructionSource {
-    pub arch: crate::Arch,
+    pub arch: Arch,
     base_addr: u64,
     mem: Vec<u8>,
 }
 
 impl BasicInstructionSource {
     pub fn new(sleigh: SleighData) -> Self {
-        let arch = crate::Arch {
+        let arch = Arch {
             triple: target_lexicon::Triple::unknown(),
             reg_pc: pcode::VarNode::new(0, 8),
             reg_next_pc: pcode::VarNode::NONE,
@@ -212,7 +213,7 @@ impl BasicInstructionSource {
 }
 
 impl crate::lifter::InstructionSource for BasicInstructionSource {
-    fn arch(&self) -> &crate::Arch {
+    fn arch(&self) -> &Arch {
         &self.arch
     }
 

@@ -1,15 +1,15 @@
-use crate::core::CallCov;
-use crate::cpu::Cpu;
-use crate::exec::helpers;
-use crate::sleigh::compile::from_path;
-use crate::sleigh::runtime::SleighData;
-use crate::{
-    lifter,
+use crate::config::Config;
+use crate::core::{
     Arch,
-    Config,
+    CallCov,
     CpuCore,
 };
-use glaze_mem::Mmu;
+use crate::cpu::Cpu;
+use crate::exec::helpers;
+use crate::lifter;
+use crate::sleigh::compile::from_path;
+use crate::sleigh::runtime::SleighData;
+use mogi_mem::Mmu;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -530,9 +530,8 @@ fn get_path_to_ghidra_file(file: &str) -> std::path::PathBuf {
 
 // @fixme: avoid making this pub when we refactor architecture specific CPU state.
 mod generic {
-    use crate::ValueSource;
-
     use super::*;
+    use crate::core::regs::ValueSource;
 
     pub fn on_boot(
         cpu: &mut CpuCore,
@@ -546,10 +545,8 @@ mod generic {
 }
 
 pub mod x86 {
-    use crate::{
-        CpuCore,
-        ValueSource,
-    };
+    use crate::core::regs::ValueSource;
+    use crate::core::CpuCore;
 
     /// Initial context register state (Ghidra 10.3) for `x86_64` processor running in long mode.
     ///

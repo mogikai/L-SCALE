@@ -1,12 +1,14 @@
+use crate::core::CpuCore;
 use crate::cpu::exception::ExceptionCode;
 use crate::jit::{
     JitFunction,
     VmCtx,
 };
-use crate::mem::perm;
-use crate::{
-    pcode,
-    CpuCore,
+use crate::pcode;
+use mogi_mem::perm::{
+    INIT,
+    READ,
+    WRITE,
 };
 
 pub fn call_jit_compilation_error() -> JitFunction {
@@ -66,12 +68,7 @@ fn load<const N: usize>(
     cpu_ptr: *mut CpuCore,
     addr: u64,
 ) -> [u8; N] {
-    let result = unsafe {
-        (*cpu_ptr)
-            .mem
-            .borrow_mut()
-            .read(addr, perm::READ | perm::INIT)
-    };
+    let result = unsafe { (*cpu_ptr).mem.borrow_mut().read(addr, READ | INIT) };
     match result {
         Ok(v) => v,
         Err(e) => {
@@ -135,7 +132,7 @@ fn store<const N: usize>(
     addr: u64,
     value: [u8; N],
 ) {
-    let result = unsafe { (*cpu_ptr).mem.borrow_mut().write(addr, value, perm::WRITE) };
+    let result = unsafe { (*cpu_ptr).mem.borrow_mut().write(addr, value, WRITE) };
     if let Err(e) = result {
         unsafe {
             (*cpu_ptr).exception.code = ExceptionCode::from_store_error(e) as u32;

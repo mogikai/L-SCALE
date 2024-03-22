@@ -18,7 +18,12 @@ use cranelift_module::{
 };
 use memoffset::offset_of;
 
-use crate::core::Fuel;
+use crate::core::regs::Regs;
+use crate::core::{
+    CpuCore,
+    Exception,
+    Fuel,
+};
 use crate::cpu::exception::ExceptionCode;
 use crate::jit::translate::ops::Ctx;
 use crate::jit::{
@@ -31,12 +36,7 @@ use crate::lifter::{
     BlockExit,
     Target,
 };
-use crate::{
-    pcode,
-    CpuCore,
-    Exception,
-    Regs,
-};
+use crate::pcode;
 
 mod mem;
 mod ops;

@@ -1,13 +1,11 @@
 use std::any::Any;
 
+use crate::core::trace::HookHandler;
+use crate::core::CpuCore;
 use crate::cpu::blocktable::BlockTable;
 use crate::cpu::Cpu;
-use crate::{
-    pcode,
-    BlockGroup,
-    CpuCore,
-    HookHandler,
-};
+use crate::lifter::BlockGroup;
+use crate::pcode;
 
 pub type InjectorRef = usize;
 

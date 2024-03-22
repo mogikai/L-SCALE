@@ -1,7 +1,7 @@
+use crate::lifter::BlockGroup;
 use crate::{
     lifter,
     pcode,
-    BlockGroup,
 };
 use hashbrown::{
     HashMap,

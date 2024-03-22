@@ -1,14 +1,12 @@
 use hashbrown::HashMap;
 
+use crate::core::CpuCore;
 use crate::cpu::exception::ExceptionCode;
 use crate::lifter::{
     BlockState,
     InstructionSource,
 };
-use crate::{
-    pcode,
-    CpuCore,
-};
+use crate::pcode;
 
 pub trait PcodeOpInjector {
     fn inject_ops(

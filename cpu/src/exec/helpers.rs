@@ -1,12 +1,10 @@
+use crate::core::regs::ValueSource;
+use crate::core::CpuCore;
 use crate::cpu::exception::ExceptionCode;
+use crate::pcode;
 use crate::pcode::{
     Value,
     VarNode,
-};
-use crate::{
-    pcode,
-    CpuCore,
-    ValueSource,
 };
 
 pub type PcodeOpHelper = fn(&mut CpuCore, VarNode, [Value; 2]);

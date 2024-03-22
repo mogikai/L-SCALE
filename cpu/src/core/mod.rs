@@ -4,7 +4,7 @@ use std::cell::{
 };
 use std::rc::Rc;
 
-use glaze_mem::{
+use mogi_mem::{
     perm,
     MemResult,
     Mmu,
@@ -14,8 +14,12 @@ use crate::core::regs::{
     RegValue,
     Regs,
     ValueSource,
+    VarSource,
 };
-use crate::core::trace::Trace;
+use crate::core::trace::{
+    InstHook,
+    Trace,
+};
 use crate::cpu::exception::ExceptionCode;
 use crate::exec::helpers::{
     self,
@@ -29,13 +33,9 @@ use crate::lifter::{
     BlockExit,
     Target,
 };
+use crate::pcode;
 use crate::pcode::PcodeDisplay;
 use crate::sleigh::runtime::SleighData;
-use crate::{
-    pcode,
-    InstHook,
-    VarSource,
-};
 
 pub mod regs;
 pub mod trace;

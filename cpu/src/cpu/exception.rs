@@ -1,4 +1,4 @@
-use crate::DecodeError;
+use crate::lifter::DecodeError;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(u32)]
@@ -130,8 +130,8 @@ impl ExceptionCode {
         )
     }
 
-    pub fn from_load_error(err: glaze_mem::MemError) -> Self {
-        use glaze_mem::MemError;
+    pub fn from_load_error(err: mogi_mem::MemError) -> Self {
+        use mogi_mem::MemError;
         match err {
             MemError::Unmapped => Self::ReadUnmapped,
             MemError::Uninitalized => Self::ReadUninitialized,
@@ -142,8 +142,8 @@ impl ExceptionCode {
         }
     }
 
-    pub fn from_store_error(err: glaze_mem::MemError) -> Self {
-        use glaze_mem::MemError;
+    pub fn from_store_error(err: mogi_mem::MemError) -> Self {
+        use mogi_mem::MemError;
         match err {
             MemError::Unmapped => Self::WriteUnmapped,
             MemError::WriteViolation => Self::WritePerm,
@@ -154,9 +154,9 @@ impl ExceptionCode {
     }
 }
 
-impl From<glaze_mem::MemError> for ExceptionCode {
-    fn from(err: glaze_mem::MemError) -> Self {
-        use glaze_mem::MemError;
+impl From<mogi_mem::MemError> for ExceptionCode {
+    fn from(err: mogi_mem::MemError) -> Self {
+        use mogi_mem::MemError;
         match err {
             MemError::Unmapped => Self::ReadUnmapped,
             MemError::Uninitalized => Self::ReadUninitialized,

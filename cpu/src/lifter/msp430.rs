@@ -1,14 +1,14 @@
 //! A workaround for missing functionality in the SLEIGH spec for MSP430X.
 
+use crate::core::regs::ValueSource;
+use crate::core::{
+    CpuCore,
+    Exception,
+};
 use crate::cpu::exception::ExceptionCode;
 use crate::exec::const_eval;
 use crate::lifter::BlockLifter;
-use crate::{
-    pcode,
-    CpuCore,
-    Exception,
-    ValueSource,
-};
+use crate::pcode;
 
 use super::{
     BlockState,

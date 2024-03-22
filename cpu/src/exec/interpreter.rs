@@ -1,6 +1,6 @@
 use half::f16;
 
-use glaze_mem::MemResult;
+use mogi_mem::MemResult;
 
 use crate::core::regs::{
     resize_sxt,

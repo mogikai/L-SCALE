@@ -3,6 +3,7 @@ use std::mem::size_of;
 use cranelift::prelude::*;
 use memoffset::offset_of;
 
+use crate::core::CpuCore;
 use crate::cpu::exception::ExceptionCode;
 use crate::jit::translate::{
     is_jit_supported_size,
@@ -15,10 +16,7 @@ use crate::jit::{
     TracerMemEntry,
     VmCtx,
 };
-use crate::{
-    pcode,
-    CpuCore,
-};
+use crate::pcode;
 
 pub enum Overflow {
     True,
@@ -867,16 +865,14 @@ pub(super) fn float_not_equal(
 
 #[cfg(test)]
 mod test {
-    use glaze_mem::Mmu;
     use std::cell::RefCell;
     use std::rc::Rc;
 
+    use mogi_mem::Mmu;
+
+    use crate::core::regs::ValueSource;
+    use crate::core::Arch;
     use crate::jit::*;
-    use crate::{
-        Arch,
-        CpuCore,
-        ValueSource,
-    };
 
     use super::*;
 

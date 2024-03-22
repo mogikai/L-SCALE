@@ -3,7 +3,10 @@ use hashbrown::{
     HashSet,
 };
 
-use crate::core::Arch;
+use crate::core::{
+    Arch,
+    CpuCore,
+};
 use crate::cpu::blocktable::BlockTable;
 use crate::lifter::optimize::Optimizer;
 use crate::pcode;
@@ -38,7 +41,7 @@ pub trait InstructionSource {
     ) -> bool;
 }
 
-impl InstructionSource for crate::CpuCore {
+impl InstructionSource for CpuCore {
     fn arch(&self) -> &Arch {
         &self.arch
     }
@@ -51,7 +54,7 @@ impl InstructionSource for crate::CpuCore {
         let _ = self
             .mem
             .borrow_mut()
-            .read_bytes(vaddr, buf, glaze_mem::perm::NONE);
+            .read_bytes(vaddr, buf, mogi_mem::perm::NONE);
     }
 
     fn ensure_exec(
