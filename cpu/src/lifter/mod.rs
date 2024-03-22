@@ -4,17 +4,15 @@ use hashbrown::{
 };
 
 use crate::core::Arch;
+use crate::cpu::blocktable::BlockTable;
 use crate::lifter::optimize::Optimizer;
+use crate::pcode;
 use crate::pcode::PcodeDisplay;
 use crate::sleigh::runtime::{
     Decoder,
     Instruction,
     Lifter,
     SleighData,
-};
-use crate::{
-    pcode,
-    BlockTable,
 };
 
 pub use self::pcodeops::{

@@ -1,13 +1,13 @@
 use std::any::Any;
 
+use crate::cpu::blocktable::BlockTable;
+use crate::cpu::Cpu;
 use crate::{
+    pcode,
     BlockGroup,
-    BlockTable,
     CpuCore,
     HookHandler,
-    pcode,
 };
-use crate::cpu::Cpu;
 
 pub type InjectorRef = usize;
 

@@ -4,6 +4,11 @@ use std::collections::{
 };
 use std::rc::Rc;
 
+use blocktable::{
+    BlockInfoRef,
+    BlockKey,
+    BlockTable,
+};
 use cranelift_codegen::ir::Endianness;
 use exception::ExceptionCode;
 
@@ -32,9 +37,6 @@ use crate::{
     lifter,
     mem,
     pcode,
-    BlockInfoRef,
-    BlockKey,
-    BlockTable,
     CpuCore,
     CpuExitStatus,
     CpuSnapshot,
@@ -45,6 +47,7 @@ use crate::{
 };
 
 pub mod api;
+pub mod blocktable;
 pub mod builder;
 mod debug;
 pub mod exception;
