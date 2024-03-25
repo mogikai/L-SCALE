@@ -7,7 +7,7 @@ members = [
     "samples",
     "cpu",
     "mem",
-    "utilities"]
+    "utilities", "system"]
 
 exclude = [
     "deps",
