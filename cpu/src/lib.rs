@@ -3,7 +3,6 @@ pub mod debug_info;
 pub mod exec;
 pub mod lifter;
 
-pub mod config;
 pub mod cpu;
 pub mod jit;
 pub mod pcode;

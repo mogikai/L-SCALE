@@ -3,7 +3,7 @@ extern crate core;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use mogi_cpu::config::Config;
+use mogi_cpu::cpu::builder::CpuBuilder;
 use target_lexicon::Triple;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -12,7 +12,6 @@ use tracing_subscriber::{
     EnvFilter,
 };
 
-use mogi_cpu::cpu::builder::build;
 use mogi_mem::perm::{
     EXEC,
     READ,
@@ -30,20 +29,10 @@ fn main() {
         .with(EnvFilter::from_env("FUZE_LOG"))
         .init();
     let mmu = Rc::new(RefCell::new(Mmu::new()));
-    let mut cpu = build(
-        mmu.clone(),
-        &Config {
-            triple: Triple::host(),
-            enable_jit: true,
-            enable_jit_mem: true,
-            enable_shadow_stack: true,
-            enable_recompilation: true,
-            track_uninitialized: false,
-            optimize_instructions: true,
-            optimize_block: true,
-        },
-    )
-    .unwrap();
+    let mut cpu = CpuBuilder::new(mmu.clone())
+        .target_triple(Triple::host())
+        .build()
+        .unwrap();
 
     mmu.borrow_mut()
         .alloc_memory(

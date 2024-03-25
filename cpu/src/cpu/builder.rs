@@ -1,4 +1,3 @@
-use crate::config::Config;
 use crate::core::{
     Arch,
     CallCov,
@@ -49,40 +48,107 @@ impl std::fmt::Display for BuildError {
 
 impl std::error::Error for BuildError {}
 
-pub fn build(
-    mem: Rc<RefCell<Mmu>>,
-    config: &Config,
-) -> Result<Cpu, BuildError> {
-    let mut spec_config = get_spec_config(config.triple.architecture).ok_or(BuildError::UnsupportedArchitecture)?;
-    let sleigh = build_sleigh(&mut spec_config)?;
+#[derive(Debug)]
+pub struct CpuBuilder {
+    mmu: Rc<RefCell<Mmu>>,
+    target_triple: target_lexicon::Triple,
+    enable_jit: bool,
+    enable_jit_mem: bool,
+    enable_shadow_stack: bool,
+    enable_recompilation: bool,
+    track_uninitialized: bool,
+    optimize_instructions: bool,
+    optimize_block: bool,
+}
 
-    let arch = build_arch(&config.triple, sleigh, &spec_config)?;
-    let mut cpu = CpuCore::new_boxed(mem, arch);
-    cpu.enable_shadow_stack = config.enable_shadow_stack;
-
-    let settings = lifter::Settings {
-        optimize: config.optimize_instructions,
-        optimize_block: config.optimize_block,
-        ..Default::default()
-    };
-    let instruction_lifter = lifter::InstructionLifter::new();
-    let mut lifter = lifter::BlockLifter::new(settings, instruction_lifter);
-
-    for name in spec_config.temp_registers {
-        let var = cpu
-            .arch
-            .sleigh
-            .get_reg(name)
-            .ok_or(BuildError::InvalidConfig)?
-            .var;
-        lifter.mark_as_temporary(var.id);
+impl CpuBuilder {
+    pub fn new(mmu: Rc<RefCell<Mmu>>) -> Self {
+        Self {
+            mmu,
+            target_triple: target_lexicon::Triple::unknown(),
+            enable_jit: true,
+            enable_jit_mem: true,
+            enable_shadow_stack: true,
+            enable_recompilation: true,
+            track_uninitialized: false,
+            optimize_instructions: true,
+            optimize_block: true,
+        }
     }
 
-    let mut vm = Cpu::new(cpu, lifter);
-    vm.enable_jit = config.enable_jit;
-    register_helpers_for(&mut vm, config.triple.architecture);
+    pub fn target_triple(
+        mut self,
+        target_triple: target_lexicon::Triple,
+    ) -> Self {
+        self.target_triple = target_triple;
+        self
+    }
 
-    Ok(vm)
+    pub fn optimize_instructions(
+        mut self,
+        optimize: bool,
+    ) -> Self {
+        self.optimize_instructions = optimize;
+        self
+    }
+
+    pub fn optimize_block(
+        mut self,
+        optimize: bool,
+    ) -> Self {
+        self.optimize_block = optimize;
+        self
+    }
+
+    pub fn enable_recompilation(
+        mut self,
+        enable_recompilation: bool,
+    ) -> Self {
+        self.enable_recompilation = enable_recompilation;
+        self
+    }
+
+    pub fn enable_shadow_stack(
+        mut self,
+        enable_shadow_stack: bool,
+    ) -> Self {
+        self.enable_shadow_stack = enable_shadow_stack;
+        self
+    }
+
+    pub fn build(mut self) -> Result<Cpu, BuildError> {
+        let mut spec_config =
+            get_spec_config(self.target_triple.architecture).ok_or(BuildError::UnsupportedArchitecture)?;
+        let sleigh = build_sleigh(&mut spec_config)?;
+
+        let arch = build_arch(&self.target_triple, sleigh, &spec_config)?;
+        let mut cpu = CpuCore::new_boxed(self.mmu, arch);
+        cpu.enable_shadow_stack = self.enable_shadow_stack;
+
+        let settings = lifter::Settings {
+            optimize: self.optimize_instructions,
+            optimize_block: self.optimize_block,
+            ..Default::default()
+        };
+        let instruction_lifter = lifter::InstructionLifter::new();
+        let mut lifter = lifter::BlockLifter::new(settings, instruction_lifter);
+
+        for name in spec_config.temp_registers {
+            let var = cpu
+                .arch
+                .sleigh
+                .get_reg(name)
+                .ok_or(BuildError::InvalidConfig)?
+                .var;
+            lifter.mark_as_temporary(var.id);
+        }
+
+        let mut vm = Cpu::new(cpu, lifter);
+        vm.enable_jit = self.enable_jit;
+        register_helpers_for(&mut vm, self.target_triple.architecture);
+
+        Ok(vm)
+    }
 }
 
 fn build_arch(
@@ -137,7 +203,7 @@ fn build_arch(
     })
 }
 
-pub fn register_helpers(
+fn register_helpers(
     vm: &mut Cpu,
     helpers: &[(&str, helpers::PcodeOpHelper)],
 ) {

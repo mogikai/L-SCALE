@@ -19,6 +19,7 @@
       <excludeFolder url="file://$MODULE_DIR$/deps/LibAFL/fuzzers/qemu_coverage/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
       <excludeFolder url="file://$MODULE_DIR$/cpu/target" />
+      <excludeFolder url="file://$MODULE_DIR$/cpu/Ghidra" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

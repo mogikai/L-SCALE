@@ -1,21 +1,12 @@
 use std::collections::HashSet;
+use std::fmt::{
+    Debug,
+    Formatter,
+};
 
 use addr_align::Align;
 use tracing::debug;
 
-use crate::{
-    Addr,
-    AllocLayout,
-    IoHandler,
-    IoMemory,
-    IoMemoryAny,
-    MemoryMapping,
-    PhysicalMapping,
-    Snapshot,
-    SnapshotData,
-    tlb,
-    VirtualMemoryMap,
-};
 use crate::perm::{
     self,
     MemError,
@@ -27,6 +18,19 @@ use crate::physical::{
     PhysicalAddr,
 };
 use crate::range_map::RangeMap;
+use crate::{
+    tlb,
+    Addr,
+    AllocLayout,
+    IoHandler,
+    IoMemory,
+    IoMemoryAny,
+    MemoryMapping,
+    PhysicalMapping,
+    Snapshot,
+    SnapshotData,
+    VirtualMemoryMap,
+};
 
 pub const DETECT_SELF_MODIFYING_CODE: bool = true;
 pub const ENABLE_ZERO_PAGE_OPTIMIZATION: bool = true;
@@ -174,6 +178,16 @@ pub struct Mmu {
 
     /// Registed handlers for I/O memory
     io: Vec<Box<dyn IoMemoryAny>>,
+}
+
+impl Debug for Mmu {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        // TODO: Implement debug
+        f.debug_struct("Mmu").finish()
+    }
 }
 
 impl crate::Resettable for Mmu {

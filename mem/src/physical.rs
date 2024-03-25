@@ -60,6 +60,7 @@ impl std::fmt::Display for PhysicalAddr {
     }
 }
 
+#[derive(Debug)]
 pub struct PhysicalMemory {
     /// The maxmum number of pages that can be allocated.
     capacity: usize,
@@ -211,6 +212,7 @@ impl PhysicalMemory {
 }
 
 // @todo: make: copy_on_write, modified, and executed bitflags
+#[derive(Debug)]
 pub struct Page {
     /// The content of the page.
     data: UnsafeCell<Rc<PageData>>,
