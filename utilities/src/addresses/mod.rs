@@ -1,31 +1,3 @@
-use std::fmt::{
-    Debug,
-    Formatter,
-};
-use std::ops::{
-    AddAssign,
-    Sub,
-};
-
-use derive_more::{
-    Add,
-    BitAnd,
-    Into,
-    Not,
-    UpperHex,
-};
-#[cfg(feature = "serde")]
-use serde::{
-    Deserialize,
-    Serialize,
-};
-
-use mogi_derive::{
-    Decode,
-    Encode,
-    RequiredMem,
-};
-
 use crate as mogi_utilities;
 use crate::addresses::r#impl::addr_impl;
 

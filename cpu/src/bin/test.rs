@@ -3,7 +3,6 @@ extern crate core;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use mogi_cpu::cpu::builder::CpuBuilder;
 use target_lexicon::Triple;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -12,6 +11,7 @@ use tracing_subscriber::{
     EnvFilter,
 };
 
+use mogi_cpu::cpu::builder::CpuBuilder;
 use mogi_mem::perm::{
     EXEC,
     READ,

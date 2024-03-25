@@ -60,7 +60,7 @@ fn offsets(data: &DataStruct) -> TokenStream {
         .map(|field| {
             let field_type = &field.ty;
             quote! {
-                #field_type::required_mem(),
+                <#field_type as mogi_utilities::encoding::RequiredMem>::required_mem(),
             }
         })
         .collect::<TokenStream>();
@@ -91,7 +91,7 @@ fn decode_struct_named(fields: &FieldsNamed) -> TokenStream {
             let field_name = field.ident.as_ref().unwrap();
             let field_type = &field.ty;
             quote! {
-                #field_name: #field_type::decode::<Endianness>(&buffer[offsets[#i]..offsets[#i+1]])?,
+                #field_name: <#field_type>::decode::<Endianness>(&buffer[offsets[#i]..offsets[#i+1]])?,
             }
         })
         .collect::<TokenStream>();
@@ -110,7 +110,7 @@ fn decode_struct_unnamed(fields: &FieldsUnnamed) -> TokenStream {
         .map(|(i, field)| {
             let field_type = &field.ty;
             quote! {
-                #field_type::decode::<Endianness>(&buffer[offsets[#i]..offsets[#i+1]])?,
+                <#field_type>::decode::<Endianness>(&buffer[offsets[#i]..offsets[#i+1]])?,
             }
         })
         .collect::<TokenStream>();

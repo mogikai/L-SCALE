@@ -13,7 +13,7 @@ pub fn add_trait_bounds(mut generics: Generics) -> Generics {
         if let GenericParam::Type(ref mut type_param) = *param {
             type_param
                 .bounds
-                .push(parse_quote!(mogi_emulator::emulator::abstractions::mmu::encoding::Encode));
+                .push(parse_quote!(mogi_utilities::encoding::Encode));
         }
     }
     generics
