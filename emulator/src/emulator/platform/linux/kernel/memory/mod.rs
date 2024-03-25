@@ -1,10 +1,7 @@
 use addr_align::Align4k;
 use bitflags::Flags;
 use byteorder::ByteOrder;
-use mogi_utilities::addresses::{
-    EVAddr,
-    EVA_NULL,
-};
+use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::error::memory::MemoryError;
 
 use crate::emulator::abstractions::cpu::CPU;
@@ -225,7 +222,7 @@ where
             (internal_fd, path.to_path_buf())
         };
         let addr = self.mmap_anon(addr, length, prot, flags, MappingType::PrivateFile(internal_fd), path.to_str())?;
-        if addr == !EVA_NULL {
+        if addr == !EVAddr::null() {
             Err(LinuxKernelError::EINVAL)?
         }
 

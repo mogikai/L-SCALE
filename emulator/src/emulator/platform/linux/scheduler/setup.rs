@@ -18,8 +18,8 @@ where
         // TODO: Potentially move this to the clock setup?
         let timestep_clock = self.system.clock.clone();
         cpu.add_block_hook(
-            EVAddr::from(1),
-            EVAddr::from(0),
+            EVAddr::from(1u64),
+            EVAddr::from(0u64),
             Box::new(move |_, _, instruction_count| {
                 timestep_clock.borrow_mut().do_timestep(instruction_count);
             }),
@@ -27,8 +27,8 @@ where
 
         let syscall_system = self.system.clone();
         cpu.add_syscall_hook(
-            EVAddr::from(1),
-            EVAddr::from(0),
+            EVAddr::from(1u64),
+            EVAddr::from(0u64),
             Box::new(move || {
                 // TODO: Currently the task manager cannot be borrowed anywhere else because
                 //       it is borrowed here. Need to find some way to allow the task itself
@@ -55,8 +55,8 @@ where
         }))?;
 
         cpu.add_unmapped_mem_hook(
-            1.into(),
-            0.into(),
+            1u64.into(),
+            0u64.into(),
             Box::new(move |_, action, addr, size, _| {
                 trace!("{:?} on {:#X} with size {} ", action, addr, size);
                 false

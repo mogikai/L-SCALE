@@ -95,10 +95,7 @@ macro_rules! sys_component_mut {
     };
 }
 
-use mogi_utilities::addresses::{
-    EVAddr,
-    EVA_NULL,
-};
+use mogi_utilities::addresses::EVAddr;
 pub(super) use {
     sys_component,
     sys_component_mut,
@@ -270,10 +267,10 @@ where
                 let dyn_info = &dynamic.info;
                 if dyn_info.flags_1 & dynamic::DF_1_PIE == 0 {
                     trace!("not pie");
-                    base_address = EVA_NULL;
+                    base_address = EVAddr::null();
                 }
             } else {
-                base_address = EVA_NULL;
+                base_address = EVAddr::null();
             }
         }
         debug!("base address: {:?}", base_address);
@@ -452,7 +449,7 @@ where
         addr: EVAddr,
     ) -> SyscallResult {
         let mut memory = sys_component_mut!(self, memory);
-        if addr != EVA_NULL {
+        if !addr.is_null() {
             memory
                 .realloc_heap(self.task_id, addr)
                 .inspect_err(|e| warn!("Error during brk: {e:?}"));
@@ -584,10 +581,10 @@ where
         tv: EVAddr,
         tz: EVAddr,
     ) -> SyscallResult {
-        if tv == EVA_NULL {
+        if tv.is_null() {
             Err(LinuxKernelError::EINVAL)?
         }
-        if tz != EVA_NULL {
+        if !tz.is_null() {
             todo!("Timezone not implemented yet")
         }
         let time = sys_component!(self, clock).time();
@@ -659,7 +656,7 @@ where
             //TODO besser auf -1 prüfen
             todo!("fd != -1");
         }
-        if mask == EVA_NULL {
+        if mask.is_null() {
             return Err(LinuxKernelError::EINVAL.into());
         }
 
@@ -688,7 +685,7 @@ where
         old_rlim: EVAddr,
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
-        let new_rlim: Option<Rlimit> = if new_rlim != EVA_NULL {
+        let new_rlim: Option<Rlimit> = if !new_rlim.is_null() {
             Some(
                 sys_component_mut!(self, memory)
                     .accessor(&mut cpu, self.task_id)
@@ -763,14 +760,14 @@ where
             Err(LinuxKernelError::EINVAL)?
         }
         let oset = self.signalhandler.getmask();
-        if new_set != EVA_NULL {
+        if !new_set.is_null() {
             let set = memory
                 .read_bytes(new_set, sigsetsize as usize)
                 .map(|s| Endianness::read_u64(&s))?;
             let how = SignalMaskFlags::try_from(how)?;
             self.signalhandler.setmask(how, set);
         }
-        if old_set != EVA_NULL {
+        if !old_set.is_null() {
             // TODO: Clean up and adjust to new memory interface. The memory interface in general needs some reworking still
             let mut old = memory.read_bytes(old_set, sigsetsize as usize)?;
             Endianness::write_u64(&mut old, oset);

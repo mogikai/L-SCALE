@@ -203,8 +203,8 @@ impl EdgeHitObserver {
         let remaining_edges = observer.remaining_edges.clone();
         cpu.borrow_mut()
             .add_block_hook(
-                EVAddr::from(1),
-                EVAddr::from(0),
+                EVAddr::from(1u64),
+                EVAddr::from(0u64),
                 Box::new(move |_cpu, address, _instruction_count| {
                     remaining_edges.fetch_add(1, Ordering::Acquire);
                     sender.send(address).unwrap();

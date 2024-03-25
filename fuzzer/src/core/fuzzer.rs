@@ -92,10 +92,7 @@ use mogi_emulator::emulator::interface::network::tcp::{
 };
 use mogi_emulator::emulator::platform::linux::kernel::task_id::TaskId;
 use mogi_emulator::emulator::system::memory::MappingType;
-use mogi_utilities::addresses::{
-    EVAddr,
-    EVA_NULL,
-};
+use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::error::memory::MemoryError;
 
 use crate::api::observer::{
@@ -1026,7 +1023,7 @@ where
 
         let mut observations = Vec::new();
         let mut min_addr = Option::<EVAddr>::None;
-        let mut max_addr = EVA_NULL;
+        let mut max_addr = EVAddr::null();
         for state_id in states_reversed.iter().rev() {
             Self::clear_observers(&mut self.observers);
             self.go_to_state_from_current(*state_id);

@@ -3,10 +3,7 @@ use std::rc::Rc;
 use std::time::Duration;
 use tracing::trace;
 
-use mogi_utilities::addresses::{
-    EVAddr,
-    EVA_NULL,
-};
+use mogi_utilities::addresses::EVAddr;
 use unicorn_engine::unicorn_const::uc_error;
 use unicorn_engine::RegisterX86;
 
@@ -52,7 +49,7 @@ impl CPU for UCWrapper<'_> {
             0u64
         };
         self.uc_mut()
-            .emu_start(rip, stop.unwrap_or(EVA_NULL).into(), timeout, instruction_count.unwrap_or(0))?;
+            .emu_start(rip, stop.unwrap_or(EVAddr::null()).into(), timeout, instruction_count.unwrap_or(0))?;
         if let Some(stop_reason) = self.stop_reason {
             Err(CPUError::Stopped(stop_reason))
         } else {

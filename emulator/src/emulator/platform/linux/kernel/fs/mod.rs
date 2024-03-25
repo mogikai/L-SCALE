@@ -221,7 +221,7 @@ where
         statbuf: EVAddr,
         flag: u64,
     ) -> SyscallResult {
-        if statbuf == EVA_NULL {
+        if statbuf.is_null() {
             Err(LinuxKernelError::EINVAL)?
         }
         let mut cpu = sys_component_mut!(self, cpu);

@@ -1,9 +1,9 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Run stateful_fuzzer" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
-    <option name="command" value="run --package fuzzyfuzz --bin stateful_fuzzer" />
+    <option name="command" value="run --package mogi_fuzzer --bin stateful_fuzzer" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <envs>
-      <env name="FUZE_LOG" value="fuzzyfuzz=debug" />
+      <env name="FUZE_LOG" value="trace" />
     </envs>
     <option name="emulateTerminal" value="true" />
     <option name="channel" value="DEFAULT" />

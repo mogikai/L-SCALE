@@ -11,10 +11,7 @@ use mogi_derive::{
     Encode,
     RequiredMem,
 };
-use mogi_utilities::addresses::{
-    EVAddr,
-    EVA_NULL,
-};
+use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::encoding::{
     Encode,
     RequiredMem,
@@ -124,7 +121,7 @@ where
             let (new_fd, peer) = fd.accept()?;
 
             let addrlen: i32 = memory.read(upeer_addrlen)?;
-            if addrlen > 0 && upeer_sockaddr != EVA_NULL {
+            if addrlen > 0 && !upeer_sockaddr.is_null() {
                 let (_, total) = memory.write_bounded(upeer_sockaddr, Sockaddr::from(peer), addrlen as usize)?;
                 memory.write(upeer_addrlen, total as i32);
             }
@@ -148,7 +145,7 @@ where
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
         let memory = memory.accessor(&mut cpu, self.task_id);
-        let sockaddr: Option<Sockaddr> = if dest_addr_len != 0 && dest_addr != EVA_NULL {
+        let sockaddr: Option<Sockaddr> = if dest_addr_len != 0 && !dest_addr.is_null() {
             Some(memory.read_bounded(dest_addr, dest_addr_len as usize)?)
         } else {
             None
@@ -186,7 +183,7 @@ where
 
         let (written, _) = memory.write_bounded(ubuf, data.as_slice(), size as usize)?;
 
-        if addr_len != EVA_NULL && addr != EVA_NULL {
+        if !addr_len.is_null() && !addr.is_null() {
             let sockaddr_len: i32 = memory.read(addr_len)?;
             let (_, total) = memory.write_bounded(addr, Sockaddr::from(sender), sockaddr_len as usize)?;
             memory.write(addr_len, total as i32)?;
