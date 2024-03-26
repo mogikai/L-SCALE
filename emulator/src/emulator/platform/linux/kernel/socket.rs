@@ -81,7 +81,7 @@ where
     pub fn connect(
         &mut self,
         fd: FD,
-        uservaddr: EVAddr,
+        uservaddr: EVAddr<Sockaddr>,
         addrlen: u64,
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
@@ -94,7 +94,7 @@ where
             .ok_or(LinuxKernelError::EBADFD)?;
         let fd = &mut *fd;
 
-        let sockaddr: Sockaddr = memory.read_bounded(uservaddr, addrlen as usize)?;
+        let sockaddr = memory.read_bounded(uservaddr, addrlen as usize)?;
 
         fd.connect(sockaddr.into())?;
         Ok(0)
@@ -103,8 +103,8 @@ where
     pub fn accept(
         &mut self,
         fd: FD,
-        upeer_sockaddr: EVAddr, // sockaddr*
-        upeer_addrlen: EVAddr,  // int*
+        upeer_sockaddr: EVAddr<Sockaddr>,
+        upeer_addrlen: EVAddr<i32>, // int*
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
@@ -120,7 +120,7 @@ where
 
             let (new_fd, peer) = fd.accept()?;
 
-            let addrlen: i32 = memory.read(upeer_addrlen)?;
+            let addrlen = memory.read(upeer_addrlen)?;
             if addrlen > 0 && !upeer_sockaddr.is_null() {
                 let (_, total) = memory.write_bounded(upeer_sockaddr, Sockaddr::from(peer), addrlen as usize)?;
                 memory.write(upeer_addrlen, total as i32);
@@ -135,10 +135,10 @@ where
     pub fn sendto(
         &mut self,
         fd: FD,
-        buf: EVAddr,       // void*
-        len: u64,          // size_t
-        flags: u64,        // unsigned int
-        dest_addr: EVAddr, // sockaddr*
+        buf: EVAddr, // void*
+        len: u64,    // size_t
+        flags: u64,  // unsigned int
+        dest_addr: EVAddr<Sockaddr>,
         dest_addr_len: u64,
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
@@ -163,11 +163,11 @@ where
     pub fn recvfrom(
         &mut self,
         fd: FD,
-        ubuf: EVAddr,     // void*
-        size: u64,        // size_t
-        flags: u64,       // unsigned int
-        addr: EVAddr,     // sockaddr*
-        addr_len: EVAddr, // int*
+        ubuf: EVAddr,           // void*
+        size: u64,              // size_t
+        flags: u64,             // unsigned int
+        addr: EVAddr<Sockaddr>, // sockaddr*
+        addr_len: EVAddr<i32>,
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
@@ -181,7 +181,7 @@ where
 
         let (data, sender) = fd.recvfrom(size as usize)?;
 
-        let (written, _) = memory.write_bounded(ubuf, data.as_slice(), size as usize)?;
+        let (written, _) = memory.write_bounded_slice(ubuf, data.as_slice(), size as usize)?;
 
         if !addr_len.is_null() && !addr.is_null() {
             let sockaddr_len: i32 = memory.read(addr_len)?;
@@ -203,16 +203,16 @@ where
     pub fn recvmsg(
         &mut self,
         fd: FD,
-        msg: EVAddr, // msghdr*
-        flags: u64,  // unsigned int
+        msg: EVAddr<user_msghdr>,
+        flags: u64, // unsigned int
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
         let mut memory = memory.accessor(&mut cpu, self.task_id);
-        let msghdr: user_msghdr = memory.read(msg)?;
-        let addr: Sockaddr = memory.read(msghdr.msg_name)?;
-        let iovec: Vec<iovec> = memory.read_n(msghdr.msg_iov, msghdr.msg_iovlen as usize)?;
+        let msghdr = memory.read(msg)?;
+        let addr = memory.read(msghdr.msg_name)?;
+        let iovec = memory.read_n(msghdr.msg_iov, msghdr.msg_iovlen as usize)?;
         let to_read = iovec
             .iter()
             .try_fold(0usize, |sum, vec| sum.checked_add(vec.iov_len as usize))
@@ -250,7 +250,7 @@ where
     pub fn bind(
         &mut self,
         fd: FD,
-        umyaddr: EVAddr, // sockaddr*
+        umyaddr: EVAddr<Sockaddr>,
         addrlen: u64,
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
@@ -288,7 +288,7 @@ where
     pub fn getsockname(
         &mut self,
         fd: FD,
-        usockaddr: EVAddr,     // sockaddr*
+        usockaddr: EVAddr<Sockaddr>,
         usockaddr_len: EVAddr, // int*
     ) -> SyscallResult {
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
@@ -352,21 +352,29 @@ where
         fd: FD,
         level: u64,
         optname: u64,
-        optval_addr: EVAddr, // char*
-        optlen_ptr: EVAddr,  // int*
+        optval_addr: EVAddr<Optval>,
+        optlen_ptr: EVAddr<u32>,
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
         let mut memory = memory.accessor(&mut cpu, self.task_id);
-        let optlen: usize = memory.read(optlen_ptr)?;
+        let optlen = memory
+            .read(optlen_ptr)?
+            .try_into()
+            .expect("Cannot emulate target that has larger size type than host");
         let mut fd = file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADFD)?;
         let fd = &mut *fd;
         let optval = fd.getsockopt(Sockopt::try_from((level, optname))?)?;
         let (actual, _) = memory.write_bounded(optval_addr, optval, optlen)?;
-        memory.write(optlen_ptr, actual)?;
+        memory.write(
+            optlen_ptr,
+            actual
+                .try_into()
+                .expect("Wrote more bytes than target size type can hold"),
+        )?;
         Ok(0)
     }
 
@@ -432,12 +440,12 @@ impl Encode for Optval {
 
 #[derive(Encode, Decode, RequiredMem)]
 #[repr(C)]
-struct user_msghdr {
-    msg_name: EVAddr,
+pub(crate) struct user_msghdr {
+    msg_name: EVAddr<Sockaddr>,
     /* ptr to socket address structure */ // void*
     msg_namelen: u64,
     /* size of socket address structure */
-    msg_iov: EVAddr,
+    msg_iov: EVAddr<iovec>,
     /* scatter/gather array */ // iovec*
     msg_iovlen: u64,
     /* # elements in msg_iov */

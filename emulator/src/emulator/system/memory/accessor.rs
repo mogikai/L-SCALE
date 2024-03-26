@@ -32,7 +32,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> MemoryAccessor<'_, Endianness, MmuT> {
 
     pub fn read_bytes(
         &self,
-        address: EVAddr,
+        address: EVAddr<u8>,
         size: usize,
     ) -> Result<Vec<u8>, MemoryError> {
         use itertools::Itertools;
@@ -48,7 +48,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> MemoryAccessor<'_, Endianness, MmuT> {
 
     pub fn write_bytes(
         &mut self,
-        address: EVAddr,
+        address: EVAddr<u8>,
         bytes: &[u8],
     ) -> Result<usize, MemoryError> {
         let tlb_entries = self.translate(address, bytes.len())?;

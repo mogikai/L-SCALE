@@ -70,7 +70,7 @@ where
     pub fn epoll_wait(
         &mut self,
         epfd: FD,
-        events: EVAddr, // epoll_event*
+        events: EVAddr<epoll_event>,
         maxevents: u64,
         timeout: u64,
     ) -> SyscallResult {
@@ -136,7 +136,7 @@ where
         let mut memory = sys_component_mut!(self, memory);
         let mut memory = memory.accessor(&mut cpu, self.task_id);
 
-        memory.write(events, triggered_events.as_slice())?;
+        memory.write_slice(events, triggered_events.as_slice())?;
 
         Ok(triggered_events.len() as u64)
     }
@@ -146,7 +146,7 @@ where
         epfd: FD,
         op: u64,
         fd: FD,
-        event: EVAddr, // epoll_event*
+        event: EVAddr<epoll_event>,
     ) -> SyscallResult {
         let mut fd_map = sys_component_mut!(self, fd_map);
         let mut cpu = sys_component_mut!(self, cpu);
@@ -192,10 +192,10 @@ where
         epoll: &mut EpollData,
         fd: &FD,
         file_descriptor: &mut FileDescriptor<FileDescriptorData>,
-        event: EVAddr,
+        event: EVAddr<epoll_event>,
     ) -> SyscallResult {
         // TODO: Do loop check (see https://man7.org/linux/man-pages/man2/epoll_ctl.2.html)
-        let event: epoll_event = memory.read(event)?;
+        let event = memory.read(event)?;
 
         if event.events.contains(EPOLL_EVENTS::EPOLLEXCLUSIVE) && file_descriptor.data.epoll.is_some() {
             Err(LinuxKernelError::EINVAL)?
@@ -224,7 +224,7 @@ where
         memory: &MemoryAccessor<'_, Endianness, impl MMU + Sized>,
         epoll: &mut EpollData,
         fd: &FD,
-        event: EVAddr,
+        event: EVAddr<epoll_event>,
     ) -> SyscallResult {
         let event: epoll_event = memory.read(event)?;
 
@@ -290,7 +290,7 @@ impl EpollData {
 #[derive(Decode, Encode, RequiredMem, Copy, Clone)]
 #[repr(C)]
 #[allow(non_camel_case_types)]
-struct epoll_event {
+pub(crate) struct epoll_event {
     events: EPOLL_EVENTS,
     data: u64,
 }

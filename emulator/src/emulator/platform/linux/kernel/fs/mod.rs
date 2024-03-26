@@ -24,7 +24,10 @@ use crate::emulator::system::fd_map::{
     FileDescriptorMap,
     InternalFD,
 };
-use crate::emulator::system::filesystem::Filesystem;
+use crate::emulator::system::filesystem::{
+    Filesystem,
+    Stat,
+};
 use crate::emulator::system::memory::rw_interface::{
     DirectMemoryWrite,
     MemoryWrite,
@@ -136,7 +139,7 @@ where
     pub fn fstat(
         &mut self,
         fd: FD,
-        statbuf: EVAddr,
+        statbuf: EVAddr<Stat>,
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
@@ -146,14 +149,14 @@ where
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADF)?;
         let file = &mut *file;
-        memory.write(statbuf, file.stat()?)?;
+        memory.write_ref(statbuf, file.stat()?)?;
         Ok(0)
     }
 
     pub fn stat(
         &mut self,
         filename: EVAddr,
-        statbuf: EVAddr,
+        statbuf: EVAddr<Stat>,
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
@@ -162,7 +165,7 @@ where
         trace!("stat file {:?}", fname);
         let fs = sys_component!(self, filesystem);
         let file = fs.resolve_last(Path::new(&fname), false)?; //TODO symlinks
-        memory.write(statbuf, fs.stat(file)?)?;
+        memory.write_ref(statbuf, fs.stat(file)?)?;
         Ok(0)
     }
 
@@ -218,7 +221,7 @@ where
         &mut self,
         dfd: FD,
         filename: EVAddr,
-        statbuf: EVAddr,
+        statbuf: EVAddr<Stat>,
         flag: u64,
     ) -> SyscallResult {
         if statbuf.is_null() {
@@ -234,7 +237,7 @@ where
             let mut fd = file_descriptor_map
                 .get_mut(&self.task_id, &dfd)
                 .ok_or(LinuxKernelError::EBADFD)?;
-            memory.write(statbuf, fd.stat()?)?;
+            memory.write_ref(statbuf, fd.stat()?)?;
             Ok(0)
         } else {
             let filename = read_osstring!(memory, filename)?;
@@ -246,7 +249,7 @@ where
             };
             let fs = sys_component_mut!(self, filesystem);
             let entry = fs.resolve_last_relative(dir, path, false)?; //TODO symlinks
-            memory.write(statbuf, fs.stat(entry)?)?;
+            memory.write_ref(statbuf, fs.stat(entry)?)?;
             Ok(0)
         }
     }
@@ -262,7 +265,7 @@ where
         let mut memory = sys_component_mut!(self, memory);
         let mut memory = memory.accessor(&mut cpu, self.task_id);
         Ok(memory
-            .write_bounded(buf, "/home/user/open62541_server_release".as_bytes(), bufsize)?
+            .write_bounded_slice(buf, "/home/user/open62541_server_release".as_bytes(), bufsize)?
             .0 as u64)
     }
 

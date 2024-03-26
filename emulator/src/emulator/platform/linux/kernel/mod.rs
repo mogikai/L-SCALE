@@ -421,8 +421,6 @@ where
         push_stack!(memory.accessor(&mut cpu, self.task_id), cpu, &env, RegisterX86::RSP.into())?;
         push_stack!(memory.accessor(&mut cpu, self.task_id), cpu, &argv, RegisterX86::RSP.into())?;
 
-        let rsp = EVAddr::from(cpu.reg_read(RegisterX86::RSP.into())?);
-
         Ok(())
     }
 
@@ -517,7 +515,7 @@ where
     pub fn clock_gettime(
         &mut self,
         clk_id: u64,
-        tp: EVAddr,
+        tp: EVAddr<Timespec>,
     ) -> SyscallResult {
         let time = sys_component!(self, clock).time();
         let ts = Timespec {
@@ -527,7 +525,7 @@ where
         let mut cpu = sys_component_mut!(self, cpu);
         sys_component_mut!(self, memory)
             .accessor(&mut cpu, self.task_id)
-            .write(tp, &ts)
+            .write(tp, ts)
             .unwrap();
         Ok(0)
     }
@@ -578,7 +576,7 @@ where
 
     pub fn gettimeofday(
         &mut self,
-        tv: EVAddr,
+        tv: EVAddr<Timeval>,
         tz: EVAddr,
     ) -> SyscallResult {
         if tv.is_null() {
@@ -595,7 +593,7 @@ where
         let mut cpu = sys_component_mut!(self, cpu);
         sys_component_mut!(self, memory)
             .accessor(&mut cpu, self.task_id)
-            .write(tv, &timeval)?;
+            .write(tv, timeval)?;
         Ok(0)
     }
 
@@ -681,8 +679,8 @@ where
         &mut self,
         pid: u64,
         resource: u64,
-        new_rlim: EVAddr,
-        old_rlim: EVAddr,
+        new_rlim: EVAddr<Rlimit>,
+        old_rlim: EVAddr<Rlimit>,
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
         let new_rlim: Option<Rlimit> = if !new_rlim.is_null() {
@@ -723,7 +721,7 @@ where
         };
         sys_component_mut!(self, memory)
             .accessor(&mut cpu, self.task_id)
-            .write(old_rlim, &rlimit)?;
+            .write(old_rlim, rlimit)?;
         Ok(0)
     }
 
@@ -829,7 +827,7 @@ pub struct Timespec {
 // TODO: Make types architecture dependant
 #[derive(Encode, Decode, RequiredMem)]
 #[repr(C)]
-struct Rlimit {
+pub(crate) struct Rlimit {
     rlim_cur: u64,
     rlim_max: u64,
 }

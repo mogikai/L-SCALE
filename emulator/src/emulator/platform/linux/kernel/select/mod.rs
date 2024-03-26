@@ -43,9 +43,9 @@ where
     pub fn pselect6(
         &self,
         nfds: u64,
-        readfds_addr: EVAddr,
-        writefds_addr: EVAddr,
-        exceptfds_addr: EVAddr,
+        readfds_addr: EVAddr<fd_set>,
+        writefds_addr: EVAddr<fd_set>,
+        exceptfds_addr: EVAddr<fd_set>,
         timeout_addr: EVAddr,
         sigmask_addr: EVAddr,
     ) -> SyscallResult {
@@ -70,9 +70,9 @@ where
             }
         };
 
-        let mut readfds: fd_set = memory.read(readfds_addr)?;
-        let mut writefds: fd_set = memory.read(writefds_addr)?;
-        let mut exceptfds: fd_set = memory.read(exceptfds_addr)?;
+        let mut readfds = memory.read(readfds_addr)?;
+        let mut writefds = memory.read(writefds_addr)?;
+        let mut exceptfds = memory.read(exceptfds_addr)?;
         readfds
             .iter_requested_mut()
             .take_while(|(fd, _)| fd < &nfds.into())

@@ -14,8 +14,6 @@ macro_rules! addr_impl {
             PartialOrd,
             Eq,
             PartialEq,
-            Copy,
-            Clone,
             Default,
             derive_more::Into,
             derive_more::UpperHex,
@@ -24,9 +22,17 @@ macro_rules! addr_impl {
         #[upper_hex("{}", _0)]
         pub struct $name<T = u8>(u64, std::marker::PhantomData::<T>);
 
+        impl<T> Copy for $name<T> {}
+
+        impl<T> Clone for $name<T> {
+            fn clone(&self) -> Self {
+                Self(self.0, Default::default())
+            }
+        }
+
         impl<T> crate::encoding::RequiredMem for $name<T> {}
 
-        impl $name {
+        impl<T> $name<T> {
             pub fn null() -> Self {
                 Self(0u64, Default::default())
             }
@@ -36,27 +42,31 @@ macro_rules! addr_impl {
             pub fn is_null(&self) -> bool {
                 self.0 == 0
             }
+
+            pub unsafe fn transmute<U>(self) -> $name<U> {
+                $name::<U>(self.0, Default::default())
+            }
         }
 
-        impl From<u16> for $name {
+        impl<T> From<u16> for $name<T> {
             fn from(value: u16) -> Self {
                 Self(value.into(), Default::default())
             }
         }
 
-        impl From<u64> for $name {
+        impl<T> From<u64> for $name<T> {
             fn from(value: u64) -> Self {
                 Self(value.into(), Default::default())
             }
         }
 
-        impl From<$name> for u64 {
-            fn from(value: $name) -> Self {
+        impl<T> From<$name<T>> for u64 {
+            fn from(value: $name<T>) -> Self {
                 value.0
             }
         }
 
-        impl std::fmt::Debug for $name {
+        impl<T> std::fmt::Debug for $name<T> {
             fn fmt(
                 &self,
                 f: &mut std::fmt::Formatter<'_>,
@@ -65,14 +75,14 @@ macro_rules! addr_impl {
             }
         }
 
-        impl std::ops::Not for $name {
+        impl<T> std::ops::Not for $name<T> {
             type Output = Self;
             fn not(self) -> Self::Output {
                 Self(self.0.not(), Default::default())
             }
         }
 
-        impl std::ops::BitAnd<Self> for $name {
+        impl<T> std::ops::BitAnd<Self> for $name<T> {
             type Output = Self;
             fn bitand(
                 self,
@@ -82,8 +92,8 @@ macro_rules! addr_impl {
             }
         }
 
-        impl std::ops::Sub<usize> for $name {
-            type Output = $name;
+        impl<T> std::ops::Sub<usize> for $name<T> {
+            type Output = $name<T>;
 
             fn sub(
                 self,
@@ -93,18 +103,18 @@ macro_rules! addr_impl {
             }
         }
 
-        impl std::ops::Add<usize> for $name {
-            type Output = $name;
+        impl<T> std::ops::Add<usize> for $name<T> {
+            type Output = $name<T>;
 
             fn add(
                 self,
                 rhs: usize,
             ) -> Self::Output {
-                Self(self.0 + u64::try_from(rhs).expect("usize must be equal length to u64"), Default::default())
+                $name::<T>(self.0 + u64::try_from(rhs).expect("usize must be equal length to u64"), Default::default())
             }
         }
 
-        impl std::ops::AddAssign<usize> for $name {
+        impl<T> std::ops::AddAssign<usize> for $name<T> {
             fn add_assign(
                 &mut self,
                 rhs: usize,
@@ -113,8 +123,8 @@ macro_rules! addr_impl {
             }
         }
 
-        impl std::ops::Add<usize> for &$name {
-            type Output = $name;
+        impl<T> std::ops::Add<usize> for &$name<T> {
+            type Output = $name<T>;
 
             fn add(
                 self,
@@ -124,8 +134,8 @@ macro_rules! addr_impl {
             }
         }
 
-        impl std::ops::Add<u64> for $name {
-            type Output = $name;
+        impl<T> std::ops::Add<u64> for $name<T> {
+            type Output = $name<T>;
 
             fn add(
                 self,
@@ -135,8 +145,8 @@ macro_rules! addr_impl {
             }
         }
 
-        impl std::ops::Add<u64> for &$name {
-            type Output = $name;
+        impl<T> std::ops::Add<u64> for &$name<T> {
+            type Output = $name<T>;
 
             fn add(
                 self,
@@ -146,8 +156,8 @@ macro_rules! addr_impl {
             }
         }
 
-        impl std::ops::Add<i32> for $name {
-            type Output = $name;
+        impl<T> std::ops::Add<i32> for $name<T> {
+            type Output = $name<T>;
 
             fn add(
                 self,
@@ -157,8 +167,8 @@ macro_rules! addr_impl {
             }
         }
 
-        impl std::ops::Add<i32> for &$name {
-            type Output = $name;
+        impl<T> std::ops::Add<i32> for &$name<T> {
+            type Output = $name<T>;
 
             fn add(
                 self,
@@ -168,8 +178,8 @@ macro_rules! addr_impl {
             }
         }
 
-        impl std::ops::Add<Self> for $name {
-            type Output = $name;
+        impl<T> std::ops::Add<Self> for $name<T> {
+            type Output = $name<T>;
 
             fn add(
                 self,
@@ -179,7 +189,7 @@ macro_rules! addr_impl {
             }
         }
 
-        impl std::ops::Sub<$name> for $name {
+        impl<T> std::ops::Sub<$name> for $name<T> {
             type Output = usize;
 
             fn sub(
@@ -195,7 +205,7 @@ macro_rules! addr_impl {
             }
         }
 
-        impl crate::encoding::Encode for $name {
+        impl<T> crate::encoding::Encode for $name<T> {
             fn encode<Endianness: byteorder::ByteOrder>(
                 &self,
                 buffer: &mut Vec<u8>,
@@ -204,7 +214,7 @@ macro_rules! addr_impl {
             }
         }
 
-        impl crate::encoding::Decode for $name {
+        impl<T> crate::encoding::Decode for $name<T> {
             fn decode<Endianness: byteorder::ByteOrder>(val: &[u8]) -> Result<Self, crate::error::memory::MemoryError> {
                 Ok(Self(u64::decode::<Endianness>(val)?, Default::default()))
             }

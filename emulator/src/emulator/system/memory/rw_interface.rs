@@ -1,4 +1,6 @@
+use std::cmp::min;
 use std::ffi::CString;
+use std::ops::Deref;
 
 use byteorder::ByteOrder;
 use mogi_utilities::addresses::EVAddr;
@@ -31,8 +33,22 @@ pub trait DirectMemoryWrite<T, Endianness: ByteOrder> {
 pub trait MemoryWrite<T: Encode, Endianness: ByteOrder> {
     fn write(
         &mut self,
-        address: EVAddr,
+        address: EVAddr<T>,
         data: T,
+    ) -> Result<usize, MemoryError> {
+        self.write_ref(address, &data)
+    }
+
+    fn write_ref(
+        &mut self,
+        address: EVAddr<T>,
+        data: impl Deref<Target = T>,
+    ) -> Result<usize, MemoryError>;
+
+    fn write_slice(
+        &mut self,
+        address: EVAddr<T>,
+        data: &[T],
     ) -> Result<usize, MemoryError>;
 
     /// Writes up to size bytes.
@@ -40,14 +56,30 @@ pub trait MemoryWrite<T: Encode, Endianness: ByteOrder> {
     /// of the object that was attempted to write
     fn write_bounded(
         &mut self,
-        address: EVAddr,
+        address: EVAddr<T>,
         data: T,
+        size: usize,
+    ) -> Result<(Actual, Total), MemoryError> {
+        self.write_bounded_ref(address, &data, size)
+    }
+
+    fn write_bounded_ref(
+        &mut self,
+        address: EVAddr<T>,
+        data: impl Deref<Target = T>,
+        size: usize,
+    ) -> Result<(Actual, Total), MemoryError>;
+
+    fn write_bounded_slice(
+        &mut self,
+        address: EVAddr<T>,
+        data: &[T],
         size: usize,
     ) -> Result<(Actual, Total), MemoryError>;
 
     fn write_down(
         &mut self,
-        address: EVAddr,
+        address: EVAddr<T>,
         data: T,
     ) -> Result<usize, MemoryError> {
         Self::write(self, address - data.encoded_size(), data)
@@ -57,31 +89,31 @@ pub trait MemoryWrite<T: Encode, Endianness: ByteOrder> {
 pub trait MemoryRead<T: Decode, Endianness: ByteOrder> {
     fn read(
         &self,
-        address: EVAddr,
+        address: EVAddr<T>,
     ) -> Result<T, MemoryError>;
 
     fn read_bounded(
         &self,
-        address: EVAddr,
+        address: EVAddr<T>,
         size: usize,
     ) -> Result<T, MemoryError>;
 
     fn read_n(
         &self,
-        address: EVAddr,
+        address: EVAddr<T>,
         n: usize,
     ) -> Result<Vec<T>, MemoryError>;
 
     fn read_down(
         &self,
-        address: EVAddr,
+        address: EVAddr<T>,
     ) -> Result<T, MemoryError> {
         self.read(address - T::required_mem())
     }
 
     fn read_down_n(
         &self,
-        address: EVAddr,
+        address: EVAddr<T>,
         n: usize,
     ) -> Result<Vec<T>, MemoryError> {
         self.read_n(address - (n * T::required_mem()), n)
@@ -91,7 +123,7 @@ pub trait MemoryRead<T: Decode, Endianness: ByteOrder> {
 impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<u8, Endianness> for MemoryAccessor<'_, Endianness, MmuT> {
     fn write_direct(
         &mut self,
-        address: EVAddr,
+        address: EVAddr<u8>,
         data: u8,
     ) -> Result<usize, MemoryError> {
         self.write_bytes(address, &[data])
@@ -344,25 +376,37 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&Vec<(u64, u64)>, Endia
 impl<Endianness: ByteOrder, MmuT: MMU, T: Decode> MemoryRead<T, Endianness> for MemoryAccessor<'_, Endianness, MmuT> {
     fn read(
         &self,
-        address: EVAddr,
+        address: EVAddr<T>,
     ) -> Result<T, MemoryError> {
-        T::decode::<Endianness>(self.read_bytes(address, T::required_mem())?.as_slice())
+        // This is safe, because we are reading T::required_mem() bytes to read the type T.
+        // Hence, we need to cast the pointer to a pointer to bytes
+        T::decode::<Endianness>(
+            self.read_bytes(unsafe { address.transmute() }, T::required_mem())?
+                .as_slice(),
+        )
     }
 
     fn read_bounded(
         &self,
-        address: EVAddr,
+        address: EVAddr<T>,
         size: usize,
     ) -> Result<T, MemoryError> {
-        T::decode::<Endianness>(self.read_bytes(address, size)?.as_slice())
+        // This is safe, because we are reading at most T::required_mem() bytes to read the type T.
+        // Hence, we need to cast the pointer to a pointer to bytes
+        T::decode::<Endianness>(
+            self.read_bytes(unsafe { address.transmute() }, min(size, T::required_mem()))?
+                .as_slice(),
+        )
     }
 
     fn read_n(
         &self,
-        address: EVAddr,
+        address: EVAddr<T>,
         n: usize,
     ) -> Result<Vec<T>, MemoryError> {
-        self.read_bytes(address, T::required_mem() * n)?
+        // This is safe, because we are reading n * T::required_mem() bytes to read the type [T; n].
+        // Hence, we need to cast the pointer to a pointer to bytes.
+        self.read_bytes(unsafe { address.transmute() }, T::required_mem() * n)?
             .chunks(T::required_mem())
             .map(|chunk| try { T::decode::<Endianness>(chunk)? })
             .collect()
@@ -370,26 +414,49 @@ impl<Endianness: ByteOrder, MmuT: MMU, T: Decode> MemoryRead<T, Endianness> for 
 }
 
 impl<Endianness: ByteOrder, MmuT: MMU, T: Encode> MemoryWrite<T, Endianness> for MemoryAccessor<'_, Endianness, MmuT> {
-    fn write(
+    fn write_ref(
         &mut self,
-        address: EVAddr,
-        data: T,
+        address: EVAddr<T>,
+        data: impl Deref<Target = T>,
     ) -> Result<usize, MemoryError> {
         let mut buffer = Vec::with_capacity(data.encoded_size());
         data.encode::<Endianness>(&mut buffer);
-        self.write_bytes(address, buffer.as_slice())
+        self.write_bytes(unsafe { address.transmute() }, buffer.as_slice())
     }
 
-    fn write_bounded(
+    fn write_slice(
         &mut self,
-        address: EVAddr,
-        data: T,
+        address: EVAddr<T>,
+        data: &[T],
+    ) -> Result<usize, MemoryError> {
+        let mut buffer = Vec::with_capacity(data.encoded_size());
+        data.encode::<Endianness>(&mut buffer);
+        self.write_bytes(unsafe { address.transmute() }, buffer.as_slice())
+    }
+
+    fn write_bounded_ref(
+        &mut self,
+        address: EVAddr<T>,
+        data: impl Deref<Target = T>,
         size: usize,
     ) -> Result<(Actual, Total), MemoryError> {
         let mut buffer = Vec::with_capacity(data.encoded_size());
         data.encode::<Endianness>(&mut buffer);
         let total = buffer.len();
         buffer.truncate(size);
-        Ok((self.write_bytes(address, buffer.as_slice())?, total))
+        Ok((self.write_bytes(unsafe { address.transmute() }, buffer.as_slice())?, total))
+    }
+
+    fn write_bounded_slice(
+        &mut self,
+        address: EVAddr<T>,
+        data: &[T],
+        size: usize,
+    ) -> Result<(Actual, Total), MemoryError> {
+        let mut buffer = Vec::with_capacity(data.encoded_size());
+        data.encode::<Endianness>(&mut buffer);
+        let total = buffer.len();
+        buffer.truncate(size);
+        Ok((self.write_bytes(unsafe { address.transmute() }, buffer.as_slice())?, total))
     }
 }
