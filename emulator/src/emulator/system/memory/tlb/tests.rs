@@ -6,7 +6,7 @@ use crate::emulator::system::memory::tlb::*;
 fn basic_map_succeeds() {
     let mut tlb = Tlb::new();
     let result =
-        tlb.try_map(0x2000.into(), 0x1000.into(), 0x1000, Permission::ALL, MappingType::PrivateAnonymous, None);
+        tlb.try_map(0x2000u64.into(), 0x1000u64.into(), 0x1000, Permission::ALL, MappingType::PrivateAnonymous, None);
     assert!(result.is_ok());
 }
 
@@ -14,15 +14,15 @@ fn basic_map_succeeds() {
 fn unaligned_map_fails() {
     let mut tlb = Tlb::new();
     let result =
-        tlb.try_map(0x2020.into(), 0x1000.into(), 0x1000, Permission::ALL, MappingType::PrivateAnonymous, None);
+        tlb.try_map(0x2020u64.into(), 0x1000u64.into(), 0x1000, Permission::ALL, MappingType::PrivateAnonymous, None);
     assert!(result.is_err());
 
     let result =
-        tlb.try_map(0x2000.into(), 0x1020.into(), 0x1000, Permission::ALL, MappingType::PrivateAnonymous, None);
+        tlb.try_map(0x2000u64.into(), 0x1020u64.into(), 0x1000, Permission::ALL, MappingType::PrivateAnonymous, None);
     assert!(result.is_err());
 
     let result =
-        tlb.try_map(0x2000.into(), 0x1000.into(), 0x1020, Permission::ALL, MappingType::PrivateAnonymous, None);
+        tlb.try_map(0x2000u64.into(), 0x1000u64.into(), 0x1020, Permission::ALL, MappingType::PrivateAnonymous, None);
     assert!(result.is_err());
 }
 
@@ -30,11 +30,11 @@ fn unaligned_map_fails() {
 fn double_map_fails() {
     let mut tlb = Tlb::new();
     let result =
-        tlb.try_map(0x2000.into(), 0x1000.into(), 0x1000, Permission::ALL, MappingType::PrivateAnonymous, None);
+        tlb.try_map(0x2000u64.into(), 0x1000u64.into(), 0x1000, Permission::ALL, MappingType::PrivateAnonymous, None);
     assert!(result.is_ok());
 
     let result =
-        tlb.try_map(0x2000.into(), 0x1000.into(), 0x1000, Permission::ALL, MappingType::PrivateAnonymous, None);
+        tlb.try_map(0x2000u64.into(), 0x1000u64.into(), 0x1000, Permission::ALL, MappingType::PrivateAnonymous, None);
     assert!(result.is_err());
 }
 
@@ -42,11 +42,11 @@ fn double_map_fails() {
 fn overlapping_map_fails() {
     let mut tlb = Tlb::new();
     let result =
-        tlb.try_map(0x2000.into(), 0x1000.into(), 0x4000, Permission::ALL, MappingType::PrivateAnonymous, None);
+        tlb.try_map(0x2000u64.into(), 0x1000u64.into(), 0x4000, Permission::ALL, MappingType::PrivateAnonymous, None);
     assert!(result.is_ok());
 
     let result =
-        tlb.try_map(0x4000.into(), 0x8000.into(), 0x4000, Permission::ALL, MappingType::PrivateAnonymous, None);
+        tlb.try_map(0x4000u64.into(), 0x8000u64.into(), 0x4000, Permission::ALL, MappingType::PrivateAnonymous, None);
     assert!(result.is_err());
 }
 
@@ -54,10 +54,10 @@ fn overlapping_map_fails() {
 fn adjacent_mapping_succeeds() {
     let mut tlb = Tlb::new();
     let result =
-        tlb.try_map(0x2000.into(), 0x1000.into(), 0x1000, Permission::ALL, MappingType::PrivateAnonymous, None);
+        tlb.try_map(0x2000u64.into(), 0x1000u64.into(), 0x1000, Permission::ALL, MappingType::PrivateAnonymous, None);
     assert!(result.is_ok());
 
     let result =
-        tlb.try_map(0x3000.into(), 0x8000.into(), 0x1000, Permission::ALL, MappingType::PrivateAnonymous, None);
+        tlb.try_map(0x3000u64.into(), 0x8000u64.into(), 0x1000, Permission::ALL, MappingType::PrivateAnonymous, None);
     assert!(result.is_ok());
 }

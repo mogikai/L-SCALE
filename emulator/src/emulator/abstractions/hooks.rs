@@ -1,13 +1,13 @@
 use crate::emulator::abstractions::cpu::CPUError;
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::mmu::MemoryAction;
 use crate::emulator::system::memory::TLBEntry;
+use mogi_system::traits::mmu::MemoryAction;
 use mogi_utilities::addresses::EVAddr;
 
-type UnmappedMemHook<Slf> = Box<dyn FnMut(&mut Slf, MemoryAction, u64, usize, i64) -> bool + 'static>;
-type BlockHook<Slf> = Box<dyn FnMut(&mut Slf, EVAddr, u32) + 'static>;
-type VtlbHook<Slf> = Box<dyn FnMut(&mut Slf, EVAddr, MemoryAction) -> Option<TLBEntry> + 'static>;
-type CodeHook<Slf> = Box<dyn FnMut(&mut Slf, u64, u32) + 'static>;
+pub type UnmappedMemHook<Slf> = Box<dyn FnMut(&mut Slf, MemoryAction, u64, usize, i64) -> bool + 'static>;
+pub type BlockHook<Slf> = Box<dyn FnMut(&mut Slf, EVAddr, u32) + 'static>;
+pub type VtlbHook<Slf> = Box<dyn FnMut(&mut Slf, EVAddr, MemoryAction) -> Option<TLBEntry> + 'static>;
+pub type CodeHook<Slf> = Box<dyn FnMut(&mut Slf, u64, u32) + 'static>;
 
 pub trait Hooks {
     fn add_syscall_hook(

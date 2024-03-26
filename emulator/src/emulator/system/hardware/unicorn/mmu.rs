@@ -1,3 +1,9 @@
+use mogi_system::traits::mmu::{
+    MemoryAction,
+    MmuResult,
+    Permission,
+    MMU,
+};
 use mogi_utilities::addresses::EPAddr;
 use mogi_utilities::error::memory::MemoryError;
 use tracing::trace;
@@ -7,53 +13,48 @@ use unicorn_engine::unicorn_const::{
     MemType,
 };
 
-use crate::emulator::abstractions::mmu::{
-    MemoryAction,
-    Permission,
-    MMU,
-};
 use crate::emulator::system::hardware::unicorn::UCWrapper;
 
 impl MMU for UCWrapper<'_> {
-    fn mem_map(
+    fn alloc_physical(
         &mut self,
         address: EPAddr,
         size: usize,
         perms: Permission,
-    ) -> Result<(), MemoryError> {
+    ) -> MmuResult<()> {
         Ok(self
             .uc_mut()
-            .mem_map(address.into(), size, perms.try_into()?)
+            .mem_map(address.into(), size, uc_const::Permission::from_bits(perms.bits()).ok_or(MemoryError::Unknown)?)
             .map_err(|_| MemoryError::Unknown)?)
     }
 
-    fn mem_unmap(
+    fn dealloc_physical(
         &mut self,
         address: EPAddr,
         size: usize,
-    ) -> Result<(), MemoryError> {
+    ) -> MmuResult<()> {
         Ok(self
             .uc_mut()
             .mem_unmap(address.into(), size)
             .map_err(|_| MemoryError::Unknown)?)
     }
 
-    fn mem_read_bytes(
+    fn read_physical(
         &self,
         address: EPAddr,
         len: usize,
-    ) -> Result<Vec<u8>, MemoryError> {
+    ) -> MmuResult<Vec<u8>> {
         Ok(self
             .uc()
             .mem_read_as_vec(address.into(), len)
             .map_err(|_| MemoryError::Unknown)?)
     }
 
-    fn mem_write_bytes(
+    fn write_physical(
         &mut self,
         address: EPAddr,
         data: &[u8],
-    ) -> Result<usize, MemoryError> {
+    ) -> MmuResult<usize> {
         self.uc_mut()
             .mem_write(address.into(), data)
             .map_err(|_| MemoryError::Unknown)?;
@@ -65,30 +66,5 @@ impl MMU for UCWrapper<'_> {
             .uc_mut()
             .ctl_flush_tlb()
             .map_err(|_| MemoryError::Unknown)?)
-    }
-}
-
-impl From<MemType> for MemoryAction {
-    fn from(memtype: MemType) -> Self {
-        match memtype {
-            MemType::READ => MemoryAction::READ,
-            MemType::WRITE => MemoryAction::WRITE,
-            MemType::FETCH => MemoryAction::FETCH,
-            MemType::READ_UNMAPPED => MemoryAction::READ_UNMAPPED,
-            MemType::WRITE_UNMAPPED => MemoryAction::WRITE_UNMAPPED,
-            MemType::FETCH_UNMAPPED => MemoryAction::FETCH_UNMAPPED,
-            MemType::WRITE_PROT => MemoryAction::WRITE_PROT,
-            MemType::READ_PROT => MemoryAction::READ_PROT,
-            MemType::FETCH_PROT => MemoryAction::FETCH_PROT,
-            MemType::READ_AFTER => MemoryAction::READ_AFTER,
-        }
-    }
-}
-
-impl TryFrom<Permission> for uc_const::Permission {
-    type Error = MemoryError;
-
-    fn try_from(perm: Permission) -> Result<uc_const::Permission, MemoryError> {
-        uc_const::Permission::from_bits(perm.bits()).ok_or(MemoryError::Unknown)
     }
 }

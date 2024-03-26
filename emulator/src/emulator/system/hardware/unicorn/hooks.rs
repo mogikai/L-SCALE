@@ -1,7 +1,11 @@
+use mogi_system::traits::mmu::MemoryAction;
 use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::error::memory::MemoryError;
 use unicorn_engine::unicorn_const::HookType;
 use unicorn_engine::{
     InsnSysX86,
+    MemType,
+    Permission,
     TlbEntry,
     Unicorn,
 };
@@ -9,7 +13,6 @@ use unicorn_engine::{
 use crate::emulator::abstractions::cpu::CPUError;
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::hooks::Hooks;
-use crate::emulator::abstractions::mmu::MemoryAction;
 use crate::emulator::system::hardware::unicorn::UCWrapper;
 use crate::emulator::system::memory::TLBEntry;
 
@@ -39,7 +42,7 @@ impl<'a> Hooks for UCWrapper<'a> {
         mut hook: Box<dyn FnMut(&mut Self, MemoryAction, u64, usize, i64) -> bool + 'a>,
     ) -> Result<(), CPUError> {
         let trampoline = move |uc: &mut Unicorn<'_, *mut UCWrapper<'a>>, mem_type, address, size, value| {
-            hook(unsafe { &mut **uc.get_data_mut() }, MemoryAction::from(mem_type), address, size, value)
+            hook(unsafe { &mut **uc.get_data_mut() }, mem_type_to_memory_action(mem_type), address, size, value)
         };
         // TODO: Store hook id to be able to remove hook later on
         let _hook = self
@@ -69,7 +72,7 @@ impl<'a> Hooks for UCWrapper<'a> {
         mut hook: Box<dyn FnMut(&mut Self, EVAddr, MemoryAction) -> Option<TLBEntry> + 'a>,
     ) -> Result<(), CPUError> {
         let trampoline = move |uc: &mut Unicorn<'_, *mut UCWrapper<'a>>, address: u64, access_type| {
-            hook(unsafe { &mut **uc.get_data_mut() }, address.into(), MemoryAction::from(access_type))
+            hook(unsafe { &mut **uc.get_data_mut() }, address.into(), mem_type_to_memory_action(access_type))
                 .map(|tlbentry| tlbentry.into())
         };
         self.uc_mut().add_tlb_hook(1, 0, trampoline)?;
@@ -96,7 +99,22 @@ impl From<TLBEntry> for TlbEntry {
     fn from(value: TLBEntry) -> Self {
         TlbEntry {
             paddr: value.physical_address.into(),
-            perms: value.permissions.try_into().unwrap(),
+            perms: Permission::from_bits(value.permissions.bits()).unwrap(),
         }
+    }
+}
+
+fn mem_type_to_memory_action(memtype: MemType) -> MemoryAction {
+    match memtype {
+        MemType::READ => MemoryAction::READ,
+        MemType::WRITE => MemoryAction::WRITE,
+        MemType::FETCH => MemoryAction::FETCH,
+        MemType::READ_UNMAPPED => MemoryAction::READ_UNMAPPED,
+        MemType::WRITE_UNMAPPED => MemoryAction::WRITE_UNMAPPED,
+        MemType::FETCH_UNMAPPED => MemoryAction::FETCH_UNMAPPED,
+        MemType::WRITE_PROT => MemoryAction::WRITE_PROT,
+        MemType::READ_PROT => MemoryAction::READ_PROT,
+        MemType::FETCH_PROT => MemoryAction::FETCH_PROT,
+        MemType::READ_AFTER => MemoryAction::READ_AFTER,
     }
 }

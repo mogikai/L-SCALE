@@ -17,6 +17,8 @@ use std::time::{
 };
 
 use clap::Parser;
+use mogi_cpu::cpu::builder::CpuBuilder;
+use mogi_cpu::Triple;
 use rand::seq::SliceRandom;
 use tracing::debug;
 use tracing_subscriber::layer::SubscriberExt;
@@ -65,6 +67,7 @@ use mogi_emulator::emulator::system::System;
 use mogi_emulator::emulator::GenericEmulator;
 use mogi_emulator::LittleEndian;
 use mogi_fuzzer::io::tcp::TCP;
+use mogi_mem::Mmu;
 use mogi_utilities::error::memory::MemoryError;
 
 #[derive(Parser, Debug)]

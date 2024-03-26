@@ -7,7 +7,7 @@ use crate::emulator::abstractions::cpu::{
 };
 use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::kernel_task::KernelTask;
-use crate::emulator::abstractions::mmu::MMU;
+
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::task_manager::restorable::{
     TaskManagerSnapshot,

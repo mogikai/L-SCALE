@@ -1,12 +1,12 @@
 use bitflags::Flags;
 use byteorder::ByteOrder;
-use mogi_utilities::addresses::EVAddr;
-use mogi_utilities::error::memory::MemoryError;
-
-use crate::emulator::abstractions::mmu::{
+use mogi_system::traits::mmu::{
     Permission,
     MMU,
 };
+use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::error::memory::MemoryError;
+
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 use crate::emulator::system::memory::Memory;
@@ -40,7 +40,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> MemoryAccessor<'_, Endianness, MmuT> {
             .iter()
             .map(|tlb_entry| {
                 self.mmu
-                    .mem_read_bytes(tlb_entry.physical_address, tlb_entry.size)
+                    .read_physical(tlb_entry.physical_address, tlb_entry.size)
             })
             .flatten_ok()
             .try_collect()
@@ -59,7 +59,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> MemoryAccessor<'_, Endianness, MmuT> {
                 Err(MemoryError::InvalidPermission)?
             }
             self.mmu
-                .mem_write_bytes(entry.physical_address, &bytes[already_written..already_written + entry.size])
+                .write_physical(entry.physical_address, &bytes[already_written..already_written + entry.size])
                 .map_err(|_| MemoryError::IncompleteWrite(already_written))?;
             already_written += entry.size;
         }
@@ -76,7 +76,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> MemoryAccessor<'_, Endianness, MmuT> {
         let mut already_written = 0;
         for entry in tlb_entries {
             self.mmu
-                .mem_write_bytes(entry.physical_address, &bytes[already_written..already_written + entry.size])
+                .write_physical(entry.physical_address, &bytes[already_written..already_written + entry.size])
                 .map_err(|_| MemoryError::IncompleteWrite(already_written))?;
             already_written += entry.size;
         }

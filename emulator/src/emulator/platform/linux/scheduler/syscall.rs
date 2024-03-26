@@ -1,5 +1,6 @@
 use byteorder::ByteOrder;
 use goblin::container::Endian;
+use mogi_system::traits::mmu::MMU;
 use num_enum::FromPrimitive;
 use std::rc::Rc;
 use tracing::{
@@ -12,7 +13,7 @@ use crate::emulator::abstractions::cpu::{
     RegisterX86,
     CPU,
 };
-use crate::emulator::abstractions::mmu::MMU;
+
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::interface::error::StopReason;
 use crate::emulator::platform::linux::architecture::x86::X86;

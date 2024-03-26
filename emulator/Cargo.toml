@@ -20,8 +20,10 @@ samples = { path = "../samples" }
 
 [dependencies]
 addr_align = "0.1.0"
-mogi_derive = { path = "../derive" }
-mogi_utilities = { path = "../utilities" }
+mogi_system = { path = "../system", version = "0.1.0" }
+mogi_cpu = { path = "../cpu", version = "0.1.0" }
+mogi_derive = { path = "../derive", version = "0.1.0" }
+mogi_utilities = { path = "../utilities", version = "0.1.0" }
 itertools = "0.12.*"
 static_assertions = "1.*"
 unicorn-engine = { path = "../deps/unicorn" }

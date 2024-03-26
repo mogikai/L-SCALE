@@ -5,6 +5,7 @@ use bitvec::ptr::{
 };
 use byteorder::ByteOrder;
 use mogi_derive::unfinished;
+use mogi_system::traits::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::encoding::{
     Decode,
@@ -16,7 +17,6 @@ use tracing::trace;
 
 use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::file_descriptors::FileOperationsReady;
-use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::FD;

@@ -1,5 +1,6 @@
 use super::*;
 use crate::emulator::system::task_manager::TaskState;
+use mogi_system::traits::mmu::MMU;
 
 impl<'a, CpuT, TcpT, Endianness> LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where

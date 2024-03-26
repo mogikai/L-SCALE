@@ -3,6 +3,7 @@ use std::ffi::CString;
 use std::ops::Deref;
 
 use byteorder::ByteOrder;
+use mogi_system::traits::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::encoding::{
     Decode,
@@ -10,7 +11,6 @@ use mogi_utilities::encoding::{
 };
 use mogi_utilities::error::memory::MemoryError;
 
-use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::system::memory::accessor::MemoryAccessor;
 
 type Actual = usize;

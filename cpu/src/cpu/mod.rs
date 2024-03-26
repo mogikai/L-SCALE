@@ -905,79 +905,79 @@ impl Cpu {
         exit
     }
 
-    pub fn run_until(
-        &mut self,
-        addr: u64,
-    ) -> CpuExitStatus {
-        let added_bp = self.add_breakpoint(addr);
-        let exit = self.run();
-        if added_bp {
-            self.remove_breakpoint(addr);
-        }
-        exit
-    }
-
-    /// Adds a breakpoint at `addr`.
-    ///
-    /// Returns a boolean representing whether a new breakpoint was added.
-    pub fn add_breakpoint(
-        &mut self,
-        addr: u64,
-    ) -> bool {
-        if !self.code.breakpoints.insert(addr) {
-            // There is already a breakpoint at the target address.
-            return false;
-        }
-
-        for block in self
-            .code
-            .blocks
-            .iter_mut()
-            .filter(|x| x.start <= addr && addr < x.end)
-        {
-            block.breakpoints += 1;
-        }
-
-        // Make sure that any JIT blocks containing this address are removed from fast lookup.
-        self.jit.remove_fast_lookup(addr);
-
-        true
-    }
+    // pub fn run_until(
+    //     &mut self,
+    //     addr: u64,
+    // ) -> CpuExitStatus {
+    //     let added_bp = self.add_breakpoint(addr);
+    //     let exit = self.run();
+    //     if added_bp {
+    //         self.remove_breakpoint(addr);
+    //     }
+    //     exit
+    // }
+    //
+    // /// Adds a breakpoint at `addr`.
+    // ///
+    // /// Returns a boolean representing whether a new breakpoint was added.
+    // pub fn add_breakpoint(
+    //     &mut self,
+    //     addr: u64,
+    // ) -> bool {
+    //     if !self.code.breakpoints.insert(addr) {
+    //         // There is already a breakpoint at the target address.
+    //         return false;
+    //     }
+    //
+    //     for block in self
+    //         .code
+    //         .blocks
+    //         .iter_mut()
+    //         .filter(|x| x.start <= addr && addr < x.end)
+    //     {
+    //         block.breakpoints += 1;
+    //     }
+    //
+    //     // Make sure that any JIT blocks containing this address are removed from fast lookup.
+    //     self.jit.remove_fast_lookup(addr);
+    //
+    //     true
+    // }
 
     /// Removes the breakpoint at `addr`.
     ///
     /// Returns a boolean representing whether a breakpoint was remove.
-    pub fn remove_breakpoint(
-        &mut self,
-        addr: u64,
-    ) -> bool {
-        if !self.code.breakpoints.remove(&addr) {
-            // The breakpoint we are trying to remove does not exist.
-            return false;
-        }
+    // pub fn remove_breakpoint(
+    //     &mut self,
+    //     addr: u64,
+    // ) -> bool {
+    //     if !self.code.breakpoints.remove(&addr) {
+    //         // The breakpoint we are trying to remove does not exist.
+    //         return false;
+    //     }
+    //
+    //     for block in self
+    //         .code
+    //         .blocks
+    //         .iter_mut()
+    //         .filter(|x| x.start <= addr && addr < x.end)
+    //     {
+    //         block.breakpoints -= 1;
+    //     }
+    //
+    //     true
+    // }
 
-        for block in self
-            .code
-            .blocks
-            .iter_mut()
-            .filter(|x| x.start <= addr && addr < x.end)
-        {
-            block.breakpoints -= 1;
-        }
-
-        true
-    }
-
-    pub fn toggle_breakpoint(
-        &mut self,
-        addr: u64,
-    ) -> bool {
-        if self.add_breakpoint(addr) {
-            return true;
-        }
-        self.remove_breakpoint(addr);
-        false
-    }
+    // pub fn toggle_breakpoint(
+    //     &mut self,
+    //     addr: u64,
+    // ) -> bool {
+    //     if self.add_breakpoint(addr) {
+    //         return true;
+    //     }
+    //     self.remove_breakpoint(addr);
+    //     false
+    // }
 
     pub fn get_callstack(&self) -> Vec<u64> {
         let pc = self.core.read_pc();

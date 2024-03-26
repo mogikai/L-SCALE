@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use byteorder::ByteOrder;
+use mogi_system::traits::mmu::MMU;
 use num_enum::FromPrimitive;
 
 use crate::emulator::abstractions::cpu::{
@@ -13,7 +14,7 @@ use crate::emulator::abstractions::cpu::{
 };
 use crate::emulator::abstractions::emulator::Scheduler;
 use crate::emulator::abstractions::hooks::Hooks;
-use crate::emulator::abstractions::mmu::MMU;
+
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::interface::error::{

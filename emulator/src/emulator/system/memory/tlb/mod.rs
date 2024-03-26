@@ -13,13 +13,13 @@ use itertools::{
     Itertools,
     PeekingNext,
 };
+use mogi_system::traits::mmu::Permission;
 use mogi_utilities::addresses::{
     EPAddr,
     EVAddr,
 };
 use mogi_utilities::error::memory::MemoryError;
 
-use crate::emulator::abstractions::mmu::Permission;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::memory::pregion::PhysicalRegion;
 use crate::emulator::system::memory::tlb::mapping::{

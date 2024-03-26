@@ -1,3 +1,4 @@
+use mogi_system::traits::mmu::Permission;
 use mogi_utilities::addresses::{
     EPAddr,
     EVAddr,
@@ -14,7 +15,6 @@ use std::fmt::{
 };
 use std::ops::Range;
 
-use crate::emulator::abstractions::mmu::Permission;
 use crate::emulator::system::fd_map::InternalFD;
 use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 

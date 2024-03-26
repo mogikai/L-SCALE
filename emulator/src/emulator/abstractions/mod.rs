@@ -5,7 +5,6 @@ pub mod file_descriptors;
 pub mod filesystem;
 pub mod hooks;
 pub mod kernel_task;
-pub mod mmu;
 pub mod network;
 pub mod restore;
 pub mod system;

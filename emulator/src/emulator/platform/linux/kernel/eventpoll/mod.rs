@@ -16,6 +16,7 @@ use mogi_derive::{
     Encode,
     RequiredMem,
 };
+use mogi_system::traits::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
 
 use crate::emulator::abstractions::cpu::CPU;
@@ -23,7 +24,6 @@ use crate::emulator::abstractions::file_descriptors::{
     FileDescriptorOps,
     FileOperationsReady,
 };
-use crate::emulator::abstractions::mmu::MMU;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::{

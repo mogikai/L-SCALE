@@ -1,3 +1,4 @@
+use mogi_system::traits::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
 use tracing::{
     debug,

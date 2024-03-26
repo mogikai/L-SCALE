@@ -34,17 +34,17 @@ use tracing::{
 
 pub use accessor::MemoryAccessor;
 use layout::Layout;
+use mogi_system::traits::mmu::{
+    Permission,
+    MMU,
+    MREMAP_FLAGS,
+};
 use mogi_utilities::addresses::{
     EPAddr,
     EVAddr,
 };
 use mogi_utilities::error::memory::MemoryError;
 
-use crate::emulator::abstractions::mmu::{
-    Permission,
-    MMU,
-    MREMAP_FLAGS,
-};
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::fd::{
     FileDescriptorData,
@@ -235,7 +235,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             Some("Stack".to_string()),
         )?;
 
-        mmu.mem_map(self.physical_end, self.process_mem_size, Permission::ALL)?;
+        mmu.alloc_physical(self.physical_end, self.process_mem_size, Permission::ALL)?;
         self.physical_end += self.process_mem_size;
 
         let max_stack = layout.max_stack;

@@ -1,10 +1,13 @@
 use crate::emulator::abstractions::cpu::CPU;
 use byteorder::ByteOrder;
+use mogi_system::traits::mmu::MMU;
 use tcp::socket;
 
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileDescriptorOps};
-use crate::emulator::abstractions::mmu::MMU;
+use crate::emulator::abstractions::file_descriptors::{
+    FileDescriptorError,
+    FileDescriptorOps,
+};
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::inet6::tcp::TCPData;

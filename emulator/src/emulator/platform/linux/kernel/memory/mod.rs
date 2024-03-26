@@ -1,15 +1,15 @@
 use addr_align::Align4k;
 use bitflags::Flags;
 use byteorder::ByteOrder;
-use mogi_utilities::addresses::EVAddr;
-use mogi_utilities::error::memory::MemoryError;
-
-use crate::emulator::abstractions::cpu::CPU;
-use crate::emulator::abstractions::mmu::{
+use mogi_system::traits::mmu::{
     Permission,
     MMU,
     MREMAP_FLAGS,
 };
+use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::error::memory::MemoryError;
+
+use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::FD;

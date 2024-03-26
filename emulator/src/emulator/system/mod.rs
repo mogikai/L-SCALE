@@ -3,14 +3,18 @@ use std::fmt::Debug;
 use std::rc::Rc;
 
 use byteorder::ByteOrder;
-use rand::{Rng, SeedableRng};
+use mogi_system::traits::mmu::MMU;
+use rand::{
+    Rng,
+    SeedableRng,
+};
 use rand_pcg::Mcg128Xsl64;
 
 use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::kernel_task::KernelTask;
-use crate::emulator::abstractions::mmu::MMU;
+
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::abstractions::system::SystemControl;
@@ -32,8 +36,8 @@ pub mod fd_map;
 pub mod filesystem;
 pub mod hardware;
 pub mod memory;
-pub mod task_manager;
 pub mod prng;
+pub mod task_manager;
 
 /// This struct contains the global system state and system components like memory and filesystem or the system clock.
 /// Also, all currently running tasks are kept here.
@@ -50,7 +54,7 @@ where
     Endianness: ByteOrder,
     CpuT: CPU + MMU,
     TcpT: TCPSystem,
-    PrngT: Rng + SeedableRng + Clone
+    PrngT: Rng + SeedableRng + Clone,
 {
     pub cpu: Rc<RefCell<CpuT>>,
     pub memory: Rc<RefCell<Memory<Endianness>>>,
@@ -72,7 +76,7 @@ where
     Endianness: ByteOrder,
     CpuT: CPU + MMU,
     TcpT: TCPSystem,
-    PrngT: Rng + SeedableRng + Clone
+    PrngT: Rng + SeedableRng + Clone,
 {
     fn clone(&self) -> Self {
         Self {
@@ -98,7 +102,7 @@ where
     Endianness: ByteOrder,
     CpuT: CPU + MMU,
     TcpT: TCPSystem,
-    PrngT: Rng + SeedableRng + Clone
+    PrngT: Rng + SeedableRng + Clone,
 {
     pub fn new(
         cpu: Rc<RefCell<CpuT>>,
@@ -133,7 +137,7 @@ where
     Endianness: ByteOrder + 'static,
     CpuT: CPU + MMU + Hooks,
     TcpT: TCPSystem + TCPSystemControl,
-    PrngT: Rng + SeedableRng + Clone
+    PrngT: Rng + SeedableRng + Clone,
 {
     type TaskIdT = TaskId;
     type KernelTaskT = KernelTaskT;
@@ -187,7 +191,7 @@ where
     Endianness: ByteOrder,
     CpuT: CPU + MMU,
     TcpT: TCPSystem,
-    PrngT: Rng + SeedableRng + Clone
+    PrngT: Rng + SeedableRng + Clone,
 {
     fn take_snapshot(&mut self) -> Result<(), GenericError> {
         self.cpu.borrow_mut().take_snapshot()?;
