@@ -4,23 +4,16 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use byteorder::ByteOrder;
-use mogi_system::traits::mmu::MMU;
+use mogi_system::components::cpu::CPU;
+use mogi_system::components::mmu::MMU;
+use mogi_system::errors::SchedulerError;
 use num_enum::FromPrimitive;
 
-use crate::emulator::abstractions::cpu::{
-    CPUError,
-    RegisterX86,
-    CPU,
-};
 use crate::emulator::abstractions::emulator::Scheduler;
 use crate::emulator::abstractions::hooks::Hooks;
 
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::restore::Restorable;
-use crate::emulator::interface::error::{
-    SchedulerError,
-    StopReason,
-};
 use crate::emulator::platform::linux::architecture::x86::X86;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::kernel::LinuxKernelTask;
@@ -50,7 +43,7 @@ where
 
 impl<'a, CpuT, TcpT, Endianness> Scheduler for LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where
-    CpuT: CPU + MMU + Hooks,
+    CpuT: CPU + MMU + Hooks + Restorable,
     TcpT: TCPSystem,
     Endianness: ByteOrder + 'static,
 {
@@ -65,7 +58,7 @@ where
 
 impl<'a, CpuT, TcpT, Endianness> LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where
-    CpuT: CPU + MMU + Hooks + 'static,
+    CpuT: CPU + MMU + Hooks + Restorable + 'static,
     TcpT: TCPSystem + 'static,
     Endianness: ByteOrder + 'static,
 {

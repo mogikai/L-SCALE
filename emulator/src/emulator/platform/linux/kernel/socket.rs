@@ -11,15 +11,15 @@ use mogi_derive::{
     Encode,
     RequiredMem,
 };
-use mogi_system::traits::mmu::MMU;
+use mogi_system::components::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::encoding::{
     Encode,
     RequiredMem,
 };
 
-use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
+use mogi_system::components::cpu::CPU;
 
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::network::SocketAddress;

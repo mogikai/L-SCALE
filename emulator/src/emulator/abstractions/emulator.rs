@@ -1,7 +1,7 @@
+use mogi_system::errors::SchedulerError;
 use std::time::Duration;
 
 use crate::emulator::abstractions::restore::Restorable;
-use crate::emulator::interface::error::SchedulerError;
 
 pub trait Scheduler: Restorable {
     fn run(

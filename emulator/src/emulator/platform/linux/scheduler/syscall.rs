@@ -1,6 +1,7 @@
 use byteorder::ByteOrder;
 use goblin::container::Endian;
-use mogi_system::traits::mmu::MMU;
+use mogi_system::components::cpu::CPU;
+use mogi_system::components::mmu::MMU;
 use num_enum::FromPrimitive;
 use std::rc::Rc;
 use tracing::{
@@ -9,13 +10,10 @@ use tracing::{
     trace,
 };
 
-use crate::emulator::abstractions::cpu::{
-    RegisterX86,
-    CPU,
-};
+use mogi_system::components::cpu::RegisterX86;
+use mogi_system::errors::StopReason;
 
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
-use crate::emulator::interface::error::StopReason;
 use crate::emulator::platform::linux::architecture::x86::X86;
 use crate::emulator::platform::linux::kernel::error::SyscallError;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;

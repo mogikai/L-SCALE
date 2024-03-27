@@ -1,6 +1,6 @@
-use crate::emulator::abstractions::cpu::CPU;
 use byteorder::ByteOrder;
-use mogi_system::traits::mmu::MMU;
+use mogi_system::components::cpu::CPU;
+use mogi_system::components::mmu::MMU;
 use tcp::socket;
 
 use crate::emulator::abstractions::errors::GenericError;

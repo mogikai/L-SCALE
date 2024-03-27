@@ -1,6 +1,6 @@
 use bitflags::Flags;
 use byteorder::ByteOrder;
-use mogi_system::traits::mmu::{
+use mogi_system::components::mmu::{
     Permission,
     MMU,
 };

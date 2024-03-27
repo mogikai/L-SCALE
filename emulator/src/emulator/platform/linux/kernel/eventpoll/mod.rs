@@ -16,10 +16,9 @@ use mogi_derive::{
     Encode,
     RequiredMem,
 };
-use mogi_system::traits::mmu::MMU;
+use mogi_system::components::cpu::CPU;
 use mogi_utilities::addresses::EVAddr;
 
-use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::file_descriptors::{
     FileDescriptorOps,
     FileOperationsReady,
@@ -48,6 +47,7 @@ use crate::emulator::system::memory::rw_interface::{
     MemoryWrite,
 };
 use crate::emulator::system::memory::MemoryAccessor;
+use mogi_system::components::mmu::MMU;
 
 mod events;
 mod fd_ops;

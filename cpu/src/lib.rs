@@ -4,7 +4,6 @@ pub mod exec;
 pub mod lifter;
 
 pub mod cpu;
-pub mod interface;
 pub mod jit;
 pub mod pcode;
 pub mod sleigh;

@@ -1,4 +1,4 @@
-use mogi_system::traits::mmu::MMU;
+use mogi_system::components::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
 use tracing::{
     debug,
@@ -9,7 +9,7 @@ use super::*;
 
 impl<'a, CpuT, TcpT, Endianness> LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where
-    CpuT: CPU + MMU + Hooks + 'static,
+    CpuT: CPU + MMU + Hooks + Restorable + 'static,
     TcpT: TCPSystem + 'static,
     Endianness: ByteOrder + 'static,
 {

@@ -14,6 +14,7 @@ cranelift-native = "0.106.0"
 addr2line = "0.21.0"
 bitflags = "2.3.3"
 byteorder = "1.5.0"
+mogi_system = { path = "../system", version = "0.1.0" }
 mogi_derive = { path = "../derive", version = "0.1.0" }
 mogi_utilities = { path = "../utilities", version = "0.1.0" }
 mogi_mem = { path = "../mem" }

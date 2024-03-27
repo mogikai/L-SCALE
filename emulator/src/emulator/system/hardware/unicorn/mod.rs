@@ -1,14 +1,8 @@
 use std::cell::RefCell;
-use std::collections::{
-    BTreeMap,
-    BTreeSet,
-};
+use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use generational_arena::Arena;
 use iced_x86::Formatter;
-
-use mogi_utilities::addresses::EVAddr;
 use unicorn_engine::unicorn_const::{
     Arch,
     Mode,
@@ -20,7 +14,8 @@ use unicorn_engine::{
     Unicorn,
 };
 
-use crate::emulator::interface::error::StopReason;
+use mogi_system::errors::StopReason;
+use mogi_utilities::addresses::EVAddr;
 
 pub mod cpu;
 pub mod hooks;

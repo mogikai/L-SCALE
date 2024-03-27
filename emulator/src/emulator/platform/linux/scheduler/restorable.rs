@@ -1,9 +1,9 @@
 use byteorder::ByteOrder;
-use mogi_system::traits::mmu::MMU;
+use mogi_system::components::mmu::MMU;
 
-use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::hooks::Hooks;
+use mogi_system::components::cpu::CPU;
 
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::restore::Restorable;
@@ -11,7 +11,7 @@ use crate::emulator::platform::linux::scheduler::LinuxX86Scheduler;
 
 impl<'a, CpuT, TcpT, Endianness> Restorable for LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where
-    CpuT: CPU + Hooks + MMU,
+    CpuT: CPU + Hooks + MMU + Restorable,
     TcpT: TCPSystem,
     Endianness: 'static + ByteOrder,
 {

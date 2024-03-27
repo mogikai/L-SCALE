@@ -56,6 +56,7 @@ mod debug;
 pub mod exception;
 pub mod exit;
 mod injector;
+pub mod interface;
 
 const TRACE_EXEC: bool = false;
 

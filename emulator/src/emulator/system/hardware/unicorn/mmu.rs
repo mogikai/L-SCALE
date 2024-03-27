@@ -1,4 +1,4 @@
-use mogi_system::traits::mmu::{
+use mogi_system::components::mmu::{
     MemoryAction,
     MmuResult,
     Permission,

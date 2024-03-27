@@ -1,3 +1,4 @@
+use mogi_system::errors::CPUError;
 use mogi_utilities::error::memory::MemoryError;
 use std::error::Error;
 use std::fmt::{
@@ -6,7 +7,6 @@ use std::fmt::{
     Formatter,
 };
 
-use crate::emulator::abstractions::cpu::CPUError;
 use crate::emulator::platform::linux::kernel::LinuxKernelError;
 use crate::emulator::system::filesystem::FSError;
 

@@ -1,5 +1,10 @@
 //! This module contains all the emulator components of fuzzyemu.
 //! TODO: Detailed documentation
+use mogi_system::errors::{
+    EmulatorError,
+    SchedulerError,
+    StopReason,
+};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::{
@@ -22,11 +27,6 @@ use crate::emulator::abstractions::system::SystemControl;
 use crate::emulator::interface::emulator::{
     Emulator,
     ExitReason,
-};
-use crate::emulator::interface::error::{
-    EmulatorError,
-    SchedulerError,
-    StopReason,
 };
 use crate::emulator::interface::meter::{
     DebuggableMeter,

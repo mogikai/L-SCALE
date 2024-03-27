@@ -5,7 +5,7 @@ use bitvec::ptr::{
 };
 use byteorder::ByteOrder;
 use mogi_derive::unfinished;
-use mogi_system::traits::mmu::MMU;
+use mogi_system::components::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::encoding::{
     Decode,
@@ -15,7 +15,6 @@ use mogi_utilities::encoding::{
 use mogi_utilities::error::memory::MemoryError;
 use tracing::trace;
 
-use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::file_descriptors::FileOperationsReady;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::Architecture;
@@ -31,6 +30,7 @@ use crate::emulator::system::memory::rw_interface::{
     MemoryRead,
     MemoryWrite,
 };
+use mogi_system::components::cpu::CPU;
 
 impl<Endianness, Arch, CpuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
 where

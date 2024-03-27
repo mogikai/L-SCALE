@@ -28,7 +28,6 @@ use tracing_subscriber::{
     EnvFilter,
 };
 
-use mogi_emulator::emulator::abstractions::cpu::CPU;
 use mogi_emulator::emulator::abstractions::errors::GenericError;
 use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
 use mogi_emulator::emulator::abstractions::hooks::Hooks;
@@ -41,11 +40,6 @@ use mogi_emulator::emulator::abstractions::restore::Restorable;
 use mogi_emulator::emulator::interface::emulator::{
     Emulator,
     ExitReason,
-};
-use mogi_emulator::emulator::interface::error::{
-    EmulatorError,
-    SchedulerError,
-    StopReason,
 };
 use mogi_emulator::emulator::interface::network::tcp::{
     TCPSocket,
@@ -98,7 +92,14 @@ fn main() -> Result<(), GenericError> {
     let pargs = Args::parse();
 
     let duration = {
-        let cpu = UCWrapper::new();
+        // let cpu = UCWrapper::new();
+        let mmu = Rc::new(RefCell::new(Mmu::new()));
+        let cpu = Rc::new(RefCell::new(
+            CpuBuilder::new(mmu.clone())
+                .target_triple(Triple::host())
+                .build()
+                .unwrap(),
+        ));
 
         let task_manager = TaskManager::new();
         let filesystem = Filesystem::from_disk(1_073_741_824, Path::new(&pargs.system_root)).unwrap();

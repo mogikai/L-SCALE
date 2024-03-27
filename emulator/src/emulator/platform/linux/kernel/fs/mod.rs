@@ -7,6 +7,7 @@ use bitflags::{
 use byteorder::ByteOrder;
 
 use mogi_derive::unfinished;
+use mogi_system::components::cpu::CPU;
 
 use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
 use crate::emulator::abstractions::filesystem::FileId;

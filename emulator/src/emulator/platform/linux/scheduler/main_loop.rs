@@ -1,10 +1,15 @@
 use super::*;
 use crate::emulator::system::task_manager::TaskState;
-use mogi_system::traits::mmu::MMU;
+use mogi_system::components::cpu::RegisterX86;
+use mogi_system::components::mmu::MMU;
+use mogi_system::errors::{
+    CPUError,
+    StopReason,
+};
 
 impl<'a, CpuT, TcpT, Endianness> LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where
-    CpuT: CPU + MMU + Hooks,
+    CpuT: CPU + MMU + Hooks + Restorable,
     TcpT: TCPSystem,
     Endianness: ByteOrder + 'static,
 {

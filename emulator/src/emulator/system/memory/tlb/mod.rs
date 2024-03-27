@@ -13,7 +13,7 @@ use itertools::{
     Itertools,
     PeekingNext,
 };
-use mogi_system::traits::mmu::Permission;
+use mogi_system::components::mmu::Permission;
 use mogi_utilities::addresses::{
     EPAddr,
     EVAddr,

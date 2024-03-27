@@ -1,4 +1,3 @@
-use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::kernel_task::KernelTask;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
@@ -14,7 +13,8 @@ use crate::emulator::system::memory::Memory;
 use crate::emulator::system::prng::SeedablePrngMap;
 use crate::emulator::system::task_manager::TaskManager;
 use byteorder::ByteOrder;
-use mogi_system::traits::mmu::MMU;
+use mogi_system::components::cpu::CPU;
+use mogi_system::components::mmu::MMU;
 use rand::{
     Rng,
     SeedableRng,

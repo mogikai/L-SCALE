@@ -34,7 +34,7 @@ use tracing::{
 
 pub use accessor::MemoryAccessor;
 use layout::Layout;
-use mogi_system::traits::mmu::{
+use mogi_system::components::mmu::{
     Permission,
     MMU,
     MREMAP_FLAGS,

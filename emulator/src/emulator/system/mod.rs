@@ -3,17 +3,17 @@ use std::fmt::Debug;
 use std::rc::Rc;
 
 use byteorder::ByteOrder;
-use mogi_system::traits::mmu::MMU;
+use mogi_system::components::mmu::MMU;
 use rand::{
     Rng,
     SeedableRng,
 };
 use rand_pcg::Mcg128Xsl64;
 
-use crate::emulator::abstractions::cpu::CPU;
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::kernel_task::KernelTask;
+use mogi_system::components::cpu::CPU;
 
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::restore::Restorable;
@@ -189,7 +189,7 @@ where
     TaskId: Ord + Copy + Clone + Default + Debug,
     KernelTaskT: KernelTask<TaskId> + Debug,
     Endianness: ByteOrder,
-    CpuT: CPU + MMU,
+    CpuT: CPU + MMU + Restorable,
     TcpT: TCPSystem,
     PrngT: Rng + SeedableRng + Clone,
 {

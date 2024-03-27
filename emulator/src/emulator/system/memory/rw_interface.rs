@@ -3,7 +3,7 @@ use std::ffi::CString;
 use std::ops::Deref;
 
 use byteorder::ByteOrder;
-use mogi_system::traits::mmu::MMU;
+use mogi_system::components::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::encoding::{
     Decode,

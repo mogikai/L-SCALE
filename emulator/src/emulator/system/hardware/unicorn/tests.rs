@@ -2,7 +2,7 @@
 
 use crate::emulator::system::hardware::unicorn::UCWrapper;
 use crate::emulator::system::GenericError;
-use mogi_system::traits::mmu::{
+use mogi_system::components::mmu::{
     Permission,
     MMU,
 };

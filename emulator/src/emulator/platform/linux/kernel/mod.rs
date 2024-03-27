@@ -32,10 +32,6 @@ use mogi_derive::{
     RequiredMem,
 };
 
-use crate::emulator::abstractions::cpu::{
-    RegisterX86,
-    CPU,
-};
 use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::filesystem::FileId;
@@ -91,7 +87,11 @@ macro_rules! sys_component_mut {
     };
 }
 
-use mogi_system::traits::mmu::{
+use mogi_system::components::cpu::{
+    RegisterX86,
+    CPU,
+};
+use mogi_system::components::mmu::{
     Permission,
     MMU,
 };

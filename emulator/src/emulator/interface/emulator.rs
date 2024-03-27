@@ -1,13 +1,10 @@
 use crate::emulator::abstractions::restore::Restorable;
+use mogi_system::errors::EmulatorError;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
 use crate::emulator::abstractions::system::SystemControl;
-use crate::emulator::interface::error::{
-    EmulatorError,
-    SchedulerError,
-};
 use crate::emulator::interface::meter::{
     DebuggableMeter,
     Meter,

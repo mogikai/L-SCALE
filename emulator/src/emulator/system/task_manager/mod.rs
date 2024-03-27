@@ -1,10 +1,5 @@
 mod restorable;
 
-use crate::emulator::abstractions::cpu::{
-    CPUError,
-    ContextHandle,
-    CPU,
-};
 use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::kernel_task::KernelTask;
 
@@ -13,6 +8,8 @@ use crate::emulator::system::task_manager::restorable::{
     TaskManagerSnapshot,
     TaskSnapshot,
 };
+use mogi_system::components::cpu::ContextHandle;
+use mogi_system::errors::CPUError;
 use mogi_utilities::addresses::EVAddr;
 use std::cell::RefCell;
 use std::collections::BTreeMap;

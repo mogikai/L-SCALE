@@ -1,8 +1,4 @@
 use super::*;
-use crate::emulator::abstractions::cpu::{
-    RegisterX86,
-    CPU,
-};
 
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::memory::Memory;
@@ -14,7 +10,11 @@ use iced_x86::{
     Instruction,
     IntelFormatter,
 };
-use mogi_system::traits::mmu::MMU;
+use mogi_system::components::cpu::{
+    RegisterX86,
+    CPU,
+};
+use mogi_system::components::mmu::MMU;
 
 pub(super) fn trace_hook<Endianness: ByteOrder + 'static>(
     mut uc: &mut (impl CPU + MMU),
