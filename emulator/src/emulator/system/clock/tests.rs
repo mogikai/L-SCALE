@@ -1,7 +1,7 @@
 #![cfg(test)]
 
-use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::clock::*;
+use mogi_system::components::restore::Restorable;
 use mogi_system::errors::generic::GenericError;
 use std::time::Duration;
 

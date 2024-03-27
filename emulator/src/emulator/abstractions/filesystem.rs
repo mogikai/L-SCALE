@@ -7,8 +7,8 @@ use std::path::{
     PathBuf,
 };
 
-use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::filesystem::Stat;
+use mogi_system::components::restore::Restorable;
 
 #[derive(Default, Copy, Clone, Debug, PartialEq)]
 pub struct FSId(usize);

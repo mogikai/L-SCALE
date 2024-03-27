@@ -7,8 +7,8 @@ use std::rc::Rc;
 
 use imbl::HashMap;
 
-use crate::emulator::abstractions::restore::Restorable;
 use crate::util::auto_key::AutoKey;
+use mogi_system::components::restore::Restorable;
 use mogi_system::errors::generic::GenericError;
 
 #[derive(Debug)]

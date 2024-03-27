@@ -1,9 +1,9 @@
-use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::fd_map::{
     FdId,
     FileDescriptorMap,
     Snapshot,
 };
+use mogi_system::components::restore::Restorable;
 use mogi_system::errors::generic::{
     GenericError,
     GenericErrorKind,

@@ -5,7 +5,7 @@
 // use mogi_utilities::addresses::EVAddr;
 // use thiserror::Error;
 //
-// use crate::emulator::abstractions::restore::Restorable;
+// use mogi_system::components::restore::Restorable;
 // use crate::emulator::interface::error::StopReason;
 //
 // #[derive(Error, Debug, Copy, Clone)]

@@ -8,8 +8,8 @@ use crate::emulator::abstractions::filesystem::{
     FSId,
     Mountpoint,
 };
-use crate::emulator::abstractions::restore::Restorable;
 use itertools::Itertools;
+use mogi_system::components::restore::Restorable;
 use mogi_system::errors::filesystem::FSError;
 use mogi_system::errors::generic::GenericError;
 use std::cmp::min;

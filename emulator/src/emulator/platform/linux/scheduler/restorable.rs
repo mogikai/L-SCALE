@@ -6,8 +6,8 @@ use mogi_system::components::cpu::CPU;
 use mogi_system::errors::generic::GenericError;
 
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
-use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::scheduler::LinuxX86Scheduler;
+use mogi_system::components::restore::Restorable;
 
 impl<'a, CpuT, TcpT, Endianness> Restorable for LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
 where

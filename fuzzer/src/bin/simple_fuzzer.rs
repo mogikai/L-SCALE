@@ -34,7 +34,6 @@ use mogi_emulator::emulator::abstractions::network::{
     IPAddress,
     SocketAddress,
 };
-use mogi_emulator::emulator::abstractions::restore::Restorable;
 use mogi_emulator::emulator::interface::emulator::{
     Emulator,
     ExitReason,
@@ -62,6 +61,7 @@ use mogi_fuzzer::io::tcp::TCP;
 use mogi_mem::Mmu;
 use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::components::cpu::CPU;
+use mogi_system::components::restore::Restorable;
 use mogi_system::errors::generic::GenericError;
 use mogi_utilities::error::memory::MemoryError;
 

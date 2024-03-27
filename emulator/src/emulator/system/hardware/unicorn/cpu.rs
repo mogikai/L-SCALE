@@ -22,8 +22,8 @@ use mogi_utilities::addresses::EVAddr;
 use unicorn_engine::unicorn_const::uc_error;
 use unicorn_engine::RegisterX86;
 
-use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::hardware::unicorn::UCWrapper;
+use mogi_system::components::restore::Restorable;
 
 pub(super) fn cpu_error_from_uc_error(e: uc_error) -> CPUError {
     trace!("UC ERROR: {:?}", e);

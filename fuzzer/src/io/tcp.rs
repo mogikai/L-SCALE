@@ -10,7 +10,6 @@ use mogi_emulator::emulator::abstractions::network::{
     SocketAddress,
     SocketId,
 };
-use mogi_emulator::emulator::abstractions::restore::Restorable;
 use mogi_emulator::emulator::interface::network::tcp::{
     StreamId,
     TCPSocket,
@@ -18,6 +17,7 @@ use mogi_emulator::emulator::interface::network::tcp::{
 };
 use mogi_emulator::util::auto_key::lazy_clone_map::LazyCloneMap;
 use mogi_emulator::util::rcow::RCow;
+use mogi_system::components::restore::Restorable;
 use mogi_system::errors::generic::{
     GenericError,
     GenericErrorKind,

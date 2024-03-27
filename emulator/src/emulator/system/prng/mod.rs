@@ -11,7 +11,7 @@ use rand::{
     SeedableRng,
 };
 
-use crate::emulator::abstractions::restore::Restorable;
+use mogi_system::components::restore::Restorable;
 
 #[derive(Debug, Default, Clone)]
 pub struct SeedablePrngMap<Prng, TaskId>

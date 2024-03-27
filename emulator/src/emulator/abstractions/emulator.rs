@@ -1,8 +1,8 @@
+use mogi_system::components::restore::Restorable;
 use mogi_system::errors::SchedulerError;
 use std::time::Duration;
 
-use crate::emulator::abstractions::restore::Restorable;
-
+// TODO: Remove restorable supertrait
 pub trait Scheduler: Restorable {
     fn run(
         &mut self,

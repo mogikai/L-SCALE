@@ -8,7 +8,7 @@ use mogi_emulator::emulator::abstractions::network::{
     SocketAddress,
     SocketId,
 };
-use mogi_emulator::emulator::abstractions::restore::Restorable;
+use mogi_system::components::restore::Restorable;
 use mogi_system::errors::generic::GenericError;
 
 mock! {

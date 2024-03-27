@@ -1,6 +1,5 @@
 use crate::emulator::abstractions::kernel_task::KernelTask;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
-use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::interface::network::tcp::TCPSystemControl;
 use crate::emulator::system::clock::Clock;
 use crate::emulator::system::fd_map::{
@@ -15,6 +14,7 @@ use byteorder::ByteOrder;
 use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::components::cpu::CPU;
 use mogi_system::components::mmu::MMU;
+use mogi_system::components::restore::Restorable;
 use rand::{
     Rng,
     SeedableRng,

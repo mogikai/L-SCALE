@@ -35,8 +35,8 @@ use crate::emulator::abstractions::filesystem::{
     FileId,
     Mountpoint,
 };
-use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::filesystem::persistent::PersistendFS;
+use mogi_system::components::restore::Restorable;
 use mogi_system::errors::generic::GenericError;
 
 mod persistent;

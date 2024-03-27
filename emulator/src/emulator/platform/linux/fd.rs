@@ -1,5 +1,5 @@
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
-use crate::emulator::abstractions::restore::Restorable;
+use mogi_system::components::restore::Restorable;
 use mogi_system::errors::generic::GenericError;
 use std::ops::Add;
 

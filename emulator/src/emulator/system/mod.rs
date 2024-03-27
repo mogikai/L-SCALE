@@ -16,7 +16,6 @@ use mogi_system::components::cpu::CPU;
 use mogi_system::errors::generic::GenericError;
 
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
-use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::abstractions::system::SystemControl;
 use crate::emulator::interface::network::tcp::TCPSystemControl;
 use crate::emulator::system::clock::Clock;
@@ -27,6 +26,7 @@ use crate::emulator::system::fd_map::{
 use crate::emulator::system::filesystem::Filesystem;
 use crate::emulator::system::memory::Memory;
 use crate::emulator::system::task_manager::TaskManager;
+use mogi_system::components::restore::Restorable;
 
 use self::prng::SeedablePrngMap;
 

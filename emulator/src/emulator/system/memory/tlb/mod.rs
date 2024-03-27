@@ -21,13 +21,13 @@ use mogi_utilities::addresses::{
 };
 use mogi_utilities::error::memory::MemoryError;
 
-use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::memory::pregion::PhysicalRegion;
 use crate::emulator::system::memory::tlb::mapping::{
     Contains,
     Mapping,
     MappingType,
 };
+use mogi_system::components::restore::Restorable;
 
 pub mod mapping;
 mod tests;

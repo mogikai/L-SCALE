@@ -3,12 +3,12 @@ mod restorable;
 use crate::emulator::abstractions::kernel_task::KernelTask;
 use mogi_system::components::cpu::hooks::Hooks;
 
-use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::task_manager::restorable::{
     TaskManagerSnapshot,
     TaskSnapshot,
 };
 use mogi_system::components::cpu::ContextHandle;
+use mogi_system::components::restore::Restorable;
 use mogi_system::errors::cpu::CPUError;
 use mogi_utilities::addresses::EVAddr;
 use std::cell::RefCell;

@@ -1,4 +1,4 @@
-use crate::emulator::abstractions::restore::Restorable;
+use mogi_system::components::restore::Restorable;
 use mogi_system::errors::EmulatorError;
 use std::cell::RefCell;
 use std::rc::Rc;

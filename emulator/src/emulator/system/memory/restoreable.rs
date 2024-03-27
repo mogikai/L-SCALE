@@ -4,11 +4,11 @@ use mogi_system::errors::generic::{
     GenericErrorKind,
 };
 
-use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::memory::{
     Memory,
     MemorySnapshot,
 };
+use mogi_system::components::restore::Restorable;
 
 impl<Endianness: ByteOrder> Restorable for Memory<Endianness> {
     fn take_snapshot(&mut self) -> Result<(), GenericError> {

@@ -7,7 +7,7 @@ use crate::emulator::abstractions::network::{
     SocketAddress,
     SocketId,
 };
-use crate::emulator::abstractions::restore::Restorable;
+use mogi_system::components::restore::Restorable;
 
 pub trait TCPSystem: Restorable + Debug {
     fn new_socket(&mut self) -> Result<SocketId, NetworkError>;

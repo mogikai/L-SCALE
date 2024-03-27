@@ -10,11 +10,11 @@ use unicorn_engine::{
     Unicorn,
 };
 
-use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::hardware::unicorn::{
     Snapshot,
     UCWrapper,
 };
+use mogi_system::components::restore::Restorable;
 
 impl Restorable for UCWrapper<'_> {
     fn take_snapshot(&mut self) -> Result<(), GenericError> {
