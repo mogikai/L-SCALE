@@ -2,7 +2,7 @@ use super::*;
 use crate::emulator::system::task_manager::TaskState;
 use mogi_system::components::cpu::RegisterX86;
 use mogi_system::components::mmu::MMU;
-use mogi_system::errors::{
+use mogi_system::errors::cpu::{
     CPUError,
     StopReason,
 };

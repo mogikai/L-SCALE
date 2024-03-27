@@ -1,18 +1,15 @@
-use std::backtrace::Backtrace;
-use std::convert::Infallible;
-use std::error::Error;
-
 use mogi_utilities::error::memory::MemoryError;
+use std::convert::Infallible;
 use thiserror::Error;
 
-use crate::emulator::abstractions::errors::{
+use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
+use crate::emulator::system::fd_map::error::FileDescriptorMapError;
+use mogi_system::errors::cpu::CPUError;
+use mogi_system::errors::filesystem::FSError;
+use mogi_system::errors::generic::{
     GenericError,
     GenericErrorKind,
 };
-use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
-use crate::emulator::system::fd_map::error::FileDescriptorMapError;
-use crate::emulator::system::filesystem::FSError;
-use mogi_system::errors::CPUError;
 
 #[derive(Error, Debug, Copy, Clone)]
 #[repr(i64)]

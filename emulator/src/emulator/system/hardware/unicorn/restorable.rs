@@ -1,15 +1,15 @@
 use std::collections::BTreeMap;
 
+use mogi_system::errors::generic::{
+    GenericError,
+    GenericErrorKind,
+};
 use unicorn_engine::{
     Context,
     ContextMode,
     Unicorn,
 };
 
-use crate::emulator::abstractions::errors::{
-    GenericError,
-    GenericErrorKind,
-};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::hardware::unicorn::{
     Snapshot,
@@ -18,7 +18,10 @@ use crate::emulator::system::hardware::unicorn::{
 
 impl Restorable for UCWrapper<'_> {
     fn take_snapshot(&mut self) -> Result<(), GenericError> {
-        let context = self.uc_mut().context_alloc()?;
+        let context = self
+            .uc_mut()
+            .context_alloc()
+            .map_err(|_| GenericError::unknown())?;
         let saved_contexts = clone_contexts(&self.contexts, self.uc.as_mut().unwrap())?;
         self.snapshots.push(Snapshot {
             uc_context: context,
@@ -30,7 +33,8 @@ impl Restorable for UCWrapper<'_> {
         self.uc
             .as_mut()
             .unwrap()
-            .context_save(&mut self.snapshots.last_mut().unwrap().uc_context)?;
+            .context_save(&mut self.snapshots.last_mut().unwrap().uc_context)
+            .map_err(|_| GenericError::unknown())?;
         self.uc_mut().ctl_context_mode(ContextMode::CPU);
         Ok(())
     }
@@ -52,12 +56,14 @@ impl Restorable for UCWrapper<'_> {
         self.uc
             .as_mut()
             .unwrap()
-            .ctl_context_mode(ContextMode::CPU | ContextMode::Memory)?;
+            .ctl_context_mode(ContextMode::CPU | ContextMode::Memory)
+            .map_err(|_| GenericError::unknown())?;
         let result = restore_helper(self.uc.as_mut().unwrap(), snapshot);
         self.uc
             .as_mut()
             .unwrap()
-            .ctl_context_mode(ContextMode::CPU)?;
+            .ctl_context_mode(ContextMode::CPU)
+            .map_err(|_| GenericError::unknown())?;
         result?;
         self.next_key = snapshot.next_key;
         self.contexts = clone_contexts(&snapshot.contexts, self.uc.as_mut().unwrap())?;
@@ -69,15 +75,17 @@ fn clone_contexts(
     uc: &mut Unicorn<'_, *mut UCWrapper<'_>>,
 ) -> Result<BTreeMap<u64, Context>, GenericError> {
     // Create a temporary context to which we save the current state.
-    let mut tmp_context = uc.context_alloc()?;
-    uc.context_save(&mut tmp_context)?;
+    let mut tmp_context = uc.context_alloc().map_err(|_| GenericError::unknown())?;
+    uc.context_save(&mut tmp_context)
+        .map_err(|_| GenericError::unknown())?;
     // Save all contexts to a new context that we can later copy over again.
     let cloned_contexts = contexts
         .iter()
         .zip(
             (0..contexts.len())
                 .map(|_| uc.context_alloc())
-                .collect::<Result<Vec<_>, _>>()?,
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|_| GenericError::unknown())?,
         )
         .map(|((index, context), mut new_context)| {
             uc.context_restore(context);
@@ -86,7 +94,8 @@ fn clone_contexts(
         })
         .collect::<BTreeMap<_, _>>();
     // Restore the original state
-    uc.context_restore(&tmp_context)?;
+    uc.context_restore(&tmp_context)
+        .map_err(|_| GenericError::unknown())?;
     Ok(cloned_contexts)
 }
 
@@ -94,7 +103,8 @@ fn restore_helper(
     uc: &mut Unicorn<'_, *mut UCWrapper<'_>>,
     snapshot: &Snapshot,
 ) -> Result<(), GenericError> {
-    uc.context_restore(&snapshot.uc_context)?;
-    uc.ctl_flush_tlb()?;
+    uc.context_restore(&snapshot.uc_context)
+        .map_err(|_| GenericError::unknown())?;
+    uc.ctl_flush_tlb().map_err(|_| GenericError::unknown())?;
     Ok(())
 }

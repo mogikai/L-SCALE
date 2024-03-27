@@ -1,14 +1,11 @@
-use mogi_system::errors::CPUError;
+use crate::errors::cpu::CPUError;
+use crate::errors::filesystem::FSError;
 use mogi_utilities::error::memory::MemoryError;
 use std::error::Error;
 use std::fmt::{
-    Debug,
     Display,
     Formatter,
 };
-
-use crate::emulator::platform::linux::kernel::LinuxKernelError;
-use crate::emulator::system::filesystem::FSError;
 
 #[derive(Debug)]
 pub enum GenericErrorKind {
@@ -33,6 +30,13 @@ impl GenericError {
         Self {
             kind,
             message: message.to_string(),
+        }
+    }
+
+    pub fn unknown() -> Self {
+        Self {
+            kind: GenericErrorKind::Unknown,
+            message: "".to_string(),
         }
     }
 
@@ -83,15 +87,6 @@ impl From<MemoryError> for GenericError {
     fn from(e: MemoryError) -> Self {
         Self {
             kind: GenericErrorKind::MemoryError(e),
-            message: "".to_string(),
-        }
-    }
-}
-
-impl From<LinuxKernelError> for GenericError {
-    fn from(value: LinuxKernelError) -> Self {
-        Self {
-            kind: GenericErrorKind::Unknown,
             message: "".to_string(),
         }
     }

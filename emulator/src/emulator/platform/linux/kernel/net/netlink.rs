@@ -16,7 +16,6 @@ use mogi_utilities::encoding::{
 };
 use mogi_utilities::error::memory::MemoryError;
 
-use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
@@ -25,6 +24,7 @@ use crate::emulator::platform::linux::kernel::net::netlink::rtnetlink::{
     RTNetlinkSocket,
 };
 use crate::emulator::system::fd_map::FileDescriptor;
+use mogi_system::errors::generic::GenericError;
 
 pub mod rtnetlink;
 

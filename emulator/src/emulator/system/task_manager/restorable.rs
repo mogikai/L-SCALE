@@ -1,9 +1,9 @@
 use super::*;
-use crate::emulator::abstractions::errors::{
+use crate::emulator::abstractions::restore::Restorable;
+use mogi_system::errors::generic::{
     GenericError,
     GenericErrorKind,
 };
-use crate::emulator::abstractions::restore::Restorable;
 use std::collections::BTreeMap;
 
 impl<TaskId, T> Restorable for TaskManager<TaskId, T>

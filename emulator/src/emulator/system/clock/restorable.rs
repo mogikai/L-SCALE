@@ -1,9 +1,9 @@
-use crate::emulator::abstractions::errors::{
+use crate::emulator::abstractions::restore::Restorable;
+use crate::emulator::system::clock::Clock;
+use mogi_system::errors::generic::{
     GenericError,
     GenericErrorKind,
 };
-use crate::emulator::abstractions::restore::Restorable;
-use crate::emulator::system::clock::Clock;
 
 impl Restorable for Clock {
     fn take_snapshot(&mut self) -> Result<(), GenericError> {

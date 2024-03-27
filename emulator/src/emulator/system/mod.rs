@@ -10,10 +10,10 @@ use rand::{
 };
 use rand_pcg::Mcg128Xsl64;
 
-use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::kernel_task::KernelTask;
 use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::components::cpu::CPU;
+use mogi_system::errors::generic::GenericError;
 
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::restore::Restorable;

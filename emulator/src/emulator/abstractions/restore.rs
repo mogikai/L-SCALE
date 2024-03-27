@@ -1,4 +1,4 @@
-use crate::emulator::abstractions::errors::GenericError;
+use mogi_system::errors::generic::GenericError;
 use std::cell::RefCell;
 
 /// The `Restorable` trait provides functionality for taking snapshots

@@ -1,9 +1,9 @@
 use byteorder::ByteOrder;
-
-use crate::emulator::abstractions::errors::{
+use mogi_system::errors::generic::{
     GenericError,
     GenericErrorKind,
 };
+
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::memory::{
     Memory,

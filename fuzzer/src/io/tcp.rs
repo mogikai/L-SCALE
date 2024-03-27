@@ -2,10 +2,6 @@ use std::cmp::min;
 use std::collections::VecDeque;
 use std::mem::swap;
 
-use mogi_emulator::emulator::abstractions::errors::{
-    GenericError,
-    GenericErrorKind,
-};
 use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
 use mogi_emulator::emulator::abstractions::network::tcp_system::TCPSystem;
 use mogi_emulator::emulator::abstractions::network::{
@@ -22,6 +18,10 @@ use mogi_emulator::emulator::interface::network::tcp::{
 };
 use mogi_emulator::util::auto_key::lazy_clone_map::LazyCloneMap;
 use mogi_emulator::util::rcow::RCow;
+use mogi_system::errors::generic::{
+    GenericError,
+    GenericErrorKind,
+};
 
 #[derive(Debug, Default)]
 pub struct TCP {

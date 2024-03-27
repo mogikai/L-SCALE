@@ -1,11 +1,9 @@
 use std::cmp::Ordering;
 
 use addr_align::Align4k;
+use mogi_system::errors::filesystem::FSError;
 
-use crate::emulator::system::filesystem::{
-    FSError,
-    SnapId,
-};
+use crate::emulator::system::filesystem::SnapId;
 
 #[derive(Eq, Copy, Clone, Debug)]
 pub(super) struct Block {

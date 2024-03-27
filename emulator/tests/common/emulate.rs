@@ -20,10 +20,8 @@ use mogi_emulator::emulator::system::System;
 use crate::common::mocks::tcp_system::MockTCPSystem;
 use crate::common::TestFailure;
 use mogi_emulator::emulator::abstractions::kernel_task::KernelTask;
-use mogi_system::errors::{
-    SchedulerError,
-    StopReason,
-};
+use mogi_system::errors::cpu::StopReason;
+use mogi_system::errors::SchedulerError;
 
 pub fn emulate(
     sys_path: &Path,

@@ -28,7 +28,6 @@ use tracing_subscriber::{
     EnvFilter,
 };
 
-use mogi_emulator::emulator::abstractions::errors::GenericError;
 use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
 use mogi_emulator::emulator::abstractions::kernel_task::KernelTask;
 use mogi_emulator::emulator::abstractions::network::{
@@ -62,6 +61,8 @@ use mogi_emulator::LittleEndian;
 use mogi_fuzzer::io::tcp::TCP;
 use mogi_mem::Mmu;
 use mogi_system::components::cpu::hooks::Hooks;
+use mogi_system::components::cpu::CPU;
+use mogi_system::errors::generic::GenericError;
 use mogi_utilities::error::memory::MemoryError;
 
 #[derive(Parser, Debug)]
@@ -92,14 +93,14 @@ fn main() -> Result<(), GenericError> {
     let pargs = Args::parse();
 
     let duration = {
-        // let cpu = UCWrapper::new();
-        let mmu = Rc::new(RefCell::new(Mmu::new()));
-        let cpu = Rc::new(RefCell::new(
-            CpuBuilder::new(mmu.clone())
-                .target_triple(Triple::host())
-                .build()
-                .unwrap(),
-        ));
+        let cpu = UCWrapper::new();
+        // let mmu = Rc::new(RefCell::new(Mmu::new()));
+        // let cpu = Rc::new(RefCell::new(
+        //     CpuBuilder::new(mmu.clone())
+        //         .target_triple(Triple::host())
+        //         .build()
+        //         .unwrap(),
+        // ));
 
         let task_manager = TaskManager::new();
         let filesystem = Filesystem::from_disk(1_073_741_824, Path::new(&pargs.system_root)).unwrap();

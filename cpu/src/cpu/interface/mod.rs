@@ -27,7 +27,7 @@ use mogi_system::components::mmu::{
     Permission,
     MMU,
 };
-use mogi_system::errors::{
+use mogi_system::errors::cpu::{
     CPUError,
     StopReason,
 };

@@ -32,7 +32,6 @@ use mogi_derive::{
     RequiredMem,
 };
 
-use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use crate::emulator::abstractions::filesystem::FileId;
 use crate::emulator::abstractions::kernel_task::KernelTask;
@@ -64,6 +63,7 @@ use crate::emulator::system::memory::rw_interface::{
     MemoryRead,
     MemoryWrite,
 };
+use mogi_system::errors::generic::GenericError;
 
 pub(crate) mod auxv;
 pub(crate) mod error;

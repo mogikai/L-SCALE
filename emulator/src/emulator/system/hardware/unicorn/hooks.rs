@@ -11,11 +11,11 @@ use unicorn_engine::{
     Unicorn,
 };
 
-use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::system::hardware::unicorn::cpu::cpu_error_from_uc_error;
 use crate::emulator::system::hardware::unicorn::UCWrapper;
 use mogi_system::components::cpu::hooks::Hooks;
-use mogi_system::errors::CPUError;
+use mogi_system::errors::cpu::CPUError;
+use mogi_system::errors::generic::GenericError;
 
 impl<'a> Hooks for UCWrapper<'a> {
     fn add_syscall_hook(

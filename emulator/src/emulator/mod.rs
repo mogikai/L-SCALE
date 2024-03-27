@@ -1,10 +1,10 @@
 //! This module contains all the emulator components of fuzzyemu.
 //! TODO: Detailed documentation
 use mogi_system::components::cpu::hooks::Hooks;
+use mogi_system::errors::cpu::StopReason;
 use mogi_system::errors::{
     EmulatorError,
     SchedulerError,
-    StopReason,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -21,7 +21,6 @@ use tracing::{
 };
 
 use crate::emulator::abstractions::emulator::Scheduler;
-use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::abstractions::system::SystemControl;
 use crate::emulator::interface::emulator::{
@@ -34,6 +33,7 @@ use crate::emulator::interface::meter::{
 };
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::trace::trace_hook;
+use mogi_system::errors::generic::GenericError;
 
 pub mod abstractions;
 pub mod interface;

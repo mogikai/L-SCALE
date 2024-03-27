@@ -1,15 +1,14 @@
-use crate::emulator::abstractions::errors::{
-    GenericError,
-    GenericErrorKind,
-};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::fd_map::{
     FdId,
     FileDescriptorMap,
     Snapshot,
 };
+use mogi_system::errors::generic::{
+    GenericError,
+    GenericErrorKind,
+};
 use std::fmt::Debug;
-use tracing::trace;
 
 impl<FD, TaskId, D> Restorable for FileDescriptorMap<FD, TaskId, D>
 where

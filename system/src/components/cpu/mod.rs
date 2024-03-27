@@ -3,7 +3,7 @@ pub mod hooks;
 use std::num::TryFromIntError;
 use std::time::Duration;
 
-use crate::errors::{
+use crate::errors::cpu::{
     CPUError,
     StopReason,
 };

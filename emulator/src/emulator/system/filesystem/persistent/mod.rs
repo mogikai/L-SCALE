@@ -2,21 +2,39 @@ mod block;
 mod data;
 mod inodes;
 
-use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::filesystem::{FSEntry, FSEntryId, FSId, Mountpoint};
+use crate::emulator::abstractions::filesystem::{
+    FSEntry,
+    FSEntryId,
+    FSId,
+    Mountpoint,
+};
 use crate::emulator::abstractions::restore::Restorable;
+use itertools::Itertools;
+use mogi_system::errors::filesystem::FSError;
+use mogi_system::errors::generic::GenericError;
 use std::cmp::min;
 use std::collections::BTreeMap;
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
-use itertools::Itertools;
-use tracing::{trace, debug};
+use std::path::{
+    Path,
+    PathBuf,
+};
+use tracing::{
+    debug,
+    trace,
+};
 
-use crate::emulator::system::filesystem::persistent::data::{Data, DataSnapMarker};
-use crate::emulator::system::filesystem::persistent::inodes::{FSContent, Inode, Inodes, MetaInfoSnapMarker};
+use crate::emulator::system::filesystem::persistent::data::{
+    Data,
+    DataSnapMarker,
+};
+use crate::emulator::system::filesystem::persistent::inodes::{
+    FSContent,
+    Inode,
+    Inodes,
+    MetaInfoSnapMarker,
+};
 use crate::emulator::system::filesystem::stat::Stat;
-
-use super::FSError;
 
 #[derive(Debug)]
 pub struct PersistendFS {
@@ -264,7 +282,11 @@ impl Mountpoint for PersistendFS {
         self.inodes.delete(dir, name)
     }
 
-    fn set_mountpoint(&mut self, fsentry: FSEntryId, fsid: FSId) -> Result<(), FSError> {
+    fn set_mountpoint(
+        &mut self,
+        fsentry: FSEntryId,
+        fsid: FSId,
+    ) -> Result<(), FSError> {
         todo!()
     }
 }

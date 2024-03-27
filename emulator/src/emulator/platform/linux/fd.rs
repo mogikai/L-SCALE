@@ -1,6 +1,6 @@
-use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::restore::Restorable;
+use mogi_system::errors::generic::GenericError;
 use std::ops::Add;
 
 use crate::emulator::platform::linux::kernel::eventpoll::EpollData;

@@ -10,30 +10,24 @@ use mogi_system::components::cpu::{
 };
 
 use mogi_system::components::cpu;
-use mogi_system::errors::{
+use mogi_system::errors::cpu::{
     CPUError,
     StopReason,
+};
+use mogi_system::errors::generic::{
+    GenericError,
+    GenericErrorKind,
 };
 use mogi_utilities::addresses::EVAddr;
 use unicorn_engine::unicorn_const::uc_error;
 use unicorn_engine::RegisterX86;
 
-use crate::emulator::abstractions::errors::{
-    GenericError,
-    GenericErrorKind,
-};
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::hardware::unicorn::UCWrapper;
 
 pub(super) fn cpu_error_from_uc_error(e: uc_error) -> CPUError {
     trace!("UC ERROR: {:?}", e);
     CPUError::Unknown
-}
-
-impl From<uc_error> for GenericError {
-    fn from(e: uc_error) -> Self {
-        Self::new(GenericErrorKind::CPUError(cpu_error_from_uc_error(e)), format!("{:?}", e).as_ref())
-    }
 }
 
 impl CPU for UCWrapper<'_> {

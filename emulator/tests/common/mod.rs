@@ -2,10 +2,8 @@ mod emulate;
 mod mocks;
 
 pub use emulate::emulate;
-use mogi_system::errors::{
-    SchedulerError,
-    StopReason,
-};
+use mogi_system::errors::cpu::StopReason;
+use mogi_system::errors::SchedulerError;
 use samples;
 use std::path::{
     Path,

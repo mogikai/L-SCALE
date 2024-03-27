@@ -9,7 +9,7 @@ use crate::emulator::system::task_manager::restorable::{
     TaskSnapshot,
 };
 use mogi_system::components::cpu::ContextHandle;
-use mogi_system::errors::CPUError;
+use mogi_system::errors::cpu::CPUError;
 use mogi_utilities::addresses::EVAddr;
 use std::cell::RefCell;
 use std::collections::BTreeMap;

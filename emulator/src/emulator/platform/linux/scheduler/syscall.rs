@@ -11,7 +11,7 @@ use tracing::{
 };
 
 use mogi_system::components::cpu::RegisterX86;
-use mogi_system::errors::StopReason;
+use mogi_system::errors::cpu::StopReason;
 
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::x86::X86;

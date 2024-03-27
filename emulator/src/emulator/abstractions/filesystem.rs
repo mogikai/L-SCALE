@@ -1,3 +1,4 @@
+use mogi_system::errors::filesystem::FSError;
 use std::ffi::OsString;
 use std::fmt::Debug;
 use std::ops::AddAssign;
@@ -7,10 +8,7 @@ use std::path::{
 };
 
 use crate::emulator::abstractions::restore::Restorable;
-use crate::emulator::system::filesystem::{
-    FSError,
-    Stat,
-};
+use crate::emulator::system::filesystem::Stat;
 
 #[derive(Default, Copy, Clone, Debug, PartialEq)]
 pub struct FSId(usize);

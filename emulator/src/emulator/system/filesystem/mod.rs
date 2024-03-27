@@ -3,10 +3,6 @@
 //! TODO: Improve error handling with more meaningful errors
 //! TODO: Implement update of stat struct.
 //! TODO: Consider memory mapping of files into ram
-use std::{
-    fs,
-    io,
-};
 use std::cmp::min;
 use std::ffi::OsString;
 use std::fmt::{
@@ -18,8 +14,13 @@ use std::path::{
     Path,
     PathBuf,
 };
+use std::{
+    fs,
+    io,
+};
 
 use byteorder::ByteOrder;
+use mogi_system::errors::filesystem::FSError;
 use tracing::{
     debug,
     info,
@@ -28,43 +29,19 @@ use tracing::{
 
 pub use stat::Stat;
 
-use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::filesystem::{
-    FileId,
     FSEntry,
     FSId,
+    FileId,
     Mountpoint,
 };
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::filesystem::persistent::PersistendFS;
+use mogi_system::errors::generic::GenericError;
 
 mod persistent;
 mod stat;
 mod tests;
-
-#[derive(Debug, Copy, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum FSError {
-    NotFound,
-    NoEntry,
-    Not4kAlligned,
-    NoAddress,
-    IO,
-    Invalid,
-    Loop,
-    Unknown,
-    Exist,
-    Busy,
-    NotEmpty,
-    NotDir,
-}
-
-impl From<io::Error> for FSError {
-    fn from(e: io::Error) -> Self {
-        trace!("{}", e);
-        FSError::IO
-    }
-}
 
 type ContentId = usize;
 type SnapId = usize;

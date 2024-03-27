@@ -1,6 +1,6 @@
 use crate::components::mmu::tlb_entry::TLBEntry;
 use crate::components::mmu::MemoryAction;
-use crate::errors::CPUError;
+use crate::errors::cpu::CPUError;
 use mogi_utilities::addresses::EVAddr;
 
 pub type UnmappedMemHook<Slf> = Box<dyn FnMut(&mut Slf, MemoryAction, u64, usize, i64) -> bool + 'static>;

@@ -14,7 +14,7 @@ use unicorn_engine::{
     Unicorn,
 };
 
-use mogi_system::errors::StopReason;
+use mogi_system::errors::cpu::StopReason;
 use mogi_utilities::addresses::EVAddr;
 
 pub mod cpu;

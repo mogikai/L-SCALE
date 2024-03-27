@@ -3,9 +3,9 @@ use std::fmt::Debug;
 
 use bitflags::bitflags;
 use derive_more::Display;
+use mogi_system::errors::filesystem::FSError;
 use mogi_utilities::error::memory::MemoryError;
 
-use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::network::{
     ShutdownMethod,
     SocketAddress,
@@ -15,10 +15,8 @@ use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::platform::linux::kernel::socket::Optval;
 use crate::emulator::system::fd_map::FileDescriptor;
-use crate::emulator::system::filesystem::{
-    FSError,
-    Stat,
-};
+use crate::emulator::system::filesystem::Stat;
+use mogi_system::errors::generic::GenericError;
 
 /// The HandleOps trait contains all the functions necessary
 /// for a handle (file descriptor in linux) to function.

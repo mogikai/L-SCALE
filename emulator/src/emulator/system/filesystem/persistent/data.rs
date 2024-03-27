@@ -7,8 +7,8 @@ use std::mem::MaybeUninit;
 use std::ptr;
 
 use addr_align::Align4k;
+use mogi_system::errors::filesystem::FSError;
 
-use crate::emulator::system::filesystem::FSError;
 use crate::emulator::system::filesystem::persistent::block::Block;
 
 #[derive(Debug)]

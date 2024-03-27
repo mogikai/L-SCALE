@@ -7,10 +7,10 @@ use std::rc::Rc;
 
 use imbl::HashMap;
 
-use crate::emulator::abstractions::errors::GenericError;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::util::auto_key::AutoKey;
 use crate::util::rcow::RCow;
+use mogi_system::errors::generic::GenericError;
 
 #[derive(Debug)]
 struct Snapshot<T>

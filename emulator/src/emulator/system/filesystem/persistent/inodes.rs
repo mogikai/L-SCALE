@@ -1,4 +1,7 @@
-use crate::emulator::abstractions::filesystem::{FSEntry, FSEntryId};
+use crate::emulator::abstractions::filesystem::{
+    FSEntry,
+    FSEntryId,
+};
 use libc::wchar_t;
 use std::cell::RefCell;
 use std::collections::{
@@ -12,11 +15,13 @@ use std::path::{
 };
 use tracing::trace;
 
-use crate::emulator::system::filesystem::stat::
-    Stat
-;
-use crate::emulator::system::filesystem::{ContentId, FSError, SnapId};
+use crate::emulator::system::filesystem::stat::Stat;
+use crate::emulator::system::filesystem::{
+    ContentId,
+    SnapId,
+};
 
+use mogi_system::errors::filesystem::FSError;
 use std::ffi::OsString;
 
 use crate::emulator::system::filesystem::persistent::block::Block;

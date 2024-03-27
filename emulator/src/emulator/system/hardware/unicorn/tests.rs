@@ -1,11 +1,11 @@
 #![cfg(test)]
 
 use crate::emulator::system::hardware::unicorn::UCWrapper;
-use crate::emulator::system::GenericError;
 use mogi_system::components::mmu::{
     Permission,
     MMU,
 };
+use mogi_system::errors::generic::GenericError;
 
 #[test]
 fn basic_map() -> Result<(), GenericError> {
