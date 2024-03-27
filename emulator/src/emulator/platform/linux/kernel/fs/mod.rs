@@ -177,13 +177,14 @@ where
         _flags: u64,
         _mode: u64,
     ) -> SyscallResult {
+        // TODO: Resepct flags and for example check O_NOFOLLOW
         // TODO: Need to actually use dfd
         let mut cpu = sys_component_mut!(self, cpu);
         let mut memory = sys_component_mut!(self, memory);
         let memory = memory.accessor(&mut cpu, self.task_id);
         let fname = read_osstring!(memory, filename)?;
         trace!("openat file: {:?}", fname);
-        let file = sys_component!(self, filesystem).resolve_last(Path::new(&fname), false)?; //TODO symlinks
+        let file = sys_component!(self, filesystem).resolve_last(Path::new(&fname), true)?; //TODO symlinks
         let mut file_descriptor = FileDescriptor::new(Box::new(FileOps::new()));
         file_descriptor.data.file =
             Some(FileData::new(self.system.filesystem.clone(), file, Some(PathBuf::from(fname))));
