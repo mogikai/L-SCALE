@@ -414,7 +414,7 @@ fn try_register_to_uc_register_x86(reg: Register) -> Result<RegisterX86, CPUErro
             cpu::RegisterX86::FPTAG => RegisterX86::FPTAG,
             cpu::RegisterX86::MSR => RegisterX86::MSR,
             cpu::RegisterX86::MXCSR => RegisterX86::MXCSR,
-            cpu::RegisterX86::FS_BASE => RegisterX86::FS_BASE,
+            cpu::RegisterX86::FS_OFFSET => RegisterX86::FS_BASE,
             cpu::RegisterX86::GS_BASE => RegisterX86::GS_BASE,
             cpu::RegisterX86::FLAGS => RegisterX86::FLAGS,
             cpu::RegisterX86::RFLAGS => RegisterX86::RFLAGS,

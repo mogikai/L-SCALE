@@ -5,12 +5,20 @@ use std::fmt::{
 };
 
 use addr_align::Align;
+use mogi_system::components::mmu;
+use mogi_system::components::mmu::tlb_entry::TLBEntry;
+use mogi_system::components::mmu::{
+    MemoryAction,
+    MMU,
+};
+use mogi_utilities::addresses::EVAddr;
 use tracing::debug;
 
 use crate::perm::{
     self,
     MemError,
     MemResult,
+    Permission,
 };
 use crate::physical::{
     self,
@@ -178,6 +186,8 @@ pub struct Mmu {
 
     /// Registed handlers for I/O memory
     io: Vec<Box<dyn IoMemoryAny>>,
+
+    page_table_hook: Box<dyn FnMut(EVAddr, MemoryAction) -> Option<TLBEntry> + 'static>,
 }
 
 impl Debug for Mmu {
@@ -228,7 +238,15 @@ impl Mmu {
 
             uncacheable_writes: vec![],
             write_hooks: vec![],
+            page_table_hook: Box::new(|_, _| None),
         }
+    }
+
+    pub fn set_page_table_hook(
+        &mut self,
+        hook: Box<dyn FnMut(EVAddr, MemoryAction) -> Option<TLBEntry> + 'static>,
+    ) {
+        self.page_table_hook = hook;
     }
 
     pub fn add_write_hook(
@@ -354,6 +372,16 @@ impl Mmu {
     /// Returns the total number of allocated pages (includes pages referenced by snapshots)
     pub fn total_pages(&self) -> usize {
         self.physical.allocated_pages()
+    }
+
+    pub fn read_bytes_virtual(
+        &mut self,
+        mut addr: u64,
+        buf: &mut [u8],
+        perm: u8,
+    ) -> MemResult<()> {
+        let (addr, perm) = self.translate_vaddr(addr, perm)?;
+        self.read_bytes(addr, buf, perm)
     }
 
     /// Read bytes from `addr` checking that the permissions specified by `perm` are set
@@ -934,6 +962,10 @@ impl Mmu {
         start: u64,
         len: u64,
     ) -> bool {
+        let Ok((start, perm)) = self.translate_vaddr(start, perm::EXEC) else {
+            return false;
+        };
+
         let Some(end) = start.checked_add(len - 1) else {
             return false;
         };
@@ -1390,6 +1422,48 @@ impl Mmu {
         &mut self.mapping
     }
 
+    fn translate_vaddr(
+        &mut self,
+        addr: u64,
+        perm: u8,
+    ) -> Result<(u64, u8), MemError> {
+        let action = if perm == 0 {
+            MemoryAction::FETCH
+        } else {
+            if perm & perm::READ != 0 {
+                MemoryAction::READ
+            } else if perm & perm::WRITE != 0 {
+                MemoryAction::WRITE
+            } else if perm & perm::EXEC != 0 {
+                MemoryAction::FETCH
+            } else {
+                panic!("Invalid perm");
+            }
+        };
+        let tlb_result = (self.page_table_hook)(addr.into(), action).ok_or(MemError::Unmapped)?;
+        let mut perm = perm::NONE;
+        if tlb_result.permissions.contains(mmu::Permission::READ) {
+            perm |= perm::READ;
+        }
+        if tlb_result.permissions.contains(mmu::Permission::WRITE) {
+            perm |= perm::WRITE;
+        }
+        if tlb_result.permissions.contains(mmu::Permission::EXEC) {
+            perm |= perm::EXEC;
+        }
+
+        Ok((tlb_result.physical_address.into(), perm))
+    }
+
+    pub fn read_virtual<const N: usize>(
+        &mut self,
+        addr: u64,
+        perm: u8,
+    ) -> MemResult<[u8; N]> {
+        let (addr, perm) = self.translate_vaddr(addr, perm)?;
+        self.read(addr, perm)
+    }
+
     #[inline(always)]
     pub fn read<const N: usize>(
         &mut self,
@@ -1401,6 +1475,16 @@ impl Mmu {
             Err(MemError::Unaligned) if N != 1 => self.read_unaligned(addr, perm),
             x => x,
         }
+    }
+
+    pub fn write_virtual<const N: usize>(
+        &mut self,
+        addr: u64,
+        value: [u8; N],
+        perm: u8,
+    ) -> MemResult<()> {
+        let (addr, perm) = self.translate_vaddr(addr, perm)?;
+        self.write(addr, value, perm)
     }
 
     #[inline(always)]

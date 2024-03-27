@@ -68,7 +68,7 @@ fn load<const N: usize>(
     cpu_ptr: *mut CpuCore,
     addr: u64,
 ) -> [u8; N] {
-    let result = unsafe { (*cpu_ptr).mem.borrow_mut().read(addr, READ | INIT) };
+    let result = unsafe { (*cpu_ptr).mem.borrow_mut().read_virtual(addr, READ | INIT) };
     match result {
         Ok(v) => v,
         Err(e) => {
@@ -132,7 +132,12 @@ fn store<const N: usize>(
     addr: u64,
     value: [u8; N],
 ) {
-    let result = unsafe { (*cpu_ptr).mem.borrow_mut().write(addr, value, WRITE) };
+    let result = unsafe {
+        (*cpu_ptr)
+            .mem
+            .borrow_mut()
+            .write_virtual(addr, value, WRITE)
+    };
     if let Err(e) = result {
         unsafe {
             (*cpu_ptr).exception.code = ExceptionCode::from_store_error(e) as u32;

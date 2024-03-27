@@ -472,7 +472,7 @@ where
                 //ARCH_SET_FS
                 let fsbytes = memory.read_bytes(addr, 8).unwrap();
                 let fs = Endianness::read_u64(&fsbytes);
-                cpu.reg_write(RegisterX86::FS_BASE.into(), fs).unwrap();
+                cpu.reg_write(RegisterX86::FS_OFFSET.into(), fs).unwrap();
                 Ok(0)
             }
             0x1003 => Err(LinuxKernelError::EINVAL.into()), //ARCH_GET_FS

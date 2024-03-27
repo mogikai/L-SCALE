@@ -94,13 +94,13 @@ fn main() -> Result<(), GenericError> {
 
     let duration = {
         let cpu = UCWrapper::new();
-        // let mmu = Rc::new(RefCell::new(Mmu::new()));
-        // let cpu = Rc::new(RefCell::new(
-        //     CpuBuilder::new(mmu.clone())
-        //         .target_triple(Triple::host())
-        //         .build()
-        //         .unwrap(),
-        // ));
+        let mmu = Rc::new(RefCell::new(Mmu::new()));
+        let cpu = Rc::new(RefCell::new(
+            CpuBuilder::new(mmu.clone())
+                .target_triple(Triple::host())
+                .build()
+                .unwrap(),
+        ));
 
         let task_manager = TaskManager::new();
         let filesystem = Filesystem::from_disk(1_073_741_824, Path::new(&pargs.system_root)).unwrap();

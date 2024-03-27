@@ -8,6 +8,7 @@ use crate::errors::cpu::{
     StopReason,
 };
 use mogi_utilities::addresses::EVAddr;
+use strum_macros::Display;
 
 pub type ContextHandle = u64;
 
@@ -109,7 +110,7 @@ impl From<RegisterRISCV> for Register {
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Display)]
 pub enum RegisterX86 {
     INVALID,
     AH,
@@ -341,7 +342,7 @@ pub enum RegisterX86 {
     FPTAG,
     MSR,
     MXCSR,
-    FS_BASE,
+    FS_OFFSET,
     GS_BASE,
     FLAGS,
     RFLAGS,

@@ -726,7 +726,11 @@ impl<'a> PcodeExecutor for UncheckedExecutor<'a> {
         addr: u64,
     ) -> MemResult<[u8; N]> {
         match id {
-            0 => self.cpu.mem.borrow_mut().read::<N>(addr, perm::READ),
+            0 => self
+                .cpu
+                .mem
+                .borrow_mut()
+                .read_virtual::<N>(addr, perm::READ),
             _ => {
                 let offset = addr as usize;
                 let mut value = [0; N];
@@ -743,7 +747,11 @@ impl<'a> PcodeExecutor for UncheckedExecutor<'a> {
         value: [u8; N],
     ) -> MemResult<()> {
         match id {
-            0 => self.cpu.mem.borrow_mut().write(addr, value, perm::WRITE),
+            0 => self
+                .cpu
+                .mem
+                .borrow_mut()
+                .write_virtual(addr, value, perm::WRITE),
             _ => {
                 let offset = addr as usize;
                 self.cpu.trace.storage[id as usize - 1].data_mut()[offset..offset + N].copy_from_slice(&value);
