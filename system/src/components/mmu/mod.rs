@@ -1,3 +1,5 @@
+pub mod tlb_entry;
+
 use mogi_utilities::addresses::EPAddr;
 use mogi_utilities::error::memory::MemoryError;
 

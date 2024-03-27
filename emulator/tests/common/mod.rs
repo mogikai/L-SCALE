@@ -2,7 +2,7 @@ mod emulate;
 mod mocks;
 
 pub use emulate::emulate;
-use mogi_emulator::emulator::interface::error::{
+use mogi_system::errors::{
     SchedulerError,
     StopReason,
 };

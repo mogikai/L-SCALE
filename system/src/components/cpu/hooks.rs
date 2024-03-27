@@ -1,7 +1,6 @@
-use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::system::memory::TLBEntry;
-use mogi_system::components::mmu::MemoryAction;
-use mogi_system::errors::CPUError;
+use crate::components::mmu::tlb_entry::TLBEntry;
+use crate::components::mmu::MemoryAction;
+use crate::errors::CPUError;
 use mogi_utilities::addresses::EVAddr;
 
 pub type UnmappedMemHook<Slf> = Box<dyn FnMut(&mut Slf, MemoryAction, u64, usize, i64) -> bool + 'static>;

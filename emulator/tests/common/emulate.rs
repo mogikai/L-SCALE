@@ -6,10 +6,6 @@ use std::time::Duration;
 use byteorder::LittleEndian;
 
 use mogi_emulator::emulator::abstractions::emulator::Scheduler;
-use mogi_emulator::emulator::interface::error::{
-    SchedulerError,
-    StopReason,
-};
 use mogi_emulator::emulator::platform::linux::kernel::LinuxKernelTask;
 use mogi_emulator::emulator::platform::linux::scheduler::LinuxX86Scheduler;
 use mogi_emulator::emulator::system::clock::Clock;
@@ -24,6 +20,10 @@ use mogi_emulator::emulator::system::System;
 use crate::common::mocks::tcp_system::MockTCPSystem;
 use crate::common::TestFailure;
 use mogi_emulator::emulator::abstractions::kernel_task::KernelTask;
+use mogi_system::errors::{
+    SchedulerError,
+    StopReason,
+};
 
 pub fn emulate(
     sys_path: &Path,

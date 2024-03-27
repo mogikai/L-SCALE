@@ -10,7 +10,7 @@ use mogi_system::errors::SchedulerError;
 use num_enum::FromPrimitive;
 
 use crate::emulator::abstractions::emulator::Scheduler;
-use crate::emulator::abstractions::hooks::Hooks;
+use mogi_system::components::cpu::hooks::Hooks;
 
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::restore::Restorable;

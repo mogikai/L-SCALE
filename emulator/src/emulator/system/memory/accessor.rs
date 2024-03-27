@@ -1,5 +1,6 @@
 use bitflags::Flags;
 use byteorder::ByteOrder;
+use mogi_system::components::mmu::tlb_entry::TLBEntry;
 use mogi_system::components::mmu::{
     Permission,
     MMU,
@@ -8,7 +9,6 @@ use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::error::memory::MemoryError;
 
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
-use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 use crate::emulator::system::memory::Memory;
 
 #[derive(Debug)]

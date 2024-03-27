@@ -1,3 +1,4 @@
+use mogi_system::components::mmu::tlb_entry::TLBEntry;
 use mogi_system::components::mmu::MemoryAction;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::error::memory::MemoryError;
@@ -11,10 +12,9 @@ use unicorn_engine::{
 };
 
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::system::hardware::unicorn::cpu::cpu_error_from_uc_error;
 use crate::emulator::system::hardware::unicorn::UCWrapper;
-use crate::emulator::system::memory::TLBEntry;
+use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::errors::CPUError;
 
 impl<'a> Hooks for UCWrapper<'a> {
@@ -77,7 +77,7 @@ impl<'a> Hooks for UCWrapper<'a> {
     ) -> Result<(), CPUError> {
         let trampoline = move |uc: &mut Unicorn<'_, *mut UCWrapper<'a>>, address: u64, access_type| {
             hook(unsafe { &mut **uc.get_data_mut() }, address.into(), mem_type_to_memory_action(access_type))
-                .map(|tlbentry| tlbentry.into())
+                .map(transform_tlb_entry_to_uc_tlb_entry)
         };
         self.uc_mut()
             .add_tlb_hook(1, 0, trampoline)
@@ -102,12 +102,10 @@ impl<'a> Hooks for UCWrapper<'a> {
     }
 }
 
-impl From<TLBEntry> for TlbEntry {
-    fn from(value: TLBEntry) -> Self {
-        TlbEntry {
-            paddr: value.physical_address.into(),
-            perms: Permission::from_bits(value.permissions.bits()).unwrap(),
-        }
+fn transform_tlb_entry_to_uc_tlb_entry(value: TLBEntry) -> TlbEntry {
+    TlbEntry {
+        paddr: value.physical_address.into(),
+        perms: Permission::from_bits(value.permissions.bits()).unwrap(),
     }
 }
 

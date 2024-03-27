@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+mogi_system = { path = "../system", version = "0.1.0" }
 mogi_cpu = { path = "../cpu", version = "0.1.0" }
 mogi_mem = { path = "../mem", version = "0.1.0" }
 mogi_utilities = { path = "../utilities", features = ["serde"] }

@@ -34,6 +34,7 @@ use tracing::{
 
 pub use accessor::MemoryAccessor;
 use layout::Layout;
+use mogi_system::components::mmu::tlb_entry::TLBEntry;
 use mogi_system::components::mmu::{
     Permission,
     MMU,
@@ -61,7 +62,6 @@ use crate::emulator::system::memory::pregion::PhysicalRegion;
 use crate::emulator::system::memory::rw_interface::DirectMemoryWrite;
 use crate::emulator::system::memory::tlb::mapping::Mapping;
 pub use crate::emulator::system::memory::tlb::mapping::MappingType;
-pub use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 use crate::emulator::system::memory::tlb::Tlb;
 use crate::util::auto_key::lazy_clone_map::LazyCloneMap;
 use crate::util::rcow::RCow;

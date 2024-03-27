@@ -1,7 +1,7 @@
 mod restorable;
 
-use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::kernel_task::KernelTask;
+use mogi_system::components::cpu::hooks::Hooks;
 
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::system::task_manager::restorable::{

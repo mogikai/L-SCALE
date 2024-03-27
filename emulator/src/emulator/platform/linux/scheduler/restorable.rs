@@ -2,7 +2,7 @@ use byteorder::ByteOrder;
 use mogi_system::components::mmu::MMU;
 
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::hooks::Hooks;
+use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::components::cpu::CPU;
 
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;

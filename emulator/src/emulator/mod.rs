@@ -1,5 +1,6 @@
 //! This module contains all the emulator components of fuzzyemu.
 //! TODO: Detailed documentation
+use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::errors::{
     EmulatorError,
     SchedulerError,
@@ -21,7 +22,6 @@ use tracing::{
 
 use crate::emulator::abstractions::emulator::Scheduler;
 use crate::emulator::abstractions::errors::GenericError;
-use crate::emulator::abstractions::hooks::Hooks;
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::abstractions::system::SystemControl;
 use crate::emulator::interface::emulator::{

@@ -1,3 +1,5 @@
+pub mod hooks;
+
 use std::num::TryFromIntError;
 use std::time::Duration;
 

@@ -30,8 +30,8 @@ use tracing::{
     trace,
 };
 
-use mogi_emulator::emulator::abstractions::hooks::Hooks;
 use mogi_emulator::emulator::interface::meter::Meter;
+use mogi_system::components::cpu::hooks::Hooks;
 use mogi_utilities::addresses::EVAddr;
 
 use crate::api::observer::{

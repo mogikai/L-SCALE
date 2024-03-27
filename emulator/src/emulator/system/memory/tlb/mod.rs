@@ -13,6 +13,7 @@ use itertools::{
     Itertools,
     PeekingNext,
 };
+use mogi_system::components::mmu::tlb_entry::TLBEntry;
 use mogi_system::components::mmu::Permission;
 use mogi_utilities::addresses::{
     EPAddr,
@@ -27,11 +28,9 @@ use crate::emulator::system::memory::tlb::mapping::{
     Mapping,
     MappingType,
 };
-use crate::emulator::system::memory::tlb::tlb_entry::TLBEntry;
 
 pub mod mapping;
 mod tests;
-pub mod tlb_entry;
 
 #[derive(Clone, Debug)]
 pub struct Tlb {

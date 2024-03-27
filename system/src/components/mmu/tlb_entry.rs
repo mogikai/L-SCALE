@@ -1,9 +1,10 @@
-use mogi_system::components::mmu::Permission;
+use crate::components::mmu::Permission;
 use mogi_utilities::addresses::{
     EPAddr,
     EVAddr,
 };
 
+// TODO: Rename this to something more appropriate?
 #[derive(Copy, Clone, Debug)]
 pub struct TLBEntry {
     /// The virtual address of the mapping

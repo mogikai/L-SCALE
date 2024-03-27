@@ -10,6 +10,13 @@ use mogi_mem::{
     MemoryMapping,
     UnallocatedMemory,
 };
+use mogi_system::components::cpu::hooks::{
+    BlockHook,
+    CodeHook,
+    Hooks,
+    UnmappedMemHook,
+    VtlbHook,
+};
 use mogi_system::components::cpu::{
     ContextHandle,
     Register,
@@ -168,6 +175,51 @@ impl CPU for Cpu {
     fn remove_context(
         &mut self,
         context_handle: ContextHandle,
+    ) -> Result<(), CPUError> {
+        todo!()
+    }
+}
+
+impl Hooks for Cpu {
+    fn add_syscall_hook(
+        &mut self,
+        start: EVAddr,
+        end: EVAddr,
+        syscall: Box<dyn FnMut() + 'static>,
+    ) -> Result<(), CPUError> {
+        todo!()
+    }
+
+    fn add_unmapped_mem_hook(
+        &mut self,
+        start: EVAddr,
+        end: EVAddr,
+        hook: UnmappedMemHook<Self>,
+    ) -> Result<(), CPUError> {
+        todo!()
+    }
+
+    fn add_block_hook(
+        &mut self,
+        start: EVAddr,
+        end: EVAddr,
+        hook: BlockHook<Self>,
+    ) -> Result<(), CPUError> {
+        todo!()
+    }
+
+    fn add_vtlb_hook(
+        &mut self,
+        hook: VtlbHook<Self>,
+    ) -> Result<(), CPUError> {
+        todo!()
+    }
+
+    fn add_code_hook(
+        &mut self,
+        start: EVAddr,
+        end: EVAddr,
+        hook: CodeHook<Self>,
     ) -> Result<(), CPUError> {
         todo!()
     }

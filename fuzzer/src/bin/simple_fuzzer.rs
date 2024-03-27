@@ -30,7 +30,6 @@ use tracing_subscriber::{
 
 use mogi_emulator::emulator::abstractions::errors::GenericError;
 use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
-use mogi_emulator::emulator::abstractions::hooks::Hooks;
 use mogi_emulator::emulator::abstractions::kernel_task::KernelTask;
 use mogi_emulator::emulator::abstractions::network::{
     IPAddress,
@@ -62,6 +61,7 @@ use mogi_emulator::emulator::GenericEmulator;
 use mogi_emulator::LittleEndian;
 use mogi_fuzzer::io::tcp::TCP;
 use mogi_mem::Mmu;
+use mogi_system::components::cpu::hooks::Hooks;
 use mogi_utilities::error::memory::MemoryError;
 
 #[derive(Parser, Debug)]
