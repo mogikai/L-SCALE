@@ -1,5 +1,6 @@
 use crate as mogi_utilities;
 use crate::addresses::r#impl::addr_impl;
+use crate::encoding::RequiredMem;
 
 mod r#impl;
 

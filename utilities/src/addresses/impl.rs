@@ -1,5 +1,8 @@
 use crate as mogi_utilities;
-use crate::encoding::*;
+use crate::encoding::{
+    RequiredMem,
+    *,
+};
 use std::marker::PhantomData;
 use std::ops::Not;
 
@@ -92,89 +95,140 @@ macro_rules! addr_impl {
             }
         }
 
-        impl<T> std::ops::Sub<usize> for $name<T> {
+        impl<T> std::ops::Sub<usize> for $name<T>
+        where
+            T: RequiredMem,
+        {
             type Output = $name<T>;
 
             fn sub(
                 self,
                 rhs: usize,
             ) -> Self::Output {
-                Self(self.0 - u64::try_from(rhs).expect("usize must be equal to  u64"), Default::default())
+                Self(
+                    self.0 - u64::try_from(rhs * T::required_mem()).expect("usize must be equal to  u64"),
+                    Default::default(),
+                )
             }
         }
 
-        impl<T> std::ops::Add<usize> for $name<T> {
+        impl<T> std::ops::Add<usize> for $name<T>
+        where
+            T: RequiredMem,
+        {
             type Output = $name<T>;
 
             fn add(
                 self,
                 rhs: usize,
             ) -> Self::Output {
-                $name::<T>(self.0 + u64::try_from(rhs).expect("usize must be equal length to u64"), Default::default())
+                $name::<T>(
+                    self.0 + u64::try_from(rhs * T::required_mem()).expect("usize must be equal length to u64"),
+                    Default::default(),
+                )
             }
         }
 
-        impl<T> std::ops::AddAssign<usize> for $name<T> {
+        impl<T> std::ops::AddAssign<usize> for $name<T>
+        where
+            T: RequiredMem,
+        {
             fn add_assign(
                 &mut self,
                 rhs: usize,
             ) {
-                self.0 += u64::try_from(rhs).expect("usize must be equal length to u64");
+                self.0 += u64::try_from(rhs * T::required_mem()).expect("usize must be equal length to u64");
             }
         }
 
-        impl<T> std::ops::Add<usize> for &$name<T> {
+        impl<T> std::ops::Add<usize> for &$name<T>
+        where
+            T: RequiredMem,
+        {
             type Output = $name<T>;
 
             fn add(
                 self,
                 rhs: usize,
             ) -> Self::Output {
-                $name(self.0 + u64::try_from(rhs).expect("usize must be equal length to u64"), Default::default())
+                $name(
+                    self.0 + u64::try_from(rhs * T::required_mem()).expect("usize must be equal length to u64"),
+                    Default::default(),
+                )
             }
         }
 
-        impl<T> std::ops::Add<u64> for $name<T> {
+        impl<T> std::ops::Add<u64> for $name<T>
+        where
+            T: RequiredMem,
+        {
             type Output = $name<T>;
 
             fn add(
                 self,
                 rhs: u64,
             ) -> Self::Output {
-                Self(self.0 + rhs, Default::default())
+                Self(
+                    self.0 + rhs * u64::try_from(T::required_mem()).expect("usize must be equal length to u64"),
+                    Default::default(),
+                )
             }
         }
 
-        impl<T> std::ops::Add<u64> for &$name<T> {
+        impl<T> std::ops::Add<u64> for &$name<T>
+        where
+            T: RequiredMem,
+        {
             type Output = $name<T>;
 
             fn add(
                 self,
                 rhs: u64,
             ) -> Self::Output {
-                $name(self.0 + rhs, Default::default())
+                $name(
+                    self.0 + rhs * u64::try_from(T::required_mem()).expect("usize must be equal length to u64"),
+                    Default::default(),
+                )
             }
         }
 
-        impl<T> std::ops::Add<i32> for $name<T> {
+        impl<T> std::ops::Add<i32> for $name<T>
+        where
+            T: RequiredMem,
+        {
             type Output = $name<T>;
 
             fn add(
                 self,
                 rhs: i32,
             ) -> Self::Output {
-                Self(self.0.wrapping_add_signed(rhs.into()), Default::default())
+                Self(
+                    self.0.wrapping_add_signed(
+                        i64::from(rhs)
+                            * i64::try_from(T::required_mem()).expect("struct size cannot be larger than i64::max"),
+                    ),
+                    Default::default(),
+                )
             }
         }
 
-        impl<T> std::ops::Add<i32> for &$name<T> {
+        impl<T> std::ops::Add<i32> for &$name<T>
+        where
+            T: RequiredMem,
+        {
             type Output = $name<T>;
 
             fn add(
                 self,
                 rhs: i32,
             ) -> Self::Output {
-                $name(self.0.wrapping_add_signed(rhs.into()), Default::default())
+                $name(
+                    self.0.wrapping_add_signed(
+                        i64::from(rhs)
+                            * i64::try_from(T::required_mem()).expect("struct size cannot be larger than i64::max"),
+                    ),
+                    Default::default(),
+                )
             }
         }
 
