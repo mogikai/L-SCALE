@@ -13,6 +13,7 @@ pub const HELPERS: &[(&str, crate::exec::helpers::PcodeOpHelper)] = &[
     ("movmskpd", movmskpd),
     ("pinsrw", pinsrw), // Note: implemented in SLEIGH in Ghidra 10.3.
     ("pshuflw", pshuflw),
+    ("pshufhw", pshufhw),
     ("shufpd", shufpd), // Note: implemented in SLEIGH in Ghidra 10.3.
     ("pmaddwd", pmaddwd),
     ("in", in_io),
@@ -255,7 +256,7 @@ fn pshuflw(
     dst: crate::pcode::VarNode,
     args: [crate::pcode::Value; 2],
 ) {
-    let src = cpu.read::<u64>(args[1].slice(0, 8));
+    let src = cpu.read::<u128>(args[1].slice(0, 16));
     let count = cpu.args[0] as u64;
 
     for offset in 0..4 {
@@ -263,6 +264,27 @@ fn pshuflw(
         let value = (src >> shift) & 0xffff;
         cpu.write_var(dst.slice(offset * 2, 2), value as u16);
     }
+    cpu.write_var(dst.slice(8, 8), (src >> 64) as u64);
+}
+
+fn pshufhw(
+    cpu: &mut crate::core::CpuCore,
+    dst: crate::pcode::VarNode,
+    args: [crate::pcode::Value; 2],
+) {
+    let src = cpu.read::<u128>(args[1].slice(0, 16));
+    let count = cpu.args[0] as u64;
+
+    let mut out = 0u128;
+    // Mask out anything above the lower 64 bits
+    out |= src & 0xffffffffffffffff;
+    for offset in 0..4 {
+        let shift = (count >> (offset * 2) & 0b11) * 16;
+        let value = (src >> shift) & 0xffff0000000000000000;
+        // Only set bits 64-80
+        out |= value << (offset * 16);
+    }
+    cpu.write_var(dst, out);
 }
 
 // Packed interleave shuffle
