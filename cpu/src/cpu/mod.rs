@@ -52,6 +52,7 @@ use crate::{
 pub mod api;
 pub mod blocktable;
 pub mod builder;
+pub mod cpuid;
 mod debug;
 pub mod exception;
 pub mod exit;

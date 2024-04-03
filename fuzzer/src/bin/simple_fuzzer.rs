@@ -18,6 +18,7 @@ use std::time::{
 
 use clap::Parser;
 use mogi_cpu::cpu::builder::CpuBuilder;
+use mogi_cpu::cpu::cpuid::CpuId;
 use mogi_cpu::Triple;
 use rand::seq::SliceRandom;
 use tracing::debug;
@@ -98,6 +99,7 @@ fn main() -> Result<(), GenericError> {
         let cpu = Rc::new(RefCell::new(
             CpuBuilder::new(mmu.clone())
                 .target_triple(Triple::host())
+                .cpu_id(CpuId::from_file(PathBuf::from("./cpu/data/cpuid/intel/haswell.json5").as_path()).unwrap())
                 .build()
                 .unwrap(),
         ));

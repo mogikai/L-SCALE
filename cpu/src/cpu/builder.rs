@@ -3,6 +3,7 @@ use crate::core::{
     CallCov,
     CpuCore,
 };
+use crate::cpu::cpuid::CpuId;
 use crate::cpu::Cpu;
 use crate::exec::helpers;
 use crate::lifter;
@@ -52,6 +53,7 @@ impl std::error::Error for BuildError {}
 pub struct CpuBuilder {
     mmu: Rc<RefCell<Mmu>>,
     target_triple: target_lexicon::Triple,
+    cpu_id: CpuId,
     enable_jit: bool,
     enable_jit_mem: bool,
     enable_shadow_stack: bool,
@@ -66,6 +68,7 @@ impl CpuBuilder {
         Self {
             mmu,
             target_triple: target_lexicon::Triple::unknown(),
+            cpu_id: CpuId::unknown(),
             enable_jit: true,
             enable_jit_mem: true,
             enable_shadow_stack: true,
@@ -81,6 +84,14 @@ impl CpuBuilder {
         target_triple: target_lexicon::Triple,
     ) -> Self {
         self.target_triple = target_triple;
+        self
+    }
+
+    pub fn cpu_id(
+        mut self,
+        cpui_id: CpuId,
+    ) -> Self {
+        self.cpu_id = cpui_id;
         self
     }
 
@@ -122,7 +133,7 @@ impl CpuBuilder {
         let sleigh = build_sleigh(&mut spec_config)?;
 
         let arch = build_arch(&self.target_triple, sleigh, &spec_config)?;
-        let mut cpu = CpuCore::new_boxed(self.mmu, arch);
+        let mut cpu = CpuCore::new_boxed(self.mmu, arch, self.cpu_id);
         cpu.enable_shadow_stack = self.enable_shadow_stack;
 
         let settings = lifter::Settings {

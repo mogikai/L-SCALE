@@ -20,6 +20,8 @@ use crate::core::trace::{
     InstHook,
     Trace,
 };
+use crate::cpu::api::CpuError;
+use crate::cpu::cpuid::CpuId;
 use crate::cpu::exception::ExceptionCode;
 use crate::exec::helpers::{
     self,
@@ -272,6 +274,7 @@ pub trait RegHandler {
 pub struct CpuCore {
     pub regs: Regs,
     pub args: [u128; 8],
+    pub cpu_id: CpuId,
     pub shadow_stack: ShadowStack,
     pub enable_shadow_stack: bool,
 
@@ -306,6 +309,7 @@ impl CpuCore {
     pub fn new_boxed(
         mem: Rc<RefCell<Mmu>>,
         arch: Arch,
+        cpu_id: CpuId,
     ) -> Box<Self> {
         if !([1, 2, 4, 8].contains(&arch.reg_pc.size))
             || !Regs::check_bounds(arch.reg_pc, arch.reg_pc.size as usize)
@@ -320,6 +324,7 @@ impl CpuCore {
         Box::new(CpuCore {
             regs: Regs::new(),
             args: [0; 8],
+            cpu_id,
             shadow_stack: ShadowStack::new(),
             enable_shadow_stack: false,
 
@@ -439,9 +444,25 @@ impl CpuCore {
         self.read_dynamic(var.into()).zxt()
     }
 
+    pub fn write_reg(
+        &mut self,
+        reg: &str,
+        val: u64,
+    ) -> Result<(), CpuError> {
+        self.write_reg_varnode(
+            self.arch
+                .sleigh
+                .get_reg(reg)
+                .ok_or(CpuError::UnknownRegister)?
+                .var,
+            val,
+        );
+        Ok(())
+    }
+
     /// Writes `val` to the register represented by `var`. For special registers, this may perform
     /// additional operations.
-    pub fn write_reg(
+    pub(crate) fn write_reg_varnode(
         &mut self,
         var: pcode::VarNode,
         val: u64,

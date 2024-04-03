@@ -6,6 +6,8 @@ use crate::cpu::Cpu;
 pub enum CpuError {
     #[error("The requested register does not exist")]
     UnknownRegister,
+    #[error("An unknown error occurred")]
+    Unknown,
 }
 
 type CpuResult<T> = Result<T, CpuError>;
@@ -30,15 +32,7 @@ impl Cpu {
         reg: &str,
         val: u64,
     ) -> CpuResult<()> {
-        let reg = self
-            .core
-            .arch
-            .sleigh
-            .get_reg(reg)
-            .ok_or(CpuError::UnknownRegister)?
-            .var;
-        self.core.write_reg(reg, val);
-        Ok(())
+        self.core.write_reg(reg, val)
     }
 
     pub fn read_pc(&self) -> CpuResult<u64> {
