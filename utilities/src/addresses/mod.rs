@@ -4,8 +4,6 @@ use crate::encoding::RequiredMem;
 
 mod r#impl;
 
-// TODO FIXME: Make address calculations use the correct offsets, depending on type T
-
 /// Emulated virtual address
 addr_impl!(EVAddr);
 
