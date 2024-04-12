@@ -133,10 +133,18 @@ fn tlb_lookup(
     trans.branch_zero(cond, not_found);
 
     // Found matching entry in TLB, so load the pointer
-    trans
+    let page_ptr = trans
         .builder
         .ins()
-        .load(types::I64, mem_flags, tlb_addr, kind_offset + 8)
+        .load(types::I64, mem_flags, tlb_addr, kind_offset + 8);
+
+    let offset = trans
+        .builder
+        .ins()
+        .band_imm(addr, ((1_u64 << OFFSET_BITS) - 1) as i64);
+
+    // Host page address start + offset
+    trans.builder.ins().iadd(page_ptr, offset)
 }
 
 /// Generate code for looking up an entry in the TLB and comparing the tag if the address is known
@@ -465,12 +473,7 @@ fn try_inline_access(
     }
 
     // Translate the guest address to a host address.
-    let page_ptr = tlb_lookup(trans, guest_addr_val, kind, fallback_block);
-    let offset = trans
-        .builder
-        .ins()
-        .band_imm(guest_addr_val, ((1_u64 << OFFSET_BITS) - 1) as i64);
-    let host_addr = trans.builder.ins().iadd(page_ptr, offset);
+    let host_addr = tlb_lookup(trans, guest_addr_val, kind, fallback_block);
 
     check_perm(trans, host_addr, size, kind.perm(), fallback_block);
 
