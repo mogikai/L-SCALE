@@ -3,8 +3,8 @@ use std::convert::TryInto;
 use std::ptr::NonNull;
 use std::rc::Rc;
 
+use crate::deprecated::perm;
 use crate::{
-    perm,
     MemError,
     MemResult,
 };

@@ -54,7 +54,7 @@ impl InstructionSource for CpuCore {
         let _ = self
             .mem
             .borrow_mut()
-            .read_bytes_virtual(vaddr, buf, mogi_mem::perm::NONE);
+            .read_bytes_virtual(vaddr, buf, mogi_mem::deprecated::perm::NONE);
     }
 
     fn ensure_exec(

@@ -1,6 +1,5 @@
 use half::f16;
-
-use mogi_mem::MemResult;
+use mogi_mem::deprecated::perm::MemResult;
 
 use crate::core::regs::{
     resize_sxt,

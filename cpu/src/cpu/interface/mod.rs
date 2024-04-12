@@ -2,14 +2,14 @@ use crate::core::Exception;
 use crate::cpu::exception::ExceptionCode;
 use crate::cpu::exit::CpuExitStatus;
 use crate::cpu::Cpu;
-use mogi_mem::perm::{
+use mogi_mem::deprecated::perm;
+use mogi_mem::deprecated::perm::{
     EXEC,
     NONE,
     READ,
     WRITE,
 };
 use mogi_mem::{
-    perm,
     AllocLayout,
     MemoryMapping,
     UnallocatedMemory,

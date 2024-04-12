@@ -5,7 +5,7 @@ use crate::jit::{
     VmCtx,
 };
 use crate::pcode;
-use mogi_mem::perm::{
+use mogi_mem::deprecated::perm::{
     INIT,
     READ,
     WRITE,

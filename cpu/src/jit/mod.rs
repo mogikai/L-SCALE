@@ -15,7 +15,7 @@ use cranelift_module::{
     Module,
     ModuleResult,
 };
-use mogi_mem::tlb::TranslationCache;
+use mogi_mem::deprecated::tlb::TranslationCache;
 
 use crate::jit::translate::TranslatorCtx;
 use crate::lifter::Block as IcicleBlock;

@@ -1,26 +1,22 @@
 use std::any::Any;
 
-pub use crate::mmu::{
+use crate::deprecated::mmu::{
     Mmu,
     ReadAfterHook,
     ReadHook,
     WriteHook,
 };
-pub use crate::perm::{
+use crate::deprecated::perm::{
     MemError,
     MemResult,
 };
-use crate::range_map::RangeMap;
+use crate::deprecated::range_map::RangeMap;
+use crate::deprecated::{
+    perm,
+    physical,
+};
 
-pub mod perm;
-pub mod physical;
-pub mod tlb;
-
-mod mmu;
-pub mod range_map;
-
-#[cfg(test)]
-mod tests;
+pub mod deprecated;
 
 /// The value used to fill uninitalized memory
 pub const UNINIT_VALUE: u8 = 0xaa;

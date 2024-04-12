@@ -16,12 +16,12 @@ use cranelift::prelude::{
 use cranelift_codegen::ir::Endianness;
 use memoffset::offset_of;
 
-use mogi_mem::perm;
-use mogi_mem::physical::{
+use mogi_mem::deprecated::perm;
+use mogi_mem::deprecated::physical::{
     PageData,
     OFFSET_BITS,
 };
-use mogi_mem::tlb::{
+use mogi_mem::deprecated::tlb::{
     TLBEntry,
     TranslationCache,
     TLB_INDEX_BITS,

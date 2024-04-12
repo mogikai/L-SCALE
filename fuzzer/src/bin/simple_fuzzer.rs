@@ -59,7 +59,7 @@ use mogi_emulator::emulator::system::System;
 use mogi_emulator::emulator::GenericEmulator;
 use mogi_emulator::LittleEndian;
 use mogi_fuzzer::io::tcp::TCP;
-use mogi_mem::Mmu;
+use mogi_mem::deprecated::mmu::Mmu;
 use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::components::cpu::CPU;
 use mogi_system::components::restore::Restorable;

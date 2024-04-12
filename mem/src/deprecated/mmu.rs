@@ -14,20 +14,21 @@ use mogi_system::components::mmu::{
 use mogi_utilities::addresses::EVAddr;
 use tracing::debug;
 
-use crate::perm::{
+use crate::deprecated::perm::{
     self,
     MemError,
     MemResult,
     Permission,
 };
-use crate::physical::{
+use crate::deprecated::physical::{
     self,
     PageData,
     PhysicalAddr,
 };
-use crate::range_map::RangeMap;
+use crate::deprecated::range_map::RangeMap;
+use crate::deprecated::tlb;
+use crate::deprecated::tlb::TranslationCache;
 use crate::{
-    tlb,
     Addr,
     AllocLayout,
     IoHandler,
@@ -164,7 +165,7 @@ pub struct Mmu {
     ///
     /// Note: care needs to be taken to ensure that the relevant entries in this cache are cleared
     /// when the mapping is changed otherwise we may end up with memory safety issues.
-    pub tlb: Box<tlb::TranslationCache>,
+    pub tlb: Box<TranslationCache>,
 
     /// The current virtual address mapping.
     // @fixme: This should not be public, since changes to this require that the `tlb` is flushed.

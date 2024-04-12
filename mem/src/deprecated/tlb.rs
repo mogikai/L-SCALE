@@ -2,7 +2,7 @@
 
 use std::convert::TryInto;
 
-use crate::physical::{
+use crate::deprecated::physical::{
     PageRef,
     OFFSET_BITS,
     PAGE_SIZE,

@@ -1,4 +1,5 @@
 use crate::lifter::DecodeError;
+use mogi_mem::deprecated::perm::MemError;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(u32)]
@@ -130,8 +131,7 @@ impl ExceptionCode {
         )
     }
 
-    pub fn from_load_error(err: mogi_mem::MemError) -> Self {
-        use mogi_mem::MemError;
+    pub fn from_load_error(err: MemError) -> Self {
         match err {
             MemError::Unmapped => Self::ReadUnmapped,
             MemError::Uninitalized => Self::ReadUninitialized,
@@ -142,8 +142,7 @@ impl ExceptionCode {
         }
     }
 
-    pub fn from_store_error(err: mogi_mem::MemError) -> Self {
-        use mogi_mem::MemError;
+    pub fn from_store_error(err: MemError) -> Self {
         match err {
             MemError::Unmapped => Self::WriteUnmapped,
             MemError::WriteViolation => Self::WritePerm,
@@ -154,9 +153,9 @@ impl ExceptionCode {
     }
 }
 
-impl From<mogi_mem::MemError> for ExceptionCode {
-    fn from(err: mogi_mem::MemError) -> Self {
-        use mogi_mem::MemError;
+impl From<MemError> for ExceptionCode {
+    fn from(err: MemError) -> Self {
+        use MemError;
         match err {
             MemError::Unmapped => Self::ReadUnmapped,
             MemError::Uninitalized => Self::ReadUninitialized,

@@ -1,9 +1,7 @@
 use crate::core::regs::ValueSource;
 use crate::core::CpuCore;
-use mogi_mem::{
-    perm,
-    Mmu,
-};
+use mogi_mem::deprecated::mmu::Mmu;
+use mogi_mem::deprecated::perm;
 
 use crate::cpu::Cpu;
 use crate::lifter::BlockGroup;

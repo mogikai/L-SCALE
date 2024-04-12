@@ -1,14 +1,12 @@
+use mogi_mem::deprecated::mmu::Mmu;
 use std::cell::{
     RefCell,
     UnsafeCell,
 };
 use std::rc::Rc;
 
-use mogi_mem::{
-    perm,
-    MemResult,
-    Mmu,
-};
+use mogi_mem::deprecated::perm;
+use mogi_mem::deprecated::perm::MemResult;
 
 use crate::core::regs::{
     RegValue,
