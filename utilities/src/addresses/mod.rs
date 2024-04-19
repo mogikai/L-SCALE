@@ -1,14 +1,15 @@
 use crate as mogi_utilities;
 use crate::addresses::r#impl::addr_impl;
 use crate::encoding::RequiredMem;
+use std::ptr::NonNull;
 
 mod r#impl;
 
 /// Emulated virtual address
-addr_impl!(EVAddr);
+addr_impl!(EVAddr("V"));
 
 /// Emulated physical address
-addr_impl!(EPAddr);
+addr_impl!(EPAddr("P"));
 
 /// Host virtual address
-addr_impl!(HVAddr);
+pub type HVAddr<T> = NonNull<T>;

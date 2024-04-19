@@ -91,7 +91,7 @@ impl<'a, 'b> Ctx<'a, 'b> {
             .trans
             .builder
             .ins()
-            .iconst(types::I64, self.trans.last_addr as i64);
+            .iconst(types::I64, u64::from(self.trans.last_addr) as i64);
 
         // Some hooks assumes PC is flushed to memory before the call (even though the correct value
         // is available as a parameter), so write it here now.
@@ -446,7 +446,7 @@ pub(super) fn sign_extend(
         return trans.builder.ins().sextend(sized_int(out_size), value);
     }
     if !is_jit_supported_size(out_size) {
-        tracing::warn!("[{:#x}] sign extend to a non-natively sized integer", trans.last_addr);
+        tracing::warn!("[{:?}] sign extend to a non-natively sized integer", trans.last_addr);
     }
 
     let x = trans.resize_int(value, in_size, out_size);

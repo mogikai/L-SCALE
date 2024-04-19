@@ -9,7 +9,8 @@ use crate::exec::helpers;
 use crate::lifter;
 use crate::sleigh::compile::from_path;
 use crate::sleigh::runtime::SleighData;
-use mogi_mem::deprecated::mmu::Mmu;
+use mogi_mem::mmu::MMU;
+use mogi_utilities::addresses::EVAddr;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -51,7 +52,7 @@ impl std::error::Error for BuildError {}
 
 #[derive(Debug)]
 pub struct CpuBuilder {
-    mmu: Rc<RefCell<Mmu>>,
+    mmu: Rc<RefCell<MMU>>,
     target_triple: target_lexicon::Triple,
     cpu_id: CpuId,
     enable_jit: bool,
@@ -64,7 +65,7 @@ pub struct CpuBuilder {
 }
 
 impl CpuBuilder {
-    pub fn new(mmu: Rc<RefCell<Mmu>>) -> Self {
+    pub fn new(mmu: Rc<RefCell<MMU>>) -> Self {
         Self {
             mmu,
             target_triple: target_lexicon::Triple::unknown(),
@@ -300,7 +301,7 @@ struct SpecConfig {
     // @fixme: This can differ even for the same CPU architecture (e.g. for different compilers).
     calling_cov: CallingConvSpec,
     /// Boot function for the VM to use.
-    on_boot: fn(&mut CpuCore, u64),
+    on_boot: fn(&mut CpuCore, EVAddr),
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -612,10 +613,10 @@ mod generic {
 
     pub fn on_boot(
         cpu: &mut CpuCore,
-        entry: u64,
+        entry: EVAddr,
     ) {
         cpu.reset();
-        cpu.regs.write_trunc(cpu.arch.reg_pc, entry);
+        cpu.regs.write_trunc(cpu.arch.reg_pc, u64::from(entry));
     }
 
     pub const CTX: u64 = 0;
@@ -746,14 +747,14 @@ mod arm {
 
     pub fn on_boot(
         cpu: &mut CpuCore,
-        mut entry: u64,
+        mut entry: EVAddr,
     ) {
         cpu.reset();
 
         // Update ISA mode if we are booting into Thumb mode.
         if entry & 1 == 1 {
             cpu.set_isa_mode(IsaMode::Thumb as u8);
-            entry &= !1;
+            entry = EVAddr::from(entry & !1);
         } else {
             cpu.set_isa_mode(IsaMode::Arm as u8);
         }

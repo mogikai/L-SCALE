@@ -59,7 +59,7 @@ use mogi_emulator::emulator::system::System;
 use mogi_emulator::emulator::GenericEmulator;
 use mogi_emulator::LittleEndian;
 use mogi_fuzzer::io::tcp::TCP;
-use mogi_mem::deprecated::mmu::Mmu;
+use mogi_mem::mmu::MMU;
 use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::components::cpu::CPU;
 use mogi_system::components::restore::Restorable;
@@ -95,9 +95,11 @@ fn main() -> Result<(), GenericError> {
 
     let duration = {
         let cpu = UCWrapper::new();
-        let mmu = Rc::new(RefCell::new(Mmu::new()));
+        let mmu = Rc::new(RefCell::new(MMU::new()));
         let cpu = Rc::new(RefCell::new(
             CpuBuilder::new(mmu.clone())
+                .optimize_block(false)
+                .optimize_instructions(false)
                 .target_triple(Triple::host())
                 .cpu_id(CpuId::from_file(PathBuf::from("./cpu/data/cpuid/intel/haswell.json5").as_path()).unwrap())
                 .build()
@@ -160,6 +162,7 @@ fn main() -> Result<(), GenericError> {
         })?;
         let start = Instant::now();
         let mut result = emulator.run(None, None);
+        mmu.borrow().debug_tlb();
         debug!("Emulation returned {result:?}");
         if let Ok(ExitReason::Breakpoint) = result {
             debug!("Creating snapshot");

@@ -229,7 +229,7 @@ impl Lifter {
         self.default_size = sleigh.default_space_size;
 
         self.block
-            .push((pcode::Op::InstructionMarker, (inst.inst_start, inst.num_bytes())));
+            .push((pcode::Op::InstructionMarker, (u64::from(inst.inst_start), inst.num_bytes())));
         self.build_subtable(inst.root(sleigh))?;
 
         Ok(&self.block)

@@ -1,5 +1,5 @@
 use crate::lifter::DecodeError;
-use mogi_mem::deprecated::perm::MemError;
+use mogi_utilities::error::memory::MemoryError;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(u32)]
@@ -131,46 +131,34 @@ impl ExceptionCode {
         )
     }
 
-    pub fn from_load_error(err: MemError) -> Self {
+    pub fn from_load_error(err: MemoryError) -> Self {
         match err {
-            MemError::Unmapped => Self::ReadUnmapped,
-            MemError::Uninitalized => Self::ReadUninitialized,
-            MemError::ReadViolation => Self::ReadPerm,
-            MemError::Unaligned => Self::ReadUnaligned,
-            MemError::ReadWatch => Self::ReadWatch,
+            MemoryError::NotMapped => Self::ReadUnmapped,
+            MemoryError::InvalidPermission => Self::ReadPerm,
+            MemoryError::InvalidAlignment => Self::ReadUnaligned,
             _ => Self::from(err),
         }
     }
 
-    pub fn from_store_error(err: MemError) -> Self {
+    pub fn from_store_error(err: MemoryError) -> Self {
         match err {
-            MemError::Unmapped => Self::WriteUnmapped,
-            MemError::WriteViolation => Self::WritePerm,
-            MemError::Unaligned => Self::WriteUnaligned,
-            MemError::WriteWatch => Self::WriteWatch,
+            MemoryError::NotMapped => Self::WriteUnmapped,
+            MemoryError::InvalidPermission => Self::WritePerm,
+            MemoryError::InvalidAlignment => Self::WriteUnaligned,
             _ => Self::from(err),
         }
     }
 }
 
-impl From<MemError> for ExceptionCode {
-    fn from(err: MemError) -> Self {
-        use MemError;
+impl From<MemoryError> for ExceptionCode {
+    fn from(err: MemoryError) -> Self {
         match err {
-            MemError::Unmapped => Self::ReadUnmapped,
-            MemError::Uninitalized => Self::ReadUninitialized,
-            MemError::ReadViolation => Self::ReadPerm,
-            MemError::WriteViolation => Self::WritePerm,
-            MemError::ExecViolation => Self::ExecViolation,
-            MemError::ReadWatch => Self::ReadWatch,
-            MemError::WriteWatch => Self::WriteWatch,
-            MemError::Unaligned => Self::ReadUnaligned,
-            MemError::OutOfMemory => Self::OutOfMemory,
-            MemError::SelfModifyingCode => Self::SelfModifyingCode,
-            MemError::AddressOverflow => Self::AddressOverflow,
-
-            // These are errors that should be handled by the memory subsystem.
-            MemError::Unallocated | MemError::Unknown => Self::UnknownError,
+            MemoryError::NotMapped => Self::ReadUnmapped,
+            MemoryError::InvalidPermission => todo!(), // TODO: Map this to read / write errors
+            MemoryError::InvalidAlignment => Self::ReadUnaligned,
+            MemoryError::OutOfMemory => Self::OutOfMemory,
+            MemoryError::SelfModifyingCode => Self::SelfModifyingCode,
+            _ => Self::UnknownError,
         }
     }
 }

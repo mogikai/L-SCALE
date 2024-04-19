@@ -215,7 +215,7 @@ impl PhysicalMemory {
 #[derive(Debug)]
 pub struct Page {
     /// The content of the page.
-    data: UnsafeCell<Rc<PageData>>,
+    data: Rc<PageData>,
 
     /// Keeps track of whether this page implements 'copy-on-write' semantics. (i.e. if true, then
     /// modifications to this page are should not be visible to other virtual address spaces
@@ -233,7 +233,7 @@ impl Clone for Page {
     fn clone(&self) -> Self {
         Self {
             // Safety: this method invalidates any active `PageRef` used for writing.
-            data: Rc::clone(unsafe { self.data.get().as_ref().unwrap() }).into(),
+            data: self.data.clone(),
             copy_on_write: self.copy_on_write,
             modified: self.modified,
             executed: self.executed,
@@ -244,7 +244,7 @@ impl Clone for Page {
 impl Page {
     fn new() -> Self {
         Self {
-            data: UnsafeCell::new(Rc::default()),
+            data: Rc::default(),
             modified: false,
             copy_on_write: false,
             executed: false,
@@ -277,11 +277,11 @@ impl Page {
         // references.
         //
         // @todo: check this
-        unsafe { self.data.get().as_ref().unwrap() }
+        self.data.as_ref()
     }
 
     pub fn data_mut(&mut self) -> &mut PageData {
-        Rc::make_mut(self.data.get_mut())
+        Rc::make_mut(&mut self.data)
     }
 
     /// Returns a pointer that can be used for reading/writing.
@@ -301,11 +301,11 @@ impl Page {
     /// The returned pointer is only valid while `data` is valid (e.g., the pointer must not be used
     /// after a call to [Drop::drop]).
     pub unsafe fn read_ptr(&mut self) -> PageRef {
-        PageRef::new(NonNull::new(Rc::as_ptr(self.data.get_mut()) as *mut _).unwrap())
+        PageRef::new(NonNull::new_unchecked(Rc::as_ptr(&self.data) as *mut _))
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 #[repr(C)]
 pub struct PageData {
     /// The actual data stored in this page.

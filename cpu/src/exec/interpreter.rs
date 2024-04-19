@@ -1,5 +1,6 @@
 use half::f16;
-use mogi_mem::deprecated::perm::MemResult;
+use mogi_mem::mmu::MemResult;
+use mogi_utilities::addresses::EVAddr;
 
 use crate::core::regs::{
     resize_sxt,
@@ -21,18 +22,18 @@ pub trait PcodeExecutor: ValueSource {
     );
     fn next_instruction(
         &mut self,
-        addr: u64,
+        addr: EVAddr,
         len: u64,
     );
     fn load_mem<const N: usize>(
         &mut self,
         id: MemId,
-        addr: u64,
+        addr: EVAddr,
     ) -> MemResult<[u8; N]>;
     fn store_mem<const N: usize>(
         &mut self,
         id: MemId,
-        addr: u64,
+        addr: EVAddr,
         value: [u8; N],
     ) -> MemResult<()>;
     fn set_arg(
@@ -537,13 +538,13 @@ pub fn interpret<E>(
 
         (Op::Load(id), ..) => {
             let addr: u64 = exec.read_dynamic(stmt.inputs.get()[0]).zxt();
-            if let Err(e) = load(exec, id, output, addr) {
+            if let Err(e) = load(exec, id, output, addr.into()) {
                 exec.exception(ExceptionCode::from_load_error(e), addr)
             }
         }
         (Op::Store(id), ..) => {
             let addr: u64 = exec.read_dynamic(stmt.inputs.get()[0]).zxt();
-            if let Err(e) = store(exec, id, addr, stmt.inputs.get()[1]) {
+            if let Err(e) = store(exec, id, addr.into(), stmt.inputs.get()[1]) {
                 exec.exception(ExceptionCode::from_store_error(e), addr)
             }
         }
@@ -562,7 +563,7 @@ pub fn interpret<E>(
         }
 
         (Op::InstructionMarker, 0, (8, 8)) => {
-            exec.next_instruction(stmt.inputs.get()[0].as_u64(), stmt.inputs.get()[1].as_u64())
+            exec.next_instruction(stmt.inputs.get()[0].as_u64().into(), stmt.inputs.get()[1].as_u64())
         }
         (Op::InstructionMarker, ..) => exec.invalid_op_size(0),
 
@@ -670,7 +671,7 @@ fn load<E: PcodeExecutor>(
     exec: &mut E,
     id: MemId,
     dst: VarNode,
-    addr: u64,
+    addr: EVAddr,
 ) -> MemResult<()> {
     macro_rules! load {
         ($dst:expr, $addr:expr, $ty:ty) => {{
@@ -691,20 +692,20 @@ fn load<E: PcodeExecutor>(
         16 => {
             if exec.is_big_endian() {
                 load!(dst.slice(8, 8), addr, u64);
-                load!(dst.slice(0, 8), addr.wrapping_add(8), u64);
+                load!(dst.slice(0, 8), addr + 8, u64);
             } else {
                 load!(dst.slice(0, 8), addr, u64);
-                load!(dst.slice(8, 8), addr.wrapping_add(8), u64);
+                load!(dst.slice(8, 8), addr + 8, u64);
             }
         }
         size => {
             if exec.is_big_endian() {
                 for i in 0..size {
-                    load!(dst.slice(size - 1 - i, 1), addr.wrapping_add(i as u64), u8);
+                    load!(dst.slice(size - 1 - i, 1), addr + i, u8);
                 }
             } else {
                 for i in 0..size {
-                    load!(dst.slice(i, 1), addr.wrapping_add(i as u64), u8);
+                    load!(dst.slice(i, 1), (addr + i), u8);
                 }
             }
         }
@@ -716,7 +717,7 @@ fn load<E: PcodeExecutor>(
 fn store<E: PcodeExecutor>(
     exec: &mut E,
     id: MemId,
-    addr: u64,
+    addr: EVAddr,
     value: Value,
 ) -> MemResult<()> {
     macro_rules! writer {
@@ -738,20 +739,20 @@ fn store<E: PcodeExecutor>(
         16 => {
             if exec.is_big_endian() {
                 writer!(addr, exec.read::<u64>(value.slice(8, 8)))?;
-                writer!(addr.wrapping_add(8), exec.read::<u64>(value.slice(0, 8)))?;
+                writer!(addr + 8, exec.read::<u64>(value.slice(0, 8)))?;
             } else {
                 writer!(addr, exec.read::<u64>(value.slice(0, 8)))?;
-                writer!(addr.wrapping_add(8), exec.read::<u64>(value.slice(8, 8)))?;
+                writer!(addr + 8, exec.read::<u64>(value.slice(8, 8)))?;
             }
         }
         size => {
             if exec.is_big_endian() {
                 for i in 0..size {
-                    writer!(addr.wrapping_add(size as u64 - 1 - i as u64), exec.read::<u8>(value.slice(i, 1)))?;
+                    writer!(addr + (size - 1 - i), exec.read::<u8>(value.slice(i, 1)))?;
                 }
             } else {
                 for i in 0..size {
-                    writer!(addr.wrapping_add(i as u64), exec.read::<u8>(value.slice(i, 1)))?;
+                    writer!(addr + i, exec.read::<u8>(value.slice(i, 1)))?;
                 }
             }
         }

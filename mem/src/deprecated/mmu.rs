@@ -201,16 +201,6 @@ impl Debug for Mmu {
     }
 }
 
-impl crate::Resettable for Mmu {
-    fn new() -> Self {
-        Self::new()
-    }
-
-    fn reset(&mut self) {
-        self.clear();
-    }
-}
-
 impl Default for Mmu {
     fn default() -> Self {
         Self::new()
@@ -1169,54 +1159,6 @@ impl Mmu {
             }
         }
         true
-    }
-
-    /// Gets the physical address assocated with a virtual address, returning `None` if `addr` is
-    /// unmapped or unallocated
-    pub fn get_physical_addr(
-        &self,
-        addr: u64,
-    ) -> Option<PhysicalAddr> {
-        self.resolve_vaddr(addr).map(|entry| entry.phys)
-    }
-
-    pub fn resolve_vaddr(
-        &self,
-        vaddr: u64,
-    ) -> Option<Addr> {
-        match self.mapping.get(vaddr)? {
-            MemoryMapping::Physical(entry) => Some(Addr {
-                virt: vaddr,
-                phys: self.physical.address_of(vaddr, entry.index),
-            }),
-            _ => None,
-        }
-    }
-
-    /// Get the index of physical page mapped at `addr`.
-    pub fn get_physical_index(
-        &self,
-        addr: u64,
-    ) -> Option<physical::PageIndex> {
-        match self.mapping.get(addr)? {
-            MemoryMapping::Physical(entry) => Some(entry.index),
-            _ => None,
-        }
-    }
-
-    pub fn get_physical(
-        &self,
-        index: physical::PageIndex,
-    ) -> &physical::Page {
-        self.physical.get(index)
-    }
-
-    pub fn get_physical_mut(
-        &mut self,
-        index: physical::PageIndex,
-    ) -> &mut physical::Page {
-        // @fixme: this may invalidate the TLB
-        self.physical.get_mut(index)
     }
 
     fn read_physical<const N: usize>(

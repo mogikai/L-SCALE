@@ -1,3 +1,4 @@
+use mogi_utilities::addresses::EVAddr;
 use std::any::Any;
 
 use crate::core::trace::HookHandler;
@@ -30,8 +31,8 @@ impl<I: CodeInjector + 'static> CodeInjectorAny for I {
 
 pub fn register_block_hook_injector(
     vm: &mut Cpu,
-    start: u64,
-    end: u64,
+    start: EVAddr,
+    end: EVAddr,
     hook: pcode::HookId,
 ) -> usize {
     let injector = BlockHookInjector { hook, start, end };
@@ -40,8 +41,8 @@ pub fn register_block_hook_injector(
 
 struct BlockHookInjector {
     hook: pcode::HookId,
-    start: u64,
-    end: u64,
+    start: EVAddr,
+    end: EVAddr,
 }
 
 impl CodeInjector for BlockHookInjector {
@@ -65,7 +66,7 @@ impl CodeInjector for BlockHookInjector {
 
 pub fn register_instruction_hook_injector(
     vm: &mut Cpu,
-    addrs: Vec<u64>,
+    addrs: Vec<EVAddr>,
     hook: pcode::HookId,
 ) -> usize {
     let injector = InstructionHookInjection {
@@ -78,7 +79,7 @@ pub fn register_instruction_hook_injector(
 
 struct InstructionHookInjection {
     hook: pcode::HookId,
-    addrs: Vec<u64>,
+    addrs: Vec<EVAddr>,
     tmp_block: pcode::Block,
 }
 
@@ -109,7 +110,7 @@ impl CodeInjector for InstructionHookInjection {
                     if self
                         .addrs
                         .iter()
-                        .any(|&addr| addr == stmt.inputs.first().as_u64())
+                        .any(|&addr| addr == stmt.inputs.first().as_u64().into())
                     {
                         self.tmp_block.push(pcode::Op::Hook(self.hook));
                         code.modified.insert(id);
@@ -124,7 +125,7 @@ impl CodeInjector for InstructionHookInjection {
 
 struct PathTracer {
     /// A list of (block address, icount) pairs tracking all blocks hit by the emulator.
-    blocks: Vec<(u64, u64)>,
+    blocks: Vec<(EVAddr, u64)>,
 }
 
 impl PathTracer {
@@ -137,7 +138,7 @@ impl HookHandler for PathTracer {
     fn call(
         data: &mut Self,
         cpu: &mut CpuCore,
-        addr: u64,
+        addr: EVAddr,
     ) {
         // Avoid using up too much memory if we end up with an extremely long execution.
         if data.blocks.len() > 0x100_0000 {
@@ -177,7 +178,7 @@ impl PathTracerRef {
     pub fn get_last_blocks(
         &self,
         vm: &mut Cpu,
-    ) -> Vec<(u64, u64)> {
+    ) -> Vec<(EVAddr, u64)> {
         let path_tracer = vm.core.get_hook_mut(self.0);
         path_tracer.data_mut::<PathTracer>().unwrap().blocks.clone()
     }
@@ -193,7 +194,7 @@ impl PathTracerRef {
     pub fn restore(
         &self,
         vm: &mut Cpu,
-        snapshot: &Vec<(u64, u64)>,
+        snapshot: &Vec<(EVAddr, u64)>,
     ) {
         let path_tracer = vm.core.get_hook_mut(self.0);
         let blocks = &mut path_tracer.data_mut::<PathTracer>().unwrap().blocks;

@@ -18,7 +18,7 @@ pub enum GenericErrorKind {
 
 #[derive(Debug)]
 pub struct GenericError {
-    kind: GenericErrorKind,
+    pub kind: GenericErrorKind,
     message: String,
 }
 
@@ -38,10 +38,6 @@ impl GenericError {
             kind: GenericErrorKind::Unknown,
             message: "".to_string(),
         }
-    }
-
-    pub fn kind(&self) -> &GenericErrorKind {
-        &self.kind
     }
 }
 

@@ -1,3 +1,4 @@
+pub mod tlb;
 pub mod tlb_entry;
 
 use mogi_utilities::addresses::EPAddr;
@@ -80,12 +81,16 @@ pub trait MMU {
 }
 
 bitflags! {
-    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-    pub struct Permission : u32 {
+    #[derive(Default, Copy, Clone, Debug, PartialEq, Eq)]
+    #[repr(transparent)]
+    pub struct Permission : u8 {
         const NONE = 0;
         const READ = 1;
         const WRITE = 2;
         const EXEC = 4;
+        const READ_WRITE = Self::READ.bits() | Self::WRITE.bits();
+        const WRITE_EXEC = Self::WRITE.bits() | Self::EXEC.bits();
+        const READ_EXEC = Self::READ.bits() | Self::EXEC.bits();
         const ALL = Self::READ.bits() | Self::WRITE.bits() | Self::EXEC.bits();
     }
 }
@@ -104,12 +109,12 @@ impl TryFrom<u64> for Permission {
     type Error = MemoryError;
 
     fn try_from(perm: u64) -> Result<Permission, MemoryError> {
-        Permission::from_bits(u32::try_from(perm)?).ok_or(MemoryError::InvalidPermission)
+        Permission::from_bits(u8::try_from(perm)?).ok_or(MemoryError::InvalidPermission)
     }
 }
 
 #[allow(non_camel_case_types)]
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum MemoryAction {
     READ,
     WRITE,
@@ -121,4 +126,15 @@ pub enum MemoryAction {
     READ_PROT,
     FETCH_PROT,
     READ_AFTER,
+}
+
+impl MemoryAction {
+    pub fn required_permissions(&self) -> Permission {
+        match self {
+            MemoryAction::READ => Permission::READ,
+            MemoryAction::WRITE => Permission::WRITE,
+            MemoryAction::FETCH => Permission::EXEC,
+            _ => todo!(),
+        }
+    }
 }

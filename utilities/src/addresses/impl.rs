@@ -1,15 +1,8 @@
 use crate as mogi_utilities;
-use crate::encoding::{
-    RequiredMem,
-    *,
-};
-use std::marker::PhantomData;
-use std::ops::Not;
-
-struct X<T>(PhantomData<T>);
+use crate::encoding::RequiredMem;
 
 macro_rules! addr_impl {
-    ($(#[$outer:meta])* $name:ident) => {
+    ($(#[$outer:meta])* $name:ident($debug:literal)) => {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         #[derive(
             Hash,
@@ -23,6 +16,7 @@ macro_rules! addr_impl {
         )]
         #[rustfmt::skip]
         #[upper_hex("{}", _0)]
+        #[repr(transparent)]
         pub struct $name<T = u8>(u64, std::marker::PhantomData::<T>);
 
         impl<T> Copy for $name<T> {}
@@ -49,6 +43,11 @@ macro_rules! addr_impl {
             pub unsafe fn transmute<U>(self) -> $name<U> {
                 $name::<U>(self.0, Default::default())
             }
+
+            pub const fn bits() -> usize {
+                // TODO: Make backing type of the address generic
+                std::mem::size_of::<u64>() * 8
+            }
         }
 
         impl<T> From<u16> for $name<T> {
@@ -74,7 +73,59 @@ macro_rules! addr_impl {
                 &self,
                 f: &mut std::fmt::Formatter<'_>,
             ) -> std::fmt::Result {
-                write!(f, "v{:#018x?}", self.0)
+                write!(f, "{}{:#018x?}", $debug, self.0)
+            }
+        }
+
+        impl<T, U> std::ops::Shr<U> for $name<T>
+        where
+            u64: std::ops::Shr<U, Output = u64>,
+        {
+            type Output = Self;
+            fn shr(
+                self,
+                rhs: U,
+            ) -> Self::Output {
+                Self(self.0 >> rhs, Default::default())
+            }
+        }
+
+        impl<T, U> std::ops::Shr<U> for &$name<T>
+        where
+            u64: std::ops::Shr<U, Output = u64>,
+        {
+            type Output = $name<T>;
+            fn shr(
+                self,
+                rhs: U,
+            ) -> Self::Output {
+                *self >> rhs
+            }
+        }
+
+        impl<T, U> std::ops::Shl<U> for $name<T>
+        where
+            u64: std::ops::Shl<U, Output = u64>,
+        {
+            type Output = Self;
+            fn shl(
+                self,
+                rhs: U,
+            ) -> Self::Output {
+                Self(self.0 << rhs, Default::default())
+            }
+        }
+
+        impl<T, U> std::ops::Shl<U> for &$name<T>
+        where
+            u64: std::ops::Shl<U, Output = u64>,
+        {
+            type Output = $name<T>;
+            fn shl(
+                self,
+                rhs: U,
+            ) -> Self::Output {
+                *self << rhs
             }
         }
 
@@ -92,6 +143,19 @@ macro_rules! addr_impl {
                 rhs: Self,
             ) -> Self {
                 Self(self.0.bitand(rhs.0), Default::default())
+            }
+        }
+
+        impl<T, U> std::ops::BitAnd<U> for $name<T>
+        where
+            u64: std::ops::BitAnd<U, Output = u64>,
+        {
+            type Output = u64;
+            fn bitand(
+                self,
+                rhs: U,
+            ) -> u64 {
+                self.0 & rhs
             }
         }
 
@@ -141,6 +205,18 @@ macro_rules! addr_impl {
             }
         }
 
+        impl<T> std::ops::AddAssign<u64> for $name<T>
+        where
+            T: RequiredMem,
+        {
+            fn add_assign(
+                &mut self,
+                rhs: u64,
+            ) {
+                self.0 += rhs;
+            }
+        }
+
         impl<T> std::ops::Add<usize> for &$name<T>
         where
             T: RequiredMem,
@@ -153,6 +229,24 @@ macro_rules! addr_impl {
             ) -> Self::Output {
                 $name(
                     self.0 + u64::try_from(rhs * T::required_mem()).expect("usize must be equal length to u64"),
+                    Default::default(),
+                )
+            }
+        }
+
+        impl<T> std::ops::Add<u8> for $name<T>
+        where
+            T: RequiredMem,
+        {
+            type Output = $name<T>;
+
+            fn add(
+                self,
+                rhs: u8,
+            ) -> Self::Output {
+                Self(
+                    self.0
+                        + u64::from(rhs) * u64::try_from(T::required_mem()).expect("usize must be equal length to u64"),
                     Default::default(),
                 )
             }

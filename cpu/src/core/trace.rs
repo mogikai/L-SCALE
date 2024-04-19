@@ -1,3 +1,4 @@
+use mogi_utilities::addresses::EVAddr;
 use std::any::Any;
 use std::cell::UnsafeCell;
 
@@ -178,7 +179,7 @@ impl StoreRef {
     }
 }
 
-pub type HookTrampoline = extern "C" fn(*mut (), *mut CpuCore, u64);
+pub type HookTrampoline = extern "C" fn(*mut (), *mut CpuCore, EVAddr);
 
 pub struct InstHook {
     func: HookTrampoline,
@@ -210,7 +211,7 @@ impl InstHook {
     pub fn call(
         &mut self,
         cpu: &mut CpuCore,
-        pc: u64,
+        pc: EVAddr,
     ) {
         (self.func)(self.data, cpu, pc)
     }
@@ -239,7 +240,7 @@ impl InstHook {
     extern "C" fn trampoline<H: HookHandler>(
         data: *mut (),
         cpu: *mut CpuCore,
-        addr: u64,
+        addr: EVAddr,
     ) {
         unsafe { H::call(&mut *data.cast::<H>(), &mut *cpu, addr) }
     }
@@ -249,19 +250,19 @@ pub trait HookHandler: Sized + 'static {
     fn call(
         data: &mut Self,
         cpu: &mut CpuCore,
-        addr: u64,
+        addr: EVAddr,
     );
 }
 
 impl<F> HookHandler for F
 where
-    F: FnMut(&mut CpuCore, u64) + 'static,
+    F: FnMut(&mut CpuCore, EVAddr) + 'static,
 {
     #[inline(always)]
     fn call(
         func: &mut Self,
         cpu: &mut CpuCore,
-        addr: u64,
+        addr: EVAddr,
     ) {
         func(cpu, addr)
     }

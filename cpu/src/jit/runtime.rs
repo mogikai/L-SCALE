@@ -5,18 +5,14 @@ use crate::jit::{
     VmCtx,
 };
 use crate::pcode;
-use mogi_mem::deprecated::perm::{
-    INIT,
-    READ,
-    WRITE,
-};
+use mogi_utilities::addresses::EVAddr;
 
 pub fn call_jit_compilation_error() -> JitFunction {
     unsafe extern "C" fn jit_compilation_error_fn(
         cpu: *mut CpuCore,
         _: &mut VmCtx,
-        addr: u64,
-    ) -> u64 {
+        addr: EVAddr,
+    ) -> EVAddr {
         (*cpu).exception.code = ExceptionCode::JitError as u32;
         addr
     }
@@ -27,8 +23,8 @@ pub fn call_bad_lookup_error() -> JitFunction {
     unsafe extern "C" fn bad_lookup_error_fn(
         cpu: *mut CpuCore,
         _: &mut VmCtx,
-        addr: u64,
-    ) -> u64 {
+        addr: EVAddr,
+    ) -> EVAddr {
         (*cpu).exception.code = ExceptionCode::JitError as u32;
         (*cpu).exception.value = 0x1;
         addr
@@ -40,10 +36,10 @@ pub fn call_address_not_translated() -> JitFunction {
     unsafe extern "C" fn address_not_translated_fn(
         cpu: *mut CpuCore,
         _: &mut VmCtx,
-        addr: u64,
-    ) -> u64 {
+        addr: EVAddr,
+    ) -> EVAddr {
         (*cpu).exception.code = ExceptionCode::CodeNotTranslated as u32;
-        (*cpu).exception.value = addr;
+        (*cpu).exception.value = addr.into();
         addr
     }
     address_not_translated_fn
@@ -53,8 +49,8 @@ pub fn call_block_contains_breakpoint() -> JitFunction {
     unsafe extern "C" fn block_contains_breakpoint_fn(
         cpu: *mut CpuCore,
         _: &mut VmCtx,
-        addr: u64,
-    ) -> u64 {
+        addr: EVAddr,
+    ) -> EVAddr {
         // Exit with the `InstructionLimit` exit code this results in us exiting to the interpreter
         // which will single step the CPU until the correct instruction.
         (*cpu).exception.code = ExceptionCode::InstructionLimit as u32;
@@ -66,15 +62,16 @@ pub fn call_block_contains_breakpoint() -> JitFunction {
 #[inline(always)]
 fn load<const N: usize>(
     cpu_ptr: *mut CpuCore,
-    addr: u64,
+    addr: EVAddr,
 ) -> [u8; N] {
-    let result = unsafe { (*cpu_ptr).mem.borrow_mut().read_virtual(addr, READ | INIT) };
+    let mut buffer = [0u8; N];
+    let result = unsafe { (*cpu_ptr).mem.borrow_mut().read(addr, &mut buffer) };
     match result {
-        Ok(v) => v,
+        Ok(_) => buffer,
         Err(e) => {
             unsafe {
                 (*cpu_ptr).exception.code = ExceptionCode::from_load_error(e) as u32;
-                (*cpu_ptr).exception.value = addr;
+                (*cpu_ptr).exception.value = addr.into();
             }
             [0; N]
         }
@@ -85,14 +82,14 @@ macro_rules! load_ty {
     ($namele:ident, $namebe:ident, $ty:ty) => {
         pub extern "C" fn $namele(
             cpu_ptr: *mut CpuCore,
-            addr: u64,
+            addr: EVAddr,
         ) -> $ty {
             <$ty>::from_le_bytes(load(cpu_ptr, addr))
         }
 
         pub extern "C" fn $namebe(
             cpu_ptr: *mut CpuCore,
-            addr: u64,
+            addr: EVAddr,
         ) -> $ty {
             <$ty>::from_be_bytes(load(cpu_ptr, addr))
         }
@@ -101,7 +98,7 @@ macro_rules! load_ty {
 
 pub extern "C" fn load8(
     cpu_ptr: *mut CpuCore,
-    addr: u64,
+    addr: EVAddr,
 ) -> u8 {
     load::<1>(cpu_ptr, addr)[0]
 }
@@ -112,7 +109,7 @@ load_ty!(load64le, load64be, u64);
 
 pub extern "C" fn load128le(
     cpu_ptr: *mut CpuCore,
-    addr: u64,
+    addr: EVAddr,
     out: &mut u128,
 ) {
     *out = <u128>::from_le_bytes(load(cpu_ptr, addr));
@@ -120,7 +117,7 @@ pub extern "C" fn load128le(
 
 pub extern "C" fn load128be(
     cpu_ptr: *mut CpuCore,
-    addr: u64,
+    addr: EVAddr,
     out: &mut u128,
 ) {
     *out = <u128>::from_be_bytes(load(cpu_ptr, addr));
@@ -129,19 +126,14 @@ pub extern "C" fn load128be(
 #[inline(always)]
 fn store<const N: usize>(
     cpu_ptr: *mut CpuCore,
-    addr: u64,
+    addr: EVAddr,
     value: [u8; N],
 ) {
-    let result = unsafe {
-        (*cpu_ptr)
-            .mem
-            .borrow_mut()
-            .write_virtual(addr, value, WRITE)
-    };
+    let result = unsafe { (*cpu_ptr).mem.borrow_mut().write(addr, &value) };
     if let Err(e) = result {
         unsafe {
             (*cpu_ptr).exception.code = ExceptionCode::from_store_error(e) as u32;
-            (*cpu_ptr).exception.value = addr;
+            (*cpu_ptr).exception.value = addr.into();
         }
     }
 }
@@ -150,7 +142,7 @@ macro_rules! store_ty {
     ($namele:ident, $namebe:ident, $ty:ty) => {
         pub extern "C" fn $namele(
             cpu_ptr: *mut CpuCore,
-            addr: u64,
+            addr: EVAddr,
             value: $ty,
         ) {
             store(cpu_ptr, addr, value.to_le_bytes())
@@ -158,7 +150,7 @@ macro_rules! store_ty {
 
         pub extern "C" fn $namebe(
             cpu_ptr: *mut CpuCore,
-            addr: u64,
+            addr: EVAddr,
             value: $ty,
         ) {
             store(cpu_ptr, addr, value.to_be_bytes())
@@ -168,7 +160,7 @@ macro_rules! store_ty {
 
 pub extern "C" fn store8(
     cpu_ptr: *mut CpuCore,
-    addr: u64,
+    addr: EVAddr,
     value: u8,
 ) {
     store(cpu_ptr, addr, [value])
@@ -180,7 +172,7 @@ store_ty!(store64le, store64be, u64);
 
 pub extern "C" fn store128le(
     cpu_ptr: *mut CpuCore,
-    addr: u64,
+    addr: EVAddr,
     low: u64,
     high: u64,
 ) {
@@ -190,7 +182,7 @@ pub extern "C" fn store128le(
 
 pub extern "C" fn store128be(
     cpu_ptr: *mut CpuCore,
-    addr: u64,
+    addr: EVAddr,
     low: u64,
     high: u64,
 ) {
@@ -225,14 +217,14 @@ pub unsafe extern "C" fn run_interpreter(
 
 pub extern "C" fn push_shadow_stack(
     cpu: &mut CpuCore,
-    addr: u64,
+    addr: EVAddr,
 ) {
     cpu.push_shadow_stack(addr);
 }
 
 pub extern "C" fn pop_shadow_stack(
     cpu: &mut CpuCore,
-    target: u64,
+    target: EVAddr,
 ) {
     cpu.pop_shadow_stack(target);
 }

@@ -1,7 +1,10 @@
+use addr_align::Align;
 use hashbrown::{
     HashMap,
     HashSet,
 };
+use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::error::memory::MemoryError;
 
 use crate::core::{
     Arch,
@@ -29,16 +32,11 @@ mod pcodeops;
 
 pub trait InstructionSource {
     fn arch(&self) -> &Arch;
-    fn read_bytes(
+    fn fetch(
         &mut self,
-        vaddr: u64,
+        vaddr: EVAddr,
         buf: &mut [u8],
-    );
-    fn ensure_exec(
-        &mut self,
-        vaddr: u64,
-        size: usize,
-    ) -> bool;
+    ) -> Result<(), MemoryError>;
 }
 
 impl InstructionSource for CpuCore {
@@ -46,23 +44,12 @@ impl InstructionSource for CpuCore {
         &self.arch
     }
 
-    fn read_bytes(
+    fn fetch(
         &mut self,
-        vaddr: u64,
+        vaddr: EVAddr,
         buf: &mut [u8],
-    ) {
-        let _ = self
-            .mem
-            .borrow_mut()
-            .read_bytes_virtual(vaddr, buf, mogi_mem::deprecated::perm::NONE);
-    }
-
-    fn ensure_exec(
-        &mut self,
-        vaddr: u64,
-        len: usize,
-    ) -> bool {
-        self.mem.borrow_mut().ensure_executable(vaddr, len as u64)
+    ) -> Result<(), MemoryError> {
+        self.mem.borrow_mut().fetch(vaddr, buf)
     }
 }
 
@@ -124,22 +111,22 @@ impl InstructionLifter {
     pub fn lift<S>(
         &mut self,
         src: &mut S,
-        vaddr: u64,
-    ) -> Result<u64, DecodeError>
+        vaddr: EVAddr,
+    ) -> Result<EVAddr, DecodeError>
     where
         S: InstructionSource,
     {
-        let next = self.decode(src, vaddr)?.inst_next;
+        let next = self.decode(src, vaddr)?.inst_next.into();
         if self.generate_disassembly {
             self.disasm_current(src);
-            tracing::trace!("disasm: {vaddr:#x} \"{}\"", self.disasm)
+            tracing::trace!("disasm: {vaddr:?} \"{}\"", self.disasm)
         }
 
         let block = self
             .lifter
             .lift(&src.arch().sleigh, &self.decoded)
             .map_err(|_| DecodeError::InvalidInstruction)?;
-        tracing::trace!("lift:   {vaddr:#x}\n{}", block.display(&src.arch().sleigh));
+        tracing::trace!("lift:   {vaddr:?}\n{}", block.display(&src.arch().sleigh));
 
         self.lifted.clear();
         self.lifted.next_tmp = block.next_tmp();
@@ -155,7 +142,7 @@ impl InstructionLifter {
     pub fn disasm<S>(
         &mut self,
         src: &mut S,
-        vaddr: u64,
+        vaddr: EVAddr,
     ) -> Result<&str, DecodeError>
     where
         S: InstructionSource,
@@ -188,13 +175,13 @@ impl InstructionLifter {
     pub fn decode<S>(
         &mut self,
         src: &mut S,
-        vaddr: u64,
+        vaddr: EVAddr,
     ) -> Result<&Instruction, DecodeError>
     where
         S: InstructionSource,
     {
         let alignment_mask = !(src.arch().sleigh.alignment as u64 - 1);
-        if vaddr & alignment_mask != vaddr {
+        if !vaddr.is_aligned(src.arch().sleigh.alignment) {
             return Err(DecodeError::BadAlignment);
         }
 
@@ -205,9 +192,11 @@ impl InstructionLifter {
         // Read the instruction at `vaddr` into `buf`, we ignore errors here because we want to be
         // able to handle instructions that occur on permission boundaries, and we don't currently
         // know the length of the instruction.
-        src.read_bytes(vaddr, &mut buf);
+        // TODO: Reenable the possibility to read at permission boundaries
+        src.fetch(vaddr, &mut buf)
+            .map_err(|_| DecodeError::NonExecutableMemory)?;
 
-        self.decoder.set_inst(vaddr, &buf);
+        self.decoder.set_inst(vaddr.into(), &buf);
 
         if self
             .decoder
@@ -216,20 +205,20 @@ impl InstructionLifter {
         {
             // If the decoding fails we need to check if it failed because the memory is not
             // executable, or because the instruction is actually invalid.
-            return if !src.ensure_exec(vaddr, 1) {
-                Err(DecodeError::NonExecutableMemory)
-            } else {
-                Err(DecodeError::InvalidInstruction)
-            };
+            // return if !src.ensure_exec(vaddr, 1) {
+            //     Err(DecodeError::NonExecutableMemory)
+            // }
+            Err(DecodeError::InvalidInstruction)?
         }
 
         // Now that we know the length of the instruction, ensure the region is executable.
         let len = self.decoded.num_bytes() as usize;
-        let is_executable = len <= buf.len() && src.ensure_exec(vaddr, len);
-        if !is_executable {
-            return Err(DecodeError::NonExecutableMemory);
-        }
-        tracing::trace!("decode: {vaddr:#x} {:02x?}", &buf[..len]);
+        // TODO: Defer the executable check to here again?
+        // let is_executable = len <= buf.len() && src.ensure_exec(vaddr, len);
+        // if !is_executable {
+        //     return Err(DecodeError::NonExecutableMemory);
+        // }
+        tracing::trace!("decode: {vaddr:?} {:02x?}", &buf[..len]);
 
         Ok(&self.decoded)
     }
@@ -493,9 +482,9 @@ where
 #[derive(Clone)]
 pub struct Block {
     pub pcode: pcode::Block,
-    pub entry: Option<u64>,
-    pub start: u64,
-    pub end: u64,
+    pub entry: Option<EVAddr>,
+    pub start: EVAddr,
+    pub end: EVAddr,
     pub context: u64,
     pub exit: BlockExit,
     pub breakpoints: u32,
@@ -511,7 +500,7 @@ impl Block {
     #[inline]
     pub fn contains_addr(
         &self,
-        addr: u64,
+        addr: EVAddr,
     ) -> bool {
         self.start <= addr && addr < self.end
     }
@@ -538,16 +527,16 @@ pub struct BlockState {
     labels: HashMap<pcode::PcodeLabel, BlockId>,
 
     /// Keeps track of the entry point to the block (if it has one).
-    entry: Option<u64>,
+    entry: Option<EVAddr>,
 
     /// The address of the first instruction in the current block.
-    start: u64,
+    start: EVAddr,
 
     /// The address of the instruction we are currently decoding.
-    current_addr: u64,
+    current_addr: EVAddr,
 
     /// The address of the next instruction in the block.
-    next: u64,
+    next: EVAddr,
 
     /// The context to use for the next instruction.
     context: u64,
@@ -584,7 +573,7 @@ impl BlockState {
     ) {
         let r = src.arch().reg_pc;
         self.pcode
-            .push((r, pcode::Op::Copy, pcode::Value::Const(self.current_addr, r.size)));
+            .push((r, pcode::Op::Copy, pcode::Value::Const(self.current_addr.into(), r.size)));
     }
 
     pub fn gen_set_next_pc(
@@ -593,7 +582,7 @@ impl BlockState {
     ) {
         let r = src.arch().reg_next_pc;
         self.pcode
-            .push((r, pcode::Op::Copy, pcode::Value::Const(self.next, r.size)));
+            .push((r, pcode::Op::Copy, pcode::Value::Const(self.next.into(), r.size)));
     }
 }
 
@@ -622,10 +611,10 @@ pub struct BlockGroup {
     pub blocks: (BlockId, BlockId),
 
     /// The starting address of the group.
-    pub start: u64,
+    pub start: EVAddr,
 
     /// The ending address of the group.
-    pub end: u64,
+    pub end: EVAddr,
 }
 
 impl BlockGroup {
@@ -635,7 +624,7 @@ impl BlockGroup {
 
     pub fn contains(
         &self,
-        addr: u64,
+        addr: EVAddr,
     ) -> bool {
         self.start <= addr && addr <= self.end
     }
@@ -654,7 +643,7 @@ impl BlockGroup {
         blocks: &[Block],
         sleigh: &SleighData,
         ignore_trival_exit: bool,
-        disasm: &HashMap<u64, String>,
+        disasm: &HashMap<EVAddr, String>,
     ) -> Result<String, std::fmt::Error> {
         use std::fmt::Write;
 
@@ -668,16 +657,16 @@ impl BlockGroup {
             let block = &blocks[block_id];
 
             match idx {
-                0 => writeln!(out, "<L0> (entry={:#0x}):", self.start)?,
+                0 => writeln!(out, "<L0> (entry={:?}):", self.start)?,
                 idx => writeln!(out, "<L{}>:", idx)?,
             }
 
             for op in &block.pcode.instructions {
                 if matches!(op.op, pcode::Op::InstructionMarker) {
                     if has_multiple_instructions {
-                        let addr = op.inputs.first().as_u64();
+                        let addr: EVAddr = op.inputs.first().as_u64().into();
                         match disasm.get(&addr) {
-                            Some(disasm) => writeln!(out, "[{addr:#0x}] {disasm}")?,
+                            Some(disasm) => writeln!(out, "[{addr:?}] {disasm}")?,
                             None => writeln!(out, "\t{}", op.display(sleigh))?,
                         }
                     }
@@ -689,7 +678,7 @@ impl BlockGroup {
             let trivial_exit = match block.exit {
                 BlockExit::Jump { target } => match target {
                     Target::Internal(id) => id == block_id + 1,
-                    Target::External(addr) => addr.const_eq(self.end) && block_id == self.range().end - 1,
+                    Target::External(addr) => addr.const_eq(self.end.into()) && block_id == self.range().end - 1,
                     _ => false,
                 },
                 _ => false,
@@ -726,14 +715,14 @@ impl Default for Settings {
 pub struct Context<'a, 'b, S> {
     src: &'a mut S,
     code: &'b mut BlockTable,
-    vaddr: u64,
+    vaddr: EVAddr,
 }
 
 impl<'a, 'b, S> Context<'a, 'b, S> {
     pub fn new(
         src: &'a mut S,
         code: &'b mut BlockTable,
-        vaddr: u64,
+        vaddr: EVAddr,
     ) -> Self {
         Self { src, code, vaddr }
     }
@@ -819,14 +808,14 @@ impl BlockLifter {
                     if icount >= self.settings.max_instructions_per_block {
                         break Target::External(next_addr.into());
                     }
-                    next_addr
+                    next_addr.into()
                 }
                 BlockResult::Exit(addr) => break Target::External(addr.into()),
                 BlockResult::Invalid(e) => {
                     // We can't return here directly because there might be previous instructions
                     // in the block before the invalid instruction and we still want to be able to
                     // execute them.
-                    break Target::Invalid(e, ctx.vaddr);
+                    break Target::Invalid(e, ctx.vaddr.into());
                 }
             };
         };
@@ -891,7 +880,7 @@ impl BlockLifter {
                 pcode::Op::Branch(pcode::BranchHint::Jump) => {
                     let [cond, target] = stmt.inputs.get();
 
-                    if target.const_eq(next_vaddr) {
+                    if target.const_eq(next_vaddr.into()) {
                         // Treat a branch to the next address as an internal branch (this
                         // is used for the pcode encoding of instructions like CMOV).
                         self.current
@@ -916,7 +905,7 @@ impl BlockLifter {
                         &mut self.current,
                         BlockExit::Call {
                             target,
-                            fallthrough: next_vaddr,
+                            fallthrough: next_vaddr.into(),
                         },
                     );
                     block_exit = true;
@@ -991,15 +980,15 @@ impl BlockLifter {
         self.current.labels.clear();
 
         match block_exit {
-            true => BlockResult::Exit(next_vaddr),
-            false => BlockResult::Continue(next_vaddr),
+            true => BlockResult::Exit(next_vaddr.into()),
+            false => BlockResult::Continue(next_vaddr.into()),
         }
     }
 
     fn lift_next_inst<S>(
         &mut self,
         ctx: &mut Context<S>,
-    ) -> Result<u64, DecodeError>
+    ) -> Result<EVAddr, DecodeError>
     where
         S: InstructionSource,
     {
@@ -1026,7 +1015,7 @@ impl BlockLifter {
                 hashbrown::hash_map::Entry::Occupied(old) => {
                     let old_disasm = old.get();
                     if old_disasm != new_disasm {
-                        tracing::error!("disassembly changed at {:#0x} (from {old_disasm} to {new_disasm})", ctx.vaddr);
+                        tracing::error!("disassembly changed at {:?} (from {old_disasm} to {new_disasm})", ctx.vaddr);
                         return Err(DecodeError::DisassemblyChanged);
                     }
                 }

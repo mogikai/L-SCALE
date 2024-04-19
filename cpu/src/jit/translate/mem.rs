@@ -15,17 +15,17 @@ use cranelift::prelude::{
 };
 use cranelift_codegen::ir::Endianness;
 use memoffset::offset_of;
-
-use mogi_mem::deprecated::perm;
-use mogi_mem::deprecated::physical::{
-    PageData,
-    OFFSET_BITS,
-};
-use mogi_mem::deprecated::tlb::{
-    TLBEntry,
-    TranslationCache,
+use mogi_mem::physical::page::PageData;
+use mogi_mem::tlb::entry::TLBEntry;
+use mogi_mem::tlb::tlb::TLB;
+use mogi_mem::tlb::{
+    PageIndex,
+    PageTag,
     TLB_INDEX_BITS,
 };
+use mogi_mem::PAGE_OFFSET_BITS;
+use mogi_system::components::mmu::Permission;
+use mogi_utilities::addresses::EVAddr;
 
 use crate::jit::translate::{
     is_jit_supported_size,
@@ -43,15 +43,15 @@ enum AccessKind {
 impl AccessKind {
     fn perm(&self) -> u8 {
         match self {
-            Self::Load => perm::READ | perm::INIT | perm::MAP,
-            Self::Store => perm::WRITE | perm::MAP,
+            Self::Load => Permission::READ.bits(),
+            Self::Store => Permission::WRITE.bits(),
         }
     }
 
     fn tlb_offset(&self) -> i32 {
         match self {
-            Self::Load => offset_of!(TranslationCache, read).try_into().unwrap(),
-            Self::Store => offset_of!(TranslationCache, write).try_into().unwrap(),
+            Self::Load => offset_of!(TLB, read_entries).try_into().unwrap(),
+            Self::Store => offset_of!(TLB, write_entries).try_into().unwrap(),
         }
     }
 }
@@ -108,9 +108,9 @@ fn tlb_lookup(
     // Find the host address that contains the TLB entry for this address.
     let tlb_entry_size: i64 = std::mem::size_of::<TLBEntry>().try_into().unwrap();
     assert_eq!(tlb_entry_size.count_ones(), 1);
-
+    // tlb_ptr + addr.index() * entry_size
     let tlb_entry_size_bits = tlb_entry_size.trailing_zeros() as usize;
-    let index_shift = (OFFSET_BITS - tlb_entry_size_bits) as i64;
+    let index_shift = (PAGE_OFFSET_BITS - tlb_entry_size_bits) as i64;
     let index_mask = (((1_u64 << TLB_INDEX_BITS) - 1) as i64) << tlb_entry_size_bits;
 
     let entry_offset = rshift_and_mask(trans, addr, index_shift, index_mask);
@@ -125,7 +125,7 @@ fn tlb_lookup(
 
     // Check that the tag matches. Note we can avoid the mask here, since all non-tag bits are
     // already zeroed.
-    let tag_shift = (OFFSET_BITS + TLB_INDEX_BITS) as i64;
+    let tag_shift = (PAGE_OFFSET_BITS + TLB_INDEX_BITS) as i64;
     // let tag_mask = ((1_u64 << mem::tlb::TLB_TAG_BITS) - 1) as i64;
     // let tag = rshift_and_mask(trans, addr, tag_shift, tag_mask);
     let tag = trans.builder.ins().ushr_imm(addr, tag_shift);
@@ -133,15 +133,16 @@ fn tlb_lookup(
     trans.branch_zero(cond, not_found);
 
     // Found matching entry in TLB, so load the pointer
-    let page_ptr = trans
-        .builder
-        .ins()
-        .load(types::I64, mem_flags, tlb_addr, kind_offset + 8);
+    let page_ptr =
+        trans
+            .builder
+            .ins()
+            .load(types::I64, mem_flags, tlb_addr, kind_offset + offset_of!(TLBEntry, target) as i32);
 
     let offset = trans
         .builder
         .ins()
-        .band_imm(addr, ((1_u64 << OFFSET_BITS) - 1) as i64);
+        .band_imm(addr, ((1_u64 << PAGE_OFFSET_BITS) - 1) as i64);
 
     // Host page address start + offset
     trans.builder.ins().iadd(page_ptr, offset)
@@ -151,7 +152,7 @@ fn tlb_lookup(
 /// statically.
 fn tlb_lookup_const(
     trans: &mut Translator,
-    addr: u64,
+    addr: EVAddr,
     kind: AccessKind,
     not_found: Block,
 ) -> Value {
@@ -162,7 +163,7 @@ fn tlb_lookup_const(
     let tlb_entry_size: i64 = std::mem::size_of::<TLBEntry>().try_into().unwrap();
     assert_eq!(tlb_entry_size.count_ones(), 1);
 
-    let index = TranslationCache::index(addr) as i64;
+    let index = addr.index() as i64;
     let entry_offset = trans
         .builder
         .ins()
@@ -177,10 +178,7 @@ fn tlb_lookup_const(
         .load(types::I64, mem_flags, tlb_addr, kind_offset);
 
     // Check that the tag matches
-    let tag = trans
-        .builder
-        .ins()
-        .iconst(types::I64, TLBEntry::tag(addr) as i64);
+    let tag = trans.builder.ins().iconst(types::I64, addr.tag() as i64);
     let cond = trans.builder.ins().icmp(IntCC::Equal, tag, expected_tag);
     trans.branch_zero(cond, not_found);
 
@@ -188,7 +186,7 @@ fn tlb_lookup_const(
     trans
         .builder
         .ins()
-        .load(types::I64, mem_flags, tlb_addr, kind_offset + 8)
+        .load(types::I64, mem_flags, tlb_addr, kind_offset + offset_of!(TLBEntry, target) as i32)
 }
 
 /// Generate code for checking that the permissons associated with the value at `host_addr`
@@ -200,7 +198,7 @@ fn check_perm(
     perm: u8,
     invalid_perm: Block,
 ) {
-    let perm_offset: i32 = offset_of!(PageData, perm).try_into().unwrap();
+    let perm_offset: i32 = offset_of!(PageData, permissions).try_into().unwrap();
 
     let ty = sized_int(size);
     let value = trans
@@ -461,7 +459,7 @@ fn try_inline_access(
     fallback_block: Block,
 ) -> Value {
     if let pcode::Value::Const(guest_addr, _) = guest_addr {
-        return try_inline_access_const(trans, guest_addr, size, kind, fallback_block);
+        return try_inline_access_const(trans, guest_addr.into(), size, kind, fallback_block);
     }
 
     if size != 1 {
@@ -482,7 +480,7 @@ fn try_inline_access(
 
 fn try_inline_access_const(
     trans: &mut Translator,
-    guest_addr: u64,
+    guest_addr: EVAddr,
     size: u8,
     kind: AccessKind,
     fallback_block: Block,
@@ -491,7 +489,7 @@ fn try_inline_access_const(
     let offset = trans
         .builder
         .ins()
-        .iconst(types::I64, (guest_addr & ((1_u64 << OFFSET_BITS) - 1)) as i64);
+        .iconst(types::I64, (guest_addr & ((1_u64 << PAGE_OFFSET_BITS) - 1)) as i64);
     let host_addr = trans.builder.ins().iadd(page_ptr, offset);
 
     check_perm(trans, host_addr, size, kind.perm(), fallback_block);

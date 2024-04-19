@@ -330,10 +330,10 @@ impl From<MemoryError> for LinuxKernelError {
 
 impl From<GenericError> for LinuxKernelError {
     fn from(e: GenericError) -> Self {
-        match e.kind() {
-            GenericErrorKind::CPUError(e) => (*e).into(),
-            GenericErrorKind::FSError(e) => (*e).into(),
-            GenericErrorKind::MemoryError(e) => (*e).into(),
+        match e.kind {
+            GenericErrorKind::CPUError(e) => e.into(),
+            GenericErrorKind::FSError(e) => e.into(),
+            GenericErrorKind::MemoryError(e) => e.into(),
             GenericErrorKind::Unknown => LinuxKernelError::EINVAL,
             GenericErrorKind::NotImplemented => LinuxKernelError::EINVAL,
         }

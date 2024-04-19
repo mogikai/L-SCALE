@@ -1,3 +1,4 @@
+use mogi_utilities::addresses::EVAddr;
 use thiserror::Error;
 
 use crate::cpu::Cpu;
@@ -35,13 +36,13 @@ impl Cpu {
         self.core.write_reg(reg, val)
     }
 
-    pub fn read_pc(&self) -> CpuResult<u64> {
+    pub fn read_pc(&self) -> CpuResult<EVAddr> {
         Ok(self.core.read_pc())
     }
 
     pub fn write_pc(
         &mut self,
-        val: u64,
+        val: EVAddr,
     ) -> CpuResult<()> {
         self.core.write_pc(val);
         Ok(())

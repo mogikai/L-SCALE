@@ -24,7 +24,11 @@ impl MMU for UCWrapper<'_> {
     ) -> MmuResult<()> {
         Ok(self
             .uc_mut()
-            .mem_map(address.into(), size, uc_const::Permission::from_bits(perms.bits()).ok_or(MemoryError::Unknown)?)
+            .mem_map(
+                address.into(),
+                size,
+                uc_const::Permission::from_bits(perms.bits().into()).ok_or(MemoryError::Unknown)?,
+            )
             .map_err(|_| MemoryError::Unknown)?)
     }
 

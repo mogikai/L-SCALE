@@ -2,18 +2,6 @@ use crate::core::Exception;
 use crate::cpu::exception::ExceptionCode;
 use crate::cpu::exit::CpuExitStatus;
 use crate::cpu::Cpu;
-use mogi_mem::deprecated::perm;
-use mogi_mem::deprecated::perm::{
-    EXEC,
-    NONE,
-    READ,
-    WRITE,
-};
-use mogi_mem::{
-    AllocLayout,
-    MemoryMapping,
-    UnallocatedMemory,
-};
 use mogi_system::components::cpu::hooks::{
     BlockHook,
     CodeHook,
@@ -51,23 +39,12 @@ impl MMU for Cpu {
         size: usize,
         perms: Permission,
     ) -> MmuResult<()> {
-        let addr = self
+        let _ = self
             .core
             .mem
             .borrow_mut()
-            .alloc_memory(
-                AllocLayout {
-                    addr: Some(address.into()),
-                    size: size as u64,
-                    align: 0,
-                },
-                MemoryMapping::Unallocated(UnallocatedMemory {
-                    perm: permission_to_mogi_permission(perms),
-                    value: 0,
-                }),
-            )
-            .map_err(|_| MemoryError::Unknown)?;
-        assert_eq!(addr, address.into());
+            .physical_memory_mut()
+            .alloc(address, size, perms)?;
         Ok(())
     }
 
@@ -76,7 +53,11 @@ impl MMU for Cpu {
         address: EPAddr,
         size: usize,
     ) -> MmuResult<()> {
-        todo!()
+        self.core
+            .mem
+            .borrow_mut()
+            .physical_memory_mut()
+            .free(address, size)
     }
 
     fn read_physical(
@@ -91,8 +72,7 @@ impl MMU for Cpu {
         self.core
             .mem
             .borrow_mut()
-            .read_bytes(address.into(), out.as_mut(), perm::READ)
-            .map_err(|_| MemoryError::Unknown)?;
+            .read_physical(address.into(), out.as_mut())?;
         Ok(out)
     }
 
@@ -104,29 +84,14 @@ impl MMU for Cpu {
         self.core
             .mem
             .borrow_mut()
-            .write_bytes(address.into(), data, WRITE)
-            .map_err(|_| MemoryError::Unknown)?;
+            .write_physical(address.into(), data)?;
         Ok(data.len())
     }
 
     fn flush_tlb(&mut self) -> MmuResult<()> {
-        self.core.mem.borrow_mut().clear_tlb();
+        self.core.mem.borrow_mut().flush();
         Ok(())
     }
-}
-
-fn permission_to_mogi_permission(perm: Permission) -> u8 {
-    let mut result = NONE;
-    if perm.contains(Permission::READ) {
-        result |= READ;
-    }
-    if perm.contains(Permission::WRITE) {
-        result |= WRITE;
-    }
-    if perm.contains(Permission::EXEC) {
-        result |= EXEC;
-    }
-    result
 }
 
 impl CPU for Cpu {
@@ -238,7 +203,7 @@ impl Hooks for Cpu {
                 syscall();
                 cpu.resume_next();
                 let pc = cpu.read_pc();
-                cpu.exception = Exception::new(ExceptionCode::ExternalAddr, pc);
+                cpu.exception = Exception::new(ExceptionCode::ExternalAddr, pc.into());
                 None
             }
             _ => None,
@@ -274,7 +239,11 @@ impl Hooks for Cpu {
             self.core
                 .mem
                 .borrow_mut()
-                .set_page_table_hook(Box::new(move |addr, action| hook(&mut *slfptr, addr, action)));
+                .set_page_fault_callback(Box::new(move |addr, action| {
+                    hook(&mut *slfptr, addr, action)
+                        .ok_or(MemoryError::NotMapped)
+                        .map(|e| e.physical_address)
+                }));
         }
         Ok(())
     }

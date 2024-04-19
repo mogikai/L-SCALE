@@ -18,6 +18,7 @@ use crate::sleigh::runtime::{
     DEBUG,
     ROOT_TABLE_ID,
 };
+use mogi_utilities::addresses::EVAddr;
 
 /// The decoder context for the current instruction.
 pub struct Decoder {
@@ -342,7 +343,7 @@ impl Instruction {
 
     /// Returns the length of the instruction in bytes.
     pub fn num_bytes(&self) -> u64 {
-        self.inst_next.checked_sub(self.inst_start).unwrap_or(0)
+        (self.inst_next - self.inst_start) as u64
     }
 
     /// Reserve `count` local parameters, returning the range of the reserved parameters.
@@ -598,7 +599,7 @@ impl EvalPatternValue for &'_ Decoder {
         match value {
             ContextModValue::ContextField(field) => field.extract(self.context),
             ContextModValue::TokenField(token, field) => field.extract(self.get_token(*token)),
-            ContextModValue::InstStart => self.base_addr as i64,
+            ContextModValue::InstStart => u64::from(self.base_addr) as i64,
         }
     }
 }
@@ -626,8 +627,8 @@ impl EvalPatternValue for DisasmLocalEval<'_, '_, '_> {
         match value {
             DisasmConstantValue::LocalField(idx) => self.ctx.locals()[*idx as usize],
             DisasmConstantValue::ContextField(field) => field.extract(self.state.context),
-            DisasmConstantValue::InstStart => self.state.base_addr as i64,
-            DisasmConstantValue::InstNext => (self.state.base_addr + self.state.next_offset as u64) as i64,
+            DisasmConstantValue::InstStart => u64::from(self.state.base_addr) as i64,
+            DisasmConstantValue::InstNext => u64::from(self.state.base_addr + self.state.next_offset as u64) as i64,
         }
     }
 }

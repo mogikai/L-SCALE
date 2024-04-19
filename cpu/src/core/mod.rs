@@ -1,12 +1,13 @@
-use mogi_mem::deprecated::mmu::Mmu;
+use mogi_mem::mmu::{
+    MemResult,
+    MMU,
+};
+use mogi_utilities::addresses::EVAddr;
 use std::cell::{
     RefCell,
     UnsafeCell,
 };
 use std::rc::Rc;
-
-use mogi_mem::deprecated::perm;
-use mogi_mem::deprecated::perm::MemResult;
 
 use crate::core::regs::{
     RegValue,
@@ -93,7 +94,7 @@ impl ShadowStack {
 
 #[derive(Default, Copy, Clone)]
 pub struct ShadowStackEntry {
-    pub addr: u64,
+    pub addr: EVAddr,
     pub block: u64,
 }
 
@@ -102,7 +103,7 @@ impl std::fmt::Debug for ShadowStackEntry {
         &self,
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        write!(f, "{:#x}", self.addr)
+        write!(f, "{:?}", self.addr)
     }
 }
 
@@ -191,7 +192,7 @@ pub struct Arch {
     pub calling_cov: CallCov,
 
     /// The function to call when the VM boots.
-    pub on_boot: fn(&mut CpuCore, u64),
+    pub on_boot: fn(&mut CpuCore, EVAddr),
 
     /// The sleigh specification for the current architecture.
     pub sleigh: SleighData,
@@ -276,7 +277,7 @@ pub struct CpuCore {
     pub shadow_stack: ShadowStack,
     pub enable_shadow_stack: bool,
 
-    pub mem: Rc<RefCell<Mmu>>,
+    pub mem: Rc<RefCell<MMU>>,
 
     pub icount: u64,
     pub fuel: Fuel,
@@ -305,7 +306,7 @@ pub struct CpuCore {
 
 impl CpuCore {
     pub fn new_boxed(
-        mem: Rc<RefCell<Mmu>>,
+        mem: Rc<RefCell<MMU>>,
         arch: Arch,
         cpu_id: CpuId,
     ) -> Box<Self> {
@@ -476,16 +477,16 @@ impl CpuCore {
     }
 
     #[inline(always)]
-    pub fn read_pc(&self) -> u64 {
+    pub fn read_pc(&self) -> EVAddr {
         // Safety: We ensure that `pc_offset` is valid during construction
         let raw_pc = u64::from_le_bytes(unsafe { self.regs.read_at(self.pc_offset) });
-        raw_pc & self.pc_mask
+        EVAddr::from(raw_pc & self.pc_mask)
     }
 
     #[inline(always)]
     pub fn write_pc(
         &mut self,
-        val: u64,
+        val: EVAddr,
     ) {
         // Safety: We ensure that `pc_offset` is valid during construction
         unsafe {
@@ -501,7 +502,7 @@ impl CpuCore {
     /// of NEXT_PC)
     #[inline(always)]
     pub fn resume_next(&mut self) {
-        let next = self.read_var::<u64>(self.arch.reg_next_pc);
+        let next = self.read_var::<u64>(self.arch.reg_next_pc).into();
         self.write_pc(next);
     }
 
@@ -589,14 +590,14 @@ impl CpuCore {
             },
             BlockExit::Call { target, fallthrough } => {
                 if self.enable_shadow_stack {
-                    self.push_shadow_stack(fallthrough);
+                    self.push_shadow_stack(fallthrough.into());
                 }
                 Target::External(target)
             }
             BlockExit::Return { target } => {
                 if self.enable_shadow_stack {
-                    let target_pc = self.read_dynamic(target).zxt();
-                    self.pop_shadow_stack(target_pc);
+                    let target_pc: u64 = self.read_dynamic(target).zxt();
+                    self.pop_shadow_stack(target_pc.into());
                 }
                 Target::External(target)
             }
@@ -606,11 +607,11 @@ impl CpuCore {
     #[inline]
     pub fn push_shadow_stack(
         &mut self,
-        addr: u64,
+        addr: EVAddr,
     ) {
         if self.shadow_stack.offset >= SHADOW_STACK_SIZE {
             self.exception.code = ExceptionCode::ShadowStackOverflow as u32;
-            self.exception.value = addr;
+            self.exception.value = addr.into();
             return;
         }
 
@@ -621,7 +622,7 @@ impl CpuCore {
     #[inline]
     pub fn pop_shadow_stack(
         &mut self,
-        target: u64,
+        target: EVAddr,
     ) {
         for (i, entry) in self.shadow_stack.as_slice().iter().enumerate().rev() {
             if target == entry.addr {
@@ -630,14 +631,14 @@ impl CpuCore {
             }
         }
         self.exception.code = ExceptionCode::ShadowStackInvalid as u32;
-        self.exception.value = target;
+        self.exception.value = target.into();
     }
 
     #[inline]
     pub fn call_hook(
         &mut self,
         id: pcode::HookId,
-        addr: u64,
+        addr: EVAddr,
     ) {
         // @fixme(Safety): we need a mechanism to ensure that that the `hooks` field is never
         // touched by the hook we are calling. (e.g., consider using a `Lens` type?).
@@ -645,29 +646,6 @@ impl CpuCore {
             let hooks = self.trace.hooks.get();
             (*hooks)[id as usize].call(self, addr);
         }
-    }
-
-    /// Read a pointer-like argument according to the configured calling convention
-    pub fn read_ptr_arg(
-        &mut self,
-        n: usize,
-    ) -> MemResult<u64> {
-        if let Some(&var) = self.arch.calling_cov.integers.get(n) {
-            return Ok(self.read_dynamic(var.into()).zxt());
-        }
-
-        // @fixme: this might not be correct because alignment can be smaller than `ptr_size`
-        let ptr_size = self.arch.reg_pc.size as u64;
-        let stack_ptr: u64 = self.read_dynamic(self.arch.reg_sp.into()).zxt();
-        let addr = stack_ptr
-            + self.arch.calling_cov.stack_offset
-            + ptr_size * (n - self.arch.calling_cov.integers.len()) as u64;
-
-        let mut buf = [0; 8];
-        self.mem
-            .borrow_mut()
-            .read_bytes(addr, &mut buf[..ptr_size as usize], perm::READ)?;
-        Ok(self.arch.bytes_to_pointer(buf))
     }
 }
 
@@ -726,7 +704,7 @@ impl<'a> PcodeExecutor for UncheckedExecutor<'a> {
 
     fn next_instruction(
         &mut self,
-        addr: u64,
+        addr: EVAddr,
         _len: u64,
     ) {
         self.cpu.write_pc(addr);
@@ -734,7 +712,7 @@ impl<'a> PcodeExecutor for UncheckedExecutor<'a> {
             Some(fuel) => self.cpu.fuel.remaining = fuel,
             None => {
                 self.cpu.exception.code = ExceptionCode::InstructionLimit as u32;
-                self.cpu.exception.value = addr;
+                self.cpu.exception.value = addr.into();
             }
         }
     }
@@ -742,16 +720,16 @@ impl<'a> PcodeExecutor for UncheckedExecutor<'a> {
     fn load_mem<const N: usize>(
         &mut self,
         id: pcode::MemId,
-        addr: u64,
+        addr: EVAddr,
     ) -> MemResult<[u8; N]> {
         match id {
-            0 => self
-                .cpu
-                .mem
-                .borrow_mut()
-                .read_virtual::<N>(addr, perm::READ),
+            0 => {
+                let mut buffer = [0u8; N];
+                self.cpu.mem.borrow_mut().read(addr, &mut buffer)?;
+                Ok(buffer)
+            }
             _ => {
-                let offset = addr as usize;
+                let offset = u64::from(addr) as usize;
                 let mut value = [0; N];
                 value.copy_from_slice(&self.cpu.trace.storage[id as usize - 1].data()[offset..offset + N]);
                 Ok(value)
@@ -762,17 +740,13 @@ impl<'a> PcodeExecutor for UncheckedExecutor<'a> {
     fn store_mem<const N: usize>(
         &mut self,
         id: pcode::MemId,
-        addr: u64,
+        addr: EVAddr,
         value: [u8; N],
     ) -> MemResult<()> {
         match id {
-            0 => self
-                .cpu
-                .mem
-                .borrow_mut()
-                .write_virtual(addr, value, perm::WRITE),
+            0 => self.cpu.mem.borrow_mut().write(addr, &value),
             _ => {
-                let offset = addr as usize;
+                let offset = u64::from(addr) as usize;
                 self.cpu.trace.storage[id as usize - 1].data_mut()[offset..offset + N].copy_from_slice(&value);
                 Ok(())
             }
@@ -863,7 +837,7 @@ impl CpuCore {
 
 pub fn generic_on_boot(
     cpu: &mut CpuCore,
-    entry: u64,
+    entry: EVAddr,
 ) {
     cpu.reset();
     cpu.write_pc(entry);

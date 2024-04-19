@@ -1,6 +1,7 @@
 use crate::core::Arch;
 use crate::pcode;
 use crate::sleigh::runtime::SleighData;
+use mogi_utilities::addresses::EVAddr;
 
 #[derive(Copy, Clone)]
 pub struct XorShiftRng {
@@ -164,77 +165,77 @@ pub fn parse_u64_with_prefix(value: &str) -> Option<u64> {
     u64::from_str_radix(value, radix).ok()
 }
 
-pub struct BasicInstructionSource {
-    pub arch: Arch,
-    base_addr: u64,
-    mem: Vec<u8>,
-}
-
-impl BasicInstructionSource {
-    pub fn new(sleigh: SleighData) -> Self {
-        let arch = Arch {
-            triple: target_lexicon::Triple::unknown(),
-            reg_pc: pcode::VarNode::new(0, 8),
-            reg_next_pc: pcode::VarNode::NONE,
-            reg_sp: pcode::VarNode::NONE,
-            reg_isa_mode: None,
-            isa_mode_context: vec![],
-            reg_init: vec![],
-            on_boot: crate::core::generic_on_boot,
-            calling_cov: crate::core::CallCov::default(),
-            sleigh,
-        };
-        Self {
-            arch,
-            base_addr: 0,
-            mem: vec![],
-        }
-    }
-
-    pub fn set_inst(
-        &mut self,
-        addr: u64,
-        bytes: &[u8],
-    ) {
-        self.mem.clear();
-        self.mem.extend_from_slice(bytes);
-        self.base_addr = addr;
-    }
-
-    fn get_mem_region(
-        &self,
-        vaddr: u64,
-        size: usize,
-    ) -> Option<&[u8]> {
-        let start = vaddr.checked_sub(self.base_addr)? as usize;
-        let buf = self.mem.get(start..)?;
-        Some(&buf[..size.min(buf.len())])
-    }
-}
-
-impl crate::lifter::InstructionSource for BasicInstructionSource {
-    fn arch(&self) -> &Arch {
-        &self.arch
-    }
-
-    fn read_bytes(
-        &mut self,
-        vaddr: u64,
-        buf: &mut [u8],
-    ) {
-        buf.fill(0);
-        match self.get_mem_region(vaddr, buf.len()) {
-            Some(data) => buf[..data.len()].copy_from_slice(data),
-            None => buf.fill(0),
-        }
-    }
-
-    fn ensure_exec(
-        &mut self,
-        vaddr: u64,
-        size: usize,
-    ) -> bool {
-        self.get_mem_region(vaddr, size)
-            .map_or(false, |x| x.len() == size)
-    }
-}
+// pub struct BasicInstructionSource {
+//     pub arch: Arch,
+//     base_addr: EVAddr,
+//     mem: Vec<u8>,
+// }
+//
+// impl BasicInstructionSource {
+//     pub fn new(sleigh: SleighData) -> Self {
+//         let arch = Arch {
+//             triple: target_lexicon::Triple::unknown(),
+//             reg_pc: pcode::VarNode::new(0, 8),
+//             reg_next_pc: pcode::VarNode::NONE,
+//             reg_sp: pcode::VarNode::NONE,
+//             reg_isa_mode: None,
+//             isa_mode_context: vec![],
+//             reg_init: vec![],
+//             on_boot: crate::core::generic_on_boot,
+//             calling_cov: crate::core::CallCov::default(),
+//             sleigh,
+//         };
+//         Self {
+//             arch,
+//             base_addr: 0,
+//             mem: vec![],
+//         }
+//     }
+//
+//     pub fn set_inst(
+//         &mut self,
+//         addr: EVAddr,
+//         bytes: &[u8],
+//     ) {
+//         self.mem.clear();
+//         self.mem.extend_from_slice(bytes);
+//         self.base_addr = addr;
+//     }
+//
+//     fn get_mem_region(
+//         &self,
+//         vaddr: EVAddr,
+//         size: usize,
+//     ) -> Option<&[u8]> {
+//         let start = vaddr - self.base_addr;
+//         let buf = self.mem.get(start..)?;
+//         Some(&buf[..size.min(buf.len())])
+//     }
+// }
+//
+// impl crate::lifter::InstructionSource for BasicInstructionSource {
+//     fn arch(&self) -> &Arch {
+//         &self.arch
+//     }
+//
+//     fn read_bytes(
+//         &mut self,
+//         vaddr: EVAddr,
+//         buf: &mut [u8],
+//     ) {
+//         buf.fill(0);
+//         match self.get_mem_region(vaddr, buf.len()) {
+//             Some(data) => buf[..data.len()].copy_from_slice(data),
+//             None => buf.fill(0),
+//         }
+//     }
+//
+//     fn ensure_exec(
+//         &mut self,
+//         vaddr: u64,
+//         size: usize,
+//     ) -> bool {
+//         self.get_mem_region(vaddr, size)
+//             .map_or(false, |x| x.len() == size)
+//     }
+// }

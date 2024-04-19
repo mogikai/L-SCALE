@@ -105,7 +105,7 @@ impl<'a> Hooks for UCWrapper<'a> {
 fn transform_tlb_entry_to_uc_tlb_entry(value: TLBEntry) -> TlbEntry {
     TlbEntry {
         paddr: value.physical_address.into(),
-        perms: Permission::from_bits(value.permissions.bits()).unwrap(),
+        perms: Permission::from_bits(value.permissions.bits().into()).unwrap(),
     }
 }
 

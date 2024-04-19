@@ -1,7 +1,7 @@
 use crate::core::regs::ValueSource;
 use crate::core::CpuCore;
-use mogi_mem::deprecated::mmu::Mmu;
-use mogi_mem::deprecated::perm;
+use mogi_system::components::mmu::Permission;
+use mogi_utilities::addresses::EVAddr;
 
 use crate::cpu::Cpu;
 use crate::lifter::BlockGroup;
@@ -40,10 +40,10 @@ pub fn dump_group_disasm(
         }
         for op in &block.pcode.instructions {
             if matches!(op.op, pcode::Op::InstructionMarker) {
-                let addr = op.inputs.first().as_u64();
+                let addr: EVAddr = op.inputs.first().as_u64().into();
                 match vm.code.disasm.get(&addr) {
-                    Some(disasm) => writeln!(out, "[{addr:#0x}] {disasm}")?,
-                    None => writeln!(out, "[{addr:#0x}] <unavailable>")?,
+                    Some(disasm) => writeln!(out, "[{addr:?}] {disasm}")?,
+                    None => writeln!(out, "[{addr:?}] <unavailable>")?,
                 }
             }
         }
@@ -76,12 +76,12 @@ pub fn dump_semantics(vm: &Cpu) -> Result<String, std::fmt::Error> {
 
 pub fn debug_addr(
     vm: &mut Cpu,
-    addr: u64,
+    addr: EVAddr,
 ) -> Result<String, std::fmt::Error> {
     let key = vm.get_block_key(addr);
     match vm.code.map.get(&key) {
         Some(group) => debug_block_group(vm, group),
-        None => Ok(format!("no block at {:#x}", addr)),
+        None => Ok(format!("no block at {addr:?}")),
     }
 }
 
@@ -98,10 +98,10 @@ pub fn current_disasm(vm: &Cpu) -> String {
     let block = &vm.code.blocks[block_id as usize];
     for (i, op) in block.pcode.instructions.iter().enumerate() {
         if matches!(op.op, pcode::Op::InstructionMarker) {
-            let addr = op.inputs.first().as_u64();
+            let addr: EVAddr = op.inputs.first().as_u64().into();
             match vm.code.disasm.get(&addr) {
-                Some(disasm) => write!(out, "[{addr:#0x}] {disasm}").unwrap(),
-                None => write!(out, "[{addr:#0x}] <unavailable>").unwrap(),
+                Some(disasm) => write!(out, "[{addr:?}] {disasm}").unwrap(),
+                None => write!(out, "[{addr:?}] <unavailable>").unwrap(),
             }
         } else {
             write!(out, "\t{}", op.display(&vm.core.arch.sleigh)).unwrap();
@@ -201,36 +201,27 @@ pub fn callstack_from_frame_pointer(vm: &mut Cpu) -> Option<Vec<u64>> {
         _ => return None,
     };
 
-    let sp = vm.core.read_reg(reg_sp);
-    let mut bp = vm.core.read_reg(reg_bp);
+    let esp: EVAddr = vm.core.read_reg(reg_sp).into();
+    let mut ebp: EVAddr = vm.core.read_reg(reg_bp).into();
 
     // @fixme: we assume stack grows downwards here.
-    if bp < sp {
+    if ebp < esp {
         // Invalid stack layout
         return None;
     }
 
-    if !vm.core.mem.borrow_mut().is_regular_region(sp, 0x1000) {
-        // Stack pointer is corrupted.
-        return None;
-    }
-
-    let mut stack = [0; 0x100];
-    vm.core
-        .mem
-        .borrow_mut()
-        .read_bytes(sp, &mut stack, perm::READ)
-        .ok()?;
+    let mut stack = [0u8; 0x100];
+    vm.core.mem.borrow_mut().read(esp, &mut stack).ok()?;
 
     let mut callstack = vec![vm.core.read_reg(reg_pc)];
     if let Some(reg_lr) = get_link_register(vm) {
         callstack.push(vm.core.read_reg(reg_lr));
     }
 
-    while bp >= sp && ((bp - sp) as usize) < stack.len() + (reg_pc.size as usize + reg_bp.size as usize) {
-        let offset = (bp - sp) as usize;
+    while ebp >= esp && (ebp - esp) < stack.len() + (reg_pc.size as usize + reg_bp.size as usize) {
+        let offset = ebp - esp;
         // @fixme: endianness.
-        bp = get_u64(&stack[offset..offset + 4]);
+        ebp = get_u64(&stack[offset..offset + 4]).into();
         let pc = get_u64(&stack[offset + 4..offset + 8]);
         callstack.push(pc);
     }
@@ -352,31 +343,31 @@ pub fn get_debug_regs(cpu: &CpuCore) -> Vec<pcode::VarNode> {
         .collect()
 }
 
-pub fn log_write(
-    vm: &mut Cpu,
-    label: impl Into<std::borrow::Cow<'static, str>>,
-    addr: u64,
-    size: u8,
-) {
-    // @fixme: safety, make memory subsystem take CPU as a parameter.
-    let cpu_ptr = vm.core.as_mut() as *const CpuCore;
-    let label = label.into();
-    vm.core.mem.borrow_mut().add_write_hook(
-        addr,
-        addr + size as u64,
-        Box::new(move |_mem: &mut Mmu, addr: u64, value: &[u8]| {
-            let value = get_u64(value);
-            let pc = unsafe { &mut (*cpu_ptr).read_pc() };
-            let icount = unsafe { &mut (*cpu_ptr).icount() };
-            eprintln!("[{pc:#0x}] {label}@{addr:#x} = {value:#x} (icount={icount})");
-        }),
-    );
-}
+// pub fn log_write(
+//     vm: &mut Cpu,
+//     label: impl Into<std::borrow::Cow<'static, str>>,
+//     addr: u64,
+//     size: u8,
+// ) {
+//     // @fixme: safety, make memory subsystem take CPU as a parameter.
+//     let cpu_ptr = vm.core.as_mut() as *const CpuCore;
+//     let label = label.into();
+//     vm.core.mem.borrow_mut().add_write_hook(
+//         addr,
+//         addr + size as u64,
+//         Box::new(move |_mem: &mut Mmu, addr: u64, value: &[u8]| {
+//             let value = get_u64(value);
+//             let pc = unsafe { &mut (*cpu_ptr).read_pc() };
+//             let icount = unsafe { &mut (*cpu_ptr).icount() };
+//             eprintln!("[{pc:#0x}] {label}@{addr:#x} = {value:#x} (icount={icount})");
+//         }),
+//     );
+// }
 
 pub fn log_regs(
     vm: &mut Cpu,
     label: impl Into<std::borrow::Cow<'static, str>>,
-    pc: u64,
+    pc: EVAddr,
     reglist: &[impl AsRef<str>],
 ) {
     use std::io::Write;
@@ -397,7 +388,7 @@ pub fn log_regs(
     vm.hook_address(pc, move |cpu: &mut CpuCore, addr| {
         let mut stdout = std::io::stdout().lock();
 
-        let _ = write!(&mut stdout, "[{addr:#0x}] {label}: ");
+        let _ = write!(&mut stdout, "[{addr:?}] {label}: ");
         for reg in &regs {
             let value = cpu.read_reg(*reg);
             let _ = write!(&mut stdout, "{} = {value:#x} ", reg.display(&cpu.arch.sleigh));

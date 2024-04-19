@@ -17,6 +17,7 @@ use cranelift_module::{
     Module,
 };
 use memoffset::offset_of;
+use mogi_utilities::addresses::EVAddr;
 
 use crate::core::regs::Regs;
 use crate::core::{
@@ -337,7 +338,7 @@ pub(crate) struct TranslatorCtx {
     reg_pc: pcode::VarNode,
     endianness: Endianness,
     local_blocks: HashMap<usize, Block>,
-    entry_points: Vec<(u64, Block)>,
+    entry_points: Vec<(EVAddr, Block)>,
     active_vars: HashMap<pcode::VarId, VarState>,
 }
 
@@ -429,7 +430,7 @@ pub(crate) fn translate<'a>(
         symbols,
         srcloc: 0,
 
-        last_addr: 0,
+        last_addr: EVAddr::null(),
         instruction_len: 0,
         block_id: 0,
         block_offset: 0,
@@ -479,7 +480,7 @@ fn define_jit_entry(
             // Otherwise generate a switch statement.
             let mut switch = Switch::new();
             for &(addr, block) in entries {
-                switch.set_entry(addr as u128, block);
+                switch.set_entry(u64::from(addr) as u128, block);
             }
             switch.emit(builder, addr, trap_block);
 
@@ -505,7 +506,7 @@ struct Translator<'a> {
     symbols: Symbols,
     srcloc: u32,
 
-    last_addr: u64,
+    last_addr: EVAddr,
     instruction_len: u64,
     block_id: u64,
     block_offset: u64,
@@ -579,7 +580,10 @@ impl<'a> Translator<'a> {
             .builder
             .ins()
             .iconst(types::I64, self.block_offset as i64);
-        let next_addr = self.builder.ins().iconst(types::I64, self.last_addr as i64);
+        let next_addr = self
+            .builder
+            .ins()
+            .iconst(types::I64, u64::from(self.last_addr) as i64);
         self.builder
             .ins()
             .jump(self.exit_block, &[block_id, block_offset, next_addr]);
@@ -812,7 +816,7 @@ impl<'a> Translator<'a> {
         let current_pc = self
             .builder
             .ins()
-            .iconst(sized_int(reg_pc.size), self.last_addr as i64);
+            .iconst(sized_int(reg_pc.size), u64::from(self.last_addr) as i64);
         self.write(reg_pc, current_pc)
     }
 
@@ -821,7 +825,7 @@ impl<'a> Translator<'a> {
         &mut self,
         inst: pcode::Instruction,
     ) {
-        tracing::debug!("interpreter will run for: pc={:#0x} {inst:?}", self.last_addr);
+        tracing::debug!("interpreter will run for: pc={:?} {inst:?}", self.last_addr);
 
         if inst.output != pcode::VarNode::NONE {
             if let Some(entry) = self.ctx.active_vars.remove(&inst.output.id) {
@@ -853,7 +857,7 @@ impl<'a> Translator<'a> {
 
     fn next_instruction(
         &mut self,
-        addr: u64,
+        addr: EVAddr,
         len: u64,
     ) {
         self.last_addr = addr;
@@ -1028,7 +1032,7 @@ impl<'a> Translator<'a> {
                     unreachable!("tracer operations are now performed as part of load/store")
                 }
 
-                Op::InstructionMarker => self.next_instruction(inputs[0].as_u64(), inputs[1].as_u64()),
+                Op::InstructionMarker => self.next_instruction(inputs[0].as_u64().into(), inputs[1].as_u64().into()),
 
                 Op::Exception => {
                     let code = self.read_int(inputs[0]);
@@ -1188,7 +1192,12 @@ impl<'a> Translator<'a> {
             Target::External(target) => {
                 // Try to directly jump to the target if it is defined in the current function.
                 if let pcode::Value::Const(addr, _) = target {
-                    if let Some((_, block)) = self.ctx.entry_points.iter().find(|entry| entry.0 == *addr) {
+                    if let Some((_, block)) = self
+                        .ctx
+                        .entry_points
+                        .iter()
+                        .find(|entry| entry.0 == (*addr).into())
+                    {
                         self.builder.ins().jump(*block, &[]);
                         return;
                     }

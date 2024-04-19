@@ -1,8 +1,12 @@
-use crate::addresses::EVAddr;
+use crate::addresses::{
+    EPAddr,
+    EVAddr,
+};
+use std::fmt::Debug;
 use std::num::TryFromIntError;
 use thiserror::Error;
 
-#[derive(Error, Debug, Copy, Clone)]
+#[derive(Error, Debug)]
 pub enum MemoryError {
     #[error("The memory Could not be converted into the required type")]
     ConversionError,
@@ -32,8 +36,16 @@ pub enum MemoryError {
     MappingOverlaps,
     #[error("The requested write could only write {0} bytes")]
     IncompleteWrite(usize),
+    #[error("There is no physical memory backing the requested physical address")]
+    NoPhysicalMapping(EPAddr),
+    #[error("The page could not be found in the page table")]
+    PageFault, // TODO: Provide some sub-variants to differentiate between access violation and other conditions.
     #[error("An unknown error has occurred")]
     Unknown,
+    #[error("The page with the provided id was not found")]
+    InvalidPageId(Box<dyn Debug>),
+    #[error("The memory subsystem detected self modifying code. This is currently unsupported")]
+    SelfModifyingCode,
 }
 
 impl From<TryFromIntError> for MemoryError {

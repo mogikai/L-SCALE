@@ -12,6 +12,7 @@ use blocktable::{
 };
 use cranelift_codegen::ir::Endianness;
 use exception::ExceptionCode;
+use mogi_utilities::addresses::EVAddr;
 
 use crate::core::regs::ValueSource;
 use crate::core::{
@@ -169,8 +170,8 @@ impl Cpu {
     /// Registers a function `hook` to called before the instruction at `addr` is executed.
     pub fn hook_address(
         &mut self,
-        addr: u64,
-        hook: impl FnMut(&mut CpuCore, u64) + 'static,
+        addr: EVAddr,
+        hook: impl FnMut(&mut CpuCore, EVAddr) + 'static,
     ) {
         let hook_id = self.core.add_hook(hook);
         injector::register_instruction_hook_injector(self, vec![addr], hook_id);
@@ -180,8 +181,8 @@ impl Cpu {
     /// to be executed.
     pub fn hook_many_addresses(
         &mut self,
-        addrs: &[u64],
-        hook: impl FnMut(&mut CpuCore, u64) + 'static,
+        addrs: &[EVAddr],
+        hook: impl FnMut(&mut CpuCore, EVAddr) + 'static,
     ) {
         let hook_id = self.core.add_hook(hook);
         injector::register_instruction_hook_injector(self, addrs.into(), hook_id);
@@ -240,7 +241,7 @@ impl Cpu {
 
     pub(crate) fn get_block_key(
         &self,
-        vaddr: u64,
+        vaddr: EVAddr,
     ) -> BlockKey {
         let isa_mode = self.core.isa_mode() as u64;
         BlockKey { vaddr, isa_mode }
@@ -272,7 +273,7 @@ impl Cpu {
             }
             ExceptionCode::SoftwareBreakpoint => CpuExitStatus::Breakpoint,
 
-            ExceptionCode::ExternalAddr => self.handle_external_address(self.core.exception.value, u64::MAX),
+            ExceptionCode::ExternalAddr => self.handle_external_address(self.core.exception.value.into(), u64::MAX),
             ExceptionCode::CodeNotTranslated => self.handle_code_not_translated(),
             ExceptionCode::UnimplementedOp => self.handle_unimplemented_op(),
             ExceptionCode::ShadowStackInvalid | ExceptionCode::ShadowStackOverflow => {
@@ -291,7 +292,7 @@ impl Cpu {
 
     fn handle_external_address(
         &mut self,
-        addr: u64,
+        addr: EVAddr,
         prev_block: u64,
     ) -> CpuExitStatus {
         self.core.write_pc(addr);
@@ -326,15 +327,15 @@ impl Cpu {
             ));
         }
 
-        match self.lift(pc) {
+        match self.lift(pc.into()) {
             Ok(group) => {
                 self.core.block_id = group.blocks.0 as u64;
                 self.core.block_offset = 0;
                 CpuExitStatus::Running
             }
             Err(e) => {
-                tracing::trace!("DecodeError at {pc:#x}: {e:?}");
-                self.core.exception = Exception::new(ExceptionCode::from(e), pc);
+                tracing::trace!("DecodeError at {pc:?}: {e:?}");
+                self.core.exception = Exception::new(ExceptionCode::from(e), pc.into());
                 if self.core.icount >= self.icount_limit {
                     return CpuExitStatus::InstructionLimit;
                 }
@@ -353,7 +354,7 @@ impl Cpu {
         let block = &self.code.blocks[self.core.block_id as usize];
         let stmt = block.pcode.instructions[self.core.block_offset as usize];
         tracing::error!(
-            "[{:#0x}] unknown pcode operation: {}",
+            "[{:?}] unknown pcode operation: {}",
             self.core.read_pc(),
             stmt.display(&self.core.arch.sleigh)
         );
@@ -369,7 +370,7 @@ impl Cpu {
         self.core.exception.code = ExceptionCode::InternalError as u32;
         self.core.exception.value = InternalError::CorruptedBlockMap as u64;
         let pc = self.core.read_pc();
-        eprintln!("Block map corrupted at: pc={pc:#x} id={id}\n{}", std::backtrace::Backtrace::force_capture());
+        eprintln!("Block map corrupted at: pc={pc:?} id={id}\n{}", std::backtrace::Backtrace::force_capture());
     }
 
     fn update_timer(&mut self) {
@@ -395,7 +396,7 @@ impl Cpu {
             Some(value) => value,
             None => {
                 self.core.exception.code = ExceptionCode::CodeNotTranslated as u32;
-                self.core.exception.value = self.core.read_pc();
+                self.core.exception.value = self.core.read_pc().into();
                 return;
             }
         };
@@ -420,7 +421,7 @@ impl Cpu {
                     if self
                         .code
                         .breakpoints
-                        .contains(&inst.inputs.first().as_u64())
+                        .contains(&EVAddr::from(inst.inputs.first().as_u64()))
                     {
                         self.core
                             .update_fuel(self.core.fuel.remaining.min(i as u64));
@@ -449,6 +450,7 @@ impl Cpu {
                 }
                 Target::External(addr) => {
                     let addr: u64 = self.core.read_dynamic(addr).zxt();
+                    let addr = EVAddr::from(addr);
                     self.core.write_pc(addr);
 
                     match self.code.map.get(&self.get_block_key(addr)) {
@@ -459,7 +461,7 @@ impl Cpu {
                         None => {
                             self.core.block_id = block_id;
                             self.core.exception.code = ExceptionCode::CodeNotTranslated as u32;
-                            self.core.exception.value = addr;
+                            self.core.exception.value = addr.into();
                         }
                     }
 
@@ -469,14 +471,14 @@ impl Cpu {
                 }
                 Target::Invalid(e, addr) => {
                     tracing::debug!(
-                        "End of block has invalid target\n{}\n{e:?} @ {addr:#x}, PC: {:#x}",
+                        "End of block has invalid target\n{}\n{e:?} @ {addr:#x}, PC: {:?}",
                         debug::debug_addr(self, block.start).unwrap(),
                         self.core.read_pc()
                     );
 
                     // Synchronize the RIP (this is necessary if an invalid instruction occurs in
                     // the middle of a block).
-                    self.core.write_pc(addr);
+                    self.core.write_pc(addr.into());
 
                     // Raise the exception
                     self.core.exception = Exception::new(ExceptionCode::from(e), addr);
@@ -515,7 +517,7 @@ impl Cpu {
 
         // Update pointers stored in the JIT.
         // @todo: optimize: this doesn't need to be done every time we enter the JIT.
-        self.jit_ctx.tlb_ptr = self.core.mem.borrow_mut().tlb.as_mut();
+        self.jit_ctx.tlb_ptr = self.core.mem.borrow_mut().tlb_ptr();
         for (dst, src) in self
             .jit_ctx
             .tracer_mem
@@ -582,26 +584,26 @@ impl Cpu {
         }
     }
 
-    pub fn reset(&mut self) {
-        self.core.reset();
-        self.core.mem.borrow_mut().clear();
-        self.code.flush_code();
-        if self.enable_jit {
-            self.jit.clear();
-        }
-        self.prev_isa_mode = u8::MAX;
-    }
+    // pub fn reset(&mut self) {
+    //     self.core.reset();
+    //     self.core.mem.borrow_mut().clear();
+    //     self.code.flush_code();
+    //     if self.enable_jit {
+    //         self.jit.clear();
+    //     }
+    //     self.prev_isa_mode = u8::MAX;
+    // }
 
     pub fn get_disasm(
         &self,
-        addr: u64,
+        addr: EVAddr,
     ) -> Option<&str> {
         self.code.disasm.get(&addr).map(|s| s.as_str())
     }
 
     pub fn get_block_info(
         &self,
-        addr: u64,
+        addr: EVAddr,
     ) -> Option<BlockInfoRef> {
         let key = self.get_block_key(addr);
         self.code.get_info(key)
@@ -609,7 +611,7 @@ impl Cpu {
 
     pub fn lift(
         &mut self,
-        addr: u64,
+        addr: EVAddr,
     ) -> Result<lifter::BlockGroup, DecodeError> {
         self.update_context();
 
@@ -624,7 +626,7 @@ impl Cpu {
                         && self
                             .code
                             .breakpoints
-                            .contains(&inst.inputs.first().as_u64())
+                            .contains(&EVAddr::from(inst.inputs.first().as_u64()))
                     {
                         block.breakpoints += 1;
                     }
@@ -645,7 +647,7 @@ impl Cpu {
             for inst in &block.pcode.instructions {
                 if !self.core.validate(inst) {
                     panic!(
-                        "block {:#x} contains invalid instruction {} ({:?})",
+                        "block {:?} contains invalid instruction {} ({:?})",
                         block.start,
                         inst.display(&self.core.arch.sleigh),
                         inst,
@@ -699,7 +701,7 @@ impl Cpu {
     #[cold]
     fn get_or_compile_jit_block(
         &mut self,
-        addr: u64,
+        addr: EVAddr,
     ) -> JitFunction {
         // Try to find the block corresponding to the target address.
         let key = self.get_block_key(addr);
@@ -802,7 +804,10 @@ impl Cpu {
                 let mut add_target = |target: &lifter::Target| match target {
                     Target::Internal(id) => stack.push((*id, &self.code.blocks[*id])),
                     Target::External(pcode::Value::Const(addr, _)) => {
-                        let key = BlockKey { vaddr: *addr, isa_mode };
+                        let key = BlockKey {
+                            vaddr: (*addr).into(),
+                            isa_mode,
+                        };
                         if let Some(group) = self.code.map.get(&key) {
                             let entry_block = group.blocks.0;
                             stack.push((entry_block, &self.code.blocks[entry_block]));
@@ -824,7 +829,7 @@ impl Cpu {
             }
 
             if !compilation_group.is_empty() {
-                tracing::trace!("[{entry:#x}] compiled: {compilation_group:?}");
+                tracing::trace!("[{entry:?}] compiled: {compilation_group:?}");
                 let target = CompilationTarget::new(&self.code.blocks, &compilation_group);
                 if let Err(e) = self.jit.compile(&target) {
                     tracing::error!("JIT compilation failed: {:?}", e);
@@ -871,18 +876,18 @@ fn print_interpreter_exit(vm: &mut Cpu) {
 #[inline(never)]
 fn print_jit_enter(
     vm: &mut Cpu,
-    next_addr: u64,
+    next_addr: EVAddr,
 ) {
-    eprintln!("jit_enter: next_addr={next_addr:#x}, fuel={}, icount={}", vm.core.fuel.remaining, vm.core.icount());
+    eprintln!("jit_enter: next_addr={next_addr:?}, fuel={}, icount={}", vm.core.fuel.remaining, vm.core.icount());
 }
 
 #[inline(never)]
 fn print_jit_exit(
     vm: &mut Cpu,
-    next_addr: u64,
+    next_addr: EVAddr,
 ) {
     eprintln!(
-        "jit_exit: (code={:?}, value={:x}), block={}, offset={}, next_addr={next_addr:#x}, fuel={}, icount={}",
+        "jit_exit: (code={:?}, value={:x}), block={}, offset={}, next_addr={next_addr:?}, fuel={}, icount={}",
         ExceptionCode::from_u32(vm.core.exception.code),
         vm.core.exception.value,
         vm.core.block_id,
@@ -981,7 +986,7 @@ impl Cpu {
     //     false
     // }
 
-    pub fn get_callstack(&self) -> Vec<u64> {
+    pub fn get_callstack(&self) -> Vec<EVAddr> {
         let pc = self.core.read_pc();
         self.core
             .shadow_stack
@@ -1014,7 +1019,7 @@ impl Cpu {
     pub fn snapshot(&mut self) -> Snapshot {
         Snapshot {
             core: self.core.snapshot(),
-            mem: self.core.mem.borrow_mut().snapshot(),
+            // mem: self.core.mem.borrow_mut().snapshot(),
         }
     }
 
@@ -1023,11 +1028,11 @@ impl Cpu {
         snapshot: &Snapshot,
     ) {
         self.core.restore(&snapshot.core);
-        self.core.mem.borrow_mut().restore(snapshot.mem.clone());
+        // self.core.mem.borrow_mut().restore(snapshot.mem.clone());
         self.update_context();
 
         tracing::trace!(
-            "VM state restored: pc = {:#x}, block.id={}, block.offset={}",
+            "VM state restored: pc = {:?}, block.id={}, block.offset={}",
             self.core.read_pc(),
             self.core.block_id,
             self.core.block_offset
@@ -1037,5 +1042,4 @@ impl Cpu {
 
 pub struct Snapshot {
     pub core: Box<CpuSnapshot>,
-    pub mem: mogi_mem::Snapshot,
 }

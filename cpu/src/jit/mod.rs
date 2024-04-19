@@ -15,7 +15,8 @@ use cranelift_module::{
     Module,
     ModuleResult,
 };
-use mogi_mem::deprecated::tlb::TranslationCache;
+use mogi_mem::tlb::tlb::TLB;
+use mogi_utilities::addresses::EVAddr;
 
 use crate::jit::translate::TranslatorCtx;
 use crate::lifter::Block as IcicleBlock;
@@ -27,7 +28,7 @@ mod translate;
 
 #[repr(C)]
 pub struct VmCtx {
-    pub tlb_ptr: *mut TranslationCache,
+    pub tlb_ptr: *mut TLB,
     pub tracer_mem: [*mut u8; MAX_TRACER_MEM],
     pub hooks: [HookData; MAX_HOOKS],
 }
@@ -50,7 +51,7 @@ impl VmCtx {
     }
 }
 
-pub type JitFunction = unsafe extern "C" fn(*mut CpuCore, &mut VmCtx, u64) -> u64;
+pub type JitFunction = unsafe extern "C" fn(*mut CpuCore, &mut VmCtx, EVAddr) -> EVAddr;
 
 pub(crate) struct MemHandler<T> {
     pub load8: T,
@@ -84,7 +85,7 @@ const MAX_HOOKS: usize = 64;
 extern "C" fn null_hook(
     _: *mut (),
     _: *mut CpuCore,
-    _: u64,
+    _: EVAddr,
 ) {
 }
 
@@ -123,7 +124,7 @@ impl<'a> CompilationTarget<'a> {
             .map(|id| (id, &self.blocks[id]))
     }
 
-    pub(crate) fn entry_points(&self) -> impl Iterator<Item = u64> + '_ {
+    pub(crate) fn entry_points(&self) -> impl Iterator<Item = EVAddr> + '_ {
         self.targets
             .iter()
             .copied()
@@ -163,13 +164,13 @@ pub struct JIT {
     pub jit_miss: u64,
 
     /// Cached JIT functions indexed by entrypoint.
-    pub entry_points: HashMap<u64, JitFunction>,
+    pub entry_points: HashMap<EVAddr, JitFunction>,
 
     /// The JIT functions for each address that are currently active.
-    active: Box<[(u64, JitFunction); FAST_LOOKUP_TABLE_SIZE]>,
+    active: Box<[(EVAddr, JitFunction); FAST_LOOKUP_TABLE_SIZE]>,
 
     /// Keeps track of the guest entry points of all code compiled by the JIT.
-    compiled: Vec<Vec<u64>>,
+    compiled: Vec<Vec<EVAddr>>,
 
     /// A mapping from `block_id` to the compilation group it is a part of.
     block_mapping: HashMap<usize, usize>,
@@ -178,7 +179,7 @@ pub struct JIT {
     pub dead: usize,
 
     /// A list of declared functions (used for debugging).
-    declared_functions: Vec<(FuncId, u64)>,
+    declared_functions: Vec<(FuncId, EVAddr)>,
 }
 
 impl JIT {
@@ -203,7 +204,7 @@ impl JIT {
             jit_hit: 0,
             jit_miss: 0,
             // Exploit the fact that `vec![]` has a specialized implementation using `#[rustc_box]`
-            active: vec![(u64::MAX, runtime::call_bad_lookup_error()); FAST_LOOKUP_TABLE_SIZE]
+            active: vec![(EVAddr::from(u64::MAX), runtime::call_bad_lookup_error()); FAST_LOOKUP_TABLE_SIZE]
                 .into_boxed_slice()
                 .try_into()
                 .ok()
@@ -221,7 +222,7 @@ impl JIT {
 
         self.code_ctx.clear();
         self.active
-            .fill((u64::MAX, runtime::call_bad_lookup_error()));
+            .fill((EVAddr::from(u64::MAX), runtime::call_bad_lookup_error()));
         self.compiled.clear();
         self.entry_points.clear();
         self.block_mapping.clear();
@@ -261,7 +262,7 @@ impl JIT {
     ) {
         if let Some(&id) = self.block_mapping.get(&block_id) {
             for &addr in &self.compiled[id] {
-                self.active[Self::lookup_key(addr)] = (u64::MAX, runtime::call_bad_lookup_error());
+                self.active[Self::lookup_key(addr)] = (EVAddr::from(u64::MAX), runtime::call_bad_lookup_error());
                 self.entry_points.remove(&addr);
                 self.dead += 1;
             }
@@ -269,14 +270,14 @@ impl JIT {
     }
 
     #[inline(always)]
-    fn lookup_key(addr: u64) -> usize {
-        addr as usize % FAST_LOOKUP_TABLE_SIZE
+    fn lookup_key(addr: EVAddr) -> usize {
+        u64::from(addr) as usize % FAST_LOOKUP_TABLE_SIZE
     }
 
     #[inline(always)]
     pub fn lookup_fast(
         &self,
-        addr: u64,
+        addr: EVAddr,
     ) -> Option<JitFunction> {
         let (key, entry) = self.active[Self::lookup_key(addr)];
         if addr == key {
@@ -288,7 +289,7 @@ impl JIT {
 
     pub fn add_fast_lookup(
         &mut self,
-        addr: u64,
+        addr: EVAddr,
         entry: JitFunction,
     ) {
         self.active[Self::lookup_key(addr)] = (addr, entry);
@@ -296,14 +297,14 @@ impl JIT {
 
     pub fn remove_fast_lookup(
         &mut self,
-        addr: u64,
+        addr: EVAddr,
     ) {
-        self.active[Self::lookup_key(addr)] = (u64::MAX, runtime::call_bad_lookup_error());
+        self.active[Self::lookup_key(addr)] = (EVAddr::from(u64::MAX), runtime::call_bad_lookup_error());
     }
 
     pub fn clear_fast_lookup(&mut self) {
         self.active
-            .fill((u64::MAX, runtime::call_bad_lookup_error()));
+            .fill((EVAddr::from(u64::MAX), runtime::call_bad_lookup_error()));
     }
 
     pub fn compile(
@@ -388,8 +389,8 @@ impl JIT {
                 let entry = target
                     .iter()
                     .find_map(|(_, block)| block.entry)
-                    .unwrap_or(0x0);
-                std::fs::write(format!("failed_function_{entry:#0x}.clif"), debug::debug_il(&self.code_ctx, target))
+                    .unwrap_or(EVAddr::null());
+                std::fs::write(format!("failed_function_{entry:?}.clif"), debug::debug_il(&self.code_ctx, target))
                     .unwrap();
                 err
             })?;
@@ -415,7 +416,7 @@ impl JIT {
 
         let mut writer = std::io::BufWriter::new(std::fs::File::create(path)?);
         for (func_id, addr) in &self.declared_functions {
-            writeln!(writer, "{func_id},{addr:#x}")?;
+            writeln!(writer, "{func_id},{addr:?}")?;
         }
 
         Ok(())

@@ -7,10 +7,11 @@ use hashbrown::{
     HashMap,
     HashSet,
 };
+use mogi_utilities::addresses::EVAddr;
 
 #[derive(Copy, Clone, Debug, Default, Hash, PartialEq, Eq)]
 pub struct BlockKey {
-    pub vaddr: u64,
+    pub vaddr: EVAddr,
     pub isa_mode: u64,
 }
 
@@ -19,8 +20,8 @@ pub struct BlockKey {
 pub struct BlockTable {
     pub map: HashMap<BlockKey, BlockGroup>,
     pub blocks: Vec<lifter::Block>,
-    pub disasm: HashMap<u64, String>,
-    pub breakpoints: HashSet<u64>,
+    pub disasm: HashMap<EVAddr, String>,
+    pub breakpoints: HashSet<EVAddr>,
     pub modified: HashSet<usize>,
 }
 
