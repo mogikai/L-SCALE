@@ -7,9 +7,10 @@ use mogi_system::errors::cpu::{
     StopReason,
 };
 
-impl<'a, CpuT, TcpT, Endianness> LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
+impl<'a, CpuT, MmuT, TcpT, Endianness> LinuxX86Scheduler<'a, CpuT, MmuT, TcpT, Endianness>
 where
-    CpuT: CPU + MMU + Hooks + Restorable,
+    CpuT: CPU + Hooks + Restorable,
+    MmuT: MMU,
     TcpT: TCPSystem,
     Endianness: ByteOrder + 'static,
 {

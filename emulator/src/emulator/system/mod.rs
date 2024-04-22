@@ -45,18 +45,20 @@ pub mod task_manager;
 /// Any data must be stored behind a pointer. This ensures that individual components can be
 /// accessed in a more fine grained manner, instead of having to borrow the entire system at once.
 #[derive(Debug)]
-pub struct System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT, PrngT>
+pub struct System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, MmuT, TcpT, PrngT>
 where
     FD: FdId,
     FDData: Default + Clone,
     TaskId: Ord + Copy + Clone + Default,
     KernelTaskT: KernelTask<TaskId>,
     Endianness: ByteOrder,
-    CpuT: CPU + MMU,
+    CpuT: CPU,
+    MmuT: MMU,
     TcpT: TCPSystem,
     PrngT: Rng + SeedableRng + Clone,
 {
     pub cpu: Rc<RefCell<CpuT>>,
+    pub mmu: Rc<RefCell<MmuT>>,
     pub memory: Rc<RefCell<Memory<Endianness>>>,
     pub filesystem: Rc<RefCell<Filesystem>>,
     pub clock: Rc<RefCell<Clock>>,
@@ -66,21 +68,23 @@ where
     pub tcp: Rc<RefCell<TcpT>>,
 }
 
-impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT, PrngT> Clone
-    for System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT, PrngT>
+impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, MmuT, TcpT, PrngT> Clone
+    for System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, MmuT, TcpT, PrngT>
 where
     FD: FdId,
     FDData: Default + Clone,
     TaskId: Ord + Copy + Clone + Default,
     KernelTaskT: KernelTask<TaskId>,
     Endianness: ByteOrder,
-    CpuT: CPU + MMU,
+    CpuT: CPU,
+    MmuT: MMU,
     TcpT: TCPSystem,
     PrngT: Rng + SeedableRng + Clone,
 {
     fn clone(&self) -> Self {
         Self {
             cpu: self.cpu.clone(),
+            mmu: self.mmu.clone(),
             memory: self.memory.clone(),
             filesystem: self.filesystem.clone(),
             clock: self.clock.clone(),
@@ -92,20 +96,22 @@ where
     }
 }
 
-impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT, PrngT>
-    System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT, PrngT>
+impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, MmuT, TcpT, PrngT>
+    System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, MmuT, TcpT, PrngT>
 where
     FD: FdId,
     FDData: Default + Clone,
     TaskId: Ord + Copy + Clone + Default,
     KernelTaskT: KernelTask<TaskId> + Debug,
     Endianness: ByteOrder,
-    CpuT: CPU + MMU,
+    CpuT: CPU,
+    MmuT: MMU,
     TcpT: TCPSystem,
     PrngT: Rng + SeedableRng + Clone,
 {
     pub fn new(
         cpu: Rc<RefCell<CpuT>>,
+        mmu: Rc<RefCell<MmuT>>,
         memory: Memory<Endianness>,
         filesystem: Filesystem,
         clock: Clock,
@@ -116,6 +122,7 @@ where
     ) -> Self {
         Self {
             cpu,
+            mmu,
             memory: Rc::new(RefCell::new(memory)),
             filesystem: Rc::new(RefCell::new(filesystem)),
             clock: Rc::new(RefCell::new(clock)),
@@ -127,15 +134,16 @@ where
     }
 }
 
-impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT, PrngT> SystemControl
-    for System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT, PrngT>
+impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, MmuT, TcpT, PrngT> SystemControl
+    for System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, MmuT, TcpT, PrngT>
 where
     FD: FdId,
     FDData: Default + Clone,
     TaskId: Ord + Copy + Clone + Default + 'static,
     KernelTaskT: KernelTask<TaskId> + 'static,
     Endianness: ByteOrder + 'static,
-    CpuT: CPU + MMU + Hooks,
+    CpuT: CPU + Hooks,
+    MmuT: MMU,
     TcpT: TCPSystem + TCPSystemControl,
     PrngT: Rng + SeedableRng + Clone,
 {
@@ -143,6 +151,7 @@ where
     type KernelTaskT = KernelTaskT;
     type Endianness = Endianness;
     type CpuT = CpuT;
+    type MmuT = MmuT;
     type TcpT = TcpT;
     type FDT = FD;
     type FDDataT = FDData;
@@ -150,6 +159,10 @@ where
 
     fn cpu(&self) -> &Rc<RefCell<Self::CpuT>> {
         &self.cpu
+    }
+
+    fn mmu(&self) -> &Rc<RefCell<Self::MmuT>> {
+        &self.mmu
     }
 
     fn memory(&self) -> &Rc<RefCell<Memory<Self::Endianness>>> {
@@ -181,20 +194,22 @@ where
     }
 }
 
-impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT, PrngT> Restorable
-    for System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, TcpT, PrngT>
+impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, MmuT, TcpT, PrngT> Restorable
+    for System<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, MmuT, TcpT, PrngT>
 where
     FD: FdId + Debug,
     FDData: Default + Clone + Debug,
     TaskId: Ord + Copy + Clone + Default + Debug,
     KernelTaskT: KernelTask<TaskId> + Debug,
     Endianness: ByteOrder,
-    CpuT: CPU + MMU + Restorable,
+    CpuT: CPU + Restorable,
+    MmuT: MMU + Restorable,
     TcpT: TCPSystem,
     PrngT: Rng + SeedableRng + Clone,
 {
     fn take_snapshot(&mut self) -> Result<(), GenericError> {
         self.cpu.borrow_mut().take_snapshot()?;
+        self.mmu.borrow_mut().take_snapshot()?;
         self.memory.borrow_mut().take_snapshot()?;
         self.filesystem.borrow_mut().take_snapshot()?;
         self.clock.borrow_mut().take_snapshot()?;
@@ -206,6 +221,9 @@ where
 
     fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
         self.cpu
+            .borrow_mut()
+            .discard_current_and_restore_previous_snapshot()?;
+        self.mmu
             .borrow_mut()
             .discard_current_and_restore_previous_snapshot()?;
         self.memory
@@ -233,6 +251,7 @@ where
 
     fn restore_snapshot(&mut self) -> Result<(), GenericError> {
         self.cpu.borrow_mut().restore_snapshot()?;
+        self.memory.borrow_mut().restore_snapshot()?;
         self.memory.borrow_mut().restore_snapshot()?;
         self.filesystem.borrow_mut().restore_snapshot()?;
         self.clock.borrow_mut().restore_snapshot()?;

@@ -20,10 +20,16 @@ use mogi_system::errors::generic::GenericError;
 pub mod tcp;
 pub mod udp;
 
-pub fn from_type<Endianness: ByteOrder, CpuT: CPU + MMU, TcpT: TCPSystem + 'static>(
+pub fn from_type<Endianness, CpuT, MmuT, TcpT>(
     typ: SocketType,
-    system: &LinuxSystem<Endianness, CpuT, TcpT>,
-) -> Result<FileDescriptor<FileDescriptorData>, FileDescriptorError> {
+    system: &LinuxSystem<Endianness, CpuT, MmuT, TcpT>,
+) -> Result<FileDescriptor<FileDescriptorData>, FileDescriptorError>
+where
+    Endianness: ByteOrder,
+    CpuT: CPU,
+    MmuT: MMU,
+    TcpT: TCPSystem + 'static,
+{
     Ok(match typ {
         SocketType::SOCK_STREAM => {
             let id = system.tcp.borrow_mut().new_socket()?;

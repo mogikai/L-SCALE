@@ -27,13 +27,15 @@ pub trait SystemControl: Clone {
     type TaskIdT: Ord + Copy + Clone + Default + 'static;
     type KernelTaskT: KernelTask<Self::TaskIdT> + 'static;
     type Endianness: ByteOrder + 'static;
-    type CpuT: CPU + MMU + Hooks;
+    type CpuT: CPU + Hooks;
+    type MmuT: MMU;
     type TcpT: TCPSystem + TCPSystemControl;
     type FDT: FdId;
     type FDDataT: Default + Clone;
     type PrngT: Rng + SeedableRng + Clone;
 
     fn cpu(&self) -> &Rc<RefCell<Self::CpuT>>;
+    fn mmu(&self) -> &Rc<RefCell<Self::MmuT>>;
     // TODO: Hide remaining system components behind traits?
     fn memory(&self) -> &Rc<RefCell<Memory<Self::Endianness>>>;
     fn filesystem(&self) -> &Rc<RefCell<Filesystem>>;

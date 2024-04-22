@@ -52,11 +52,12 @@ use mogi_system::components::mmu::MMU;
 mod events;
 mod fd_ops;
 
-impl<Endianness, Arch, CpuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+impl<Endianness, Arch, CpuT, MmuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, MmuT, TcpT>
 where
     Endianness: ByteOrder,
     Arch: Architecture,
-    CpuT: CPU + MMU,
+    CpuT: CPU,
+    MmuT: MMU,
     TcpT: TCPSystem,
 {
     pub fn epoll_create(
@@ -132,9 +133,9 @@ where
             Err(SyscallError::Yield)?
         }
 
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(&mut cpu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
 
         memory.write_slice(events, triggered_events.as_slice())?;
 
@@ -149,9 +150,9 @@ where
         event: EVAddr<epoll_event>,
     ) -> SyscallResult {
         let mut fd_map = sys_component_mut!(self, fd_map);
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
-        let memory = memory.accessor(&mut cpu, self.task_id);
+        let memory = memory.accessor(&mut mmu, self.task_id);
 
         let op = EPOLL_OPCODES::try_from_primitive(op).map_err(|_| LinuxKernelError::EINVAL)?;
 

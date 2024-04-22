@@ -9,9 +9,10 @@ use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::scheduler::LinuxX86Scheduler;
 use mogi_system::components::restore::Restorable;
 
-impl<'a, CpuT, TcpT, Endianness> Restorable for LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
+impl<'a, CpuT, MmuT, TcpT, Endianness> Restorable for LinuxX86Scheduler<'a, CpuT, MmuT, TcpT, Endianness>
 where
-    CpuT: CPU + Hooks + MMU + Restorable,
+    CpuT: CPU + Hooks + Restorable,
+    MmuT: MMU,
     TcpT: TCPSystem,
     Endianness: 'static + ByteOrder,
 {

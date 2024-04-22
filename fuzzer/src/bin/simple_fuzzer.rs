@@ -59,7 +59,7 @@ use mogi_emulator::emulator::system::System;
 use mogi_emulator::emulator::GenericEmulator;
 use mogi_emulator::LittleEndian;
 use mogi_fuzzer::io::tcp::TCP;
-use mogi_mem::mmu::MMU;
+use mogi_mem::mmu::MogiMMU;
 use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::components::cpu::CPU;
 use mogi_system::components::restore::Restorable;
@@ -95,7 +95,7 @@ fn main() -> Result<(), GenericError> {
 
     let duration = {
         let cpu = UCWrapper::new();
-        let mmu = Rc::new(RefCell::new(MMU::new()));
+        let mmu = Rc::new(RefCell::new(MogiMMU::new()));
         let cpu = Rc::new(RefCell::new(
             CpuBuilder::new(mmu.clone())
                 .optimize_block(false)
@@ -115,6 +115,7 @@ fn main() -> Result<(), GenericError> {
         let tcp = Rc::new(RefCell::new(TCP::new()));
         let system = System::new(
             cpu.clone(),
+            mmu.clone(),
             memory,
             filesystem,
             clock,

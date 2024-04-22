@@ -36,11 +36,12 @@ use crate::emulator::system::memory::rw_interface::{
 
 mod fd_ops;
 
-impl<Endianness, Arch, CpuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+impl<Endianness, Arch, CpuT, MmuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, MmuT, TcpT>
 where
     Endianness: ByteOrder + 'static,
     Arch: Architecture,
-    CpuT: CPU + MMU,
+    CpuT: CPU,
+    MmuT: MMU,
     TcpT: TCPSystem,
 {
     /// Write syscall. See `man write` for details
@@ -50,7 +51,7 @@ where
         buf: EVAddr,
         size: u64,
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
         file_descriptor_map
@@ -59,7 +60,7 @@ where
                 Ok(fd
                     .write(
                         memory
-                            .accessor(&mut cpu, self.task_id)
+                            .accessor(&mut mmu, self.task_id)
                             .read_bytes(buf, size as usize)?
                             .as_slice(),
                     )
@@ -75,10 +76,10 @@ where
         iovec_ptr: EVAddr,
         iovcnt: u64,
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let memory = memory.accessor(&mut cpu, self.task_id);
+        let memory = memory.accessor(&mut mmu, self.task_id);
         file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .map_or(Err(LinuxKernelError::EINVAL.into()), |mut fd| {
@@ -108,10 +109,10 @@ where
         count: u64,
         pos: u64,
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let mut memory = memory.accessor(&mut cpu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
         let mut fd = file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADF)?;
@@ -126,10 +127,10 @@ where
         buf: EVAddr,
         count: u64,
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let mut memory = memory.accessor(&mut cpu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
         let mut file = file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EINVAL)?;
@@ -142,10 +143,10 @@ where
         fd: FD,
         statbuf: EVAddr<Stat>,
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let mut memory = memory.accessor(&mut cpu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
         let mut file = file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADF)?;
@@ -159,9 +160,9 @@ where
         filename: EVAddr,
         statbuf: EVAddr<Stat>,
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(&mut cpu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
         let fname = read_osstring!(memory, filename)?;
         trace!("stat file {:?}", fname);
         let fs = sys_component!(self, filesystem);
@@ -180,9 +181,9 @@ where
     ) -> SyscallResult {
         // TODO: Resepct flags and for example check O_NOFOLLOW
         // TODO: Need to actually use dfd
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
-        let memory = memory.accessor(&mut cpu, self.task_id);
+        let memory = memory.accessor(&mut mmu, self.task_id);
         let fname = read_osstring!(memory, filename)?;
         trace!("openat file: {:?}", fname);
         let file = sys_component!(self, filesystem).resolve_last(Path::new(&fname), true)?; //TODO symlinks
@@ -229,10 +230,10 @@ where
         if statbuf.is_null() {
             Err(LinuxKernelError::EINVAL)?
         }
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let mut memory = memory.accessor(&mut cpu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
 
         let flags = at_flags::from_bits(flag).ok_or(LinuxKernelError::EINVAL)?;
         if flags.contains(at_flags::AT_EMPTY_PATH) {
@@ -263,9 +264,9 @@ where
         buf: EVAddr,
         bufsize: usize,
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(&mut cpu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
         Ok(memory
             .write_bounded_slice(buf, "/home/user/open62541_server_release".as_bytes(), bufsize)?
             .0 as u64)

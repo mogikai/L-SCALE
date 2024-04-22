@@ -31,19 +31,21 @@ mod syscall;
 //       provide a generic syscall callback from the outside.
 //       This needs further investigation
 #[derive(Debug)]
-pub struct LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
+pub struct LinuxX86Scheduler<'a, CpuT, MmuT, TcpT, Endianness>
 where
-    CpuT: CPU + MMU + Hooks + Restorable,
+    CpuT: CPU + Hooks + Restorable,
+    MmuT: MMU,
     TcpT: TCPSystem,
     Endianness: ByteOrder,
 {
-    system: LinuxSystem<Endianness, CpuT, TcpT>,
+    system: LinuxSystem<Endianness, CpuT, MmuT, TcpT>,
     phantom: PhantomData<&'a CpuT>,
 }
 
-impl<'a, CpuT, TcpT, Endianness> Scheduler for LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
+impl<'a, CpuT, MmuT, TcpT, Endianness> Scheduler for LinuxX86Scheduler<'a, CpuT, MmuT, TcpT, Endianness>
 where
-    CpuT: CPU + MMU + Hooks + Restorable,
+    CpuT: CPU + Hooks + Restorable,
+    MmuT: MMU,
     TcpT: TCPSystem,
     Endianness: ByteOrder + 'static,
 {
@@ -56,19 +58,20 @@ where
     }
 }
 
-impl<'a, CpuT, TcpT, Endianness> LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
+impl<'a, CpuT, MmuT, TcpT, Endianness> LinuxX86Scheduler<'a, CpuT, MmuT, TcpT, Endianness>
 where
-    CpuT: CPU + MMU + Hooks + Restorable + 'static,
+    CpuT: CPU + Hooks + Restorable + 'static,
+    MmuT: MMU + 'static,
     TcpT: TCPSystem + 'static,
     Endianness: ByteOrder + 'static,
 {
     pub fn new(
-        system: LinuxSystem<Endianness, CpuT, TcpT>,
-        initial_task: LinuxKernelTask<Endianness, X86, CpuT, TcpT>,
+        system: LinuxSystem<Endianness, CpuT, MmuT, TcpT>,
+        initial_task: LinuxKernelTask<Endianness, X86, CpuT, MmuT, TcpT>,
         binary_path: PathBuf,
         binary_args: &[&str],
         binary_env: &[&str],
-    ) -> Result<LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>, SchedulerError> {
+    ) -> Result<LinuxX86Scheduler<'a, CpuT, MmuT, TcpT, Endianness>, SchedulerError> {
         let mut sched = LinuxX86Scheduler {
             system,
             phantom: Default::default(),

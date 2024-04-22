@@ -9,7 +9,7 @@ use crate::exec::helpers;
 use crate::lifter;
 use crate::sleigh::compile::from_path;
 use crate::sleigh::runtime::SleighData;
-use mogi_mem::mmu::MMU;
+use mogi_mem::mmu::MogiMMU;
 use mogi_utilities::addresses::EVAddr;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -52,7 +52,7 @@ impl std::error::Error for BuildError {}
 
 #[derive(Debug)]
 pub struct CpuBuilder {
-    mmu: Rc<RefCell<MMU>>,
+    mmu: Rc<RefCell<MogiMMU>>,
     target_triple: target_lexicon::Triple,
     cpu_id: CpuId,
     enable_jit: bool,
@@ -65,7 +65,7 @@ pub struct CpuBuilder {
 }
 
 impl CpuBuilder {
-    pub fn new(mmu: Rc<RefCell<MMU>>) -> Self {
+    pub fn new(mmu: Rc<RefCell<MogiMMU>>) -> Self {
         Self {
             mmu,
             target_triple: target_lexicon::Triple::unknown(),

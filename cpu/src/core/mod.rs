@@ -1,6 +1,6 @@
 use mogi_mem::mmu::{
     MemResult,
-    MMU,
+    MogiMMU,
 };
 use mogi_utilities::addresses::EVAddr;
 use std::cell::{
@@ -277,7 +277,7 @@ pub struct CpuCore {
     pub shadow_stack: ShadowStack,
     pub enable_shadow_stack: bool,
 
-    pub mem: Rc<RefCell<MMU>>,
+    pub mem: Rc<RefCell<MogiMMU>>,
 
     pub icount: u64,
     pub fuel: Fuel,
@@ -306,7 +306,7 @@ pub struct CpuCore {
 
 impl CpuCore {
     pub fn new_boxed(
-        mem: Rc<RefCell<MMU>>,
+        mem: Rc<RefCell<MogiMMU>>,
         arch: Arch,
         cpu_id: CpuId,
     ) -> Box<Self> {

@@ -113,15 +113,16 @@ macro_rules! do_syscall {
     }};
 }
 
-fn do_syscall<Endianness, CpuT, TcpT>(
+fn do_syscall<Endianness, CpuT, MmuT, TcpT>(
     syscall: SYSCALL,
-    system: &LinuxSystem<Endianness, CpuT, TcpT>,
+    system: &LinuxSystem<Endianness, CpuT, MmuT, TcpT>,
     debug_str: &mut String,
-    kernel: &mut LinuxKernelTask<Endianness, X86, CpuT, TcpT>,
+    kernel: &mut LinuxKernelTask<Endianness, X86, CpuT, MmuT, TcpT>,
 ) -> Result<u64, SyscallError>
 where
     Endianness: ByteOrder + 'static,
-    CpuT: CPU + MMU,
+    CpuT: CPU,
+    MmuT: MMU,
     TcpT: TCPSystem + 'static,
 {
     use SYSCALL::*;
@@ -225,12 +226,13 @@ where
     }
 }
 
-pub(super) fn syscall<Endianness, CpuT, TcpT>(
-    system: &LinuxSystem<Endianness, CpuT, TcpT>,
-    task: &mut Task<TaskId, LinuxKernelTask<Endianness, X86, CpuT, TcpT>>,
+pub(super) fn syscall<Endianness, CpuT, MmuT, TcpT>(
+    system: &LinuxSystem<Endianness, CpuT, MmuT, TcpT>,
+    task: &mut Task<TaskId, LinuxKernelTask<Endianness, X86, CpuT, MmuT, TcpT>>,
 ) where
     Endianness: ByteOrder + 'static,
-    CpuT: CPU + MMU,
+    CpuT: CPU,
+    MmuT: MMU,
     TcpT: TCPSystem + 'static,
 {
     let rax = system

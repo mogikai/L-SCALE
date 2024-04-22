@@ -260,7 +260,7 @@ impl Hooks for Cpu {
 
 impl Restorable for Cpu {
     fn take_snapshot(&mut self) -> Result<(), GenericError> {
-        Ok(())
+        todo!()
     }
 
     fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {

@@ -1,3 +1,5 @@
+pub mod restorable;
+
 use crate::page_table::PageTable;
 use crate::physical::{
     Page,
@@ -13,7 +15,9 @@ use crate::{
 use addr_align::Align;
 use mogi_system::components::mmu::{
     MemoryAction,
+    MmuResult,
     Permission,
+    MMU,
 };
 use mogi_utilities::addresses::{
     EPAddr,
@@ -58,7 +62,7 @@ impl MemoryContext {
     }
 }
 
-pub struct MMU {
+pub struct MogiMMU {
     /// The currently active memory context. This can be swapped out for example when performing multitasking.
     /// This way, each process can have its own tlb and page table.
     memory_context: MemoryContext,
@@ -66,7 +70,7 @@ pub struct MMU {
     page_fault_callback: PageFaultCallback,
 }
 
-impl Debug for MMU {
+impl Debug for MogiMMU {
     fn fmt(
         &self,
         f: &mut Formatter<'_>,
@@ -78,7 +82,7 @@ impl Debug for MMU {
     }
 }
 
-impl MMU {
+impl MogiMMU {
     pub fn new() -> Self {
         Self {
             memory_context: MemoryContext::new(),
@@ -164,7 +168,7 @@ impl MMU {
 }
 
 // Read / Write functionality
-impl MMU {
+impl MogiMMU {
     pub fn write(
         &mut self,
         mut addr: EVAddr,
@@ -331,7 +335,7 @@ fn check_permissions(
     Ok(())
 }
 
-impl MMU {
+impl MogiMMU {
     /// Resolves the provided EV address to a page id. If no entry is found in the page table,
     /// the OS is queried, and if a mapping is returned, it is inserted in the page table.
     /// TODO: Remove and use resolve_to_page, and move check_permissions to page resolving
@@ -387,7 +391,7 @@ impl MMU {
 
 #[cfg(test)]
 mod test {
-    use crate::mmu::MMU;
+    use crate::mmu::MogiMMU;
     use crate::PAGE_SIZE;
     use addr_align::Align;
     use mogi_system::components::mmu::Permission;
@@ -398,7 +402,7 @@ mod test {
 
     #[test]
     fn test() {
-        let mut mmu = MMU::new();
+        let mut mmu = MogiMMU::new();
         let _ = mmu
             .physical_memory
             .alloc(0x8000u64.into(), 10000.align_up(PAGE_SIZE), Permission::READ_WRITE)
@@ -415,5 +419,45 @@ mod test {
         println!("{:?}", result);
         let result = mmu.physical_memory.page(0x9000u64.into());
         println!("{:?}", result);
+    }
+}
+
+// FIXME: Replace this with updated trait
+impl MMU for MogiMMU {
+    fn alloc_physical(
+        &mut self,
+        address: EPAddr,
+        size: usize,
+        perms: Permission,
+    ) -> MmuResult<()> {
+        todo!()
+    }
+
+    fn dealloc_physical(
+        &mut self,
+        address: EPAddr,
+        size: usize,
+    ) -> MmuResult<()> {
+        todo!()
+    }
+
+    fn read_physical(
+        &self,
+        address: EPAddr,
+        len: usize,
+    ) -> MmuResult<Vec<u8>> {
+        todo!()
+    }
+
+    fn write_physical(
+        &mut self,
+        address: EPAddr,
+        data: &[u8],
+    ) -> MmuResult<usize> {
+        todo!()
+    }
+
+    fn flush_tlb(&mut self) -> MmuResult<()> {
+        todo!()
     }
 }

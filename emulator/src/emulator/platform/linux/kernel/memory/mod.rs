@@ -32,11 +32,12 @@ pub mod flags;
 //// Public Implementations ////
 ////////////////////////////////
 
-impl<Endianness, Arch, CpuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+impl<Endianness, Arch, CpuT, MmuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, MmuT, TcpT>
 where
     Endianness: ByteOrder + 'static,
     Arch: Architecture,
-    CpuT: CPU + MMU,
+    CpuT: CPU,
+    MmuT: MMU,
     TcpT: TCPSystem,
 {
     #[allow(clippy::too_many_arguments)]
@@ -81,7 +82,7 @@ where
         len: u64,
     ) -> SyscallResult {
         sys_component_mut!(self, memory).unmap(self.task_id, addr, len as usize)?;
-        sys_component_mut!(self, cpu).flush_tlb()?;
+        sys_component_mut!(self, mmu).flush_tlb()?;
         Ok(0)
     }
 
@@ -104,10 +105,10 @@ where
             )
         }
 
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         Ok(sys_component_mut!(self, memory)
             .remap(
-                &mut *cpu,
+                &mut *mmu,
                 self.task_id,
                 old_addr,
                 old_len as usize,
@@ -129,7 +130,7 @@ where
         }
         sys_component_mut!(self, memory).protect(self.task_id, start, len as usize, prot.try_into().unwrap())?;
         // Need to flush existing cache since permissions of cached entries might have changed.
-        sys_component_mut!(self, cpu).flush_tlb()?;
+        sys_component_mut!(self, mmu).flush_tlb()?;
         Ok(0)
     }
 }
@@ -138,11 +139,12 @@ where
 //// Private Implementations ////
 /////////////////////////////////
 
-impl<Endianness, Arch, CpuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+impl<Endianness, Arch, CpuT, MmuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, MmuT, TcpT>
 where
     Endianness: ByteOrder + 'static,
     Arch: Architecture,
-    CpuT: CPU + MMU,
+    CpuT: CPU,
+    MmuT: MMU,
     TcpT: TCPSystem,
 {
     #[allow(clippy::too_many_arguments)]
@@ -171,13 +173,13 @@ where
         mapping_type: MappingType,
         label: Option<impl AsRef<str>>,
     ) -> Result<EVAddr, LinuxKernelError> {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let size = size.align4k_up() as usize;
         let addr = if flags.contains(MMAP_FLAGS::MAP_FIXED) {
             // map fixed overwrites any mappings that already exist in the region so we unmap here.
             sys_component_mut!(self, memory).unmap(self.task_id, address, size)?;
-            // Need to flush tlb to let cpu emulator now to re-fetch the addresses
-            cpu.flush_tlb()?;
+            // Need to flush tlb to let mmu emulator now to re-fetch the addresses
+            mmu.flush_tlb()?;
 
             sys_component_mut!(self, memory)
                 .map_fixed(self.task_id, address, size, prot, mapping_type, label)
@@ -190,7 +192,7 @@ where
 
         // Map anonymous requires memory being zero initialized.
         sys_component_mut!(self, memory)
-            .accessor(&mut cpu, self.task_id)
+            .accessor(&mut mmu, self.task_id)
             .write_bytes_unchecked(addr, &vec![0u8; size]);
         Ok(addr)
     }
@@ -252,9 +254,9 @@ where
         let fd = &mut *fd;
         let data = fd.pread(offset, length)?;
 
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory)
-            .accessor(&mut cpu, self.task_id)
+            .accessor(&mut mmu, self.task_id)
             .write_bytes_unchecked(addr, data.as_slice())?;
         Ok(())
     }

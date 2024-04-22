@@ -3,6 +3,7 @@ pub mod hooks;
 use std::num::TryFromIntError;
 use std::time::Duration;
 
+use crate::components::cpu::hooks::Hooks;
 use crate::errors::cpu::{
     CPUError,
     StopReason,
@@ -12,7 +13,7 @@ use strum_macros::Display;
 
 pub type ContextHandle = u64;
 
-pub trait CPU {
+pub trait CPU: Hooks {
     /// # Arguments
     /// * `stop`: A virtual address to stop execution at. If zero is passed as address, the emulation will not stop.
     /// * `timeout`: The emulation will stop after the supplied duration.

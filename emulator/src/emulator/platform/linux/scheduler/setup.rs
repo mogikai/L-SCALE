@@ -7,9 +7,10 @@ use tracing::{
 
 use super::*;
 
-impl<'a, CpuT, TcpT, Endianness> LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>
+impl<'a, CpuT, MmuT, TcpT, Endianness> LinuxX86Scheduler<'a, CpuT, MmuT, TcpT, Endianness>
 where
-    CpuT: CPU + MMU + Hooks + Restorable + 'static,
+    CpuT: CPU + Hooks + Restorable + 'static,
+    MmuT: MMU + 'static,
     TcpT: TCPSystem + 'static,
     Endianness: ByteOrder + 'static,
 {
@@ -69,7 +70,7 @@ where
 
     pub(super) fn setup_initial_task(
         &mut self,
-        mut initial_task: LinuxKernelTask<Endianness, X86, CpuT, TcpT>,
+        mut initial_task: LinuxKernelTask<Endianness, X86, CpuT, MmuT, TcpT>,
         binary_path: PathBuf,
         binary_args: &[&str],
         binary_env: &[&str],

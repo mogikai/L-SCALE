@@ -108,14 +108,15 @@ pub(super) use {
 ///       However, it would be nice to have, and we
 ///       don't have to change much to achieve
 ///       immutability.
-pub struct LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+pub struct LinuxKernelTask<Endianness, Arch, CpuT, MmuT, TcpT>
 where
     Endianness: ByteOrder,
     Arch: Architecture,
-    CpuT: CPU + MMU,
+    CpuT: CPU,
+    MmuT: MMU,
     TcpT: TCPSystem,
 {
-    system: LinuxSystem<Endianness, CpuT, TcpT>,
+    system: LinuxSystem<Endianness, CpuT, MmuT, TcpT>,
     clear_child_tid: Option<EVAddr>,
     robust_list_head: Option<EVAddr>,
     signalhandler: SignalHandler<Arch::SignalFlags>,
@@ -125,11 +126,12 @@ where
     _arch: PhantomData<Arch>,
 }
 
-impl<Endianness, Arch, CpuT, TcpT> Debug for LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+impl<Endianness, Arch, CpuT, MmuT, TcpT> Debug for LinuxKernelTask<Endianness, Arch, CpuT, MmuT, TcpT>
 where
     Endianness: ByteOrder,
     Arch: Architecture,
-    CpuT: CPU + MMU,
+    CpuT: CPU,
+    MmuT: MMU,
     TcpT: TCPSystem,
 {
     fn fmt(
@@ -140,11 +142,12 @@ where
     }
 }
 
-impl<Endianness, Arch, CpuT, TcpT> KernelTask<TaskId> for LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+impl<Endianness, Arch, CpuT, MmuT, TcpT> KernelTask<TaskId> for LinuxKernelTask<Endianness, Arch, CpuT, MmuT, TcpT>
 where
     Endianness: ByteOrder,
     Arch: Architecture,
-    CpuT: CPU + MMU,
+    CpuT: CPU,
+    MmuT: MMU,
     TcpT: TCPSystem,
 {
     fn task_id(&self) -> TaskId {
@@ -182,15 +185,16 @@ struct LoadInfo {
     program_header_entry_size: u64,
 }
 
-impl<Endianness, Arch, CpuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+impl<Endianness, Arch, CpuT, MmuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, MmuT, TcpT>
 where
     Endianness: ByteOrder + 'static,
     Arch: Architecture,
-    CpuT: CPU + MMU,
+    CpuT: CPU,
+    MmuT: MMU,
     TcpT: TCPSystem,
 {
     pub fn new(
-        system: LinuxSystem<Endianness, CpuT, TcpT>,
+        system: LinuxSystem<Endianness, CpuT, MmuT, TcpT>,
         pid: u32,
         tid: u32,
     ) -> Self {
@@ -213,8 +217,8 @@ where
         binary_env: &[&str],
     ) -> Result<(), LinuxKernelError> {
         {
-            let mut cpu = sys_component_mut!(self, cpu);
-            sys_component_mut!(self, memory).new_process(&mut *cpu, self.task_id)?;
+            let mut mmu = sys_component_mut!(self, mmu);
+            sys_component_mut!(self, memory).new_process(&mut *mmu, self.task_id)?;
         }
 
         trace!("Loading program");
@@ -248,7 +252,7 @@ where
         mut base_address: EVAddr,
     ) -> Result<LoadInfo, LinuxKernelError> {
         let fd = self.open_internal(path)?;
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
         let mut fd_map = sys_component_mut!(self, fd_map);
         let elf_data = {
@@ -286,7 +290,7 @@ where
                 info!("file_range 0x{:X}..0x{:X}", ph.file_range().start, ph.file_range().end);
                 memory
                     .map_file(
-                        &mut *cpu,
+                        &mut *mmu,
                         &mut fd_map,
                         &self.task_id,
                         vm_range,
@@ -324,6 +328,8 @@ where
         binary_env: &[&str],
     ) -> Result<(), LinuxKernelError> {
         let mut cpu = sys_component_mut!(self, cpu);
+        // TODO: This does not work with unicorn, since for unicorn cpu == mmu
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
         let mut argv_strings = vec![binary_path.to_str().unwrap()];
         argv_strings.extend_from_slice(binary_args);
@@ -333,13 +339,13 @@ where
         cpu.reg_write(RegisterX86::RSP.into(), stack_base.into())
             .expect("failed to write RSP");
         let mut aux: Vec<(u64, u64)> = Vec::new();
-        push_stack!(memory.accessor(&mut cpu, self.task_id), cpu, 0u64, RegisterX86::RSP.into())?; // Stack end marker
+        push_stack!(memory.accessor(&mut mmu, self.task_id), cpu, 0u64, RegisterX86::RSP.into())?; // Stack end marker
 
         // Push env strings. Pointers are saved in a null terminated env array.
         let env = {
             let mut env = Vec::<u64>::new();
             for &env_str in binary_env {
-                env.push(push_stack!(memory.accessor(&mut cpu, self.task_id), cpu, env_str, RegisterX86::RSP.into())?);
+                env.push(push_stack!(memory.accessor(&mut mmu, self.task_id), cpu, env_str, RegisterX86::RSP.into())?);
             }
             env.push(0); // End of array nullptr
             env
@@ -350,7 +356,7 @@ where
             let mut argv = Vec::<u64>::new();
             argv.push(argv_strings.len() as u64);
             for arg in argv_strings {
-                argv.push(push_stack!(memory.accessor(&mut cpu, self.task_id), cpu, arg, RegisterX86::RSP.into())?);
+                argv.push(push_stack!(memory.accessor(&mut mmu, self.task_id), cpu, arg, RegisterX86::RSP.into())?);
             }
             argv.push(0); // End of array nullptr
             argv
@@ -364,7 +370,7 @@ where
         aux.push((AUXVType::EGid as u64, 1000));
         aux.push((
             AUXVType::Platform as u64,
-            push_stack!(memory.accessor(&mut cpu, self.task_id), cpu, "x86_64", RegisterX86::RSP.into())?,
+            push_stack!(memory.accessor(&mut mmu, self.task_id), cpu, "x86_64", RegisterX86::RSP.into())?,
         ));
         let program_info = self
             .program_info
@@ -395,7 +401,7 @@ where
         // TODO: map random data to a more appropriate place and provide an api to set the random data
         memory
             .map_data(
-                &mut *cpu,
+                &mut *mmu,
                 self.task_id,
                 0xd00000000000u64.into()..0xd00000000100u64.into(),
                 [0; 16].as_slice(),
@@ -417,9 +423,9 @@ where
             cpu.reg_write(RegisterX86::RSP.into(), rsp & !0xf).unwrap();
         }
 
-        push_stack!(memory.accessor(&mut cpu, self.task_id), cpu, &aux, RegisterX86::RSP.into())?;
-        push_stack!(memory.accessor(&mut cpu, self.task_id), cpu, &env, RegisterX86::RSP.into())?;
-        push_stack!(memory.accessor(&mut cpu, self.task_id), cpu, &argv, RegisterX86::RSP.into())?;
+        push_stack!(memory.accessor(&mut mmu, self.task_id), cpu, &aux, RegisterX86::RSP.into())?;
+        push_stack!(memory.accessor(&mut mmu, self.task_id), cpu, &env, RegisterX86::RSP.into())?;
+        push_stack!(memory.accessor(&mut mmu, self.task_id), cpu, &argv, RegisterX86::RSP.into())?;
 
         Ok(())
     }
@@ -461,8 +467,10 @@ where
         addr: EVAddr,
     ) -> SyscallResult {
         let mut cpu = sys_component_mut!(self, cpu);
+        // TODO: This does not work with unicorn, since in unicorn cpu == mmu
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
-        let memory = memory.accessor(&mut cpu, self.task_id);
+        let memory = memory.accessor(&mut mmu, self.task_id);
         match code {
             0x1001 => {
                 //ARCH_SET_GS
@@ -490,9 +498,9 @@ where
         &mut self,
         tloc: EVAddr,
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         sys_component_mut!(self, memory)
-            .accessor(&mut cpu, self.task_id)
+            .accessor(&mut mmu, self.task_id)
             .write_direct(tloc, &(sys_component!(self, clock).time().as_secs() as i64))?;
         Ok(0)
     }
@@ -522,9 +530,9 @@ where
             tv_sec: time.as_secs() as i64,
             tv_nsec: time.subsec_nanos() as i64,
         };
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         sys_component_mut!(self, memory)
-            .accessor(&mut cpu, self.task_id)
+            .accessor(&mut mmu, self.task_id)
             .write(tp, ts)
             .unwrap();
         Ok(0)
@@ -550,9 +558,9 @@ where
         buf: EVAddr,
     ) -> SyscallResult {
         //TODO check if address is mapped and has space for struct new_utsname
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(&mut cpu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
         memory.write_direct(buf, "Linux")?;
         memory.write_direct(buf + 65, "ILT792")?;
         memory.write_direct(buf + 2 * 65, "5.4.0-110-generic")?;
@@ -590,9 +598,9 @@ where
             tv_sec: time.as_secs() as i64,
             tv_usec: time.subsec_micros() as i64,
         };
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         sys_component_mut!(self, memory)
-            .accessor(&mut cpu, self.task_id)
+            .accessor(&mut mmu, self.task_id)
             .write(tv, timeval)?;
         Ok(0)
     }
@@ -658,9 +666,9 @@ where
             return Err(LinuxKernelError::EINVAL.into());
         }
 
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(&mut cpu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
         if sizemask != 8 {
             //todo architure specific
             Err(LinuxKernelError::EINVAL)?
@@ -682,11 +690,11 @@ where
         new_rlim: EVAddr<Rlimit>,
         old_rlim: EVAddr<Rlimit>,
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let new_rlim: Option<Rlimit> = if !new_rlim.is_null() {
             Some(
                 sys_component_mut!(self, memory)
-                    .accessor(&mut cpu, self.task_id)
+                    .accessor(&mut mmu, self.task_id)
                     .read(new_rlim)?,
             )
         } else {
@@ -720,7 +728,7 @@ where
             RLIMIT::INVALID => todo!(),
         };
         sys_component_mut!(self, memory)
-            .accessor(&mut cpu, self.task_id)
+            .accessor(&mut mmu, self.task_id)
             .write(old_rlim, rlimit)?;
         Ok(0)
     }
@@ -732,9 +740,9 @@ where
         old_ptr: u64,
         sigactionsize: u64,
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
-        let memory = memory.accessor(&mut cpu, self.task_id);
+        let memory = memory.accessor(&mut mmu, self.task_id);
         // TODO: directly read the decoded sigaction. Use associated type for Arch and then decode this type with the
         //       generic read functions in the memory accessor
         let action = memory.read_bytes(act_ptr, 32)?; //todo make arch dependent
@@ -750,9 +758,9 @@ where
         old_set: EVAddr,
         sigsetsize: u64,
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(&mut cpu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
         if sigsetsize != 8 {
             //todo architure specific
             Err(LinuxKernelError::EINVAL)?
@@ -793,9 +801,9 @@ where
         // TODO: Get random data from !deterministic! source controlled by user (the fuzzer)
         //       Random sources are also a form of input to the SUT
         let data = sys_component_mut!(self, prng_map).get_random_bytes(self.task_id, buflen as usize);
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         sys_component_mut!(self, memory)
-            .accessor(&mut cpu, self.task_id)
+            .accessor(&mut mmu, self.task_id)
             .write_direct(buf, &data)?;
         Ok(buflen)
     }
@@ -856,11 +864,12 @@ enum RLIMIT {
     INVALID,
 }
 
-impl<Endianness, Arch, CpuT, TcpT> Restorable for LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+impl<Endianness, Arch, CpuT, MmuT, TcpT> Restorable for LinuxKernelTask<Endianness, Arch, CpuT, MmuT, TcpT>
 where
     Endianness: ByteOrder,
     Arch: Architecture,
-    CpuT: CPU + MMU,
+    CpuT: CPU,
+    MmuT: MMU,
     TcpT: TCPSystem,
 {
     fn take_snapshot(&mut self) -> Result<(), GenericError> {

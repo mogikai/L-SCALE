@@ -32,11 +32,12 @@ use crate::emulator::system::memory::rw_interface::{
 };
 use mogi_system::components::cpu::CPU;
 
-impl<Endianness, Arch, CpuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+impl<Endianness, Arch, CpuT, MmuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, MmuT, TcpT>
 where
     Endianness: ByteOrder,
     Arch: Architecture,
-    CpuT: CPU + MMU,
+    CpuT: CPU,
+    MmuT: MMU,
     TcpT: TCPSystem,
 {
     #[unfinished]
@@ -50,8 +51,8 @@ where
         sigmask_addr: EVAddr,
     ) -> SyscallResult {
         let mut memory = sys_component_mut!(self, memory);
-        let mut cpu = sys_component_mut!(self, cpu);
-        let mut memory = memory.accessor(&mut cpu, self.task_id);
+        let mut mmu = sys_component_mut!(self, mmu);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
         let mut fd_map = sys_component_mut!(self, fd_map);
 
         let mut all_ready_fds = fd_set::new();

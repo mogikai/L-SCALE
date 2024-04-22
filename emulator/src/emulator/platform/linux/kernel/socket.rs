@@ -50,11 +50,12 @@ use crate::emulator::system::memory::rw_interface::{
     MemoryWrite,
 };
 
-impl<Endianness, Arch, CpuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, TcpT>
+impl<Endianness, Arch, CpuT, MmuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, MmuT, TcpT>
 where
     Endianness: ByteOrder + 'static,
     Arch: Architecture,
-    CpuT: CPU + MMU,
+    CpuT: CPU,
+    MmuT: MMU,
     TcpT: TCPSystem + 'static,
 {
     pub fn socket(
@@ -85,9 +86,9 @@ where
         uservaddr: EVAddr<Sockaddr>,
         addrlen: u64,
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(&mut cpu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
 
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
         let mut fd = file_descriptor_map
@@ -107,9 +108,9 @@ where
         upeer_sockaddr: EVAddr<Sockaddr>,
         upeer_addrlen: EVAddr<i32>, // int*
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(&mut cpu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
 
         let mut fd_map = sys_component_mut!(self, fd_map);
 
@@ -142,10 +143,10 @@ where
         dest_addr: EVAddr<Sockaddr>,
         dest_addr_len: u64,
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let memory = memory.accessor(&mut cpu, self.task_id);
+        let memory = memory.accessor(&mut mmu, self.task_id);
         let sockaddr: Option<Sockaddr> = if dest_addr_len != 0 && !dest_addr.is_null() {
             Some(memory.read_bounded(dest_addr, dest_addr_len as usize)?)
         } else {
@@ -170,9 +171,9 @@ where
         addr: EVAddr<Sockaddr>, // sockaddr*
         addr_len: EVAddr<i32>,
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
-        let mut memory = memory.accessor(&mut cpu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
 
         let mut fd_map = sys_component_mut!(self, fd_map);
         let mut fd = fd_map
@@ -207,10 +208,10 @@ where
         msg: EVAddr<user_msghdr>,
         flags: u64, // unsigned int
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let mut memory = memory.accessor(&mut cpu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
         let msghdr = memory.read(msg)?;
         let addr = memory.read(msghdr.msg_name)?;
         let iovec = memory.read_n(msghdr.msg_iov, msghdr.msg_iovlen as usize)?;
@@ -254,10 +255,10 @@ where
         umyaddr: EVAddr<Sockaddr>,
         addrlen: u64,
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let memory = memory.accessor(&mut cpu, self.task_id);
+        let memory = memory.accessor(&mut mmu, self.task_id);
         let mut fd = file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADF)?;
@@ -298,9 +299,9 @@ where
             .ok_or(LinuxKernelError::EBADFD)?;
         let fd = &mut *fd;
         let sockaddr = Sockaddr::from(*fd.getsockname()?);
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         sys_component_mut!(self, memory)
-            .accessor(&mut cpu, self.task_id)
+            .accessor(&mut mmu, self.task_id)
             .write(usockaddr, sockaddr)?;
         Ok(0)
     }
@@ -332,10 +333,10 @@ where
         optval: EVAddr, // char*
         optlen: u64,
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let memory = memory.accessor(&mut cpu, self.task_id);
+        let memory = memory.accessor(&mut mmu, self.task_id);
         // TODO: Read the optval variant depending on level and optname
         // let optval: Optval = memory.read_bounded(optval, optlen);
         // FIXME: Handle sockopts correctly
@@ -356,10 +357,10 @@ where
         optval_addr: EVAddr<Optval>,
         optlen_ptr: EVAddr<u32>,
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let mut memory = memory.accessor(&mut cpu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
         let optlen = memory
             .read(optlen_ptr)?
             .try_into()

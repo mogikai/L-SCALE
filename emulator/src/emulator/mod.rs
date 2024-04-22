@@ -32,7 +32,6 @@ use crate::emulator::interface::meter::{
     Meter,
 };
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
-use crate::emulator::trace::trace_hook;
 use mogi_system::errors::generic::GenericError;
 
 pub mod abstractions;
@@ -134,14 +133,15 @@ where
     fn enable_trace(&mut self) -> Result<(), EmulatorError> {
         let trace_memory = self.system.memory().clone();
         let task_manager = self.system.task_manager().clone();
-        self.system.cpu().borrow_mut().add_code_hook(
-            1u64.into(),
-            0u64.into(),
-            Box::new(move |uc, address, size| {
-                let mut memory = trace_memory.borrow_mut();
-                trace_hook(uc, &mut memory, task_manager.borrow().current_task().unwrap().task_id(), address, size)
-            }),
-        )?;
+        todo!();
+        // self.system.cpu().borrow_mut().add_code_hook(
+        //     1u64.into(),
+        //     0u64.into(),
+        //     Box::new(move |uc, address, size| {
+        //         let mut memory = trace_memory.borrow_mut();
+        //         trace_hook(uc, &mut memory, task_manager.borrow().current_task().unwrap().task_id(), address, size)
+        //     }),
+        // )?;
         Ok(())
     }
 
