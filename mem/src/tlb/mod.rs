@@ -48,7 +48,7 @@ mod test {
         let old_page = page.clone();
         page.data_mut()[5] = 5;
         unsafe {
-            tlb.insert_read(addr, HVAddr::new_unchecked(&mut page as *mut _));
+            //tlb.insert_read(addr, HVAddr::new_unchecked(&mut page as *mut _));
         }
         println!("{:?}", unsafe { tlb.page(addr) });
         println!("{:?}", unsafe { old_page });

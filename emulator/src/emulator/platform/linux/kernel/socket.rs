@@ -146,7 +146,8 @@ where
         let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let memory = memory.accessor(&mut mmu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
+
         let sockaddr: Option<Sockaddr> = if dest_addr_len != 0 && !dest_addr.is_null() {
             Some(memory.read_bounded(dest_addr, dest_addr_len as usize)?)
         } else {
@@ -258,7 +259,8 @@ where
         let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let memory = memory.accessor(&mut mmu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
+
         let mut fd = file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADF)?;

@@ -5,6 +5,7 @@ use crate::jit::{
     VmCtx,
 };
 use crate::pcode;
+use mogi_system::components::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
 
 pub fn call_jit_compilation_error() -> JitFunction {

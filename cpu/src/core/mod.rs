@@ -1,7 +1,5 @@
-use mogi_mem::mmu::{
-    MemResult,
-    MogiMMU,
-};
+use mogi_mem::mmu::{MogiMMU, MemResult};
+use mogi_system::components::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
 use std::cell::{
     RefCell,

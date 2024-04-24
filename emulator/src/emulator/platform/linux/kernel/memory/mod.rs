@@ -82,7 +82,8 @@ where
         len: u64,
     ) -> SyscallResult {
         sys_component_mut!(self, memory).unmap(self.task_id, addr, len as usize)?;
-        sys_component_mut!(self, mmu).flush_tlb()?;
+        // TODO replace with flush_vaddr(...)
+        sys_component_mut!(self, mmu).flush_all();
         Ok(0)
     }
 
@@ -130,7 +131,8 @@ where
         }
         sys_component_mut!(self, memory).protect(self.task_id, start, len as usize, prot.try_into().unwrap())?;
         // Need to flush existing cache since permissions of cached entries might have changed.
-        sys_component_mut!(self, mmu).flush_tlb()?;
+        // TODO replace with flush_vaddr(...)
+        sys_component_mut!(self, mmu).flush_all()?;
         Ok(0)
     }
 }
@@ -178,8 +180,9 @@ where
         let addr = if flags.contains(MMAP_FLAGS::MAP_FIXED) {
             // map fixed overwrites any mappings that already exist in the region so we unmap here.
             sys_component_mut!(self, memory).unmap(self.task_id, address, size)?;
-            // Need to flush tlb to let mmu emulator now to re-fetch the addresses
-            mmu.flush_tlb()?;
+            // Need to flush tlb to let cpu emulator now to re-fetch the addresses
+            // TODO replace with flush_vaddr(...)
+            mmu.flush_all()?;
 
             sys_component_mut!(self, memory)
                 .map_fixed(self.task_id, address, size, prot, mapping_type, label)

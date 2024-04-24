@@ -235,7 +235,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             Some("Stack".to_string()),
         )?;
 
-        mmu.alloc_physical(self.physical_end, self.process_mem_size, Permission::ALL)?;
+        mmu.alloc_physical(self.physical_end, self.process_mem_size)?;
         self.physical_end += self.process_mem_size;
 
         let max_stack = layout.max_stack;

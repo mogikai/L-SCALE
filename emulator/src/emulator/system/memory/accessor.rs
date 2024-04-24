@@ -31,19 +31,20 @@ impl<Endianness: ByteOrder, MmuT: MMU> MemoryAccessor<'_, Endianness, MmuT> {
     }
 
     pub fn read_bytes(
-        &self,
+        &mut self,
         address: EVAddr<u8>,
         size: usize,
     ) -> Result<Vec<u8>, MemoryError> {
         use itertools::Itertools;
-        self.translate(address, size)?
-            .iter()
-            .map(|tlb_entry| {
-                self.mmu
-                    .read_physical(tlb_entry.physical_address, tlb_entry.size)
-            })
-            .flatten_ok()
-            .try_collect()
+        let mut buf = vec![0u8; size];
+        let mut start = 0;
+        for tlb_entry in self.translate(address, size)? {
+            let addr = tlb_entry.physical_address;
+            let len = tlb_entry.size;
+            self.mmu.read_physical(addr, &mut buf[start..start+len])?;
+            start += len;
+        }
+        Ok(buf)
     }
 
     pub fn write_bytes(

@@ -152,7 +152,7 @@ where
         let mut fd_map = sys_component_mut!(self, fd_map);
         let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
-        let memory = memory.accessor(&mut mmu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
 
         let op = EPOLL_OPCODES::try_from_primitive(op).map_err(|_| LinuxKernelError::EINVAL)?;
 
@@ -179,9 +179,9 @@ where
             }
 
             match op {
-                EPOLL_OPCODES::EPOLL_CTL_ADD => self.epoll_ctl_add(&memory, epoll, &fd, file_descriptor, event),
+                EPOLL_OPCODES::EPOLL_CTL_ADD => self.epoll_ctl_add(&mut memory, epoll, &fd, file_descriptor, event),
                 EPOLL_OPCODES::EPOLL_CTL_DEL => self.epoll_ctl_del(epoll, &fd),
-                EPOLL_OPCODES::EPOLL_CTL_MOD => self.epoll_ctl_mod(&memory, epoll, &fd, event),
+                EPOLL_OPCODES::EPOLL_CTL_MOD => self.epoll_ctl_mod(&mut memory, epoll, &fd, event),
             }
         })
     }
@@ -189,7 +189,7 @@ where
     #[allow(clippy::needless_pass_by_ref_mut)] // In the future mutable access will be needed
     fn epoll_ctl_add(
         &self,
-        memory: &MemoryAccessor<'_, Endianness, impl MMU + Sized>,
+        memory: &mut MemoryAccessor<'_, Endianness, impl MMU + Sized>,
         epoll: &mut EpollData,
         fd: &FD,
         file_descriptor: &mut FileDescriptor<FileDescriptorData>,
@@ -222,7 +222,7 @@ where
 
     fn epoll_ctl_mod(
         &self,
-        memory: &MemoryAccessor<'_, Endianness, impl MMU + Sized>,
+        memory: &mut MemoryAccessor<'_, Endianness, impl MMU + Sized>,
         epoll: &mut EpollData,
         fd: &FD,
         event: EVAddr<epoll_event>,

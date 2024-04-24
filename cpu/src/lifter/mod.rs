@@ -3,6 +3,7 @@ use hashbrown::{
     HashMap,
     HashSet,
 };
+use mogi_system::components::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::error::memory::MemoryError;
 

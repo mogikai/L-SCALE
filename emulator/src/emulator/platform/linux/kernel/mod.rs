@@ -470,7 +470,8 @@ where
         // TODO: This does not work with unicorn, since in unicorn cpu == mmu
         let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
-        let memory = memory.accessor(&mut mmu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
+
         match code {
             0x1001 => {
                 //ARCH_SET_GS
@@ -742,7 +743,8 @@ where
     ) -> SyscallResult {
         let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
-        let memory = memory.accessor(&mut mmu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
+
         // TODO: directly read the decoded sigaction. Use associated type for Arch and then decode this type with the
         //       generic read functions in the memory accessor
         let action = memory.read_bytes(act_ptr, 32)?; //todo make arch dependent

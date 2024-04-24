@@ -2,6 +2,7 @@ use crate::core::Exception;
 use crate::cpu::exception::ExceptionCode;
 use crate::cpu::exit::CpuExitStatus;
 use crate::cpu::Cpu;
+use mogi_mem::mmu::MemoryContext;
 use mogi_system::components::cpu::hooks::{
     BlockHook,
     CodeHook,
@@ -15,9 +16,7 @@ use mogi_system::components::cpu::{
     CPU,
 };
 use mogi_system::components::mmu::{
-    MmuResult,
-    Permission,
-    MMU,
+    MmuResult, PageFaultCallback, Permission, MMU
 };
 use mogi_system::components::restore::Restorable;
 use mogi_system::errors::cpu::{
@@ -33,64 +32,126 @@ use mogi_utilities::error::memory::MemoryError;
 use std::time::Duration;
 
 impl MMU for Cpu {
-    fn alloc_physical(
-        &mut self,
-        address: EPAddr,
-        size: usize,
-        perms: Permission,
-    ) -> MmuResult<()> {
-        let _ = self
-            .core
-            .mem
-            .borrow_mut()
-            .physical_memory_mut()
-            .alloc(address, size, perms)?;
-        Ok(())
+    type MemoryContext = MemoryContext;
+
+    fn new_context(
+        &self
+    ) -> Self::MemoryContext {
+        self.core.mem.borrow().new_context()
     }
 
-    fn dealloc_physical(
+    fn clone_context(
+        &self
+    ) -> Self::MemoryContext {
+        self.core.mem.borrow().clone_context()
+    }
+
+    fn load_context(
         &mut self,
-        address: EPAddr,
-        size: usize,
+        context: &Self::MemoryContext
+    ) -> Self::MemoryContext {
+        self.core.mem.borrow_mut().load_context(context)
+    }
+
+    fn flush_vaddr(
+        &mut self,
+        addr: EVAddr,
+        len: usize
+    ) -> MmuResult<MemoryError> {
+        todo!()
+    }
+
+    fn flush_all(
+        &mut self
     ) -> MmuResult<()> {
-        self.core
-            .mem
-            .borrow_mut()
-            .physical_memory_mut()
-            .free(address, size)
+        self.core.mem.borrow_mut().flush_all()
+    }
+
+    fn set_page_table_entry(
+        &mut self,
+        addr: EVAddr,
+        paddr: EPAddr,
+        permissions: Permission,
+    ) -> MmuResult<()> {
+        self.core.mem.borrow_mut().set_page_table_entry(addr, paddr, permissions)
+    }
+
+    fn clear_page_table_entry(
+        &mut self,
+        addr: EVAddr,
+    ) -> MmuResult<()> {
+        self.core.mem.borrow_mut().clear_page_table_entry(addr)
     }
 
     fn read_physical(
-        &self,
-        address: EPAddr,
-        len: usize,
-    ) -> MmuResult<Vec<u8>> {
-        let mut out = Vec::with_capacity(len);
-        unsafe {
-            out.set_len(len);
-        }
-        self.core
-            .mem
-            .borrow_mut()
-            .read_physical(address.into(), out.as_mut())?;
-        Ok(out)
+        &mut self,
+        addr: EPAddr,
+        buffer: &mut [u8]
+    ) -> MmuResult<()> {
+        self.core.mem.borrow_mut().read_physical(addr, buffer)
     }
 
     fn write_physical(
         &mut self,
-        address: EPAddr,
-        data: &[u8],
-    ) -> MmuResult<usize> {
-        self.core
-            .mem
-            .borrow_mut()
-            .write_physical(address.into(), data)?;
-        Ok(data.len())
+        addr: EPAddr,
+        data: &[u8]
+    ) -> MmuResult<()> {
+        self.core.mem.borrow_mut().write_physical(addr, data)
     }
 
-    fn flush_tlb(&mut self) -> MmuResult<()> {
-        self.core.mem.borrow_mut().flush();
-        Ok(())
+    fn fetch_physical(
+        &mut self,
+        addr: EPAddr,
+        buffer: &mut [u8],
+    ) -> Result<(), MemoryError> {
+        self.core.mem.borrow_mut().fetch_physical(addr, buffer)
+    }
+
+    fn read(
+        &mut self,
+        addr: EVAddr,
+        buffer: &mut [u8]
+    ) -> MmuResult<()> {
+        self.core.mem.borrow_mut().read(addr, buffer)
+    }
+
+    fn write(
+        &mut self,
+        addr: EVAddr,
+        data: &[u8]
+    ) -> MmuResult<()> {
+        self.core.mem.borrow_mut().write(addr, data)
+    }
+
+    fn fetch(
+        &mut self,
+        addr: EVAddr,
+        buffer: &mut [u8],
+    ) -> Result<(), MemoryError> {
+        self.core.mem.borrow_mut().fetch(addr, buffer)
+    }
+
+    fn alloc_physical(
+        &mut self,
+        addr: EPAddr,
+        size: usize
+    ) -> MmuResult<()> {
+        self.core.mem.borrow_mut().alloc_physical(addr, size)
+    }
+
+    fn free_physical(
+        &mut self,
+        addr: EPAddr,
+        size: usize
+    ) -> MmuResult<()> {
+        self.core.mem.borrow_mut().free_physical(addr, size)
+    }
+
+    fn set_page_fault_callback(
+        &mut self,
+        callback: PageFaultCallback<MemoryContext>
+    ) -> MmuResult<()> {
+        self.core.mem.borrow_mut().set_page_fault_callback(callback)
     }
 }
 
@@ -239,10 +300,8 @@ impl Hooks for Cpu {
             self.core
                 .mem
                 .borrow_mut()
-                .set_page_fault_callback(Box::new(move |addr, action| {
-                    hook(&mut *slfptr, addr, action)
-                        .ok_or(MemoryError::NotMapped)
-                        .map(|e| e.physical_address)
+                .set_page_fault_callback(Box::new(move |mmu, addr, action| {
+                    hook(&mut *slfptr, addr, action);
                 }));
         }
         Ok(())

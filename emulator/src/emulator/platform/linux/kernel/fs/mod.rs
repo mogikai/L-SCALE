@@ -79,7 +79,8 @@ where
         let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let memory = memory.accessor(&mut mmu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
+
         file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .map_or(Err(LinuxKernelError::EINVAL.into()), |mut fd| {
@@ -183,7 +184,8 @@ where
         // TODO: Need to actually use dfd
         let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
-        let memory = memory.accessor(&mut mmu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
+
         let fname = read_osstring!(memory, filename)?;
         trace!("openat file: {:?}", fname);
         let file = sys_component!(self, filesystem).resolve_last(Path::new(&fname), true)?; //TODO symlinks

@@ -88,31 +88,31 @@ pub trait MemoryWrite<T: Encode, Endianness: ByteOrder> {
 
 pub trait MemoryRead<T: Decode, Endianness: ByteOrder> {
     fn read(
-        &self,
+        &mut self,
         address: EVAddr<T>,
     ) -> Result<T, MemoryError>;
 
     fn read_bounded(
-        &self,
+        &mut self,
         address: EVAddr<T>,
         size: usize,
     ) -> Result<T, MemoryError>;
 
     fn read_n(
-        &self,
+        &mut self,
         address: EVAddr<T>,
         n: usize,
     ) -> Result<Vec<T>, MemoryError>;
 
     fn read_down(
-        &self,
+        &mut self,
         address: EVAddr<T>,
     ) -> Result<T, MemoryError> {
         self.read(address - T::required_mem())
     }
 
     fn read_down_n(
-        &self,
+        &mut self,
         address: EVAddr<T>,
         n: usize,
     ) -> Result<Vec<T>, MemoryError> {
@@ -375,7 +375,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> DirectMemoryWrite<&Vec<(u64, u64)>, Endia
 
 impl<Endianness: ByteOrder, MmuT: MMU, T: Decode> MemoryRead<T, Endianness> for MemoryAccessor<'_, Endianness, MmuT> {
     fn read(
-        &self,
+        &mut self,
         address: EVAddr<T>,
     ) -> Result<T, MemoryError> {
         // This is safe, because we are reading T::required_mem() bytes to read the type T.
@@ -387,7 +387,7 @@ impl<Endianness: ByteOrder, MmuT: MMU, T: Decode> MemoryRead<T, Endianness> for 
     }
 
     fn read_bounded(
-        &self,
+        &mut self,
         address: EVAddr<T>,
         size: usize,
     ) -> Result<T, MemoryError> {
@@ -400,7 +400,7 @@ impl<Endianness: ByteOrder, MmuT: MMU, T: Decode> MemoryRead<T, Endianness> for 
     }
 
     fn read_n(
-        &self,
+        &mut self,
         address: EVAddr<T>,
         n: usize,
     ) -> Result<Vec<T>, MemoryError> {

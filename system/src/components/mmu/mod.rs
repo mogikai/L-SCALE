@@ -1,7 +1,7 @@
 pub mod tlb;
 pub mod tlb_entry;
 
-use mogi_utilities::addresses::EPAddr;
+use mogi_utilities::addresses::{EPAddr, EVAddr};
 use mogi_utilities::error::memory::MemoryError;
 
 use std::num::TryFromIntError;
@@ -14,70 +14,128 @@ use thiserror::Error;
 
 pub type MmuResult<T> = Result<T, MemoryError>;
 
+// can this be simplified?
+pub type PageFaultCallback<MC> = Box<dyn FnMut(&mut dyn MMU<MemoryContext = MC>, EVAddr, MemoryAction) -> ()>;
+
+/// This trait represents a barebones abstraction of physical as well as virtual memory mapping
+/// and read/write accessing. Through it, memory can be read using `EVAddr` as well as `EPAddr` and
+/// page tables can be created and modified through `PageTableContextHandle` objects.
 pub trait MMU {
-    fn alloc_physical(
+    type MemoryContext;
+
+    // A loaded context can be viewed as the emulated equivalent of a page table
+    // currently loaded into cr3 (for x86). All virtual operations will take
+    // effect on the currently loaded context
+
+    /// Create a new context which refers to an initially blank page table.
+    fn new_context(
+        &self
+    ) -> Self::MemoryContext;
+
+    /// Clone the currently active context
+    fn clone_context(
+        &self
+    ) -> Self::MemoryContext;
+
+    /// Load the previously created `context` so that all future memory operations
+    /// use the corresponding page table for address translation, mapping and permission checks.
+    /// This needs to be used in conjunction with `self.flush_all()` to flush buffers
+    /// when needed. Returns the old memory context.
+    fn load_context(
         &mut self,
-        address: EPAddr,
-        size: usize,
-        perms: Permission,
+        context: &Self::MemoryContext
+    ) -> Self::MemoryContext;
+
+    /// Flush the page table as well as the TLB region given by `addr` and `len`.
+    fn flush_vaddr(
+        &mut self,
+        addr: EVAddr,
+        len: usize
+    ) -> MmuResult<MemoryError>;
+
+    /// Flush the whole page table as well as the TLB
+    fn flush_all(
+        &mut self
     ) -> MmuResult<()>;
 
-    fn dealloc_physical(
+    // Point page table entry at `addr` to `paddr` with permissions `permissions`
+    fn set_page_table_entry(
         &mut self,
-        address: EPAddr,
-        size: usize,
+        addr: EVAddr,
+        paddr: EPAddr,
+        permissions: Permission,
     ) -> MmuResult<()>;
 
-    /// Reads the specified amount of bytes from the emulated physical memory, starting at `address`.
-    ///
-    /// # Arguments
-    ///
-    /// * `address`: The emulated physical address to start reading from.
-    /// * `len`: The amount of bytes to read
-    ///
-    /// returns: A vector of bytes that were read from memory,
+    // Clear page table entry at `addr` so all future accesses will fail
+    fn clear_page_table_entry(
+        &mut self,
+        addr: EVAddr,
+    ) -> MmuResult<()>;
+
+    /// Read bytes from the physical location specified by `addr` into `buffer`.
     fn read_physical(
-        &self,
-        address: EPAddr,
-        len: usize,
-    ) -> MmuResult<Vec<u8>>;
-
-    /// Does the same thing as [Self::read_physical], but starts at
-    /// the end of the memory area, and reads downwards.
-    fn read_physical_down(
-        &self,
-        address: EPAddr,
-        len: usize,
-    ) -> MmuResult<Vec<u8>> {
-        self.read_physical(address - len, len)
-    }
-
-    /// Writes the provided data to the emulated physical memory
-    /// starting at the provided emulated physical address.
-    ///
-    /// # Arguments
-    ///
-    /// * `address`: The emulated physical address to write the data to
-    /// * `data`: The data to be written.
-    ///
-    /// returns: The amount of data written. If a failure occurred, a [MemoryError] is returned.
+        &mut self,
+        addr: EPAddr,
+        buffer: &mut [u8]
+    ) -> MmuResult<()>;
+    /// Write `data` to the physical location specified by `addr`.
     fn write_physical(
         &mut self,
-        address: EPAddr,
-        data: &[u8],
-    ) -> MmuResult<usize>;
-
-    /// Does the same thing as [Self::write_physical], but starts writing at the end
-    /// of the memory and writes downwards.
-    fn write_physical_down(
+        addr: EPAddr,
+        data: &[u8]
+    ) -> MmuResult<()>;
+    // Fetch bytes for execution from the physical location specified by `addr` into `buffer`.
+    fn fetch_physical(
         &mut self,
-        address: EPAddr,
-        data: &[u8],
-    ) -> MmuResult<usize> {
-        self.write_physical(address - data.len(), data)
-    }
+        addr: EPAddr,
+        buffer: &mut [u8],
+    ) -> Result<(), MemoryError>;
 
-    fn flush_tlb(&mut self) -> MmuResult<()>;
+    /// Read bytes from the virtual location specified by `addr` into `buffer`.
+    /// Will fail if no memory is mapped
+    fn read(
+        &mut self,
+        addr: EVAddr,
+        buffer: &mut [u8]
+    ) -> MmuResult<()>;
+    /// Write `len` bytes from the virtual location specified by `addr`.
+    /// Will fail if no memory is mapped or memory is readonly.
+    fn write(
+        &mut self,
+        addr: EVAddr,
+        data: &[u8]
+    ) -> MmuResult<()>;
+    // Fetch bytes for execution from the virtual location specified by `addr` into `buffer`.
+    fn fetch(
+        &mut self,
+        addr: EVAddr,
+        buffer: &mut [u8],
+    ) -> Result<(), MemoryError>;
+
+
+    // TODO should physical memory allocation be part of the trait or be done reactively on e.g.
+    // page fault by the MMU internally?
+    /// Make `size` physical memory at address `addr` available to the emulator.
+    fn alloc_physical(
+        &mut self,
+        addr: EPAddr,
+        size: usize
+    ) -> MmuResult<()>;
+
+    /// Free `size` physical memory at address `addr` by cutting out.
+    fn free_physical(
+        &mut self,
+        addr: EPAddr,
+        size: usize
+    ) -> MmuResult<()>;
+
+    /// `hook` will be called whenever
+    /// - an unmapped page is accessed
+    /// - a readonly page is written to
+    fn set_page_fault_callback(
+        &mut self,
+        callback: PageFaultCallback<Self::MemoryContext>
+    ) -> MmuResult<()>;
 }
 
 bitflags! {
