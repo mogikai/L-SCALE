@@ -30,25 +30,5 @@ serde-xml-rs = "0.6.0"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 json5 = "0.4.1"
 
-[profile.dev.package.cranelift]
-opt-level = 3
-debug = false
-
-[profile.dev.package.cranelift-codegen]
-opt-level = 3
-debug = false
-
-[profile.dev.package.cranelift-jit]
-opt-level = 3
-debug = false
-
-[profile.dev.package.cranelift-module]
-opt-level = 3
-debug = false
-
-[profile.dev.package.cranelift-naive]
-opt-level = 3
-debug = false
-
 [dev-dependencies]
 quickcheck = { version = "1.0.3", default-features = false }

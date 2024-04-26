@@ -1,4 +1,8 @@
 use mogi_utilities::addresses::EVAddr;
+use num_enum::{
+    FromPrimitive,
+    IntoPrimitive,
+};
 use thiserror::Error;
 
 #[derive(Error, Debug, Copy, Clone)]
@@ -15,7 +19,8 @@ pub enum CPUError {
     Unknown,
 }
 
-#[derive(Error, Debug, Copy, Clone)]
+#[derive(Error, Debug, Eq, PartialEq, Copy, Clone)]
+#[repr(u64)]
 pub enum StopReason {
     #[error("An unknown error occurred")]
     Unknown,

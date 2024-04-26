@@ -89,7 +89,7 @@ pub struct Cpu {
     jit_ctx: VmCtx,
 
     /// Snapshots at different icounts for reverse execution.
-    snapshots: BTreeMap<u64, Rc<Snapshot>>,
+    snapshots: Vec<Snapshot>,
     handle_exception_hook: Box<dyn FnMut(&mut CpuCore) -> Option<CpuExitStatus>>,
 }
 
@@ -121,14 +121,14 @@ impl Cpu {
             code: BlockTable::default(),
             jit,
             enable_jit: true,
-            enable_recompilation: true,
+            enable_recompilation: false,
             prev_isa_mode: u8::MAX,
 
             compiled_blocks: 0,
             last_recompile: std::time::Instant::now(),
             recompile_offset: 0,
             jit_ctx: VmCtx::new(),
-            snapshots: BTreeMap::new(),
+            snapshots: vec![],
             handle_exception_hook: Box::new(|_| None),
         }
     }
@@ -204,6 +204,13 @@ impl Cpu {
 
     /// Runs the VM until it encounters an exit condition.
     pub fn run(&mut self) -> CpuExitStatus {
+        // Run exception handling first. If we exited emulation with an exception, it will first need to be handled.
+        if self.core.exception.code != ExceptionCode::None as u32 {
+            match self.handle_exception() {
+                CpuExitStatus::Running => {}
+                exit => return exit,
+            }
+        }
         if self.should_recompile() && self.enable_recompilation {
             self.recompile();
         }
@@ -232,9 +239,11 @@ impl Cpu {
                 self.core.exception.code = ExceptionCode::InstructionLimit as u32;
             }
 
-            match self.handle_exception() {
-                CpuExitStatus::Running => {}
-                exit => return exit,
+            if self.core.exception.code != ExceptionCode::None as u32 {
+                match self.handle_exception() {
+                    CpuExitStatus::Running => {}
+                    exit => return exit,
+                }
             }
         }
     }
@@ -997,8 +1006,8 @@ impl Cpu {
             .collect()
     }
 
-    /// Like `get_callstack` returns callstack based on heuristics or debug info if shadow stack is
-    /// not available.
+    // Like `get_callstack` returns callstack based on heuristics or debug info if shadow stack is
+    // not available.
     // pub fn get_debug_callstack(&mut self) -> Vec<u64> {
     //     if self.cpu.enable_shadow_stack {
     //         return self.get_callstack();
@@ -1010,34 +1019,6 @@ impl Cpu {
     //         .or_else(|| debug::callstack_from_frame_pointer(self))
     //         .unwrap_or_else(|| vec![self.cpu.read_pc()])
     // }
-
-    pub fn save_snapshot(&mut self) {
-        let snapshot = Rc::new(self.snapshot());
-        self.snapshots.insert(self.core.icount(), snapshot);
-    }
-
-    pub fn snapshot(&mut self) -> Snapshot {
-        Snapshot {
-            core: self.core.snapshot(),
-            // mem: self.core.mem.borrow_mut().snapshot(),
-        }
-    }
-
-    pub fn restore(
-        &mut self,
-        snapshot: &Snapshot,
-    ) {
-        self.core.restore(&snapshot.core);
-        // self.core.mem.borrow_mut().restore(snapshot.mem.clone());
-        self.update_context();
-
-        tracing::trace!(
-            "VM state restored: pc = {:?}, block.id={}, block.offset={}",
-            self.core.read_pc(),
-            self.core.block_id,
-            self.core.block_offset
-        );
-    }
 }
 
 pub struct Snapshot {

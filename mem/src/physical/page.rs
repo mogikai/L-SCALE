@@ -75,9 +75,12 @@ impl Page {
 }
 
 #[derive(Clone, Copy)]
+#[repr(C)]
+#[repr(align(4096))]
 pub struct PageData {
-    pub data: [u8; PAGE_SIZE],
     // TODO: Remove pub
+    pub data: [u8; PAGE_SIZE],
+    // TODO: Move permissions to page table
     pub permissions: [Permission; PAGE_SIZE],
 }
 

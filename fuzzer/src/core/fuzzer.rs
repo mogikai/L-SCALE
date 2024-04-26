@@ -1061,10 +1061,23 @@ where
     }
 
     fn setup(&mut self) {
+        let task_id = TaskId { pid: 1337, tid: 1 };
         // Do setup stuff
         // Run emulator without inputs until an input is requested.
-        let res = self.emulator.run(None, None).unwrap();
-        let task_id = TaskId { pid: 1337, tid: 1 };
+        let res = self.emulator.run(None, None);
+        if let Err(e) = &res {
+            self.emulator
+                .system()
+                .memory()
+                .borrow_mut()
+                .mappings(&task_id)
+                .try_for_each(|mapping| {
+                    debug!("Mapping: {}", mapping);
+                    Ok::<(), MemoryError>(())
+                })
+                .unwrap();
+        }
+        let res = res.unwrap();
         self.emulator
             .system()
             .memory()

@@ -1,7 +1,11 @@
 use crate::core::Exception;
+use crate::cpu::api::CpuError;
 use crate::cpu::exception::ExceptionCode;
 use crate::cpu::exit::CpuExitStatus;
-use crate::cpu::Cpu;
+use crate::cpu::{
+    Cpu,
+    Snapshot,
+};
 use mogi_mem::mmu::MemoryContext;
 use mogi_system::components::cpu::hooks::{
     BlockHook,
@@ -177,6 +181,7 @@ impl CPU for Cpu {
             CpuExitStatus::OutOfMemory => Err(CPUError::Stopped(StopReason::Unknown)),
             CpuExitStatus::Unimplemented => Err(CPUError::Stopped(StopReason::Unknown)),
             CpuExitStatus::UnhandledException(_) => Err(CPUError::Unknown),
+            CpuExitStatus::Stopped(reason) => Err(CPUError::Stopped(reason)),
         }
     }
 
@@ -184,7 +189,8 @@ impl CPU for Cpu {
         &mut self,
         stop_reason: StopReason,
     ) -> Result<(), CPUError> {
-        todo!()
+        self.core.stop_reason = Some(stop_reason);
+        Ok(())
     }
 
     fn reg_write(
@@ -261,11 +267,16 @@ impl Hooks for Cpu {
     ) -> Result<(), CPUError> {
         self.handle_exception_hook = Box::new(move |cpu| match ExceptionCode::from_u32(cpu.exception.code) {
             ExceptionCode::Syscall => {
+                cpu.stop_reason = None;
                 syscall();
-                cpu.resume_next();
-                let pc = cpu.read_pc();
-                cpu.exception = Exception::new(ExceptionCode::ExternalAddr, pc.into());
-                None
+                if let Some(stop_reason) = cpu.stop_reason {
+                    Some(CpuExitStatus::Stopped(stop_reason))
+                } else {
+                    cpu.resume_next();
+                    let pc = cpu.read_pc();
+                    cpu.exception = Exception::new(ExceptionCode::ExternalAddr, pc.into());
+                    None
+                }
             }
             _ => None,
         });
@@ -319,7 +330,10 @@ impl Hooks for Cpu {
 
 impl Restorable for Cpu {
     fn take_snapshot(&mut self) -> Result<(), GenericError> {
-        todo!()
+        self.snapshots.push(Snapshot {
+            core: self.core.snapshot(),
+        });
+        Ok(())
     }
 
     fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
@@ -327,6 +341,16 @@ impl Restorable for Cpu {
     }
 
     fn restore_snapshot(&mut self) -> Result<(), GenericError> {
-        todo!()
+        let snapshot = self.snapshots.last().ok_or(GenericError::unknown())?;
+        self.core.restore(&snapshot.core);
+        self.update_context();
+
+        tracing::trace!(
+            "VM state restored: pc = {:?}, block.id={}, block.offset={}",
+            self.core.read_pc(),
+            self.core.block_id,
+            self.core.block_offset
+        );
+        Ok(())
     }
 }

@@ -1,4 +1,5 @@
 use crate::cpu::exception::ExceptionCode;
+use mogi_system::errors::cpu::StopReason;
 
 #[derive(PartialEq, Eq, Copy, Clone)]
 pub enum CpuExitStatus {
@@ -31,6 +32,7 @@ pub enum CpuExitStatus {
 
     /// The Cpu exited due to a unhandled exception.
     UnhandledException((ExceptionCode, u64)),
+    Stopped(StopReason),
 }
 
 impl Default for CpuExitStatus {
@@ -57,6 +59,7 @@ impl std::fmt::Debug for CpuExitStatus {
             Self::UnhandledException((code, value)) => {
                 write!(f, "UnhandledException(code={code:?}, value={value:#0x})")
             }
+            CpuExitStatus::Stopped(reason) => write!(f, "CPU Was stopped due to {reason:?}"),
         }
     }
 }

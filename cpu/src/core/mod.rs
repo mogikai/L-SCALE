@@ -1,5 +1,6 @@
 use mogi_mem::mmu::{MogiMMU, MemResult};
 use mogi_system::components::mmu::MMU;
+use mogi_system::errors::cpu::StopReason;
 use mogi_utilities::addresses::EVAddr;
 use std::cell::{
     RefCell,
@@ -274,6 +275,7 @@ pub struct CpuCore {
     pub cpu_id: CpuId,
     pub shadow_stack: ShadowStack,
     pub enable_shadow_stack: bool,
+    pub stop_reason: Option<StopReason>,
 
     pub mem: Rc<RefCell<MogiMMU>>,
 
@@ -325,6 +327,7 @@ impl CpuCore {
             shadow_stack: ShadowStack::new(),
             enable_shadow_stack: false,
 
+            stop_reason: None,
             mem,
 
             icount: 0,

@@ -6,6 +6,7 @@ use hashbrown::{
 use mogi_system::components::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::error::memory::MemoryError;
+use tracing::trace;
 
 use crate::core::{
     Arch,
@@ -209,6 +210,7 @@ impl InstructionLifter {
             // return if !src.ensure_exec(vaddr, 1) {
             //     Err(DecodeError::NonExecutableMemory)
             // }
+            trace!("Invalid instruction");
             Err(DecodeError::InvalidInstruction)?
         }
 

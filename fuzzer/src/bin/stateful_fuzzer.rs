@@ -9,6 +9,9 @@ use std::time::Duration;
 
 use clap::Parser;
 use core_affinity::CoreId;
+use mogi_cpu::cpu::builder::CpuBuilder;
+use mogi_cpu::cpu::cpuid::CpuId;
+use mogi_cpu::Triple;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{
@@ -31,6 +34,7 @@ use mogi_emulator::emulator::GenericEmulator;
 use mogi_emulator::LittleEndian;
 use mogi_fuzzer::core::fuzzer::Fuzzer;
 use mogi_fuzzer::io::tcp::TCP;
+use mogi_mem::mmu::MogiMMU;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -58,7 +62,18 @@ fn main() {
         .with(EnvFilter::from_env("FUZE_LOG"))
         .init();
     let fuzzer_args = Args::parse();
-    let cpu = UCWrapper::new();
+    // let cpu = UCWrapper::new();
+    let mmu = Rc::new(RefCell::new(MogiMMU::new()));
+    let cpu = Rc::new(RefCell::new(
+        CpuBuilder::new(mmu.clone())
+            .optimize_block(false)
+            .optimize_instructions(false)
+            .enable_shadow_stack(false)
+            .target_triple(Triple::host())
+            .cpu_id(CpuId::from_file(PathBuf::from("./cpu/data/cpuid/intel/haswell.json5").as_path()).unwrap())
+            .build()
+            .unwrap(),
+    ));
     let task_manager = TaskManager::new();
     let filesystem = Filesystem::from_disk(1_073_741_824, Path::new(&fuzzer_args.system_root)).unwrap();
     let memory = Memory::<LittleEndian>::new();
@@ -66,8 +81,17 @@ fn main() {
     let prng_map = SeedablePrngMap::new(0xcafef00dd15ea5e5cafef00dd15ea5e5_u128.to_ne_bytes());
     let file_descriptor_map = FileDescriptorMap::new();
     let tcp = Rc::new(RefCell::new(TCP::new()));
-    let system =
-        System::new(cpu.clone(), memory, filesystem, clock, prng_map, file_descriptor_map, task_manager, tcp.clone());
+    let system = System::new(
+        cpu.clone(),
+        mmu.clone(),
+        memory,
+        filesystem,
+        clock,
+        prng_map,
+        file_descriptor_map,
+        task_manager,
+        tcp.clone(),
+    );
 
     let initial_task = LinuxKernelTask::new(system.clone(), 1337, 1);
 

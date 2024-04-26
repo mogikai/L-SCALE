@@ -1,5 +1,6 @@
 pub mod restorable;
 
+use crate::mmu::restorable::Snapshot;
 use crate::page_table::PageTable;
 use crate::physical::{
     Page,
@@ -65,6 +66,7 @@ pub struct MogiMMU {
     physical_memory: PhysicalMemory,
     // TODO this is bad. find better solution for ownership
     page_fault_callback: Rc<RefCell<PageFaultCallback<MemoryContext>>>,
+    snapshots: Vec<Snapshot>,
 }
 
 impl Debug for MogiMMU {
@@ -85,11 +87,16 @@ impl MogiMMU {
             memory_context: MemoryContext::new(),
             physical_memory: PhysicalMemory::new(1_000_000),
             page_fault_callback: Rc::new(RefCell::new(Box::new(|_, _, _| ()))),
+            snapshots: vec![],
         }
     }
 
     pub fn debug_tlb(&self) {
         debug!("{:?}", self.memory_context.tlb);
+    }
+
+    pub fn physical_memory(&self) -> &PhysicalMemory {
+        &self.physical_memory
     }
 
     pub fn physical_memory_mut(&mut self) -> &mut PhysicalMemory {

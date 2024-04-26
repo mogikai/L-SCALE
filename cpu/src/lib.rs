@@ -1,3 +1,5 @@
+#![feature(portable_simd)]
+#![recursion_limit = "512"]
 pub mod core;
 pub mod debug_info;
 pub mod exec;

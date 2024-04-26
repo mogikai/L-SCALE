@@ -10,14 +10,16 @@
   "features": {
     "eax1": {
       "edx": "FP87 | VME | DE | PSE | TSC | MSR | PAE | MCE | CX8 | APIC | SEP | MTRR | PGE | MCA | CMOV | PAT | PSE36 | CLFLUSH | MMX | FXSR | SSE | SSE2",
-      "ecx": "SSE3 | PCLMULQDQ | SSSE3 | FMA | CX16 | PCID | SSE41 | SSE42 | X2APIC | MOVBE | POPCNT | TSC_DEADLINE_TIMER | AES | XSAVE | AVX | F16C | RDRAND"
+      // TODO: Currently not supported: SSE3 | SSSE3 | AVX
+      "ecx": "PCLMULQDQ | FMA | CX16 | PCID | SSE41 | SSE42 | X2APIC | MOVBE | POPCNT | TSC_DEADLINE_TIMER | AES | XSAVE | F16C | RDRAND",
     },
     "eax6": {
       "eax": "ARAT"
     },
     "eax7": {
       "ecx0": {
-        "ebx": "FSGSBASE | BMI1 | HLE | AVX2 | SMEP | BMI2 | ERMS | INVPCID | RTM",
+        // TODO: Currently not supported: AVX2
+        "ebx": "FSGSBASE | BMI1 | HLE | SMEP | BMI2 | ERMS | INVPCID | RTM",
         "ecx": "",
         "edx": ""
       },

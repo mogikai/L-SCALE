@@ -15,3 +15,23 @@ exclude = [
 ]
 
 resolver = "2"
+
+[profile.dev.package.cranelift]
+opt-level = 3
+debug = false
+
+[profile.dev.package.cranelift-codegen]
+opt-level = 3
+debug = false
+
+[profile.dev.package.cranelift-jit]
+opt-level = 3
+debug = false
+
+[profile.dev.package.cranelift-module]
+opt-level = 3
+debug = false
+
+[profile.dev.package.cranelift-native]
+opt-level = 3
+debug = false
