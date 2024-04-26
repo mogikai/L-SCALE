@@ -3,6 +3,7 @@ use crate::mmu::{
     MogiMMU,
 };
 use crate::physical::PhysicalMemory;
+use mogi_system::components::mmu::MMU;
 use mogi_system::components::restore::Restorable;
 use mogi_system::errors::generic::GenericError;
 
@@ -17,7 +18,7 @@ impl Restorable for MogiMMU {
             memory_context: self.memory_context.clone(),
             physical_memory: self.physical_memory.clone(),
         });
-        self.flush();
+        self.flush_all()?;
         Ok(())
     }
 
