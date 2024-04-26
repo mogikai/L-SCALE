@@ -1,4 +1,4 @@
-use mogi_system::components::mmu::MMU;
+use mogi_system::{components::mmu::{MemoryAction, MMU}, errors::cpu::CPUError};
 use mogi_utilities::addresses::EVAddr;
 use tracing::{
     debug,
@@ -32,9 +32,6 @@ where
             EVAddr::from(1u64),
             EVAddr::from(0u64),
             Box::new(move || {
-                // TODO: Currently the task manager cannot be borrowed anywhere else because
-                //       it is borrowed here. Need to find some way to allow the task itself
-                //       to for example add new tasks spawned with fork()
                 let mut task_manager = syscall_system.task_manager.borrow_mut();
                 let task = task_manager
                     .current_task_mut()
@@ -43,27 +40,23 @@ where
             }),
         );
 
+        let mut mmu = self.system.mmu.borrow_mut();
         let vtlb_memory = self.system.memory.clone();
         let vtlb_task_manager = self.system.task_manager.clone();
-        cpu.add_vtlb_hook(Box::new(move |uc, vaddr, _action| {
-            let mut task_manager = vtlb_task_manager.borrow();
-            let tlb_entry = task_manager.current_task().and_then(|task| {
-                vtlb_memory
-                    .borrow_mut()
-                    .translate_vaddr(task.task_id(), vaddr)
-                    .ok()
-            });
-            tlb_entry
-        }))?;
-
-        cpu.add_unmapped_mem_hook(
-            1u64.into(),
-            0u64.into(),
-            Box::new(move |_, action, addr, size, _| {
-                trace!("{:?} on {:#X} with size {} ", action, addr, size);
-                false
-            }),
-        );
+        mmu.set_page_fault_callback(Box::new(move |mmu, addr, action| {
+            // page fault either due to 1. unmapped memory or 2. invalid permissions
+            let task_manager = vtlb_task_manager.borrow();
+            let current_task = task_manager
+                .current_task()
+                .expect("If there was a page fault there has to be a task");
+            vtlb_memory
+                .borrow_mut()
+                .translate_vaddr(current_task.task_id(), addr)
+                .and_then(|mapping| {
+                    // TODO COW (find out if mapping did exist and match permissions)
+                    mmu.set_page_table_entry(addr, mapping.physical_address, mapping.permissions)
+                }).expect("Page fault on non-mapped address");
+        })).map_err(|_| SchedulerError::CPUError(CPUError::Unknown))?;
 
         Ok(())
     }
