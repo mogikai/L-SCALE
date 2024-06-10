@@ -3,7 +3,7 @@ members = [
     "emulator",
     "derive",
     "fuzzer",
-    "gui",
+    #    "gui",
     "samples",
     "cpu",
     "mem",
