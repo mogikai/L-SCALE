@@ -3,4 +3,4 @@
 	url = https://github.com/unicorn-engine/unicorn
 [submodule "cpu/Ghidra"]
 	path = cpu/Ghidra
-	url = git@github.com:icicle-emu/ghidra.git
+	url = git@gitlab.cc-asp.fraunhofer.de:fuzzing/fuzzyemu/ghidra.git
