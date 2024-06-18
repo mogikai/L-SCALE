@@ -1,0 +1,22 @@
+[package]
+name = "mogi_neocpu"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dynasmrt = "2.0.0"
+thiserror = "1.*"
+addr_align = "0.1.0"
+bitflags = { version = "2.3.3", features = ["serde"] }
+byteorder = "1.5.0"
+mogi_system = { path = "../system", version = "0.1.0" }
+mogi_derive = { path = "../derive", version = "0.1.0" }
+mogi_utilities = { path = "../utilities", version = "0.1.0" }
+mogi_mem = { path = "../mem" }
+tracing = { version = "0.1.37", default-features = false }
+memoffset = "0.9.0"
+serde = { version = "1.0.197", features = ["derive"] }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+json5 = "0.4.1"
+slotmap = "1.0.7"
+libc = "0.2.155"

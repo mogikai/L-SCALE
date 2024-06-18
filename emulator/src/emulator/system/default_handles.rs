@@ -11,14 +11,14 @@ use crate::emulator::abstractions::file_descriptors::{
     FileDescriptorOps,
     FileOperationsReady,
 };
+use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::network::{
     ShutdownMethod,
     SocketAddress,
 };
-use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
-use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
+use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::platform::linux::kernel::socket::Optval;
 use crate::emulator::system::fd_map::FileDescriptor;
 use crate::emulator::system::filesystem::Stat;
@@ -91,7 +91,7 @@ impl FileDescriptorOps for WriteOnly {
         fd: &mut Self::D,
         data: &[u8],
     ) -> Result<usize, FileDescriptorError> {
-        print!("{:}", String::from_utf8_lossy(data));
+        // print!("{:}", String::from_utf8_lossy(data));
         Ok(data.len())
     }
 

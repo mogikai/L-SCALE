@@ -6,8 +6,9 @@ members = [
     #    "gui",
     "samples",
     "cpu",
+    "cpu_rewrite",
     "mem",
-    "utilities", "system"]
+    "utilities", "system", "cpu_rewrite"]
 
 exclude = [
     "deps",

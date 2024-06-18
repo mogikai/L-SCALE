@@ -68,6 +68,12 @@ macro_rules! addr_impl {
             }
         }
 
+        impl<T> From<$name<T>> for usize {
+            fn from(value: $name<T>) -> Self {
+                value.0 as usize
+            }
+        }
+
         impl<T> std::fmt::Debug for $name<T> {
             fn fmt(
                 &self,

@@ -16,6 +16,7 @@
       <sourceFolder url="file://$MODULE_DIR$/mem/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/utilities/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/system/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/cpu_rewrite/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/deps/LibAFL/fuzzers/baby_fuzzer/target" />
       <excludeFolder url="file://$MODULE_DIR$/deps/LibAFL/fuzzers/qemu_coverage/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
