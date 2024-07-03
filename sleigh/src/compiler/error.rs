@@ -8,4 +8,6 @@ pub enum SleighCompilerError {
     ReadError(#[from] Error),
     #[error("The preprocessor encountered an error.")]
     PreprocessorError(#[from] PreprocessorError),
+    #[error("An error occurred during lexical analysis.")]
+    LexerError(String),
 }

@@ -335,47 +335,50 @@ fn parser<'src>() -> impl Parser<'src, &'src str, Vec<PreprocessorBlock>, extra:
         })
         .boxed();
 
-    let defined = just("defined")
-        .ignore_then(preprocessor_ident.delimited_by(just('('), just(')')))
-        .map(|expr| Box::new(Expression::Defined(expr)))
-        .padded_by(inline_whitespace());
+    let expression = {
+        let defined = just("defined")
+            .ignore_then(preprocessor_ident.delimited_by(just('('), just(')')))
+            .map(|expr| Box::new(Expression::Defined(expr)))
+            .padded_by(inline_whitespace());
 
-    let comparison_argument = preprocessor_ident
-        .map(ComparisonArgument::Identifier)
-        .or(string.map(ComparisonArgument::Literal))
-        .padded_by(inline_whitespace());
+        let comparison_argument = preprocessor_ident
+            .map(ComparisonArgument::Identifier)
+            .or(string.map(ComparisonArgument::Literal))
+            .padded_by(inline_whitespace());
 
-    let equality_check = comparison_argument
-        .then(just("==").or(just("!=")))
-        .then(comparison_argument)
-        .map(|((a, op), b)| match op {
-            "==" => EqualityCheck::Eq(a, b),
-            "!=" => EqualityCheck::Ne(a, b),
-            _ => panic!("This cannot occur"),
-        })
-        .map(|check| Box::new(Expression::EqualityCheck(check)));
+        let equality_check = comparison_argument
+            .then(just("==").or(just("!=")))
+            .then(comparison_argument)
+            .map(|((a, op), b)| match op {
+                "==" => EqualityCheck::Eq(a, b),
+                "!=" => EqualityCheck::Ne(a, b),
+                _ => panic!("This cannot occur"),
+            })
+            .map(|check| Box::new(Expression::EqualityCheck(check)));
 
-    let mut expression = Recursive::declare();
+        let mut expression = Recursive::declare();
 
-    let atom = defined
-        .or(equality_check.or(equality_check.delimited_by(just('('), just(')'))))
-        .or(expression.clone().delimited_by(just('('), just(')')))
-        .padded_by(inline_whitespace());
+        let atom = defined
+            .or(equality_check.or(equality_check.delimited_by(just('('), just(')'))))
+            .or(expression.clone().delimited_by(just('('), just(')')))
+            .padded_by(inline_whitespace());
 
-    let operator = choice((just("&&"), just("||"), just("^^")))
-        .map(|op| match op {
-            "&&" => BinaryOp::And,
-            "||" => BinaryOp::Or,
-            "^^" => BinaryOp::Xor,
-            _ => panic!("This cannot occur"),
-        })
-        .padded_by(inline_whitespace());
+        let operator = choice((just("&&"), just("||"), just("^^")))
+            .map(|op| match op {
+                "&&" => BinaryOp::And,
+                "||" => BinaryOp::Or,
+                "^^" => BinaryOp::Xor,
+                _ => panic!("This cannot occur"),
+            })
+            .padded_by(inline_whitespace());
 
-    let binary_op = atom
-        .clone()
-        .foldl(operator.then(atom).repeated(), |a, (op, b)| Box::new(Expression::BinaryOp(a, op, b)));
+        let binary_op = atom
+            .clone()
+            .foldl(operator.then(atom).repeated(), |a, (op, b)| Box::new(Expression::BinaryOp(a, op, b)));
 
-    expression.define(binary_op);
+        expression.define(binary_op);
+        expression
+    };
 
     let r#if = just("@if")
         .ignore_then(expression)

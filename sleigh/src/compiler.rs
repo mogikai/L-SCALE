@@ -1,6 +1,12 @@
 pub mod error;
+mod lexer;
+mod tokens;
 
 use crate::compiler::error::SleighCompilerError;
+use crate::compiler::lexer::{
+    lexer,
+    SleighLexer,
+};
 use crate::preprocessor::{
     SleighPreprocessor,
     SleighPreprocessorFactory,
@@ -8,10 +14,12 @@ use crate::preprocessor::{
 use crate::spec::ProcessorSpecification;
 use std::fs;
 use std::path::Path;
+use std::process::exit;
 
 #[derive(Debug)]
 pub struct SleighCompiler {
     preprocessor_factory: SleighPreprocessorFactory,
+    lexer: SleighLexer,
 }
 
 impl SleighCompiler {
@@ -20,17 +28,25 @@ impl SleighCompiler {
         &self,
         spec_path: &Path,
     ) -> Result<ProcessorSpecification, SleighCompilerError> {
-        let spec_data = self
-            .preprocessor_factory
-            .build()
-            .preprocess(fs::read_to_string(spec_path)?.as_ref())?;
+        // let preprocessed_sleigh = self
+        //     .preprocessor_factory
+        //     .build()
+        //     .preprocess(fs::read_to_string(spec_path)?.as_ref())?;
+        // let tokens = self.lexer.tokenize(preprocessed_sleigh.as_str())?;
+        let input = fs::read_to_string(spec_path)?;
+        let tokens = self.lexer.tokenize(input.as_str())?;
+        println!("{tokens:?}");
+        exit(0);
         todo!()
     }
 }
 
 impl SleighCompiler {
     fn new(preprocessor_factory: SleighPreprocessorFactory) -> Self {
-        Self { preprocessor_factory }
+        Self {
+            preprocessor_factory,
+            lexer: Default::default(),
+        }
     }
 }
 
