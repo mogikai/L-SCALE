@@ -121,7 +121,6 @@ impl<'a> SleighPreprocessor<'a> {
         self.original_data = spec_data;
         let parsed = self.parse(self.original_data)?;
         self.evaluate(parsed)?;
-        println!("{}", self.processed_sleigh);
         Ok(self.processed_sleigh)
     }
 
@@ -142,7 +141,7 @@ impl<'a> SleighPreprocessor<'a> {
         if diagnostic.is_empty() {
             Ok(parsed.into_output().unwrap())
         } else {
-            println!("{}", std::str::from_utf8(diagnostic.as_slice()).unwrap());
+            eprintln!("{}", std::str::from_utf8(diagnostic.as_slice()).unwrap());
             Err(PreprocessorError::ParseError(String::from_utf8(diagnostic).unwrap()))
         }
     }
@@ -217,7 +216,7 @@ impl<'a> SleighPreprocessor<'a> {
                     if_false,
                 } => {
                     trace!("Evaluating condition {cond:?}");
-                    if self.evaluate_expression(cond)? {
+                    if self.evaluate_expression(*cond)? {
                         trace!("Evaluated to true");
                         self.evaluate(if_true)?
                     } else {
@@ -235,13 +234,13 @@ impl<'a> SleighPreprocessor<'a> {
 
     fn evaluate_expression(
         &self,
-        expression: Box<Expression>,
+        expression: Expression,
     ) -> Result<bool, PreprocessorError> {
-        Ok(match *expression {
+        Ok(match expression {
             Expression::BinaryOp(a, op, b) => match op {
-                BinaryOp::And => self.evaluate_expression(a)? && self.evaluate_expression(b)?,
-                BinaryOp::Or => self.evaluate_expression(a)? || self.evaluate_expression(b)?,
-                BinaryOp::Xor => self.evaluate_expression(a)? ^ self.evaluate_expression(b)?,
+                BinaryOp::And => self.evaluate_expression(*a)? && self.evaluate_expression(*b)?,
+                BinaryOp::Or => self.evaluate_expression(*a)? || self.evaluate_expression(*b)?,
+                BinaryOp::Xor => self.evaluate_expression(*a)? ^ self.evaluate_expression(*b)?,
             },
             Expression::Defined(ident) => self.definitions.get(&ident).map(|_| true).unwrap_or(false),
             Expression::EqualityCheck(check) => match check {
