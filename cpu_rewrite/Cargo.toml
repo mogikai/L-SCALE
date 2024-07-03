@@ -12,6 +12,9 @@ byteorder = "1.5.0"
 mogi_system = { path = "../system", version = "0.1.0" }
 mogi_derive = { path = "../derive", version = "0.1.0" }
 mogi_utilities = { path = "../utilities", version = "0.1.0" }
+mogi_sleigh = { path = "../sleigh", version = "0.1.0" }
+#mogi_sleigh_spec_compiler = { path = "../sleigh/spec_compiler", version = "0.1.0" }
+#mogi_sleigh_lifter = { path = "../sleigh/lifter", version = "0.1.0" }
 mogi_mem = { path = "../mem" }
 tracing = { version = "0.1.37", default-features = false }
 memoffset = "0.9.0"

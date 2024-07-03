@@ -17,6 +17,11 @@
       <sourceFolder url="file://$MODULE_DIR$/utilities/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/system/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/cpu_rewrite/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/sleigh/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/sleigh_deprecated/lifter/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/sleigh_deprecated/pcode/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/sleigh_deprecated/spec_compiler/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/sleigh_deprecated/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/deps/LibAFL/fuzzers/baby_fuzzer/target" />
       <excludeFolder url="file://$MODULE_DIR$/deps/LibAFL/fuzzers/qemu_coverage/target" />
       <excludeFolder url="file://$MODULE_DIR$/target" />

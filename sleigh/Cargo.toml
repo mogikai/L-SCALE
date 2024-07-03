@@ -1,0 +1,11 @@
+[package]
+name = "mogi_sleigh"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tracing = "0.1.40"
+slotmap = "1.0.*"
+thiserror = "1.0.*"
+ariadne = "0.4.1"
+chumsky = { version = "1.0.0-alpha.7", features = ["label"] }

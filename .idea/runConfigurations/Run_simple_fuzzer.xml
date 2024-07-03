@@ -3,8 +3,8 @@
     <option name="command" value="run --package mogi_fuzzer --bin simple_fuzzer" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <envs>
+      <env name="FUZE_LOG" value="mogi_cpu=trace" />
       <env name="GHIDRA_SRC" value="$PROJECT_DIR$/cpu/Ghidra" />
-      <env name="RUST_LOG" value="debug" />
     </envs>
     <option name="emulateTerminal" value="true" />
     <option name="channel" value="DEFAULT" />

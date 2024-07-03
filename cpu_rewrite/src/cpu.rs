@@ -2,15 +2,21 @@
 //! The `CPUContext` contains all the runtime information needed during emulation.
 //! This includes for example the registers and a pointer to the currently active `TLB`.
 
-use crate::cpu_context::CPUContext;
+use std::cell::RefCell;
+use std::ffi::c_void;
+use std::fmt::Debug;
+use std::rc::Rc;
+
+use thiserror::Error;
+
+use mogi_mem::mmu::MogiMMU;
+use mogi_utilities::addresses::EVAddr;
+
 use crate::jit::api::{
+    JitContext,
     JitError,
     MogiJit,
 };
-use mogi_utilities::addresses::EVAddr;
-use std::cell::RefCell;
-use std::ffi::c_void;
-use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum StopReason {
@@ -24,6 +30,7 @@ pub enum StopReason {
     JitError(#[from] JitError),
 }
 
+#[derive(Debug)]
 enum MustInterpret {
     Yes,
     No,
@@ -34,11 +41,16 @@ pub struct CPU<JitT>
 where
     JitT: MogiJit,
 {
-    context: CPUContext,
+    /// The jit context. Each jit implementation may have its own context structure, hence this is dependent on the
+    /// used jit. TODO: It might make sense to have the context as a pointer, such that we can have multiple contexts
+    ///                 that can be hot-swapped on switching to a different task? This would require putting a
+    ///                 reference to the cpu inside the context, such that it can be accessed in callbacks.
+    ///                 Alternatively, the cpu can be omitted and each callback has to have its own context pointer.
+    context: Box<JitT::Context>,
     /// The jit is behind a refcell, so we can guarantee that the cpu can be mutably accessed by the jited code,
     /// but the jit itself may not be modified during the codes runtime.
     jit: RefCell<JitT>,
-    mmu: (),
+    mmu: Rc<RefCell<MogiMMU>>,
     mir_cache: (),
 }
 
@@ -46,11 +58,14 @@ impl<JitT> CPU<JitT>
 where
     JitT: MogiJit,
 {
-    pub fn new(jit: JitT) -> Self {
+    pub fn new(
+        jit: JitT,
+        mmu: Rc<RefCell<MogiMMU>>,
+    ) -> Self {
         Self {
-            context: CPUContext::new(),
+            context: Box::new(jit.new_context()),
             jit: RefCell::new(jit),
-            mmu: (),
+            mmu,
             mir_cache: (),
         }
     }
@@ -64,11 +79,10 @@ where
             self.translate_blocks()?;
             match self.must_interpret() {
                 MustInterpret::No => {
-                    let context = self as *mut _ as *mut c_void;
+                    let context = &mut *self.context as *mut _ as *mut c_void;
                     let jit = self.jit.borrow();
                     let block = jit.fetch_block(self.context.pc())?;
                     jit.prelude()?(context, block);
-                    // self.prelude.run_block(block);
                 }
                 MustInterpret::Yes => {
                     todo!()

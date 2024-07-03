@@ -25,6 +25,16 @@ pub enum JitError {
 
 pub trait MogiJit {
     type BlockId: Copy + Clone;
+    type Context: JitContext;
+    type Value: JitValue;
+
+    /// Creates a new context that is used during the jit runtime.
+    /// The context is opaque, but implements the [JitContext] trait
+    /// through which the internals may be accessed or modified.
+    /// The context is owned by the [CPU] and passed to the jit runtime
+    /// via the context pointer, which can then access its internals.
+    fn new_context(&self) -> Self::Context;
+
     /// Create a new block that starts at the provided emulated virtual address.
     /// Before emitting instructions to the block, it needs to be activated with
     /// the [activate_block](Self::activate_block) method.
@@ -43,7 +53,41 @@ pub trait MogiJit {
         block_id: Self::BlockId,
     ) -> Result<(), JitError>;
 
+    /// Emit a load instruction that loads a value from the guest address `[address + offset]` into a new variable.
+    fn emit_load(
+        &mut self,
+        ty: (),
+        address: Self::Value,
+        offset: <Self::Value as JitValue>::Constant,
+    ) -> Result<Self::Value, JitError>;
+
+    /// Stores the provided value at guest address `[address + offset]`.
+    fn emit_store(
+        &mut self,
+        address: Self::Value,
+        offset: <Self::Value as JitValue>::Constant,
+        value: Self::Value,
+    ) -> Result<(), JitError>;
+
     fn emit_ret(&mut self) -> Result<(), JitError>;
+
+    /// Push the supplied Var onto the jit stack.
+    /// Note: The jit stack is separate from the
+    /// targets stack. The push operations of the
+    /// target are mapped to inc/dec operations on the
+    /// stack pointer variable, and a subsequent load
+    /// or store of the data located at the address in
+    /// the variable.
+    fn emit_push(
+        &mut self,
+        var: Self::Value,
+    ) -> Result<(), JitError>;
+
+    /// See [emit_push](Self::emit_push)
+    fn emit_pop(
+        &mut self,
+        var: Self::Value,
+    ) -> Result<(), JitError>;
 
     /// Emit a jmp instruction that jumps to the jit epilogue, effectively exiting the jited code
     /// and resuming execution in the emulation loop. If the block that is executed after this block
@@ -78,6 +122,32 @@ pub trait MogiJit {
     /// of the jit. The signature of the returned jit prelude function is
     /// specified here: [PreludeSignature]
     fn prelude(&self) -> Result<PreludeSignature, JitError>;
+}
+
+/// The jit trait deals with variables instead of registers.
+/// The variables are mapped to specific registers behind the scenes.
+pub trait JitValue {
+    type Constant;
+    type Variable;
+}
+
+/// The jit context trait defines methods that every jit context implementation must provide.
+/// This facilitates access to the underlying cpu information like registers, exceptions and the PC.
+pub trait JitContext {
+    /// Get the current program counter. Since the register is architecture specific, this method
+    /// exists for convenience so we do not have to consider all the different cases.
+    fn pc(&self) -> EVAddr;
+
+    /// TODO: RegisterAccessor type?
+    fn register(
+        &self,
+        register: (),
+    ) -> ();
+
+    fn register_mut(
+        &mut self,
+        register: (),
+    ) -> ();
 }
 
 pub type PreludeSignature = extern "C" fn(context: *mut c_void, block: JitCode);

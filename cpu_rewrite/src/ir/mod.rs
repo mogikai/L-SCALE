@@ -3,9 +3,14 @@
 //! *MIR* is then translated into host assembly instructions (e.g. *x86*).
 //! This code is then assembled and cached for further execution.
 
+/// MIR does not have push instructions. A push must be performed, by manually adjusting the stack pointer,
+/// and then loading or storing to/from the destination.
 pub enum MIROperation {
     IntAdd,
 
     Branch,
     Ret,
+
+    Load,
+    Store,
 }
