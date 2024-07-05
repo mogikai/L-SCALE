@@ -7,6 +7,11 @@ use std::path::{
 };
 use std::process::exit;
 
+use crate::compiler::tokens::{
+    SleighKeyword,
+    SleighToken,
+};
+use crate::preprocessor::error::PreprocessorError;
 use ariadne::{
     Label,
     Report,
@@ -21,7 +26,10 @@ use chumsky::error::{
     Rich,
     Simple,
 };
-use chumsky::input::Input;
+use chumsky::input::{
+    Input,
+    SpannedInput,
+};
 use chumsky::prelude::{
     any,
     choice,
@@ -42,8 +50,6 @@ use chumsky::{
     Parser,
 };
 use tracing::trace;
-
-use crate::preprocessor::error::PreprocessorError;
 
 pub mod error;
 
@@ -113,7 +119,26 @@ pub struct SleighPreprocessor<'src> {
     definitions: HashMap<PreprocessorIdentifier, String>,
 }
 
+// type PreprocessorInput<'tokens, 'src> =
+//     SpannedInput<SleighToken<'src>, InputSpan<'src>, &'tokens [(SleighToken<'src>, InputSpan<'src>)]>;
+
+// fn token_parser<'tokens, 'src: 'tokens>() -> impl Parser<
+//     'tokens,
+//     PreprocessorInput<'tokens, 'src>,
+//     Vec<(SleighToken<'src>, InputSpan<'src>)>,
+//     extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
+// > {
+//     any().map(|(x, s)| (x, s)).repeated().collect::<Vec<_>>()
+// }
+
 impl<'a> SleighPreprocessor<'a> {
+    // pub fn preprocess_tokenized<'src>(
+    //     mut self,
+    //     tokens: Vec<(SleighToken<'src>, InputSpan<'src>)>,
+    // ) -> Result<Vec<(SleighToken<'src>, InputSpan<'src>)>, PreprocessorError> {
+    //     todo!()
+    // }
+
     pub fn preprocess(
         mut self,
         spec_data: &'a str,
