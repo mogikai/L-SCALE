@@ -22,6 +22,8 @@ pub enum SASTBitPatternConstraint<'src> {
         Spanned<'src, SASTConstraintOp>,
         Spanned<'src, SASTConstraintPattern<'src>>,
     ),
+    /// Failed to parse the constraint
+    Invalid,
 }
 
 #[derive(Debug)]

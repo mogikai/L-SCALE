@@ -12,16 +12,13 @@ use chumsky::{
 };
 use chumsky::error::Rich;
 use chumsky::extra::ParserExtra;
-use chumsky::input::{
-    Input,
-    MapExtra,
-};
+use chumsky::input::Input;
 use chumsky::prelude::{
     any,
-    choice,
     end,
-    one_of,
     skip_then_retry_until,
+    skip_until,
+    via_parser,
 };
 use chumsky::primitive::just;
 use chumsky::recursive::Recursive;
@@ -71,7 +68,7 @@ impl SleighParser {
     ) -> Result<SleighAST<'src>, SleighCompilerError> {
         let parsed = parser().parse(tokens.spanned());
         let mut diagnostic = vec![];
-        trace!("Input: {:?}", tokens);
+        // trace!("Input: {:?}", tokens);
         trace!("Output: {:?}", parsed.output());
         parsed.errors().for_each(|err| {
             let error_span = err.span();
@@ -250,7 +247,8 @@ fn bit_pattern_section<'tokens, 'src: 'tokens>() -> impl Parser<
         SleighToken::Operation(SleighOperation::Or) => SASTBinaryOp::Or,
         SleighToken::Control(SleighControlCharacter::SemiColon) => SASTBinaryOp::Concatenate,
     }
-    .map_with(|op, extra| (op, extra.span()));
+    .map_with(|op, extra| (op, extra.span()))
+    .labelled("operator");
 
     let ident = sast_ident()
         .padded_by(sleigh_whitespace())
@@ -276,7 +274,8 @@ fn bit_pattern_section<'tokens, 'src: 'tokens>() -> impl Parser<
     let advanced_constraint = ident
         .then(constraint_op)
         .then(constraint_pattern)
-        .map_with(|((lhs, op), rhs), extra| (SASTBitPatternConstraint::AdvancedConstraint(lhs, op, rhs), extra.span()));
+        .map_with(|((lhs, op), rhs), extra| (SASTBitPatternConstraint::AdvancedConstraint(lhs, op, rhs), extra.span()))
+        .labelled("constraint");
 
     // An atom that can be unambiguously parsed. In this case either an identifier,
     // or a parenthesized constraint.
@@ -311,7 +310,8 @@ fn bit_pattern_section<'tokens, 'src: 'tokens>() -> impl Parser<
         justify_left
             .or(justify_right)
             .padded_by(sleigh_whitespace())
-    };
+    }
+    .labelled("unary operation");
 
     let atom = unary_op.or(atom);
 
@@ -319,7 +319,8 @@ fn bit_pattern_section<'tokens, 'src: 'tokens>() -> impl Parser<
         .clone()
         .foldl_with(op.then(atom.clone()).repeated(), |lhs, (op, rhs), extra| {
             (SASTBitPatternConstraint::BinaryOp(Box::new(lhs), op, Box::new(rhs)), extra.span())
-        });
+        })
+        .labelled("binary operation");
 
     constraint.define(binary_op);
 
