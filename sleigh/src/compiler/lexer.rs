@@ -1,15 +1,10 @@
-use crate::compiler::ast::Spanned;
-use crate::compiler::error::SleighCompilerError;
-use crate::compiler::tokens::{
-    SleighControlCharacter,
-    SleighKeyword,
-    SleighOperation,
-    SleighToken,
+use std::fmt::{
+    Debug,
+    Formatter,
 };
-use crate::compiler::CompilerInput;
+use std::ops::Range;
+
 use ariadne::{
-    sources,
-    Cache,
     Label,
     Report,
     ReportKind,
@@ -30,10 +25,7 @@ use chumsky::primitive::{
     end,
     just,
 };
-use chumsky::span::{
-    SimpleSpan,
-    Span,
-};
+use chumsky::span::Span;
 use chumsky::text::{
     int,
     newline,
@@ -44,11 +36,16 @@ use chumsky::{
     IterParser,
     Parser,
 };
-use std::fmt::{
-    Debug,
-    Formatter,
+
+use crate::compiler::ast::Spanned;
+use crate::compiler::error::SleighCompilerError;
+use crate::compiler::tokens::{
+    SleighControlCharacter,
+    SleighKeyword,
+    SleighOperation,
+    SleighToken,
 };
-use std::ops::Range;
+use crate::compiler::CompilerInput;
 
 #[derive(Clone)]
 pub struct InputSpan<'a> {
@@ -209,14 +206,10 @@ fn sleigh_ident_raw<'src>() -> impl Parser<'src, &'src str, &'src str, extra::Er
 
 fn sleigh_number<'src>() -> impl Parser<'src, &'src str, SleighToken<'src>, extra::Err<Rich<'src, char>>> + Copy {
     let hex_int = just("0x")
-        .then(just('0').repeated())
-        .then(int(16))
-        .to_slice()
+        .ignore_then(just('0').repeated().then(int(16)).to_slice())
         .map(SleighToken::Hexadecimal);
     let bin_int = just("0b")
-        .then(just('0').repeated())
-        .then(int(2))
-        .to_slice()
+        .ignore_then(just('0').repeated().then(int(2)).to_slice())
         .map(SleighToken::Binary);
     let dec_int = int(10).map(SleighToken::Decimal);
     choice((hex_int, bin_int, dec_int))
@@ -259,24 +252,9 @@ fn sleigh_macro<'src>() -> impl Parser<'src, &'src str, SleighToken<'src>, extra
 }
 
 fn sleigh_operations<'src>() -> impl Parser<'src, &'src str, SleighToken<'src>, extra::Err<Rich<'src, char>>> + Copy {
-    one_of("=&|+-/%!^*<>~")
-        .map(|c| match c {
-            '=' => SleighToken::Operation(SleighOperation::Equals),
-            '&' => SleighToken::Operation(SleighOperation::And),
-            '|' => SleighToken::Operation(SleighOperation::Or),
-            '+' => SleighToken::Operation(SleighOperation::Plus),
-            '-' => SleighToken::Operation(SleighOperation::Minus),
-            '/' => SleighToken::Operation(SleighOperation::Division),
-            '%' => SleighToken::Operation(SleighOperation::Remainder),
-            '!' => SleighToken::Operation(SleighOperation::Not),
-            '^' => SleighToken::Operation(SleighOperation::Hat),
-            '*' => SleighToken::Operation(SleighOperation::Star),
-            '<' => SleighToken::Operation(SleighOperation::LessThan),
-            '>' => SleighToken::Operation(SleighOperation::GreaterThan),
-            '~' => SleighToken::Operation(SleighOperation::BitNegate),
-            _ => panic!("This cannot happen"),
-        })
-        .or(just("!=").map(|_| SleighToken::Operation(SleighOperation::NotEquals)))
+    // The single character tokens need to be parsed after the multi character tokens.
+    just("!=")
+        .map(|_| SleighToken::Operation(SleighOperation::NotEquals))
         .or(just("$and").map(|_| SleighToken::Operation(SleighOperation::BitAnd)))
         .or(just("$or").map(|_| SleighToken::Operation(SleighOperation::BitOr)))
         .or(just("$xor").map(|_| SleighToken::Operation(SleighOperation::BitXor)))
@@ -292,6 +270,22 @@ fn sleigh_operations<'src>() -> impl Parser<'src, &'src str, SleighToken<'src>, 
         .or(just("s%").map(|_| SleighToken::Operation(SleighOperation::SRemainder)))
         .or(just("s<").map(|_| SleighToken::Operation(SleighOperation::SLessThan)))
         .or(just("s>").map(|_| SleighToken::Operation(SleighOperation::SGreaterThan)))
+        .or(one_of("=&|+-/%!^*<>~").map(|c| match c {
+            '=' => SleighToken::Operation(SleighOperation::Equals),
+            '&' => SleighToken::Operation(SleighOperation::And),
+            '|' => SleighToken::Operation(SleighOperation::Or),
+            '+' => SleighToken::Operation(SleighOperation::Plus),
+            '-' => SleighToken::Operation(SleighOperation::Minus),
+            '/' => SleighToken::Operation(SleighOperation::Division),
+            '%' => SleighToken::Operation(SleighOperation::Remainder),
+            '!' => SleighToken::Operation(SleighOperation::Not),
+            '^' => SleighToken::Operation(SleighOperation::Hat),
+            '*' => SleighToken::Operation(SleighOperation::Star),
+            '<' => SleighToken::Operation(SleighOperation::LessThan),
+            '>' => SleighToken::Operation(SleighOperation::GreaterThan),
+            '~' => SleighToken::Operation(SleighOperation::BitNegate),
+            _ => panic!("This cannot happen"),
+        }))
 }
 
 fn sleigh_control_character<'src>(

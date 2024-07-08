@@ -11,13 +11,20 @@ use chumsky::{
     select,
 };
 use chumsky::error::Rich;
+use chumsky::extra::ParserExtra;
+use chumsky::input::{
+    Input,
+    MapExtra,
+};
 use chumsky::prelude::{
     any,
+    choice,
     end,
     one_of,
     skip_then_retry_until,
 };
 use chumsky::primitive::just;
+use chumsky::recursive::Recursive;
 use chumsky::span::Span;
 use tracing::trace;
 
@@ -25,7 +32,15 @@ use crate::compiler::ast::{
     SleighAST,
     Spanned,
 };
-use crate::compiler::ast::constructor::bit_pattern_section::SASTBitPatternSection;
+use crate::compiler::ast::common::SASTIdent;
+use crate::compiler::ast::constructor::bit_pattern_section::{
+    SASTBinaryOp,
+    SASTBitPatternConstraint,
+    SASTBitPatternSection,
+    SASTConstraintOp,
+    SASTConstraintPattern,
+    SASTUnaryOp,
+};
 use crate::compiler::ast::constructor::disassembly_section::SASTDisassemblySection;
 use crate::compiler::ast::constructor::display_section::SASTDisplaySection;
 use crate::compiler::ast::constructor::SASTConstructor;
@@ -76,14 +91,14 @@ impl SleighParser {
     }
 }
 
-
-fn sleigh_whitespace<'tokens, 'src: 'tokens>() -> impl Parser<
-    'tokens,
-    ParserInput<'tokens, 'src>,
-    (),
-    extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
-> {
-    just(SleighToken::Whitespace).repeated()
+fn sleigh_whitespace<'tokens, 'src: 'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, (), extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>> + Copy
+{
+    // Comments are treated as whitespace
+    just(SleighToken::Whitespace)
+        .ignored()
+        .or(select! { SleighToken::Comment(_) }.ignored())
+        .repeated()
 }
 
 fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
@@ -92,7 +107,8 @@ fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
     SleighAST<'src>,
     extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
 > {
-    constructor().padded_by(sleigh_whitespace())
+    constructor()
+        .padded_by(sleigh_whitespace())
         .map(SASTItem::Constructor)
         .recover_with(skip_then_retry_until(any().ignored(), end()))
         .repeated()
@@ -108,7 +124,7 @@ fn constructor<'tokens, 'src: 'tokens>() -> impl Parser<
 > {
     // The table can be either an identifier or it may be omitted, in which case the table referenced
     // will be the root table.
-    let table = ident()
+    let table = sleigh_ident()
         .or_not()
         .map_with(|ident, extra| (ident, extra.span()));
 
@@ -139,13 +155,23 @@ fn constructor<'tokens, 'src: 'tokens>() -> impl Parser<
 }
 
 /// Parse an ident token and return the contained string reference
-fn ident<'tokens, 'src: 'tokens>() -> impl Parser<
+fn sleigh_ident<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>,
     &'src str,
     extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
 > + Copy {
     select! { SleighToken::Ident(ident) => ident }.labelled("identifier")
+}
+
+/// Parse an ident token and return a SASTIdent tree node
+fn sast_ident<'tokens, 'src: 'tokens>() -> impl Parser<
+    'tokens,
+    ParserInput<'tokens, 'src>,
+    SASTIdent<'src>,
+    extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
+> + Copy {
+    sleigh_ident().map(SASTIdent)
 }
 
 fn display_section<'tokens, 'src: 'tokens>() -> impl Parser<
@@ -180,10 +206,10 @@ fn display_section<'tokens, 'src: 'tokens>() -> impl Parser<
             .map_with(|element, extra| (element.into_iter().collect::<String>(), extra.span())))
         .rewind();
 
-    let identifiers = ident()
+    let identifiers = sleigh_ident()
         .padded_by(
             any()
-                .and_is(ident().not())
+                .and_is(sleigh_ident().not())
                 .and_is(end_of_display_section.not())
                 .repeated(),
         )
@@ -209,28 +235,106 @@ fn display_section<'tokens, 'src: 'tokens>() -> impl Parser<
         })
 }
 
+/// Parses the bit pattern section of a SLEIGH constructor.
+/// See section 7.4 of the SLEIGH specification
 fn bit_pattern_section<'tokens, 'src: 'tokens>() -> impl Parser<
     'tokens,
     ParserInput<'tokens, 'src>,
     Spanned<'src, SASTBitPatternSection<'src>>,
     extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
 > {
-    let end_of_bit_pattern = one_of([
-        SleighToken::Control(SleighControlCharacter::OpenBracket),
-        SleighToken::Control(SleighControlCharacter::OpenBrace),
-    ]);
+    let mut constraint = Recursive::declare();
 
-    any()
-        .and_is(end_of_bit_pattern.not())
-        .repeated()
-        .map_with(|_, extra| {
-            (
-                SASTBitPatternSection {
-                    constraints: ("", extra.span()),
-                },
-                extra.span(),
-            )
-        })
+    let op = select! {
+        SleighToken::Operation(SleighOperation::And) => SASTBinaryOp::And,
+        SleighToken::Operation(SleighOperation::Or) => SASTBinaryOp::Or,
+        SleighToken::Control(SleighControlCharacter::SemiColon) => SASTBinaryOp::Concatenate,
+    }
+    .map_with(|op, extra| (op, extra.span()));
+
+    let ident = sast_ident()
+        .padded_by(sleigh_whitespace())
+        .map_with(|item, extra| (item, extra.span()));
+
+    let constraint_op = select! {
+        SleighToken::Operation(SleighOperation::Equals) => SASTConstraintOp::Equals,
+        SleighToken::Operation(SleighOperation::NotEquals) => SASTConstraintOp::NotEquals,
+        SleighToken::Operation(SleighOperation::GreaterThan) => SASTConstraintOp::GreaterThan,
+        SleighToken::Operation(SleighOperation::LessThan) => SASTConstraintOp::LessThan,
+    }
+    .map_with(|op, extra| (op, extra.span()))
+    .padded_by(sleigh_whitespace());
+
+    let bit_pattern = sleigh_number().map(SASTConstraintPattern::BitPattern);
+
+    let constraint_pattern = sast_ident()
+        .map(SASTConstraintPattern::Ident)
+        .or(bit_pattern)
+        .map_with(|pattern, extra| (pattern, extra.span()))
+        .padded_by(sleigh_whitespace());
+
+    let advanced_constraint = ident
+        .then(constraint_op)
+        .then(constraint_pattern)
+        .map_with(|((lhs, op), rhs), extra| (SASTBitPatternConstraint::AdvancedConstraint(lhs, op, rhs), extra.span()));
+
+    // An atom that can be unambiguously parsed. In this case either an identifier,
+    // or a parenthesized constraint.
+    let atom = maybe_parenthesized(advanced_constraint)
+        .or(maybe_parenthesized(ident)
+            .map(SASTBitPatternConstraint::Ident)
+            .map_with(|item, extra| (item, extra.span())))
+        .or(parenthesized(constraint.clone()))
+        .padded_by(sleigh_whitespace());
+
+    // A unary op is currently only justify left or justify right.
+    let unary_op = {
+        let ellipsis = just(SleighToken::Control(SleighControlCharacter::Ellipsis));
+        // Justify left ist represented by an ellipsis, followed by an expression, and
+        let justify_left = ellipsis
+            .to_span()
+            .then(atom.clone())
+            .map_with(|(justify, atom), extra| {
+                (SASTBitPatternConstraint::UnaryOp((SASTUnaryOp::JustifyLeft, justify), Box::new(atom)), extra.span())
+            });
+        // Justify right is represented by an expression, followed by an ellipsis.
+        let justify_right = atom
+            .clone()
+            .then(ellipsis.to_span())
+            .map_with(|(atom, justify), extra| {
+                (
+                    SASTBitPatternConstraint::UnaryOp((SASTUnaryOp::JustifyRight, justify), Box::new(atom)),
+                    extra.span(),
+                )
+            });
+
+        justify_left
+            .or(justify_right)
+            .padded_by(sleigh_whitespace())
+    };
+
+    let atom = unary_op.or(atom);
+
+    let binary_op = atom
+        .clone()
+        .foldl_with(op.then(atom.clone()).repeated(), |lhs, (op, rhs), extra| {
+            (SASTBitPatternConstraint::BinaryOp(Box::new(lhs), op, Box::new(rhs)), extra.span())
+        });
+
+    constraint.define(binary_op);
+
+    constraint.map_with(|constraint, extra| (SASTBitPatternSection { constraint }, extra.span()))
+}
+
+fn sleigh_number<'tokens, 'src: 'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, u64, extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>>
+       + Copy {
+    let parsed_number = select! {
+        SleighToken::Decimal(decimal) => u64::from_str_radix(decimal, 10),
+        SleighToken::Hexadecimal(decimal) => u64::from_str_radix(decimal, 16),
+        SleighToken::Binary(decimal) => u64::from_str_radix(decimal, 2),
+    };
+    parsed_number.try_map(|num, span| num.map_err(|e| Rich::custom(span, e)))
 }
 
 fn disassembly_section<'tokens, 'src: 'tokens>() -> impl Parser<
@@ -261,7 +365,7 @@ fn semantic_section<'tokens, 'src: 'tokens>() -> impl Parser<
     Spanned<'src, SASTSemanticSection<'src>>,
     extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
 > {
-        let open_brace = just(SleighToken::Control(SleighControlCharacter::OpenBrace));
+    let open_brace = just(SleighToken::Control(SleighControlCharacter::OpenBrace));
     let close_brace = just(SleighToken::Control(SleighControlCharacter::CloseBrace));
     open_brace
         .ignore_then(any().and_is(close_brace.not()).repeated())
@@ -274,4 +378,30 @@ fn semantic_section<'tokens, 'src: 'tokens>() -> impl Parser<
                 extra.span(),
             )
         })
+}
+
+/// Parses the same thing as `P`, but only if it is surrounded by parentheses.
+fn parenthesized<'tokens, 'src, P, O, E>(parser: P) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, O, E> + Clone
+where
+    'src: 'tokens,
+    P: Parser<'tokens, ParserInput<'tokens, 'src>, O, E> + Clone,
+    E: ParserExtra<'tokens, ParserInput<'tokens, 'src>>,
+{
+    parser.delimited_by(
+        just(SleighToken::Control(SleighControlCharacter::OpenParen)),
+        just(SleighToken::Control(SleighControlCharacter::CloseParen)),
+    )
+}
+
+/// Parses the same thing as the provided parser `P`, but also succeeds if the element to parse
+/// is surrounded by parentheses.
+fn maybe_parenthesized<'tokens, 'src, P, O, E>(
+    parser: P
+) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, O, E> + Clone
+where
+    'src: 'tokens,
+    P: Parser<'tokens, ParserInput<'tokens, 'src>, O, E> + Clone,
+    E: ParserExtra<'tokens, ParserInput<'tokens, 'src>>,
+{
+    parser.clone().or(parenthesized(parser))
 }
