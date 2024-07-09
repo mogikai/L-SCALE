@@ -118,6 +118,7 @@ pub enum SleighKeyword {
     Names,
     Context,
 
+    Macro,
     Define,
     Endian,
     Alignment,
@@ -170,6 +171,7 @@ impl SleighKeyword {
             SleighKeyword::Dec => "dec",
             SleighKeyword::Noflow => "noflow",
             SleighKeyword::Is => "is",
+            SleighKeyword::Macro => "macro",
         }
     }
 }

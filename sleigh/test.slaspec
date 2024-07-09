@@ -1,3 +1,13 @@
+macro addCarryFlags ( op1, op2 ) {
+	local CFcopy = zext(CF);
+	CF = carry( op1, op2 );
+	OF = scarry( op1, op2 );
+	local result = op1 + op2;
+	CF = CF || carry( result, CFcopy );
+	OF = OF ^^ scarry( result, CFcopy );
+	op1 = result + CFcopy;
+	# AF not implemented
+}
 :XGETBV         is vexMode=0 & byte=0x0F; byte=0x01; byte=0xD0  { local tmp = XCR0 >> 32; EDX = tmp:4;  EAX = XCR0:4; }
 :XRSTOR Mem    is vexMode=0 & byte=0x0F; byte=0xAE; ( mod != 0b11 & reg_opcode=5 ) ... & Mem { tmp:4 = 512; xrstor(Mem, tmp); }
 :XSETBV         is vexMode=0 & byte=0x0F; byte=0x01; byte=0xD1  { XCR0 = (zext(EDX) << 32) | zext(EAX); }
