@@ -1,5 +1,3 @@
-mod constructor;
-
 use ariadne::{
     Label,
     Report,
@@ -53,12 +51,17 @@ use crate::compiler::lexer::{
     SleighTokens,
 };
 use crate::compiler::parser::constructor::constructor;
+use crate::compiler::parser::pcode_macro::pcode_macro;
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighKeyword,
     SleighOperation,
     SleighToken,
 };
+
+mod constructor;
+mod pcode;
+mod pcode_macro;
 
 #[derive(Debug, Default)]
 pub struct SleighParser {}
@@ -91,8 +94,11 @@ impl SleighParser {
     }
 }
 
-fn sleigh_whitespace<'tokens, 'src: 'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, (), extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>> + Copy
+fn sleigh_whitespace<'tokens, 'src, E>(
+) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, (), E> + Copy
+where
+    'src: 'tokens,
+    E: ParserExtra<'tokens, ParserInput<'tokens, 'src>>,
 {
     // Comments are treated as whitespace
     just(SleighToken::Whitespace)
@@ -107,9 +113,11 @@ fn parser<'tokens, 'src: 'tokens>() -> impl Parser<
     SleighAST<'src>,
     extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
 > {
-    constructor()
+    let constructor = constructor().map(SASTItem::Constructor);
+    let pcode_macro = pcode_macro().map(SASTItem::Macro);
+    constructor
+        .or(pcode_macro)
         .padded_by(sleigh_whitespace())
-        .map(SASTItem::Constructor)
         .recover_with(skip_then_retry_until(any().ignored(), end()))
         .repeated()
         .collect::<Vec<_>>()
@@ -147,7 +155,6 @@ fn sleigh_number<'tokens, 'src: 'tokens>(
     parsed_number.try_map(|num, span| num.map_err(|e| Rich::custom(span, e)))
 }
 
-
 /// Parses the same thing as `P`, but only if it is surrounded by parentheses.
 fn parenthesized<'tokens, 'src, P, O, E>(parser: P) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, O, E> + Clone
 where
@@ -172,4 +179,15 @@ where
     E: ParserExtra<'tokens, ParserInput<'tokens, 'src>>,
 {
     parser.clone().or(parenthesized(parser))
+}
+
+fn whitespace_padded<'tokens, 'src, P, O, E>(
+    parser: P
+) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, O, E> + Clone
+where
+    'src: 'tokens,
+    P: Parser<'tokens, ParserInput<'tokens, 'src>, O, E> + Clone,
+    E: ParserExtra<'tokens, ParserInput<'tokens, 'src>>,
+{
+    parser.padded_by(sleigh_whitespace())
 }

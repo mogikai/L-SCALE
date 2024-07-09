@@ -1,4 +1,5 @@
 use crate::compiler::ast::constructor::semantic_section::SASTSemanticSection;
+use crate::compiler::ast::pcode::SASTPCode;
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::{
     InputSpan,
@@ -32,7 +33,7 @@ pub(super) fn semantic_section<'tokens, 'src: 'tokens>() -> impl Parser<
         .map_with(|_, extra| {
             (
                 SASTSemanticSection {
-                    actions: ("", extra.span()),
+                    actions: (SASTPCode { expressions: vec![] }, extra.span()),
                 },
                 extra.span(),
             )

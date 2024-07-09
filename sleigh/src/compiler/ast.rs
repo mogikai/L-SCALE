@@ -4,6 +4,8 @@ use crate::compiler::lexer::InputSpan;
 pub mod common;
 pub mod constructor;
 pub mod item;
+pub mod pcode;
+pub mod pcode_macro;
 
 #[derive(Debug)]
 pub struct SleighAST<'src> {
