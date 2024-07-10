@@ -307,7 +307,7 @@ fn sleigh_control_character<'src>(
 }
 
 fn sleigh_keyword<'src>() -> impl Parser<'src, &'src str, SleighToken<'src>, extra::Err<Rich<'src, char>>> + Copy {
-    choice((
+    choice([
         just("attach").to(SleighToken::Keyword(SleighKeyword::Attach)),
         just("variables").to(SleighToken::Keyword(SleighKeyword::Variables)),
         just("values").to(SleighToken::Keyword(SleighKeyword::Values)),
@@ -334,5 +334,6 @@ fn sleigh_keyword<'src>() -> impl Parser<'src, &'src str, SleighToken<'src>, ext
         just("dec").to(SleighToken::Keyword(SleighKeyword::Dec)),
         just("noflow").to(SleighToken::Keyword(SleighKeyword::Noflow)),
         just("is").to(SleighToken::Keyword(SleighKeyword::Is)),
-    ))
+        just("local").to(SleighToken::Keyword(SleighKeyword::Local)),
+    ])
 }

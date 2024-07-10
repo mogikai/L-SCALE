@@ -5,6 +5,8 @@ use crate::compiler::lexer::{
     InputSpan,
     ParserInput,
 };
+use crate::compiler::parser::pcode::pcode;
+use crate::compiler::parser::sleigh_control;
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighToken,
@@ -25,17 +27,23 @@ pub(super) fn semantic_section<'tokens, 'src: 'tokens>() -> impl Parser<
     Spanned<'src, SASTSemanticSection<'src>>,
     extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
 > {
-    let open_brace = just(SleighToken::Control(SleighControlCharacter::OpenBrace));
-    let close_brace = just(SleighToken::Control(SleighControlCharacter::CloseBrace));
-    open_brace
-        .ignore_then(any().and_is(close_brace.not()).repeated())
-        .then_ignore(close_brace)
-        .map_with(|_, extra| {
-            (
-                SASTSemanticSection {
-                    actions: (SASTPCode { expressions: vec![] }, extra.span()),
-                },
-                extra.span(),
-            )
-        })
+    pcode()
+        .delimited_by(
+            sleigh_control(SleighControlCharacter::OpenBrace),
+            sleigh_control(SleighControlCharacter::CloseBrace),
+        )
+        .map_with(|pcode, extra| (SASTSemanticSection(pcode), extra.span()))
+    // let open_brace = just(SleighToken::Control(SleighControlCharacter::OpenBrace));
+    // let close_brace = just(SleighToken::Control(SleighControlCharacter::CloseBrace));
+    // open_brace
+    //     .ignore_then(any().and_is(close_brace.not()).repeated())
+    //     .then_ignore(close_brace)
+    //     .map_with(|_, extra| {
+    //         (
+    //             SASTSemanticSection {
+    //                 actions: (SASTPCode { statements: vec![] }, extra.span()),
+    //             },
+    //             extra.span(),
+    //         )
+    //     })
 }

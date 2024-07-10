@@ -10,6 +10,7 @@ use chumsky::{
     Parser,
     select,
 };
+use chumsky::combinator::PaddedBy;
 use chumsky::error::Rich;
 use chumsky::extra::ParserExtra;
 use chumsky::input::Input;
@@ -94,8 +95,7 @@ impl SleighParser {
     }
 }
 
-fn sleigh_whitespace<'tokens, 'src, E>(
-) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, (), E> + Copy
+fn sleigh_whitespace<'tokens, 'src, E>() -> impl Parser<'tokens, ParserInput<'tokens, 'src>, (), E> + Copy
 where
     'src: 'tokens,
     E: ParserExtra<'tokens, ParserInput<'tokens, 'src>>,
@@ -144,6 +144,15 @@ fn sast_ident<'tokens, 'src: 'tokens>() -> impl Parser<
     sleigh_ident().map(SASTIdent)
 }
 
+fn sast_ident_spanned<'tokens, 'src: 'tokens>() -> impl Parser<
+    'tokens,
+    ParserInput<'tokens, 'src>,
+    Spanned<'src, SASTIdent<'src>>,
+    extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
+> + Copy {
+    sleigh_ident().map_with(|ident, extra| (SASTIdent(ident), extra.span()))
+}
+
 fn sleigh_number<'tokens, 'src: 'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, u64, extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>>
        + Copy {
@@ -183,11 +192,32 @@ where
 
 fn whitespace_padded<'tokens, 'src, P, O, E>(
     parser: P
-) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, O, E> + Clone
+) -> PaddedBy<P, impl Parser<'tokens, ParserInput<'tokens, 'src>, (), E> + Copy, ()>
 where
     'src: 'tokens,
     P: Parser<'tokens, ParserInput<'tokens, 'src>, O, E> + Clone,
     E: ParserExtra<'tokens, ParserInput<'tokens, 'src>>,
 {
     parser.padded_by(sleigh_whitespace())
+}
+
+fn sleigh_keyword<'tokens, 'src: 'tokens>(
+    keyword: SleighKeyword
+) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, (), extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>> + Copy
+{
+    just(SleighToken::Keyword(keyword)).ignored()
+}
+
+fn sleigh_control<'tokens, 'src: 'tokens>(
+    control_character: SleighControlCharacter,
+) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, (), extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>> + Copy
+{
+    just(SleighToken::Control(control_character)).ignored()
+}
+
+fn sleigh_operation<'tokens, 'src: 'tokens>(
+    operation: SleighOperation,
+) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, (), extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>> + Copy
+{
+    just(SleighToken::Operation(operation)).ignored()
 }
