@@ -10,7 +10,10 @@ use chumsky::{
     Parser,
     select,
 };
-use chumsky::combinator::PaddedBy;
+use chumsky::combinator::{
+    DelimitedBy,
+    PaddedBy,
+};
 use chumsky::error::Rich;
 use chumsky::extra::ParserExtra;
 use chumsky::input::Input;
@@ -165,15 +168,23 @@ fn sleigh_number<'tokens, 'src: 'tokens>(
 }
 
 /// Parses the same thing as `P`, but only if it is surrounded by parentheses.
-fn parenthesized<'tokens, 'src, P, O, E>(parser: P) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, O, E> + Clone
+fn parenthesized<'tokens, 'src, P, O, E>(
+    parser: P
+) -> DelimitedBy<
+    P,
+    impl Parser<'tokens, ParserInput<'tokens, 'src>, (), E> + Copy,
+    impl Parser<'tokens, ParserInput<'tokens, 'src>, (), E> + Copy,
+    (),
+    (),
+>
 where
     'src: 'tokens,
-    P: Parser<'tokens, ParserInput<'tokens, 'src>, O, E> + Clone,
+    P: Parser<'tokens, ParserInput<'tokens, 'src>, O, E>,
     E: ParserExtra<'tokens, ParserInput<'tokens, 'src>>,
 {
     parser.delimited_by(
-        just(SleighToken::Control(SleighControlCharacter::OpenParen)),
-        just(SleighToken::Control(SleighControlCharacter::CloseParen)),
+        just(SleighToken::Control(SleighControlCharacter::OpenParen)).ignored(),
+        just(SleighToken::Control(SleighControlCharacter::CloseParen)).ignored(),
     )
 }
 
@@ -209,14 +220,14 @@ fn sleigh_keyword<'tokens, 'src: 'tokens>(
 }
 
 fn sleigh_control<'tokens, 'src: 'tokens>(
-    control_character: SleighControlCharacter,
+    control_character: SleighControlCharacter
 ) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, (), extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>> + Copy
 {
     just(SleighToken::Control(control_character)).ignored()
 }
 
 fn sleigh_operation<'tokens, 'src: 'tokens>(
-    operation: SleighOperation,
+    operation: SleighOperation
 ) -> impl Parser<'tokens, ParserInput<'tokens, 'src>, (), extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>> + Copy
 {
     just(SleighToken::Operation(operation)).ignored()

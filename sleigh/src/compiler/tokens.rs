@@ -142,6 +142,8 @@ pub enum SleighKeyword {
     Noflow,
     Is,
     Local,
+    If,
+    Goto,
 }
 
 impl SleighKeyword {
@@ -174,6 +176,8 @@ impl SleighKeyword {
             SleighKeyword::Is => "is",
             SleighKeyword::Macro => "macro",
             SleighKeyword::Local => "local",
+            SleighKeyword::If => "if",
+            SleighKeyword::Goto => "goto",
         }
     }
 }

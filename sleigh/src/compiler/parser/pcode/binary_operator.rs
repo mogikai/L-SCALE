@@ -28,6 +28,9 @@ pub(super) fn binary_operator<'tokens, 'src: 'tokens>() -> impl Parser<
 > + Copy {
     whitespace_padded(
         choice((
+            sleigh_operation(SleighOperation::Equals)
+                .ignore_then(sleigh_operation(SleighOperation::Equals))
+                .to(SASTPCodeBinaryOp::IntEquals),
             sleigh_operation(SleighOperation::Or)
                 .ignore_then(sleigh_operation(SleighOperation::Or))
                 .to(SASTPCodeBinaryOp::BoolOr),

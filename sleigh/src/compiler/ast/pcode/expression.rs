@@ -1,12 +1,12 @@
 use crate::compiler::ast::common::SASTIdent;
+use crate::compiler::ast::pcode::bitrange::SASTBitRange;
+use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
+use crate::compiler::ast::pcode::subpiece::SASTPCodeSubpiece;
 use crate::compiler::ast::Spanned;
 
 #[derive(Debug)]
 pub enum SASTPCodeExpression<'src> {
-    FunctionCall {
-        name: Spanned<'src, SASTIdent<'src>>,
-        arguments: Vec<Spanned<'src, Self>>,
-    },
+    Invocation(Spanned<'src, SASTPCodeInvocation<'src>>),
     BinaryOperation {
         lhs: Box<Spanned<'src, Self>>,
         op: Spanned<'src, SASTPCodeBinaryOp>,
@@ -20,13 +20,8 @@ pub enum SASTPCodeExpression<'src> {
         space: Spanned<'src, SASTIdent<'src>>,
         size: Spanned<'src, u16>,
     },
-    Subpiece {
-        truncate: Spanned<'src, u16>,
-    },
-    Bitrange {
-        lsb: Spanned<'src, u16>,
-        bits: Spanned<'src, u16>,
-    },
+    Subpiece(Spanned<'src, SASTPCodeSubpiece<'src>>),
+    Bitrange(Spanned<'src, SASTBitRange<'src>>),
     Identifier(Spanned<'src, SASTIdent<'src>>),
     LiteralNumber(Spanned<'src, u64>),
 }
@@ -53,6 +48,7 @@ pub enum SASTPCodeBinaryOp {
     IntAnd,
     /// `v0 ^ v1`: Bitwise Exclusive Or of v0 with v1.
     IntXor,
+    IntEquals,
 }
 
 #[derive(Debug, Copy, Clone)]

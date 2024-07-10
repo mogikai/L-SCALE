@@ -335,5 +335,7 @@ fn sleigh_keyword<'src>() -> impl Parser<'src, &'src str, SleighToken<'src>, ext
         just("noflow").to(SleighToken::Keyword(SleighKeyword::Noflow)),
         just("is").to(SleighToken::Keyword(SleighKeyword::Is)),
         just("local").to(SleighToken::Keyword(SleighKeyword::Local)),
+        just("if").to(SleighToken::Keyword(SleighKeyword::If)),
+        just("goto").to(SleighToken::Keyword(SleighKeyword::Goto)),
     ])
 }
