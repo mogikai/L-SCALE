@@ -5,24 +5,24 @@ use crate::compiler::ast::pcode::target_expression::SASTPCodeTargetExpression;
 use crate::compiler::ast::Spanned;
 
 #[derive(Debug)]
-pub enum SASTPCodeStatement<'src> {
+pub enum SASTPCodeStatement {
     /// Assign the right hand expression to the left hand target expression.
     Assignment {
-        local: Spanned<'src, bool>,
-        target: Spanned<'src, SASTPCodeTargetExpression<'src>>,
-        expression: Spanned<'src, SASTPCodeExpression<'src>>,
+        local: Spanned<bool>,
+        target: Spanned<SASTPCodeTargetExpression>,
+        expression: Spanned<SASTPCodeExpression>,
     },
     /// Invoke a function or macro
-    Invocation(Spanned<'src, SASTPCodeInvocation<'src>>),
+    Invocation(Spanned<SASTPCodeInvocation>),
     /// Build the provided operand identified by `ident`.
-    Build(Spanned<'src, SASTIdent<'src>>),
-    Delayslot(Spanned<'src, u64>),
+    Build(Spanned<SASTIdent>),
+    Delayslot(Spanned<u64>),
     /// Declare the identifier as a local variable with an optional size.
-    Declaration(Spanned<'src, SASTIdent<'src>>, Option<Spanned<'src, u16>>),
+    Declaration(Spanned<SASTIdent>, Option<Spanned<u16>>),
     /// Goto label if `condition_expression` is true. Otherwise, execute the
     /// following instruction
     ConditionalBranch {
-        condition_expression: Spanned<'src, SASTPCodeExpression<'src>>,
-        label: Spanned<'src, SASTIdent<'src>>,
+        condition_expression: Spanned<SASTPCodeExpression>,
+        label: Spanned<SASTIdent>,
     },
 }

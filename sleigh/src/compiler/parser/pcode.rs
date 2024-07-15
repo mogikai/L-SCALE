@@ -24,6 +24,7 @@ use crate::compiler::parser::{
     sleigh_keyword,
     sleigh_operation,
     whitespace_padded,
+    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighControlCharacter,
@@ -40,12 +41,8 @@ mod expression;
 mod statements;
 mod target_expression;
 
-pub(super) fn pcode<'tokens, 'src: 'tokens>() -> impl Parser<
-    'tokens,
-    ParserInput<'tokens, 'src>,
-    Spanned<'src, SASTPCode<'src>>,
-    extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
-> + Clone {
+pub(super) fn pcode<'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCode>, SleighParserExtra<'tokens>> + Clone {
     // Parse a declaration of the form `local some_ident;` or alternatively with a size specifier:
     // `local some_ident_with_size:4;`
     let declaration = whitespace_padded(sleigh_keyword(SleighKeyword::Local))

@@ -15,7 +15,10 @@ use crate::compiler::lexer::{
     InputSpan,
     ParserInput,
 };
-use crate::compiler::parser::sleigh_ident;
+use crate::compiler::parser::{
+    sleigh_ident,
+    SleighParserExtra,
+};
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighKeyword,
@@ -23,12 +26,8 @@ use crate::compiler::tokens::{
     SleighToken,
 };
 
-pub(super) fn display_section<'tokens, 'src: 'tokens>() -> impl Parser<
-    'tokens,
-    ParserInput<'tokens, 'src>,
-    Spanned<'src, SASTDisplaySection<'src>>,
-    extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
-> {
+pub(super) fn display_section<'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTDisplaySection>, SleighParserExtra<'tokens>> {
     let start_of_display_section = just(SleighToken::Control(SleighControlCharacter::Colon));
     let end_of_display_section = just(SleighToken::Keyword(SleighKeyword::Is));
 

@@ -1,3 +1,4 @@
+use crate::compiler::StringId;
 use std::fmt;
 use std::fmt::{
     Display,
@@ -184,26 +185,26 @@ impl SleighKeyword {
 
 #[allow(dead_code)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum SleighToken<'src> {
+pub enum SleighToken {
     // e.g. String(This is some string)
-    String(&'src str),
+    String(StringId),
     // e.g. Ident(my_identifier)
-    Ident(&'src str),
+    Ident(StringId),
     // e.g. Comment(This is a comment :>)
-    Comment(&'src str),
+    Comment(StringId),
     // e.g. Decimal(10534)
-    Decimal(&'src str),
+    Decimal(StringId),
     // e.g. Hexadecimal(0x5fad)
-    Hexadecimal(&'src str),
+    Hexadecimal(StringId),
     // e.g. Binary(0b101101)
-    Binary(&'src str),
+    Binary(StringId),
     // With(table_ident)
-    With(&'src str),
+    With(StringId),
 
     // e.g. Macro(include "some_file.sinc")
-    Macro(&'src str),
+    Macro(StringId),
     // e.g. MacroExpansion(some_ident)
-    MacroExpansion(&'src str),
+    MacroExpansion(StringId),
 
     Keyword(SleighKeyword),
     Control(SleighControlCharacter),
@@ -211,27 +212,28 @@ pub enum SleighToken<'src> {
     Whitespace,
 }
 
-impl SleighToken<'_> {
+impl SleighToken {
     pub fn to_mnemonic(&self) -> &str {
-        match self {
-            SleighToken::String(s) => s,
-            SleighToken::Ident(s) => s,
-            SleighToken::Comment(s) => s,
-            SleighToken::Decimal(s) => s,
-            SleighToken::Hexadecimal(s) => s,
-            SleighToken::Binary(s) => s,
-            SleighToken::With(s) => s,
-            SleighToken::Macro(s) => s,
-            SleighToken::MacroExpansion(s) => s,
-            SleighToken::Keyword(kw) => kw.to_mnemonic(),
-            SleighToken::Control(c) => c.to_mnemonic(),
-            SleighToken::Operation(o) => o.to_mnemonic(),
-            SleighToken::Whitespace => " ",
-        }
+        ""
+        // match self {
+        //     SleighToken::String(s) => s,
+        //     SleighToken::Ident(s) => s,
+        //     SleighToken::Comment(s) => s,
+        //     SleighToken::Decimal(s) => s,
+        //     SleighToken::Hexadecimal(s) => s,
+        //     SleighToken::Binary(s) => s,
+        //     SleighToken::With(s) => s,
+        //     SleighToken::Macro(s) => s,
+        //     SleighToken::MacroExpansion(s) => s,
+        //     SleighToken::Keyword(kw) => kw.to_mnemonic(),
+        //     SleighToken::Control(c) => c.to_mnemonic(),
+        //     SleighToken::Operation(o) => o.to_mnemonic(),
+        //     SleighToken::Whitespace => " ",
+        // }
     }
 }
 
-impl Display for SleighToken<'_> {
+impl Display for SleighToken {
     fn fmt(
         &self,
         f: &mut Formatter<'_>,

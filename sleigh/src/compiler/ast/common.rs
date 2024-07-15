@@ -1,4 +1,6 @@
+use crate::compiler::StringId;
+
 #[derive(Debug)]
-pub struct SASTIdent<'src>(pub &'src str);
+pub struct SASTIdent(pub StringId);
 #[derive(Debug)]
-pub struct SASTString<'src>(pub &'src str);
+pub struct SASTString(pub StringId);

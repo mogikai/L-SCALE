@@ -19,6 +19,8 @@ pub enum SleighCompilerError {
     ParserError(String),
     #[error("The requested source was not found.")]
     MissingSource,
+    #[error("The requested file was not loaded.")]
+    FileNotLoaded,
 }
 
 impl Debug for SleighCompilerError {

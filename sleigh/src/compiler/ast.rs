@@ -8,8 +8,8 @@ pub mod pcode;
 pub mod pcode_macro;
 
 #[derive(Debug)]
-pub struct SleighAST<'src> {
-    pub(crate) items: Vec<SASTItem<'src>>,
+pub struct SleighAST {
+    pub(crate) items: Vec<SASTItem>,
 }
 
-pub type Spanned<'src, T> = (T, InputSpan<'src>);
+pub type Spanned<T> = (T, InputSpan);

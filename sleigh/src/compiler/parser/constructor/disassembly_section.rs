@@ -14,29 +14,19 @@ use crate::compiler::lexer::{
     InputSpan,
     ParserInput,
 };
+use crate::compiler::parser::SleighParserExtra;
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighToken,
 };
 
-pub(super) fn disassembly_section<'tokens, 'src: 'tokens>() -> impl Parser<
-    'tokens,
-    ParserInput<'tokens, 'src>,
-    Spanned<'src, SASTDisassemblySection<'src>>,
-    extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
-> {
+pub(super) fn disassembly_section<'tokens, 'src: 'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTDisassemblySection>, SleighParserExtra<'tokens>> {
     let open_bracket = just(SleighToken::Control(SleighControlCharacter::OpenBracket));
     let close_bracket = just(SleighToken::Control(SleighControlCharacter::CloseBracket));
     open_bracket
         .ignore_then(any().and_is(close_bracket.not()).repeated())
         .then_ignore(close_bracket)
         .or_not()
-        .map_with(|actions, extra| {
-            (
-                SASTDisassemblySection {
-                    actions: ("", extra.span()),
-                },
-                extra.span(),
-            )
-        })
+        .map_with(|actions, extra| (SASTDisassemblySection { actions: None }, extra.span()))
 }

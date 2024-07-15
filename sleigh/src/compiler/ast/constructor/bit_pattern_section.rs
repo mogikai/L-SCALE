@@ -2,26 +2,22 @@ use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::Spanned;
 
 #[derive(Debug)]
-pub struct SASTBitPatternSection<'src> {
-    pub constraint: Spanned<'src, SASTBitPatternConstraint<'src>>,
+pub struct SASTBitPatternSection {
+    pub constraint: Spanned<SASTBitPatternConstraint>,
 }
 
 #[derive(Debug)]
-pub enum SASTBitPatternConstraint<'src> {
+pub enum SASTBitPatternConstraint {
     /// Identifiers may appear on their own in a constraint, linking the local symbol to the global symbol.
     /// See SLEIGH specification on constructors section 7.4.1
-    Ident(Spanned<'src, SASTIdent<'src>>),
+    Ident(Spanned<SASTIdent>),
     /// Constraints can be combined in an arbitrary way using `&`, `|`, and `;`
-    BinaryOp(Box<Spanned<'src, Self>>, Spanned<'src, SASTBinaryOp>, Box<Spanned<'src, Self>>),
+    BinaryOp(Box<Spanned<Self>>, Spanned<SASTBinaryOp>, Box<Spanned<Self>>),
     /// The only unary operations currently supported are `justify left` and `justify right`
-    UnaryOp(Spanned<'src, SASTUnaryOp>, Box<Spanned<'src, Self>>),
+    UnaryOp(Spanned<SASTUnaryOp>, Box<Spanned<Self>>),
     /// An advanced constraint consists of a binary operator where the left hand side is an identifier, and the right
     /// hand side is either an identifier, or a bit pattern (i.e. a number).
-    AdvancedConstraint(
-        Spanned<'src, SASTIdent<'src>>,
-        Spanned<'src, SASTConstraintOp>,
-        Spanned<'src, SASTConstraintPattern<'src>>,
-    ),
+    AdvancedConstraint(Spanned<SASTIdent>, Spanned<SASTConstraintOp>, Spanned<SASTConstraintPattern>),
     /// Failed to parse the constraint
     Invalid,
 }
@@ -48,7 +44,7 @@ pub enum SASTConstraintOp {
 }
 
 #[derive(Debug)]
-pub enum SASTConstraintPattern<'src> {
-    Ident(SASTIdent<'src>),
+pub enum SASTConstraintPattern {
+    Ident(SASTIdent),
     BitPattern(u64),
 }

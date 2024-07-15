@@ -120,13 +120,13 @@ pub struct SleighPreprocessor<'src> {
 }
 
 // type PreprocessorInput<'tokens, 'src> =
-//     SpannedInput<SleighToken<'src>, InputSpan<'src>, &'tokens [(SleighToken<'src>, InputSpan<'src>)]>;
+//     SpannedInput<SleighToken, InputSpan<'src>, &'tokens [(SleighToken, InputSpan<'src>)]>;
 
 // fn token_parser<'tokens, 'src: 'tokens>() -> impl Parser<
 //     'tokens,
 //     PreprocessorInput<'tokens, 'src>,
-//     Vec<(SleighToken<'src>, InputSpan<'src>)>,
-//     extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
+//     Vec<(SleighToken, InputSpan<'src>)>,
+//     extra::Err<Rich<'tokens, SleighToken, InputSpan<'src>>>,
 // > {
 //     any().map(|(x, s)| (x, s)).repeated().collect::<Vec<_>>()
 // }
@@ -134,8 +134,8 @@ pub struct SleighPreprocessor<'src> {
 impl<'a> SleighPreprocessor<'a> {
     // pub fn preprocess_tokenized<'src>(
     //     mut self,
-    //     tokens: Vec<(SleighToken<'src>, InputSpan<'src>)>,
-    // ) -> Result<Vec<(SleighToken<'src>, InputSpan<'src>)>, PreprocessorError> {
+    //     tokens: Vec<(SleighToken, InputSpan<'src>)>,
+    // ) -> Result<Vec<(SleighToken, InputSpan<'src>)>, PreprocessorError> {
     //     todo!()
     // }
 

@@ -5,25 +5,25 @@ use crate::compiler::ast::pcode::subpiece::SASTPCodeSubpiece;
 use crate::compiler::ast::Spanned;
 
 #[derive(Debug)]
-pub enum SASTPCodeExpression<'src> {
-    Invocation(Spanned<'src, SASTPCodeInvocation<'src>>),
+pub enum SASTPCodeExpression {
+    Invocation(Spanned<SASTPCodeInvocation>),
     BinaryOperation {
-        lhs: Box<Spanned<'src, Self>>,
-        op: Spanned<'src, SASTPCodeBinaryOp>,
-        rhs: Box<Spanned<'src, Self>>,
+        lhs: Box<Spanned<Self>>,
+        op: Spanned<SASTPCodeBinaryOp>,
+        rhs: Box<Spanned<Self>>,
     },
     UnaryOperation {
-        op: Spanned<'src, SASTPCodeUnaryOp>,
-        operand: Box<Spanned<'src, Self>>,
+        op: Spanned<SASTPCodeUnaryOp>,
+        operand: Box<Spanned<Self>>,
     },
     Dereference {
-        space: Spanned<'src, SASTIdent<'src>>,
-        size: Spanned<'src, u16>,
+        space: Spanned<SASTIdent>,
+        size: Spanned<u16>,
     },
-    Subpiece(Spanned<'src, SASTPCodeSubpiece<'src>>),
-    Bitrange(Spanned<'src, SASTBitRange<'src>>),
-    Identifier(Spanned<'src, SASTIdent<'src>>),
-    LiteralNumber(Spanned<'src, u64>),
+    Subpiece(Spanned<SASTPCodeSubpiece>),
+    Bitrange(Spanned<SASTBitRange>),
+    Identifier(Spanned<SASTIdent>),
+    LiteralNumber(Spanned<u64>),
 }
 
 #[derive(Debug, Copy, Clone)]

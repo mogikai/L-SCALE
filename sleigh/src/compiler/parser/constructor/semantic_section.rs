@@ -6,7 +6,10 @@ use crate::compiler::lexer::{
     ParserInput,
 };
 use crate::compiler::parser::pcode::pcode;
-use crate::compiler::parser::sleigh_control;
+use crate::compiler::parser::{
+    sleigh_control,
+    SleighParserExtra,
+};
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighToken,
@@ -21,12 +24,8 @@ use chumsky::{
     Parser,
 };
 
-pub(super) fn semantic_section<'tokens, 'src: 'tokens>() -> impl Parser<
-    'tokens,
-    ParserInput<'tokens, 'src>,
-    Spanned<'src, SASTSemanticSection<'src>>,
-    extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
-> {
+pub(super) fn semantic_section<'tokens, 'src: 'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTSemanticSection>, SleighParserExtra<'tokens>> {
     pcode()
         .delimited_by(
             sleigh_control(SleighControlCharacter::OpenBrace),

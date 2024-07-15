@@ -1,6 +1,7 @@
 use crate::compiler::ast::Spanned;
+use crate::compiler::StringId;
 
 #[derive(Debug)]
-pub struct SASTDisassemblySection<'src> {
-    pub actions: Spanned<'src, &'src str>,
+pub struct SASTDisassemblySection {
+    pub actions: Option<Spanned<StringId>>,
 }

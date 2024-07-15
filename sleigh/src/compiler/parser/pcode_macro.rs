@@ -16,7 +16,11 @@ use crate::compiler::parser::pcode::pcode;
 use crate::compiler::parser::{
     parenthesized,
     sast_ident,
+    sast_ident_spanned,
+    sleigh_control,
+    sleigh_keyword,
     whitespace_padded,
+    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighControlCharacter,
@@ -24,29 +28,25 @@ use crate::compiler::tokens::{
     SleighToken,
 };
 
-pub(super) fn pcode_macro<'tokens, 'src: 'tokens>() -> impl Parser<
-    'tokens,
-    ParserInput<'tokens, 'src>,
-    Spanned<'src, SASTPCodeMacro<'src>>,
-    extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
-> {
-    let ident = whitespace_padded(sast_ident().map_with(|ident, extra| (ident, extra.span())));
+pub(super) fn pcode_macro<'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeMacro>, SleighParserExtra<'tokens>> {
+    let ident = whitespace_padded(sast_ident_spanned());
 
-    let argument = whitespace_padded(sast_ident().map_with(|ident, extra| (ident, extra.span())));
+    let argument = whitespace_padded(sast_ident_spanned());
 
     let arguments = parenthesized(
         argument
-            .separated_by(just(SleighToken::Control(SleighControlCharacter::Comma)))
+            .separated_by(sleigh_control(SleighControlCharacter::Comma))
             .collect::<Vec<_>>(),
     )
     .map_with(|val, extra| (val, extra.span()));
 
     let pcode = whitespace_padded(pcode().delimited_by(
-        just(SleighToken::Control(SleighControlCharacter::OpenBrace)),
-        just(SleighToken::Control(SleighControlCharacter::CloseBrace)),
+        sleigh_control(SleighControlCharacter::OpenBrace),
+        sleigh_control(SleighControlCharacter::CloseBrace),
     ));
 
-    just(SleighToken::Keyword(SleighKeyword::Macro))
+    sleigh_keyword(SleighKeyword::Macro)
         .ignore_then(ident)
         .then(arguments)
         .then(pcode)

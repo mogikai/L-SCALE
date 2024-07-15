@@ -13,6 +13,7 @@ use ariadne::{
 use chumsky::error::Rich;
 use chumsky::input::{
     Input,
+    MapExtra,
     SpannedInput,
 };
 use chumsky::prelude::{
@@ -45,39 +46,36 @@ use crate::compiler::tokens::{
     SleighOperation,
     SleighToken,
 };
-use crate::compiler::CompilerInput;
+use crate::compiler::{
+    CompilerContext,
+    CompilerInput,
+    CompilerInputCache,
+    InputId,
+    StringId,
+};
 
-#[derive(Clone)]
-pub struct InputSpan<'a> {
+#[derive(Clone, Debug)]
+pub struct InputSpan {
     range: Range<usize>,
-    file: &'a str,
+    input_id: InputId,
 }
 
-impl Debug for InputSpan<'_> {
-    fn fmt(
-        &self,
-        f: &mut Formatter<'_>,
-    ) -> std::fmt::Result {
-        f.debug_struct("InputSpan")
-            .field("range", &self.range)
-            .field("file", &self.file.rsplit("/").next().unwrap())
-            .finish()
-    }
-}
-
-impl<'a> Span for InputSpan<'a> {
-    type Context = &'a str;
+impl Span for InputSpan {
+    type Context = InputId;
     type Offset = usize;
 
     fn new(
         context: Self::Context,
         range: Range<Self::Offset>,
     ) -> Self {
-        Self { range, file: context }
+        Self {
+            range,
+            input_id: context,
+        }
     }
 
     fn context(&self) -> Self::Context {
-        self.file
+        self.input_id
     }
 
     fn start(&self) -> Self::Offset {
@@ -89,11 +87,11 @@ impl<'a> Span for InputSpan<'a> {
     }
 }
 
-impl<'a> ariadne::Span for InputSpan<'a> {
-    type SourceId = &'a str;
+impl ariadne::Span for InputSpan {
+    type SourceId = InputId;
 
     fn source(&self) -> &Self::SourceId {
-        &self.file
+        &self.input_id
     }
 
     fn start(&self) -> usize {
@@ -106,18 +104,12 @@ impl<'a> ariadne::Span for InputSpan<'a> {
 }
 
 #[derive(Debug)]
-pub struct SleighTokens<'src>(Vec<Spanned<'src, SleighToken<'src>>>);
-pub type ParserInput<'tokens, 'src> =
-    SpannedInput<SleighToken<'src>, InputSpan<'src>, &'tokens [Spanned<'src, SleighToken<'src>>]>;
-impl<'src> SleighTokens<'src> {
-    pub fn spanned<'tokens>(&'tokens self) -> ParserInput<'tokens, 'src> {
-        self.0.spanned(InputSpan::new(
-            self.0
-                .last()
-                .map(|(_, span)| span.file)
-                .unwrap_or("Undefined"),
-            self.0.len()..self.0.len(),
-        ))
+pub struct SleighTokens(Vec<Spanned<SleighToken>>);
+pub type ParserInput<'tokens> = SpannedInput<SleighToken, InputSpan, &'tokens [Spanned<SleighToken>]>;
+impl SleighTokens {
+    pub fn spanned<'tokens>(&'tokens self) -> ParserInput<'tokens> {
+        self.0
+            .spanned(InputSpan::new(self.0.last().map(|(_, span)| span.input_id).unwrap(), self.0.len()..self.0.len()))
     }
 }
 
@@ -127,20 +119,22 @@ pub struct SleighLexer {}
 impl SleighLexer {
     pub fn tokenize<'src>(
         &self,
-        source: &'src CompilerInput,
-    ) -> Result<SleighTokens<'src>, SleighCompilerError> {
+        input_cache: &CompilerInputCache,
+        context: &mut CompilerContext,
+        input_id: InputId,
+    ) -> Result<SleighTokens, SleighCompilerError> {
         // TODO: Return parsed tokens, and all encountered errors, instead of simply erroring out.
-        let source_path = source.path().to_str().unwrap();
-        let parsed = lexer(source_path).parse(source.data());
+        let source = input_cache.input(input_id)?;
+        let parsed = lexer(input_id).parse_with_state(source.data(), context);
         let mut diagnostic = vec![];
         parsed.errors().for_each(|err| {
             let error_span = err.span();
-            let report = Report::build(ReportKind::Error, source_path, error_span.start())
+            let report = Report::build(ReportKind::Error, input_id, error_span.start())
                 .with_message("Tokenization Error")
-                .with_label(Label::new((source_path, error_span.into_range())).with_message(err.reason().to_string()))
+                .with_label(Label::new((input_id, error_span.into_range())).with_message(err.reason().to_string()))
                 .finish();
             report
-                .write((source_path, Source::from(source.data())), &mut diagnostic)
+                .write((input_id, Source::from(source.data())), &mut diagnostic)
                 .unwrap();
         });
         if diagnostic.is_empty() {
@@ -151,7 +145,9 @@ impl SleighLexer {
     }
 }
 
-pub fn lexer(source_path: &str) -> impl Parser<&str, SleighTokens, extra::Err<Rich<char>>> {
+pub type SleighCompilerExtra<'a> = extra::Full<Rich<'a, char>, CompilerContext, ()>;
+
+pub fn lexer<'src>(input_id: InputId) -> impl Parser<'src, &'src str, SleighTokens, SleighCompilerExtra<'src>> {
     let string = sleigh_string();
 
     let comment = sleigh_comment();
@@ -176,7 +172,7 @@ pub fn lexer(source_path: &str) -> impl Parser<&str, SleighTokens, extra::Err<Ri
     // Strings have the highest precedence, since anything contained in them must not be parsed.
     // The same goes for comments
     token
-        .map_with(move |tok, extra| (tok, InputSpan::new(source_path, extra.span().into_range())))
+        .map_with(move |tok, extra| (tok, InputSpan::new(input_id, extra.span().into_range())))
         .recover_with(skip_then_retry_until(any().ignored(), end()))
         .repeated()
         .at_least(1)
@@ -185,15 +181,17 @@ pub fn lexer(source_path: &str) -> impl Parser<&str, SleighTokens, extra::Err<Ri
         .map(SleighTokens)
 }
 
-fn sleigh_ident<'src>() -> impl Parser<'src, &'src str, SleighToken<'src>, extra::Err<Rich<'src, char>>> + Copy {
-    sleigh_ident_raw().map(SleighToken::Ident)
+fn sleigh_ident<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighCompilerExtra<'src>> + Copy {
+    sleigh_ident_raw()
+        .map_with(intern_token)
+        .map(SleighToken::Ident)
 }
 
-fn sleigh_whitespace<'src>() -> impl Parser<'src, &'src str, SleighToken<'src>, extra::Err<Rich<'src, char>>> + Copy {
+fn sleigh_whitespace<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighCompilerExtra<'src>> + Copy {
     whitespace().at_least(1).to(SleighToken::Whitespace)
 }
 
-fn sleigh_ident_raw<'src>() -> impl Parser<'src, &'src str, &'src str, extra::Err<Rich<'src, char>>> + Copy {
+fn sleigh_ident_raw<'src>() -> impl Parser<'src, &'src str, &'src str, SleighCompilerExtra<'src>> + Copy {
     any()
         .filter(|c: &char| c.is_ascii_alphabetic() || *c == '.' || *c == '_')
         .then(
@@ -204,19 +202,27 @@ fn sleigh_ident_raw<'src>() -> impl Parser<'src, &'src str, &'src str, extra::Er
         .to_slice()
 }
 
-fn sleigh_number<'src>() -> impl Parser<'src, &'src str, SleighToken<'src>, extra::Err<Rich<'src, char>>> + Copy {
+fn sleigh_number<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighCompilerExtra<'src>> + Copy {
     let hex_int = just("0x")
         .ignore_then(just('0').repeated().then(int(16)).to_slice())
+        .map_with(intern_token)
         .map(SleighToken::Hexadecimal);
     let bin_int = just("0b")
         .ignore_then(just('0').repeated().then(int(2)).to_slice())
+        .map_with(intern_token)
         .map(SleighToken::Binary);
-    let dec_int = int(10).map(SleighToken::Decimal);
+    let dec_int = int(10).map_with(intern_token).map(SleighToken::Decimal);
     choice((hex_int, bin_int, dec_int))
+}
+fn intern_token<'a, O: AsRef<str>>(
+    stringy: O,
+    extra: &mut MapExtra<'a, '_, &'a str, SleighCompilerExtra<'a>>,
+) -> StringId {
+    extra.state().intern(&stringy)
 }
 
 /// Parse a sleigh comment. The comment starts with `#` and ends with a newline character.
-fn sleigh_comment<'src>() -> impl Parser<'src, &'src str, SleighToken<'src>, extra::Err<Rich<'src, char>>> + Copy {
+fn sleigh_comment<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighCompilerExtra<'src>> + Copy {
     just('#')
         .ignore_then(
             any()
@@ -227,31 +233,38 @@ fn sleigh_comment<'src>() -> impl Parser<'src, &'src str, SleighToken<'src>, ext
                 .to_slice(),
         )
         .then_ignore(newline().or(end()))
+        .map_with(intern_token)
         .map(SleighToken::Comment)
 }
 
 /// Parse a string delimited by the character `"`. Any other character may be contained in the string.
-fn sleigh_string<'src>() -> impl Parser<'src, &'src str, SleighToken<'src>, extra::Err<Rich<'src, char>>> + Copy {
+fn sleigh_string<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighCompilerExtra<'src>> + Copy {
     any()
         .and_is(just('"').not())
         .repeated()
         .to_slice()
         .delimited_by(just('"'), just('"'))
+        .map_with(intern_token)
         .map(SleighToken::String)
 }
 
 /// Parse a macro. A macro is delimited by `@` and a newline character.
 /// Also parses macro expansions of the form `$(IDENT)`
-fn sleigh_macro<'src>() -> impl Parser<'src, &'src str, SleighToken<'src>, extra::Err<Rich<'src, char>>> + Copy {
+fn sleigh_macro<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighCompilerExtra<'src>> + Copy {
     just('@')
         .ignore_then(any().and_is(newline().not()).repeated().to_slice())
+        .map_with(intern_token)
         .map(SleighToken::Macro)
         .or(just("$(")
-            .ignore_then(sleigh_ident_raw().map(SleighToken::MacroExpansion))
+            .ignore_then(
+                sleigh_ident_raw()
+                    .map_with(intern_token)
+                    .map(SleighToken::MacroExpansion),
+            )
             .then_ignore(just(')')))
 }
 
-fn sleigh_operations<'src>() -> impl Parser<'src, &'src str, SleighToken<'src>, extra::Err<Rich<'src, char>>> + Copy {
+fn sleigh_operations<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighCompilerExtra<'src>> + Copy {
     // The single character tokens need to be parsed after the multi character tokens.
     just("!=")
         .map(|_| SleighToken::Operation(SleighOperation::NotEquals))
@@ -288,8 +301,7 @@ fn sleigh_operations<'src>() -> impl Parser<'src, &'src str, SleighToken<'src>, 
         }))
 }
 
-fn sleigh_control_character<'src>(
-) -> impl Parser<'src, &'src str, SleighToken<'src>, extra::Err<Rich<'src, char>>> + Copy {
+fn sleigh_control_character<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighCompilerExtra<'src>> + Copy {
     one_of(";:()[]{},")
         .map(|c| match c {
             ';' => SleighToken::Control(SleighControlCharacter::SemiColon),
@@ -306,7 +318,7 @@ fn sleigh_control_character<'src>(
         .or(just("...").map(|_| SleighToken::Control(SleighControlCharacter::Ellipsis)))
 }
 
-fn sleigh_keyword<'src>() -> impl Parser<'src, &'src str, SleighToken<'src>, extra::Err<Rich<'src, char>>> + Copy {
+fn sleigh_keyword<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighCompilerExtra<'src>> + Copy {
     choice([
         just("attach").to(SleighToken::Keyword(SleighKeyword::Attach)),
         just("variables").to(SleighToken::Keyword(SleighKeyword::Variables)),

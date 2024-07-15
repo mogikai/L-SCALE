@@ -19,6 +19,7 @@ use crate::compiler::parser::{
     sleigh_number,
     sleigh_operation,
     whitespace_padded,
+    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighControlCharacter,
@@ -26,21 +27,13 @@ use crate::compiler::tokens::{
     SleighToken,
 };
 
-pub(super) fn pcode_ident<'tokens, 'src: 'tokens>() -> impl Parser<
-    'tokens,
-    ParserInput<'tokens, 'src>,
-    Spanned<'src, SASTIdent<'src>>,
-    extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
-> + Copy {
+pub(super) fn pcode_ident<'tokens, 'src: 'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTIdent>, SleighParserExtra<'tokens>> + Copy {
     whitespace_padded(sast_ident_spanned())
 }
 
-pub(super) fn pcode_u16<'tokens, 'src: 'tokens>() -> impl Parser<
-    'tokens,
-    ParserInput<'tokens, 'src>,
-    Spanned<'src, u16>,
-    extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
-> + Copy {
+pub(super) fn pcode_u16<'tokens, 'src: 'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<u16>, SleighParserExtra<'tokens>> + Copy {
     whitespace_padded(sleigh_number().try_map_with(|num, extra| {
         u16::try_from(num)
             .map(|num| (num, extra.span()))
@@ -48,12 +41,8 @@ pub(super) fn pcode_u16<'tokens, 'src: 'tokens>() -> impl Parser<
     }))
 }
 
-pub(super) fn pcode_subpiece<'tokens, 'src: 'tokens>() -> impl Parser<
-    'tokens,
-    ParserInput<'tokens, 'src>,
-    Spanned<'src, SASTPCodeSubpiece<'src>>,
-    extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
-> + Copy {
+pub(super) fn pcode_subpiece<'tokens, 'src: 'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeSubpiece>, SleighParserExtra<'tokens>> + Copy {
     let ident = pcode_ident();
 
     let size = pcode_u16();
@@ -66,12 +55,8 @@ pub(super) fn pcode_subpiece<'tokens, 'src: 'tokens>() -> impl Parser<
 }
 
 /// Parse a pcode label identified by `<some_label>`.
-pub(super) fn pcode_label<'tokens, 'src: 'tokens>() -> impl Parser<
-    'tokens,
-    ParserInput<'tokens, 'src>,
-    Spanned<'src, SASTIdent<'src>>,
-    extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
-> + Copy {
+pub(super) fn pcode_label<'tokens, 'src: 'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTIdent>, SleighParserExtra<'tokens>> + Copy {
     sleigh_operation(SleighOperation::LessThan)
         .ignore_then(sast_ident())
         .then_ignore(sleigh_operation(SleighOperation::GreaterThan))

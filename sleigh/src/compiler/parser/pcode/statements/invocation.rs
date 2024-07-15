@@ -18,6 +18,7 @@ use crate::compiler::parser::{
     sast_ident_spanned,
     sleigh_control,
     whitespace_padded,
+    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighControlCharacter,
@@ -26,12 +27,8 @@ use crate::compiler::tokens::{
 
 /// A standalone invocation with no output.
 /// e.g.: `ident(v0, v1);`
-pub fn pcode_standalone_invocation_statement<'tokens, 'src: 'tokens>() -> impl Parser<
-    'tokens,
-    ParserInput<'tokens, 'src>,
-    Spanned<'src, SASTPCodeStatement<'src>>,
-    extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
-> + Clone {
+pub fn pcode_standalone_invocation_statement<'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeStatement>, SleighParserExtra<'tokens>> + Clone {
     let argument_list = pcode_expression()
         .separated_by(sleigh_control(SleighControlCharacter::Comma))
         .collect::<Vec<_>>();

@@ -28,6 +28,7 @@ use crate::compiler::parser::{
     sast_ident,
     sleigh_number,
     sleigh_whitespace,
+    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighControlCharacter,
@@ -37,12 +38,8 @@ use crate::compiler::tokens::{
 
 /// Parses the bit pattern section of a SLEIGH constructor.
 /// See section 7.4 of the SLEIGH specification
-pub(super) fn bit_pattern_section<'tokens, 'src: 'tokens>() -> impl Parser<
-    'tokens,
-    ParserInput<'tokens, 'src>,
-    Spanned<'src, SASTBitPatternSection<'src>>,
-    extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
-> {
+pub(super) fn bit_pattern_section<'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTBitPatternSection>, SleighParserExtra<'tokens>> {
     let mut constraint = Recursive::declare();
 
     let op = select! {

@@ -1,4 +1,9 @@
 use std::collections::HashMap;
+use std::fmt::{
+    Debug,
+    Display,
+    Formatter,
+};
 use std::fs;
 use std::path::{
     Path,
@@ -6,16 +11,23 @@ use std::path::{
 };
 use std::process::exit;
 
-use slotmap::{
-    new_key_type,
-    SlotMap,
-};
-
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::SleighLexer;
 use crate::compiler::parser::SleighParser;
 use crate::preprocessor::SleighPreprocessorFactory;
 use crate::spec::ProcessorSpecification;
+use slotmap::{
+    new_key_type,
+    SlotMap,
+};
+use string_interner::backend::{
+    Backend,
+    StringBackend,
+};
+use string_interner::{
+    StringInterner,
+    Symbol,
+};
 
 pub mod ast;
 pub mod error;
@@ -23,11 +35,66 @@ pub mod lexer;
 mod parser;
 pub mod tokens;
 
-new_key_type! { struct FileStorageId; }
+new_key_type! { pub struct InputId; }
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct StringId(usize);
+
+impl Display for InputId {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        Debug::fmt(self, f)
+    }
+}
 
 #[derive(Debug, Default)]
-pub struct FileCache {
-    files: HashMap<PathBuf, String>,
+pub struct CompilerContext {
+    interner: StringInterner<string_interner::backend::StringBackend>,
+}
+
+impl CompilerContext {
+    /// Intern the provided value that can be converted to a string.
+    /// If the value already exists, a key to that value is returned.
+    /// Otherwise, a new entry is created and the key to that is returned.
+    pub fn intern<T: AsRef<str>>(
+        &mut self,
+        string: &T,
+    ) -> StringId {
+        StringId(self.interner.get_or_intern(string).to_usize())
+    }
+
+    pub fn string(
+        &self,
+        string_id: StringId,
+    ) -> Option<&str> {
+        self.interner
+            .resolve(<<StringBackend as Backend>::Symbol as Symbol>::try_from_usize(string_id.0)?)
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct CompilerInputCache {
+    inputs: SlotMap<InputId, CompilerInput>,
+}
+
+impl CompilerInputCache {
+    pub fn load_input_from_file(
+        &mut self,
+        path: &Path,
+    ) -> Result<InputId, SleighCompilerError> {
+        Ok(self.inputs.insert(CompilerInput::try_from(path)?))
+    }
+
+    pub fn input(
+        &self,
+        input_id: InputId,
+    ) -> Result<&CompilerInput, SleighCompilerError> {
+        self.inputs
+            .get(input_id)
+            .ok_or(SleighCompilerError::FileNotLoaded)
+    }
 }
 
 #[derive(Debug)]
@@ -35,7 +102,6 @@ pub struct SleighCompiler {
     preprocessor_factory: SleighPreprocessorFactory,
     lexer: SleighLexer,
     parser: SleighParser,
-    file_cache: FileCache,
 }
 
 #[derive(Debug)]
@@ -76,15 +142,18 @@ impl SleighCompiler {
         //     .build()
         //     .preprocess(fs::read_to_string(spec_path)?.as_ref())?;
         // let tokens = self.lexer.tokenize(preprocessed_sleigh.as_str())?;
-        let input = CompilerInput::try_from(spec_path)?;
-        let tokens = self.lexer.tokenize(&input)?;
-        let ast = self.parser.parse(&input, tokens);
+        let mut context = CompilerContext::default();
+        let mut input_cache = CompilerInputCache::default();
+        let input_id = input_cache.load_input_from_file(spec_path)?;
+        let tokens = self.lexer.tokenize(&input_cache, &mut context, input_id)?;
+        let ast = self
+            .parser
+            .parse(&input_cache, &mut context, input_id, tokens);
         // self.preprocessor_factory
         //     .build()
         //     .preprocess_tokenized(tokens)?;
         println!("{ast:?}");
         exit(0);
-        todo!()
     }
 }
 
@@ -94,7 +163,6 @@ impl SleighCompiler {
             preprocessor_factory,
             lexer: Default::default(),
             parser: Default::default(),
-            file_cache: Default::default(),
         }
     }
 }

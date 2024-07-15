@@ -3,7 +3,7 @@ use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::Spanned;
 
 #[derive(Debug)]
-pub struct SASTPCodeInvocation<'src> {
-    pub name: Spanned<'src, SASTIdent<'src>>,
-    pub arguments: Vec<Spanned<'src, SASTPCodeExpression<'src>>>,
+pub struct SASTPCodeInvocation {
+    pub name: Spanned<SASTIdent>,
+    pub arguments: Vec<Spanned<SASTPCodeExpression>>,
 }

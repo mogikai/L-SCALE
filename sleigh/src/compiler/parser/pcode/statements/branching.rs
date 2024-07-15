@@ -12,6 +12,7 @@ use crate::compiler::parser::{
     sleigh_control,
     sleigh_keyword,
     whitespace_padded,
+    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighControlCharacter,
@@ -24,12 +25,8 @@ use chumsky::{
     Parser,
 };
 
-pub fn pcode_conditional_branch_statement<'tokens, 'src: 'tokens>() -> impl Parser<
-    'tokens,
-    ParserInput<'tokens, 'src>,
-    Spanned<'src, SASTPCodeStatement<'src>>,
-    extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
-> + Clone {
+pub fn pcode_conditional_branch_statement<'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeStatement>, SleighParserExtra<'tokens>> + Clone {
     whitespace_padded(sleigh_keyword(SleighKeyword::If))
         .ignore_then(whitespace_padded(parenthesized(pcode_expression())))
         .then_ignore(sleigh_keyword(SleighKeyword::Goto))

@@ -14,18 +14,15 @@ use crate::compiler::lexer::{
 use crate::compiler::parser::{
     sleigh_operation,
     whitespace_padded,
+    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighOperation,
     SleighToken,
 };
 
-pub(super) fn binary_operator<'tokens, 'src: 'tokens>() -> impl Parser<
-    'tokens,
-    ParserInput<'tokens, 'src>,
-    Spanned<'src, SASTPCodeBinaryOp>,
-    extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
-> + Copy {
+pub(super) fn binary_operator<'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeBinaryOp>, SleighParserExtra<'tokens>> + Copy {
     whitespace_padded(
         choice((
             sleigh_operation(SleighOperation::Equals)

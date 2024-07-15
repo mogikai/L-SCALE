@@ -25,18 +25,15 @@ use crate::compiler::parser::{
     sleigh_control,
     sleigh_number,
     whitespace_padded,
+    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighToken,
 };
 
-pub(super) fn pcode_expression<'tokens, 'src: 'tokens>() -> impl Parser<
-    'tokens,
-    ParserInput<'tokens, 'src>,
-    Spanned<'src, SASTPCodeExpression<'src>>,
-    extra::Err<Rich<'tokens, SleighToken<'src>, InputSpan<'src>>>,
-> + Clone {
+pub(super) fn pcode_expression<'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeExpression>, SleighParserExtra<'tokens>> + Clone {
     let ident_expression =
         pcode_ident().map_with(|ident, extra| (SASTPCodeExpression::Identifier(ident), extra.span()));
 

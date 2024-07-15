@@ -1,8 +1,9 @@
 use crate::compiler::ast::Spanned;
+use crate::compiler::StringId;
 
 #[derive(Debug)]
-pub struct SASTDisplaySection<'src> {
-    pub mnemonic: Spanned<'src, String>,
-    pub identifiers: Vec<Spanned<'src, &'src str>>,
-    pub display_str: Spanned<'src, String>,
+pub struct SASTDisplaySection {
+    pub mnemonic: Spanned<String>,
+    pub identifiers: Vec<Spanned<StringId>>,
+    pub display_str: Spanned<String>,
 }
