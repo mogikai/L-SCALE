@@ -145,6 +145,9 @@ pub enum SleighKeyword {
     Local,
     If,
     Goto,
+    Big,
+    Little,
+    Space,
 }
 
 impl SleighKeyword {
@@ -179,6 +182,9 @@ impl SleighKeyword {
             SleighKeyword::Local => "local",
             SleighKeyword::If => "if",
             SleighKeyword::Goto => "goto",
+            SleighKeyword::Big => "big",
+            SleighKeyword::Little => "little",
+            SleighKeyword::Space => "space",
         }
     }
 }

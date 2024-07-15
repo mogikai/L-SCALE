@@ -1,0 +1,54 @@
+use super::{common::SASTIdent, Spanned};
+
+#[derive(Debug)]
+pub enum SASTEndianness {
+    Big,
+    Little,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum SASTAddressSpaceType {
+    RamSpace,
+    RomSpace,
+    RegisterSpace, // registers are defined as offsets into this address space
+}
+
+#[derive(Debug)]
+pub struct SASTAddressSpaceAttributes {
+    pub space_type: Option<Spanned<SASTAddressSpaceType>>,
+    pub size: Spanned<usize>, // number of bytes needed to address any location (mandatory)
+    pub wordsize: Option<Spanned<usize>>, // number of bytes per address location
+    pub default: Option<Spanned<bool>>, // if true, this address space will be used by the main address bus
+}
+
+#[derive(Debug)]
+pub struct SASTAddressSpace {
+    pub name: Spanned<SASTIdent>,
+    pub attributes: Spanned<SASTAddressSpaceAttributes>,
+}
+
+#[derive(Debug)]
+pub struct SASTRegister {
+    pub spacename: Spanned<SASTIdent>,
+    pub offset: Spanned<usize>, // offset in register address space
+    pub size: Spanned<usize>,
+    pub regnames: Vec<Spanned<SASTIdent>>,
+}
+
+#[derive(Debug)]
+pub struct SASTBitrangeRegister {
+    pub name: Spanned<SASTIdent>,
+    pub source_register: Spanned<SASTIdent>,
+    pub offset: usize, // offset into source register
+    pub size: usize, // number of bits
+}
+
+#[derive(Debug)]
+pub enum SASTDefine {
+    Endianness(Spanned<SASTEndianness>),
+    Alignment(Spanned<usize>), // the disassembler checks against this
+    AddressSpace(Spanned<SASTAddressSpace>),
+    Register(Spanned<SASTRegister>),
+    BitrangeRegister(Spanned<SASTBitrangeRegister>),
+    Foo(Spanned<u32>),
+}

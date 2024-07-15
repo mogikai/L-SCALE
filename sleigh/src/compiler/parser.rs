@@ -63,8 +63,11 @@ use crate::compiler::tokens::{
     SleighToken,
 };
 
+use self::define::define;
+
 mod constructor;
 mod pcode;
+mod define;
 mod pcode_macro;
 
 #[derive(Debug, Default)]
@@ -118,8 +121,10 @@ where
 fn parser<'tokens, 'src: 'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, SleighAST, SleighParserExtra<'tokens>> {
     let constructor = constructor().map(SASTItem::Constructor);
+    let define = define().map(SASTItem::Define);
     let pcode_macro = pcode_macro().map(SASTItem::Macro);
     constructor
+        .or(define)
         .or(pcode_macro)
         .padded_by(sleigh_whitespace())
         .recover_with(skip_then_retry_until(any().ignored(), end()))

@@ -349,5 +349,8 @@ fn sleigh_keyword<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighCom
         just("local").to(SleighToken::Keyword(SleighKeyword::Local)),
         just("if").to(SleighToken::Keyword(SleighKeyword::If)),
         just("goto").to(SleighToken::Keyword(SleighKeyword::Goto)),
+        just("big").to(SleighToken::Keyword(SleighKeyword::Big)),
+        just("little").to(SleighToken::Keyword(SleighKeyword::Little)),
+        just("space").to(SleighToken::Keyword(SleighKeyword::Space)),
     ])
 }

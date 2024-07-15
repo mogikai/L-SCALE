@@ -152,7 +152,7 @@ impl SleighCompiler {
         // self.preprocessor_factory
         //     .build()
         //     .preprocess_tokenized(tokens)?;
-        println!("{ast:?}");
+        println!("{ast:#?}");
         exit(0);
     }
 }
