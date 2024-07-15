@@ -49,6 +49,6 @@ pub enum SASTDefine {
     Alignment(Spanned<usize>), // the disassembler checks against this
     AddressSpace(Spanned<SASTAddressSpace>),
     Register(Spanned<SASTRegister>),
-    BitrangeRegister(Spanned<SASTBitrangeRegister>),
+    BitrangeRegister(Vec<Spanned<SASTBitrangeRegister>>),
     Foo(Spanned<u32>),
 }
