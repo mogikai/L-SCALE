@@ -1,3 +1,14 @@
+use chumsky::error::Rich;
+use chumsky::primitive::{
+    choice,
+    just,
+};
+use chumsky::{
+    select,
+    IterParser,
+    Parser,
+};
+
 use crate::compiler::ast::define::{
     SASTAddressSpace,
     SASTAddressSpaceAttributes,
@@ -18,16 +29,6 @@ use crate::compiler::tokens::{
     SleighKeyword,
     SleighOperation,
     SleighToken,
-};
-use chumsky::error::Rich;
-use chumsky::primitive::{
-    choice,
-    just,
-};
-use chumsky::{
-    select,
-    IterParser,
-    Parser,
 };
 
 // for parsing only
