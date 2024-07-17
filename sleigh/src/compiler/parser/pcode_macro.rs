@@ -14,12 +14,12 @@ use crate::compiler::lexer::{
 };
 use crate::compiler::parser::pcode::pcode;
 use crate::compiler::parser::{
+    inline_whitespace_padded,
     parenthesized,
     sast_ident,
     sast_ident_spanned,
     sleigh_control,
     sleigh_keyword,
-    whitespace_padded,
     SleighParserExtra,
 };
 use crate::compiler::tokens::{
@@ -30,9 +30,9 @@ use crate::compiler::tokens::{
 
 pub(super) fn pcode_macro<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeMacro>, SleighParserExtra<'tokens>> {
-    let ident = whitespace_padded(sast_ident_spanned());
+    let ident = inline_whitespace_padded(sast_ident_spanned());
 
-    let argument = whitespace_padded(sast_ident_spanned());
+    let argument = inline_whitespace_padded(sast_ident_spanned());
 
     let arguments = parenthesized(
         argument
@@ -41,7 +41,7 @@ pub(super) fn pcode_macro<'tokens>(
     )
     .map_with(|val, extra| (val, extra.span()));
 
-    let pcode = whitespace_padded(pcode().delimited_by(
+    let pcode = inline_whitespace_padded(pcode().delimited_by(
         sleigh_control(SleighControlCharacter::OpenBrace),
         sleigh_control(SleighControlCharacter::CloseBrace),
     ));

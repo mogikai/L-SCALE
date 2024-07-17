@@ -12,6 +12,7 @@ use crate::compiler::lexer::{
     ParserInput,
 };
 use crate::compiler::parser::{
+    inline_whitespace_padded,
     parenthesized,
     sast_ident,
     sast_ident_spanned,

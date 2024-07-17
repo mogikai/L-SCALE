@@ -1,65 +1,484 @@
+use std::{
+    fs,
+    mem,
+};
 use std::collections::HashMap;
 use std::env::current_dir;
-use std::fs;
+use std::fmt::{
+    Debug,
+    Formatter,
+};
+use std::iter::empty;
 use std::path::{
     Component,
     PathBuf,
 };
-use std::process::exit;
 
-use crate::compiler::tokens::{
-    SleighKeyword,
-    SleighToken,
-};
-use crate::preprocessor::error::PreprocessorError;
 use ariadne::{
     Label,
     Report,
     ReportKind,
-    Source,
-};
-use chumsky::container::{
-    OrderedSeq,
-    Seq,
-};
-use chumsky::error::{
-    Rich,
-    Simple,
-};
-use chumsky::input::{
-    Input,
-    SpannedInput,
-};
-use chumsky::prelude::{
-    any,
-    choice,
-    end,
-    just,
-    none_of,
-    recursive,
-    todo,
-};
-use chumsky::recursive::Recursive;
-use chumsky::text::{
-    ident,
-    inline_whitespace,
 };
 use chumsky::{
     extra,
     IterParser,
     Parser,
+    select,
 };
+use chumsky::error::Rich;
+use chumsky::input::MapExtra;
+use chumsky::prelude::{
+    any,
+    end,
+};
+use chumsky::primitive::just;
+use chumsky::recursive::Recursive;
+use chumsky::span::Span;
 use tracing::trace;
+
+use crate::compiler::{
+    CompilerContext,
+    CompilerInputCache,
+    InputId,
+    StringId,
+};
+use crate::compiler::ast::Spanned;
+use crate::compiler::lexer::{
+    InputSpan,
+    ParserInput,
+    SleighLexer,
+    SleighTokens,
+};
+use crate::compiler::parser::{
+    inline_whitespace_padded,
+    maybe_parenthesized,
+    parenthesized,
+};
+use crate::compiler::tokens::{
+    SleighKeyword,
+    SleighOperation,
+    SleighToken,
+};
+use crate::preprocessor::error::PreprocessorError;
 
 pub mod error;
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct PreprocessorIdentifier(String);
+pub struct SleighPreprocessor {
+    /// Associate identifiers with strings. An identifier is simply a string with a specific identifier format.
+    definitions: HashMap<StringId, Spanned<StringId>>,
+    /// The output token stream that is constructed from multiple input token streams
+    token_stream: SleighTokens,
+    blocks: Box<dyn Iterator<Item = Spanned<PreprocessorBlock>>>,
+    /// The working directory of the preprocessor. Only files in this directory or its descendants may be included.
+    working_dir: PathBuf,
+}
 
-impl From<PreprocessorIdentifier> for String {
-    fn from(value: PreprocessorIdentifier) -> Self {
-        value.0
+impl Debug for SleighPreprocessor {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        f.debug_struct("SleighPreprocessor2")
+            .field("definitions", &self.definitions)
+            .field("token_stream", &self.token_stream)
+            .field("working_dir", &self.working_dir)
+            .finish()
     }
+}
+
+impl SleighPreprocessor {
+    pub fn new(working_dir: PathBuf) -> Self {
+        Self {
+            definitions: Default::default(),
+            token_stream: Default::default(),
+            blocks: Box::new(empty()),
+            working_dir,
+        }
+    }
+
+    pub fn parse_input(
+        &mut self,
+        input_cache: &mut CompilerInputCache,
+        input_id: InputId,
+    ) -> Result<(), PreprocessorError> {
+        let new_iter = self.parse_macros(input_cache, input_id)?.into_iter();
+        let remaining_blocks = mem::replace(&mut self.blocks, Box::new(empty()));
+        self.blocks = Box::new(new_iter.chain(remaining_blocks));
+        Ok(())
+    }
+
+    fn prepend_blocks(
+        &mut self,
+        blocks: Vec<Spanned<PreprocessorBlock>>,
+    ) {
+        let blocks = blocks.into_iter();
+        let remaining_blocks = mem::replace(&mut self.blocks, Box::new(empty()));
+        self.blocks = Box::new(blocks.chain(remaining_blocks));
+    }
+
+    pub fn preprocess(
+        &mut self,
+        mut input_cache: &mut CompilerInputCache,
+        context: &mut CompilerContext,
+    ) -> Result<SleighTokens, PreprocessorError> {
+        loop {
+            let Some((block, _)) = self.blocks.next() else {
+                break;
+            };
+            match block {
+                PreprocessorBlock::Define { name, value } => {
+                    trace!("Defining {:?} as {:?}", name.0, value.0);
+                    self.definitions.insert(name.0, value);
+                }
+                PreprocessorBlock::Undefine((name, _)) => {
+                    trace!("Removed definition for {name:?}");
+                    self.definitions.remove(&name);
+                }
+                PreprocessorBlock::Include((file, _)) => {
+                    let file = PathBuf::from(
+                        context
+                            .string(file)
+                            .expect("String has to have been interned"),
+                    );
+                    trace!("Including file {file:?}");
+                    if file.is_absolute() {
+                        // TODO: Error reporting
+                        Err(PreprocessorError::AbsolutePath)?;
+                    }
+                    let mut resolved_file = self.working_dir.clone();
+                    for part in file.components() {
+                        if let Component::Normal(path) = part {
+                            resolved_file.push(path);
+                        }
+                    }
+                    Err(PreprocessorError::LoadingRequired(resolved_file))?
+                }
+                PreprocessorBlock::IfDef {
+                    ident,
+                    if_defined,
+                    if_undefined,
+                } => {
+                    trace!("Processing ifdef {ident:?}");
+                    if self.definitions.contains_key(&ident.0) {
+                        trace!("{:?} is defined", ident.0);
+                        match if_defined {
+                            None => {}
+                            Some(blocks) => self.prepend_blocks(blocks.0),
+                        }
+                    } else {
+                        trace!("{ident:?} is undefined");
+                        match if_undefined {
+                            None => {}
+                            Some(blocks) => self.prepend_blocks(blocks.0),
+                        };
+                    }
+                }
+                PreprocessorBlock::If {
+                    cond,
+                    if_true,
+                    if_false,
+                } => {
+                    trace!("Evaluating condition {cond:?}");
+                    if self.evaluate_expression(context, cond)? {
+                        trace!("Evaluated to true");
+                        self.prepend_blocks(if_true.0);
+                    } else {
+                        trace!("Evaluated to false");
+                        match if_false {
+                            None => {}
+                            Some(blocks) => self.prepend_blocks(blocks.0),
+                        }
+                    }
+                }
+                PreprocessorBlock::PCode((tokens, _)) => {
+                    self.token_stream.extend(tokens);
+                }
+                PreprocessorBlock::Expansion((ident, _)) => {
+                    let resolved_ident = context
+                        .string(ident)
+                        .expect("The string must have been interned.")
+                        .to_string();
+                    let (value, span) = self
+                        .definitions
+                        .get(&ident)
+                        .ok_or(PreprocessorError::UndefinedIdentifier(resolved_ident))?;
+                    let resolved_value = context
+                        .string(*value)
+                        .expect("The string must have been interned.")
+                        .to_string();
+                    // The offset is start + 1, since the first character of a string is ", which is ignored.
+                    let offset = span.start() + 1;
+                    let result = SleighLexer::tokenize_string(resolved_value.as_str(), context, span.context(), offset);
+                    let out = result.output().unwrap().as_slice();
+                    let span = out[0].1.clone();
+                    let tokens = result
+                        .into_result()
+                        .map_err(|e| PreprocessorError::ParseError("Failed macro expansion".to_string()))?;
+                    self.token_stream.extend(tokens);
+                }
+            }
+        }
+        Ok(mem::take(&mut self.token_stream))
+    }
+
+    fn evaluate_expression(
+        &self,
+        context: &CompilerContext,
+        expression: Spanned<Expression>,
+    ) -> Result<bool, PreprocessorError> {
+        Ok(match expression.0 {
+            Expression::BinaryOp(a, op, b) => match op.0 {
+                BinaryOp::And => self.evaluate_expression(context, *a)? && self.evaluate_expression(context, *b)?,
+                BinaryOp::Or => self.evaluate_expression(context, *a)? || self.evaluate_expression(context, *b)?,
+                BinaryOp::Xor => self.evaluate_expression(context, *a)? ^ self.evaluate_expression(context, *b)?,
+            },
+            Expression::Defined(ident) => self.definitions.get(&ident).map(|_| true).unwrap_or(false),
+            Expression::EqualityCheck(check) => match check {
+                EqualityCheck::Eq(a, b) => {
+                    self.resolve_comparison_argument(context, &a)? == self.resolve_comparison_argument(context, &b)?
+                }
+                EqualityCheck::Ne(a, b) => {
+                    self.resolve_comparison_argument(context, &a)? != self.resolve_comparison_argument(context, &b)?
+                }
+            },
+        })
+    }
+
+    fn resolve_comparison_argument(
+        &self,
+        context: &CompilerContext,
+        arg: &Spanned<ComparisonArgument>,
+    ) -> Result<StringId, PreprocessorError> {
+        Ok(match arg.0 {
+            ComparisonArgument::Identifier(ident) => {
+                self.definitions
+                    .get(&ident)
+                    .ok_or(PreprocessorError::UndefinedIdentifier(context.string(ident).unwrap().to_string()))?
+                    .0
+            }
+            ComparisonArgument::Literal(literal) => literal,
+        })
+    }
+
+    fn parse_macros(
+        &self,
+        mut input_cache: &mut CompilerInputCache,
+        input_id: InputId,
+    ) -> Result<Vec<Spanned<PreprocessorBlock>>, PreprocessorError> {
+        let tokens = input_cache.input_tokens(input_id)?;
+        let parsed = parser().parse(tokens.spanned());
+        let mut diagnostic = vec![];
+        if parsed.has_errors() {
+            // TODO: Can we be smarter here and not copy the errors? Currently this is necessary to be able to borrow
+            //       the input cache again.
+            let errors = parsed
+                .into_errors()
+                .into_iter()
+                .map(|e| e.into_owned())
+                .collect::<Vec<_>>();
+            for err in errors {
+                let error_span = err.span();
+                let report = Report::build(ReportKind::Error, error_span.context(), error_span.start())
+                    .with_message("Preprocessor Error")
+                    .with_label(Label::new(error_span.clone()).with_message(err.reason().to_string()))
+                    .finish();
+                report.write(&mut input_cache, &mut diagnostic).unwrap();
+            }
+            Err(PreprocessorError::ParseError(String::from_utf8(diagnostic).unwrap()))
+        } else {
+            Ok(parsed.into_output().unwrap())
+        }
+    }
+}
+
+type SleighPreprocessorExtra<'tokens> = extra::Full<Rich<'tokens, SleighToken, InputSpan>, CompilerContext, ()>;
+
+fn parser<'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Vec<Spanned<PreprocessorBlock>>, SleighPreprocessorExtra<'tokens>> {
+    let mut blocks = Recursive::declare();
+
+    let ident = ident();
+    let string = select! { SleighToken::String(string) => string }.labelled("string");
+    let macro_token = select! { SleighToken::MacroBegin => (), SleighToken::MacroExpansion(_) => ()};
+    let pcode = any()
+        .and_is(macro_token.not())
+        .map_with(|token, extra| (token, extra.span()))
+        .repeated()
+        .at_least(1)
+        .collect::<Vec<_>>()
+        .map_with(|tokens, extra| PreprocessorBlock::PCode((SleighTokens::from(tokens), extra.span())));
+
+    let expansion =
+        select! {SleighToken::MacroExpansion(ident) = extra => PreprocessorBlock::Expansion((ident, extra.span())) };
+
+    let define = pp_macro(
+        SleighKeyword::Define,
+        inline_whitespace_padded(ident.map_with(spanned))
+            .then(string.map_with(spanned))
+            .map(|(name, value)| PreprocessorBlock::Define { name, value }),
+    );
+
+    let undefine = pp_macro(
+        SleighKeyword::Undefine,
+        inline_whitespace_padded(ident.map_with(spanned)).map(PreprocessorBlock::Undefine),
+    );
+
+    let include = pp_macro(
+        SleighKeyword::Include,
+        inline_whitespace_padded(string.map_with(spanned)).map(PreprocessorBlock::Include),
+    );
+
+    let endif = pp_macro_kw(SleighKeyword::EndIf);
+
+    let r#else = pp_macro_kw(SleighKeyword::Else)
+        .ignore_then(blocks.clone().map_with(spanned))
+        .then_ignore(endif);
+
+    let ifdef_stencil = |keyword| {
+        pp_macro(keyword, inline_whitespace_padded(ident.map_with(spanned)))
+            .then(blocks.clone().map_with(spanned).map(Some))
+            .then(r#else.clone().map(Some).or(endif.to(None)))
+    };
+
+    let ifdef =
+        ifdef_stencil(SleighKeyword::IfDef).map(|((ident, if_defined), if_undefined)| PreprocessorBlock::IfDef {
+            ident,
+            if_defined,
+            if_undefined,
+        });
+
+    let ifndef =
+        ifdef_stencil(SleighKeyword::IfNdef).map(|((ident, if_undefined), if_defined)| PreprocessorBlock::IfDef {
+            ident,
+            if_defined,
+            if_undefined,
+        });
+
+    let expression = {
+        let defined = just(SleighToken::Keyword(SleighKeyword::Defined))
+            .ignore_then(inline_whitespace_padded(parenthesized(ident)))
+            .map(Expression::Defined)
+            .map_with(spanned)
+            .map(Box::new);
+
+        let comparison_argument = inline_whitespace_padded(
+            ident
+                .map(ComparisonArgument::Identifier)
+                .or(string.map(ComparisonArgument::Literal)),
+        );
+
+        let eq_op = just(SleighToken::Operation(SleighOperation::Equals))
+            .then(just(SleighToken::Operation(SleighOperation::Equals)))
+            .to(true);
+        let ne_op = just(SleighToken::Operation(SleighOperation::NotEquals)).to(false);
+
+        let equality_check = comparison_argument
+            .map_with(spanned)
+            .then(eq_op.or(ne_op))
+            .then(comparison_argument.map_with(spanned))
+            .map(|((a, equals), b)| match equals {
+                true => EqualityCheck::Eq(a, b),
+                false => EqualityCheck::Ne(a, b),
+            })
+            .map(Expression::EqualityCheck)
+            .map_with(spanned)
+            .map(Box::new);
+
+        let mut expression = Recursive::declare();
+
+        let atom = inline_whitespace_padded(
+            defined
+                .or(maybe_parenthesized(equality_check))
+                .or(parenthesized(expression.clone())),
+        );
+
+        let op_and = just(SleighToken::Operation(SleighOperation::And))
+            .then(just(SleighToken::Operation(SleighOperation::And)))
+            .to(BinaryOp::And);
+        let op_or = just(SleighToken::Operation(SleighOperation::Or))
+            .then(just(SleighToken::Operation(SleighOperation::Or)))
+            .to(BinaryOp::Or);
+        let op_xor = just(SleighToken::Operation(SleighOperation::Hat))
+            .then(just(SleighToken::Operation(SleighOperation::Hat)))
+            .to(BinaryOp::Xor);
+
+        let operator = inline_whitespace_padded(op_and.or(op_or).or(op_xor).map_with(spanned));
+
+        let binary_op = atom
+            .clone()
+            .foldl_with(operator.then(atom).repeated(), |a, (op, b), extra| {
+                Box::new((Expression::BinaryOp(a, op, b), extra.span()))
+            });
+
+        expression.define(binary_op);
+        expression
+    };
+
+    let r#if = pp_macro(SleighKeyword::If, expression.map(unbox))
+        .then(blocks.clone().map_with(spanned))
+        .then(r#else.clone().map(Some).or(endif.to(None)))
+        .map(|((cond, if_true), if_false)| PreprocessorBlock::If {
+            cond,
+            if_true,
+            if_false,
+        })
+        .boxed();
+
+    blocks.define(
+        pcode
+            .or(r#if)
+            .or(ifdef)
+            .or(ifndef)
+            .or(define)
+            .or(undefine)
+            .or(include)
+            .or(expansion)
+            .map_with(spanned)
+            .repeated()
+            .collect::<Vec<_>>(),
+    );
+
+    blocks
+}
+
+fn unbox<T>(boxed: Box<T>) -> T {
+    *boxed
+}
+
+/// Parse an ident token and return the string id referencing the identifier
+fn ident<'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, StringId, SleighPreprocessorExtra<'tokens>> + Copy {
+    select! { SleighToken::Ident(ident) => ident }.labelled("identifier")
+}
+
+/// Parse a sleigh macro. The first parameter is the keyword the macro starts with and
+/// the second parameter is the parser that parses the macro contents.
+fn pp_macro<'tokens, P, O>(
+    macro_keyword: SleighKeyword,
+    preprocessor_parser: P,
+) -> impl Parser<'tokens, ParserInput<'tokens>, O, SleighPreprocessorExtra<'tokens>> + Clone
+where
+    P: Parser<'tokens, ParserInput<'tokens>, O, SleighPreprocessorExtra<'tokens>> + Clone,
+{
+    (just(SleighToken::Keyword(macro_keyword)).ignore_then(preprocessor_parser))
+        .delimited_by(just(SleighToken::MacroBegin), just(SleighToken::Newline).ignored().or(end()))
+}
+
+/// Parse a sleigh macro that is just a keyword (e.g. `@endif`)
+fn pp_macro_kw<'tokens>(
+    macro_keyword: SleighKeyword
+) -> impl Parser<'tokens, ParserInput<'tokens>, (), SleighPreprocessorExtra<'tokens>> + Copy
+where
+{
+    just(SleighToken::Keyword(macro_keyword))
+        .ignored()
+        .delimited_by(just(SleighToken::MacroBegin), just(SleighToken::Newline).ignored().or(end()))
+}
+
+fn spanned<'tokens, T>(
+    element: T,
+    extra: &mut MapExtra<'tokens, '_, ParserInput<'tokens>, SleighPreprocessorExtra<'tokens>>,
+) -> (T, InputSpan) {
+    (element, extra.span())
 }
 
 #[derive(Debug, Clone)]
@@ -71,359 +490,43 @@ enum BinaryOp {
 
 #[derive(Debug, Clone)]
 enum ComparisonArgument {
-    Identifier(PreprocessorIdentifier),
-    Literal(String),
+    Identifier(StringId),
+    Literal(StringId),
 }
 
 #[derive(Debug, Clone)]
 enum EqualityCheck {
-    Eq(ComparisonArgument, ComparisonArgument),
-    Ne(ComparisonArgument, ComparisonArgument),
+    Eq(Spanned<ComparisonArgument>, Spanned<ComparisonArgument>),
+    Ne(Spanned<ComparisonArgument>, Spanned<ComparisonArgument>),
 }
 
 #[derive(Debug, Clone)]
 enum Expression {
-    BinaryOp(Box<Self>, BinaryOp, Box<Self>),
+    BinaryOp(Box<Spanned<Self>>, Spanned<BinaryOp>, Box<Spanned<Self>>),
     EqualityCheck(EqualityCheck),
-    Defined(PreprocessorIdentifier),
+    Defined(StringId),
 }
 
 #[derive(Debug, Clone)]
 enum PreprocessorBlock {
     Define {
-        name: PreprocessorIdentifier,
-        value: String,
+        name: Spanned<StringId>,
+        value: Spanned<StringId>,
     },
-    Undefine(PreprocessorIdentifier),
-    Include(PathBuf),
+    Undefine(Spanned<StringId>),
+    Include(Spanned<StringId>),
     IfDef {
-        ident: PreprocessorIdentifier,
-        if_defined: Option<Vec<Self>>,
-        if_undefined: Option<Vec<Self>>,
+        ident: Spanned<StringId>,
+        if_defined: Option<Spanned<Vec<Spanned<Self>>>>,
+        if_undefined: Option<Spanned<Vec<Spanned<Self>>>>,
     },
     If {
-        cond: Box<Expression>,
-        if_true: Vec<Self>,
-        if_false: Option<Vec<Self>>,
+        cond: Spanned<Expression>,
+        if_true: Spanned<Vec<Spanned<Self>>>,
+        if_false: Option<Spanned<Vec<Spanned<Self>>>>,
     },
-    PCode(String),
-    Expansion(PreprocessorIdentifier),
-}
-
-#[derive(Default, Debug)]
-pub struct SleighPreprocessor<'src> {
-    working_dir: PathBuf,
-    original_data: &'src str,
-    included_data: Vec<String>,
-    processed_sleigh: String,
-    definitions: HashMap<PreprocessorIdentifier, String>,
-}
-
-// type PreprocessorInput<'tokens, 'src> =
-//     SpannedInput<SleighToken, InputSpan<'src>, &'tokens [(SleighToken, InputSpan<'src>)]>;
-
-// fn token_parser<'tokens, 'src: 'tokens>() -> impl Parser<
-//     'tokens,
-//     PreprocessorInput<'tokens, 'src>,
-//     Vec<(SleighToken, InputSpan<'src>)>,
-//     extra::Err<Rich<'tokens, SleighToken, InputSpan<'src>>>,
-// > {
-//     any().map(|(x, s)| (x, s)).repeated().collect::<Vec<_>>()
-// }
-
-impl<'a> SleighPreprocessor<'a> {
-    // pub fn preprocess_tokenized<'src>(
-    //     mut self,
-    //     tokens: Vec<(SleighToken, InputSpan<'src>)>,
-    // ) -> Result<Vec<(SleighToken, InputSpan<'src>)>, PreprocessorError> {
-    //     todo!()
-    // }
-
-    pub fn preprocess(
-        mut self,
-        spec_data: &'a str,
-    ) -> Result<String, PreprocessorError> {
-        self.original_data = spec_data;
-        let parsed = self.parse(self.original_data)?;
-        self.evaluate(parsed)?;
-        Ok(self.processed_sleigh)
-    }
-
-    fn parse(
-        &self,
-        data: &str,
-    ) -> Result<Vec<PreprocessorBlock>, PreprocessorError> {
-        let parsed = parser().parse(data);
-        let mut diagnostic = vec![];
-        parsed.errors().for_each(|err| {
-            let report = Report::build(ReportKind::Error, (), err.span().start)
-                .with_message("Parsing Error")
-                .with_label(Label::new(err.span().into_range()))
-                .with_message(err.reason().to_string())
-                .finish();
-            report.write(Source::from(data), &mut diagnostic).unwrap();
-        });
-        if diagnostic.is_empty() {
-            Ok(parsed.into_output().unwrap())
-        } else {
-            eprintln!("{}", std::str::from_utf8(diagnostic.as_slice()).unwrap());
-            Err(PreprocessorError::ParseError(String::from_utf8(diagnostic).unwrap()))
-        }
-    }
-
-    fn evaluate(
-        &mut self,
-        blocks: Vec<PreprocessorBlock>,
-    ) -> Result<(), PreprocessorError> {
-        for block in blocks {
-            match block {
-                PreprocessorBlock::Define { name, value } => {
-                    trace!("Defining {name:?} as {value:?}");
-                    self.definitions.insert(name, value.clone());
-                }
-                PreprocessorBlock::Undefine(name) => {
-                    trace!("Removed definition for {name:?}");
-                    self.definitions.remove(&name);
-                }
-                PreprocessorBlock::Include(file) => {
-                    trace!("Including file {file:?}");
-                    if file.is_absolute() {
-                        Err(PreprocessorError::AbsolutePath)?;
-                    }
-                    let mut resolved_file = self.working_dir.clone();
-                    for part in file.components() {
-                        match part {
-                            Component::Prefix(_) => {}
-                            Component::RootDir => {}
-                            Component::CurDir => {}
-                            Component::ParentDir => {}
-                            Component::Normal(path) => resolved_file.push(path),
-                        }
-                    }
-                    let data = fs::read_to_string(resolved_file.as_path())?;
-                    let blocks = self.parse(&data)?;
-                    self.evaluate(blocks)?;
-                }
-                PreprocessorBlock::IfDef {
-                    ident,
-                    if_defined,
-                    if_undefined,
-                } => {
-                    trace!("Processing ifdef {ident:?}");
-                    if self.definitions.contains_key(&ident) {
-                        trace!("{ident:?} is defined");
-                        match if_defined {
-                            None => {}
-                            Some(blocks) => self.evaluate(blocks)?,
-                        }
-                    } else {
-                        trace!("{ident:?} is undefined");
-                        match if_undefined {
-                            None => {}
-                            Some(blocks) => self.evaluate(blocks)?,
-                        };
-                    }
-                }
-                PreprocessorBlock::PCode(code) => {
-                    self.processed_sleigh.push_str(&code);
-                }
-                PreprocessorBlock::Expansion(ident) => {
-                    let value = self
-                        .definitions
-                        .get(&ident)
-                        .ok_or(PreprocessorError::UndefinedIdentifier(ident.clone().into()))?;
-                    trace!("Expanding macro {ident:?} to {value:?}");
-                    self.processed_sleigh.push_str(value)
-                }
-                PreprocessorBlock::If {
-                    cond,
-                    if_true,
-                    if_false,
-                } => {
-                    trace!("Evaluating condition {cond:?}");
-                    if self.evaluate_expression(*cond)? {
-                        trace!("Evaluated to true");
-                        self.evaluate(if_true)?
-                    } else {
-                        trace!("Evaluated to false");
-                        match if_false {
-                            None => {}
-                            Some(blocks) => self.evaluate(blocks)?,
-                        }
-                    }
-                }
-            };
-        }
-        Ok(())
-    }
-
-    fn evaluate_expression(
-        &self,
-        expression: Expression,
-    ) -> Result<bool, PreprocessorError> {
-        Ok(match expression {
-            Expression::BinaryOp(a, op, b) => match op {
-                BinaryOp::And => self.evaluate_expression(*a)? && self.evaluate_expression(*b)?,
-                BinaryOp::Or => self.evaluate_expression(*a)? || self.evaluate_expression(*b)?,
-                BinaryOp::Xor => self.evaluate_expression(*a)? ^ self.evaluate_expression(*b)?,
-            },
-            Expression::Defined(ident) => self.definitions.get(&ident).map(|_| true).unwrap_or(false),
-            Expression::EqualityCheck(check) => match check {
-                EqualityCheck::Eq(a, b) => {
-                    self.resolve_comparison_argument(&a)? == self.resolve_comparison_argument(&b)?
-                }
-                EqualityCheck::Ne(a, b) => {
-                    self.resolve_comparison_argument(&a)? != self.resolve_comparison_argument(&b)?
-                }
-            },
-        })
-    }
-
-    fn resolve_comparison_argument<'arg: 'a>(
-        &self,
-        arg: &'arg ComparisonArgument,
-    ) -> Result<&String, PreprocessorError> {
-        Ok(match arg {
-            ComparisonArgument::Identifier(ident) => self
-                .definitions
-                .get(&ident)
-                .ok_or(PreprocessorError::UndefinedIdentifier(ident.clone().into()))?,
-            ComparisonArgument::Literal(literal) => literal,
-        })
-    }
-}
-
-fn parser<'src>() -> impl Parser<'src, &'src str, Vec<PreprocessorBlock>, extra::Err<Rich<'src, char>>> {
-    let mut blocks = Recursive::declare();
-
-    let reserved = choice((just("@"), just("$(")));
-
-    let pcode = any()
-        .and_is(reserved.not())
-        .repeated()
-        .at_least(1)
-        .to_slice()
-        .map(|p| PreprocessorBlock::PCode(String::from(p)));
-
-    let string = just('"')
-        .ignore_then(none_of('"').repeated().to_slice())
-        .then_ignore(just('"'))
-        .map(String::from);
-
-    let preprocessor_ident = ident().map(|id| PreprocessorIdentifier(String::from(id)));
-
-    let include = just("@include")
-        .ignore_then(string.padded_by(inline_whitespace()))
-        .map(|file| PreprocessorBlock::Include(PathBuf::from(file)));
-
-    let define = just("@define")
-        .ignore_then(ident().padded_by(inline_whitespace()))
-        .then(string)
-        .padded_by(inline_whitespace())
-        .map(|(name, value)| PreprocessorBlock::Define {
-            name: PreprocessorIdentifier(String::from(name)),
-            value,
-        })
-        .boxed();
-
-    let undef = just("@undef")
-        .ignore_then(ident().padded_by(inline_whitespace()))
-        .map(|ident| PreprocessorBlock::Undefine(PreprocessorIdentifier(String::from(ident))));
-
-    let expansion = just('$')
-        .ignore_then(ident().to_slice().delimited_by(just('('), just(')')))
-        .map(|ident| PreprocessorBlock::Expansion(PreprocessorIdentifier(String::from(ident))));
-
-    let r#else = just("@else")
-        .ignore_then(blocks.clone())
-        .then_ignore(just("@endif"));
-
-    let ifdef = just("@ifdef")
-        .ignore_then(preprocessor_ident.padded_by(inline_whitespace()))
-        .then(blocks.clone().map(Some))
-        .then(choice((r#else.clone().map(Some), just("@endif").map(|_| None))))
-        .map(|((ident, if_defined), if_undefined)| PreprocessorBlock::IfDef {
-            ident,
-            if_defined,
-            if_undefined,
-        })
-        .boxed();
-
-    let ifndef = just("@ifndef")
-        .ignore_then(preprocessor_ident.padded_by(inline_whitespace()))
-        .then(blocks.clone().map(Some))
-        .then(choice((r#else.clone().map(Some), just("@endif").map(|_| None))))
-        .map(|((ident, if_undefined), if_defined)| PreprocessorBlock::IfDef {
-            ident,
-            if_defined,
-            if_undefined,
-        })
-        .boxed();
-
-    let expression = {
-        let defined = just("defined")
-            .ignore_then(preprocessor_ident.delimited_by(just('('), just(')')))
-            .map(|expr| Box::new(Expression::Defined(expr)))
-            .padded_by(inline_whitespace());
-
-        let comparison_argument = preprocessor_ident
-            .map(ComparisonArgument::Identifier)
-            .or(string.map(ComparisonArgument::Literal))
-            .padded_by(inline_whitespace());
-
-        let equality_check = comparison_argument
-            .then(just("==").or(just("!=")))
-            .then(comparison_argument)
-            .map(|((a, op), b)| match op {
-                "==" => EqualityCheck::Eq(a, b),
-                "!=" => EqualityCheck::Ne(a, b),
-                _ => panic!("This cannot occur"),
-            })
-            .map(|check| Box::new(Expression::EqualityCheck(check)));
-
-        let mut expression = Recursive::declare();
-
-        let atom = defined
-            .or(equality_check.or(equality_check.delimited_by(just('('), just(')'))))
-            .or(expression.clone().delimited_by(just('('), just(')')))
-            .padded_by(inline_whitespace());
-
-        let operator = choice((just("&&"), just("||"), just("^^")))
-            .map(|op| match op {
-                "&&" => BinaryOp::And,
-                "||" => BinaryOp::Or,
-                "^^" => BinaryOp::Xor,
-                _ => panic!("This cannot occur"),
-            })
-            .padded_by(inline_whitespace());
-
-        let binary_op = atom
-            .clone()
-            .foldl(operator.then(atom).repeated(), |a, (op, b)| Box::new(Expression::BinaryOp(a, op, b)));
-
-        expression.define(binary_op);
-        expression
-    };
-
-    let r#if = just("@if")
-        .ignore_then(expression)
-        .then(blocks.clone())
-        .then(choice((r#else.map(Some), just("@endif").map(|_| None))))
-        .map(|((cond, if_true), if_false)| PreprocessorBlock::If {
-            cond,
-            if_true,
-            if_false,
-        })
-        .boxed();
-
-    blocks.define(
-        choice((define, undef, include, ifdef, ifndef, r#if, expansion, pcode))
-            .repeated()
-            .at_least(1)
-            .collect::<Vec<_>>()
-            .or(end().map(|_| Vec::new())),
-    );
-    blocks
+    PCode(Spanned<SleighTokens>),
+    Expansion(Spanned<StringId>),
 }
 
 #[derive(Default, Debug)]
@@ -445,11 +548,10 @@ impl SleighPreprocessorFactory {
     }
 
     pub fn build(&self) -> SleighPreprocessor {
-        let mut preprocessor = SleighPreprocessor::default();
-        preprocessor.working_dir = self
-            .working_dir
-            .clone()
-            .unwrap_or_else(|| current_dir().unwrap());
-        preprocessor
+        SleighPreprocessor::new(
+            self.working_dir
+                .clone()
+                .unwrap_or_else(|| current_dir().unwrap()),
+        )
     }
 }

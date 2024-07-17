@@ -1,81 +1,8 @@
-:CPUID          is vexMode=0 & byte=0xf; byte=0xa2                  {
+@include "test"
+@define test "test2"
+@if defined(test) && (test == "test2" || defined(test2))
+:$(test)          is vexMode=0 & byte=0xf; byte=0xa2                  {
     local tmp:16;
-    if (EAX == 0) goto <basic_info>;
-    if (EAX == 1) goto <Version_info>;
-    if (EAX == 2) goto <cache_tlb_info>;
-    if (EAX == 3) goto <serial_info>;
-    if (EAX == 0x4) goto <Deterministic_Cache_Parameters_info>;
-    if (EAX == 0x5) goto <MONITOR_MWAIT_Features_info>;
-    if (EAX == 0x6) goto <Thermal_Power_Management_info>;
-    if (EAX == 0x7) goto <Extended_Feature_Enumeration_info>;
-    if (EAX == 0x9) goto <Direct_Cache_Access_info>;
-    if (EAX == 0xa) goto <Architectural_Performance_Monitoring_info>;
-    if (EAX == 0xb) goto <Extended_Topology_info>;
-    if (EAX == 0xd) goto <Processor_Extended_States_info>;
-    if (EAX == 0xf) goto <Quality_of_Service_info>;
-    if (EAX == 0x80000002) goto <brand_part1_info>;
-    if (EAX == 0x80000003) goto <brand_part2_info>;
-    if (EAX == 0x80000004) goto <brand_part3_info>;
-    tmp = cpuid(EAX, ECX);
-    goto <finish>;
- <basic_info>
-    tmp = cpuid_basic_info(EAX, ECX);
-    goto <finish>;
- <Version_info>
-    tmp = cpuid_Version_info(EAX, ECX);
-    goto <finish>;
- <cache_tlb_info>
-    tmp = cpuid_cache_tlb_info(EAX, ECX);
-    goto <finish>;
- <serial_info>
-    tmp = cpuid_serial_info(EAX, ECX);
-    goto <finish>;
- <Deterministic_Cache_Parameters_info>
-    tmp = cpuid_Deterministic_Cache_Parameters_info(EAX, ECX);
-    goto <finish>;    
- <MONITOR_MWAIT_Features_info>
-    tmp = cpuid_MONITOR_MWAIT_Features_info(EAX, ECX);
-    goto <finish>;    
- <Thermal_Power_Management_info>
-    tmp = cpuid_Thermal_Power_Management_info(EAX, ECX);
-    goto <finish>;
- <Extended_Feature_Enumeration_info>
-    tmp = cpuid_Extended_Feature_Enumeration_info(EAX, ECX);
-    goto <finish>;
- <Direct_Cache_Access_info>
-    tmp = cpuid_Direct_Cache_Access_info(EAX, ECX);
-    goto <finish>;
- <Architectural_Performance_Monitoring_info>
-    tmp = cpuid_Architectural_Performance_Monitoring_info(EAX, ECX);
-    goto <finish>;
- <Extended_Topology_info>
-    tmp = cpuid_Extended_Topology_info(EAX, ECX);
-    goto <finish>;
- <Processor_Extended_States_info>
-    tmp = cpuid_Processor_Extended_States_info(EAX, ECX);
-    goto <finish>;
- <Quality_of_Service_info>
-    tmp = cpuid_Quality_of_Service_info(EAX, ECX);
-    goto <finish>;
- <brand_part1_info>
-    tmp = cpuid_brand_part1_info(EAX, ECX);
-    goto <finish>;
- <brand_part2_info>
-    tmp = cpuid_brand_part2_info(EAX, ECX);
-    goto <finish>;
- <brand_part3_info>
-    tmp = cpuid_brand_part3_info(EAX, ECX);
-    goto <finish>;  
- <finish>
-@ifdef IA64
-	RAX = zext(tmp[0,32]);
-	RBX = zext(tmp[32,32]);
-	RDX = zext(tmp[64,32]);
-	RCX = zext(tmp[96,32]);
-@else
-	EAX = tmp[0,32];
-	EBX = tmp[32,32];
-	EDX = tmp[64,32];
-	ECX = tmp[96,32];
-@endif
 }
+@include "test2"
+@endif

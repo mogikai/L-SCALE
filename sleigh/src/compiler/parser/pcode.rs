@@ -20,6 +20,7 @@ use crate::compiler::parser::pcode::atomic_expressions::{
 use crate::compiler::parser::pcode::expression::pcode_expression;
 use crate::compiler::parser::pcode::target_expression::target_expression;
 use crate::compiler::parser::{
+    inline_whitespace_padded,
     sleigh_control,
     sleigh_keyword,
     sleigh_operation,

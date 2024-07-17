@@ -8,6 +8,7 @@ use crate::compiler::lexer::{
 use crate::compiler::parser::pcode::atomic_expressions::pcode_label;
 use crate::compiler::parser::pcode::expression::pcode_expression;
 use crate::compiler::parser::{
+    inline_whitespace_padded,
     parenthesized,
     sleigh_control,
     sleigh_keyword,

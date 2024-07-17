@@ -26,6 +26,7 @@ use crate::compiler::parser::{
     maybe_parenthesized,
     parenthesized,
     sast_ident,
+    sleigh_inline_whitespace,
     sleigh_number,
     sleigh_whitespace,
     SleighParserExtra,

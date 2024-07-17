@@ -20,6 +20,7 @@ use crate::compiler::parser::pcode::atomic_expressions::{
 };
 use crate::compiler::parser::pcode::binary_operator::binary_operator;
 use crate::compiler::parser::{
+    inline_whitespace_padded,
     parenthesized,
     sast_ident_spanned,
     sleigh_control,

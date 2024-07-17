@@ -14,6 +14,7 @@ use crate::compiler::lexer::{
 };
 use crate::compiler::parser::pcode::expression::pcode_expression;
 use crate::compiler::parser::{
+    inline_whitespace_padded,
     parenthesized,
     sast_ident_spanned,
     sleigh_control,

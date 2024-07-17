@@ -1,25 +1,35 @@
+use crate::compiler::error::SleighCompilerError;
+use crate::compiler::lexer::{
+    SleighLexer,
+    SleighTokens,
+};
+use crate::compiler::parser::SleighParser;
+use crate::preprocessor::error::PreprocessorError;
+use crate::preprocessor::SleighPreprocessorFactory;
+use crate::spec::ProcessorSpecification;
+use ariadne::{
+    Cache,
+    Source,
+};
+use slotmap::{
+    new_key_type,
+    SecondaryMap,
+    SlotMap,
+};
 use std::collections::HashMap;
+use std::env::current_dir;
 use std::fmt::{
     Debug,
     Display,
     Formatter,
 };
 use std::fs;
+use std::io::Error;
 use std::path::{
     Path,
     PathBuf,
 };
 use std::process::exit;
-
-use crate::compiler::error::SleighCompilerError;
-use crate::compiler::lexer::SleighLexer;
-use crate::compiler::parser::SleighParser;
-use crate::preprocessor::SleighPreprocessorFactory;
-use crate::spec::ProcessorSpecification;
-use slotmap::{
-    new_key_type,
-    SlotMap,
-};
 use string_interner::backend::{
     Backend,
     StringBackend,
@@ -28,16 +38,17 @@ use string_interner::{
     StringInterner,
     Symbol,
 };
+use thiserror::Error;
 
 pub mod ast;
 pub mod error;
 pub mod lexer;
-mod parser;
+pub mod parser;
 pub mod tokens;
 
 new_key_type! { pub struct InputId; }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct StringId(usize);
 
 impl Display for InputId {
@@ -74,26 +85,98 @@ impl CompilerContext {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct CompilerInputCache {
-    inputs: SlotMap<InputId, CompilerInput>,
+    loaded_files: HashMap<PathBuf, InputId>,
+    input_paths: SlotMap<InputId, PathBuf>,
+    input_sources: SecondaryMap<InputId, Source>,
+    input_tokens: SecondaryMap<InputId, SleighTokens>,
+}
+
+impl Cache<InputId> for CompilerInputCache {
+    type Storage = String;
+
+    fn fetch(
+        &mut self,
+        id: &InputId,
+    ) -> Result<&Source<Self::Storage>, Box<dyn Debug + '_>> {
+        self.input_sources
+            .get(*id)
+            .ok_or(Box::new("Could not find input") as _)
+    }
+
+    fn display<'a>(
+        &self,
+        id: &'a InputId,
+    ) -> Option<Box<dyn Display + 'a>> {
+        self.input_paths
+            .get(*id)
+            .map(|input| Box::new(input.to_str().unwrap().to_string()) as _)
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum InputCacheError {
+    #[error("Could not read the provided sleigh file.")]
+    ReadError(#[from] Error),
+    #[error("The requested file was not loaded.")]
+    FileNotLoaded,
+    #[error("The input has not been tokenized yet and has no attached tokens.")]
+    InputNotTokenized,
 }
 
 impl CompilerInputCache {
     pub fn load_input_from_file(
         &mut self,
         path: &Path,
-    ) -> Result<InputId, SleighCompilerError> {
-        Ok(self.inputs.insert(CompilerInput::try_from(path)?))
+    ) -> Result<InputId, InputCacheError> {
+        let path = path.to_path_buf();
+        if let Some(&id) = self.loaded_files.get(&path) {
+            Ok(id)
+        } else {
+            let source = Source::from(fs::read_to_string(path.as_path())?);
+            let id = self.input_paths.insert(path.clone());
+            self.input_sources.insert(id, source);
+            self.loaded_files.insert(path, id);
+            Ok(id)
+        }
     }
 
-    pub fn input(
+    pub fn input_path(
         &self,
         input_id: InputId,
-    ) -> Result<&CompilerInput, SleighCompilerError> {
-        self.inputs
+    ) -> Result<&Path, InputCacheError> {
+        self.input_paths
             .get(input_id)
-            .ok_or(SleighCompilerError::FileNotLoaded)
+            .ok_or(InputCacheError::FileNotLoaded)
+            .map(PathBuf::as_path)
+    }
+
+    pub fn input_source(
+        &self,
+        input_id: InputId,
+    ) -> Result<&Source, InputCacheError> {
+        self.input_sources
+            .get(input_id)
+            .ok_or(InputCacheError::FileNotLoaded)
+    }
+
+    pub fn input_tokens(
+        &self,
+        input_id: InputId,
+    ) -> Result<&SleighTokens, InputCacheError> {
+        self.input_tokens
+            .get(input_id)
+            .ok_or(InputCacheError::InputNotTokenized)
+    }
+
+    pub fn attach_tokens(
+        &mut self,
+        input_id: InputId,
+        tokens: SleighTokens,
+    ) -> Result<(), InputCacheError> {
+        self.input_tokens.insert(input_id, tokens);
+        Ok(())
     }
 }
 
@@ -104,31 +187,14 @@ pub struct SleighCompiler {
     parser: SleighParser,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CompilerInput {
+    /// The path from which the input was loaded.
     origin: PathBuf,
-    data: String,
-}
-
-impl<'a> CompilerInput {
-    pub fn path(&'a self) -> &'a Path {
-        self.origin.as_path()
-    }
-
-    pub fn data(&'a self) -> &'a str {
-        self.data.as_str()
-    }
-}
-
-impl TryFrom<&Path> for CompilerInput {
-    type Error = SleighCompilerError;
-
-    fn try_from(path: &Path) -> Result<Self, Self::Error> {
-        Ok(Self {
-            origin: path.to_path_buf(),
-            data: fs::read_to_string(path)?,
-        })
-    }
+    /// The source data of the loaded input.
+    source: Source,
+    /// The tokens of the tokenized input, if it has already been tokenized.
+    tokens: Option<SleighTokens>,
 }
 
 impl SleighCompiler {
@@ -137,22 +203,31 @@ impl SleighCompiler {
         &mut self,
         spec_path: &Path,
     ) -> Result<ProcessorSpecification, SleighCompilerError> {
-        // let preprocessed_sleigh = self
-        //     .preprocessor_factory
-        //     .build()
-        //     .preprocess(fs::read_to_string(spec_path)?.as_ref())?;
-        // let tokens = self.lexer.tokenize(preprocessed_sleigh.as_str())?;
+        let mut pp = self.preprocessor_factory.build();
         let mut context = CompilerContext::default();
         let mut input_cache = CompilerInputCache::default();
-        let input_id = input_cache.load_input_from_file(spec_path)?;
-        let tokens = self.lexer.tokenize(&input_cache, &mut context, input_id)?;
-        let ast = self
-            .parser
-            .parse(&input_cache, &mut context, input_id, tokens);
-        // self.preprocessor_factory
-        //     .build()
-        //     .preprocess_tokenized(tokens)?;
-        println!("{ast:#?}");
+        let mut file = spec_path.to_path_buf();
+        let tokens = loop {
+            // Load the new file and check if it is already tokenized
+            let input_id = input_cache.load_input_from_file(file.as_path())?;
+            if input_cache.input_tokens(input_id).is_err() {
+                // If the input was already tokenized, we can continue, otherwise tokenize now.
+                let tokens = self
+                    .lexer
+                    .tokenize(&mut input_cache, &mut context, input_id)?;
+                input_cache.attach_tokens(input_id, tokens)?;
+            }
+            // Parse the input that was loaded
+            pp.parse_input(&mut input_cache, input_id)?;
+            // Continue preprocessing
+            match pp.preprocess(&mut input_cache, &mut context) {
+                Ok(tokens) => break tokens,
+                Err(PreprocessorError::LoadingRequired(f)) => file = f,
+                Err(e) => Err(SleighCompilerError::from(e))?,
+            }
+        };
+        let ast = self.parser.parse(&mut input_cache, &mut context, tokens);
+        println!("{ast:?}");
         exit(0);
     }
 }
@@ -188,6 +263,6 @@ impl SleighCompilerBuilder {
     }
 
     pub fn build(self) -> SleighCompiler {
-        SleighCompiler::new(self.preprocessor_factory.unwrap_or(Default::default()))
+        SleighCompiler::new(self.preprocessor_factory.unwrap_or_default())
     }
 }

@@ -120,6 +120,7 @@ pub enum SleighKeyword {
     Context,
 
     Macro,
+    Include,
     Define,
     Endian,
     Alignment,
@@ -145,6 +146,12 @@ pub enum SleighKeyword {
     Local,
     If,
     Goto,
+    Undefine,
+    IfDef,
+    Else,
+    EndIf,
+    IfNdef,
+    Defined,
     Big,
     Little,
     Space,
@@ -182,6 +189,13 @@ impl SleighKeyword {
             SleighKeyword::Local => "local",
             SleighKeyword::If => "if",
             SleighKeyword::Goto => "goto",
+            SleighKeyword::Include => "include",
+            SleighKeyword::Undefine => "undefine",
+            SleighKeyword::IfDef => "ifdef",
+            SleighKeyword::Else => "else",
+            SleighKeyword::EndIf => "endif",
+            SleighKeyword::IfNdef => "ifndef",
+            SleighKeyword::Defined => "defined",
             SleighKeyword::Big => "big",
             SleighKeyword::Little => "little",
             SleighKeyword::Space => "space",
@@ -208,7 +222,7 @@ pub enum SleighToken {
     With(StringId),
 
     // e.g. Macro(include "some_file.sinc")
-    Macro(StringId),
+    MacroBegin,
     // e.g. MacroExpansion(some_ident)
     MacroExpansion(StringId),
 
@@ -216,6 +230,7 @@ pub enum SleighToken {
     Control(SleighControlCharacter),
     Operation(SleighOperation),
     Whitespace,
+    Newline,
 }
 
 impl SleighToken {

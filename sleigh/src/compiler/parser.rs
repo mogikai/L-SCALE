@@ -16,7 +16,10 @@ use chumsky::combinator::{
 };
 use chumsky::error::Rich;
 use chumsky::extra::ParserExtra;
-use chumsky::input::{Input, MapExtra};
+use chumsky::input::{
+    Input,
+    MapExtra,
+};
 use chumsky::prelude::{
     any,
     end,
@@ -29,24 +32,21 @@ use chumsky::recursive::Recursive;
 use chumsky::span::Span;
 use tracing::trace;
 
-use crate::compiler::{CompilerContext, CompilerInput, CompilerInputCache, InputId, StringId};
+use crate::compiler::{
+    CompilerContext,
+    CompilerInputCache,
+    StringId,
+};
 use crate::compiler::ast::{
     SleighAST,
     Spanned,
 };
 use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::constructor::bit_pattern_section::{
-    SASTBinaryOp,
-    SASTBitPatternConstraint,
-    SASTBitPatternSection,
     SASTConstraintOp,
     SASTConstraintPattern,
     SASTUnaryOp,
 };
-use crate::compiler::ast::constructor::disassembly_section::SASTDisassemblySection;
-use crate::compiler::ast::constructor::display_section::SASTDisplaySection;
-use crate::compiler::ast::constructor::SASTConstructor;
-use crate::compiler::ast::constructor::semantic_section::SASTSemanticSection;
 use crate::compiler::ast::item::SASTItem;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::{
@@ -74,14 +74,12 @@ mod pcode_macro;
 pub struct SleighParser {}
 
 impl SleighParser {
-    pub fn parse<'src>(
+    pub fn parse(
         &self,
-        input_cache: &CompilerInputCache,
+        mut input_cache: &mut CompilerInputCache,
         context: &mut CompilerContext,
-        input_id: InputId,
         tokens: SleighTokens,
     ) -> Result<SleighAST, SleighCompilerError> {
-        let source = input_cache.input(input_id)?;
         let parsed = parser().parse_with_state(tokens.spanned(), context);
         let mut diagnostic = vec![];
         // trace!("Input: {:?}", tokens);
@@ -92,9 +90,7 @@ impl SleighParser {
                 .with_message("Parser Error")
                 .with_label(Label::new(error_span.clone()).with_message(err.reason().to_string()))
                 .finish();
-            report
-                .write((error_span.context(), Source::from(source.data())), &mut diagnostic)
-                .unwrap();
+            report.write(&mut input_cache, &mut diagnostic).unwrap();
         });
         if diagnostic.is_empty() {
             Ok(parsed.into_output().unwrap())
@@ -106,7 +102,22 @@ impl SleighParser {
 
 type SleighParserExtra<'tokens> = extra::Full<Rich<'tokens, SleighToken, InputSpan>, CompilerContext, ()>;
 
-fn sleigh_whitespace<'tokens, 'src, E>() -> impl Parser<'tokens, ParserInput<'tokens>, (), E> + Copy
+fn parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, SleighAST, SleighParserExtra<'tokens>>
+{
+    let constructor = constructor().map(SASTItem::Constructor);
+    let define = define().map(SASTItem::Define);
+    let pcode_macro = pcode_macro().map(SASTItem::Macro);
+    constructor
+        .or(pcode_macro)
+        .or(define)
+        .padded_by(sleigh_whitespace())
+        .recover_with(skip_then_retry_until(any().ignored(), end()))
+        .repeated()
+        .collect::<Vec<_>>()
+        .map(|items| SleighAST { items })
+}
+
+fn sleigh_inline_whitespace<'tokens, 'src, E>() -> impl Parser<'tokens, ParserInput<'tokens>, (), E> + Copy
 where
     'src: 'tokens,
     E: ParserExtra<'tokens, ParserInput<'tokens>>,
@@ -118,19 +129,17 @@ where
         .repeated()
 }
 
-fn parser<'tokens, 'src: 'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, SleighAST, SleighParserExtra<'tokens>> {
-    let constructor = constructor().map(SASTItem::Constructor);
-    let define = define().map(SASTItem::Define);
-    let pcode_macro = pcode_macro().map(SASTItem::Macro);
-    constructor
-        .or(define)
-        .or(pcode_macro)
-        .padded_by(sleigh_whitespace())
-        .recover_with(skip_then_retry_until(any().ignored(), end()))
+fn sleigh_whitespace<'tokens, 'src, E>() -> impl Parser<'tokens, ParserInput<'tokens>, (), E> + Copy
+where
+    'src: 'tokens,
+    E: ParserExtra<'tokens, ParserInput<'tokens>>,
+{
+    // Comments are treated as whitespace
+    just(SleighToken::Whitespace)
+        .ignored()
+        .or(just(SleighToken::Newline).ignored())
+        .or(select! { SleighToken::Comment(_) }.ignored())
         .repeated()
-        .collect::<Vec<_>>()
-        .map(|items| SleighAST { items })
 }
 
 /// Parse an ident token and return the contained string reference
@@ -156,12 +165,20 @@ fn sleigh_number<'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, u64, S
         SleighToken::Binary(str_id) => (str_id, 2),
     };
     parsed_number
-        .map_with(|(num, radix), extra: &mut MapExtra<'_, '_, _, SleighParserExtra<'tokens>>| u64::from_str_radix(extra.state().string(num).expect("The string must be interned"), radix))
+        .map_with(|(num, radix), extra: &mut MapExtra<'_, '_, _, SleighParserExtra<'tokens>>| {
+            u64::from_str_radix(
+                extra
+                    .state()
+                    .string(num)
+                    .expect("The string must be interned"),
+                radix,
+            )
+        })
         .try_map(|num, span| num.map_err(|e| Rich::custom(span, e)))
 }
 
 /// Parses the same thing as `P`, but only if it is surrounded by parentheses.
-fn parenthesized<'tokens, 'src, P, O, E>(
+pub fn parenthesized<'tokens, 'src, P, O, E>(
     parser: P
 ) -> DelimitedBy<
     P,
@@ -183,7 +200,7 @@ where
 
 /// Parses the same thing as the provided parser `P`, but also succeeds if the element to parse
 /// is surrounded by parentheses.
-fn maybe_parenthesized<'tokens, 'src, P, O, E>(
+pub fn maybe_parenthesized<'tokens, 'src, P, O, E>(
     parser: P
 ) -> impl Parser<'tokens, ParserInput<'tokens>, O, E> + Clone
 where
@@ -194,7 +211,18 @@ where
     parser.clone().or(parenthesized(parser))
 }
 
-fn whitespace_padded<'tokens, 'src, P, O, E>(
+pub fn inline_whitespace_padded<'tokens, 'src, P, O, E>(
+    parser: P
+) -> PaddedBy<P, impl Parser<'tokens, ParserInput<'tokens>, (), E> + Copy, ()>
+where
+    'src: 'tokens,
+    P: Parser<'tokens, ParserInput<'tokens>, O, E> + Clone,
+    E: ParserExtra<'tokens, ParserInput<'tokens>>,
+{
+    parser.padded_by(sleigh_inline_whitespace())
+}
+
+pub fn whitespace_padded<'tokens, 'src, P, O, E>(
     parser: P
 ) -> PaddedBy<P, impl Parser<'tokens, ParserInput<'tokens>, (), E> + Copy, ()>
 where

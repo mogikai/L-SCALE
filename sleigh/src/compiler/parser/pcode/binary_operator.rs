@@ -12,6 +12,7 @@ use crate::compiler::lexer::{
     ParserInput,
 };
 use crate::compiler::parser::{
+    inline_whitespace_padded,
     sleigh_operation,
     whitespace_padded,
     SleighParserExtra,

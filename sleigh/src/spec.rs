@@ -10,6 +10,8 @@ use slotmap::{
 
 new_key_type! { pub struct AddressSpaceId; }
 new_key_type! { pub struct VarNodeId; }
+
+#[derive(Debug)]
 pub struct ProcessorSpecification {
     address_spaces: SlotMap<AddressSpaceId, AddressSpace>,
     varnodes: SlotMap<VarNodeId, VarNode>,
