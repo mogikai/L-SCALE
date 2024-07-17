@@ -32,17 +32,4 @@ pub(super) fn semantic_section<'tokens, 'src: 'tokens>(
             sleigh_control(SleighControlCharacter::CloseBrace),
         )
         .map_with(|pcode, extra| (SASTSemanticSection(pcode), extra.span()))
-    // let open_brace = just(SleighToken::Control(SleighControlCharacter::OpenBrace));
-    // let close_brace = just(SleighToken::Control(SleighControlCharacter::CloseBrace));
-    // open_brace
-    //     .ignore_then(any().and_is(close_brace.not()).repeated())
-    //     .then_ignore(close_brace)
-    //     .map_with(|_, extra| {
-    //         (
-    //             SASTSemanticSection {
-    //                 actions: (SASTPCode { statements: vec![] }, extra.span()),
-    //             },
-    //             extra.span(),
-    //         )
-    //     })
 }
