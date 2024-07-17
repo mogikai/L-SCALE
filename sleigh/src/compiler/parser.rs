@@ -99,11 +99,11 @@ type SleighParserExtra<'tokens> = extra::Full<Rich<'tokens, SleighToken, InputSp
 fn parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, SleighAST, SleighParserExtra<'tokens>>
 {
     let constructor = constructor().map(SASTItem::Constructor);
-    // let define = define().map(SASTItem::Define);
+    let define = define().map(SASTItem::Define);
     let pcode_macro = pcode_macro().map(SASTItem::Macro);
     constructor
         .or(pcode_macro)
-        // .or(define)
+        .or(define)
         .padded_by(sleigh_whitespace())
         .recover_with(skip_then_retry_until(any().ignored(), end()))
         .repeated()
