@@ -20,12 +20,18 @@ pub enum SASTPCodeStatement {
     Delayslot(Spanned<u64>),
     /// Declare the identifier as a local variable with an optional size.
     Declaration(Spanned<SASTIdent>, Option<Spanned<u16>>),
+    Branch(Spanned<SASTPCodeBranchTarget>),
     /// Goto label if `condition_expression` is true. Otherwise, execute the
     /// following instruction
     ConditionalBranch {
         condition_expression: Spanned<SASTPCodeExpression>,
-        label: Spanned<SASTIdent>,
+        target: Spanned<SASTPCodeBranchTarget>,
     },
     /// The statement failed to parse
     Error(InputSpan),
+}
+
+#[derive(Debug)]
+pub enum SASTPCodeBranchTarget {
+    Label(Spanned<SASTIdent>),
 }

@@ -1,26 +1,17 @@
-use chumsky::error::Rich;
-use chumsky::primitive::choice;
-use chumsky::recursive::Recursive;
-use chumsky::{
-    extra,
-    IterParser,
-    Parser,
+use crate::compiler::ast::pcode::expression::{
+    SASTPCodeBinaryOp,
+    SASTPCodeExpression,
 };
-
-use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::Spanned;
-use crate::compiler::lexer::{
-    InputSpan,
-    ParserInput,
-};
+use crate::compiler::lexer::ParserInput;
+use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::atomic_expressions::{
     pcode_ident,
     pcode_subpiece,
 };
 use crate::compiler::parser::pcode::binary_operator::binary_operator;
 use crate::compiler::parser::{
-    inline_whitespace_padded,
     parenthesized,
     sast_ident_spanned,
     sleigh_control,
@@ -28,22 +19,26 @@ use crate::compiler::parser::{
     whitespace_padded,
     SleighParserExtra,
 };
-use crate::compiler::tokens::{
-    SleighControlCharacter,
-    SleighToken,
+use crate::compiler::tokens::SleighControlCharacter;
+use chumsky::input::MapExtra;
+use chumsky::primitive::choice;
+use chumsky::recursive::Recursive;
+use chumsky::{
+    IterParser,
+    Parser,
 };
 
 pub(super) fn pcode_expression<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeExpression>, SleighParserExtra<'tokens>> + Clone {
-    let ident_expression =
-        pcode_ident().map_with(|ident, extra| (SASTPCodeExpression::Identifier(ident), extra.span()));
+    let ident_expression = pcode_ident().map(SASTPCodeExpression::Identifier);
 
     let number_literal = whitespace_padded(
-        sleigh_number().map_with(|num, extra| (SASTPCodeExpression::LiteralNumber((num, extra.span())), extra.span())),
+        sleigh_number()
+            .map_with(spanned)
+            .map(SASTPCodeExpression::LiteralNumber),
     );
 
-    let expr_subpiece =
-        pcode_subpiece().map_with(|subpiece, extra| (SASTPCodeExpression::Subpiece(subpiece), extra.span()));
+    let expr_subpiece = pcode_subpiece().map(SASTPCodeExpression::Subpiece);
 
     let mut expression = Recursive::declare();
 
@@ -55,10 +50,7 @@ pub(super) fn pcode_expression<'tokens>(
     let invocation = whitespace_padded(sast_ident_spanned())
         .then(parenthesized(argument_list))
         .map_with(|(name, arguments), extra| {
-            (
-                SASTPCodeExpression::Invocation((SASTPCodeInvocation { name, arguments }, extra.span())),
-                extra.span(),
-            )
+            SASTPCodeExpression::Invocation((SASTPCodeInvocation { name, arguments }, extra.span()))
         });
 
     let atom = invocation
@@ -66,23 +58,30 @@ pub(super) fn pcode_expression<'tokens>(
         .or(number_literal)
         .or(expr_subpiece)
         .or(ident_expression)
+        .map_with(spanned)
         .or(parenthesized(expression.clone()));
 
     let binary_operator = binary_operator();
 
-    let binary_operation =
-        atom.clone()
-            .foldl_with(binary_operator.then(atom.clone()).repeated(), |lhs, (op, rhs), extra| {
-                (
-                    SASTPCodeExpression::BinaryOperation {
-                        lhs: Box::new(lhs),
-                        op,
-                        rhs: Box::new(rhs),
-                    },
-                    extra.span(),
-                )
-            });
+    let binary_operation = atom
+        .clone()
+        .foldl_with(binary_operator.then(atom.clone()).repeated(), fold_binary_operation);
 
     expression.define(whitespace_padded(choice((binary_operation, atom))));
     expression
+}
+
+fn fold_binary_operation<'tokens>(
+    lhs: Spanned<SASTPCodeExpression>,
+    (op, rhs): (Spanned<SASTPCodeBinaryOp>, Spanned<SASTPCodeExpression>),
+    extra: &mut MapExtra<'tokens, '_, ParserInput<'tokens>, SleighParserExtra<'tokens>>,
+) -> Spanned<SASTPCodeExpression> {
+    (
+        SASTPCodeExpression::BinaryOperation {
+            lhs: Box::new(lhs),
+            op,
+            rhs: Box::new(rhs),
+        },
+        extra.span(),
+    )
 }

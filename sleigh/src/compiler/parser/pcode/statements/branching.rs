@@ -1,6 +1,9 @@
 use chumsky::Parser;
 
-use crate::compiler::ast::pcode::statement::SASTPCodeStatement;
+use crate::compiler::ast::pcode::statement::{
+    SASTPCodeBranchTarget,
+    SASTPCodeStatement,
+};
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
@@ -23,11 +26,27 @@ pub fn pcode_conditional_branch_statement<'tokens>(
     whitespace_padded(sleigh_keyword(SleighKeyword::If))
         .ignore_then(whitespace_padded(parenthesized(pcode_expression())))
         .then_ignore(sleigh_keyword(SleighKeyword::Goto))
-        .then(whitespace_padded(pcode_label()))
+        .then(whitespace_padded(pcode_branch_target()))
         .then_ignore(sleigh_control(SleighControlCharacter::SemiColon))
-        .map(|(condition_expression, label)| SASTPCodeStatement::ConditionalBranch {
+        .map(|(condition_expression, target)| SASTPCodeStatement::ConditionalBranch {
             condition_expression,
-            label,
+            target,
         })
+        .map_with(spanned)
+}
+
+pub fn pcode_goto_branch_statement<'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeStatement>, SleighParserExtra<'tokens>> + Clone {
+    whitespace_padded(sleigh_keyword(SleighKeyword::Goto))
+        .ignore_then(whitespace_padded(pcode_branch_target()))
+        .then_ignore(sleigh_control(SleighControlCharacter::SemiColon))
+        .map(SASTPCodeStatement::Branch)
+        .map_with(spanned)
+}
+
+pub fn pcode_branch_target<'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeBranchTarget>, SleighParserExtra<'tokens>> + Copy {
+    pcode_label()
+        .map(SASTPCodeBranchTarget::Label)
         .map_with(spanned)
 }

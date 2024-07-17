@@ -1,19 +1,30 @@
+use chumsky::prelude::{
+    choice,
+    via_parser,
+};
+use chumsky::primitive::none_of;
+use chumsky::{
+    IterParser,
+    Parser,
+};
+
+use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::pcode::statement::SASTPCodeStatement;
 use crate::compiler::ast::pcode::SASTPCode;
 use crate::compiler::ast::Spanned;
-use crate::compiler::lexer::{
-    InputSpan,
-    ParserInput,
-};
+use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::atomic_expressions::{
     pcode_ident,
+    pcode_label,
     pcode_u16,
 };
 use crate::compiler::parser::pcode::expression::pcode_expression;
+use crate::compiler::parser::pcode::statements::assignment::pcode_assignment_statement;
+use crate::compiler::parser::pcode::statements::branching::pcode_goto_branch_statement;
+use crate::compiler::parser::pcode::statements::declaration::pcode_declaration_statement;
 use crate::compiler::parser::pcode::target_expression::target_expression;
 use crate::compiler::parser::{
-    inline_whitespace_padded,
     sleigh_control,
     sleigh_keyword,
     sleigh_operation,
@@ -26,21 +37,6 @@ use crate::compiler::tokens::{
     SleighOperation,
     SleighToken,
 };
-use chumsky::error::Rich;
-use chumsky::prelude::{
-    choice,
-    via_parser,
-};
-use chumsky::primitive::{
-    any,
-    none_of,
-};
-use chumsky::recovery::skip_then_retry_until;
-use chumsky::{
-    extra,
-    IterParser,
-    Parser,
-};
 use statements::branching::pcode_conditional_branch_statement;
 use statements::invocation::pcode_standalone_invocation_statement;
 
@@ -52,42 +48,15 @@ mod target_expression;
 
 pub(super) fn pcode<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCode>, SleighParserExtra<'tokens>> + Clone {
-    // Parse a declaration of the form `local some_ident;` or alternatively with a size specifier:
-    // `local some_ident_with_size:4;`
-    let declaration = whitespace_padded(sleigh_keyword(SleighKeyword::Local))
-        .ignore_then(pcode_ident())
-        .then(
-            sleigh_control(SleighControlCharacter::Colon)
-                .ignore_then(pcode_u16())
-                .or_not(),
-        )
-        .then_ignore(sleigh_control(SleighControlCharacter::SemiColon))
-        .map_with(|(ident, size), extra| (SASTPCodeStatement::Declaration(ident, size), extra.span()));
+    let branch_statements = pcode_conditional_branch_statement().or(pcode_goto_branch_statement());
 
-    // Optional local keyword for assignment operations.
-    let local = whitespace_padded(sleigh_keyword(SleighKeyword::Local))
-        .or_not()
-        .map_with(|local, extra| (local.is_some(), extra.span()));
+    let statement = pcode_declaration_statement()
+        .or(pcode_assignment_statement())
+        .or(pcode_standalone_invocation_statement())
+        .or(branch_statements);
 
-    let assignment = local
-        .then(target_expression())
-        .then_ignore(sleigh_operation(SleighOperation::Equals))
-        .then(pcode_expression())
-        .then_ignore(sleigh_control(SleighControlCharacter::SemiColon))
-        .map_with(|((local, target), expression), extra| {
-            (
-                SASTPCodeStatement::Assignment {
-                    local,
-                    target,
-                    expression,
-                },
-                extra.span(),
-            )
-        });
-
-    let standalone_invocation = pcode_standalone_invocation_statement();
-
-    let statement = choice((declaration, assignment, standalone_invocation, pcode_conditional_branch_statement()));
+    // statements may have an optional label
+    let statement = pcode_label().or_not().then(statement);
 
     let recovery = none_of([
         SleighToken::Control(SleighControlCharacter::SemiColon),
@@ -101,10 +70,13 @@ pub(super) fn pcode<'tokens>(
             recovery
                 .to_span()
                 .map(SASTPCodeStatement::Error)
-                .map_with(spanned),
+                .map_with(spanned)
+                .map(|x| (None, x)),
         )),
     )
+    .map_with(spanned)
     .repeated()
     .collect::<Vec<_>>()
-    .map_with(|statements, extra| (SASTPCode { statements }, extra.span()))
+    .map(|statements| SASTPCode { statements })
+    .map_with(spanned)
 }

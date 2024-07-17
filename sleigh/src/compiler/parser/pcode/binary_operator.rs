@@ -11,6 +11,7 @@ use crate::compiler::lexer::{
     InputSpan,
     ParserInput,
 };
+use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
     inline_whitespace_padded,
     sleigh_operation,
@@ -50,6 +51,6 @@ pub(super) fn binary_operator<'tokens>(
             sleigh_operation(SleighOperation::Plus).to(SASTPCodeBinaryOp::Add),
             sleigh_operation(SleighOperation::Minus).to(SASTPCodeBinaryOp::Subtract),
         ))
-        .map_with(|op, extra| (op, extra.span())),
+        .map_with(spanned),
     )
 }

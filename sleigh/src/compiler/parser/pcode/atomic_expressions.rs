@@ -1,18 +1,12 @@
 use chumsky::error::Rich;
-use chumsky::{
-    extra,
-    Parser,
-};
+use chumsky::Parser;
 
 use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::pcode::subpiece::SASTPCodeSubpiece;
 use crate::compiler::ast::Spanned;
-use crate::compiler::lexer::{
-    InputSpan,
-    ParserInput,
-};
+use crate::compiler::lexer::ParserInput;
+use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
-    inline_whitespace_padded,
     parenthesized,
     sast_ident,
     sast_ident_spanned,
@@ -25,7 +19,6 @@ use crate::compiler::parser::{
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighOperation,
-    SleighToken,
 };
 
 pub(super) fn pcode_ident<'tokens, 'src: 'tokens>(
@@ -35,11 +28,11 @@ pub(super) fn pcode_ident<'tokens, 'src: 'tokens>(
 
 pub(super) fn pcode_u16<'tokens, 'src: 'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<u16>, SleighParserExtra<'tokens>> + Copy {
-    whitespace_padded(sleigh_number().try_map_with(|num, extra| {
-        u16::try_from(num)
-            .map(|num| (num, extra.span()))
-            .map_err(|e| Rich::custom(extra.span(), e))
-    }))
+    whitespace_padded(
+        sleigh_number()
+            .try_map_with(|num, extra| u16::try_from(num).map_err(|e| Rich::custom(extra.span(), e)))
+            .map_with(spanned),
+    )
 }
 
 pub(super) fn pcode_subpiece<'tokens, 'src: 'tokens>(
@@ -52,7 +45,8 @@ pub(super) fn pcode_subpiece<'tokens, 'src: 'tokens>(
         .then_ignore(sleigh_control(SleighControlCharacter::Colon))
         .then(size)
         .or(ident.then(parenthesized(size)))
-        .map_with(|(ident, size), extra| (SASTPCodeSubpiece { ident, size }, extra.span()))
+        .map(|(ident, size)| SASTPCodeSubpiece { ident, size })
+        .map_with(spanned)
 }
 
 /// Parse a pcode label identified by `<some_label>`.
@@ -61,5 +55,5 @@ pub(super) fn pcode_label<'tokens, 'src: 'tokens>(
     sleigh_operation(SleighOperation::LessThan)
         .ignore_then(sast_ident())
         .then_ignore(sleigh_operation(SleighOperation::GreaterThan))
-        .map_with(|ident, extra| (ident, extra.span()))
+        .map_with(spanned)
 }

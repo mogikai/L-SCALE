@@ -3,6 +3,7 @@ use crate::compiler::ast::pcode::bitrange::SASTBitRange;
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::pcode::subpiece::SASTPCodeSubpiece;
 use crate::compiler::ast::Spanned;
+use crate::compiler::lexer::InputSpan;
 
 #[derive(Debug)]
 pub enum SASTPCodeExpression {
@@ -24,6 +25,7 @@ pub enum SASTPCodeExpression {
     Bitrange(Spanned<SASTBitRange>),
     Identifier(Spanned<SASTIdent>),
     LiteralNumber(Spanned<u64>),
+    Error(InputSpan),
 }
 
 #[derive(Debug, Copy, Clone)]
