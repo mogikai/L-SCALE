@@ -1,11 +1,3 @@
-use chumsky::error::Rich;
-use chumsky::prelude::choice;
-use chumsky::{
-    extra,
-    IterParser,
-    Parser,
-};
-
 use crate::compiler::ast::pcode::statement::SASTPCodeStatement;
 use crate::compiler::ast::pcode::SASTPCode;
 use crate::compiler::ast::Spanned;
@@ -13,6 +5,7 @@ use crate::compiler::lexer::{
     InputSpan,
     ParserInput,
 };
+use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::atomic_expressions::{
     pcode_ident,
     pcode_u16,
@@ -32,6 +25,21 @@ use crate::compiler::tokens::{
     SleighKeyword,
     SleighOperation,
     SleighToken,
+};
+use chumsky::error::Rich;
+use chumsky::prelude::{
+    choice,
+    via_parser,
+};
+use chumsky::primitive::{
+    any,
+    none_of,
+};
+use chumsky::recovery::skip_then_retry_until;
+use chumsky::{
+    extra,
+    IterParser,
+    Parser,
 };
 use statements::branching::pcode_conditional_branch_statement;
 use statements::invocation::pcode_standalone_invocation_statement;
@@ -81,8 +89,22 @@ pub(super) fn pcode<'tokens>(
 
     let statement = choice((declaration, assignment, standalone_invocation, pcode_conditional_branch_statement()));
 
-    whitespace_padded(statement)
-        .repeated()
-        .collect::<Vec<_>>()
-        .map_with(|statements, extra| (SASTPCode { statements }, extra.span()))
+    let recovery = none_of([
+        SleighToken::Control(SleighControlCharacter::SemiColon),
+        SleighToken::Control(SleighControlCharacter::CloseBrace),
+    ])
+    .repeated()
+    .ignore_then(sleigh_control(SleighControlCharacter::SemiColon));
+
+    whitespace_padded(
+        statement.recover_with(via_parser(
+            recovery
+                .to_span()
+                .map(SASTPCodeStatement::Error)
+                .map_with(spanned),
+        )),
+    )
+    .repeated()
+    .collect::<Vec<_>>()
+    .map_with(|statements, extra| (SASTPCode { statements }, extra.span()))
 }

@@ -15,6 +15,7 @@ use crate::compiler::lexer::{
     InputSpan,
     ParserInput,
 };
+use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
     sleigh_ident,
     SleighParserExtra,
@@ -37,21 +38,23 @@ pub(super) fn display_section<'tokens>(
         .map(|tok: SleighToken| tok.to_mnemonic().to_string())
         .repeated()
         .collect::<Vec<String>>()
-        .map_with(|s, extra| (s.into_iter().collect::<String>(), extra.span()))
+        .map(|s| s.into_iter().collect::<String>())
+        .map_with(spanned)
         .rewind();
 
     // Parse mnemonic, removing any `^` and rewind.
     // If we encounter a whitespace in the beginning, the mnemonic is empty.
     let mnemonic = just(SleighToken::Whitespace)
-        .ignored()
-        .map_with(|_, extra| (String::new(), extra.span()))
+        .to(String::new())
+        .map_with(spanned)
         .or(any()
             .and_is(just(SleighToken::Whitespace).not())
             .then_ignore(just(SleighToken::Operation(SleighOperation::Hat)).or_not())
             .map(|token: SleighToken| token.to_mnemonic().to_string())
             .repeated()
             .collect::<Vec<_>>()
-            .map_with(|element, extra| (element.into_iter().collect::<String>(), extra.span())))
+            .map(|element| element.into_iter().collect::<String>())
+            .map_with(spanned))
         .rewind();
 
     let identifiers = sleigh_ident()
@@ -61,7 +64,7 @@ pub(super) fn display_section<'tokens>(
                 .and_is(end_of_display_section.not())
                 .repeated(),
         )
-        .map_with(|ident, extra| (ident, extra.span()))
+        .map_with(spanned)
         .repeated()
         .collect::<Vec<_>>();
 
@@ -71,14 +74,10 @@ pub(super) fn display_section<'tokens>(
         .then(identifiers)
         // .then_ignore(any().and_is(end_of_display_section.not()).repeated())
         .then_ignore(end_of_display_section)
-        .map_with(|((display_str, mnemonic), identifiers), extra| {
-            (
-                SASTDisplaySection {
-                    mnemonic,
-                    identifiers,
-                    display_str,
-                },
-                extra.span(),
-            )
+        .map(|((display_str, mnemonic), identifiers)| SASTDisplaySection {
+            mnemonic,
+            identifiers,
+            display_str,
         })
+        .map_with(spanned)
 }

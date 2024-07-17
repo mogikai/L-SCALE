@@ -2,7 +2,6 @@ use ariadne::{
     Label,
     Report,
     ReportKind,
-    Source,
 };
 use chumsky::{
     extra,
@@ -17,18 +16,14 @@ use chumsky::combinator::{
 use chumsky::error::Rich;
 use chumsky::extra::ParserExtra;
 use chumsky::input::{
-    Input,
     MapExtra,
 };
 use chumsky::prelude::{
     any,
     end,
     skip_then_retry_until,
-    skip_until,
-    via_parser,
 };
 use chumsky::primitive::just;
-use chumsky::recursive::Recursive;
 use chumsky::span::Span;
 use tracing::trace;
 
@@ -43,8 +38,6 @@ use crate::compiler::ast::{
 };
 use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::constructor::bit_pattern_section::{
-    SASTConstraintOp,
-    SASTConstraintPattern,
     SASTUnaryOp,
 };
 use crate::compiler::ast::item::SASTItem;
@@ -55,6 +48,8 @@ use crate::compiler::lexer::{
     SleighTokens,
 };
 use crate::compiler::parser::constructor::constructor;
+use crate::compiler::parser::define::define;
+use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode_macro::pcode_macro;
 use crate::compiler::tokens::{
     SleighControlCharacter,
@@ -63,11 +58,10 @@ use crate::compiler::tokens::{
     SleighToken,
 };
 
-use self::define::define;
-
 mod constructor;
-mod pcode;
 mod define;
+mod helpers;
+mod pcode;
 mod pcode_macro;
 
 #[derive(Debug, Default)]
@@ -105,11 +99,11 @@ type SleighParserExtra<'tokens> = extra::Full<Rich<'tokens, SleighToken, InputSp
 fn parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, SleighAST, SleighParserExtra<'tokens>>
 {
     let constructor = constructor().map(SASTItem::Constructor);
-    let define = define().map(SASTItem::Define);
+    // let define = define().map(SASTItem::Define);
     let pcode_macro = pcode_macro().map(SASTItem::Macro);
     constructor
         .or(pcode_macro)
-        .or(define)
+        // .or(define)
         .padded_by(sleigh_whitespace())
         .recover_with(skip_then_retry_until(any().ignored(), end()))
         .repeated()
@@ -155,7 +149,7 @@ fn sast_ident<'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, SASTIdent
 
 fn sast_ident_spanned<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTIdent>, SleighParserExtra<'tokens>> + Copy {
-    sleigh_ident().map_with(|ident, extra| (SASTIdent(ident), extra.span()))
+    sleigh_ident().map(SASTIdent).map_with(spanned)
 }
 
 fn sleigh_number<'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, u64, SleighParserExtra<'tokens>> + Copy {
