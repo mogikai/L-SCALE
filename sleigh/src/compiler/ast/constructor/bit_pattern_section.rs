@@ -6,6 +6,12 @@ pub struct SASTBitPatternSection {
     pub constraint: Spanned<SASTBitPatternConstraint>,
 }
 
+impl SASTBitPatternSection {
+    pub fn new(constraint: Spanned<SASTBitPatternConstraint>) -> Self {
+        Self { constraint }
+    }
+}
+
 #[derive(Debug)]
 pub enum SASTBitPatternConstraint {
     /// Identifiers may appear on their own in a constraint, linking the local symbol to the global symbol.
@@ -29,7 +35,7 @@ pub enum SASTBinaryOp {
     Concatenate,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum SASTUnaryOp {
     JustifyLeft,
     JustifyRight,

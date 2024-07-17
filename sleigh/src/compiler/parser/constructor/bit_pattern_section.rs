@@ -1,14 +1,3 @@
-use chumsky::error::Rich;
-use chumsky::prelude::{
-    just,
-    Recursive,
-};
-use chumsky::{
-    extra,
-    select,
-    Parser,
-};
-
 use crate::compiler::ast::constructor::bit_pattern_section::{
     SASTBinaryOp,
     SASTBitPatternConstraint,
@@ -18,23 +7,28 @@ use crate::compiler::ast::constructor::bit_pattern_section::{
     SASTUnaryOp,
 };
 use crate::compiler::ast::Spanned;
-use crate::compiler::lexer::{
-    InputSpan,
-    ParserInput,
-};
+use crate::compiler::lexer::ParserInput;
+use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
     maybe_parenthesized,
     parenthesized,
     sast_ident,
-    sleigh_inline_whitespace,
+    sleigh_control,
     sleigh_number,
     sleigh_whitespace,
+    whitespace_padded,
     SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighOperation,
     SleighToken,
+};
+use chumsky::input::MapExtra;
+use chumsky::prelude::Recursive;
+use chumsky::{
+    select,
+    Parser,
 };
 
 /// Parses the bit pattern section of a SLEIGH constructor.
@@ -48,34 +42,35 @@ pub(super) fn bit_pattern_section<'tokens>(
         SleighToken::Operation(SleighOperation::Or) => SASTBinaryOp::Or,
         SleighToken::Control(SleighControlCharacter::SemiColon) => SASTBinaryOp::Concatenate,
     }
-    .map_with(|op, extra| (op, extra.span()))
+    .map_with(spanned)
     .labelled("operator");
 
-    let ident = sast_ident()
-        .padded_by(sleigh_whitespace())
-        .map_with(|item, extra| (item, extra.span()));
+    let ident = whitespace_padded(sast_ident()).map_with(spanned);
 
-    let constraint_op = select! {
-        SleighToken::Operation(SleighOperation::Equals) => SASTConstraintOp::Equals,
-        SleighToken::Operation(SleighOperation::NotEquals) => SASTConstraintOp::NotEquals,
-        SleighToken::Operation(SleighOperation::GreaterThan) => SASTConstraintOp::GreaterThan,
-        SleighToken::Operation(SleighOperation::LessThan) => SASTConstraintOp::LessThan,
-    }
-    .map_with(|op, extra| (op, extra.span()))
-    .padded_by(sleigh_whitespace());
+    let constraint_op = whitespace_padded(
+        select! {
+            SleighToken::Operation(SleighOperation::Equals) => SASTConstraintOp::Equals,
+            SleighToken::Operation(SleighOperation::NotEquals) => SASTConstraintOp::NotEquals,
+            SleighToken::Operation(SleighOperation::GreaterThan) => SASTConstraintOp::GreaterThan,
+            SleighToken::Operation(SleighOperation::LessThan) => SASTConstraintOp::LessThan,
+        }
+        .map_with(spanned),
+    );
 
     let bit_pattern = sleigh_number().map(SASTConstraintPattern::BitPattern);
 
-    let constraint_pattern = sast_ident()
-        .map(SASTConstraintPattern::Ident)
-        .or(bit_pattern)
-        .map_with(|pattern, extra| (pattern, extra.span()))
-        .padded_by(sleigh_whitespace());
+    let constraint_pattern = whitespace_padded(
+        sast_ident()
+            .map(SASTConstraintPattern::Ident)
+            .or(bit_pattern)
+            .map_with(spanned),
+    );
 
     let advanced_constraint = ident
         .then(constraint_op)
         .then(constraint_pattern)
-        .map_with(|((lhs, op), rhs), extra| (SASTBitPatternConstraint::AdvancedConstraint(lhs, op, rhs), extra.span()))
+        .map(|((lhs, op), rhs)| SASTBitPatternConstraint::AdvancedConstraint(lhs, op, rhs))
+        .map_with(spanned)
         .labelled("constraint");
 
     // An atom that can be unambiguously parsed. In this case either an identifier,
@@ -83,47 +78,47 @@ pub(super) fn bit_pattern_section<'tokens>(
     let atom = maybe_parenthesized(advanced_constraint)
         .or(maybe_parenthesized(ident)
             .map(SASTBitPatternConstraint::Ident)
-            .map_with(|item, extra| (item, extra.span())))
-        .or(parenthesized(constraint.clone()))
-        .padded_by(sleigh_whitespace());
+            .map_with(spanned))
+        .or(parenthesized(constraint.clone()));
 
     // A unary op is currently only justify left or justify right.
     let unary_op = {
-        let ellipsis = just(SleighToken::Control(SleighControlCharacter::Ellipsis));
+        let ellipsis = sleigh_control(SleighControlCharacter::Ellipsis);
         // Justify left ist represented by an ellipsis, followed by an expression, and
         let justify_left = ellipsis
-            .to_span()
-            .then(atom.clone())
-            .map_with(|(justify, atom), extra| {
-                (SASTBitPatternConstraint::UnaryOp((SASTUnaryOp::JustifyLeft, justify), Box::new(atom)), extra.span())
-            });
+            .to(SASTUnaryOp::JustifyLeft)
+            .map_with(spanned)
+            .then(atom.clone().map(Box::new))
+            .map(|(justify, atom)| SASTBitPatternConstraint::UnaryOp(justify, atom))
+            .map_with(spanned);
         // Justify right is represented by an expression, followed by an ellipsis.
         let justify_right = atom
             .clone()
-            .then(ellipsis.to_span())
-            .map_with(|(atom, justify), extra| {
-                (
-                    SASTBitPatternConstraint::UnaryOp((SASTUnaryOp::JustifyRight, justify), Box::new(atom)),
-                    extra.span(),
-                )
-            });
+            .map(Box::new)
+            .then(ellipsis.to(SASTUnaryOp::JustifyRight).map_with(spanned))
+            .map(|(atom, justify)| SASTBitPatternConstraint::UnaryOp(justify, atom))
+            .map_with(spanned);
 
-        justify_left
-            .or(justify_right)
-            .padded_by(sleigh_whitespace())
+        justify_left.or(justify_right)
     }
     .labelled("unary operation");
 
-    let atom = unary_op.or(atom);
+    let atom = whitespace_padded(unary_op.or(atom));
 
     let binary_op = atom
         .clone()
-        .foldl_with(op.then(atom.clone()).repeated(), |lhs, (op, rhs), extra| {
-            (SASTBitPatternConstraint::BinaryOp(Box::new(lhs), op, Box::new(rhs)), extra.span())
-        })
+        .foldl_with(op.then(atom.clone()).repeated(), spanned_binary_op)
         .labelled("binary operation");
 
     constraint.define(binary_op);
 
-    constraint.map_with(|constraint, extra| (SASTBitPatternSection { constraint }, extra.span()))
+    constraint.map(SASTBitPatternSection::new).map_with(spanned)
+}
+
+fn spanned_binary_op<'tokens>(
+    lhs: Spanned<SASTBitPatternConstraint>,
+    (op, rhs): (Spanned<SASTBinaryOp>, Spanned<SASTBitPatternConstraint>),
+    extra: &mut MapExtra<'tokens, '_, ParserInput<'tokens>, SleighParserExtra<'tokens>>,
+) -> Spanned<SASTBitPatternConstraint> {
+    (SASTBitPatternConstraint::BinaryOp(Box::new(lhs), op, Box::new(rhs)), extra.span())
 }
