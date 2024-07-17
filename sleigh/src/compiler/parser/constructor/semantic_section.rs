@@ -1,28 +1,15 @@
+use chumsky::Parser;
+
 use crate::compiler::ast::constructor::semantic_section::SASTSemanticSection;
-use crate::compiler::ast::pcode::SASTPCode;
 use crate::compiler::ast::Spanned;
-use crate::compiler::lexer::{
-    InputSpan,
-    ParserInput,
-};
+use crate::compiler::lexer::ParserInput;
+use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::pcode;
 use crate::compiler::parser::{
     sleigh_control,
     SleighParserExtra,
 };
-use crate::compiler::tokens::{
-    SleighControlCharacter,
-    SleighToken,
-};
-use chumsky::error::Rich;
-use chumsky::prelude::{
-    any,
-    just,
-};
-use chumsky::{
-    extra,
-    Parser,
-};
+use crate::compiler::tokens::SleighControlCharacter;
 
 pub(super) fn semantic_section<'tokens, 'src: 'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTSemanticSection>, SleighParserExtra<'tokens>> {
@@ -31,5 +18,6 @@ pub(super) fn semantic_section<'tokens, 'src: 'tokens>(
             sleigh_control(SleighControlCharacter::OpenBrace),
             sleigh_control(SleighControlCharacter::CloseBrace),
         )
-        .map_with(|pcode, extra| (SASTSemanticSection(pcode), extra.span()))
+        .map(SASTSemanticSection)
+        .map_with(spanned)
 }

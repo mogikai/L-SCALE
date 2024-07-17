@@ -18,6 +18,7 @@ use crate::compiler::lexer::{
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
     sleigh_ident,
+    sleigh_operation,
     SleighParserExtra,
 };
 use crate::compiler::tokens::{
@@ -49,7 +50,7 @@ pub(super) fn display_section<'tokens>(
         .map_with(spanned)
         .or(any()
             .and_is(just(SleighToken::Whitespace).not())
-            .then_ignore(just(SleighToken::Operation(SleighOperation::Hat)).or_not())
+            .then_ignore(sleigh_operation(SleighOperation::Hat).or_not())
             .map(|token: SleighToken| token.to_mnemonic().to_string())
             .repeated()
             .collect::<Vec<_>>()
