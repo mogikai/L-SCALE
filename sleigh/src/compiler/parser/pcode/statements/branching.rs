@@ -1,14 +1,12 @@
-use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
+use chumsky::Parser;
+
 use crate::compiler::ast::pcode::statement::SASTPCodeStatement;
 use crate::compiler::ast::Spanned;
-use crate::compiler::lexer::{
-    InputSpan,
-    ParserInput,
-};
+use crate::compiler::lexer::ParserInput;
+use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::atomic_expressions::pcode_label;
 use crate::compiler::parser::pcode::expression::pcode_expression;
 use crate::compiler::parser::{
-    inline_whitespace_padded,
     parenthesized,
     sleigh_control,
     sleigh_keyword,
@@ -18,12 +16,6 @@ use crate::compiler::parser::{
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighKeyword,
-    SleighToken,
-};
-use chumsky::error::Rich;
-use chumsky::{
-    extra,
-    Parser,
 };
 
 pub fn pcode_conditional_branch_statement<'tokens>(
@@ -33,13 +25,9 @@ pub fn pcode_conditional_branch_statement<'tokens>(
         .then_ignore(sleigh_keyword(SleighKeyword::Goto))
         .then(whitespace_padded(pcode_label()))
         .then_ignore(sleigh_control(SleighControlCharacter::SemiColon))
-        .map_with(|(condition_expression, label), extra| {
-            (
-                SASTPCodeStatement::ConditionalBranch {
-                    condition_expression,
-                    label,
-                },
-                extra.span(),
-            )
+        .map(|(condition_expression, label), extra| SASTPCodeStatement::ConditionalBranch {
+            condition_expression,
+            label,
         })
+        .map_with(spanned)
 }
