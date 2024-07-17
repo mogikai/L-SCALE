@@ -1,18 +1,36 @@
-use chumsky::{error::Rich, extra, primitive::{choice, just}, select, IterParser, Parser};
+use chumsky::primitive::choice;
+use chumsky::{
+    IterParser,
+    Parser,
+};
 
-use crate::compiler::{ast::{define::{SASTAddressSpace, SASTAddressSpaceAttributes, SASTAddressSpaceType, SASTDefine}, Spanned}, lexer::{InputSpan, ParserInput}, parser::{define::endianness::endianness, sast_ident, sleigh_number}, tokens::{SleighControlCharacter, SleighKeyword, SleighOperation, SleighToken}};
+use crate::compiler::ast::define::SASTDefine;
+use crate::compiler::ast::Spanned;
+use crate::compiler::lexer::ParserInput;
+use crate::compiler::parser::define::endianness::endianness;
+use crate::compiler::parser::helpers::spanned;
+use crate::compiler::tokens::{
+    SleighControlCharacter,
+    SleighKeyword,
+};
 
-use self::{address_space::SASTAddressSpaceAttribute, alignment::alignment, register::register};
+use super::{
+    sleigh_control,
+    sleigh_keyword,
+    whitespace_padded,
+    SleighParserExtra,
+};
+
 use self::address_space::address_space;
+use self::alignment::alignment;
 use self::bitrange_register::bitrange_register;
+use self::register::register;
 
-use super::{sleigh_control, sleigh_keyword, sleigh_whitespace, SleighParserExtra};
-
-mod endianness;
-mod alignment;
 mod address_space;
-mod register;
+mod alignment;
 mod bitrange_register;
+mod endianness;
+mod register;
 
 pub(super) fn define<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTDefine>, SleighParserExtra<'tokens>> {
@@ -24,9 +42,8 @@ pub(super) fn define<'tokens>(
 
     let definitions = choice((endian, alignment, address_space, register, bitrange_register));
 
-    sleigh_keyword(SleighKeyword::Define)
-        .padded_by(sleigh_whitespace())
+    whitespace_padded(sleigh_keyword(SleighKeyword::Define))
         .ignore_then(definitions)
         .then_ignore(sleigh_control(SleighControlCharacter::SemiColon))
-        .map_with(|define, extra| (define, extra.span()))
+        .map_with(spanned)
 }

@@ -1,4 +1,5 @@
-use super::{common::SASTIdent, Spanned};
+use super::common::SASTIdent;
+use super::Spanned;
 
 #[derive(Debug)]
 pub enum SASTEndianness {
@@ -16,8 +17,8 @@ pub enum SASTAddressSpaceType {
 #[derive(Debug)]
 pub struct SASTAddressSpaceAttributes {
     pub space_type: Option<Spanned<SASTAddressSpaceType>>,
-    pub size: Spanned<usize>, // number of bytes needed to address any location (mandatory)
-    pub wordsize: Option<Spanned<usize>>, // number of bytes per address location
+    pub size: Option<Spanned<u64>>, // number of bytes needed to address any location (mandatory)
+    pub wordsize: Option<Spanned<u64>>, // number of bytes per address location
     pub default: Option<Spanned<bool>>, // if true, this address space will be used by the main address bus
 }
 
@@ -30,8 +31,8 @@ pub struct SASTAddressSpace {
 #[derive(Debug)]
 pub struct SASTRegister {
     pub spacename: Spanned<SASTIdent>,
-    pub offset: Spanned<usize>, // offset in register address space
-    pub size: Spanned<usize>,
+    pub offset: Spanned<u64>, // offset in register address space
+    pub size: Spanned<u64>,
     pub regnames: Vec<Spanned<SASTIdent>>,
 }
 
@@ -39,14 +40,14 @@ pub struct SASTRegister {
 pub struct SASTBitrangeRegister {
     pub name: Spanned<SASTIdent>,
     pub source_register: Spanned<SASTIdent>,
-    pub offset: usize, // offset into source register
-    pub size: usize, // number of bits
+    pub offset: u64, // offset into source register
+    pub size: u64,   // number of bits
 }
 
 #[derive(Debug)]
 pub enum SASTDefine {
     Endianness(Spanned<SASTEndianness>),
-    Alignment(Spanned<usize>), // the disassembler checks against this
+    Alignment(Spanned<u64>), // the disassembler checks against this
     AddressSpace(Spanned<SASTAddressSpace>),
     Register(Spanned<SASTRegister>),
     BitrangeRegister(Vec<Spanned<SASTBitrangeRegister>>),
