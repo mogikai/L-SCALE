@@ -25,7 +25,7 @@ pub fn pcode_conditional_branch_statement<'tokens>(
         .then_ignore(sleigh_keyword(SleighKeyword::Goto))
         .then(whitespace_padded(pcode_label()))
         .then_ignore(sleigh_control(SleighControlCharacter::SemiColon))
-        .map(|(condition_expression, label), extra| SASTPCodeStatement::ConditionalBranch {
+        .map(|(condition_expression, label)| SASTPCodeStatement::ConditionalBranch {
             condition_expression,
             label,
         })
