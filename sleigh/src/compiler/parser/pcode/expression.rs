@@ -7,6 +7,7 @@ use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::atomic_expressions::{
+    pcode_bitrange,
     pcode_ident,
     pcode_subpiece,
 };
@@ -31,6 +32,8 @@ use chumsky::{
 pub(super) fn pcode_expression<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeExpression>, SleighParserExtra<'tokens>> + Clone {
     let ident_expression = pcode_ident().map(SASTPCodeExpression::Identifier);
+
+    let bitrange = pcode_bitrange().map(SASTPCodeExpression::Bitrange);
 
     let number_literal = whitespace_padded(
         sleigh_number()
@@ -57,6 +60,7 @@ pub(super) fn pcode_expression<'tokens>(
         .clone()
         .or(number_literal)
         .or(expr_subpiece)
+        .or(bitrange)
         .or(ident_expression)
         .map_with(spanned)
         .or(parenthesized(expression.clone()));

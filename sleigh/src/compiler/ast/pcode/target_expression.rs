@@ -1,5 +1,5 @@
 use crate::compiler::ast::common::SASTIdent;
-use crate::compiler::ast::pcode::bitrange::SASTBitRange;
+use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::pcode::subpiece::SASTPCodeSubpiece;
 use crate::compiler::ast::Spanned;
@@ -17,7 +17,7 @@ pub enum SASTPCodeTargetExpression {
         size: Spanned<Option<u16>>,
     },
     /// Store the right hand side in the range specified. The remaining bits remain unchanged.
-    BitRange(Spanned<SASTBitRange>),
+    BitRange(Spanned<SASTPCodeBitRange>),
     /// Truncate the variable identified by `identifier` to the supplied size and then assign to the
     /// truncated variable.
     Subpiece(Spanned<SASTPCodeSubpiece>),
