@@ -1,6 +1,7 @@
 use crate::compiler::ast::item::SASTItem;
 use crate::compiler::lexer::InputSpan;
 
+pub mod attach;
 pub mod common;
 pub mod constructor;
 pub mod define;

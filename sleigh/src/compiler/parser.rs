@@ -47,6 +47,7 @@ use crate::compiler::lexer::{
     ParserInput,
     SleighTokens,
 };
+use crate::compiler::parser::attach::attach;
 use crate::compiler::parser::constructor::constructor;
 use crate::compiler::parser::define::define;
 use crate::compiler::parser::helpers::spanned;
@@ -58,6 +59,7 @@ use crate::compiler::tokens::{
     SleighToken,
 };
 
+mod attach;
 mod constructor;
 mod define;
 mod helpers;
@@ -98,10 +100,12 @@ type SleighParserExtra<'tokens> = extra::Full<Rich<'tokens, SleighToken, InputSp
 
 fn parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, SleighAST, SleighParserExtra<'tokens>>
 {
+    let attach = attach().map(SASTItem::Attach);
     let constructor = constructor().map(SASTItem::Constructor);
     let define = define().map(SASTItem::Define);
     let pcode_macro = pcode_macro().map(SASTItem::Macro);
-    constructor
+    attach
+        .or(constructor)
         .or(pcode_macro)
         .or(define)
         .padded_by(sleigh_whitespace())

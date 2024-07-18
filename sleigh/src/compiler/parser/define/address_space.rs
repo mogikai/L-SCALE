@@ -81,7 +81,7 @@ pub(super) fn address_space<'tokens>(
                 .iter()
                 .find_map(|(attribute, span)| {
                     if let SASTAddressSpaceAttribute::Size(size) = attribute {
-                        Some((*size, span.clone()))
+                        Some((size, span.clone()))
                     } else {
                         None
                     }
@@ -93,7 +93,7 @@ pub(super) fn address_space<'tokens>(
 
             SASTAddressSpace {
                 name,
-                attributes: (attributes, span),
+                attributes,
             }
         })
         .map_with(spanned);

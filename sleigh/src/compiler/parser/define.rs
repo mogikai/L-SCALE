@@ -28,13 +28,6 @@ use self::register::register;
 use self::token::token;
 use self::user_pcode_op::user_pcode_op;
 
-use super::{
-    sleigh_control,
-    sleigh_keyword,
-    sleigh_whitespace,
-    SleighParserExtra,
-};
-
 mod address_space;
 mod alignment;
 mod bitrange_register;
