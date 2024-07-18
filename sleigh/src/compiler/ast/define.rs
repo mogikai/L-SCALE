@@ -1,6 +1,8 @@
 use super::common::SASTIdent;
 use super::Spanned;
 
+// basic definitions
+
 #[derive(Debug)]
 pub enum SASTEndianness {
     Big,
@@ -14,18 +16,18 @@ pub enum SASTAddressSpaceType {
     RegisterSpace, // registers are defined as offsets into this address space
 }
 
-#[derive(Debug)]
-pub struct SASTAddressSpaceAttributes {
-    pub space_type: Option<Spanned<SASTAddressSpaceType>>,
-    pub size: Option<Spanned<u64>>, // number of bytes needed to address any location (mandatory)
-    pub wordsize: Option<Spanned<u64>>, // number of bytes per address location
-    pub default: Option<Spanned<bool>>, // if true, this address space will be used by the main address bus
+#[derive(Debug, Clone, Copy)]
+pub enum SASTAddressSpaceAttribute {
+    Type(SASTAddressSpaceType),
+    Size(u64), // mandatory
+    Wordsize(u64),
+    IsDefault
 }
 
 #[derive(Debug)]
 pub struct SASTAddressSpace {
     pub name: Spanned<SASTIdent>,
-    pub attributes: Spanned<SASTAddressSpaceAttributes>,
+    pub attributes: Vec<Spanned<SASTAddressSpaceAttribute>>,
 }
 
 #[derive(Debug)]
@@ -41,7 +43,36 @@ pub struct SASTBitrangeRegister {
     pub name: Spanned<SASTIdent>,
     pub source_register: Spanned<SASTIdent>,
     pub offset: u64, // offset into source register
-    pub size: u64,   // number of bits
+    pub size: u64, // number of bits
+}
+
+#[derive(Debug)]
+pub struct SASTUserPcodeOp {
+    pub name: Spanned<SASTIdent>
+}
+
+// tokens and fields
+
+#[derive(Debug)]
+pub enum SASTTokenFieldAttribute {
+    Signed,
+    Hex,
+    Dec,
+}
+
+#[derive(Debug)]
+pub struct SASTTokenField {
+    pub name: Spanned<SASTIdent>,
+    pub start: Spanned<u64>,
+    pub end: Spanned<u64>,
+    pub attributes: Vec<Spanned<SASTTokenFieldAttribute>>
+}
+
+#[derive(Debug)]
+pub struct SASTToken {
+    pub name: Spanned<SASTIdent>,
+    pub bits: Spanned<u64>, // number of bits of token (must be multiple of 8)
+    pub fields: Vec<Spanned<SASTTokenField>>
 }
 
 #[derive(Debug)]
@@ -51,5 +82,6 @@ pub enum SASTDefine {
     AddressSpace(Spanned<SASTAddressSpace>),
     Register(Spanned<SASTRegister>),
     BitrangeRegister(Vec<Spanned<SASTBitrangeRegister>>),
-    Foo(Spanned<u32>),
+    UserPcodeOp(Spanned<SASTUserPcodeOp>),
+    Token(Spanned<SASTToken>),
 }

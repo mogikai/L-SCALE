@@ -4,6 +4,7 @@ use chumsky::primitive::{
     just,
 };
 use chumsky::{
+    extra,
     select,
     IterParser,
     Parser,
@@ -11,7 +12,7 @@ use chumsky::{
 
 use crate::compiler::ast::define::{
     SASTAddressSpace,
-    SASTAddressSpaceAttributes,
+    SASTAddressSpaceAttribute,
     SASTAddressSpaceType,
 };
 use crate::compiler::ast::Spanned;
@@ -30,15 +31,6 @@ use crate::compiler::tokens::{
     SleighOperation,
     SleighToken,
 };
-
-// for parsing only
-#[derive(Debug, Clone, Copy)]
-pub enum SASTAddressSpaceAttribute {
-    Type(SASTAddressSpaceType),
-    Size(u64),
-    Wordsize(u64),
-    IsDefault,
-}
 
 pub(super) fn address_space<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTAddressSpace>, SleighParserExtra<'tokens>> {
@@ -81,7 +73,7 @@ pub(super) fn address_space<'tokens>(
         .ignore_then(sleigh_whitespace())
         .then(sast_ident_spanned())
         .then(sleigh_whitespace())
-        .map(|a| a.0 .1) // remove () (is there a better way?)
+        .map(|a| a.0.1) // remove () (is there a better way?)
         .then(attrs)
         .validate(|(name, (attributes, span)), _, emitter| {
             // check if mandatory size attribute exists
@@ -99,27 +91,9 @@ pub(super) fn address_space<'tokens>(
                 emitter.emit(Rich::custom(span.clone(), "Missing size attribute"));
             }
 
-            let mut attr_struct = SASTAddressSpaceAttributes {
-                size: None,
-                space_type: None,
-                wordsize: None,
-                default: None,
-            };
-
-            // fill in others
-
-            for (attribute, span) in attributes.into_iter() {
-                match attribute {
-                    SASTAddressSpaceAttribute::Wordsize(wordsize) => attr_struct.wordsize = Some((wordsize, span)),
-                    SASTAddressSpaceAttribute::Type(stype) => attr_struct.space_type = Some((stype, span)),
-                    SASTAddressSpaceAttribute::Size(size) => attr_struct.size = Some((size, span)), // override duplicates
-                    SASTAddressSpaceAttribute::IsDefault => attr_struct.default = Some((true, span)),
-                }
-            }
-
             SASTAddressSpace {
                 name,
-                attributes: (attr_struct, span),
+                attributes: (attributes, span),
             }
         })
         .map_with(spanned);

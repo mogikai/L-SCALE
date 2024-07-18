@@ -51,7 +51,6 @@ pub(super) fn register<'tokens>(
         .then(whitespace_padded(size))
         .then(stringlist)
         .map(|(((spacename, offset), size), regnames)| {
-            eprintln!("value = {:#?}", offset);
             SASTRegister {
                 spacename,
                 offset,
