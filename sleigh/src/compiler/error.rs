@@ -21,6 +21,8 @@ pub enum SleighCompilerError {
     MissingSource,
     #[error("The input is not yet tokenized.")]
     NotTokenized,
+    #[error("The input is not yet preprocessed. Parsing requires a preprocessed token stream.")]
+    NotPreprocessed,
 }
 
 impl Debug for SleighCompilerError {

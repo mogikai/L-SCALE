@@ -19,7 +19,8 @@ use crate::compiler::parser::SleighParserExtra;
 use crate::compiler::tokens::SleighToken;
 
 pub(super) fn target_expression<'tokens, 'src: 'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeTargetExpression>, SleighParserExtra<'tokens>> + Copy {
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeTargetExpression>, SleighParserExtra<'tokens>> + Clone
+{
     let ident = pcode_ident();
     let target_expr_ident = ident.map_with(|ident, extra| (SASTPCodeTargetExpression::Variable(ident), extra.span()));
     let subpiece = pcode_subpiece();

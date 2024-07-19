@@ -24,7 +24,7 @@ use crate::compiler::tokens::{
 };
 
 pub(super) fn binary_operator<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeBinaryOp>, SleighParserExtra<'tokens>> + Copy {
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeBinaryOp>, SleighParserExtra<'tokens>> + Clone {
     whitespace_padded(
         choice((
             sleigh_operation(SleighOperation::Equals)

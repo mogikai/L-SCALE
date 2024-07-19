@@ -15,9 +15,7 @@ use chumsky::combinator::{
 };
 use chumsky::error::Rich;
 use chumsky::extra::ParserExtra;
-use chumsky::input::{
-    MapExtra,
-};
+use chumsky::input::MapExtra;
 use chumsky::prelude::{
     any,
     end,
@@ -25,11 +23,15 @@ use chumsky::prelude::{
 };
 use chumsky::primitive::just;
 use chumsky::span::Span;
-use tracing::trace;
+use tracing::{
+    debug,
+    trace,
+};
 
 use crate::compiler::{
     CompilerContext,
     CompilerInputCache,
+    InputId,
     StringId,
 };
 use crate::compiler::ast::{
@@ -37,9 +39,7 @@ use crate::compiler::ast::{
     Spanned,
 };
 use crate::compiler::ast::common::SASTIdent;
-use crate::compiler::ast::constructor::bit_pattern_section::{
-    SASTUnaryOp,
-};
+use crate::compiler::ast::constructor::bit_pattern_section::SASTUnaryOp;
 use crate::compiler::ast::item::SASTItem;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::{
@@ -51,6 +51,7 @@ use crate::compiler::parser::attach::attach;
 use crate::compiler::parser::constructor::constructor;
 use crate::compiler::parser::define::define;
 use crate::compiler::parser::helpers::spanned;
+use crate::compiler::parser::included::included_tokens;
 use crate::compiler::parser::pcode_macro::pcode_macro;
 use crate::compiler::tokens::{
     SleighControlCharacter,
@@ -63,6 +64,7 @@ mod attach;
 mod constructor;
 mod define;
 mod helpers;
+mod included;
 mod pcode;
 mod pcode_macro;
 
@@ -78,9 +80,9 @@ impl SleighParser {
     ) -> Result<SleighAST, SleighCompilerError> {
         let parsed = parser().parse_with_state(tokens.spanned(), context);
         let mut diagnostic = vec![];
-        // trace!("Input: {:?}", tokens);
-        trace!("Output: {:?}", parsed.output());
+        trace!("Input: {:?}", tokens);
         parsed.errors().for_each(|err| {
+            debug!("Generating error report for error {err:?}");
             let error_span = err.span();
             let report = Report::build(ReportKind::Error, error_span.context(), error_span.start())
                 .with_message("Parser Error")
@@ -100,6 +102,16 @@ type SleighParserExtra<'tokens> = extra::Full<Rich<'tokens, SleighToken, InputSp
 
 fn parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, SleighAST, SleighParserExtra<'tokens>>
 {
+    items_parser()
+        .or(included_tokens())
+        .repeated()
+        .collect::<Vec<_>>()
+        .map(|items| items.into_iter().flatten().collect())
+        .map(|items| SleighAST { items })
+}
+
+fn items_parser<'tokens, 'src: 'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Vec<SASTItem>, SleighParserExtra<'tokens>> {
     let attach = attach().map(SASTItem::Attach);
     let constructor = constructor().map(SASTItem::Constructor);
     let define = define().map(SASTItem::Define);
@@ -111,23 +123,19 @@ fn parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>
         .padded_by(sleigh_whitespace())
         .recover_with(skip_then_retry_until(any().ignored(), end()))
         .repeated()
+        .at_least(1)
         .collect::<Vec<_>>()
-        .map(|items| SleighAST { items })
 }
 
-fn sleigh_inline_whitespace<'tokens, 'src, E>() -> impl Parser<'tokens, ParserInput<'tokens>, (), E> + Copy
+fn sleigh_inline_whitespace<'tokens, 'src, E>() -> impl Parser<'tokens, ParserInput<'tokens>, (), E> + Clone
 where
     'src: 'tokens,
     E: ParserExtra<'tokens, ParserInput<'tokens>>,
 {
-    // Comments are treated as whitespace
-    just(SleighToken::Whitespace)
-        .ignored()
-        .or(select! { SleighToken::Comment(_) }.ignored())
-        .repeated()
+    just(SleighToken::Whitespace).ignored().repeated()
 }
 
-fn sleigh_whitespace<'tokens, 'src, E>() -> impl Parser<'tokens, ParserInput<'tokens>, (), E> + Copy
+fn sleigh_whitespace<'tokens, 'src, E>() -> impl Parser<'tokens, ParserInput<'tokens>, (), E> + Clone
 where
     'src: 'tokens,
     E: ParserExtra<'tokens, ParserInput<'tokens>>,
@@ -142,21 +150,21 @@ where
 
 /// Parse an ident token and return the contained string reference
 fn sleigh_ident<'tokens, 'src: 'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, StringId, SleighParserExtra<'tokens>> + Copy {
+) -> impl Parser<'tokens, ParserInput<'tokens>, StringId, SleighParserExtra<'tokens>> + Clone {
     select! { SleighToken::Ident(ident) => ident }.labelled("identifier")
 }
 
 /// Parse an ident token and return a SASTIdent tree node
-fn sast_ident<'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, SASTIdent, SleighParserExtra<'tokens>> + Copy {
+fn sast_ident<'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, SASTIdent, SleighParserExtra<'tokens>> + Clone {
     sleigh_ident().map(SASTIdent)
 }
 
 fn sast_ident_spanned<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTIdent>, SleighParserExtra<'tokens>> + Copy {
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTIdent>, SleighParserExtra<'tokens>> + Clone {
     sleigh_ident().map(SASTIdent).map_with(spanned)
 }
 
-fn sleigh_number<'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, u64, SleighParserExtra<'tokens>> + Copy {
+fn sleigh_number<'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, u64, SleighParserExtra<'tokens>> + Clone {
     let parsed_number = select! {
         SleighToken::Decimal(str_id) => (str_id, 10),
         SleighToken::Hexadecimal(str_id) => (str_id, 16),
@@ -180,8 +188,8 @@ pub fn parenthesized<'tokens, 'src, P, O, E>(
     parser: P
 ) -> DelimitedBy<
     P,
-    impl Parser<'tokens, ParserInput<'tokens>, (), E> + Copy,
-    impl Parser<'tokens, ParserInput<'tokens>, (), E> + Copy,
+    impl Parser<'tokens, ParserInput<'tokens>, (), E> + Clone,
+    impl Parser<'tokens, ParserInput<'tokens>, (), E> + Clone,
     (),
     (),
 >
@@ -211,7 +219,7 @@ where
 
 pub fn inline_whitespace_padded<'tokens, 'src, P, O, E>(
     parser: P
-) -> PaddedBy<P, impl Parser<'tokens, ParserInput<'tokens>, (), E> + Copy, ()>
+) -> PaddedBy<P, impl Parser<'tokens, ParserInput<'tokens>, (), E> + Clone, ()>
 where
     'src: 'tokens,
     P: Parser<'tokens, ParserInput<'tokens>, O, E> + Clone,
@@ -222,7 +230,7 @@ where
 
 pub fn whitespace_padded<'tokens, 'src, P, O, E>(
     parser: P
-) -> PaddedBy<P, impl Parser<'tokens, ParserInput<'tokens>, (), E> + Copy, ()>
+) -> PaddedBy<P, impl Parser<'tokens, ParserInput<'tokens>, (), E> + Clone, ()>
 where
     'src: 'tokens,
     P: Parser<'tokens, ParserInput<'tokens>, O, E> + Clone,
@@ -233,18 +241,18 @@ where
 
 fn sleigh_keyword<'tokens, 'src: 'tokens>(
     keyword: SleighKeyword
-) -> impl Parser<'tokens, ParserInput<'tokens>, (), SleighParserExtra<'tokens>> + Copy {
+) -> impl Parser<'tokens, ParserInput<'tokens>, (), SleighParserExtra<'tokens>> + Clone {
     just(SleighToken::Keyword(keyword)).ignored()
 }
 
 fn sleigh_control<'tokens, 'src: 'tokens>(
     control_character: SleighControlCharacter
-) -> impl Parser<'tokens, ParserInput<'tokens>, (), SleighParserExtra<'tokens>> + Copy {
+) -> impl Parser<'tokens, ParserInput<'tokens>, (), SleighParserExtra<'tokens>> + Clone {
     just(SleighToken::Control(control_character)).ignored()
 }
 
 fn sleigh_operation<'tokens, 'src: 'tokens>(
     operation: SleighOperation
-) -> impl Parser<'tokens, ParserInput<'tokens>, (), SleighParserExtra<'tokens>> + Copy {
+) -> impl Parser<'tokens, ParserInput<'tokens>, (), SleighParserExtra<'tokens>> + Clone {
     just(SleighToken::Operation(operation)).ignored()
 }

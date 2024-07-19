@@ -67,6 +67,7 @@ pub(super) fn bit_pattern_section<'tokens>(
     );
 
     let advanced_constraint = ident
+        .clone()
         .then(constraint_op)
         .then(constraint_pattern)
         .map(|((lhs, op), rhs)| SASTBitPatternConstraint::AdvancedConstraint(lhs, op, rhs))
@@ -86,6 +87,7 @@ pub(super) fn bit_pattern_section<'tokens>(
         let ellipsis = sleigh_control(SleighControlCharacter::Ellipsis);
         // Justify left ist represented by an ellipsis, followed by an expression, and
         let justify_left = ellipsis
+            .clone()
             .to(SASTUnaryOp::JustifyLeft)
             .map_with(spanned)
             .then(atom.clone().map(Box::new))

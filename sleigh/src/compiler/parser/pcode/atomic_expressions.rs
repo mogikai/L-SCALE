@@ -28,12 +28,12 @@ use crate::compiler::tokens::{
 };
 
 pub(super) fn pcode_ident<'tokens, 'src: 'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTIdent>, SleighParserExtra<'tokens>> + Copy {
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTIdent>, SleighParserExtra<'tokens>> + Clone {
     whitespace_padded(sast_ident_spanned())
 }
 
 pub(super) fn pcode_u16<'tokens, 'src: 'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<u16>, SleighParserExtra<'tokens>> + Copy {
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<u16>, SleighParserExtra<'tokens>> + Clone {
     whitespace_padded(
         sleigh_number()
             .try_map_with(|num, extra| u16::try_from(num).map_err(|e| Rich::custom(extra.span(), e)))
@@ -42,21 +42,19 @@ pub(super) fn pcode_u16<'tokens, 'src: 'tokens>(
 }
 
 pub(super) fn pcode_subpiece<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeSubpiece>, SleighParserExtra<'tokens>> + Copy {
-    let ident = pcode_ident();
-
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeSubpiece>, SleighParserExtra<'tokens>> + Clone {
     let size = pcode_u16();
 
-    ident
+    pcode_ident()
         .then_ignore(sleigh_control(SleighControlCharacter::Colon))
-        .then(size)
-        .or(ident.then(parenthesized(size)))
+        .then(size.clone())
+        .or(pcode_ident().then(parenthesized(size)))
         .map(|(ident, size)| SASTPCodeSubpiece { ident, size })
         .map_with(spanned)
 }
 
 pub(super) fn pcode_bitrange<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeBitRange>, SleighParserExtra<'tokens>> + Copy {
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeBitRange>, SleighParserExtra<'tokens>> + Clone {
     let lsb = pcode_u16();
     let bits = pcode_u16();
     pcode_ident()
@@ -71,7 +69,7 @@ pub(super) fn pcode_bitrange<'tokens>(
 
 /// Parse a pcode label identified by `<some_label>`.
 pub(super) fn pcode_label<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTIdent>, SleighParserExtra<'tokens>> + Copy {
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTIdent>, SleighParserExtra<'tokens>> + Clone {
     sleigh_operation(SleighOperation::LessThan)
         .ignore_then(sast_ident())
         .then_ignore(sleigh_operation(SleighOperation::GreaterThan))

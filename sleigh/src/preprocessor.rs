@@ -53,8 +53,10 @@ use crate::compiler::parser::{
     inline_whitespace_padded,
     maybe_parenthesized,
     parenthesized,
+    whitespace_padded,
 };
 use crate::compiler::tokens::{
+    IncludedTokens,
     SleighKeyword,
     SleighOperation,
     SleighToken,
@@ -67,7 +69,8 @@ pub struct SleighPreprocessor {
     /// Associate identifiers with strings. An identifier is simply a string with a specific identifier format.
     definitions: HashMap<StringId, Spanned<StringId>>,
     /// The output token stream that is constructed from multiple input token streams
-    token_stream: SleighTokens,
+    token_streams: HashMap<InputId, SleighTokens>,
+    origin_input_id: Option<InputId>,
     blocks: Box<dyn Iterator<Item = Spanned<PreprocessorBlock>>>,
     /// The working directory of the preprocessor. Only files in this directory or its descendants may be included.
     working_dir: PathBuf,
@@ -80,7 +83,7 @@ impl Debug for SleighPreprocessor {
     ) -> std::fmt::Result {
         f.debug_struct("SleighPreprocessor2")
             .field("definitions", &self.definitions)
-            .field("token_stream", &self.token_stream)
+            .field("token_streams", &self.token_streams)
             .field("working_dir", &self.working_dir)
             .finish()
     }
@@ -90,7 +93,8 @@ impl SleighPreprocessor {
     pub fn new(working_dir: PathBuf) -> Self {
         Self {
             definitions: Default::default(),
-            token_stream: Default::default(),
+            token_streams: Default::default(),
+            origin_input_id: None,
             blocks: Box::new(empty()),
             working_dir,
         }
@@ -101,6 +105,12 @@ impl SleighPreprocessor {
         input_cache: &mut CompilerInputCache,
         input_id: InputId,
     ) -> Result<(), PreprocessorError> {
+        if self.origin_input_id.is_none() {
+            // The first input that is parsed is the origin file.
+            self.origin_input_id = Some(input_id);
+        }
+        // Insert an empty vec for future use
+        self.token_streams.insert(input_id, Default::default());
         let new_iter = self.parse_macros(input_cache, input_id)?.into_iter();
         let remaining_blocks = mem::replace(&mut self.blocks, Box::new(empty()));
         self.blocks = Box::new(new_iter.chain(remaining_blocks));
@@ -118,12 +128,26 @@ impl SleighPreprocessor {
 
     pub fn preprocess(
         &mut self,
-        mut input_cache: &mut CompilerInputCache,
+        input_cache: &mut CompilerInputCache,
         context: &mut CompilerContext,
     ) -> Result<SleighTokens, PreprocessorError> {
         loop {
-            let Some((block, _)) = self.blocks.next() else {
-                break;
+            let Some((block, span)) = self.blocks.next() else {
+                // We finished processing all blocks. We can now construct the final token stream
+                let mut token_stream = self
+                    .token_streams
+                    .remove(
+                        &self
+                            .origin_input_id
+                            .ok_or(PreprocessorError::NoInputProcessed)?,
+                    )
+                    .expect("If origin_input_id is set we must have processed the corresponding input.");
+                token_stream.iter_mut().for_each(|token| {
+                    if let SleighToken::IncludedTokens(IncludedTokens::PendingProcessing(input_id)) = token.0 {
+                        token.0 = SleighToken::IncludedTokens(IncludedTokens::Loaded(self.token_streams.remove(&input_id).unwrap()));
+                    }
+                });
+                break Ok(token_stream);
             };
             match block {
                 PreprocessorBlock::Define { name, value } => {
@@ -134,25 +158,7 @@ impl SleighPreprocessor {
                     trace!("Removed definition for {name:?}");
                     self.definitions.remove(&name);
                 }
-                PreprocessorBlock::Include((file, _)) => {
-                    let file = PathBuf::from(
-                        context
-                            .string(file)
-                            .expect("String has to have been interned"),
-                    );
-                    trace!("Including file {file:?}");
-                    if file.is_absolute() {
-                        // TODO: Error reporting
-                        Err(PreprocessorError::AbsolutePath)?;
-                    }
-                    let mut resolved_file = self.working_dir.clone();
-                    for part in file.components() {
-                        if let Component::Normal(path) = part {
-                            resolved_file.push(path);
-                        }
-                    }
-                    Err(PreprocessorError::LoadingRequired(resolved_file))?
-                }
+                PreprocessorBlock::Include((file, _)) => self.process_include(input_cache, context, span, file)?,
                 PreprocessorBlock::IfDef {
                     ident,
                     if_defined,
@@ -191,7 +197,11 @@ impl SleighPreprocessor {
                     }
                 }
                 PreprocessorBlock::PCode((tokens, _)) => {
-                    self.token_stream.extend(tokens);
+                    // Append the tokens to the stream associated with the input they came from
+                    self.token_streams
+                        .entry(tokens.input_id())
+                        .or_default()
+                        .extend(tokens);
                 }
                 PreprocessorBlock::Expansion((ident, _)) => {
                     let resolved_ident = context
@@ -214,11 +224,45 @@ impl SleighPreprocessor {
                     let tokens = result
                         .into_result()
                         .map_err(|e| PreprocessorError::ParseError("Failed macro expansion".to_string()))?;
-                    self.token_stream.extend(tokens);
+                    // Append the tokens to the stream associated with the input they came from
+                    self.token_streams
+                        .entry(tokens.input_id())
+                        .or_default()
+                        .extend(tokens);
                 }
             }
         }
-        Ok(mem::take(&mut self.token_stream))
+    }
+
+    fn process_include(
+        &mut self,
+        input_cache: &mut CompilerInputCache,
+        context: &mut CompilerContext,
+        span: InputSpan,
+        file: StringId,
+    ) -> Result<(), PreprocessorError> {
+        let file = PathBuf::from(
+            context
+                .string(file)
+                .expect("String has to have been interned"),
+        );
+        trace!("Including file {file:?}");
+        if file.is_absolute() {
+            // TODO: Error reporting
+            Err(PreprocessorError::AbsolutePath)?;
+        }
+        let mut resolved_file = self.working_dir.clone();
+        for part in file.components() {
+            if let Component::Normal(path) = part {
+                resolved_file.push(path);
+            }
+        }
+        let input_id = input_cache.load_input_from_file(resolved_file.as_path())?;
+        self.token_streams
+            .get_mut(&span.context())
+            .expect("The input that issued the include must exist.")
+            .extend([(SleighToken::IncludedTokens(IncludedTokens::PendingProcessing(input_id)), span)]);
+        Err(PreprocessorError::LoadingRequired(input_id))
     }
 
     fn evaluate_expression(
@@ -300,6 +344,8 @@ fn parser<'tokens>(
     let ident = ident();
     let string = select! { SleighToken::String(string) => string }.labelled("string");
     let macro_token = select! { SleighToken::MacroBegin => (), SleighToken::MacroExpansion(_) => ()};
+
+    // Skip anything that is not a macro token and collect it into a PCode block.
     let pcode = any()
         .and_is(macro_token.not())
         .map_with(|token, extra| (token, extra.span()))
@@ -314,7 +360,7 @@ fn parser<'tokens>(
     let define = pp_macro(
         SleighKeyword::Define,
         inline_whitespace_padded(ident.map_with(spanned))
-            .then(string.map_with(spanned))
+            .then(inline_whitespace_padded(string.map_with(spanned)))
             .map(|(name, value)| PreprocessorBlock::Define { name, value }),
     );
 
@@ -332,12 +378,12 @@ fn parser<'tokens>(
 
     let r#else = pp_macro_kw(SleighKeyword::Else)
         .ignore_then(blocks.clone().map_with(spanned))
-        .then_ignore(endif);
+        .then_ignore(endif.clone());
 
     let ifdef_stencil = |keyword| {
         pp_macro(keyword, inline_whitespace_padded(ident.map_with(spanned)))
             .then(blocks.clone().map_with(spanned).map(Some))
-            .then(r#else.clone().map(Some).or(endif.to(None)))
+            .then(r#else.clone().map(Some).or(endif.clone().to(None)))
     };
 
     let ifdef =
@@ -373,6 +419,7 @@ fn parser<'tokens>(
         let ne_op = just(SleighToken::Operation(SleighOperation::NotEquals)).to(false);
 
         let equality_check = comparison_argument
+            .clone()
             .map_with(spanned)
             .then(eq_op.or(ne_op))
             .then(comparison_argument.map_with(spanned))
@@ -459,19 +506,28 @@ fn pp_macro<'tokens, P, O>(
 where
     P: Parser<'tokens, ParserInput<'tokens>, O, SleighPreprocessorExtra<'tokens>> + Clone,
 {
-    (just(SleighToken::Keyword(macro_keyword)).ignore_then(preprocessor_parser))
-        .delimited_by(just(SleighToken::MacroBegin), just(SleighToken::Newline).ignored().or(end()))
+    just(SleighToken::Keyword(macro_keyword))
+        .ignore_then(preprocessor_parser)
+        .delimited_by(just(SleighToken::MacroBegin), macro_end())
 }
 
 /// Parse a sleigh macro that is just a keyword (e.g. `@endif`)
 fn pp_macro_kw<'tokens>(
     macro_keyword: SleighKeyword
-) -> impl Parser<'tokens, ParserInput<'tokens>, (), SleighPreprocessorExtra<'tokens>> + Copy
+) -> impl Parser<'tokens, ParserInput<'tokens>, (), SleighPreprocessorExtra<'tokens>> + Clone
 where
 {
     just(SleighToken::Keyword(macro_keyword))
         .ignored()
-        .delimited_by(just(SleighToken::MacroBegin), just(SleighToken::Newline).ignored().or(end()))
+        .delimited_by(just(SleighToken::MacroBegin), macro_end())
+}
+
+fn macro_end<'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, (), SleighPreprocessorExtra<'tokens>> + Clone {
+    select! {
+        SleighToken::Comment(_) => (),
+        SleighToken::Newline => (),
+    }
+    .or(end())
 }
 
 fn spanned<'tokens, T>(

@@ -45,7 +45,7 @@ pub fn pcode_goto_branch_statement<'tokens>(
 }
 
 pub fn pcode_branch_target<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeBranchTarget>, SleighParserExtra<'tokens>> + Copy {
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeBranchTarget>, SleighParserExtra<'tokens>> + Clone {
     pcode_label()
         .map(SASTPCodeBranchTarget::Label)
         .map_with(spanned)

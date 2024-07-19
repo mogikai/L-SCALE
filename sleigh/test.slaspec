@@ -1,8 +1,3 @@
+
 @include "test"
-@define test "test2"
-@if defined(test) && (test == "test2" || defined(test2))
-:$(test)          is vexMode=0 & byte=0xf; byte=0xa2                  {
-    local tmp:16;
-}
 @include "test2"
-@endif

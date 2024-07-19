@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
-use tracing::trace;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{

@@ -56,7 +56,7 @@ use crate::compiler::{
     StringId,
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InputSpan {
     range: Range<usize>,
     input_id: InputId,
@@ -105,7 +105,7 @@ impl ariadne::Span for InputSpan {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub struct SleighTokens(Vec<Spanned<SleighToken>>);
 
 impl SleighTokens {
@@ -118,6 +118,21 @@ impl SleighTokens {
 
     pub fn as_slice(&self) -> &[Spanned<SleighToken>] {
         self.0.as_slice()
+    }
+
+    pub fn input_id(&self) -> InputId {
+        let first = self.0.first().unwrap().1.input_id;
+        let last = self.0.last().unwrap().1.input_id;
+        assert_eq!(first, last);
+        first
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Spanned<SleighToken>> {
+        self.0.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Spanned<SleighToken>> {
+        self.0.iter_mut()
     }
 }
 
@@ -231,20 +246,20 @@ pub fn lexer<'src>(
         .map(SleighTokens)
 }
 
-fn sleigh_ident<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Copy {
+fn sleigh_ident<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Clone {
     sleigh_ident_raw()
         .map_with(intern_token)
         .map(SleighToken::Ident)
 }
 
-fn sleigh_whitespace<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Copy {
+fn sleigh_whitespace<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Clone {
     inline_whitespace()
         .at_least(1)
         .to(SleighToken::Whitespace)
         .or(newline().repeated().at_least(1).to(SleighToken::Newline))
 }
 
-fn sleigh_ident_raw<'src>() -> impl Parser<'src, &'src str, &'src str, SleighLexerExtra<'src>> + Copy {
+fn sleigh_ident_raw<'src>() -> impl Parser<'src, &'src str, &'src str, SleighLexerExtra<'src>> + Clone {
     any()
         .filter(|c: &char| c.is_ascii_alphabetic() || *c == '.' || *c == '_')
         .then(
@@ -255,7 +270,7 @@ fn sleigh_ident_raw<'src>() -> impl Parser<'src, &'src str, &'src str, SleighLex
         .to_slice()
 }
 
-fn sleigh_number<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Copy {
+fn sleigh_number<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Clone {
     let hex_int = just("0x")
         .ignore_then(just('0').repeated().then(int(16)).to_slice())
         .map_with(intern_token)
@@ -275,7 +290,7 @@ fn intern_token<'a, O: AsRef<str>>(
 }
 
 /// Parse a sleigh comment. The comment starts with `#` and ends with a newline character.
-fn sleigh_comment<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Copy {
+fn sleigh_comment<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Clone {
     just('#')
         .ignore_then(
             any()
@@ -291,7 +306,7 @@ fn sleigh_comment<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLex
 }
 
 /// Parse a string delimited by the character `"`. Any other character may be contained in the string.
-fn sleigh_string<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Copy {
+fn sleigh_string<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Clone {
     any()
         .and_is(just('"').not())
         .repeated()
@@ -303,7 +318,7 @@ fn sleigh_string<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexe
 
 /// Parse a macro. A macro is delimited by `@` and a newline character.
 /// Also parses macro expansions of the form `$(IDENT)`
-fn sleigh_macro<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Copy {
+fn sleigh_macro<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Clone {
     just('@').to(SleighToken::MacroBegin).or(just("$(")
         .ignore_then(
             sleigh_ident_raw()
@@ -313,7 +328,7 @@ fn sleigh_macro<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexer
         .then_ignore(just(')')))
 }
 
-fn sleigh_operations<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Copy {
+fn sleigh_operations<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Clone {
     // The single character tokens need to be parsed after the multi character tokens.
     just("!=")
         .map(|_| SleighToken::Operation(SleighOperation::NotEquals))
@@ -350,7 +365,7 @@ fn sleigh_operations<'src>() -> impl Parser<'src, &'src str, SleighToken, Sleigh
         }))
 }
 
-fn sleigh_control_character<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Copy {
+fn sleigh_control_character<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Clone {
     one_of(";:()[]{},")
         .map(|c| match c {
             ';' => SleighToken::Control(SleighControlCharacter::SemiColon),
@@ -367,7 +382,7 @@ fn sleigh_control_character<'src>() -> impl Parser<'src, &'src str, SleighToken,
         .or(just("...").map(|_| SleighToken::Control(SleighControlCharacter::Ellipsis)))
 }
 
-fn sleigh_keyword<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Copy {
+fn sleigh_keyword<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Clone {
     choice([
         just("attach").to(SleighToken::Keyword(SleighKeyword::Attach)),
         just("variables").to(SleighToken::Keyword(SleighKeyword::Variables)),

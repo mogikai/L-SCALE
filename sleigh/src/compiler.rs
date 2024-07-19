@@ -1,23 +1,4 @@
-use crate::compiler::error::SleighCompilerError;
-use crate::compiler::lexer::{
-    SleighLexer,
-    SleighTokens,
-};
-use crate::compiler::parser::SleighParser;
-use crate::preprocessor::error::PreprocessorError;
-use crate::preprocessor::SleighPreprocessorFactory;
-use crate::spec::ProcessorSpecification;
-use ariadne::{
-    Cache,
-    Source,
-};
-use slotmap::{
-    new_key_type,
-    SecondaryMap,
-    SlotMap,
-};
 use std::collections::HashMap;
-use std::env::current_dir;
 use std::fmt::{
     Debug,
     Display,
@@ -30,6 +11,16 @@ use std::path::{
     PathBuf,
 };
 use std::process::exit;
+
+use ariadne::{
+    Cache,
+    Source,
+};
+use slotmap::{
+    new_key_type,
+    SecondaryMap,
+    SlotMap,
+};
 use string_interner::backend::{
     Backend,
     StringBackend,
@@ -39,6 +30,16 @@ use string_interner::{
     Symbol,
 };
 use thiserror::Error;
+
+use crate::compiler::error::SleighCompilerError;
+use crate::compiler::lexer::{
+    SleighLexer,
+    SleighTokens,
+};
+use crate::compiler::parser::SleighParser;
+use crate::preprocessor::error::PreprocessorError;
+use crate::preprocessor::SleighPreprocessorFactory;
+use crate::spec::ProcessorSpecification;
 
 pub mod ast;
 pub mod error;
@@ -62,7 +63,7 @@ impl Display for InputId {
 
 #[derive(Debug, Default)]
 pub struct CompilerContext {
-    interner: StringInterner<string_interner::backend::StringBackend>,
+    interner: StringInterner<StringBackend>,
 }
 
 impl CompilerContext {
@@ -203,13 +204,14 @@ impl SleighCompiler {
         &mut self,
         spec_path: &Path,
     ) -> Result<ProcessorSpecification, SleighCompilerError> {
-        let mut pp = self.preprocessor_factory.build();
+        let mut preprocessor = self.preprocessor_factory.build();
         let mut context = CompilerContext::default();
         let mut input_cache = CompilerInputCache::default();
         let mut file = spec_path.to_path_buf();
+        let origin_input_id = input_cache.load_input_from_file(file.as_path())?;
+        let mut input_id = origin_input_id;
         let tokens = loop {
-            // Load the new file and check if it is already tokenized
-            let input_id = input_cache.load_input_from_file(file.as_path())?;
+            // Check if requested input is already tokenized
             if input_cache.input_tokens(input_id).is_err() {
                 // If the input was already tokenized, we can continue, otherwise tokenize now.
                 let tokens = self
@@ -218,11 +220,11 @@ impl SleighCompiler {
                 input_cache.attach_tokens(input_id, tokens)?;
             }
             // Parse the input that was loaded
-            pp.parse_input(&mut input_cache, input_id)?;
+            preprocessor.parse_input(&mut input_cache, input_id)?;
             // Continue preprocessing
-            match pp.preprocess(&mut input_cache, &mut context) {
+            match preprocessor.preprocess(&mut input_cache, &mut context) {
                 Ok(tokens) => break tokens,
-                Err(PreprocessorError::LoadingRequired(f)) => file = f,
+                Err(PreprocessorError::LoadingRequired(id)) => input_id = id,
                 Err(e) => Err(SleighCompilerError::from(e))?,
             }
         };

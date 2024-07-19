@@ -35,7 +35,7 @@ pub(super) fn display_section<'tokens>(
 
     // Parse the display string but then rewind, so we can parse mnemonic and identifiers.
     let display = any()
-        .and_is(end_of_display_section.not())
+        .and_is(end_of_display_section.clone().not())
         .map(|tok: SleighToken| tok.to_mnemonic().to_string())
         .repeated()
         .collect::<Vec<String>>()
@@ -62,7 +62,7 @@ pub(super) fn display_section<'tokens>(
         .padded_by(
             any()
                 .and_is(sleigh_ident().not())
-                .and_is(end_of_display_section.not())
+                .and_is(end_of_display_section.clone().not())
                 .repeated(),
         )
         .map_with(spanned)

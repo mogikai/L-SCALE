@@ -37,12 +37,12 @@ pub(super) fn register<'tokens>(
         .then_ignore(sleigh_control(SleighControlCharacter::CloseBracket));
 
     let offset = sleigh_keyword(SleighKeyword::Offset)
-        .ignore_then(sleigh_operation(SleighOperation::Equals))
+        .ignore_then(whitespace_padded(sleigh_operation(SleighOperation::Equals)))
         .ignore_then(sleigh_number())
         .map_with(spanned);
 
     let size = sleigh_keyword(SleighKeyword::Size)
-        .ignore_then(sleigh_operation(SleighOperation::Equals))
+        .ignore_then(whitespace_padded(sleigh_operation(SleighOperation::Equals)))
         .ignore_then(sleigh_number())
         .map_with(spanned);
 
@@ -50,13 +50,11 @@ pub(super) fn register<'tokens>(
         .then(whitespace_padded(offset))
         .then(whitespace_padded(size))
         .then(stringlist)
-        .map(|(((spacename, offset), size), regnames)| {
-            SASTRegister {
-                spacename,
-                offset,
-                size,
-                regnames,
-            }
+        .map(|(((spacename, offset), size), regnames)| SASTRegister {
+            spacename,
+            offset,
+            size,
+            regnames,
         })
         .map_with(spanned)
 }

@@ -1,4 +1,8 @@
-use crate::compiler::StringId;
+use crate::compiler::lexer::SleighTokens;
+use crate::compiler::{
+    InputId,
+    StringId,
+};
 use std::fmt;
 use std::fmt::{
     Display,
@@ -203,8 +207,14 @@ impl SleighKeyword {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum IncludedTokens {
+    PendingProcessing(InputId),
+    Loaded(SleighTokens),
+}
+
 #[allow(dead_code)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum SleighToken {
     // e.g. String(This is some string)
     String(StringId),
@@ -225,6 +235,8 @@ pub enum SleighToken {
     MacroBegin,
     // e.g. MacroExpansion(some_ident)
     MacroExpansion(StringId),
+
+    IncludedTokens(IncludedTokens),
 
     Keyword(SleighKeyword),
     Control(SleighControlCharacter),

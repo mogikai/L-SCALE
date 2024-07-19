@@ -4,10 +4,16 @@ use crate::compiler::lexer::{
 };
 use crate::compiler::parser::SleighParserExtra;
 use chumsky::input::MapExtra;
+use std::fmt::Debug;
+use tracing::trace;
 
 pub(super) fn spanned<'tokens, T>(
     element: T,
     extra: &mut MapExtra<'tokens, '_, ParserInput<'tokens>, SleighParserExtra<'tokens>>,
-) -> (T, InputSpan) {
+) -> (T, InputSpan)
+where
+    T: Debug,
+{
+    trace!("spanning {element:?} with {:?}", extra.span());
     (element, extra.span())
 }

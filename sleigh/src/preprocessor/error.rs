@@ -1,4 +1,7 @@
-use crate::compiler::InputCacheError;
+use crate::compiler::{
+    InputCacheError,
+    InputId,
+};
 use std::fmt::{
     Debug,
     Display,
@@ -22,7 +25,9 @@ pub enum PreprocessorError {
     #[error("Absolute paths are not supported")]
     AbsolutePath,
     #[error("The included file needs to be loaded in order to continue")]
-    LoadingRequired(PathBuf),
+    LoadingRequired(InputId),
+    #[error("No input was processed, please first parse some input, before preprocessing.")]
+    NoInputProcessed,
 }
 
 impl Debug for PreprocessorError {
