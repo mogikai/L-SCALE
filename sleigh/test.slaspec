@@ -1,3 +1,3 @@
-
-@include "test"
-@include "test2"
+:PSHUFB         mmxreg1, mmxreg2_m64      is vexMode=0 &  mandover=0 & byte=0x00 & mmxreg1 ... { mmxreg1=pshufb(mmxreg1,mmxreg2_m64); }
+# @include "test"
+# @include "test2"
