@@ -13,7 +13,14 @@ pub struct SASTValue {
 }
 
 #[derive(Debug)]
+pub struct SASTName {
+    pub fields: Vec<Spanned<SASTIdent>>,
+    pub strings: Vec<Spanned<SASTIdent>>,
+}
+
+#[derive(Debug)]
 pub enum SASTAttach {
     SASTVariable(Spanned<SASTVariable>),
     SASTValue(Spanned<SASTValue>),
+    SASTName(Spanned<SASTName>),
 }

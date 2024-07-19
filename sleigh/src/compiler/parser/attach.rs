@@ -13,6 +13,7 @@ use crate::compiler::tokens::{
     SleighKeyword,
 };
 
+use self::name::name;
 use self::value::value;
 use self::variable::variable;
 
@@ -25,13 +26,15 @@ use super::{
 
 mod value;
 mod variable;
+mod name;
 
 pub(super) fn attach<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTAttach>, SleighParserExtra<'tokens>> {
     let variable = variable().map(SASTAttach::SASTVariable);
     let value = value().map(SASTAttach::SASTValue);
+    let name = name().map(SASTAttach::SASTName);
 
-    let attach = choice((variable, value));
+    let attach = choice((variable, value, name));
 
     sleigh_keyword(SleighKeyword::Attach)
         .padded_by(sleigh_whitespace())

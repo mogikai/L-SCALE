@@ -20,16 +20,13 @@ use crate::compiler::tokens::{
 
 pub(super) fn variable<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTVariable>, SleighParserExtra<'tokens>> {
-    let open_bracket = sleigh_control(SleighControlCharacter::OpenBracket);
-    let close_bracket = sleigh_control(SleighControlCharacter::CloseBracket);
-
     let fieldlist = sast_ident_spanned()
         .map(|(ident, span)| vec![(ident, span)])
         .or(sast_ident_spanned()
             .padded_by(sleigh_whitespace())
             .repeated()
             .collect::<Vec<_>>()
-            .delimited_by(open_bracket, close_bracket));
+            .delimited_by(sleigh_control(SleighControlCharacter::OpenBracket), sleigh_control(SleighControlCharacter::CloseBracket)));
 
     sleigh_keyword(SleighKeyword::Variables)
         .padded_by(sleigh_whitespace())

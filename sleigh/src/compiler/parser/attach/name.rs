@@ -1,0 +1,22 @@
+use chumsky::{IterParser, Parser};
+
+use crate::compiler::{ast::{attach::SASTName, Spanned}, lexer::ParserInput, parser::{sast_ident_spanned, sleigh_control, sleigh_keyword, sleigh_whitespace, SleighParserExtra}, tokens::{SleighControlCharacter, SleighKeyword}};
+
+pub(super) fn name<'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTName>, SleighParserExtra<'tokens>> {
+    let stringlist = sast_ident_spanned()
+        .map(|(ident, span)| vec![(ident, span)])
+        .or(sast_ident_spanned()
+            .padded_by(sleigh_whitespace())
+            .repeated()
+            .collect::<Vec<_>>()
+            .delimited_by(sleigh_control(SleighControlCharacter::OpenBracket),
+            sleigh_control(SleighControlCharacter::CloseBracket)));
+
+    sleigh_keyword(SleighKeyword::Names)
+        .padded_by(sleigh_whitespace())
+        .ignore_then(stringlist.clone()) // registers
+        .padded_by(sleigh_whitespace())
+        .then(stringlist) // alternative strings
+        .map_with(|(fields, strings), extra| (SASTName { fields, strings }, extra.span()))
+}

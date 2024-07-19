@@ -9,6 +9,7 @@ use crate::compiler::ast::attach::{
 };
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
+use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
     sast_ident_spanned,
     sleigh_control,
@@ -24,25 +25,22 @@ use crate::compiler::tokens::{
 
 pub(super) fn value<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTValue>, SleighParserExtra<'tokens>> {
-    let open_bracket = sleigh_control(SleighControlCharacter::OpenBracket);
-    let close_bracket = sleigh_control(SleighControlCharacter::CloseBracket);
-
     let fieldlist = sast_ident_spanned()
         .map(|(ident, span)| vec![(ident, span)])
         .or(sast_ident_spanned()
             .padded_by(sleigh_whitespace())
             .repeated()
             .collect::<Vec<_>>()
-            .delimited_by(open_bracket.clone(), close_bracket.clone()));
+            .delimited_by(sleigh_control(SleighControlCharacter::OpenBracket), sleigh_control(SleighControlCharacter::CloseBracket)));
 
     let valuelist = sleigh_number()
         .map_with(|num, extra| vec![(num, extra.span())])
         .or(sleigh_number()
-            .map_with(|num, extra| (num, extra.span()))
+            .map_with(spanned)
             .padded_by(sleigh_whitespace())
             .repeated()
             .collect::<Vec<_>>()
-            .delimited_by(open_bracket, close_bracket));
+            .delimited_by(sleigh_control(SleighControlCharacter::OpenBracket), sleigh_control(SleighControlCharacter::CloseBracket)));
 
     sleigh_keyword(SleighKeyword::Values)
         .padded_by(sleigh_whitespace())
