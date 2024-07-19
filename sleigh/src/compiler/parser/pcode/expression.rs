@@ -62,6 +62,7 @@ pub(super) fn pcode_expression<'tokens>(
         .or(expr_subpiece)
         .or(bitrange)
         .or(ident_expression)
+        .boxed()
         .map_with(spanned)
         .or(parenthesized(expression.clone()));
 

@@ -52,4 +52,5 @@ pub(super) fn constructor<'tokens, 'src: 'tokens>(
             }
         })
         .map_with(spanned)
+        .boxed()
 }

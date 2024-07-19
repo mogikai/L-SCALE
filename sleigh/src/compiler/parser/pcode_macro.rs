@@ -1,22 +1,15 @@
-use chumsky::error::Rich;
-use chumsky::primitive::just;
 use chumsky::{
-    extra,
     IterParser,
     Parser,
 };
 
 use crate::compiler::ast::pcode_macro::SASTPCodeMacro;
 use crate::compiler::ast::Spanned;
-use crate::compiler::lexer::{
-    InputSpan,
-    ParserInput,
-};
+use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::pcode::pcode;
 use crate::compiler::parser::{
     inline_whitespace_padded,
     parenthesized,
-    sast_ident,
     sast_ident_spanned,
     sleigh_control,
     sleigh_keyword,
@@ -25,7 +18,6 @@ use crate::compiler::parser::{
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighKeyword,
-    SleighToken,
 };
 
 pub(super) fn pcode_macro<'tokens>(
@@ -60,4 +52,5 @@ pub(super) fn pcode_macro<'tokens>(
                 extra.span(),
             )
         })
+        .boxed()
 }

@@ -120,11 +120,13 @@ fn items_parser<'tokens, 'src: 'tokens>(
         .or(constructor)
         .or(pcode_macro)
         .or(define)
+        .boxed()
         .padded_by(sleigh_whitespace())
         .recover_with(skip_then_retry_until(any().ignored(), end()))
         .repeated()
         .at_least(1)
         .collect::<Vec<_>>()
+        .boxed()
 }
 
 fn sleigh_inline_whitespace<'tokens, 'src, E>() -> impl Parser<'tokens, ParserInput<'tokens>, (), E> + Clone

@@ -1,14 +1,10 @@
-use std::fmt::{
-    Debug,
-    Formatter,
-};
+use std::fmt::Debug;
 use std::ops::Range;
 
 use ariadne::{
     Label,
     Report,
     ReportKind,
-    Source,
 };
 use chumsky::error::Rich;
 use chumsky::input::{
@@ -31,7 +27,6 @@ use chumsky::text::{
     inline_whitespace,
     int,
     newline,
-    whitespace,
 };
 use chumsky::{
     extra,
@@ -50,7 +45,6 @@ use crate::compiler::tokens::{
 };
 use crate::compiler::{
     CompilerContext,
-    CompilerInput,
     CompilerInputCache,
     InputId,
     StringId,
@@ -330,39 +324,40 @@ fn sleigh_macro<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexer
 
 fn sleigh_operations<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Clone {
     // The single character tokens need to be parsed after the multi character tokens.
-    just("!=")
-        .map(|_| SleighToken::Operation(SleighOperation::NotEquals))
-        .or(just("$and").map(|_| SleighToken::Operation(SleighOperation::BitAnd)))
-        .or(just("$or").map(|_| SleighToken::Operation(SleighOperation::BitOr)))
-        .or(just("$xor").map(|_| SleighToken::Operation(SleighOperation::BitXor)))
-        .or(just("f+").map(|_| SleighToken::Operation(SleighOperation::FPlus)))
-        .or(just("f-").map(|_| SleighToken::Operation(SleighOperation::FMinus)))
-        .or(just("f*").map(|_| SleighToken::Operation(SleighOperation::FStar)))
-        .or(just("f/").map(|_| SleighToken::Operation(SleighOperation::FDivision)))
-        .or(just("f<").map(|_| SleighToken::Operation(SleighOperation::FLessThan)))
-        .or(just("f>").map(|_| SleighToken::Operation(SleighOperation::FGreaterThan)))
-        .or(just("f==").map(|_| SleighToken::Operation(SleighOperation::FEquals)))
-        .or(just("f!=").map(|_| SleighToken::Operation(SleighOperation::FNotEquals)))
-        .or(just("s/").map(|_| SleighToken::Operation(SleighOperation::SDivision)))
-        .or(just("s%").map(|_| SleighToken::Operation(SleighOperation::SRemainder)))
-        .or(just("s<").map(|_| SleighToken::Operation(SleighOperation::SLessThan)))
-        .or(just("s>").map(|_| SleighToken::Operation(SleighOperation::SGreaterThan)))
-        .or(one_of("=&|+-/%!^*<>~").map(|c| match c {
-            '=' => SleighToken::Operation(SleighOperation::Equals),
-            '&' => SleighToken::Operation(SleighOperation::And),
-            '|' => SleighToken::Operation(SleighOperation::Or),
-            '+' => SleighToken::Operation(SleighOperation::Plus),
-            '-' => SleighToken::Operation(SleighOperation::Minus),
-            '/' => SleighToken::Operation(SleighOperation::Division),
-            '%' => SleighToken::Operation(SleighOperation::Remainder),
-            '!' => SleighToken::Operation(SleighOperation::Not),
-            '^' => SleighToken::Operation(SleighOperation::Hat),
-            '*' => SleighToken::Operation(SleighOperation::Star),
-            '<' => SleighToken::Operation(SleighOperation::LessThan),
-            '>' => SleighToken::Operation(SleighOperation::GreaterThan),
-            '~' => SleighToken::Operation(SleighOperation::BitNegate),
-            _ => panic!("This cannot happen"),
-        }))
+    choice([
+        just("!=").to(SleighToken::Operation(SleighOperation::NotEquals)),
+        just("$and").to(SleighToken::Operation(SleighOperation::BitAnd)),
+        just("$or").to(SleighToken::Operation(SleighOperation::BitOr)),
+        just("$xor").to(SleighToken::Operation(SleighOperation::BitXor)),
+        just("f+").to(SleighToken::Operation(SleighOperation::FPlus)),
+        just("f-").to(SleighToken::Operation(SleighOperation::FMinus)),
+        just("f*").to(SleighToken::Operation(SleighOperation::FStar)),
+        just("f/").to(SleighToken::Operation(SleighOperation::FDivision)),
+        just("f<").to(SleighToken::Operation(SleighOperation::FLessThan)),
+        just("f>").to(SleighToken::Operation(SleighOperation::FGreaterThan)),
+        just("f==").to(SleighToken::Operation(SleighOperation::FEquals)),
+        just("f!=").to(SleighToken::Operation(SleighOperation::FNotEquals)),
+        just("s/").to(SleighToken::Operation(SleighOperation::SDivision)),
+        just("s%").to(SleighToken::Operation(SleighOperation::SRemainder)),
+        just("s<").to(SleighToken::Operation(SleighOperation::SLessThan)),
+        just("s>").to(SleighToken::Operation(SleighOperation::SGreaterThan)),
+    ])
+    .or(one_of("=&|+-/%!^*<>~").map(|c| match c {
+        '=' => SleighToken::Operation(SleighOperation::Equals),
+        '&' => SleighToken::Operation(SleighOperation::And),
+        '|' => SleighToken::Operation(SleighOperation::Or),
+        '+' => SleighToken::Operation(SleighOperation::Plus),
+        '-' => SleighToken::Operation(SleighOperation::Minus),
+        '/' => SleighToken::Operation(SleighOperation::Division),
+        '%' => SleighToken::Operation(SleighOperation::Remainder),
+        '!' => SleighToken::Operation(SleighOperation::Not),
+        '^' => SleighToken::Operation(SleighOperation::Hat),
+        '*' => SleighToken::Operation(SleighOperation::Star),
+        '<' => SleighToken::Operation(SleighOperation::LessThan),
+        '>' => SleighToken::Operation(SleighOperation::GreaterThan),
+        '~' => SleighToken::Operation(SleighOperation::BitNegate),
+        _ => panic!("This cannot happen"),
+    }))
 }
 
 fn sleigh_control_character<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Clone {

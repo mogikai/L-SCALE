@@ -458,7 +458,7 @@ fn parser<'tokens>(
             });
 
         expression.define(binary_op);
-        expression
+        expression.boxed()
     };
 
     let r#if = pp_macro(SleighKeyword::If, expression.map(unbox))
@@ -480,6 +480,7 @@ fn parser<'tokens>(
             .or(undefine)
             .or(include)
             .or(expansion)
+            .boxed()
             .map_with(spanned)
             .repeated()
             .collect::<Vec<_>>(),

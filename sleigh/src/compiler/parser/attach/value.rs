@@ -33,7 +33,7 @@ pub(super) fn value<'tokens>(
             .padded_by(sleigh_whitespace())
             .repeated()
             .collect::<Vec<_>>()
-            .delimited_by(open_bracket, close_bracket));
+            .delimited_by(open_bracket.clone(), close_bracket.clone()));
 
     let valuelist = sleigh_number()
         .map_with(|num, extra| vec![(num, extra.span())])

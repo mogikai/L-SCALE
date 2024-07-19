@@ -38,4 +38,5 @@ pub(super) fn attach<'tokens>(
         .ignore_then(attach)
         .then_ignore(sleigh_control(SleighControlCharacter::SemiColon))
         .map_with(|attach, extra| (attach, extra.span()))
+        .boxed()
 }

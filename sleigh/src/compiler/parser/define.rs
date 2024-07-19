@@ -56,4 +56,5 @@ pub(super) fn define<'tokens>(
         .ignore_then(definitions)
         .then_ignore(sleigh_control(SleighControlCharacter::SemiColon))
         .map_with(spanned)
+        .boxed()
 }

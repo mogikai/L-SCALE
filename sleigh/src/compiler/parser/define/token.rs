@@ -41,7 +41,7 @@ pub(super) fn token<'tokens>(
         .map_with(|num, extra| (num, extra.span()))
         .then(sleigh_control(SleighControlCharacter::Comma))
         .then(sleigh_number().map_with(|num, extra| (num, extra.span())))
-        .delimited_by(open_paren, close_paren)
+        .delimited_by(open_paren.clone(), close_paren.clone())
         .map(|((start, _), end)| (start, end));
 
     let attribute = select! {

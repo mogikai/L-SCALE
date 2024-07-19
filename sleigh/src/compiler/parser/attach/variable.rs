@@ -33,7 +33,7 @@ pub(super) fn variable<'tokens>(
 
     sleigh_keyword(SleighKeyword::Variables)
         .padded_by(sleigh_whitespace())
-        .ignore_then(fieldlist)
+        .ignore_then(fieldlist.clone())
         .padded_by(sleigh_whitespace())
         .then(fieldlist)
         .map_with(|(fields, registers), extra| (SASTVariable { fields, registers }, extra.span()))

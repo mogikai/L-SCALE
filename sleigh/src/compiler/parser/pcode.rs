@@ -40,7 +40,8 @@ pub(super) fn pcode<'tokens>(
     let statement = pcode_declaration_statement()
         .or(pcode_assignment_statement())
         .or(pcode_standalone_invocation_statement())
-        .or(branch_statements);
+        .or(branch_statements)
+        .boxed();
 
     // statements may have an optional label
     let statement = pcode_label().or_not().then(statement);
@@ -66,4 +67,5 @@ pub(super) fn pcode<'tokens>(
     .collect::<Vec<_>>()
     .map(|statements| SASTPCode { statements })
     .map_with(spanned)
+    .boxed()
 }
