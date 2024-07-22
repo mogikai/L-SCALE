@@ -31,9 +31,27 @@ pub enum SASTPCodeExpression {
 #[derive(Debug, Copy, Clone)]
 pub enum SASTPCodeBinaryOp {
     /// `v0 + v1`: Addition of v0 and v1 as integers.
-    Add,
+    IntAdd,
     /// `v0 - v1`: Subtraction of v1 from v0 as integers.
-    Subtract,
+    IntSubtract,
+    /// `v0 * v1`: Integer multiplication of v0 and v1.
+    IntMul,
+    /// `v0 / v1`: Unsigned division of v0 by v1.
+    IntDiv,
+    /// `v0 s/ v1`: Signed division of v0 by v1.
+    IntSDiv,
+    /// `v0 % v1`: Unsigned remainder of v0 modulo v1.
+    IntRemainder,
+    /// `v0 s% v1`: Signed remainder of v0 modulo v1.
+    IntSRemainder,
+    /// `v0 f/ v1`: Division of v0 by v1 as floating-point numbers.
+    FloatDiv,
+    /// `v0 f* v1`: Multiplication of v0 and v1 as floating-point numbers.
+    FloatMul,
+    /// `v0 f+ v1`: Addition of v0 and v1 as floating-point numbers.
+    FloatAdd,
+    /// `v0 f- v1`: Subtraction of v1 from v0 as floating-point numbers.
+    FloatSubtract,
     /// `v0 || v1`: Logical-Or of booleans v0 and v1.
     BoolOr,
     /// `v0 && v1`: Logical-And of booleans v0 and v1.
