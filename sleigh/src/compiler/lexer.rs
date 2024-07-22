@@ -266,11 +266,11 @@ fn sleigh_ident_raw<'src>() -> impl Parser<'src, &'src str, &'src str, SleighLex
 
 fn sleigh_number<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Clone {
     let hex_int = just("0x")
-        .ignore_then(just('0').repeated().then(int(16)).to_slice())
+        .ignore_then(just('0').repeated().then(int(16).or_not()).to_slice())
         .map_with(intern_token)
         .map(SleighToken::Hexadecimal);
     let bin_int = just("0b")
-        .ignore_then(just('0').repeated().then(int(2)).to_slice())
+        .ignore_then(just('0').repeated().then(int(2).or_not()).to_slice())
         .map_with(intern_token)
         .map(SleighToken::Binary);
     let dec_int = int(10).map_with(intern_token).map(SleighToken::Decimal);
