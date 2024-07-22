@@ -11,7 +11,7 @@ use crate::compiler::parser::{
 };
 use crate::compiler::tokens::SleighControlCharacter;
 
-pub(super) fn semantic_section<'tokens, 'src: 'tokens>(
+pub fn semantic_section<'tokens, 'src: 'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTSemanticSection>, SleighParserExtra<'tokens>> {
     pcode()
         .delimited_by(

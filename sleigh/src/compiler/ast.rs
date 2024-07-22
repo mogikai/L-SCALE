@@ -8,6 +8,7 @@ pub mod define;
 pub mod item;
 pub mod pcode;
 pub mod pcode_macro;
+pub mod with;
 
 #[derive(Debug)]
 pub struct SleighAST {

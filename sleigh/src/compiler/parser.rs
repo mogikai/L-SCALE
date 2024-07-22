@@ -16,11 +16,7 @@ use chumsky::combinator::{
 use chumsky::error::Rich;
 use chumsky::extra::ParserExtra;
 use chumsky::input::MapExtra;
-use chumsky::prelude::{
-    any,
-    end,
-    skip_then_retry_until,
-};
+use chumsky::prelude::{any, end, Recursive, skip_then_retry_until};
 use chumsky::primitive::{
     choice,
     just,
@@ -34,7 +30,6 @@ use tracing::{
 use crate::compiler::{
     CompilerContext,
     CompilerInputCache,
-    InputId,
     StringId,
 };
 use crate::compiler::ast::{
@@ -42,7 +37,6 @@ use crate::compiler::ast::{
     Spanned,
 };
 use crate::compiler::ast::common::SASTIdent;
-use crate::compiler::ast::constructor::bit_pattern_section::SASTUnaryOp;
 use crate::compiler::ast::item::SASTItem;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::{
@@ -56,6 +50,7 @@ use crate::compiler::parser::define::define;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::included::included_tokens;
 use crate::compiler::parser::pcode_macro::pcode_macro;
+use crate::compiler::parser::with::with_block;
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighKeyword,
@@ -70,6 +65,7 @@ mod helpers;
 mod included;
 mod pcode;
 mod pcode_macro;
+mod with;
 
 #[derive(Debug, Default)]
 pub struct SleighParser {}
@@ -105,8 +101,10 @@ type SleighParserExtra<'tokens> = extra::Full<Rich<'tokens, SleighToken, InputSp
 
 fn parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, SleighAST, SleighParserExtra<'tokens>>
 {
-    items_parser()
-        .or(included_tokens())
+    let items = items_parser();
+    items.clone()
+        .or(included_tokens(items))
+        .or(one_sleigh_whitespace().repeated().at_least(1).ignore_then(end().map(|_| Vec::new())))
         .repeated()
         .collect::<Vec<_>>()
         .map(|items| items.into_iter().flatten().collect())
@@ -114,19 +112,24 @@ fn parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>
 }
 
 fn items_parser<'tokens, 'src: 'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Vec<SASTItem>, SleighParserExtra<'tokens>> {
+) -> impl Parser<'tokens, ParserInput<'tokens>, Vec<SASTItem>, SleighParserExtra<'tokens>> + Clone {
+    let mut items = Recursive::declare();
+    
     let attach = attach().map(SASTItem::Attach);
     let constructor = constructor().map(SASTItem::Constructor);
     let define = define().map(SASTItem::Define);
     let pcode_macro = pcode_macro().map(SASTItem::Macro);
-    choice((attach, constructor, pcode_macro, define))
+    let with = with_block(items.clone()).map(SASTItem::With);
+    
+    items.define(choice((attach, constructor, pcode_macro, define, with))
         .boxed()
         .padded_by(sleigh_whitespace())
         .recover_with(skip_then_retry_until(any().ignored(), end()))
         .repeated()
         .at_least(1)
         .collect::<Vec<_>>()
-        .boxed()
+        .boxed());
+    items
 }
 
 fn sleigh_inline_whitespace<'tokens, 'src, E>() -> impl Parser<'tokens, ParserInput<'tokens>, (), E> + Clone
@@ -137,16 +140,22 @@ where
     just(SleighToken::Whitespace).ignored().repeated()
 }
 
-fn sleigh_whitespace<'tokens, 'src, E>() -> impl Parser<'tokens, ParserInput<'tokens>, (), E> + Clone
+fn one_sleigh_whitespace<'tokens, E>() -> impl Parser<'tokens, ParserInput<'tokens>, (), E> + Clone
 where
-    'src: 'tokens,
     E: ParserExtra<'tokens, ParserInput<'tokens>>,
 {
     // Comments are treated as whitespace
     just(SleighToken::Whitespace)
         .ignored()
         .or(just(SleighToken::Newline).ignored())
-        .or(select! { SleighToken::Comment(_) }.ignored())
+        .or(select! { SleighToken::Comment(_) => () })
+}
+
+fn sleigh_whitespace<'tokens, E>() -> impl Parser<'tokens, ParserInput<'tokens>, (), E> + Clone
+where
+    E: ParserExtra<'tokens, ParserInput<'tokens>>,
+{
+    one_sleigh_whitespace()
         .repeated()
 }
 

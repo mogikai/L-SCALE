@@ -20,9 +20,9 @@ fn main() {
         .with(EnvFilter::from_env("FUZE_LOG"))
         .init();
     let test_exe = include_bytes!("./../../../emulator/systems/ubuntu2304/home/user/main");
-    // let spec_path = Path::new("/home/mark/projects/fraunhofer/fuzzing/prototypes/fuzzyemu/cpu/Ghidra/Ghidra/Processors/x86/data/languages/x86-64.slaspec");
+    let spec_path = Path::new("/home/mark/projects/fraunhofer/fuzzing/prototypes/fuzzyemu/cpu/Ghidra/Ghidra/Processors/x86/data/languages/x86-64.slaspec");
     // let spec_path = Path::new("/home/mark/projects/fraunhofer/fuzzing/prototypes/fuzzyemu/cpu/Ghidra/Ghidra/Processors/x86/data/languages/ia.sinc");
-    let spec_path = Path::new("/home/mark/projects/fraunhofer/fuzzing/prototypes/fuzzyemu/sleigh/test.slaspec");
+    // let spec_path = Path::new("/home/mark/projects/fraunhofer/fuzzing/prototypes/fuzzyemu/sleigh/test.slaspec");
     let spec_dir = spec_path.parent().unwrap();
     let factory = SleighPreprocessorFactory::new().working_dir(spec_dir.to_path_buf());
     let mut compiler = SleighCompilerBuilder::new()

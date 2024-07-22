@@ -21,10 +21,10 @@ use crate::compiler::parser::{
 };
 use crate::compiler::tokens::SleighToken;
 
-mod bit_pattern_section;
-mod disassembly_section;
-mod display_section;
-mod semantic_section;
+pub(super) mod bit_pattern_section;
+pub(super) mod disassembly_section;
+pub(super) mod display_section;
+pub(super) mod semantic_section;
 
 pub(super) fn constructor<'tokens, 'src: 'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTConstructor>, SleighParserExtra<'tokens>> {

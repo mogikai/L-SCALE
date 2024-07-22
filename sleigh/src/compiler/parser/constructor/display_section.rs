@@ -31,7 +31,7 @@ use crate::compiler::tokens::{
     SleighToken,
 };
 
-pub(super) fn display_section<'tokens>(
+pub fn display_section<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTDisplaySection>, SleighParserExtra<'tokens>> {
     let start_of_display_section = sleigh_control(SleighControlCharacter::Colon);
     let end_of_display_section = sleigh_keyword(SleighKeyword::Is);

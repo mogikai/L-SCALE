@@ -23,7 +23,7 @@ use crate::compiler::tokens::{
     SleighToken,
 };
 
-pub(super) fn disassembly_section<'tokens, 'src: 'tokens>(
+pub fn disassembly_section<'tokens, 'src: 'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTDisassemblySection>, SleighParserExtra<'tokens>> {
     let open_bracket = sleigh_control(SleighControlCharacter::OpenBracket);
     let close_bracket = sleigh_control(SleighControlCharacter::CloseBracket);

@@ -41,7 +41,7 @@ use chumsky::{
 
 /// Parses the bit pattern section of a SLEIGH constructor.
 /// See section 7.4 of the SLEIGH specification
-pub(super) fn bit_pattern_section<'tokens>(
+pub fn bit_pattern_section<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTBitPatternSection>, SleighParserExtra<'tokens>> {
     let mut constraint = Recursive::declare();
 
