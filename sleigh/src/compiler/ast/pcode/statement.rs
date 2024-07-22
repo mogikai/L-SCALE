@@ -27,6 +27,8 @@ pub enum SASTPCodeStatement {
         condition_expression: Spanned<SASTPCodeExpression>,
         target: Spanned<SASTPCodeBranchTarget>,
     },
+    /// Dummy nop operation, to handle labels at the end of a section.
+    NOP,
     /// The statement failed to parse
     Error(InputSpan),
 }

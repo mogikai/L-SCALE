@@ -14,6 +14,5 @@ pub(super) fn spanned<'tokens, T>(
 where
     T: Debug,
 {
-    trace!("spanning {element:?} with {:?}", extra.span());
     (element, extra.span())
 }

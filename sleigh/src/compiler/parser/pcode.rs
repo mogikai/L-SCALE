@@ -53,6 +53,15 @@ pub(super) fn pcode<'tokens>(
     .repeated()
     .ignore_then(sleigh_control(SleighControlCharacter::SemiColon));
 
+    // There might be a label at the end of the pcode block without a following statement, effectively
+    // allowing a goto statement to skip all instructions in the block. This is implemented internally
+    // as a labelled nop operation, which will later just be optimized out.
+    let final_label = whitespace_padded(
+        pcode_label()
+            .map_with(|label, extra| ((Some(label), (SASTPCodeStatement::NOP, extra.span())), extra.span()))
+            .or_not(),
+    );
+
     whitespace_padded(
         statement.recover_with(via_parser(
             recovery
@@ -65,7 +74,14 @@ pub(super) fn pcode<'tokens>(
     .map_with(spanned)
     .repeated()
     .collect::<Vec<_>>()
-    .map(|statements| SASTPCode { statements })
+    .then(final_label)
+    // If we have a final label we need to add it to the already parsed statements
+    .map(|(mut statements, final_label)| {
+        if let Some(final_label) = final_label {
+            statements.push(final_label);
+        }
+        SASTPCode { statements }
+    })
     .map_with(spanned)
     .boxed()
 }

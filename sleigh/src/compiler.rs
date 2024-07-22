@@ -229,8 +229,8 @@ impl SleighCompiler {
                 Err(e) => Err(SleighCompilerError::from(e))?,
             }
         };
-        let ast = self.parser.parse(&mut input_cache, &mut context, tokens);
-        println!("{ast:?}");
+        let ast = self.parser.parse(&mut input_cache, &mut context, tokens)?;
+        // println!("{ast:?}");
         exit(0);
     }
 }

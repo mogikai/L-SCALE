@@ -16,6 +16,7 @@ use crate::compiler::lexer::{
 };
 use crate::compiler::parser::{
     sleigh_control,
+    whitespace_padded,
     SleighParserExtra,
 };
 use crate::compiler::tokens::{
@@ -25,11 +26,11 @@ use crate::compiler::tokens::{
 
 pub fn disassembly_section<'tokens, 'src: 'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTDisassemblySection>, SleighParserExtra<'tokens>> {
-    let open_bracket = sleigh_control(SleighControlCharacter::OpenBracket);
-    let close_bracket = sleigh_control(SleighControlCharacter::CloseBracket);
+    let open_bracket = whitespace_padded(sleigh_control(SleighControlCharacter::OpenBracket));
+    let close_bracket = whitespace_padded(sleigh_control(SleighControlCharacter::CloseBracket));
     open_bracket
         .ignore_then(any().and_is(close_bracket.clone().not()).repeated())
         .then_ignore(close_bracket)
         .or_not()
-        .map_with(|actions, extra| (SASTDisassemblySection { actions: None }, extra.span()))
+        .map_with(|actions, extra| (SASTDisassemblySection { actions }, extra.span()))
 }

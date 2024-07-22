@@ -50,7 +50,10 @@ pub enum SASTPCodeBinaryOp {
     IntAnd,
     /// `v0 ^ v1`: Bitwise Exclusive Or of v0 with v1.
     IntXor,
+    /// `v0 == v1`: True if v0 equals v1.
     IntEquals,
+    /// `v0 != v1`: True if v0 does not equal v1.
+    IntNotEquals,
 }
 
 #[derive(Debug, Copy, Clone)]

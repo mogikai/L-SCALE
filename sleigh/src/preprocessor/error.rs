@@ -15,7 +15,7 @@ use thiserror::Error;
 #[derive(Error)]
 pub enum PreprocessorError {
     #[error("Failed to include a file specified by an @include directive.")]
-    IncludeError(#[from] Error),
+    IncludeError(String),
     #[error("The input cache encountered an error")]
     InputCacheError(#[from] InputCacheError),
     #[error("Encountered a parsing error")]
@@ -37,9 +37,9 @@ impl Debug for PreprocessorError {
     ) -> std::fmt::Result {
         match self {
             PreprocessorError::ParseError(e) => Display::fmt(e, f),
-            PreprocessorError::IncludeError(e) => Debug::fmt(e, f),
+            PreprocessorError::IncludeError(e) => Display::fmt(e, f),
             PreprocessorError::InputCacheError(e) => Debug::fmt(e, f),
-            PreprocessorError::UndefinedIdentifier(e) => f.write_fmt(format_args!("Undefined identifier {e:?}")),
+            PreprocessorError::UndefinedIdentifier(e) => Display::fmt(e, f),
             PreprocessorError::LoadingRequired(e) => Debug::fmt(e, f),
             _ => Display::fmt(self, f),
         }

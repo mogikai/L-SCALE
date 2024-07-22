@@ -92,7 +92,7 @@ pub fn bit_pattern_section<'tokens>(
 
     // A unary op is currently only justify left or justify right.
     let unary_op = {
-        let ellipsis = sleigh_control(SleighControlCharacter::Ellipsis);
+        let ellipsis = whitespace_padded(sleigh_control(SleighControlCharacter::Ellipsis));
         // Justify left ist represented by an ellipsis, followed by an expression, and
         let justify_left = ellipsis
             .clone()

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::env::current_dir;
+use std::error::Error;
 use std::fmt::{
     Debug,
     Formatter,
@@ -146,26 +147,20 @@ impl SleighPreprocessor {
                     cond,
                     if_true,
                     if_false,
-                } => self.process_if(context, cond, if_true, if_false)?,
+                } => self.process_if(input_cache, context, cond, if_true, if_false)?,
                 PreprocessorBlock::PCode((tokens, _)) => self.process_pcode(tokens),
-                PreprocessorBlock::Expansion((ident, _)) => self.process_expansion(context, ident)?,
+                PreprocessorBlock::Expansion(ref ident) => self.process_expansion(input_cache, context, ident)?,
             }
         }
     }
 
     fn process_expansion(
         &mut self,
+        input_cache: &mut CompilerInputCache,
         context: &mut CompilerContext,
-        ident: StringId,
+        ident: &Spanned<StringId>,
     ) -> Result<(), PreprocessorError> {
-        let resolved_ident = context
-            .string(ident)
-            .expect("The string must have been interned.")
-            .to_string();
-        let (value, span) = self
-            .definitions
-            .get(&ident)
-            .ok_or(PreprocessorError::UndefinedIdentifier(resolved_ident))?;
+        let (value, span) = self.lookup_identifier(input_cache, context, ident)?;
         let resolved_value = context
             .string(*value)
             .expect("The string must have been interned.")
@@ -199,13 +194,14 @@ impl SleighPreprocessor {
 
     fn process_if(
         &mut self,
+        input_cache: &mut CompilerInputCache,
         context: &mut CompilerContext,
         cond: Spanned<Expression>,
         if_true: Spanned<Vec<Spanned<PreprocessorBlock>>>,
         if_false: Option<Spanned<Vec<Spanned<PreprocessorBlock>>>>,
     ) -> Result<(), PreprocessorError> {
         trace!("Evaluating condition {cond:?}");
-        if self.evaluate_expression(context, cond)? {
+        if self.evaluate_expression(input_cache, context, cond)? {
             trace!("Evaluated to true");
             self.prepend_blocks(if_true.0);
         } else {
@@ -258,7 +254,7 @@ impl SleighPreprocessor {
     }
 
     fn finalize_tokens(&mut self) -> Result<SleighTokens, PreprocessorError> {
-        let mut token_stream = self
+        let token_stream = self
             .token_streams
             .remove(
                 &self
@@ -266,18 +262,27 @@ impl SleighPreprocessor {
                     .ok_or(PreprocessorError::NoInputProcessed)?,
             )
             .expect("If origin_input_id is set we must have processed the corresponding input.");
-        token_stream.iter_mut().for_each(|token| {
+        self.finalize_tokens_recursive(token_stream)
+    }
+
+    fn finalize_tokens_recursive(
+        &mut self,
+        mut token_stream: SleighTokens,
+    ) -> Result<SleighTokens, PreprocessorError> {
+        for token in token_stream.iter_mut() {
             if let SleighToken::IncludedTokens(IncludedTokens::PendingProcessing(input_id)) = token.0 {
-                token.0 =
-                    SleighToken::IncludedTokens(IncludedTokens::Loaded(self.token_streams.remove(&input_id).unwrap()));
+                trace!("Replacing pending tokens for input {input_id:?} with processed tokens");
+                let inner_tokens = self.token_streams.remove(&input_id).unwrap();
+                let inner_tokens = self.finalize_tokens_recursive(inner_tokens)?;
+                token.0 = SleighToken::IncludedTokens(IncludedTokens::Loaded(inner_tokens));
             }
-        });
+        }
         Ok(token_stream)
     }
 
     fn process_include(
         &mut self,
-        input_cache: &mut CompilerInputCache,
+        mut input_cache: &mut CompilerInputCache,
         context: &mut CompilerContext,
         span: InputSpan,
         file: StringId,
@@ -298,7 +303,22 @@ impl SleighPreprocessor {
                 resolved_file.push(path);
             }
         }
-        let input_id = input_cache.load_input_from_file(resolved_file.as_path())?;
+        let input_id = input_cache
+            .load_input_from_file(resolved_file.as_path())
+            .map_err(|e| {
+                let report = Report::build(ReportKind::Error, span.context(), span.start())
+                    .with_message("Preprocessor Error")
+                    .with_label(Label::new(span.clone()).with_message(format!(
+                        "Failed to load '{}': {e} -> {:?}",
+                        resolved_file.to_str().unwrap(),
+                        e.source().map(|e| format!("{e}")).unwrap_or("No detailed information available".to_string())
+                    )))
+                    .finish();
+                let mut diagnostic = vec![];
+                report.write(&mut input_cache, &mut diagnostic).unwrap();
+                PreprocessorError::IncludeError(String::from_utf8(diagnostic).unwrap())
+            })?;
+        trace!("Adding token for included data (PendingProcessing). It will be replaced by the loaded tokens later.");
         self.token_streams
             .get_mut(&span.context())
             .expect("The input that issued the include must exist.")
@@ -308,22 +328,34 @@ impl SleighPreprocessor {
 
     fn evaluate_expression(
         &self,
+        input_cache: &mut CompilerInputCache,
         context: &CompilerContext,
         expression: Spanned<Expression>,
     ) -> Result<bool, PreprocessorError> {
         Ok(match expression.0 {
             Expression::BinaryOp(a, op, b) => match op.0 {
-                BinaryOp::And => self.evaluate_expression(context, *a)? && self.evaluate_expression(context, *b)?,
-                BinaryOp::Or => self.evaluate_expression(context, *a)? || self.evaluate_expression(context, *b)?,
-                BinaryOp::Xor => self.evaluate_expression(context, *a)? ^ self.evaluate_expression(context, *b)?,
+                BinaryOp::And => {
+                    self.evaluate_expression(input_cache, context, *a)?
+                        && self.evaluate_expression(input_cache, context, *b)?
+                }
+                BinaryOp::Or => {
+                    self.evaluate_expression(input_cache, context, *a)?
+                        || self.evaluate_expression(input_cache, context, *b)?
+                }
+                BinaryOp::Xor => {
+                    self.evaluate_expression(input_cache, context, *a)?
+                        ^ self.evaluate_expression(input_cache, context, *b)?
+                }
             },
             Expression::Defined(ident) => self.definitions.get(&ident).map(|_| true).unwrap_or(false),
             Expression::EqualityCheck(check) => match check {
                 EqualityCheck::Eq(a, b) => {
-                    self.resolve_comparison_argument(context, &a)? == self.resolve_comparison_argument(context, &b)?
+                    self.resolve_comparison_argument(input_cache, context, &a)?
+                        == self.resolve_comparison_argument(input_cache, context, &b)?
                 }
                 EqualityCheck::Ne(a, b) => {
-                    self.resolve_comparison_argument(context, &a)? != self.resolve_comparison_argument(context, &b)?
+                    self.resolve_comparison_argument(input_cache, context, &a)?
+                        != self.resolve_comparison_argument(input_cache, context, &b)?
                 }
             },
         })
@@ -331,17 +363,16 @@ impl SleighPreprocessor {
 
     fn resolve_comparison_argument(
         &self,
+        input_cache: &mut CompilerInputCache,
         context: &CompilerContext,
         arg: &Spanned<ComparisonArgument>,
     ) -> Result<StringId, PreprocessorError> {
-        Ok(match arg.0 {
-            ComparisonArgument::Identifier(ident) => {
-                self.definitions
-                    .get(&ident)
-                    .ok_or(PreprocessorError::UndefinedIdentifier(context.string(ident).unwrap().to_string()))?
+        Ok(match arg {
+            (ComparisonArgument::Identifier(ident), span) => {
+                self.lookup_identifier(input_cache, context, &(*ident, span.clone()))?
                     .0
             }
-            ComparisonArgument::Literal(literal) => literal,
+            (ComparisonArgument::Literal(literal), _) => *literal,
         })
     }
 
@@ -373,6 +404,30 @@ impl SleighPreprocessor {
         } else {
             Ok(parsed.into_output().unwrap())
         }
+    }
+
+    /// Look up the identifier and generate an error report, if the identifier is not defined.
+    fn lookup_identifier(
+        &self,
+        mut input_cache: &mut CompilerInputCache,
+        context: &CompilerContext,
+        (identifier, span): &Spanned<StringId>,
+    ) -> Result<&Spanned<StringId>, PreprocessorError> {
+        self.definitions.get(identifier).ok_or_else(|| {
+            let resolved_ident = context
+                .string(*identifier)
+                .expect("The string must have been interned.")
+                .to_string();
+            let report = Report::build(ReportKind::Error, span.context(), span.start())
+                .with_message("Preprocessor Error")
+                .with_label(
+                    Label::new(span.clone()).with_message(format!("Identifier '{resolved_ident}' is undefined")),
+                )
+                .finish();
+            let mut diagnostic = vec![];
+            report.write(&mut input_cache, &mut diagnostic).unwrap();
+            PreprocessorError::UndefinedIdentifier(String::from_utf8(diagnostic).unwrap())
+        })
     }
 }
 

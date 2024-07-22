@@ -3,5 +3,5 @@ use crate::compiler::StringId;
 
 #[derive(Debug)]
 pub struct SASTDisassemblySection {
-    pub actions: Option<Spanned<StringId>>,
+    pub actions: Option<()>,
 }

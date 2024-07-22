@@ -16,7 +16,12 @@ use chumsky::combinator::{
 use chumsky::error::Rich;
 use chumsky::extra::ParserExtra;
 use chumsky::input::MapExtra;
-use chumsky::prelude::{any, end, Recursive, skip_then_retry_until};
+use chumsky::prelude::{
+    any,
+    end,
+    Recursive,
+    skip_then_retry_until,
+};
 use chumsky::primitive::{
     choice,
     just,
@@ -79,7 +84,7 @@ impl SleighParser {
     ) -> Result<SleighAST, SleighCompilerError> {
         let parsed = parser().parse_with_state(tokens.spanned(), context);
         let mut diagnostic = vec![];
-        trace!("Input: {:?}", tokens);
+        // trace!("Input: {:?}", tokens);
         parsed.errors().for_each(|err| {
             debug!("Generating error report for error {err:?}");
             let error_span = err.span();
@@ -101,34 +106,37 @@ type SleighParserExtra<'tokens> = extra::Full<Rich<'tokens, SleighToken, InputSp
 
 fn parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, SleighAST, SleighParserExtra<'tokens>>
 {
-    let items = items_parser();
-    items.clone()
-        .or(included_tokens(items))
-        .or(one_sleigh_whitespace().repeated().at_least(1).ignore_then(end().map(|_| Vec::new())))
-        .repeated()
-        .collect::<Vec<_>>()
-        .map(|items| items.into_iter().flatten().collect())
-        .map(|items| SleighAST { items })
+    items_parser().map(|items| SleighAST { items })
 }
 
 fn items_parser<'tokens, 'src: 'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Vec<SASTItem>, SleighParserExtra<'tokens>> + Clone {
     let mut items = Recursive::declare();
-    
+
     let attach = attach().map(SASTItem::Attach);
     let constructor = constructor().map(SASTItem::Constructor);
     let define = define().map(SASTItem::Define);
     let pcode_macro = pcode_macro().map(SASTItem::Macro);
     let with = with_block(items.clone()).map(SASTItem::With);
-    
-    items.define(choice((attach, constructor, pcode_macro, define, with))
-        .boxed()
+
+    let items_section = choice((attach, constructor, pcode_macro, define, with))
         .padded_by(sleigh_whitespace())
         .recover_with(skip_then_retry_until(any().ignored(), end()))
         .repeated()
         .at_least(1)
         .collect::<Vec<_>>()
-        .boxed());
+        .boxed();
+    items.define(
+        items_section
+            .or(included_tokens(items.clone()).boxed())
+            .or(one_sleigh_whitespace()
+                .repeated()
+                .at_least(1)
+                .ignore_then(end().map(|_| Vec::new())))
+            .repeated()
+            .collect::<Vec<_>>()
+            .map(|items| items.into_iter().flatten().collect()),
+    );
     items
 }
 
@@ -155,8 +163,7 @@ fn sleigh_whitespace<'tokens, E>() -> impl Parser<'tokens, ParserInput<'tokens>,
 where
     E: ParserExtra<'tokens, ParserInput<'tokens>>,
 {
-    one_sleigh_whitespace()
-        .repeated()
+    one_sleigh_whitespace().repeated()
 }
 
 /// Parse an ident token and return the contained string reference
