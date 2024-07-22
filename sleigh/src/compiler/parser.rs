@@ -112,14 +112,14 @@ fn parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>
 
 fn items_parser<'tokens, 'src: 'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Vec<SASTItem>, SleighParserExtra<'tokens>> {
-    let attach = attach().map(SASTItem::Attach);
+    // let attach = attach().map(SASTItem::Attach);
     let constructor = constructor().map(SASTItem::Constructor);
-    let define = define().map(SASTItem::Define);
-    let pcode_macro = pcode_macro().map(SASTItem::Macro);
-    attach
-        .or(constructor)
-        .or(pcode_macro)
-        .or(define)
+    // let define = define().map(SASTItem::Define);
+    // let pcode_macro = pcode_macro().map(SASTItem::Macro);
+    // attach
+        constructor
+        // .or(pcode_macro)
+        // .or(define)
         .boxed()
         .padded_by(sleigh_whitespace())
         .recover_with(skip_then_retry_until(any().ignored(), end()))

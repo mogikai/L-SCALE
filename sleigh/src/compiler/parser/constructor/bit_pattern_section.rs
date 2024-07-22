@@ -19,13 +19,21 @@ use crate::compiler::parser::{
     whitespace_padded,
     SleighParserExtra,
 };
+use crate::compiler::tokens::SleighControlCharacter::{
+    OpenBrace,
+    OpenBracket,
+};
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighOperation,
     SleighToken,
 };
 use chumsky::input::MapExtra;
-use chumsky::prelude::Recursive;
+use chumsky::prelude::{
+    none_of,
+    Recursive,
+};
+use chumsky::recovery::via_parser;
 use chumsky::{
     select,
     Parser,
@@ -107,6 +115,7 @@ pub(super) fn bit_pattern_section<'tokens>(
 
     let atom = whitespace_padded(unary_op.or(atom));
 
+    // TODO: When parsing fails on a non-atom, the error is currently not displayed correctly.
     let binary_op = atom
         .clone()
         .foldl_with(op.then(atom.clone()).repeated(), spanned_binary_op)
@@ -114,7 +123,16 @@ pub(super) fn bit_pattern_section<'tokens>(
 
     constraint.define(binary_op);
 
-    constraint.map(SASTBitPatternSection::new).map_with(spanned)
+    // Try to recover to the next section if parsing the bit pattern fails
+    let recovery = none_of([SleighToken::Control(OpenBracket), SleighToken::Control(OpenBrace)])
+        .repeated()
+        .map(|_| SASTBitPatternConstraint::Invalid)
+        .map_with(spanned);
+
+    constraint
+        .recover_with(via_parser(recovery))
+        .map(SASTBitPatternSection::new)
+        .map_with(spanned)
 }
 
 fn spanned_binary_op<'tokens>(

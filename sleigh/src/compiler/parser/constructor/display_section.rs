@@ -2,6 +2,7 @@ use chumsky::error::Rich;
 use chumsky::prelude::{
     any,
     just,
+    via_parser,
 };
 use chumsky::{
     extra,
@@ -17,7 +18,9 @@ use crate::compiler::lexer::{
 };
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
+    sleigh_control,
     sleigh_ident,
+    sleigh_keyword,
     sleigh_operation,
     SleighParserExtra,
 };
@@ -30,8 +33,8 @@ use crate::compiler::tokens::{
 
 pub(super) fn display_section<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTDisplaySection>, SleighParserExtra<'tokens>> {
-    let start_of_display_section = just(SleighToken::Control(SleighControlCharacter::Colon));
-    let end_of_display_section = just(SleighToken::Keyword(SleighKeyword::Is));
+    let start_of_display_section = sleigh_control(SleighControlCharacter::Colon);
+    let end_of_display_section = sleigh_keyword(SleighKeyword::Is);
 
     // Parse the display string but then rewind, so we can parse mnemonic and identifiers.
     let display = any()
@@ -73,7 +76,6 @@ pub(super) fn display_section<'tokens>(
         .ignore_then(display)
         .then(mnemonic)
         .then(identifiers)
-        // .then_ignore(any().and_is(end_of_display_section.not()).repeated())
         .then_ignore(end_of_display_section)
         .map(|((display_str, mnemonic), identifiers)| SASTDisplaySection {
             mnemonic,
