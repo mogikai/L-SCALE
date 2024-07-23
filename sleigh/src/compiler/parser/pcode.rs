@@ -16,6 +16,7 @@ use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::atomic_expressions::pcode_label;
 use crate::compiler::parser::pcode::statements::assignment::pcode_assignment_statement;
 use crate::compiler::parser::pcode::statements::branching::pcode_goto_branch_statement;
+use crate::compiler::parser::pcode::statements::build::pcode_build_statement;
 use crate::compiler::parser::pcode::statements::declaration::pcode_declaration_statement;
 use crate::compiler::parser::{
     sleigh_control,
@@ -41,6 +42,7 @@ pub(super) fn pcode<'tokens>(
         .or(pcode_assignment_statement())
         .or(pcode_standalone_invocation_statement())
         .or(branch_statements)
+        .or(pcode_build_statement())
         .boxed();
 
     // statements may have an optional label

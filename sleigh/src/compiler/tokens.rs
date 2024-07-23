@@ -159,6 +159,7 @@ pub enum SleighKeyword {
     Big,
     Little,
     Space,
+    Build,
 }
 
 impl SleighKeyword {
@@ -203,6 +204,7 @@ impl SleighKeyword {
             SleighKeyword::Big => "big",
             SleighKeyword::Little => "little",
             SleighKeyword::Space => "space",
+            SleighKeyword::Build => "build",
         }
     }
 }
@@ -270,7 +272,7 @@ impl Display for SleighToken {
     fn fmt(
         &self,
         f: &mut Formatter<'_>,
-    ) -> std::fmt::Result {
+    ) -> fmt::Result {
         fmt::Debug::fmt(self, f)
     }
 }

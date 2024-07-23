@@ -6,7 +6,7 @@ use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::atomic_expressions::{
     pcode_ident,
-    pcode_u16,
+    pcode_number_literal,
 };
 use crate::compiler::parser::{
     sleigh_control,
@@ -27,7 +27,7 @@ pub fn pcode_declaration_statement<'tokens>(
         .ignore_then(pcode_ident())
         .then(
             sleigh_control(SleighControlCharacter::Colon)
-                .ignore_then(pcode_u16())
+                .ignore_then(pcode_number_literal())
                 .or_not(),
         )
         .then_ignore(sleigh_control(SleighControlCharacter::SemiColon))

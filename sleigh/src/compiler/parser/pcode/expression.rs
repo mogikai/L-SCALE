@@ -38,7 +38,7 @@ pub(super) fn pcode_expression<'tokens>(
     let number_literal = whitespace_padded(
         sleigh_number()
             .map_with(spanned)
-            .map(SASTPCodeExpression::LiteralNumber),
+            .map(SASTPCodeExpression::Literal),
     );
 
     let expr_subpiece = pcode_subpiece().map(SASTPCodeExpression::Subpiece);
@@ -56,23 +56,26 @@ pub(super) fn pcode_expression<'tokens>(
             SASTPCodeExpression::Invocation((SASTPCodeInvocation { name, arguments }, extra.span()))
         });
 
-    let atom = invocation
-        .clone()
-        .or(number_literal)
-        .or(expr_subpiece)
-        .or(bitrange)
-        .or(ident_expression)
-        .boxed()
-        .map_with(spanned)
-        .or(parenthesized(expression.clone()));
+    let atom = whitespace_padded(
+        invocation
+            .clone()
+            .or(expr_subpiece)
+            .or(number_literal)
+            .or(bitrange)
+            .or(ident_expression)
+            .boxed()
+            .map_with(spanned)
+            .or(parenthesized(expression.clone())),
+    );
 
     let binary_operator = binary_operator();
 
-    let binary_operation = atom
-        .clone()
-        .foldl_with(binary_operator.then(atom.clone()).repeated(), fold_binary_operation);
+    let binary_operation = whitespace_padded(
+        atom.clone()
+            .foldl_with(binary_operator.then(atom.clone()).repeated(), fold_binary_operation),
+    );
 
-    expression.define(whitespace_padded(choice((binary_operation, atom))));
+    expression.define(choice((binary_operation, atom)));
     expression
 }
 

@@ -3,6 +3,12 @@ use crate::compiler::ast::Spanned;
 
 #[derive(Debug)]
 pub struct SASTPCodeSubpiece {
-    pub ident: Spanned<SASTIdent>,
+    pub target: Spanned<SASTPCodeSubpieceTarget>,
     pub size: Spanned<u16>,
+}
+
+#[derive(Debug)]
+pub enum SASTPCodeSubpieceTarget {
+    Ident(Spanned<SASTIdent>),
+    Literal(Spanned<u64>),
 }

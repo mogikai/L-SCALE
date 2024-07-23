@@ -24,7 +24,7 @@ pub enum SASTPCodeExpression {
     Subpiece(Spanned<SASTPCodeSubpiece>),
     Bitrange(Spanned<SASTPCodeBitRange>),
     Identifier(Spanned<SASTIdent>),
-    LiteralNumber(Spanned<u64>),
+    Literal(Spanned<u64>),
     Error(InputSpan),
 }
 
@@ -62,6 +62,28 @@ pub enum SASTPCodeBinaryOp {
     IntLeft,
     /// `v0 >> v1`: Unsigned (logical) right shift of v0 by v1 bits.
     IntRight,
+    /// `v0 s>> v1`: Signed (arithmetic) right shift of v0 by b1 bits.
+    IntSRight,
+    /// `v0 s< v1` or `v1 s> v0`: True if v0 is less than v1 as a signed integer.
+    IntSLess,
+    /// `v0 s< v1` or `v1 s> v0`: True if v0 is less than v1 as a signed integer.
+    IntSGreater,
+    /// `v0 s<= v1` or `v1 s>= v0`: True if v0 is less than or equal to v1 as a signed integer.
+    IntSLessEqual,
+    /// `v0 s<= v1` or `v1 s>= v0`: True if v0 is less than or equal to v1 as a signed integer.
+    IntSGreaterEqual,
+    /// `v0 < v1` or `v1 > v0`: True if v0 is less than v1 as an unsigned integer.
+    IntLess,
+    /// `v0 < v1` or `v1 > v0`: True if v0 is less than v1 as an unsigned integer.
+    IntGreater,
+    /// `v0 f< v1` or `v1 f> v0`: True if v0 is less than v1 viewed as floating-point numbers.
+    FloatLess,
+    /// `v0 f< v1` or `v1 f> v0`: True if v0 is less than v1 viewed as floating-point numbers.
+    FloatGreater,
+    /// `v0 f<= v1` or `v1 f>= v0: True if v0 is less than or equal to v1 as floating-point.
+    FloatLessEqual,
+    /// `v0 f<= v1` or `v1 f>= v0: True if v0 is less than or equal to v1 as floating-point.
+    FloatGreaterEqual,
     /// `v0 | v1`: Bitwise Logical Or of v0 with v1.
     IntOr,
     /// `v0 & v1`: Bitwise Logical And of v0 with v1.

@@ -37,7 +37,7 @@ pub fn pcode_assignment_statement<'tokens>(
         .then_ignore(sleigh_control(SleighControlCharacter::SemiColon));
 
     local
-        .then(target_expression())
+        .then(whitespace_padded(target_expression()))
         .then_ignore(sleigh_operation(SleighOperation::Equals))
         .then(
             pcode_expression()
