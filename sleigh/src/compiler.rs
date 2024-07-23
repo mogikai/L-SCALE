@@ -127,6 +127,20 @@ pub enum InputCacheError {
 }
 
 impl CompilerInputCache {
+    pub fn load_input_from_str(
+        &mut self,
+        name: &str,
+        data: &str,
+    ) -> Result<InputId, InputCacheError> {
+        let mut path = PathBuf::from("/PSEUDO/");
+        path.push(name);
+        let source = Source::from(data.to_string());
+        let id = self.input_paths.insert(path.clone());
+        self.input_sources.insert(id, source);
+        self.loaded_files.insert(path, id);
+        Ok(id)
+    }
+
     pub fn load_input_from_file(
         &mut self,
         path: &Path,

@@ -1,7 +1,10 @@
 use chumsky::primitive::choice;
 use chumsky::Parser;
 
-use crate::compiler::ast::pcode::expression::SASTPCodeBinaryOp;
+use crate::compiler::ast::pcode::expression::{
+    SASTPCodeBinaryOp,
+    SASTPCodeUnaryOp,
+};
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
@@ -11,6 +14,18 @@ use crate::compiler::parser::{
     SleighParserExtra,
 };
 use crate::compiler::tokens::SleighOperation;
+
+pub(super) fn unary_operator<'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeUnaryOp>, SleighParserExtra<'tokens>> + Clone {
+    use SleighOperation::*;
+    choice([
+        sleigh_operation(Minus).to(SASTPCodeUnaryOp::IntNegate),
+        sleigh_operation(BitNegate).to(SASTPCodeUnaryOp::BitNegate),
+        sleigh_operation(Not).to(SASTPCodeUnaryOp::BoolNegate),
+        sleigh_operation(FMinus).to(SASTPCodeUnaryOp::FloatNegate),
+    ])
+    .map_with(spanned)
+}
 
 pub(super) fn binary_operator<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeBinaryOp>, SleighParserExtra<'tokens>> + Clone {
@@ -75,5 +90,7 @@ pub(super) fn binary_operator<'tokens>(
             .ignore_then(sleigh_operation(Equals))
             .to(BinOp::FloatGreaterEqual),
     ]);
-    whitespace_padded(single_token_ops.or(multi_token_ops).map_with(spanned))
+    // Multi token ops need to be parsed first, otherwise the single token might incorrectly consume
+    // the token and fail on the next token.
+    whitespace_padded(multi_token_ops.or(single_token_ops).map_with(spanned))
 }

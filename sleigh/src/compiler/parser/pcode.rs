@@ -29,8 +29,8 @@ use crate::compiler::tokens::{
 };
 
 mod atomic_expressions;
-mod binary_operator;
 mod expression;
+mod operators;
 mod statements;
 mod target_expression;
 

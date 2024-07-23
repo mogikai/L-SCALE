@@ -7,6 +7,7 @@ use chumsky::{
     extra,
     IterParser,
     Parser,
+    ParseResult,
     select,
 };
 use chumsky::combinator::{
@@ -70,6 +71,7 @@ mod helpers;
 mod included;
 mod pcode;
 mod pcode_macro;
+mod test;
 mod with;
 
 #[derive(Debug, Default)]
@@ -78,27 +80,33 @@ pub struct SleighParser {}
 impl SleighParser {
     pub fn parse(
         &self,
-        mut input_cache: &mut CompilerInputCache,
+        input_cache: &mut CompilerInputCache,
         context: &mut CompilerContext,
         tokens: SleighTokens,
     ) -> Result<SleighAST, SleighCompilerError> {
         let parsed = parser().parse_with_state(tokens.spanned(), context);
-        let mut diagnostic = vec![];
-        // trace!("Input: {:?}", tokens);
-        parsed.errors().for_each(|err| {
-            debug!("Generating error report for error {err:?}");
-            let error_span = err.span();
-            let report = Report::build(ReportKind::Error, error_span.context(), error_span.start())
-                .with_message("Parser Error")
-                .with_label(Label::new(error_span.clone()).with_message(err.reason().to_string()))
-                .finish();
-            report.write(&mut input_cache, &mut diagnostic).unwrap();
-        });
-        if diagnostic.is_empty() {
-            Ok(parsed.into_output().unwrap())
-        } else {
-            Err(SleighCompilerError::LexerError(String::from_utf8(diagnostic).unwrap()))
-        }
+        report_errors(input_cache, parsed)
+    }
+}
+
+pub fn report_errors<T>(
+    mut input_cache: &mut CompilerInputCache,
+    parsed: ParseResult<T, Rich<SleighToken, InputSpan>>,
+) -> Result<T, SleighCompilerError> {
+    let mut diagnostic = vec![];
+    parsed.errors().for_each(|err| {
+        debug!("Generating error report for error {err:?}");
+        let error_span = err.span();
+        let report = Report::build(ReportKind::Error, error_span.context(), error_span.start())
+            .with_message("Parser Error")
+            .with_label(Label::new(error_span.clone()).with_message(err.reason().to_string()))
+            .finish();
+        report.write(&mut input_cache, &mut diagnostic).unwrap();
+    });
+    if diagnostic.is_empty() {
+        Ok(parsed.into_output().unwrap())
+    } else {
+        Err(SleighCompilerError::LexerError(String::from_utf8(diagnostic).unwrap()))
     }
 }
 

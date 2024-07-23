@@ -98,5 +98,12 @@ pub enum SASTPCodeBinaryOp {
 
 #[derive(Debug, Copy, Clone)]
 pub enum SASTPCodeUnaryOp {
-    Not,
+    /// `!v0`: Negation of boolean value v0.
+    BoolNegate,
+    /// `~v0`: Bitwise negation of v0.
+    BitNegate,
+    /// `-v0`: Twos complement of v0.
+    IntNegate,
+    /// `f- v0`: Additive inverse of v0 as a floating-point number.
+    FloatNegate,
 }
