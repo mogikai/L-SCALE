@@ -76,6 +76,10 @@ pub enum SASTPCodeBinaryOp {
     IntLess,
     /// `v0 < v1` or `v1 > v0`: True if v0 is less than v1 as an unsigned integer.
     IntGreater,
+    /// `v0 <= v1` or `v1 >= v0`: True if v0 is less than or equal to v1 as an unsigned integer.
+    IntLessEqual,
+    /// `v0 <= v1` or `v1 >= v0`: True if v0 is less than or equal to v1 as an unsigned integer.
+    IntGreaterEqual,
     /// `v0 f< v1` or `v1 f> v0`: True if v0 is less than v1 viewed as floating-point numbers.
     FloatLess,
     /// `v0 f< v1` or `v1 f> v0`: True if v0 is less than v1 viewed as floating-point numbers.
@@ -84,6 +88,10 @@ pub enum SASTPCodeBinaryOp {
     FloatLessEqual,
     /// `v0 f<= v1` or `v1 f>= v0: True if v0 is less than or equal to v1 as floating-point.
     FloatGreaterEqual,
+    /// `v0 f== v1`: True if v0 equals v1 viewed as floating-point numbers.
+    FloatEquals,
+    /// `v0 f!= v1`: True if v0 does not equal v1 viewed as floating-point numbers.
+    FloatNotEquals,
     /// `v0 | v1`: Bitwise Logical Or of v0 with v1.
     IntOr,
     /// `v0 & v1`: Bitwise Logical And of v0 with v1.

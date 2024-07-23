@@ -176,4 +176,65 @@ mod test {
         test_pcode_expression("2:4")?;
         test_pcode_expression("2(4)")
     }
+
+    #[test]
+    fn operators_parse() -> Result<(), SleighCompilerError> {
+        test_pcode_expression("!0")?;
+        test_pcode_expression("~v0")?;
+        test_pcode_expression("-v0")?;
+        test_pcode_expression("f- v0")?;
+        test_pcode_expression("v0 * v1")?;
+        test_pcode_expression("v0 / v1")?;
+        test_pcode_expression("v0 s/ v1")?;
+        test_pcode_expression("v0 % v1")?;
+        test_pcode_expression("v0 s% v1")?;
+        test_pcode_expression("v0 f/ v1")?;
+        test_pcode_expression("v0 f* v1")?;
+        test_pcode_expression("v0 + v1")?;
+        test_pcode_expression("v0 - v1")?;
+        test_pcode_expression("v0 f+ v1")?;
+        test_pcode_expression("v0 f- v1")?;
+        test_pcode_expression("v0 << v1")?;
+        test_pcode_expression("v0 >> v1")?;
+        test_pcode_expression("v0 s>> v1")?;
+        test_pcode_expression("v0 s< v1")?;
+        test_pcode_expression("v1 s> v0")?;
+        test_pcode_expression("v0 s<= v1")?;
+        test_pcode_expression("v1 s>= v0")?;
+        test_pcode_expression("v0 < v1")?;
+        test_pcode_expression("v1 > v0")?;
+        test_pcode_expression("v0 <= v1")?;
+        test_pcode_expression("v1 >= v0")?;
+        test_pcode_expression("v0 f< v1")?;
+        test_pcode_expression("v1 f> v0")?;
+        test_pcode_expression("v0 f<= v1")?;
+        test_pcode_expression("v1 f>= v0")?;
+        test_pcode_expression("v0 == v1")?;
+        test_pcode_expression("v0 != v1")?;
+        test_pcode_expression("v0 f== v1")?;
+        test_pcode_expression("v0 f!= v1")?;
+        test_pcode_expression("v0 & v1")?;
+        test_pcode_expression("v0 ^ v1")?;
+        test_pcode_expression("v0 | v1")?;
+        test_pcode_expression("v0 ^^ v1")?;
+        test_pcode_expression("v0 && v1")?;
+        test_pcode_expression("v0 || v1")?;
+        test_pcode_expression("zext(v0)")?;
+        test_pcode_expression("sext(v0)")?;
+        test_pcode_expression("carry(v0,v1)")?;
+        test_pcode_expression("scarry(v0,v1)")?;
+        test_pcode_expression("sborrow(v0,v1)")?;
+        test_pcode_expression("nan(v0)")?;
+        test_pcode_expression("abs(v0)")?;
+        test_pcode_expression("sqrt(v0)")?;
+        test_pcode_expression("int2float(v0)")?;
+        test_pcode_expression("float2float(v0)")?;
+        test_pcode_expression("trunc(v0)")?;
+        test_pcode_expression("ceil(v0)")?;
+        test_pcode_expression("floor(v0)")?;
+        test_pcode_expression("round(v0)")?;
+        test_pcode_expression("cpool(v0, v1, v2)")?;
+        test_pcode_expression("newobject(v0)")?;
+        test_pcode_expression("ident(v0, v1, v2)")
+    }
 }

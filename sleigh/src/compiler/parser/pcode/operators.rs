@@ -54,6 +54,8 @@ pub(super) fn binary_operator<'tokens>(
         sleigh_operation(FStar).to(BinOp::FloatMul),
         sleigh_operation(FPlus).to(BinOp::FloatAdd),
         sleigh_operation(FMinus).to(BinOp::FloatSubtract),
+        sleigh_operation(FEquals).to(BinOp::FloatEquals),
+        sleigh_operation(FNotEquals).to(BinOp::FloatNotEquals),
     ]);
     let multi_token_ops = choice([
         sleigh_operation(Equals)
@@ -71,6 +73,12 @@ pub(super) fn binary_operator<'tokens>(
         sleigh_operation(LessThan)
             .ignore_then(sleigh_operation(LessThan))
             .to(BinOp::IntLeft),
+        sleigh_operation(LessThan)
+            .ignore_then(sleigh_operation(Equals))
+            .to(BinOp::IntLessEqual),
+        sleigh_operation(GreaterThan)
+            .ignore_then(sleigh_operation(Equals))
+            .to(BinOp::IntGreaterEqual),
         sleigh_operation(GreaterThan)
             .ignore_then(sleigh_operation(GreaterThan))
             .to(BinOp::IntRight),
