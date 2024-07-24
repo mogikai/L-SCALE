@@ -17,6 +17,10 @@ use crate::compiler::parser::{
     SleighParserExtra,
 };
 use crate::compiler::tokens::SleighControlCharacter;
+use crate::compiler::tokens::SleighControlCharacter::{
+    CloseParen,
+    OpenParen,
+};
 
 /// A standalone invocation with no output.
 /// e.g.: `ident(v0, v1);`
@@ -27,10 +31,15 @@ pub fn pcode_standalone_invocation_statement<'tokens>(
         .collect::<Vec<_>>();
 
     whitespace_padded(sast_ident_spanned())
-        .then(parenthesized(argument_list))
+        .then(
+            parenthesized(argument_list).or(sleigh_control(OpenParen)
+                .ignore_then(sleigh_control(CloseParen))
+                .map(|_| Vec::new())),
+        )
         .then_ignore(sleigh_control(SleighControlCharacter::SemiColon))
         .map(|(name, arguments)| SASTPCodeInvocation { name, arguments })
         .map_with(spanned)
         .map(SASTPCodeStatement::Invocation)
         .map_with(spanned)
+        .boxed()
 }

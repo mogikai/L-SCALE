@@ -27,6 +27,8 @@ pub enum SASTPCodeStatement {
         condition_expression: Spanned<SASTPCodeExpression>,
         target: Spanned<SASTPCodeBranchTarget>,
     },
+    BranchCall(Spanned<SASTPCodeBranchTarget>),
+    BranchReturn(Spanned<SASTPCodeBranchTarget>),
     /// Dummy nop operation, to handle labels at the end of a section.
     NOP,
     /// The statement failed to parse
@@ -36,7 +38,8 @@ pub enum SASTPCodeStatement {
 #[derive(Debug)]
 pub enum SASTPCodeBranchTarget {
     Label(Spanned<SASTIdent>),
-    Varnode(Spanned<SASTIdent>),
+    Direct(Spanned<SASTPCodeExpression>),
+    Offset(Spanned<SASTPCodeExpression>),
     /// The branch target didn't parse correctly
     Invalid(InputSpan),
 }

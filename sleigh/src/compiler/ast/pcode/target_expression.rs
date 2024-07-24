@@ -1,5 +1,6 @@
 use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
+use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::pcode::subpiece::SASTPCodeSubpiece;
 use crate::compiler::ast::Spanned;
@@ -11,11 +12,7 @@ pub enum SASTPCodeTargetExpression {
     /// Store the right hand side in the address space `space`, or the default
     /// address space, if no space was provided. `address` is an index into
     /// the specified address space, and `size` is the size of the value to store.
-    Store {
-        address: Spanned<SASTIdent>,
-        space: Spanned<Option<SASTIdent>>,
-        size: Spanned<Option<u16>>,
-    },
+    Store(Spanned<SASTPCodeDeref>),
     /// Store the right hand side in the range specified. The remaining bits remain unchanged.
     BitRange(Spanned<SASTPCodeBitRange>),
     /// Truncate the variable identified by `identifier` to the supplied size and then assign to the

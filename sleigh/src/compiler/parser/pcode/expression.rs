@@ -22,6 +22,7 @@ use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::atomic_expressions::{
     pcode_bitrange,
+    pcode_deref,
     pcode_ident,
     pcode_subpiece,
 };
@@ -62,6 +63,8 @@ pub(super) fn pcode_expression<'tokens>(
 
     let mut expression = Recursive::declare();
 
+    let load = pcode_deref(expression.clone()).map(SASTPCodeExpression::Load);
+
     let argument_list = expression
         .clone()
         .separated_by(sleigh_control(SleighControlCharacter::Comma))
@@ -69,30 +72,21 @@ pub(super) fn pcode_expression<'tokens>(
 
     let invocation = whitespace_padded(sast_ident_spanned())
         .then(parenthesized(argument_list))
-        .map_with(|(name, arguments), extra| {
-            SASTPCodeExpression::Invocation((SASTPCodeInvocation { name, arguments }, extra.span()))
-        });
-
-    // TODO: This eats up function call parentheses
-    let parenthesized_recovery = recursive(|tree| {
-        parenthesized(tree)
-            .ignored()
-            .or(none_of([SleighToken::Control(CloseParen), SleighToken::Control(OpenParen)]).repeated())
-    })
-    .to_span()
-    .map(SASTPCodeExpression::Error)
-    .map_with(spanned);
+        .map(|(name, arguments)| SASTPCodeInvocation { name, arguments })
+        .map_with(spanned)
+        .map(SASTPCodeExpression::Invocation);
 
     let atom = whitespace_padded(
         invocation
             .clone()
             .or(expr_subpiece)
+            .or(load)
             .or(number_literal)
             .or(bitrange)
             .or(ident_expression)
             .boxed()
             .map_with(spanned)
-            .or(parenthesized(expression.clone()).recover_with(via_parser(parenthesized_recovery))),
+            .or(parenthesized(expression.clone())),
     );
 
     let unary_op = unary_operator()
@@ -108,7 +102,7 @@ pub(super) fn pcode_expression<'tokens>(
     );
 
     expression.define(choice((binary_operation, atom)));
-    expression
+    expression.boxed()
 }
 
 fn fold_unary_operation<'tokens>(
@@ -145,12 +139,15 @@ mod test {
     use chumsky::Parser;
 
     use crate::compiler::error::SleighCompilerError;
-    use crate::compiler::parser::report_errors;
-    use crate::compiler::parser::test::test_parser;
+    use crate::compiler::parser::test::TestResult;
 
     use super::pcode_expression;
 
-    fn test_pcode_expression(expression: &str) -> Result<(), SleighCompilerError> {
+    fn test_pcode_expression(expression: &str) -> TestResult {
+        use crate::compiler::parser::test::{
+            report_errors,
+            test_parser,
+        };
         test_parser(expression, |cache, context, tokens| {
             report_errors(cache, pcode_expression().parse_with_state(tokens.spanned(), context))
         })?;
@@ -158,27 +155,27 @@ mod test {
     }
 
     #[test]
-    fn float_less_parses() -> Result<(), SleighCompilerError> {
-        test_pcode_expression("(x[032] f< (y[10,32]))")
+    fn deref_expression_parses() -> TestResult {
+        test_pcode_expression("*[spc]:10 (x + 5)")
     }
 
     #[test]
-    fn func_with_expression_parses() -> Result<(), SleighCompilerError> {
+    fn func_with_expression_parses() -> TestResult {
         test_pcode_expression("func(x >> (y - z))")
     }
 
     #[test]
-    fn func_with_args_parses() -> Result<(), SleighCompilerError> {
+    fn func_with_args_parses() -> TestResult {
         test_pcode_expression("func(a, b)")
     }
 
     #[test]
-    fn complex_expression_parses() -> Result<(), SleighCompilerError> {
+    fn complex_expression_parses() -> TestResult {
         test_pcode_expression("(-a * (b - c)) >> d")
     }
 
     #[test]
-    fn subpiece_parses() -> Result<(), SleighCompilerError> {
+    fn subpiece_parses() -> TestResult {
         test_pcode_expression("a:5")?;
         test_pcode_expression("a(5)")?;
         test_pcode_expression("2:4")?;
@@ -186,7 +183,7 @@ mod test {
     }
 
     #[test]
-    fn operators_parse() -> Result<(), SleighCompilerError> {
+    fn operators_parse() -> TestResult {
         test_pcode_expression("!0")?;
         test_pcode_expression("~v0")?;
         test_pcode_expression("-v0")?;

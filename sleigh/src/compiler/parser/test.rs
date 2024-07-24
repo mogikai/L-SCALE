@@ -1,25 +1,15 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::{
-    InputSpan,
-    ParserInput,
     SleighLexer,
     SleighTokens,
 };
-use crate::compiler::parser::{
-    report_errors,
-    SleighParserExtra,
-};
-use crate::compiler::tokens::SleighToken;
+pub(crate) use crate::compiler::parser::report_errors;
 use crate::compiler::{
     CompilerContext,
     CompilerInputCache,
 };
-use chumsky::prelude::Rich;
-use chumsky::{
-    ParseResult,
-    Parser,
-};
+
+pub type TestResult = Result<(), SleighCompilerError>;
 
 #[cfg(test)]
 pub fn setup_parser_test(

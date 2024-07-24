@@ -54,3 +54,25 @@ pub(super) fn constructor<'tokens, 'src: 'tokens>(
         .map_with(spanned)
         .boxed()
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::compiler::parser::test::TestResult;
+
+    fn test_constructor(input: &str) -> TestResult {
+        use crate::compiler::parser::test::{
+            report_errors,
+            test_parser,
+        };
+        test_parser(input, |cache, context, tokens| {
+            report_errors(cache, constructor().parse_with_state(tokens.spanned(), context))
+        })?;
+        Ok(())
+    }
+
+    #[test]
+    fn basic_constructor_parses() -> TestResult {
+        test_constructor(":INST reg is reg=0xf { x = func(y); fpop(); }")
+    }
+}

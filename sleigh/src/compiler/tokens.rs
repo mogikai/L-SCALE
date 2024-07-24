@@ -31,10 +31,10 @@ impl SleighControlCharacter {
             SleighControlCharacter::SemiColon => ";",
             SleighControlCharacter::OpenParen => "(",
             SleighControlCharacter::CloseParen => ")",
-            SleighControlCharacter::OpenBracket => "{",
-            SleighControlCharacter::CloseBracket => "}",
-            SleighControlCharacter::OpenBrace => "[",
-            SleighControlCharacter::CloseBrace => "]",
+            SleighControlCharacter::OpenBracket => "[",
+            SleighControlCharacter::CloseBracket => "]",
+            SleighControlCharacter::OpenBrace => "{",
+            SleighControlCharacter::CloseBrace => "}",
             SleighControlCharacter::Comma => ",",
             SleighControlCharacter::Ellipsis => "...",
             SleighControlCharacter::Colon => ":",
@@ -160,6 +160,8 @@ pub enum SleighKeyword {
     Little,
     Space,
     Build,
+    Call,
+    Return,
 }
 
 impl SleighKeyword {
@@ -205,6 +207,8 @@ impl SleighKeyword {
             SleighKeyword::Little => "little",
             SleighKeyword::Space => "space",
             SleighKeyword::Build => "build",
+            SleighKeyword::Call => "call",
+            SleighKeyword::Return => "return",
         }
     }
 }
