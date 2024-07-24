@@ -1,4 +1,5 @@
 use crate::compiler::ast::common::SASTIdent;
+use crate::compiler::ast::pcode::addressof::SASTPCodeAddressOf;
 use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
@@ -26,6 +27,7 @@ pub enum SASTPCodeExpression {
     Bitrange(Spanned<SASTPCodeBitRange>),
     Identifier(Spanned<SASTIdent>),
     Load(Spanned<SASTPCodeDeref>),
+    AddressOf(Spanned<SASTPCodeAddressOf>),
     Literal(Spanned<u64>),
     Error(InputSpan),
 }

@@ -12,6 +12,7 @@ use crate::compiler::parser::pcode::statements::branching::{
 };
 use crate::compiler::parser::pcode::statements::build::pcode_build_statement;
 use crate::compiler::parser::pcode::statements::declaration::pcode_declaration_statement;
+use crate::compiler::parser::pcode::statements::export::pcode_export_statement;
 use crate::compiler::parser::pcode::statements::invocation::pcode_standalone_invocation_statement;
 use crate::compiler::parser::SleighParserExtra;
 use chumsky::prelude::choice;
@@ -21,7 +22,9 @@ pub mod assignment;
 pub mod branching;
 pub mod build;
 pub mod declaration;
+mod export;
 pub mod invocation;
+
 pub fn pcode_statement<'tokens>() -> impl Parser<
     'tokens,
     ParserInput<'tokens>,
@@ -41,6 +44,7 @@ pub fn pcode_statement<'tokens>() -> impl Parser<
         pcode_standalone_invocation_statement(),
         branch_statements,
         pcode_build_statement(),
+        pcode_export_statement(),
     ));
 
     // statements may have an optional label

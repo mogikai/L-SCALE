@@ -1,6 +1,8 @@
 use crate::compiler::ast::common::SASTIdent;
+use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
+use crate::compiler::ast::pcode::subpiece::SASTPCodeSubpiece;
 use crate::compiler::ast::pcode::target_expression::SASTPCodeTargetExpression;
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::InputSpan;
@@ -17,6 +19,8 @@ pub enum SASTPCodeStatement {
     Invocation(Spanned<SASTPCodeInvocation>),
     /// Build the provided operand identified by `ident`.
     Build(Spanned<SASTIdent>),
+    /// Export the value resulting from the expression
+    Export(Spanned<SASTPCodeExpression>),
     Delayslot(Spanned<u64>),
     /// Declare the identifier as a local variable with an optional size.
     Declaration(Spanned<SASTIdent>, Option<Spanned<u16>>),

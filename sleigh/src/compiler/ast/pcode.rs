@@ -1,3 +1,4 @@
+pub mod addressof;
 pub mod bitrange;
 pub mod deref;
 pub mod expression;

@@ -1,5 +1,6 @@
 use chumsky::input::MapExtra;
 use chumsky::prelude::{
+    any,
     none_of,
     recursive,
 };
@@ -7,6 +8,7 @@ use chumsky::primitive::choice;
 use chumsky::recovery::via_parser;
 use chumsky::recursive::Recursive;
 use chumsky::{
+    select,
     IterParser,
     Parser,
 };
@@ -21,9 +23,11 @@ use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::atomic_expressions::{
+    pcode_address_of,
     pcode_bitrange,
     pcode_deref,
     pcode_ident,
+    pcode_invocation,
     pcode_subpiece,
 };
 use crate::compiler::parser::pcode::operators::{
@@ -40,6 +44,7 @@ use crate::compiler::parser::{
 };
 use crate::compiler::tokens::SleighControlCharacter::{
     CloseParen,
+    Comma,
     OpenParen,
 };
 use crate::compiler::tokens::{
@@ -64,25 +69,17 @@ pub(super) fn pcode_expression<'tokens>(
     let mut expression = Recursive::declare();
 
     let load = pcode_deref(expression.clone()).map(SASTPCodeExpression::Load);
+    let addressof = pcode_address_of(expression.clone()).map(SASTPCodeExpression::AddressOf);
 
-    let argument_list = expression
-        .clone()
-        .separated_by(sleigh_control(SleighControlCharacter::Comma))
-        .collect::<Vec<_>>();
-
-    let invocation = whitespace_padded(sast_ident_spanned())
-        .then(parenthesized(argument_list))
-        .map(|(name, arguments)| SASTPCodeInvocation { name, arguments })
-        .map_with(spanned)
-        .map(SASTPCodeExpression::Invocation);
+    let invocation = pcode_invocation(expression.clone()).map(SASTPCodeExpression::Invocation);
 
     let atom = whitespace_padded(
-        invocation
-            .clone()
+        bitrange
             .or(expr_subpiece)
             .or(load)
+            .or(addressof)
             .or(number_literal)
-            .or(bitrange)
+            .or(invocation)
             .or(ident_expression)
             .boxed()
             .map_with(spanned)
@@ -155,6 +152,11 @@ mod test {
     }
 
     #[test]
+    fn address_of_parses() -> TestResult {
+        test_pcode_expression("push88(&:8 inst_next)")
+    }
+
+    #[test]
     fn deref_expression_parses() -> TestResult {
         test_pcode_expression("*[spc]:10 (x + 5)")
     }
@@ -167,6 +169,11 @@ mod test {
     #[test]
     fn func_with_args_parses() -> TestResult {
         test_pcode_expression("func(a, b)")
+    }
+
+    #[test]
+    fn func_without_args_parses() -> TestResult {
+        test_pcode_expression("func()")
     }
 
     #[test]

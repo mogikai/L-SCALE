@@ -162,6 +162,7 @@ pub enum SleighKeyword {
     Build,
     Call,
     Return,
+    Export,
 }
 
 impl SleighKeyword {
@@ -209,6 +210,7 @@ impl SleighKeyword {
             SleighKeyword::Build => "build",
             SleighKeyword::Call => "call",
             SleighKeyword::Return => "return",
+            SleighKeyword::Export => "export",
         }
     }
 }

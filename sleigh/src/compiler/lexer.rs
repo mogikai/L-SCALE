@@ -433,5 +433,6 @@ fn sleigh_keyword<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLex
         just("build").to(SleighToken::Keyword(SleighKeyword::Build)),
         just("call").to(SleighToken::Keyword(SleighKeyword::Call)),
         just("return").to(SleighToken::Keyword(SleighKeyword::Return)),
+        just("export").to(SleighToken::Keyword(SleighKeyword::Export)),
     ])
 }

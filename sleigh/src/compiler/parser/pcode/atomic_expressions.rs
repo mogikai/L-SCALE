@@ -8,16 +8,22 @@ use chumsky::prelude::{
     none_of,
     via_parser,
 };
-use chumsky::Parser;
+use chumsky::{
+    IterParser,
+    Parser,
+};
+
 use SleighOperation::{
     GreaterThan,
     LessThan,
 };
 
 use crate::compiler::ast::common::SASTIdent;
+use crate::compiler::ast::pcode::addressof::SASTPCodeAddressOf;
 use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
+use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::pcode::subpiece::{
     SASTPCodeSubpiece,
     SASTPCodeSubpieceTarget,
@@ -37,11 +43,16 @@ use crate::compiler::parser::{
 };
 use crate::compiler::tokens::SleighControlCharacter::{
     CloseBracket,
+    CloseParen,
     Colon,
     Comma,
     OpenBracket,
+    OpenParen,
 };
-use crate::compiler::tokens::SleighOperation::Star;
+use crate::compiler::tokens::SleighOperation::{
+    And,
+    Star,
+};
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighOperation,
@@ -142,4 +153,49 @@ where
             size,
         })
         .map_with(spanned)
+}
+
+pub fn pcode_address_of<'tokens, P>(
+    expression_parser: P
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeAddressOf>, SleighParserExtra<'tokens>> + Clone
+where
+    P: Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeExpression>, SleighParserExtra<'tokens>> + Clone,
+{
+    let size = whitespace_padded(sleigh_control(Colon)).ignore_then(pcode_number_literal());
+    sleigh_operation(And)
+        .ignore_then(size.or_not())
+        .then(whitespace_padded(expression_parser.map(Box::new)))
+        .map(|(size, expression)| SASTPCodeAddressOf { expression, size })
+        .map_with(spanned)
+}
+
+pub fn pcode_invocation<'tokens, P>(
+    expression_parser: P
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeInvocation>, SleighParserExtra<'tokens>> + Clone
+where
+    P: Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeExpression>, SleighParserExtra<'tokens>> + Clone,
+{
+    // Simple recovery. Skips everything until a comma or closing parenthesis is discovered.
+    // This will fail to recover from errors in nested expressions with parentheses.
+    let arg_recovery = none_of([SleighToken::Control(CloseParen), SleighToken::Control(Comma)])
+        .repeated()
+        .to_span()
+        .map(SASTPCodeExpression::Error)
+        .map_with(spanned);
+
+    let argument_list = expression_parser
+        .clone()
+        .recover_with(via_parser(arg_recovery))
+        .separated_by(sleigh_control(Comma))
+        .collect::<Vec<_>>();
+
+    let no_arguments = sleigh_control(OpenParen)
+        .ignore_then(sleigh_control(CloseParen))
+        .map(|_| Vec::new());
+
+    whitespace_padded(sast_ident_spanned())
+        .then(no_arguments.or(parenthesized(argument_list)))
+        .map(|(name, arguments)| SASTPCodeInvocation { name, arguments })
+        .map_with(spanned)
+        .boxed()
 }
