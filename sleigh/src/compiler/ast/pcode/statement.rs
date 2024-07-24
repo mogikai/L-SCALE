@@ -36,4 +36,7 @@ pub enum SASTPCodeStatement {
 #[derive(Debug)]
 pub enum SASTPCodeBranchTarget {
     Label(Spanned<SASTIdent>),
+    Varnode(Spanned<SASTIdent>),
+    /// The branch target didn't parse correctly
+    Invalid(InputSpan),
 }

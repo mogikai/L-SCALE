@@ -37,7 +37,10 @@ use crate::compiler::parser::{
     whitespace_padded,
     SleighParserExtra,
 };
-use crate::compiler::tokens::SleighControlCharacter::CloseParen;
+use crate::compiler::tokens::SleighControlCharacter::{
+    CloseParen,
+    OpenParen,
+};
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighToken,
@@ -74,7 +77,7 @@ pub(super) fn pcode_expression<'tokens>(
     let parenthesized_recovery = recursive(|tree| {
         parenthesized(tree)
             .ignored()
-            .or(none_of(SleighToken::Control(CloseParen)).repeated())
+            .or(none_of([SleighToken::Control(CloseParen), SleighToken::Control(OpenParen)]).repeated())
     })
     .to_span()
     .map(SASTPCodeExpression::Error)
@@ -152,6 +155,11 @@ mod test {
             report_errors(cache, pcode_expression().parse_with_state(tokens.spanned(), context))
         })?;
         Ok(())
+    }
+
+    #[test]
+    fn float_less_parses() -> Result<(), SleighCompilerError> {
+        test_pcode_expression("(x[032] f< (y[10,32]))")
     }
 
     #[test]

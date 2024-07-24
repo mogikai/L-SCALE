@@ -18,6 +18,7 @@ use crate::compiler::parser::pcode::statements::assignment::pcode_assignment_sta
 use crate::compiler::parser::pcode::statements::branching::pcode_goto_branch_statement;
 use crate::compiler::parser::pcode::statements::build::pcode_build_statement;
 use crate::compiler::parser::pcode::statements::declaration::pcode_declaration_statement;
+use crate::compiler::parser::pcode::statements::pcode_statement;
 use crate::compiler::parser::{
     sleigh_control,
     whitespace_padded,
@@ -36,18 +37,6 @@ mod target_expression;
 
 pub(super) fn pcode<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCode>, SleighParserExtra<'tokens>> + Clone {
-    let branch_statements = pcode_conditional_branch_statement().or(pcode_goto_branch_statement());
-
-    let statement = pcode_declaration_statement()
-        .or(pcode_assignment_statement())
-        .or(pcode_standalone_invocation_statement())
-        .or(branch_statements)
-        .or(pcode_build_statement())
-        .boxed();
-
-    // statements may have an optional label
-    let statement = pcode_label().or_not().then(statement);
-
     let recovery = none_of([
         SleighToken::Control(SleighControlCharacter::SemiColon),
         SleighToken::Control(SleighControlCharacter::CloseBrace),
@@ -65,7 +54,7 @@ pub(super) fn pcode<'tokens>(
     );
 
     whitespace_padded(
-        statement.recover_with(via_parser(
+        pcode_statement().recover_with(via_parser(
             recovery
                 .to_span()
                 .map(SASTPCodeStatement::Error)
