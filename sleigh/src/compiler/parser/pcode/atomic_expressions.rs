@@ -173,7 +173,9 @@ pub fn pcode_invocation<'tokens, P>(
     expression_parser: P
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeInvocation>, SleighParserExtra<'tokens>> + Clone
 where
-    P: Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeExpression>, SleighParserExtra<'tokens>> + Clone,
+    P: Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeExpression>, SleighParserExtra<'tokens>>
+        + Clone
+        + 'tokens,
 {
     // Simple recovery. Skips everything until a comma or closing parenthesis is discovered.
     // This will fail to recover from errors in nested expressions with parentheses.
