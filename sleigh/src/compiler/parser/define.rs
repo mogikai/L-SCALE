@@ -58,3 +58,62 @@ pub(super) fn define<'tokens>(
         .map_with(spanned)
         .boxed()
 }
+
+#[cfg(test)]
+mod test {
+    use chumsky::Parser;
+
+    use crate::compiler::parser::{report_errors, test::{test_parser, TestResult}};
+
+    use super::define;
+
+    fn test_define(input: &str) -> TestResult {
+        test_parser(input, |cache, context, tokens| {
+            report_errors(cache, define().parse_with_state(tokens.spanned(), context))
+        })?;
+        Ok(())
+    }
+
+    #[test]
+    fn define_endian_parses() -> TestResult {
+        test_define("define endian=little;")?;
+        test_define("define endian=big;")
+    }
+
+    #[test]
+    fn define_alignment_parses() -> TestResult {
+        test_define("define alignment=2;")?;
+        test_define("define alignment=32;")?;
+        test_define("define alignment=128;")
+    }
+
+    #[test]
+    fn define_address_space_parses() -> TestResult {
+        test_define("define space ram type=ram_space size=4 default;")?;
+        test_define("define space register type=register_space size=4;")
+    }
+
+    #[test]
+    fn define_register_parses() -> TestResult {
+        test_define("define register offset=0 size=4 [EAX ECX EDX EBX ESP EBP ESI EDI ];")?;
+        test_define("define register offset=0 size=2 [AX _ CX _ DX _ BX _ SP _ BP _ SI _ DI];")?;
+        test_define("define register offset=0 size=1 [AL AH _ _ CL CH _ _ DL DH _ _ BL BH ];")
+    }
+
+    #[test]
+    fn define_bitrange_register_parses() -> TestResult {
+        test_define("define register offset=0x180 size=4 [ statusreg ];")?;
+        test_define("define bitrange zf=statusreg[10,1] cf=statusreg[11,1] sf=statusreg[12,1];")
+    }
+
+    #[test]
+    fn define_user_pcode_op_parses() -> TestResult {
+        test_define("define pcodeop arctan;")
+    }
+
+    #[test]
+    fn define_token_parses() -> TestResult {
+        test_define("define token opbyte (8) byte=(0,7) high4=(4,7) signed hex high5=(3,7) hex low5=(0,4) dec byte_4=(4,4) byte_0=(0,0);")?;
+        test_define("define token I32 (32) imm32=(0,31) simm32=(0,31) signed hex;")
+    }
+}
