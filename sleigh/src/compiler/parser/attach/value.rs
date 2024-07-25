@@ -31,7 +31,10 @@ pub(super) fn value<'tokens>(
             .padded_by(sleigh_whitespace())
             .repeated()
             .collect::<Vec<_>>()
-            .delimited_by(sleigh_control(SleighControlCharacter::OpenBracket), sleigh_control(SleighControlCharacter::CloseBracket)));
+            .delimited_by(
+                sleigh_control(SleighControlCharacter::OpenBracket),
+                sleigh_control(SleighControlCharacter::CloseBracket),
+            ));
 
     let valuelist = sleigh_number()
         .map_with(|num, extra| vec![(num, extra.span())])
@@ -40,7 +43,10 @@ pub(super) fn value<'tokens>(
             .padded_by(sleigh_whitespace())
             .repeated()
             .collect::<Vec<_>>()
-            .delimited_by(sleigh_control(SleighControlCharacter::OpenBracket), sleigh_control(SleighControlCharacter::CloseBracket)));
+            .delimited_by(
+                sleigh_control(SleighControlCharacter::OpenBracket),
+                sleigh_control(SleighControlCharacter::CloseBracket),
+            ));
 
     sleigh_keyword(SleighKeyword::Values)
         .padded_by(sleigh_whitespace())

@@ -26,7 +26,10 @@ pub(super) fn variable<'tokens>(
             .padded_by(sleigh_whitespace())
             .repeated()
             .collect::<Vec<_>>()
-            .delimited_by(sleigh_control(SleighControlCharacter::OpenBracket), sleigh_control(SleighControlCharacter::CloseBracket)));
+            .delimited_by(
+                sleigh_control(SleighControlCharacter::OpenBracket),
+                sleigh_control(SleighControlCharacter::CloseBracket),
+            ));
 
     sleigh_keyword(SleighKeyword::Variables)
         .padded_by(sleigh_whitespace())
