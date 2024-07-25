@@ -24,6 +24,7 @@ use super::{
 use self::address_space::address_space;
 use self::alignment::alignment;
 use self::bitrange_register::bitrange_register;
+use self::context::context;
 use self::register::register;
 use self::token::token;
 use self::user_pcode_op::user_pcode_op;
@@ -31,6 +32,7 @@ use self::user_pcode_op::user_pcode_op;
 mod address_space;
 mod alignment;
 mod bitrange_register;
+mod context;
 mod endianness;
 mod register;
 mod token;
@@ -49,8 +51,12 @@ pub(super) fn define<'tokens>(
     // token
     let token = token().map(SASTDefine::Token);
 
+    // context variables
+    let context = context().map(SASTDefine::Context);
+
     // combined
-    let definitions = choice((endian, alignment, address_space, register, bitrange_register, user_pcode_op, token));
+    let definitions =
+        choice((endian, alignment, address_space, register, bitrange_register, user_pcode_op, token, context));
 
     whitespace_padded(sleigh_keyword(SleighKeyword::Define))
         .ignore_then(definitions)
@@ -63,7 +69,11 @@ pub(super) fn define<'tokens>(
 mod test {
     use chumsky::Parser;
 
-    use crate::compiler::parser::{report_errors, test::{test_parser, TestResult}};
+    use crate::compiler::parser::report_errors;
+    use crate::compiler::parser::test::{
+        test_parser,
+        TestResult,
+    };
 
     use super::define;
 
@@ -113,7 +123,14 @@ mod test {
 
     #[test]
     fn define_token_parses() -> TestResult {
-        test_define("define token opbyte (8) byte=(0,7) high4=(4,7) signed hex high5=(3,7) hex low5=(0,4) dec byte_4=(4,4) byte_0=(0,0);")?;
+        test_define("define token opbyte (8) endian=little byte=(0,7) high4=(4,7) signed hex high5=(3,7) hex low5=(0,4) dec byte_4=(4,4) byte_0=(0,0);")?;
         test_define("define token I32 (32) imm32=(0,31) simm32=(0,31) signed hex;")
+    }
+
+    #[test]
+    fn define_context_parses() -> TestResult {
+        // TODO: the actual specification (x86/ia.sinc) uses "contextreg" as a name
+        // although it contains a reserved keyword. What do to?
+        test_define("define context contexxreg longMode=(0,0) hex reserved=(1,3) dec signed addrsize=(4,5) repprefx=(13,13) noflow prefix_66=(14,14) mandover=(12,14);")
     }
 }

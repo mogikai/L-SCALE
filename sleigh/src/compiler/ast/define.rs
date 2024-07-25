@@ -72,7 +72,32 @@ pub struct SASTTokenField {
 pub struct SASTToken {
     pub name: Spanned<SASTIdent>,
     pub bits: Spanned<u64>, // number of bits of token (must be multiple of 8)
+    pub endian_override: Option<Spanned<SASTEndianness>>,
     pub fields: Vec<Spanned<SASTTokenField>>
+}
+
+// almost the same as SASTTokenFieldAttribute, but adds a noflow attribute
+#[derive(Debug)]
+pub enum SASTContextFieldAttribute {
+    Signed,
+    Hex,
+    Dec,
+    Noflow, // change is limited to a single instruction
+}
+
+// almost the same as SASTTokenField except for the attributes
+#[derive(Debug)]
+pub struct SASTContextField {
+    pub name: Spanned<SASTIdent>,
+    pub start: Spanned<u64>,
+    pub end: Spanned<u64>,
+    pub attributes: Vec<Spanned<SASTContextFieldAttribute>>
+}
+
+#[derive(Debug)]
+pub struct SASTContext {
+    pub reg: Spanned<SASTIdent>,
+    pub fields: Vec<Spanned<SASTContextField>>,
 }
 
 #[derive(Debug)]
@@ -84,4 +109,5 @@ pub enum SASTDefine {
     BitrangeRegister(Vec<Spanned<SASTBitrangeRegister>>),
     UserPcodeOp(Spanned<SASTUserPcodeOp>),
     Token(Spanned<SASTToken>),
+    Context(Spanned<SASTContext>),
 }

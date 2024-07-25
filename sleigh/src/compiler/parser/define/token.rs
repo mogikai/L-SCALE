@@ -12,6 +12,7 @@ use crate::compiler::ast::define::{
 };
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
+use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
     sast_ident_spanned,
     sleigh_control,
@@ -32,16 +33,16 @@ use super::endianness::endianness;
 
 pub(super) fn token<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTToken>, SleighParserExtra<'tokens>> {
-    let open_paren = sleigh_control(SleighControlCharacter::OpenParen);
-    let close_paren = sleigh_control(SleighControlCharacter::CloseParen);
-
     let endianness = endianness();
 
     let number_pair = sleigh_number()
-        .map_with(|num, extra| (num, extra.span()))
+        .map_with(spanned)
         .then(sleigh_control(SleighControlCharacter::Comma))
-        .then(sleigh_number().map_with(|num, extra| (num, extra.span())))
-        .delimited_by(open_paren.clone(), close_paren.clone())
+        .then(sleigh_number().map_with(spanned))
+        .delimited_by(
+            sleigh_control(SleighControlCharacter::OpenParen),
+            sleigh_control(SleighControlCharacter::CloseParen),
+        )
         .map(|((start, _), end)| (start, end));
 
     let attribute = select! {
@@ -51,7 +52,7 @@ pub(super) fn token<'tokens>(
     };
 
     let attributelist = attribute
-        .map_with(|attr, extra| (attr, extra.span()))
+        .map_with(spanned)
         .padded_by(sleigh_whitespace())
         .repeated()
         .collect::<Vec<_>>();
@@ -79,8 +80,11 @@ pub(super) fn token<'tokens>(
         .padded_by(sleigh_whitespace())
         .then(
             sleigh_number()
-                .delimited_by(open_paren, close_paren)
-                .map_with(|num, extra| (num, extra.span())),
+                .delimited_by(
+                    sleigh_control(SleighControlCharacter::OpenParen),
+                    sleigh_control(SleighControlCharacter::CloseParen),
+                )
+                .map_with(spanned),
         )
         .padded_by(sleigh_whitespace())
         .then(endianness.or_not())
@@ -91,5 +95,15 @@ pub(super) fn token<'tokens>(
                 .repeated()
                 .collect::<Vec<_>>(),
         )
-        .map_with(|(((name, bits), endianness), fields), extra| (SASTToken { name, bits, fields }, extra.span()))
+        .map_with(|(((name, bits), endian_override), fields), extra| {
+            (
+                SASTToken {
+                    name,
+                    bits,
+                    endian_override,
+                    fields,
+                },
+                extra.span(),
+            )
+        })
 }
