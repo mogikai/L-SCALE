@@ -60,7 +60,7 @@ pub(super) fn define<'tokens>(
 
     whitespace_padded(sleigh_keyword(SleighKeyword::Define))
         .ignore_then(definitions)
-        .then_ignore(sleigh_control(SleighControlCharacter::SemiColon))
+        .then_ignore(whitespace_padded(sleigh_control(SleighControlCharacter::SemiColon)))
         .map_with(spanned)
         .boxed()
 }

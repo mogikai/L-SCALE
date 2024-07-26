@@ -20,6 +20,7 @@ use crate::compiler::parser::{
     sleigh_number,
     sleigh_operation,
     sleigh_whitespace,
+    whitespace_padded,
     SleighParserExtra,
 };
 use crate::compiler::tokens::{
@@ -58,7 +59,7 @@ pub(super) fn token<'tokens>(
         .collect::<Vec<_>>();
 
     let field = sast_ident_spanned()
-        .then(sleigh_operation(SleighOperation::Equals))
+        .then(whitespace_padded(sleigh_operation(SleighOperation::Equals)))
         .then(number_pair)
         .padded_by(sleigh_whitespace())
         .then(attributelist)
