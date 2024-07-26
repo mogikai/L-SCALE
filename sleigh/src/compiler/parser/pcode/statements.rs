@@ -67,6 +67,11 @@ mod test {
     }
 
     #[test]
+    fn complex_conditional_branch_to_label_parses() -> Result<(), SleighCompilerError> {
+        test_statement("if !(zext(Mem) > bnd1_ub) goto <done>;")
+    }
+
+    #[test]
     fn conditional_branch_to_label_parses() -> Result<(), SleighCompilerError> {
         test_statement("if(x) goto <y>;")
     }

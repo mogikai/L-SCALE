@@ -446,6 +446,7 @@ fn sleigh_keyword<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLex
         .ignored()
         .or(sleigh_operations().ignored())
         .or(sleigh_control_character().ignored())
+        .or(end())
         .rewind();
 
     keyword.then_ignore(keyword_padding)

@@ -38,6 +38,7 @@ use crate::compiler::parser::{
     sleigh_control,
     sleigh_number,
     sleigh_operation,
+    sleigh_whitespace,
     whitespace_padded,
     SleighParserExtra,
 };
@@ -192,6 +193,7 @@ where
         .collect::<Vec<_>>();
 
     let no_arguments = sleigh_control(OpenParen)
+        .ignore_then(sleigh_whitespace())
         .ignore_then(sleigh_control(CloseParen))
         .map(|_| Vec::new());
 

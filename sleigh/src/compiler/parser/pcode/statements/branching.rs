@@ -53,10 +53,10 @@ pub fn pcode_conditional_branch_statement<'tokens>(
         .map_with(spanned);
 
     whitespace_padded(sleigh_keyword(SleighKeyword::If))
-        .ignore_then(whitespace_padded(parenthesized(pcode_expression())))
-        .then_ignore(sleigh_keyword(SleighKeyword::Goto))
+        .ignore_then(whitespace_padded(pcode_expression()))
+        .then_ignore(sleigh_keyword(Goto))
         .then(whitespace_padded(pcode_branch_target().recover_with(via_parser(target_recovery))))
-        .then_ignore(sleigh_control(SleighControlCharacter::SemiColon))
+        .then_ignore(sleigh_control(SemiColon))
         .map(|(condition_expression, target)| SASTPCodeStatement::ConditionalBranch {
             condition_expression,
             target,
