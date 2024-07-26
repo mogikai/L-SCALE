@@ -1,15 +1,11 @@
-use crate::compiler::{
-    InputCacheError,
-    InputId,
-};
+use crate::compiler::inputcache::InputCacheError;
+use crate::compiler::InputId;
 use std::fmt::{
     Debug,
     Display,
     Formatter,
     Pointer,
 };
-use std::io::Error;
-use std::path::PathBuf;
 use thiserror::Error;
 
 #[derive(Error)]

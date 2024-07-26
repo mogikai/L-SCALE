@@ -1,13 +1,11 @@
 use crate::compiler::error::SleighCompilerError;
+use crate::compiler::inputcache::CompilerInputCache;
 use crate::compiler::lexer::{
     SleighLexer,
     SleighTokens,
 };
 pub(crate) use crate::compiler::parser::report_errors;
-use crate::compiler::{
-    CompilerContext,
-    CompilerInputCache,
-};
+use crate::compiler::CompilerContext;
 
 pub type TestResult<T = ()> = Result<T, SleighCompilerError>;
 

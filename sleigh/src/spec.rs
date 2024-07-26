@@ -16,3 +16,12 @@ pub struct ProcessorSpecification {
     address_spaces: SlotMap<AddressSpaceId, AddressSpace>,
     varnodes: SlotMap<VarNodeId, VarNode>,
 }
+
+impl ProcessorSpecification {
+    pub fn new() -> Self {
+        Self {
+            address_spaces: Default::default(),
+            varnodes: Default::default(),
+        }
+    }
+}

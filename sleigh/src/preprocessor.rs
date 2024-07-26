@@ -34,6 +34,7 @@ use blocks::{
 };
 
 use crate::compiler::ast::Spanned;
+use crate::compiler::inputcache::CompilerInputCache;
 use crate::compiler::lexer::{
     InputSpan,
     ParserInput,
@@ -53,7 +54,6 @@ use crate::compiler::tokens::{
 };
 use crate::compiler::{
     CompilerContext,
-    CompilerInputCache,
     InputId,
     StringId,
 };

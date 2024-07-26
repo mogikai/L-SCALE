@@ -3,6 +3,7 @@ use std::ops::Range;
 
 use crate::compiler::ast::Spanned;
 use crate::compiler::error::SleighCompilerError;
+use crate::compiler::inputcache::CompilerInputCache;
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighKeyword,
@@ -11,7 +12,6 @@ use crate::compiler::tokens::{
 };
 use crate::compiler::{
     CompilerContext,
-    CompilerInputCache,
     InputId,
     StringId,
 };
@@ -49,7 +49,6 @@ use chumsky::{
     ParseResult,
     Parser,
 };
-use tracing::trace;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InputSpan {

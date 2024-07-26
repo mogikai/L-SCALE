@@ -1,3 +1,33 @@
+use crate::compiler::ast::common::SASTIdent;
+use crate::compiler::ast::item::SASTItem;
+use crate::compiler::ast::{
+    SleighAST,
+    Spanned,
+};
+use crate::compiler::error::SleighCompilerError;
+use crate::compiler::inputcache::CompilerInputCache;
+use crate::compiler::lexer::{
+    InputSpan,
+    ParserInput,
+    SleighTokens,
+};
+use crate::compiler::parser::attach::attach;
+use crate::compiler::parser::constructor::constructor;
+use crate::compiler::parser::define::define;
+use crate::compiler::parser::helpers::spanned;
+use crate::compiler::parser::included::included_tokens;
+use crate::compiler::parser::pcode_macro::pcode_macro;
+use crate::compiler::parser::with::with_block;
+use crate::compiler::tokens::{
+    SleighControlCharacter,
+    SleighKeyword,
+    SleighOperation,
+    SleighToken,
+};
+use crate::compiler::{
+    CompilerContext,
+    StringId,
+};
 use ariadne::{
     Label,
     Report,
@@ -31,41 +61,6 @@ use chumsky::{
     IterParser,
     ParseResult,
     Parser,
-};
-use tracing::{
-    debug,
-    trace,
-};
-
-use crate::compiler::ast::common::SASTIdent;
-use crate::compiler::ast::item::SASTItem;
-use crate::compiler::ast::{
-    SleighAST,
-    Spanned,
-};
-use crate::compiler::error::SleighCompilerError;
-use crate::compiler::lexer::{
-    InputSpan,
-    ParserInput,
-    SleighTokens,
-};
-use crate::compiler::parser::attach::attach;
-use crate::compiler::parser::constructor::constructor;
-use crate::compiler::parser::define::define;
-use crate::compiler::parser::helpers::spanned;
-use crate::compiler::parser::included::included_tokens;
-use crate::compiler::parser::pcode_macro::pcode_macro;
-use crate::compiler::parser::with::with_block;
-use crate::compiler::tokens::{
-    SleighControlCharacter,
-    SleighKeyword,
-    SleighOperation,
-    SleighToken,
-};
-use crate::compiler::{
-    CompilerContext,
-    CompilerInputCache,
-    StringId,
 };
 
 mod attach;

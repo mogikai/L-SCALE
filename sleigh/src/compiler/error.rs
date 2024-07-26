@@ -1,4 +1,4 @@
-use crate::compiler::InputCacheError;
+use crate::compiler::inputcache::InputCacheError;
 use crate::preprocessor::error::PreprocessorError;
 use std::fmt::{
     Debug,
