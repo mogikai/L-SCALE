@@ -1,2 +1,2 @@
 #[derive(Debug)]
-pub struct VarNode {}
+pub struct MOIRVarNode {}

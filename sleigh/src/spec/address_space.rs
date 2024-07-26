@@ -1,2 +1,2 @@
 #[derive(Debug)]
-pub struct AddressSpace {}
+pub struct MOIRAddressSpace {}

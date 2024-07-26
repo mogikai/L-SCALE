@@ -12,7 +12,13 @@ use std::path::{
 };
 use std::process::exit;
 
-use crate::compiler::ast::SleighAST;
+use crate::compiler::ast::item::SASTItem;
+use crate::compiler::ast::pcode_macro::SASTPCodeMacro;
+use crate::compiler::ast::with::SASTWith;
+use crate::compiler::ast::{
+    SleighAST,
+    Spanned,
+};
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::{
     SleighLexer,
@@ -44,7 +50,10 @@ use string_interner::{
     Symbol,
 };
 use thiserror::Error;
-use tracing::debug;
+use tracing::{
+    debug,
+    trace,
+};
 
 pub mod ast;
 pub mod builder;
@@ -68,23 +77,30 @@ impl Display for InputId {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct CompilerContext {
-    interner: StringInterner<StringBackend>,
-}
-
-impl CompilerContext {
+pub(crate) trait CompilerContext {
     /// Intern the provided value that can be converted to a string.
     /// If the value already exists, a key to that value is returned.
     /// Otherwise, a new entry is created and the key to that is returned.
-    pub fn intern<T: AsRef<str>>(
+    fn intern<T: AsRef<str>>(
+        &mut self,
+        string: &T,
+    ) -> StringId;
+
+    fn string(
+        &self,
+        string_id: StringId,
+    ) -> Option<&str>;
+}
+
+impl CompilerContext for ProcessorSpecification {
+    fn intern<T: AsRef<str>>(
         &mut self,
         string: &T,
     ) -> StringId {
         StringId(self.interner.get_or_intern(string).to_usize())
     }
 
-    pub fn string(
+    fn string(
         &self,
         string_id: StringId,
     ) -> Option<&str> {
@@ -93,13 +109,15 @@ impl CompilerContext {
     }
 }
 
+pub type SleighCompilerResult<T = ()> = Result<T, SleighCompilerError>;
+
 #[derive(Debug)]
 pub struct SleighCompiler {
     preprocessor_factory: SleighPreprocessorFactory,
-    lexer: SleighLexer,
+    lexer: SleighLexer<ProcessorSpecification>,
     parser: SleighParser,
-    context: CompilerContext,
     input_cache: CompilerInputCache,
+    specification: ProcessorSpecification,
 }
 
 #[derive(Debug, Clone)]
@@ -113,25 +131,26 @@ pub struct CompilerInput {
 }
 
 impl SleighCompiler {
-    /// Compile the provided sleigh specification.
+    /// Compile the provided sleigh specification, consuming the compiler instance.
     pub fn compile(
-        &mut self,
+        mut self,
         spec_path: &Path,
-    ) -> Result<ProcessorSpecification, SleighCompilerError> {
-        let tokens = self.preprocess(spec_path)?;
+    ) -> SleighCompilerResult<ProcessorSpecification> {
+        let tokens = self.load_and_preprocess(spec_path)?;
         let ast = self
             .parser
-            .parse(&mut self.input_cache, &mut self.context, tokens)?;
-        self.build(ast)
+            .parse(&mut self.input_cache, &mut self.specification, tokens)?;
+        self.build(ast)?;
+        Ok(self.specification)
     }
 
-    /// Preprocess the file by loading it, then tokenizing it, and afterwards preprocessing it.
+    /// Preprocess the file by loading it, then tokenizing it, and preprocessing it afterward.
     /// The actual preprocessing expands macros and also includes files included with the `@include`
     /// macro. These included files are also tokenized and then preprocessed recursively.
-    fn preprocess(
+    fn load_and_preprocess(
         &mut self,
         spec_path: &Path,
-    ) -> Result<SleighTokens, SleighCompilerError> {
+    ) -> SleighCompilerResult<SleighTokens> {
         let mut preprocessor = self.preprocessor_factory.build();
         let file = spec_path.to_path_buf();
         let mut input_id = self.input_cache.load_input_from_file(file.as_path())?;
@@ -142,14 +161,14 @@ impl SleighCompiler {
                 // If the input was already tokenized, we can continue, otherwise tokenize now.
                 let tokens = self
                     .lexer
-                    .tokenize(&mut self.input_cache, &mut self.context, input_id)?;
+                    .tokenize(&mut self.input_cache, &mut self.specification, input_id)?;
                 debug!("Tokenized input {input_id:?}");
                 self.input_cache.attach_tokens(input_id, tokens)?;
             }
             // Parse the input that was loaded
             preprocessor.parse_input(&mut self.input_cache, input_id)?;
             // Continue preprocessing
-            match preprocessor.preprocess(&mut self.input_cache, &mut self.context) {
+            match preprocessor.preprocess(&mut self.input_cache, &mut self.specification) {
                 Ok(tokens) => break tokens,
                 Err(PreprocessorError::LoadingRequired(id)) => input_id = id,
                 Err(e) => Err(SleighCompilerError::from(e))?,
@@ -161,10 +180,46 @@ impl SleighCompiler {
     fn build(
         &mut self,
         ast: SleighAST,
-    ) -> Result<ProcessorSpecification, SleighCompilerError> {
+    ) -> SleighCompilerResult {
         debug!("Building the processor specification from the AST.");
-        debug!("The AST has {} items", ast.items.len());
-        Ok(ProcessorSpecification::new())
+        debug!("The AST has {} toplevel items", ast.items.len());
+        self.process_items(ast.items)
+    }
+
+    fn process_items(
+        &mut self,
+        items: Vec<SASTItem>,
+    ) -> SleighCompilerResult {
+        for item in items {
+            match item {
+                SASTItem::Attach(attach) => {}
+                SASTItem::Constructor(constructor) => {}
+                SASTItem::Define(_) => {}
+                SASTItem::Macro(pcode_macro) => self.process_pcode_macro(pcode_macro)?,
+                SASTItem::With(with) => self.process_with(with)?,
+                SASTItem::Error(_) => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn process_with(
+        &mut self,
+        (with, span): Spanned<SASTWith>,
+    ) -> SleighCompilerResult {
+        trace!("Processing with statement at {span:?}.");
+        self.process_items(with.items)?;
+        Ok(())
+    }
+
+    fn process_pcode_macro(
+        &mut self,
+        (pcode_macro, span): Spanned<SASTPCodeMacro>,
+    ) -> SleighCompilerResult {
+        trace!("Processing pcode macro at {span:?}");
+        self.specification.resolve_ident_to_id(pcode_macro.ident);
+        // self.specification.mir_macros
+        Ok(())
     }
 }
 
@@ -174,8 +229,8 @@ impl SleighCompiler {
             preprocessor_factory,
             lexer: Default::default(),
             parser: Default::default(),
-            context: Default::default(),
             input_cache: Default::default(),
+            specification: Default::default(),
         }
     }
 }

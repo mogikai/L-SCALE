@@ -28,6 +28,7 @@ use crate::compiler::{
     CompilerContext,
     StringId,
 };
+use crate::spec::ProcessorSpecification;
 use ariadne::{
     Label,
     Report,
@@ -80,7 +81,7 @@ impl SleighParser {
     pub fn parse(
         &self,
         input_cache: &mut CompilerInputCache,
-        context: &mut CompilerContext,
+        context: &mut ProcessorSpecification,
         tokens: SleighTokens,
     ) -> Result<SleighAST, SleighCompilerError> {
         let parsed = parser().parse_with_state(tokens.spanned(), context);
@@ -116,7 +117,7 @@ pub fn report_errors<T>(
 }
 
 type SleighParserError<'tokens> = Rich<'tokens, SleighToken, InputSpan>;
-type SleighParserExtra<'tokens> = extra::Full<SleighParserError<'tokens>, CompilerContext, ()>;
+type SleighParserExtra<'tokens> = extra::Full<SleighParserError<'tokens>, ProcessorSpecification, ()>;
 
 fn parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, SleighAST, SleighParserExtra<'tokens>>
 {

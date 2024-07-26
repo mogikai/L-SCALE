@@ -58,6 +58,7 @@ use crate::compiler::{
     StringId,
 };
 use crate::preprocessor::error::PreprocessorError;
+use crate::spec::ProcessorSpecification;
 
 mod blocks;
 pub mod error;
@@ -127,7 +128,7 @@ impl SleighPreprocessor {
     pub fn preprocess(
         &mut self,
         input_cache: &mut CompilerInputCache,
-        context: &mut CompilerContext,
+        context: &mut ProcessorSpecification,
     ) -> Result<SleighTokens, PreprocessorError> {
         loop {
             let Some((block, span)) = self.blocks.next() else {
@@ -157,7 +158,7 @@ impl SleighPreprocessor {
     fn process_expansion(
         &mut self,
         input_cache: &mut CompilerInputCache,
-        context: &mut CompilerContext,
+        context: &mut ProcessorSpecification,
         ident: &Spanned<StringId>,
     ) -> Result<(), PreprocessorError> {
         trace!("Expanding macro identifier {ident:?}");
@@ -198,7 +199,7 @@ impl SleighPreprocessor {
     fn process_if(
         &mut self,
         input_cache: &mut CompilerInputCache,
-        context: &mut CompilerContext,
+        context: &mut ProcessorSpecification,
         cond: Spanned<Expression>,
         if_true: Spanned<Vec<Spanned<PreprocessorBlock>>>,
         if_false: Option<Spanned<Vec<Spanned<PreprocessorBlock>>>>,
@@ -286,7 +287,7 @@ impl SleighPreprocessor {
     fn process_include(
         &mut self,
         mut input_cache: &mut CompilerInputCache,
-        context: &mut CompilerContext,
+        context: &mut ProcessorSpecification,
         span: InputSpan,
         file: StringId,
     ) -> Result<(), PreprocessorError> {
@@ -332,7 +333,7 @@ impl SleighPreprocessor {
     fn evaluate_expression(
         &self,
         input_cache: &mut CompilerInputCache,
-        context: &CompilerContext,
+        context: &ProcessorSpecification,
         expression: Spanned<Expression>,
     ) -> Result<bool, PreprocessorError> {
         Ok(match expression.0 {
@@ -367,7 +368,7 @@ impl SleighPreprocessor {
     fn resolve_comparison_argument(
         &self,
         input_cache: &mut CompilerInputCache,
-        context: &CompilerContext,
+        context: &ProcessorSpecification,
         arg: &Spanned<ComparisonArgument>,
     ) -> Result<StringId, PreprocessorError> {
         Ok(match arg {
@@ -413,7 +414,7 @@ impl SleighPreprocessor {
     fn lookup_identifier(
         &self,
         mut input_cache: &mut CompilerInputCache,
-        context: &CompilerContext,
+        context: &ProcessorSpecification,
         (identifier, span): &Spanned<StringId>,
     ) -> Result<&Spanned<StringId>, PreprocessorError> {
         self.definitions.get(identifier).ok_or_else(|| {
