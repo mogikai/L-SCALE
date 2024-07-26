@@ -75,4 +75,9 @@ mod test {
     fn basic_constructor_parses() -> TestResult {
         test_constructor(":INST reg is reg=0xf { x = func(y); fpop(); }")
     }
+
+    #[test]
+    fn some_constructor_parses() -> TestResult {
+        test_constructor("XmmCondSS: is imm8 { xmmTmp1_Da = cmpss(xmmTmp1_Da, xmmTmp2_Da, imm8:1); }")
+    }
 }

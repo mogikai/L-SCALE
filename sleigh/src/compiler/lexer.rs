@@ -27,6 +27,7 @@ use chumsky::text::{
     inline_whitespace,
     int,
     newline,
+    whitespace,
 };
 use chumsky::{
     extra,
@@ -390,7 +391,7 @@ fn sleigh_control_character<'src>() -> impl Parser<'src, &'src str, SleighToken,
 }
 
 fn sleigh_keyword<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLexerExtra<'src>> + Clone {
-    choice([
+    let keyword = choice([
         just("attach").to(SleighToken::Keyword(SleighKeyword::Attach)),
         just("variables").to(SleighToken::Keyword(SleighKeyword::Variables)),
         just("values").to(SleighToken::Keyword(SleighKeyword::Values)),
@@ -434,5 +435,14 @@ fn sleigh_keyword<'src>() -> impl Parser<'src, &'src str, SleighToken, SleighLex
         just("call").to(SleighToken::Keyword(SleighKeyword::Call)),
         just("return").to(SleighToken::Keyword(SleighKeyword::Return)),
         just("export").to(SleighToken::Keyword(SleighKeyword::Export)),
-    ])
+    ]);
+
+    let keyword_padding = whitespace()
+        .exactly(1)
+        .ignored()
+        .or(sleigh_operations().ignored())
+        .or(sleigh_control_character().ignored())
+        .rewind();
+
+    keyword.then_ignore(keyword_padding)
 }

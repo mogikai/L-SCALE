@@ -9,7 +9,7 @@ use crate::compiler::{
     CompilerInputCache,
 };
 
-pub type TestResult = Result<(), SleighCompilerError>;
+pub type TestResult<T = ()> = Result<T, SleighCompilerError>;
 
 #[cfg(test)]
 pub fn setup_parser_test(

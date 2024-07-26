@@ -1,21 +1,17 @@
-use chumsky::error::Rich;
 use chumsky::prelude::{
     any,
     just,
-    via_parser,
 };
+use chumsky::primitive::none_of;
 use chumsky::{
-    extra,
+    select,
     IterParser,
     Parser,
 };
 
 use crate::compiler::ast::constructor::display_section::SASTDisplaySection;
 use crate::compiler::ast::Spanned;
-use crate::compiler::lexer::{
-    InputSpan,
-    ParserInput,
-};
+use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
     sleigh_control,
@@ -24,9 +20,9 @@ use crate::compiler::parser::{
     sleigh_operation,
     SleighParserExtra,
 };
+use crate::compiler::tokens::SleighKeyword::Is;
 use crate::compiler::tokens::{
     SleighControlCharacter,
-    SleighKeyword,
     SleighOperation,
     SleighToken,
 };
@@ -34,7 +30,7 @@ use crate::compiler::tokens::{
 pub fn display_section<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTDisplaySection>, SleighParserExtra<'tokens>> {
     let start_of_display_section = sleigh_control(SleighControlCharacter::Colon);
-    let end_of_display_section = sleigh_keyword(SleighKeyword::Is);
+    let end_of_display_section = sleigh_keyword(Is);
 
     // Parse the display string but then rewind, so we can parse mnemonic and identifiers.
     let display = any()
@@ -45,14 +41,14 @@ pub fn display_section<'tokens>(
         .map(|s| s.into_iter().collect::<String>())
         .map_with(spanned)
         .rewind();
+    let display = any().rewind().map(|_| String::new()).map_with(spanned);
 
     // Parse mnemonic, removing any `^` and rewind.
     // If we encounter a whitespace in the beginning, the mnemonic is empty.
     let mnemonic = just(SleighToken::Whitespace)
         .to(String::new())
         .map_with(spanned)
-        .or(any()
-            .and_is(just(SleighToken::Whitespace).not())
+        .or(none_of((SleighToken::Whitespace))
             .then_ignore(sleigh_operation(SleighOperation::Hat).or_not())
             .map(|token: SleighToken| token.to_mnemonic().to_string())
             .repeated()
@@ -60,27 +56,64 @@ pub fn display_section<'tokens>(
             .map(|element| element.into_iter().collect::<String>())
             .map_with(spanned))
         .rewind();
+    let mnemonic = any().rewind().map(|_| String::new()).map_with(spanned);
+
+    let not_ident = any().and_is(
+        select! {
+            SleighToken::Ident(_) => (),
+            SleighToken::Keyword(Is) => (),
+        }
+        .not(),
+    );
 
     let identifiers = sleigh_ident()
-        .padded_by(
-            any()
-                .and_is(sleigh_ident().not())
-                .and_is(end_of_display_section.clone().not())
-                .repeated(),
-        )
+        .padded_by(not_ident.clone().repeated())
         .map_with(spanned)
         .repeated()
-        .collect::<Vec<_>>();
+        .collect::<Vec<_>>()
+        .then_ignore(end_of_display_section.clone());
+
+    let no_identifiers = not_ident
+        .repeated()
+        .map(|_| Vec::new())
+        .then_ignore(end_of_display_section);
 
     start_of_display_section
         .ignore_then(display)
         .then(mnemonic)
-        .then(identifiers)
-        .then_ignore(end_of_display_section)
+        .then(identifiers.or(no_identifiers))
         .map(|((display_str, mnemonic), identifiers)| SASTDisplaySection {
             mnemonic,
             identifiers,
             display_str,
         })
         .map_with(spanned)
+}
+
+#[cfg(test)]
+mod test {
+    use crate::compiler::parser::test::TestResult;
+
+    use super::*;
+
+    fn test_display_section(input: &str) -> TestResult {
+        use crate::compiler::parser::test::{
+            report_errors,
+            test_parser,
+        };
+        test_parser(input, |cache, context, tokens| {
+            report_errors(cache, display_section().parse_with_state(tokens.spanned(), context))
+        })?;
+        Ok(())
+    }
+
+    #[test]
+    fn empty_display_section_parses() -> TestResult {
+        test_display_section(":    is")
+    }
+
+    #[test]
+    fn simple_display_section_parses() -> TestResult {
+        test_display_section(":MNEMONIC is")
+    }
 }

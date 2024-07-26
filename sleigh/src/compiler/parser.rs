@@ -140,11 +140,17 @@ fn items_parser<'tokens, 'src: 'tokens>(
 
     let items_section = choice((attach, constructor, pcode_macro, define, with))
         .padded_by(sleigh_whitespace())
-        .recover_with(skip_then_retry_until(any().ignored(), end()))
+        .recover_with(skip_then_retry_until(
+            any()
+                .and_is(select! {SleighToken::IncludedTokens(_) => () }.not())
+                .ignored(),
+            end(),
+        ))
         .repeated()
         .at_least(1)
         .collect::<Vec<_>>()
         .boxed();
+
     items.define(
         items_section
             .or(included_tokens(items.clone()).boxed())
