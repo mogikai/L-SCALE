@@ -160,22 +160,25 @@ impl SleighPreprocessor {
         context: &mut CompilerContext,
         ident: &Spanned<StringId>,
     ) -> Result<(), PreprocessorError> {
+        trace!("Expanding macro identifier {ident:?}");
         let (value, span) = self.lookup_identifier(input_cache, context, ident)?;
         let resolved_value = context
             .string(*value)
             .expect("The string must have been interned.")
             .to_string();
         // The offset is start + 1, since the first character of a string is ", which is ignored.
-        let offset = span.start() + 1;
-        let result = SleighLexer::tokenize_string(resolved_value.as_str(), context, span.context(), offset);
-        let out = result.output().unwrap().as_slice();
-        let span = out[0].1.clone();
+        let result = SleighLexer::tokenize_string(resolved_value.as_str(), context, span.context(), span.start() + 1);
         let tokens = result
             .into_result()
-            .map_err(|e| PreprocessorError::ParseError("Failed macro expansion".to_string()))?;
-        // Append the tokens to the stream associated with the input they came from
+            .map_err(|e| PreprocessorError::ParseError("Failed macro expansion".to_string()))?
+            .into_iter()
+            // TODO: This currently only reports the point of expansion on error during parsing.
+            //       We will need to somehow extend the spans with more information?
+            .map(|(token, _)| (token, ident.1.clone()));
+
+        // Append the tokens to the stream associated with the input they are expanded to
         self.token_streams
-            .entry(tokens.input_id())
+            .entry(ident.1.context())
             .or_default()
             .extend(tokens);
         Ok(())

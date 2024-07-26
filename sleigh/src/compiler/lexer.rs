@@ -1,6 +1,20 @@
 use std::fmt::Debug;
 use std::ops::Range;
 
+use crate::compiler::ast::Spanned;
+use crate::compiler::error::SleighCompilerError;
+use crate::compiler::tokens::{
+    SleighControlCharacter,
+    SleighKeyword,
+    SleighOperation,
+    SleighToken,
+};
+use crate::compiler::{
+    CompilerContext,
+    CompilerInputCache,
+    InputId,
+    StringId,
+};
 use ariadne::{
     Label,
     Report,
@@ -35,21 +49,7 @@ use chumsky::{
     ParseResult,
     Parser,
 };
-
-use crate::compiler::ast::Spanned;
-use crate::compiler::error::SleighCompilerError;
-use crate::compiler::tokens::{
-    SleighControlCharacter,
-    SleighKeyword,
-    SleighOperation,
-    SleighToken,
-};
-use crate::compiler::{
-    CompilerContext,
-    CompilerInputCache,
-    InputId,
-    StringId,
-};
+use tracing::trace;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InputSpan {
@@ -128,6 +128,10 @@ impl SleighTokens {
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Spanned<SleighToken>> {
         self.0.iter_mut()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
     }
 }
 

@@ -21,9 +21,15 @@ pub fn included_tokens<'tokens, P>(
 where
     P: Parser<'tokens, ParserInput<'tokens>, Vec<SASTItem>, SleighParserExtra<'tokens>> + Clone,
 {
-    let tokens = select_ref! { SleighToken::IncludedTokens(IncludedTokens::Loaded(tokens)) => tokens.spanned() };
+    let tokens = select_ref! {
+        SleighToken::IncludedTokens(IncludedTokens::Loaded(tokens)) if !tokens.is_empty() => tokens.spanned()
+    };
+    let empty_tokens = select_ref! {
+        SleighToken::IncludedTokens(IncludedTokens::Loaded(tokens)) if tokens.is_empty() => ()
+    };
     items_parser
         .nested_in(whitespace_padded(tokens))
+        .or(empty_tokens.map(|_| Vec::new()))
         .recover_with(via_parser(
             select! { SleighToken::IncludedTokens(_) => () }
                 .to_span()
