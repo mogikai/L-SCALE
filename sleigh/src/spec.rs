@@ -57,7 +57,10 @@ pub struct ProcessorSpecificationBuilder {
     pub(super) macros: SecondaryMap<MOIRIdentId, MOIRMacro>,
     pub(super) address_spaces: SlotMap<MOIRAddressSpaceId, MOIRAddressSpace>,
     pub(super) varnodes: SlotMap<MOIRVarNodeId, MOIRVarNode>,
+    /// The endianness of the processor. It must be defined.
     pub(super) endianness: Option<Spanned<ProcessorEndianness>>,
+    /// The alignment of instructions. This defaults to 1 if no alignment is specified.
+    pub(super) alignment: Option<Spanned<u16>>,
 
     // lookup tables:
     pub(super) string_to_ident_mapping: HashMap<StringId, MOIRIdentId>,
@@ -106,6 +109,7 @@ impl ProcessorSpecificationBuilder {
             address_spaces: Default::default(),
             varnodes: Default::default(),
             endianness: Default::default(),
+            alignment: Default::default(),
             string_to_ident_mapping: Default::default(),
         }
     }

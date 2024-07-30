@@ -49,6 +49,7 @@ use chumsky::prelude::{
     any,
     end,
     skip_then_retry_until,
+    via_parser,
     Recursive,
 };
 use chumsky::primitive::{
@@ -63,6 +64,7 @@ use chumsky::{
     ParseResult,
     Parser,
 };
+use std::fmt::Display;
 
 mod attach;
 mod constructor;
@@ -211,7 +213,11 @@ fn sast_ident_spanned<'tokens>(
         .labelled("identifier")
 }
 
-fn sleigh_number<'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, u64, SleighParserExtra<'tokens>> + Clone {
+fn sleigh_number<'tokens, T>() -> impl Parser<'tokens, ParserInput<'tokens>, T, SleighParserExtra<'tokens>> + Clone
+where
+    T: TryFrom<u64>,
+    <T as TryFrom<u64>>::Error: Display,
+{
     let parsed_number = select! {
         SleighToken::Decimal(str_id) => (str_id, 10),
         SleighToken::Hexadecimal(str_id) => (str_id, 16),
@@ -228,6 +234,10 @@ fn sleigh_number<'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, u64, S
             )
         })
         .try_map(|num, span| num.map_err(|e| Rich::custom(span, e)))
+        .try_map_with(|num, extra| T::try_from(num).map_err(|e| Rich::custom(extra.span(), e)))
+        .recover_with(via_parser(
+            parsed_number.try_map_with(|_, extra| T::try_from(0).map_err(|e| Rich::custom(extra.span(), e))),
+        ))
 }
 
 /// Parses the same thing as `P`, but only if it is surrounded by parentheses.

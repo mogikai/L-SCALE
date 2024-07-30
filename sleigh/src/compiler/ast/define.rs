@@ -100,10 +100,12 @@ pub struct SASTContext {
     pub fields: Vec<Spanned<SASTContextField>>,
 }
 
+pub type SASTAlignment = u16;
+
 #[derive(Debug)]
 pub enum SASTDefine {
     Endianness(Spanned<SASTEndianness>),
-    Alignment(Spanned<u64>), // the disassembler checks against this
+    Alignment(Spanned<SASTAlignment>), // the disassembler checks against this
     AddressSpace(Spanned<SASTAddressSpace>),
     Register(Spanned<SASTRegister>),
     BitrangeRegister(Vec<Spanned<SASTBitrangeRegister>>),

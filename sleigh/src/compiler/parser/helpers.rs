@@ -1,11 +1,15 @@
+use std::fmt::{
+    Debug,
+    Display,
+};
+
+use chumsky::input::MapExtra;
+
 use crate::compiler::lexer::{
     InputSpan,
     ParserInput,
 };
 use crate::compiler::parser::SleighParserExtra;
-use chumsky::input::MapExtra;
-use std::fmt::Debug;
-use tracing::trace;
 
 pub(super) fn spanned<'tokens, T>(
     element: T,

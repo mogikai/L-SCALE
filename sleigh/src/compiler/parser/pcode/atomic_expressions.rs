@@ -72,11 +72,7 @@ where
     T: TryFrom<u64> + Debug,
     <T as TryFrom<u64>>::Error: Display,
 {
-    whitespace_padded(
-        sleigh_number()
-            .try_map_with(|num, extra| T::try_from(num).map_err(|e| Rich::custom(extra.span(), e)))
-            .map_with(spanned),
-    )
+    whitespace_padded(sleigh_number().map_with(spanned))
 }
 
 pub fn pcode_subpiece<'tokens>(

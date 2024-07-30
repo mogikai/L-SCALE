@@ -45,6 +45,7 @@ use inputcache::CompilerInputCache;
 
 use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::define::{
+    SASTAlignment,
     SASTDefine,
     SASTEndianness,
 };
@@ -247,7 +248,7 @@ impl SleighCompiler<'_> {
         trace!("Processing define statement");
         match define {
             SASTDefine::Endianness(endianness) => self.process_endianness(endianness),
-            SASTDefine::Alignment(_) => Ok(()),
+            SASTDefine::Alignment(alignment) => self.process_alignment(alignment),
             SASTDefine::AddressSpace(_) => Ok(()),
             SASTDefine::Register(_) => Ok(()),
             SASTDefine::BitrangeRegister(_) => Ok(()),
@@ -267,6 +268,19 @@ impl SleighCompiler<'_> {
         } else {
             self.specification.endianness = Some((endianness.into(), span));
         };
+        Ok(())
+    }
+
+    fn process_alignment(
+        &mut self,
+        (alignment, span): Spanned<SASTAlignment>,
+    ) -> SleighCompilerResult {
+        if let Some((_, old_span)) = &self.specification.alignment {
+            self.errors
+                .push(self.generate_alignment_already_specified_report(old_span.clone(), span))
+        } else {
+            self.specification.alignment = Some((alignment, span))
+        }
         Ok(())
     }
 
@@ -318,6 +332,7 @@ impl SleighCompiler<'_> {
         old: InputSpan,
         new: InputSpan,
     ) -> Report<'a, InputSpan> {
+        // TODO: Move out of SleighCompiler and do not require self for all reporting methods
         let name = self.specification.resolve_ident_to_str(ident);
         let mut colors = ColorGenerator::new();
         let color_a = colors.next();
@@ -361,6 +376,32 @@ impl SleighCompiler<'_> {
                             .unwrap()
                             .0
                             .fg(color_a)
+                    ))
+                    .with_color(color_a),
+            )
+            .finish();
+        report
+    }
+
+    fn generate_alignment_already_specified_report<'a>(
+        &self,
+        old: InputSpan,
+        new: InputSpan,
+    ) -> Report<'a, InputSpan> {
+        let mut colors = ColorGenerator::new();
+        let color_a = colors.next();
+        let report = Report::build(ReportKind::Error, new.context(), new.start())
+            .with_message("Alignment already specified")
+            .with_label(
+                Label::new(new)
+                    .with_message("Attempting to redefine alignment when it is already defined.")
+                    .with_color(color_a),
+            )
+            .with_label(
+                Label::new(old)
+                    .with_message(format!(
+                        "The alignment is already defined here as {}.",
+                        self.specification.alignment.as_ref().unwrap().0.fg(color_a)
                     ))
                     .with_color(color_a),
             )
