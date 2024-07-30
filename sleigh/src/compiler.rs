@@ -44,6 +44,7 @@ use tracing::{
 use inputcache::CompilerInputCache;
 
 use crate::compiler::ast::common::SASTIdent;
+use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::ast::define::{
     SASTAlignment,
     SASTDefine,
@@ -70,6 +71,7 @@ use crate::preprocessor::{
 };
 use crate::spec::moir::MOIRMacro;
 use crate::spec::{
+    MOIRIdentId,
     ProcessorSpecificationBuilder,
     ProcessorSpecificationError,
 };
@@ -231,13 +233,25 @@ impl SleighCompiler<'_> {
         for item in items {
             match item {
                 SASTItem::Attach(attach) => {}
-                SASTItem::Constructor(constructor) => {}
+                SASTItem::Constructor(constructor) => self.process_constructor(constructor)?,
                 SASTItem::Define(define) => self.process_define(define)?,
                 SASTItem::Macro(pcode_macro) => self.process_pcode_macro(pcode_macro)?,
                 SASTItem::With(with) => self.process_with(with)?,
                 SASTItem::Error(_) => {}
             }
         }
+        Ok(())
+    }
+
+    fn process_constructor(
+        &mut self,
+        (constructor, span): Spanned<SASTConstructor>,
+    ) -> SleighCompilerResult {
+        trace!("Processing constructor statement");
+        // let table = match lift_option(constructor.table) {
+        //     None => MOIRIdentId::default(), // TODO: Root table
+        //     Some(id) => self.specification.reserve_global_ident(id)?,
+        // };
         Ok(())
     }
 
@@ -408,6 +422,10 @@ impl SleighCompiler<'_> {
             .finish();
         report
     }
+}
+
+fn lift_option<T>((x, span): Spanned<Option<T>>) -> Option<Spanned<T>> {
+    x.map(|x| (x, span))
 }
 
 impl SleighCompiler<'_> {

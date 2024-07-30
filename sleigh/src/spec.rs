@@ -1,3 +1,8 @@
+use slotmap::{
+    new_key_type,
+    SecondaryMap,
+    SlotMap,
+};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::{
@@ -5,12 +10,7 @@ use std::fmt::{
     Formatter,
     Pointer,
 };
-
-use slotmap::{
-    new_key_type,
-    SecondaryMap,
-    SlotMap,
-};
+use std::ops::Index;
 use string_interner::backend::StringBackend;
 use string_interner::StringInterner;
 use thiserror::Error;
@@ -49,13 +49,19 @@ impl From<SASTEndianness> for ProcessorEndianness {
     }
 }
 
+#[derive(Debug)]
+pub struct MOIRTable;
+pub struct MOIRTableId(usize);
+
 #[derive(Debug, Default)]
 pub struct ProcessorSpecificationBuilder {
     pub(super) interner: StringInterner<StringBackend>,
 
+    // TODO: we probably need a symbol table here that maps identifiers to symbols.
     pub(super) identifiers: SlotMap<MOIRIdentId, Spanned<StringId>>,
     pub(super) macros: SecondaryMap<MOIRIdentId, MOIRMacro>,
     pub(super) address_spaces: SlotMap<MOIRAddressSpaceId, MOIRAddressSpace>,
+    pub(super) tables: Vec<MOIRTable>,
     pub(super) varnodes: SlotMap<MOIRVarNodeId, MOIRVarNode>,
     /// The endianness of the processor. It must be defined.
     pub(super) endianness: Option<Spanned<ProcessorEndianness>>,
@@ -107,6 +113,7 @@ impl ProcessorSpecificationBuilder {
             identifiers: Default::default(),
             macros: Default::default(),
             address_spaces: Default::default(),
+            tables: Default::default(),
             varnodes: Default::default(),
             endianness: Default::default(),
             alignment: Default::default(),
