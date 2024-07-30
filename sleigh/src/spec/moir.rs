@@ -2,8 +2,8 @@ use crate::spec::MOIRVarNodeId;
 
 #[derive(Debug)]
 pub struct MOIRMacro {
-    arguments: Vec<MOIRVarNodeId>,
-    code: Vec<MOIRInstruction>,
+    pub arguments: Vec<MOIRVarNodeId>,
+    pub code: Vec<MOIRInstruction>,
 }
 
 #[derive(Debug)]

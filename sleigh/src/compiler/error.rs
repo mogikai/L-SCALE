@@ -23,6 +23,8 @@ pub enum SleighCompilerError {
     NotTokenized,
     #[error("The input is not yet preprocessed. Parsing requires a preprocessed token stream.")]
     NotPreprocessed,
+    #[error("The compiler encountered an error during the semantic analysis phase.")]
+    SemanticError(String),
 }
 
 impl Debug for SleighCompilerError {
@@ -33,6 +35,7 @@ impl Debug for SleighCompilerError {
         match self {
             SleighCompilerError::PreprocessorError(e) => Debug::fmt(e, f),
             SleighCompilerError::LexerError(e) => Display::fmt(e, f),
+            SleighCompilerError::SemanticError(e) => Display::fmt(e, f),
             _ => Display::fmt(self, f),
         }
     }

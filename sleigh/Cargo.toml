@@ -10,3 +10,4 @@ thiserror = "1.0.*"
 ariadne = "0.4.1"
 chumsky = { version = "1.0.0-alpha.7", features = ["label"] }
 string-interner = "0.17.0"
+strum_macros = "0.26.4"

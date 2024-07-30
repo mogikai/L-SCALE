@@ -8,9 +8,9 @@ use crate::compiler::lexer::{InputSpan, ParserInput, SleighTokens};
 use crate::compiler::parser::{inline_whitespace_padded, maybe_parenthesized, parenthesized};
 use crate::compiler::tokens::{SleighKeyword, SleighOperation, SleighToken};
 use crate::preprocessor::blocks::{BinaryOp, ComparisonArgument, EqualityCheck, Expression, PreprocessorBlock};
-use crate::spec::ProcessorSpecification;
+use crate::spec::ProcessorSpecificationBuilder;
 
-type SleighPreprocessorExtra<'tokens> = extra::Full<Rich<'tokens, SleighToken, InputSpan>, ProcessorSpecification, ()>;
+type SleighPreprocessorExtra<'tokens> = extra::Full<Rich<'tokens, SleighToken, InputSpan>, ProcessorSpecificationBuilder, ()>;
 
 pub fn parser<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Vec<Spanned<PreprocessorBlock>>, SleighPreprocessorExtra<'tokens>> {

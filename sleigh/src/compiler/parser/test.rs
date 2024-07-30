@@ -5,18 +5,18 @@ use crate::compiler::lexer::{
     SleighTokens,
 };
 pub(crate) use crate::compiler::parser::report_errors;
-use crate::compiler::CompilerContext;
+use crate::spec::ProcessorSpecificationBuilder;
 
 pub type TestResult<T = ()> = Result<T, SleighCompilerError>;
 
 #[cfg(test)]
 pub fn setup_parser_test(
     test_string: &str
-) -> Result<(CompilerInputCache, CompilerContext, SleighTokens), SleighCompilerError> {
+) -> TestResult<(CompilerInputCache, ProcessorSpecificationBuilder, SleighTokens)> {
     let lexer = SleighLexer::default();
     let mut input_cache = CompilerInputCache::default();
     let id = input_cache.load_input_from_str("test", test_string)?;
-    let mut context = CompilerContext::default();
+    let mut context = Default::default();
     let tokens = lexer.tokenize(&mut input_cache, &mut context, id)?;
     Ok((input_cache, context, tokens))
 }
@@ -25,9 +25,9 @@ pub fn setup_parser_test(
 pub fn test_parser<O, P>(
     test_string: &str,
     parse_func: P,
-) -> Result<O, SleighCompilerError>
+) -> TestResult<O>
 where
-    P: Fn(&mut CompilerInputCache, &mut CompilerContext, SleighTokens) -> Result<O, SleighCompilerError>,
+    P: Fn(&mut CompilerInputCache, &mut ProcessorSpecificationBuilder, SleighTokens) -> TestResult<O>,
 {
     let (mut cache, mut context, tokens) = setup_parser_test(test_string)?;
     parse_func(&mut cache, &mut context, tokens)

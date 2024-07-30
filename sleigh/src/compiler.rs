@@ -12,30 +12,16 @@ use std::path::{
 };
 use std::process::exit;
 
-use crate::compiler::ast::item::SASTItem;
-use crate::compiler::ast::pcode_macro::SASTPCodeMacro;
-use crate::compiler::ast::with::SASTWith;
-use crate::compiler::ast::{
-    SleighAST,
-    Spanned,
-};
-use crate::compiler::error::SleighCompilerError;
-use crate::compiler::lexer::{
-    SleighLexer,
-    SleighTokens,
-};
-use crate::compiler::parser::SleighParser;
-use crate::preprocessor::error::PreprocessorError;
-use crate::preprocessor::{
-    SleighPreprocessor,
-    SleighPreprocessorFactory,
-};
-use crate::spec::ProcessorSpecification;
 use ariadne::{
     Cache,
+    ColorGenerator,
+    Fmt,
+    Label,
+    Report,
+    ReportKind,
     Source,
 };
-use inputcache::CompilerInputCache;
+use chumsky::span::Span;
 use slotmap::{
     new_key_type,
     SecondaryMap,
@@ -53,6 +39,38 @@ use thiserror::Error;
 use tracing::{
     debug,
     trace,
+};
+
+use inputcache::CompilerInputCache;
+
+use crate::compiler::ast::common::SASTIdent;
+use crate::compiler::ast::define::{
+    SASTDefine,
+    SASTEndianness,
+};
+use crate::compiler::ast::item::SASTItem;
+use crate::compiler::ast::pcode_macro::SASTPCodeMacro;
+use crate::compiler::ast::with::SASTWith;
+use crate::compiler::ast::{
+    SleighAST,
+    Spanned,
+};
+use crate::compiler::error::SleighCompilerError;
+use crate::compiler::lexer::{
+    InputSpan,
+    SleighLexer,
+    SleighTokens,
+};
+use crate::compiler::parser::SleighParser;
+use crate::preprocessor::error::PreprocessorError;
+use crate::preprocessor::{
+    SleighPreprocessor,
+    SleighPreprocessorFactory,
+};
+use crate::spec::moir::MOIRMacro;
+use crate::spec::{
+    ProcessorSpecificationBuilder,
+    ProcessorSpecificationError,
 };
 
 pub mod ast;
@@ -92,7 +110,7 @@ pub(crate) trait CompilerContext {
     ) -> Option<&str>;
 }
 
-impl CompilerContext for ProcessorSpecification {
+impl CompilerContext for ProcessorSpecificationBuilder {
     fn intern<T: AsRef<str>>(
         &mut self,
         string: &T,
@@ -112,12 +130,13 @@ impl CompilerContext for ProcessorSpecification {
 pub type SleighCompilerResult<T = ()> = Result<T, SleighCompilerError>;
 
 #[derive(Debug)]
-pub struct SleighCompiler {
+pub struct SleighCompiler<'a> {
     preprocessor_factory: SleighPreprocessorFactory,
-    lexer: SleighLexer<ProcessorSpecification>,
+    lexer: SleighLexer<ProcessorSpecificationBuilder>,
     parser: SleighParser,
     input_cache: CompilerInputCache,
-    specification: ProcessorSpecification,
+    specification: ProcessorSpecificationBuilder,
+    errors: Vec<Report<'a, InputSpan>>,
 }
 
 #[derive(Debug, Clone)]
@@ -130,18 +149,36 @@ pub struct CompilerInput {
     tokens: Option<SleighTokens>,
 }
 
-impl SleighCompiler {
+impl SleighCompiler<'_> {
     /// Compile the provided sleigh specification, consuming the compiler instance.
     pub fn compile(
         mut self,
         spec_path: &Path,
-    ) -> SleighCompilerResult<ProcessorSpecification> {
+    ) -> SleighCompilerResult<ProcessorSpecificationBuilder> {
         let tokens = self.load_and_preprocess(spec_path)?;
         let ast = self
             .parser
             .parse(&mut self.input_cache, &mut self.specification, tokens)?;
         self.build(ast)?;
-        Ok(self.specification)
+        if self.errors.is_empty() {
+            Ok(self.specification)
+        } else {
+            let mut error_description = vec![];
+            let error_count = self.errors.len();
+            for report in self.errors {
+                report
+                    .write(&mut self.input_cache, &mut error_description)
+                    .unwrap();
+            }
+            error_description.extend(
+                format!(
+                    "───────────────────────────────\nFound a total of {} errors.\n───────────────────────────────",
+                    error_count
+                )
+                .as_bytes(),
+            );
+            Err(SleighCompilerError::SemanticError(String::from_utf8(error_description).unwrap()))
+        }
     }
 
     /// Preprocess the file by loading it, then tokenizing it, and preprocessing it afterward.
@@ -194,12 +231,42 @@ impl SleighCompiler {
             match item {
                 SASTItem::Attach(attach) => {}
                 SASTItem::Constructor(constructor) => {}
-                SASTItem::Define(_) => {}
+                SASTItem::Define(define) => self.process_define(define)?,
                 SASTItem::Macro(pcode_macro) => self.process_pcode_macro(pcode_macro)?,
                 SASTItem::With(with) => self.process_with(with)?,
                 SASTItem::Error(_) => {}
             }
         }
+        Ok(())
+    }
+
+    fn process_define(
+        &mut self,
+        (define, span): Spanned<SASTDefine>,
+    ) -> SleighCompilerResult {
+        trace!("Processing define statement");
+        match define {
+            SASTDefine::Endianness(endianness) => self.process_endianness(endianness),
+            SASTDefine::Alignment(_) => Ok(()),
+            SASTDefine::AddressSpace(_) => Ok(()),
+            SASTDefine::Register(_) => Ok(()),
+            SASTDefine::BitrangeRegister(_) => Ok(()),
+            SASTDefine::UserPcodeOp(_) => Ok(()),
+            SASTDefine::Token(_) => Ok(()),
+            SASTDefine::Context(_) => Ok(()),
+        }
+    }
+
+    fn process_endianness(
+        &mut self,
+        (endianness, span): Spanned<SASTEndianness>,
+    ) -> SleighCompilerResult {
+        if let Some((_, old_span)) = &self.specification.endianness {
+            self.errors
+                .push(self.generate_endianness_already_specified_report(old_span.clone(), span));
+        } else {
+            self.specification.endianness = Some((endianness.into(), span));
+        };
         Ok(())
     }
 
@@ -217,13 +284,92 @@ impl SleighCompiler {
         (pcode_macro, span): Spanned<SASTPCodeMacro>,
     ) -> SleighCompilerResult {
         trace!("Processing pcode macro at {span:?}");
-        self.specification.resolve_ident_to_id(pcode_macro.ident);
+        let ident = match self
+            .specification
+            .reserve_global_ident((pcode_macro.ident.0 .0, pcode_macro.ident.1))
+        {
+            Err(ProcessorSpecificationError::IdentAlreadyExists(old, new)) => {
+                // The identifier is already occupied. We do not allow redefinition
+                self.errors
+                    .push(self.generate_identifier_exists_report(pcode_macro.ident.0 .0, old, new));
+                return Ok(());
+            }
+            Ok(ident) => ident,
+        };
+        let name = self
+            .specification
+            .resolve_ident_to_str(pcode_macro.ident.0 .0);
+        trace!("Adding moir macro `{name}`");
+        self.specification.macros.insert(
+            ident,
+            MOIRMacro {
+                arguments: vec![],
+                code: vec![],
+            },
+        );
         // self.specification.mir_macros
         Ok(())
     }
+
+    /// Generates an error report for IdentAlreadyExists errors.
+    fn generate_identifier_exists_report<'a>(
+        &self,
+        ident: StringId,
+        old: InputSpan,
+        new: InputSpan,
+    ) -> Report<'a, InputSpan> {
+        let name = self.specification.resolve_ident_to_str(ident);
+        let mut colors = ColorGenerator::new();
+        let color_a = colors.next();
+        let report = Report::build(ReportKind::Error, new.context(), new.start())
+            .with_message("Identifier already defined")
+            .with_label(
+                Label::new(new)
+                    .with_message(format!("Identifier {} is already defined", name.fg(color_a)))
+                    .with_color(color_a),
+            )
+            .with_label(
+                Label::new(old)
+                    .with_message(format!("Identifier {} previously defined here", name.fg(color_a)))
+                    .with_color(color_a),
+            )
+            .finish();
+        report
+    }
+
+    fn generate_endianness_already_specified_report<'a>(
+        &self,
+        old: InputSpan,
+        new: InputSpan,
+    ) -> Report<'a, InputSpan> {
+        let mut colors = ColorGenerator::new();
+        let color_a = colors.next();
+        let report = Report::build(ReportKind::Error, new.context(), new.start())
+            .with_message("Endianness already specified")
+            .with_label(
+                Label::new(new)
+                    .with_message("Attempting to redefine endianness when it is already defined.")
+                    .with_color(color_a),
+            )
+            .with_label(
+                Label::new(old)
+                    .with_message(format!(
+                        "The endianness is already defined here as {}.",
+                        self.specification
+                            .endianness
+                            .as_ref()
+                            .unwrap()
+                            .0
+                            .fg(color_a)
+                    ))
+                    .with_color(color_a),
+            )
+            .finish();
+        report
+    }
 }
 
-impl SleighCompiler {
+impl SleighCompiler<'_> {
     fn new(preprocessor_factory: SleighPreprocessorFactory) -> Self {
         Self {
             preprocessor_factory,
@@ -231,6 +377,7 @@ impl SleighCompiler {
             parser: Default::default(),
             input_cache: Default::default(),
             specification: Default::default(),
+            errors: vec![],
         }
     }
 }
