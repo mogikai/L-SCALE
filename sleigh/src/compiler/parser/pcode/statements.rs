@@ -55,7 +55,7 @@ pub fn pcode_statement<'tokens>() -> impl Parser<
 mod test {
     use crate::compiler::error::SleighCompilerError;
     use crate::compiler::parser::report_errors;
-    use crate::compiler::parser::test::test_parser;
+    use crate::compiler::parser::test::{test_parser, TestResult};
 
     use super::*;
 
@@ -79,6 +79,11 @@ mod test {
     #[test]
     fn conditional_branch_to_varnode_parses() -> Result<(), SleighCompilerError> {
         test_statement("if (x[0,32] f< y[0,32]) goto z;")
+    }
+
+    #[test]
+    fn test_constructor() -> TestResult {
+        test_statement("n1: one	is epsilon  [reloc = (((9 & 0x1234) + base) * (!!(1 $or 8) / ((3 $xor displace / ~19))) << (3 | 1) ^ 0xffff) >> (4); ] { export *[const]:1 one; }")
     }
 
     #[test]

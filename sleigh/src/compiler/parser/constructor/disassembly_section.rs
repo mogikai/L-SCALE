@@ -1,36 +1,195 @@
-use chumsky::error::Rich;
-use chumsky::prelude::{
-    any,
-    just,
-};
+use chumsky::recursive::recursive;
 use chumsky::{
-    extra,
+    IterParser,
     Parser,
 };
 
-use crate::compiler::ast::constructor::disassembly_section::SASTDisassemblySection;
-use crate::compiler::ast::Spanned;
-use crate::compiler::lexer::{
-    InputSpan,
-    ParserInput,
+use crate::compiler::ast::constructor::disassembly_section::{
+    SASTAction,
+    SASTDisassemblySection,
+    SASTPatternExpression,
 };
+use crate::compiler::ast::Spanned;
+use crate::compiler::lexer::ParserInput;
+use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
+    sast_ident,
+    sast_ident_spanned,
     sleigh_control,
+    sleigh_number,
+    sleigh_operation,
     whitespace_padded,
     SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighControlCharacter,
-    SleighToken,
+    SleighOperation,
 };
 
 pub fn disassembly_section<'tokens, 'src: 'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTDisassemblySection>, SleighParserExtra<'tokens>> {
-    let open_bracket = whitespace_padded(sleigh_control(SleighControlCharacter::OpenBracket));
-    let close_bracket = whitespace_padded(sleigh_control(SleighControlCharacter::CloseBracket));
-    open_bracket
-        .ignore_then(any().and_is(close_bracket.clone().not()).repeated())
-        .then_ignore(close_bracket)
+    let expression = recursive(|expr| {
+        let terminal = sast_ident()
+            .map(SASTPatternExpression::Symbol)
+            .or(sleigh_number().map(SASTPatternExpression::Integer))
+            .map_with(spanned);
+
+        let atom = terminal.or(expr.delimited_by(
+            whitespace_padded(sleigh_control(SleighControlCharacter::OpenParen)),
+            whitespace_padded(sleigh_control(SleighControlCharacter::CloseParen)),
+        ));
+
+        // ordered by precedence (unary first)
+        let unary = sleigh_operation(SleighOperation::BitNegate)
+            .or(sleigh_operation(SleighOperation::Not))
+            .repeated()
+            .foldr_with(atom, |_, rhs, extra| (SASTPatternExpression::Not(Box::new(rhs)), extra.span()));
+
+        let product = unary.clone().foldl_with(
+            whitespace_padded(sleigh_operation(SleighOperation::Star))
+                .to(SASTPatternExpression::Mul as fn(_, _) -> _)
+                .or(whitespace_padded(sleigh_operation(SleighOperation::Division))
+                    .to(SASTPatternExpression::Div as fn(_, _) -> _))
+                .then(unary)
+                .repeated(),
+            |lhs, (op, rhs), extra| (op(Box::new(lhs), Box::new(rhs)), extra.span()),
+        ); // TODO proper span
+
+        let sum = product
+            .clone()
+            .foldl_with(
+                whitespace_padded(sleigh_operation(SleighOperation::Plus))
+                    .to(SASTPatternExpression::Add as fn(_, _) -> _)
+                    .or(whitespace_padded(sleigh_operation(SleighOperation::Minus))
+                        .to(SASTPatternExpression::Sub as fn(_, _) -> _))
+                    .then(product)
+                    .repeated(),
+                |lhs, (op, rhs), extra| (op(Box::new(lhs), Box::new(rhs)), extra.span()),
+            )
+            .boxed();
+
+        let shl = whitespace_padded(
+            sleigh_operation(SleighOperation::LessThan).then(sleigh_operation(SleighOperation::LessThan)),
+        )
+        .ignored();
+        let shr = whitespace_padded(
+            sleigh_operation(SleighOperation::GreaterThan).then(sleigh_operation(SleighOperation::GreaterThan)),
+        )
+        .ignored();
+
+        let shift = sum.clone().foldl_with(
+            shl.to(SASTPatternExpression::Shl as fn(_, _) -> _)
+                .or(shr.to(SASTPatternExpression::Shr as fn(_, _) -> _))
+                .then(sum)
+                .repeated(),
+            |lhs, (op, rhs), extra| (op(Box::new(lhs), Box::new(rhs)), extra.span()),
+        );
+
+        let and = shift
+            .clone()
+            .foldl_with(
+                whitespace_padded(sleigh_operation(SleighOperation::BitAnd).or(sleigh_operation(SleighOperation::And)))
+                    .then(shift)
+                    .repeated(),
+                |lhs, (_, rhs), extra| (SASTPatternExpression::And(Box::new(lhs), Box::new(rhs)), extra.span()),
+            )
+            .boxed();
+
+        let xor = and.clone().foldl_with(
+            whitespace_padded(sleigh_operation(SleighOperation::BitXor).or(sleigh_operation(SleighOperation::Hat)))
+                .then(and)
+                .repeated(),
+            |lhs, (_, rhs), extra| (SASTPatternExpression::Xor(Box::new(lhs), Box::new(rhs)), extra.span()),
+        );
+
+        let or = xor
+            .clone()
+            .foldl_with(
+                whitespace_padded(sleigh_operation(SleighOperation::BitOr).or(sleigh_operation(SleighOperation::Or)))
+                    .then(xor)
+                    .repeated(),
+                |lhs, (_, rhs), extra| (SASTPatternExpression::Or(Box::new(lhs), Box::new(rhs)), extra.span()),
+            )
+            .boxed();
+
+        or
+    });
+
+    let action = sast_ident_spanned()
+        .then(whitespace_padded(sleigh_operation(SleighOperation::Equals)))
+        .then(expression)
+        .then_ignore(whitespace_padded(sleigh_control(SleighControlCharacter::SemiColon)))
+        .map_with(|((ident, _), e), extra| (SASTAction { lhs: ident, rhs: e }, extra.span()));
+
+    whitespace_padded(action)
+        .repeated()
+        .collect::<Vec<_>>()
+        .delimited_by(
+            sleigh_control(SleighControlCharacter::OpenBracket),
+            sleigh_control(SleighControlCharacter::CloseBracket),
+        )
         .or_not()
         .map_with(|actions, extra| (SASTDisassemblySection { actions }, extra.span()))
+}
+
+#[cfg(test)]
+mod test {
+    use chumsky::Parser;
+
+    use crate::compiler::parser::report_errors;
+    use crate::compiler::parser::test::{
+        test_parser,
+        TestResult,
+    };
+
+    use super::disassembly_section;
+
+    fn test_disassembly(input: &str) -> TestResult {
+        test_parser(input, |cache, context, tokens| {
+            report_errors(cache, disassembly_section().parse_with_state(tokens.spanned(), context))
+        })?;
+        Ok(())
+    }
+
+    #[test]
+    fn disassembly_simple_operations_parse() -> TestResult {
+        test_disassembly("[ reloc = 3 + 8; ]")?;
+        test_disassembly("[ reloc = 3 - 8; ]")?;
+        test_disassembly("[ reloc = 3 * 8; ]")?;
+        test_disassembly("[ reloc = 3 / 8; ]")?;
+        test_disassembly("[ reloc = 3 << 8; ]")?;
+        test_disassembly("[ reloc = 3 >> 8; ]")?;
+        test_disassembly("[ reloc = 3 & 8; ]")?;
+        test_disassembly("[ reloc = 3 $and 8; ]")?;
+        test_disassembly("[ reloc = 3 | 8; ]")?;
+        test_disassembly("[ reloc = 3 $or 8; ]")?;
+        test_disassembly("[ reloc = 3 ^ 8; ]")?;
+        test_disassembly("[ reloc = 3 $xor 8; ]")?;
+        test_disassembly("[ reloc = ~3; ]")?;
+
+        test_disassembly("[ reloc = !!~~~!3 ; ]")?;
+        Ok(())
+    }
+
+    #[test]
+    fn disassembly_whitespace_parses() -> TestResult {
+        test_disassembly("[reloc=3+8;]")?;
+        test_disassembly("[ reloc=3+8;]")?;
+        test_disassembly("[reloc=3+8; ]")?;
+        test_disassembly("[reloc =3+8;]")?;
+        test_disassembly("[reloc= 3+8;]")?;
+        test_disassembly("[reloc=3 +8;]")?;
+        test_disassembly("[reloc=3+ 8;]")?;
+        test_disassembly("[reloc=3+8 ;]")?;
+        test_disassembly("[reloc=3+8; ]")?;
+        Ok(())
+    }
+
+    #[test]
+    fn disassembly_combined_expression_parses() -> TestResult {
+        test_disassembly(
+            "[reloc = (((9 & 0x1234) + base) * (!!(1 $or 8) / ((3 $xor displace / ~19))) << (3 | 1) ^ 0xffff) >> (4);]",
+        )?;
+        Ok(())
+    }
 }

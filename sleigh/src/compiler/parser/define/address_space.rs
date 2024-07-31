@@ -73,7 +73,7 @@ pub(super) fn address_space<'tokens>(
         .ignore_then(sleigh_whitespace())
         .then(sast_ident_spanned())
         .then(sleigh_whitespace())
-        .map(|a| a.0.1) // remove () (is there a better way?)
+        .map(|a| a.0 .1) // remove () (is there a better way?)
         .then(attrs)
         .validate(|(name, (attributes, span)), _, emitter| {
             // check if mandatory size attribute exists
@@ -91,10 +91,7 @@ pub(super) fn address_space<'tokens>(
                 emitter.emit(Rich::custom(span.clone(), "Missing size attribute"));
             }
 
-            SASTAddressSpace {
-                name,
-                attributes,
-            }
+            SASTAddressSpace { name, attributes }
         })
         .map_with(spanned);
 
