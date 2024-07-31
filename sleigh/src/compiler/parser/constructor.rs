@@ -80,4 +80,9 @@ mod test {
     fn some_constructor_parses() -> TestResult {
         test_constructor("XmmCondSS: is imm8 { xmmTmp1_Da = cmpss(xmmTmp1_Da, xmmTmp2_Da, imm8:1); }")
     }
+
+    #[test]
+    fn constructor_with_disassembly_parses() -> TestResult {
+        test_constructor("n1: one	is epsilon  [ reloc = 1 ; ] { export *[const]:1 one; }")
+    }
 }

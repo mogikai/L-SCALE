@@ -53,7 +53,7 @@ pub fn disassembly_section<'tokens, 'src: 'tokens>(
                 .then(unary)
                 .repeated(),
             |lhs, (op, rhs), extra| (op(Box::new(lhs), Box::new(rhs)), extra.span()),
-        ); // TODO proper span
+        );
 
         let sum = product
             .clone()
@@ -121,7 +121,7 @@ pub fn disassembly_section<'tokens, 'src: 'tokens>(
         .then_ignore(whitespace_padded(sleigh_control(SleighControlCharacter::SemiColon)))
         .map_with(|((ident, _), e), extra| (SASTAction { lhs: ident, rhs: e }, extra.span()));
 
-    whitespace_padded(action)
+    whitespace_padded(whitespace_padded(action)
         .repeated()
         .collect::<Vec<_>>()
         .delimited_by(
@@ -129,7 +129,7 @@ pub fn disassembly_section<'tokens, 'src: 'tokens>(
             sleigh_control(SleighControlCharacter::CloseBracket),
         )
         .or_not()
-        .map_with(|actions, extra| (SASTDisassemblySection { actions }, extra.span()))
+        .map_with(|actions, extra| (SASTDisassemblySection { actions }, extra.span())))
 }
 
 #[cfg(test)]

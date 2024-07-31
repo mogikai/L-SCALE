@@ -82,11 +82,6 @@ mod test {
     }
 
     #[test]
-    fn test_constructor() -> TestResult {
-        test_statement("n1: one	is epsilon  [reloc = (((9 & 0x1234) + base) * (!!(1 $or 8) / ((3 $xor displace / ~19))) << (3 | 1) ^ 0xffff) >> (4); ] { export *[const]:1 one; }")
-    }
-
-    #[test]
     fn write_to_deref_parses() -> Result<(), SleighCompilerError> {
         // test_statement("*:10 (Mem + 78) = ST5;")
         test_statement("*x = y;")
