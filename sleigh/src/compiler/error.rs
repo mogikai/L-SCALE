@@ -1,11 +1,13 @@
-use crate::compiler::inputcache::InputCacheError;
-use crate::preprocessor::error::PreprocessorError;
 use std::fmt::{
     Debug,
     Display,
     Formatter,
 };
+
 use thiserror::Error;
+
+use crate::compiler::inputcache::InputCacheError;
+use crate::preprocessor::error::PreprocessorError;
 
 #[derive(Error)]
 pub enum SleighCompilerError {
@@ -35,6 +37,7 @@ impl Debug for SleighCompilerError {
         match self {
             SleighCompilerError::PreprocessorError(e) => Debug::fmt(e, f),
             SleighCompilerError::LexerError(e) => Display::fmt(e, f),
+            SleighCompilerError::InputCacheError(e) => Debug::fmt(e, f),
             SleighCompilerError::SemanticError(e) => Display::fmt(e, f),
             _ => Display::fmt(self, f),
         }

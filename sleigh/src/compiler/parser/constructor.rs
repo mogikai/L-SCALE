@@ -1,15 +1,8 @@
-use chumsky::error::Rich;
-use chumsky::{
-    extra,
-    Parser,
-};
+use chumsky::Parser;
 
 use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::ast::Spanned;
-use crate::compiler::lexer::{
-    InputSpan,
-    ParserInput,
-};
+use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::constructor::bit_pattern_section::bit_pattern_section;
 use crate::compiler::parser::constructor::disassembly_section::disassembly_section;
 use crate::compiler::parser::constructor::display_section::display_section;
@@ -19,7 +12,6 @@ use crate::compiler::parser::{
     sleigh_ident,
     SleighParserExtra,
 };
-use crate::compiler::tokens::SleighToken;
 
 pub(super) mod bit_pattern_section;
 pub(super) mod disassembly_section;
@@ -57,8 +49,9 @@ pub(super) fn constructor<'tokens, 'src: 'tokens>(
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use crate::compiler::parser::test::TestResult;
+
+    use super::*;
 
     fn test_constructor(input: &str) -> TestResult {
         use crate::compiler::parser::test::{

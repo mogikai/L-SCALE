@@ -71,7 +71,7 @@ use crate::preprocessor::{
 };
 use crate::spec::moir::MOIRMacro;
 use crate::spec::{
-    MOIRIdentId,
+    MOIRIdent,
     ProcessorSpecificationBuilder,
     ProcessorSpecificationError,
 };
@@ -121,6 +121,7 @@ impl CompilerContext for ProcessorSpecificationBuilder {
         StringId(self.interner.get_or_intern(string).to_usize())
     }
 
+    /// Resolve a string id to the corresponding interned string.
     fn string(
         &self,
         string_id: StringId,
@@ -312,58 +313,17 @@ impl SleighCompiler<'_> {
         (pcode_macro, span): Spanned<SASTPCodeMacro>,
     ) -> SleighCompilerResult {
         trace!("Processing pcode macro at {span:?}");
-        let ident = match self
-            .specification
-            .reserve_global_ident((pcode_macro.ident.0 .0, pcode_macro.ident.1))
-        {
-            Err(ProcessorSpecificationError::IdentAlreadyExists(old, new)) => {
-                // The identifier is already occupied. We do not allow redefinition
-                self.errors
-                    .push(self.generate_identifier_exists_report(pcode_macro.ident.0 .0, old, new));
-                return Ok(());
-            }
-            Ok(ident) => ident,
-        };
-        let name = self
-            .specification
-            .resolve_ident_to_str(pcode_macro.ident.0 .0);
-        trace!("Adding moir macro `{name}`");
-        self.specification.macros.insert(
-            ident,
+        if let Err(report) = self.specification.define_macro(
+            (pcode_macro.ident.0 .0, pcode_macro.ident.1),
             MOIRMacro {
                 arguments: vec![],
                 code: vec![],
             },
-        );
-        // self.specification.mir_macros
+        ) {
+            // If defining the macro failed, we simply report the error and continue.
+            self.errors.push(report);
+        }
         Ok(())
-    }
-
-    /// Generates an error report for IdentAlreadyExists errors.
-    fn generate_identifier_exists_report<'a>(
-        &self,
-        ident: StringId,
-        old: InputSpan,
-        new: InputSpan,
-    ) -> Report<'a, InputSpan> {
-        // TODO: Move out of SleighCompiler and do not require self for all reporting methods
-        let name = self.specification.resolve_ident_to_str(ident);
-        let mut colors = ColorGenerator::new();
-        let color_a = colors.next();
-        let report = Report::build(ReportKind::Error, new.context(), new.start())
-            .with_message("Identifier already defined")
-            .with_label(
-                Label::new(new)
-                    .with_message(format!("Identifier {} is already defined", name.fg(color_a)))
-                    .with_color(color_a),
-            )
-            .with_label(
-                Label::new(old)
-                    .with_message(format!("Identifier {} previously defined here", name.fg(color_a)))
-                    .with_color(color_a),
-            )
-            .finish();
-        report
     }
 
     fn generate_endianness_already_specified_report<'a>(
