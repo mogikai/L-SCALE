@@ -1,16 +1,46 @@
-use chumsky::{extra, IterParser, Parser, select};
-use chumsky::prelude::{any, end, just, Recursive};
+use chumsky::{
+    extra,
+    IterParser,
+    Parser,
+    select,
+};
 use chumsky::error::Rich;
 use chumsky::input::MapExtra;
-use crate::compiler::{CompilerContext, StringId};
+use chumsky::prelude::{
+    any,
+    end,
+    just,
+    Recursive,
+};
+
 use crate::compiler::ast::Spanned;
-use crate::compiler::lexer::{InputSpan, ParserInput, SleighTokens};
-use crate::compiler::parser::{inline_whitespace_padded, maybe_parenthesized, parenthesized};
-use crate::compiler::tokens::{SleighKeyword, SleighOperation, SleighToken};
-use crate::preprocessor::blocks::{BinaryOp, ComparisonArgument, EqualityCheck, Expression, PreprocessorBlock};
+use crate::compiler::lexer::{
+    InputSpan,
+    ParserInput,
+    SleighTokens,
+};
+use crate::compiler::parser::{
+    inline_whitespace_padded,
+    maybe_parenthesized,
+    parenthesized,
+};
+use crate::compiler::StringId;
+use crate::compiler::tokens::{
+    SleighKeyword,
+    SleighOperation,
+    SleighToken,
+};
+use crate::preprocessor::blocks::{
+    BinaryOp,
+    ComparisonArgument,
+    EqualityCheck,
+    Expression,
+    PreprocessorBlock,
+};
 use crate::spec::ProcessorSpecificationBuilder;
 
-type SleighPreprocessorExtra<'tokens> = extra::Full<Rich<'tokens, SleighToken, InputSpan>, ProcessorSpecificationBuilder, ()>;
+type SleighPreprocessorExtra<'tokens> =
+    extra::Full<Rich<'tokens, SleighToken, InputSpan>, ProcessorSpecificationBuilder, ()>;
 
 pub fn parser<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Vec<Spanned<PreprocessorBlock>>, SleighPreprocessorExtra<'tokens>> {
@@ -27,10 +57,14 @@ pub fn parser<'tokens>(
         .repeated()
         .at_least(1)
         .collect::<Vec<_>>()
-        .map_with(|tokens, extra| PreprocessorBlock::PCode(Spanned::new(SleighTokens::from(tokens), extra.span())));
+        .map_with(|tokens, extra| {
+            PreprocessorBlock::PCode(Spanned::new(
+                SleighTokens::try_from(tokens).expect("We parse at least one token here."),
+                extra.span(),
+            ))
+        });
 
-    let expansion =
-        select! {SleighToken::MacroExpansion(ident) = extra => PreprocessorBlock::Expansion(Spanned::new(ident, extra.span())) };
+    let expansion = select! {SleighToken::MacroExpansion(ident) = extra => PreprocessorBlock::Expansion(Spanned::new(ident, extra.span())) };
 
     let define = pp_macro(
         SleighKeyword::Define,

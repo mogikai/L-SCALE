@@ -1,19 +1,14 @@
-use std::collections::HashMap;
 use std::fmt::{
     Debug,
     Display,
     Formatter,
 };
-use std::fs;
-use std::io::Error;
 use std::path::{
     Path,
     PathBuf,
 };
-use std::process::exit;
 
 use ariadne::{
-    Cache,
     ColorGenerator,
     Fmt,
     Label,
@@ -24,18 +19,13 @@ use ariadne::{
 use chumsky::span::Span;
 use slotmap::{
     new_key_type,
-    SecondaryMap,
     SlotMap,
 };
 use string_interner::backend::{
     Backend,
     StringBackend,
 };
-use string_interner::{
-    StringInterner,
-    Symbol,
-};
-use thiserror::Error;
+use string_interner::Symbol;
 use tracing::{
     debug,
     trace,
@@ -43,7 +33,6 @@ use tracing::{
 
 use inputcache::CompilerInputCache;
 
-use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::ast::define::{
     SASTAlignment,
@@ -65,13 +54,10 @@ use crate::compiler::lexer::{
 };
 use crate::compiler::parser::SleighParser;
 use crate::preprocessor::error::PreprocessorError;
-use crate::preprocessor::{
-    SleighPreprocessor,
-    SleighPreprocessorFactory,
-};
+use crate::preprocessor::SleighPreprocessorFactory;
 use crate::spec::moir::MOIRMacro;
 use crate::spec::{
-    MOIRIdent,
+    ProcessorEndianness,
     ProcessorSpecificationBuilder,
     ProcessorSpecificationError,
 };
@@ -172,7 +158,7 @@ impl SleighCompiler<'_> {
             for report in self.errors {
                 report
                     .write(&mut self.input_cache, &mut error_description)
-                    .unwrap();
+                    .expect("There is no way this may fail.");
             }
             error_description.extend(
                 format!(
@@ -181,7 +167,9 @@ impl SleighCompiler<'_> {
                 )
                 .as_bytes(),
             );
-            Err(SleighCompilerError::SemanticError(String::from_utf8(error_description).unwrap()))
+            Err(SleighCompilerError::SemanticError(
+                String::from_utf8(error_description).expect("We only write utf8 strings."),
+            ))
         }
     }
 
@@ -278,12 +266,8 @@ impl SleighCompiler<'_> {
         endianness: Spanned<SASTEndianness>,
     ) -> SleighCompilerResult {
         if let Some(old_endianness) = &self.specification.endianness {
-            self.errors.push(
-                self.generate_endianness_already_specified_report(
-                    old_endianness.span().clone(),
-                    endianness.into_span(),
-                ),
-            );
+            self.errors
+                .push(self.generate_endianness_already_specified_report(old_endianness, endianness.into_span()));
         } else {
             self.specification.endianness = Some(endianness.transmute());
         };
@@ -295,9 +279,8 @@ impl SleighCompiler<'_> {
         alignment: Spanned<SASTAlignment>,
     ) -> SleighCompilerResult {
         if let Some(old_alignment) = &self.specification.alignment {
-            self.errors.push(
-                self.generate_alignment_already_specified_report(old_alignment.span().clone(), alignment.into_span()),
-            )
+            self.errors
+                .push(self.generate_alignment_already_specified_report(old_alignment, alignment.into_span()))
         } else {
             self.specification.alignment = Some(alignment.transmute())
         }
@@ -333,7 +316,7 @@ impl SleighCompiler<'_> {
 
     fn generate_endianness_already_specified_report<'a>(
         &self,
-        old: InputSpan,
+        old: &Spanned<ProcessorEndianness>,
         new: InputSpan,
     ) -> Report<'a, InputSpan> {
         let mut colors = ColorGenerator::new();
@@ -346,11 +329,8 @@ impl SleighCompiler<'_> {
                     .with_color(color_a),
             )
             .with_label(
-                Label::new(old)
-                    .with_message(format!(
-                        "The endianness is already defined here as {}.",
-                        self.specification.endianness.as_ref().unwrap().fg(color_a)
-                    ))
+                Label::new(old.span().clone())
+                    .with_message(format!("The endianness is already defined here as {}.", old.fg(color_a)))
                     .with_color(color_a),
             )
             .finish();
@@ -359,7 +339,7 @@ impl SleighCompiler<'_> {
 
     fn generate_alignment_already_specified_report<'a>(
         &self,
-        old: InputSpan,
+        old: &Spanned<u16>,
         new: InputSpan,
     ) -> Report<'a, InputSpan> {
         let mut colors = ColorGenerator::new();
@@ -372,11 +352,8 @@ impl SleighCompiler<'_> {
                     .with_color(color_a),
             )
             .with_label(
-                Label::new(old)
-                    .with_message(format!(
-                        "The alignment is already defined here as {}.",
-                        self.specification.alignment.as_ref().unwrap().fg(color_a)
-                    ))
+                Label::new(old.span().clone())
+                    .with_message(format!("The alignment is already defined here as {}.", old.fg(color_a)))
                     .with_color(color_a),
             )
             .finish();

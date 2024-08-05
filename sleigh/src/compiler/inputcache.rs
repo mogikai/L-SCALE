@@ -49,7 +49,7 @@ impl Cache<InputId> for CompilerInputCache {
     ) -> Option<Box<dyn Display + 'a>> {
         self.input_paths
             .get(*id)
-            .map(|input| Box::new(input.to_str().unwrap().to_string()) as _)
+            .and_then(|input| input.to_str().map(|s| Box::new(s.to_string()) as _))
     }
 }
 

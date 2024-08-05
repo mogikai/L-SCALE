@@ -103,10 +103,12 @@ pub fn report_errors<T>(
             .with_message("Parser Error")
             .with_label(Label::new(error_span.clone()).with_message(err.reason().to_string()))
             .finish();
-        report.write(&mut input_cache, &mut diagnostic).unwrap();
+        report
+            .write(&mut input_cache, &mut diagnostic)
+            .expect("There is no case in which this may fail.");
     });
-    if diagnostic.is_empty() {
-        Ok(parsed.into_output().unwrap())
+    if diagnostic.is_empty() && parsed.has_output() {
+        Ok(parsed.into_output().expect("We mus have output here."))
     } else {
         diagnostic.extend(
             format!(
@@ -115,7 +117,7 @@ pub fn report_errors<T>(
             )
             .as_bytes(),
         );
-        Err(SleighCompilerError::LexerError(String::from_utf8(diagnostic).unwrap()))
+        Err(SleighCompilerError::LexerError(String::from_utf8(diagnostic).expect("We only write utf8 strings.")))
     }
 }
 

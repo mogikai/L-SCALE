@@ -281,7 +281,10 @@ impl SleighPreprocessor {
         for token in token_stream.iter_mut() {
             if let SleighToken::IncludedTokens(IncludedTokens::PendingProcessing(input_id)) = token.0 {
                 trace!("Replacing pending tokens for input {input_id:?} with processed tokens");
-                let inner_tokens = self.token_streams.remove(&input_id).unwrap();
+                let inner_tokens = self
+                    .token_streams
+                    .remove(&input_id)
+                    .expect("We gave out the id so the tokens must exist.");
                 let inner_tokens = self.finalize_tokens_recursive(inner_tokens)?;
                 token.0 = SleighToken::IncludedTokens(IncludedTokens::Loaded(inner_tokens));
             }
@@ -318,14 +321,16 @@ impl SleighPreprocessor {
                 let report = Report::build(ReportKind::Error, span.context(), span.start())
                     .with_message("Preprocessor Error")
                     .with_label(Label::new(span.clone()).with_message(format!(
-                        "Failed to load '{}': {e} -> {:?}",
-                        resolved_file.to_str().unwrap(),
+                        "Failed to load '{:?}': {e} -> {:?}",
+                        resolved_file,
                         e.source().map(|e| format!("{e}")).unwrap_or("No detailed information available".to_string())
                     )))
                     .finish();
                 let mut diagnostic = vec![];
-                report.write(&mut input_cache, &mut diagnostic).unwrap();
-                PreprocessorError::IncludeError(String::from_utf8(diagnostic).unwrap())
+                report
+                    .write(&mut input_cache, &mut diagnostic)
+                    .expect("This should not produce any errors.");
+                PreprocessorError::IncludeError(String::from_utf8(diagnostic).expect("We only handle utf8 text."))
             })?;
         trace!("Adding token for included data (PendingProcessing). It will be replaced by the loaded tokens later.");
         self.token_streams
@@ -392,7 +397,11 @@ impl SleighPreprocessor {
         let tokens = input_cache.input_tokens(input_id)?;
         let parsed = parser::parser().parse(tokens.spanned());
         let mut diagnostic = vec![];
-        if parsed.has_errors() {
+        if parsed.has_output() {
+            Ok(parsed
+                .into_output()
+                .expect("There has to be an output at this point."))
+        } else {
             // TODO: Can we be smarter here and not copy the errors? Currently this is necessary to be able to borrow
             //       the input cache again.
             let errors = parsed
@@ -406,11 +415,11 @@ impl SleighPreprocessor {
                     .with_message("Preprocessor Error")
                     .with_label(Label::new(error_span.clone()).with_message(err.reason().to_string()))
                     .finish();
-                report.write(&mut input_cache, &mut diagnostic).unwrap();
+                report
+                    .write(&mut input_cache, &mut diagnostic)
+                    .expect("This should not produce any errors.");
             }
-            Err(PreprocessorError::ParseError(String::from_utf8(diagnostic).unwrap()))
-        } else {
-            Ok(parsed.into_output().unwrap())
+            Err(PreprocessorError::ParseError(String::from_utf8(diagnostic).expect("We only handle utf8 strings.")))
         }
     }
 
@@ -434,8 +443,10 @@ impl SleighPreprocessor {
                 )
                 .finish();
             let mut diagnostic = vec![];
-            report.write(&mut input_cache, &mut diagnostic).unwrap();
-            PreprocessorError::UndefinedIdentifier(String::from_utf8(diagnostic).unwrap())
+            report
+                .write(&mut input_cache, &mut diagnostic)
+                .expect("This should not produce any errors.");
+            PreprocessorError::UndefinedIdentifier(String::from_utf8(diagnostic).expect("We only handle utf8 strings."))
         })
     }
 }
@@ -462,7 +473,7 @@ impl SleighPreprocessorFactory {
         SleighPreprocessor::new(
             self.working_dir
                 .clone()
-                .unwrap_or_else(|| current_dir().unwrap()),
+                .unwrap_or_else(|| current_dir().expect("We need a current directory.")),
         )
     }
 }

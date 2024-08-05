@@ -120,8 +120,18 @@ impl SleighTokens {
     }
 
     pub fn input_id(&self) -> InputId {
-        let first = self.0.first().unwrap().1.input_id;
-        let last = self.0.last().unwrap().1.input_id;
+        let first = self
+            .0
+            .first()
+            .expect("There must be at least one token")
+            .1
+            .input_id;
+        let last = self
+            .0
+            .last()
+            .expect("There must be at least one token")
+            .1
+            .input_id;
         assert_eq!(first, last);
         first
     }
@@ -148,17 +158,28 @@ impl IntoIterator for SleighTokens {
     }
 }
 
-impl From<Vec<SpannedToken>> for SleighTokens {
-    fn from(value: Vec<SpannedToken>) -> Self {
-        Self(value)
+impl TryFrom<Vec<SpannedToken>> for SleighTokens {
+    // TODO: Use actual error type here
+    type Error = &'static str;
+    fn try_from(value: Vec<SpannedToken>) -> Result<Self, Self::Error> {
+        if value.is_empty() {
+            Err("Empty SleighTokens are not allowed")
+        } else {
+            Ok(Self(value))
+        }
     }
 }
 
 pub type ParserInput<'tokens> = SpannedInput<SleighToken, InputSpan, &'tokens [SpannedToken]>;
 impl SleighTokens {
     pub fn spanned(&self) -> ParserInput {
-        self.0
-            .spanned(InputSpan::new(self.0.last().map(|(_, span)| span.input_id).unwrap(), self.0.len()..self.0.len()))
+        self.0.spanned(InputSpan::new(
+            self.0
+                .last()
+                .map(|(_, span)| span.input_id)
+                .expect("There must be at least one token"),
+            self.0.len()..self.0.len(),
+        ))
     }
 }
 
@@ -188,8 +209,8 @@ where
         // TODO: Return parsed tokens, and all encountered errors, instead of simply erroring out.
         let source_data = input_cache.input_source(input_id)?;
         let parsed = SleighLexer::tokenize_string(source_data.text(), context, input_id, 0);
-        if !parsed.has_errors() {
-            Ok(parsed.into_output().unwrap())
+        if parsed.has_output() {
+            Ok(parsed.into_output().expect("We have output here."))
         } else {
             let mut diagnostic = vec![];
             let errors = parsed
@@ -203,9 +224,11 @@ where
                     .with_message("Tokenization Error")
                     .with_label(Label::new((input_id, error_span.into_range())).with_message(err.reason().to_string()))
                     .finish();
-                report.write(&mut input_cache, &mut diagnostic).unwrap();
+                report
+                    .write(&mut input_cache, &mut diagnostic)
+                    .expect("There is no case in which this may fail.");
             }
-            Err(SleighCompilerError::LexerError(String::from_utf8(diagnostic).unwrap()))
+            Err(SleighCompilerError::LexerError(String::from_utf8(diagnostic).expect("We only write utf8 strings")))
         }
     }
 
