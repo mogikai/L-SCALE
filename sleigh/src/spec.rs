@@ -139,21 +139,21 @@ impl ProcessorSpecificationBuilder {
     /// Otherwise, a reference to the newly allocated symbol slot and its id is returned.
     fn define_symbol_with<'a, F>(
         &mut self,
-        (ident, ident_span): Spanned<StringId>,
+        ident: Spanned<StringId>,
         definition: F,
     ) -> Result<MOIRIdent, Report<'a, InputSpan>>
     where
         F: FnOnce(&mut Self) -> MOIRSymbol,
     {
-        match self.string_to_ident_mapping.entry(ident) {
+        match self.string_to_ident_mapping.entry(*ident) {
             // The identifier is already declared, and we do not allow re-declaring a symbol.
             Entry::Occupied(entry) => {
-                let (name, span) = self
+                let name = self
                     .symbol_strings
                     .get(*entry.get())
                     .expect("The symbol string must exist");
-                let name = self.resolve_string_id(*name);
-                Err(generate_identifier_exists_report(name, span.clone(), ident_span))
+                let name_str = self.resolve_string_id(**name);
+                Err(generate_identifier_exists_report(name_str, name.span().clone(), ident.into_span()))
             }
             Entry::Vacant(entry) => {
                 // No symbol has been declared yet. We can now insert an empty declaration.

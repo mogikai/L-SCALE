@@ -107,12 +107,12 @@ fn fold_unary_operation<'tokens>(
     operand: Spanned<SASTPCodeExpression>,
     extra: &mut MapExtra<'tokens, '_, ParserInput<'tokens>, SleighParserExtra<'tokens>>,
 ) -> Spanned<SASTPCodeExpression> {
-    (
+    spanned(
         SASTPCodeExpression::UnaryOperation {
             op,
             operand: Box::new(operand),
         },
-        extra.span(),
+        extra,
     )
 }
 
@@ -121,13 +121,13 @@ fn fold_binary_operation<'tokens>(
     (op, rhs): (Spanned<SASTPCodeBinaryOp>, Spanned<SASTPCodeExpression>),
     extra: &mut MapExtra<'tokens, '_, ParserInput<'tokens>, SleighParserExtra<'tokens>>,
 ) -> Spanned<SASTPCodeExpression> {
-    (
+    spanned(
         SASTPCodeExpression::BinaryOperation {
             lhs: Box::new(lhs),
             op,
             rhs: Box::new(rhs),
         },
-        extra.span(),
+        extra,
     )
 }
 

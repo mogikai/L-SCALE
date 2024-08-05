@@ -37,7 +37,10 @@ use chumsky::{
     Parser,
 };
 
-use crate::compiler::ast::Spanned;
+use crate::compiler::ast::{
+    Spanned,
+    SpannedToken,
+};
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::inputcache::CompilerInputCache;
 use crate::compiler::tokens::{
@@ -102,17 +105,17 @@ impl ariadne::Span for InputSpan {
 }
 
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
-pub struct SleighTokens(Vec<Spanned<SleighToken>>);
+pub struct SleighTokens(Vec<SpannedToken>);
 
 impl SleighTokens {
     pub fn extend(
         &mut self,
-        iter: impl IntoIterator<Item = Spanned<SleighToken>>,
+        iter: impl IntoIterator<Item = SpannedToken>,
     ) {
         self.0.extend(iter)
     }
 
-    pub fn as_slice(&self) -> &[Spanned<SleighToken>] {
+    pub fn as_slice(&self) -> &[SpannedToken] {
         self.0.as_slice()
     }
 
@@ -123,11 +126,11 @@ impl SleighTokens {
         first
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Spanned<SleighToken>> {
+    pub fn iter(&self) -> impl Iterator<Item = &SpannedToken> {
         self.0.iter()
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Spanned<SleighToken>> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut SpannedToken> {
         self.0.iter_mut()
     }
 
@@ -137,21 +140,21 @@ impl SleighTokens {
 }
 
 impl IntoIterator for SleighTokens {
-    type Item = Spanned<SleighToken>;
-    type IntoIter = <Vec<(SleighToken, InputSpan)> as IntoIterator>::IntoIter;
+    type Item = SpannedToken;
+    type IntoIter = <Vec<SpannedToken> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
 }
 
-impl From<Vec<Spanned<SleighToken>>> for SleighTokens {
-    fn from(value: Vec<Spanned<SleighToken>>) -> Self {
+impl From<Vec<SpannedToken>> for SleighTokens {
+    fn from(value: Vec<SpannedToken>) -> Self {
         Self(value)
     }
 }
 
-pub type ParserInput<'tokens> = SpannedInput<SleighToken, InputSpan, &'tokens [Spanned<SleighToken>]>;
+pub type ParserInput<'tokens> = SpannedInput<SleighToken, InputSpan, &'tokens [SpannedToken]>;
 impl SleighTokens {
     pub fn spanned(&self) -> ParserInput {
         self.0

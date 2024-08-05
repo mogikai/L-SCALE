@@ -140,5 +140,5 @@ fn spanned_binary_op<'tokens>(
     (op, rhs): (Spanned<SASTBinaryOp>, Spanned<SASTBitPatternConstraint>),
     extra: &mut MapExtra<'tokens, '_, ParserInput<'tokens>, SleighParserExtra<'tokens>>,
 ) -> Spanned<SASTBitPatternConstraint> {
-    (SASTBitPatternConstraint::BinaryOp(Box::new(lhs), op, Box::new(rhs)), extra.span())
+    spanned(SASTBitPatternConstraint::BinaryOp(Box::new(lhs), op, Box::new(rhs)), extra)
 }

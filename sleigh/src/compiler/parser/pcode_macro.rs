@@ -6,6 +6,7 @@ use chumsky::{
 use crate::compiler::ast::pcode_macro::SASTPCodeMacro;
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
+use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::pcode;
 use crate::compiler::parser::{
     inline_whitespace_padded,
@@ -31,7 +32,7 @@ pub(super) fn pcode_macro<'tokens>(
             .separated_by(sleigh_control(SleighControlCharacter::Comma))
             .collect::<Vec<_>>(),
     )
-    .map_with(|val, extra| (val, extra.span()));
+    .map_with(spanned);
 
     let pcode = inline_whitespace_padded(pcode().delimited_by(
         sleigh_control(SleighControlCharacter::OpenBrace),
@@ -42,15 +43,11 @@ pub(super) fn pcode_macro<'tokens>(
         .ignore_then(ident)
         .then(arguments)
         .then(pcode)
-        .map_with(|((ident, arguments), pcode), extra| {
-            (
-                SASTPCodeMacro {
-                    ident,
-                    arguments,
-                    pcode,
-                },
-                extra.span(),
-            )
+        .map(|((ident, arguments), pcode)| SASTPCodeMacro {
+            ident,
+            arguments,
+            pcode,
         })
+        .map_with(spanned)
         .boxed()
 }

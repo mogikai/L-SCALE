@@ -31,7 +31,9 @@ pub fn disassembly_section<'tokens, 'src: 'tokens>(
     let expression = recursive(|expr| {
         let terminal = sast_ident()
             .map(SASTPatternExpression::Symbol)
-            .or(sleigh_number().map(SASTPatternExpression::Integer))
+            .or(sleigh_number()
+                .map(|num: u64| num as _)
+                .map(SASTPatternExpression::Integer))
             .map_with(spanned);
 
         let atom = terminal.or(expr.delimited_by(
@@ -43,7 +45,7 @@ pub fn disassembly_section<'tokens, 'src: 'tokens>(
         let unary = sleigh_operation(SleighOperation::BitNegate)
             .or(sleigh_operation(SleighOperation::Not))
             .repeated()
-            .foldr_with(atom, |_, rhs, extra| (SASTPatternExpression::Not(Box::new(rhs)), extra.span()));
+            .foldr_with(atom, |_, rhs, extra| Spanned::new(SASTPatternExpression::Not(Box::new(rhs)), extra.span()));
 
         let product = unary.clone().foldl_with(
             whitespace_padded(sleigh_operation(SleighOperation::Star))
@@ -52,7 +54,7 @@ pub fn disassembly_section<'tokens, 'src: 'tokens>(
                     .to(SASTPatternExpression::Div as fn(_, _) -> _))
                 .then(unary)
                 .repeated(),
-            |lhs, (op, rhs), extra| (op(Box::new(lhs), Box::new(rhs)), extra.span()),
+            |lhs, (op, rhs), extra| Spanned::new(op(Box::new(lhs), Box::new(rhs)), extra.span()),
         );
 
         let sum = product
@@ -64,7 +66,7 @@ pub fn disassembly_section<'tokens, 'src: 'tokens>(
                         .to(SASTPatternExpression::Sub as fn(_, _) -> _))
                     .then(product)
                     .repeated(),
-                |lhs, (op, rhs), extra| (op(Box::new(lhs), Box::new(rhs)), extra.span()),
+                |lhs, (op, rhs), extra| Spanned::new(op(Box::new(lhs), Box::new(rhs)), extra.span()),
             )
             .boxed();
 
@@ -82,7 +84,7 @@ pub fn disassembly_section<'tokens, 'src: 'tokens>(
                 .or(shr.to(SASTPatternExpression::Shr as fn(_, _) -> _))
                 .then(sum)
                 .repeated(),
-            |lhs, (op, rhs), extra| (op(Box::new(lhs), Box::new(rhs)), extra.span()),
+            |lhs, (op, rhs), extra| Spanned::new(op(Box::new(lhs), Box::new(rhs)), extra.span()),
         );
 
         let and = shift
@@ -91,7 +93,9 @@ pub fn disassembly_section<'tokens, 'src: 'tokens>(
                 whitespace_padded(sleigh_operation(SleighOperation::BitAnd).or(sleigh_operation(SleighOperation::And)))
                     .then(shift)
                     .repeated(),
-                |lhs, (_, rhs), extra| (SASTPatternExpression::And(Box::new(lhs), Box::new(rhs)), extra.span()),
+                |lhs, (_, rhs), extra| {
+                    Spanned::new(SASTPatternExpression::And(Box::new(lhs), Box::new(rhs)), extra.span())
+                },
             )
             .boxed();
 
@@ -99,7 +103,7 @@ pub fn disassembly_section<'tokens, 'src: 'tokens>(
             whitespace_padded(sleigh_operation(SleighOperation::BitXor).or(sleigh_operation(SleighOperation::Hat)))
                 .then(and)
                 .repeated(),
-            |lhs, (_, rhs), extra| (SASTPatternExpression::Xor(Box::new(lhs), Box::new(rhs)), extra.span()),
+            |lhs, (_, rhs), extra| Spanned::new(SASTPatternExpression::Xor(Box::new(lhs), Box::new(rhs)), extra.span()),
         );
 
         let or = xor
@@ -108,7 +112,9 @@ pub fn disassembly_section<'tokens, 'src: 'tokens>(
                 whitespace_padded(sleigh_operation(SleighOperation::BitOr).or(sleigh_operation(SleighOperation::Or)))
                     .then(xor)
                     .repeated(),
-                |lhs, (_, rhs), extra| (SASTPatternExpression::Or(Box::new(lhs), Box::new(rhs)), extra.span()),
+                |lhs, (_, rhs), extra| {
+                    Spanned::new(SASTPatternExpression::Or(Box::new(lhs), Box::new(rhs)), extra.span())
+                },
             )
             .boxed();
 
@@ -119,17 +125,21 @@ pub fn disassembly_section<'tokens, 'src: 'tokens>(
         .then(whitespace_padded(sleigh_operation(SleighOperation::Equals)))
         .then(expression)
         .then_ignore(whitespace_padded(sleigh_control(SleighControlCharacter::SemiColon)))
-        .map_with(|((ident, _), e), extra| (SASTAction { lhs: ident, rhs: e }, extra.span()));
+        .map(|((ident, _), e)| SASTAction { lhs: ident, rhs: e })
+        .map_with(spanned);
 
-    whitespace_padded(whitespace_padded(action)
-        .repeated()
-        .collect::<Vec<_>>()
-        .delimited_by(
-            sleigh_control(SleighControlCharacter::OpenBracket),
-            sleigh_control(SleighControlCharacter::CloseBracket),
-        )
-        .or_not()
-        .map_with(|actions, extra| (SASTDisassemblySection { actions }, extra.span())))
+    whitespace_padded(
+        whitespace_padded(action)
+            .repeated()
+            .collect::<Vec<_>>()
+            .delimited_by(
+                sleigh_control(SleighControlCharacter::OpenBracket),
+                sleigh_control(SleighControlCharacter::CloseBracket),
+            )
+            .or_not()
+            .map(|actions| SASTDisassemblySection { actions })
+            .map_with(spanned),
+    )
 }
 
 #[cfg(test)]

@@ -49,7 +49,9 @@ pub(super) fn pcode<'tokens>(
     // as a labelled nop operation, which will later just be optimized out.
     let final_label = whitespace_padded(
         pcode_label()
-            .map_with(|label, extra| ((Some(label), (SASTPCodeStatement::NOP, extra.span())), extra.span()))
+            .map_with(|label, extra| {
+                Spanned::new((Some(label), Spanned::new(SASTPCodeStatement::NOP, extra.span())), extra.span())
+            })
             .or_not(),
     );
 

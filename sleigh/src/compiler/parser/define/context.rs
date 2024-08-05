@@ -39,7 +39,7 @@ pub(super) fn context<'tokens>(
     let number_pair = sleigh_number()
         .map_with(spanned)
         .then(sleigh_control(SleighControlCharacter::Comma))
-        .then(sleigh_number().map_with(|num, extra| (num, extra.span())))
+        .then(sleigh_number().map_with(spanned))
         .delimited_by(
             sleigh_control(SleighControlCharacter::OpenParen),
             sleigh_control(SleighControlCharacter::CloseParen),
@@ -64,17 +64,13 @@ pub(super) fn context<'tokens>(
         .then(number_pair)
         .padded_by(sleigh_whitespace())
         .then(attributelist)
-        .map_with(|(((name, _), (start, end)), attributes), extra| {
-            (
-                SASTContextField {
-                    name,
-                    start,
-                    end,
-                    attributes,
-                },
-                extra.span(),
-            )
-        });
+        .map(|(((name, _), (start, end)), attributes)| SASTContextField {
+            name,
+            start,
+            end,
+            attributes,
+        })
+        .map_with(spanned);
 
     sleigh_keyword(SleighKeyword::Context)
         .padded_by(sleigh_whitespace())
@@ -86,5 +82,6 @@ pub(super) fn context<'tokens>(
                 .repeated()
                 .collect::<Vec<_>>(),
         )
-        .map_with(|(reg, fields), extra| (SASTContext { reg, fields }, extra.span()))
+        .map(|(reg, fields)| SASTContext { reg, fields })
+        .map_with(spanned)
 }

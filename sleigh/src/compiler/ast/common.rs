@@ -6,8 +6,8 @@ pub struct SASTIdent(pub StringId);
 #[derive(Debug)]
 pub struct SASTString(pub StringId);
 
-// impl From<Spanned<SASTIdent>> for Spanned<StringId> {
-//     fn from(value: Spanned<SASTIdent>) -> Self {
-//         (value.0.0, value.1)
-//     }
-// }
+impl From<SASTIdent> for StringId {
+    fn from(value: SASTIdent) -> Self {
+        value.0
+    }
+}

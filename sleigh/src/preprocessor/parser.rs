@@ -27,10 +27,10 @@ pub fn parser<'tokens>(
         .repeated()
         .at_least(1)
         .collect::<Vec<_>>()
-        .map_with(|tokens, extra| PreprocessorBlock::PCode((SleighTokens::from(tokens), extra.span())));
+        .map_with(|tokens, extra| PreprocessorBlock::PCode(Spanned::new(SleighTokens::from(tokens), extra.span())));
 
     let expansion =
-        select! {SleighToken::MacroExpansion(ident) = extra => PreprocessorBlock::Expansion((ident, extra.span())) };
+        select! {SleighToken::MacroExpansion(ident) = extra => PreprocessorBlock::Expansion(Spanned::new(ident, extra.span())) };
 
     let define = pp_macro(
         SleighKeyword::Define,
@@ -129,7 +129,7 @@ pub fn parser<'tokens>(
         let binary_op = atom
             .clone()
             .foldl_with(operator.then(atom).repeated(), |a, (op, b), extra| {
-                Box::new((Expression::BinaryOp(a, op, b), extra.span()))
+                Box::new(Spanned::new(Expression::BinaryOp(a, op, b), extra.span()))
             });
 
         expression.define(binary_op);
@@ -209,6 +209,6 @@ fn macro_end<'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, (), Sleigh
 fn spanned<'tokens, T>(
     element: T,
     extra: &mut MapExtra<'tokens, '_, ParserInput<'tokens>, SleighPreprocessorExtra<'tokens>>,
-) -> (T, InputSpan) {
-    (element, extra.span())
+) -> Spanned<T> {
+    Spanned::new(element, extra.span())
 }

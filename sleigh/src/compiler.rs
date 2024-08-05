@@ -246,7 +246,7 @@ impl SleighCompiler<'_> {
 
     fn process_constructor(
         &mut self,
-        (constructor, span): Spanned<SASTConstructor>,
+        constructor: Spanned<SASTConstructor>,
     ) -> SleighCompilerResult {
         trace!("Processing constructor statement");
         // let table = match lift_option(constructor.table) {
@@ -258,10 +258,10 @@ impl SleighCompiler<'_> {
 
     fn process_define(
         &mut self,
-        (define, span): Spanned<SASTDefine>,
+        define: Spanned<SASTDefine>,
     ) -> SleighCompilerResult {
         trace!("Processing define statement");
-        match define {
+        match define.into_value() {
             SASTDefine::Endianness(endianness) => self.process_endianness(endianness),
             SASTDefine::Alignment(alignment) => self.process_alignment(alignment),
             SASTDefine::AddressSpace(_) => Ok(()),
@@ -275,46 +275,51 @@ impl SleighCompiler<'_> {
 
     fn process_endianness(
         &mut self,
-        (endianness, span): Spanned<SASTEndianness>,
+        endianness: Spanned<SASTEndianness>,
     ) -> SleighCompilerResult {
-        if let Some((_, old_span)) = &self.specification.endianness {
-            self.errors
-                .push(self.generate_endianness_already_specified_report(old_span.clone(), span));
+        if let Some(old_endianness) = &self.specification.endianness {
+            self.errors.push(
+                self.generate_endianness_already_specified_report(
+                    old_endianness.span().clone(),
+                    endianness.into_span(),
+                ),
+            );
         } else {
-            self.specification.endianness = Some((endianness.into(), span));
+            self.specification.endianness = Some(endianness.transmute());
         };
         Ok(())
     }
 
     fn process_alignment(
         &mut self,
-        (alignment, span): Spanned<SASTAlignment>,
+        alignment: Spanned<SASTAlignment>,
     ) -> SleighCompilerResult {
-        if let Some((_, old_span)) = &self.specification.alignment {
-            self.errors
-                .push(self.generate_alignment_already_specified_report(old_span.clone(), span))
+        if let Some(old_alignment) = &self.specification.alignment {
+            self.errors.push(
+                self.generate_alignment_already_specified_report(old_alignment.span().clone(), alignment.into_span()),
+            )
         } else {
-            self.specification.alignment = Some((alignment, span))
+            self.specification.alignment = Some(alignment.transmute())
         }
         Ok(())
     }
 
     fn process_with(
         &mut self,
-        (with, span): Spanned<SASTWith>,
+        with: Spanned<SASTWith>,
     ) -> SleighCompilerResult {
-        trace!("Processing with statement at {span:?}.");
-        self.process_items(with.items)?;
+        trace!("Processing with statement at {:?}.", with.span());
+        self.process_items(with.into_value().items)?;
         Ok(())
     }
 
     fn process_pcode_macro(
         &mut self,
-        (pcode_macro, span): Spanned<SASTPCodeMacro>,
+        pcode_macro: Spanned<SASTPCodeMacro>,
     ) -> SleighCompilerResult {
-        trace!("Processing pcode macro at {span:?}");
+        trace!("Processing pcode macro at {:?}", pcode_macro.span());
         if let Err(report) = self.specification.define_macro(
-            (pcode_macro.ident.0 .0, pcode_macro.ident.1),
+            pcode_macro.into_value().ident.transmute(),
             MOIRMacro {
                 arguments: vec![],
                 code: vec![],
@@ -344,12 +349,7 @@ impl SleighCompiler<'_> {
                 Label::new(old)
                     .with_message(format!(
                         "The endianness is already defined here as {}.",
-                        self.specification
-                            .endianness
-                            .as_ref()
-                            .unwrap()
-                            .0
-                            .fg(color_a)
+                        self.specification.endianness.as_ref().unwrap().fg(color_a)
                     ))
                     .with_color(color_a),
             )
@@ -375,17 +375,13 @@ impl SleighCompiler<'_> {
                 Label::new(old)
                     .with_message(format!(
                         "The alignment is already defined here as {}.",
-                        self.specification.alignment.as_ref().unwrap().0.fg(color_a)
+                        self.specification.alignment.as_ref().unwrap().fg(color_a)
                     ))
                     .with_color(color_a),
             )
             .finish();
         report
     }
-}
-
-fn lift_option<T>((x, span): Spanned<Option<T>>) -> Option<Spanned<T>> {
-    x.map(|x| (x, span))
 }
 
 impl SleighCompiler<'_> {

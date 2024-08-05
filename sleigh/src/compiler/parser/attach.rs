@@ -8,6 +8,7 @@ use crate::compiler::ast::attach::{
 };
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
+use crate::compiler::parser::helpers::spanned;
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighKeyword,
@@ -40,7 +41,7 @@ pub(super) fn attach<'tokens>(
         .padded_by(sleigh_whitespace())
         .ignore_then(attach)
         .then_ignore(sleigh_control(SleighControlCharacter::SemiColon))
-        .map_with(|attach, extra| (attach, extra.span()))
+        .map_with(spanned)
         .boxed()
 }
 

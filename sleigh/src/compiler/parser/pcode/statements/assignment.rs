@@ -29,7 +29,8 @@ pub fn pcode_assignment_statement<'tokens>(
     // Optional local keyword for assignment operations.
     let local = whitespace_padded(sleigh_keyword(SleighKeyword::Local))
         .or_not()
-        .map_with(|local, extra| (local.is_some(), extra.span()));
+        .map(|local| local.is_some())
+        .map_with(spanned);
 
     // If parsing an expression fails, try to find the semicolon delimiting the assignment and continue from there.
     let recovery = none_of([SleighToken::Control(SleighControlCharacter::SemiColon)])
@@ -55,4 +56,5 @@ pub fn pcode_assignment_statement<'tokens>(
             expression,
         })
         .map_with(spanned)
+        .boxed()
 }

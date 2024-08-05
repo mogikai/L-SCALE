@@ -25,8 +25,8 @@ use crate::compiler::tokens::{
 
 pub(super) fn value<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTValue>, SleighParserExtra<'tokens>> {
-    let fieldlist = sast_ident_spanned()
-        .map(|(ident, span)| vec![(ident, span)])
+    let field_list = sast_ident_spanned()
+        .map(|ident| vec![ident])
         .or(sast_ident_spanned()
             .padded_by(sleigh_whitespace())
             .repeated()
@@ -36,8 +36,9 @@ pub(super) fn value<'tokens>(
                 sleigh_control(SleighControlCharacter::CloseBracket),
             ));
 
-    let valuelist = sleigh_number()
-        .map_with(|num, extra| vec![(num, extra.span())])
+    let value_list = sleigh_number()
+        .map_with(spanned)
+        .map(|num| vec![num])
         .or(sleigh_number()
             .map_with(spanned)
             .padded_by(sleigh_whitespace())
@@ -50,8 +51,9 @@ pub(super) fn value<'tokens>(
 
     sleigh_keyword(SleighKeyword::Values)
         .padded_by(sleigh_whitespace())
-        .ignore_then(fieldlist)
+        .ignore_then(field_list)
         .padded_by(sleigh_whitespace())
-        .then(valuelist)
-        .map_with(|(fields, values), extra| (SASTValue { fields, values }, extra.span()))
+        .then(value_list)
+        .map(|(fields, values)| SASTValue { fields, values })
+        .map_with(spanned)
 }

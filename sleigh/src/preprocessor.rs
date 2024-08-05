@@ -131,14 +131,14 @@ impl SleighPreprocessor {
         context: &mut ProcessorSpecificationBuilder,
     ) -> Result<SleighTokens, PreprocessorError> {
         loop {
-            let Some((block, span)) = self.blocks.next() else {
+            let Some((block, span)) = self.blocks.next().map(Spanned::into_tuple) else {
                 // We finished processing all blocks. We can now construct the final token stream
                 break Ok(self.finalize_tokens()?);
             };
             match block {
                 PreprocessorBlock::Define { name, value } => self.process_define(name, value),
-                PreprocessorBlock::Undefine((name, _)) => self.process_undefine(&name),
-                PreprocessorBlock::Include((file, _)) => self.process_include(input_cache, context, span, file)?,
+                PreprocessorBlock::Undefine(name) => self.process_undefine(&name),
+                PreprocessorBlock::Include(file) => self.process_include(input_cache, context, span, *file)?,
                 PreprocessorBlock::IfDef {
                     ident,
                     if_defined,
@@ -149,7 +149,7 @@ impl SleighPreprocessor {
                     if_true,
                     if_false,
                 } => self.process_if(input_cache, context, cond, if_true, if_false)?,
-                PreprocessorBlock::PCode((tokens, _)) => self.process_pcode(tokens),
+                PreprocessorBlock::PCode(tokens) => self.process_pcode(tokens.into_value()),
                 PreprocessorBlock::Expansion(ref ident) => self.process_expansion(input_cache, context, ident)?,
             }
         }
@@ -162,24 +162,29 @@ impl SleighPreprocessor {
         ident: &Spanned<StringId>,
     ) -> Result<(), PreprocessorError> {
         trace!("Expanding macro identifier {ident:?}");
-        let (value, span) = self.lookup_identifier(input_cache, context, ident)?;
+        let value = self.lookup_identifier(input_cache, context, ident)?;
         let resolved_value = context
-            .string(*value)
+            .string(**value)
             .expect("The string must have been interned.")
             .to_string();
         // The offset is start + 1, since the first character of a string is ", which is ignored.
-        let result = SleighLexer::tokenize_string(resolved_value.as_str(), context, span.context(), span.start() + 1);
+        let result = SleighLexer::tokenize_string(
+            resolved_value.as_str(),
+            context,
+            value.span().context(),
+            value.span().start() + 1,
+        );
         let tokens = result
             .into_result()
             .map_err(|e| PreprocessorError::ParseError("Failed macro expansion".to_string()))?
             .into_iter()
             // TODO: This currently only reports the point of expansion on error during parsing.
             //       We will need to somehow extend the spans with more information?
-            .map(|(token, _)| (token, ident.1.clone()));
+            .map(|(token, _)| (token, ident.span().clone()));
 
         // Append the tokens to the stream associated with the input they are expanded to
         self.token_streams
-            .entry(ident.1.context())
+            .entry(ident.span().context())
             .or_default()
             .extend(tokens);
         Ok(())
@@ -207,12 +212,12 @@ impl SleighPreprocessor {
         trace!("Evaluating condition {cond:?}");
         if self.evaluate_expression(input_cache, context, cond)? {
             trace!("Evaluated to true");
-            self.prepend_blocks(if_true.0);
+            self.prepend_blocks(if_true.into_value());
         } else {
             trace!("Evaluated to false");
             match if_false {
                 None => {}
-                Some(blocks) => self.prepend_blocks(blocks.0),
+                Some(blocks) => self.prepend_blocks(blocks.into_value()),
             }
         }
         Ok(())
@@ -225,17 +230,17 @@ impl SleighPreprocessor {
         if_undefined: Option<Spanned<Vec<Spanned<PreprocessorBlock>>>>,
     ) {
         trace!("Processing ifdef {ident:?}");
-        if self.definitions.contains_key(&ident.0) {
-            trace!("{:?} is defined", ident.0);
+        if self.definitions.contains_key(&ident) {
+            trace!("{:?} is defined", *ident);
             match if_defined {
                 None => {}
-                Some(blocks) => self.prepend_blocks(blocks.0),
+                Some(blocks) => self.prepend_blocks(blocks.into_value()),
             }
         } else {
             trace!("{ident:?} is undefined");
             match if_undefined {
                 None => {}
-                Some(blocks) => self.prepend_blocks(blocks.0),
+                Some(blocks) => self.prepend_blocks(blocks.into_value()),
             };
         }
     }
@@ -253,8 +258,8 @@ impl SleighPreprocessor {
         name: Spanned<StringId>,
         value: Spanned<StringId>,
     ) {
-        trace!("Defining {:?} as {:?}", name.0, value.0);
-        self.definitions.insert(name.0, value);
+        trace!("Defining {:?} as {:?}", *name, *value);
+        self.definitions.insert(*name, value);
     }
 
     fn finalize_tokens(&mut self) -> Result<SleighTokens, PreprocessorError> {
@@ -336,8 +341,8 @@ impl SleighPreprocessor {
         context: &ProcessorSpecificationBuilder,
         expression: Spanned<Expression>,
     ) -> Result<bool, PreprocessorError> {
-        Ok(match expression.0 {
-            Expression::BinaryOp(a, op, b) => match op.0 {
+        Ok(match expression.into_value() {
+            Expression::BinaryOp(a, op, b) => match *op {
                 BinaryOp::And => {
                     self.evaluate_expression(input_cache, context, *a)?
                         && self.evaluate_expression(input_cache, context, *b)?
@@ -371,10 +376,9 @@ impl SleighPreprocessor {
         context: &ProcessorSpecificationBuilder,
         arg: &Spanned<ComparisonArgument>,
     ) -> Result<StringId, PreprocessorError> {
-        Ok(match arg {
+        Ok(match arg.as_tuple() {
             (ComparisonArgument::Identifier(ident), span) => {
-                self.lookup_identifier(input_cache, context, &(*ident, span.clone()))?
-                    .0
+                **self.lookup_identifier(input_cache, context, &Spanned::new(*ident, span.clone()))?
             }
             (ComparisonArgument::Literal(literal), _) => *literal,
         })
@@ -415,17 +419,18 @@ impl SleighPreprocessor {
         &self,
         mut input_cache: &mut CompilerInputCache,
         context: &ProcessorSpecificationBuilder,
-        (identifier, span): &Spanned<StringId>,
+        identifier: &Spanned<StringId>,
     ) -> Result<&Spanned<StringId>, PreprocessorError> {
-        self.definitions.get(identifier).ok_or_else(|| {
+        self.definitions.get(&*identifier).ok_or_else(|| {
             let resolved_ident = context
-                .string(*identifier)
+                .string(**identifier)
                 .expect("The string must have been interned.")
                 .to_string();
-            let report = Report::build(ReportKind::Error, span.context(), span.start())
+            let report = Report::build(ReportKind::Error, identifier.span().context(), identifier.span().start())
                 .with_message("Preprocessor Error")
                 .with_label(
-                    Label::new(span.clone()).with_message(format!("Identifier '{resolved_ident}' is undefined")),
+                    Label::new(identifier.span().clone())
+                        .with_message(format!("Identifier '{resolved_ident}' is undefined")),
                 )
                 .finish();
             let mut diagnostic = vec![];

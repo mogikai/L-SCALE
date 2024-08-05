@@ -6,6 +6,7 @@ use chumsky::{
 use crate::compiler::ast::attach::SASTName;
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
+use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
     sast_ident_spanned,
     sleigh_control,
@@ -21,7 +22,7 @@ use crate::compiler::tokens::{
 pub(super) fn name<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTName>, SleighParserExtra<'tokens>> {
     let stringlist = sast_ident_spanned()
-        .map(|(ident, span)| vec![(ident, span)])
+        .map(|ident| vec![ident])
         .or(sast_ident_spanned()
             .padded_by(sleigh_whitespace())
             .repeated()
@@ -36,5 +37,6 @@ pub(super) fn name<'tokens>(
         .ignore_then(stringlist.clone()) // registers
         .padded_by(sleigh_whitespace())
         .then(stringlist) // alternative strings
-        .map_with(|(fields, strings), extra| (SASTName { fields, strings }, extra.span()))
+        .map(|(fields, strings)| SASTName { fields, strings })
+        .map_with(spanned)
 }

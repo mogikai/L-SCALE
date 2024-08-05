@@ -63,17 +63,13 @@ pub(super) fn token<'tokens>(
         .then(number_pair)
         .padded_by(sleigh_whitespace())
         .then(attributelist)
-        .map_with(|(((name, _), (start, end)), attributes), extra| {
-            (
-                SASTTokenField {
-                    name,
-                    start,
-                    end,
-                    attributes,
-                },
-                extra.span(),
-            )
-        });
+        .map(|(((name, _), (start, end)), attributes)| SASTTokenField {
+            name,
+            start,
+            end,
+            attributes,
+        })
+        .map_with(spanned);
 
     sleigh_keyword(SleighKeyword::Token)
         .padded_by(sleigh_whitespace())
@@ -96,15 +92,11 @@ pub(super) fn token<'tokens>(
                 .repeated()
                 .collect::<Vec<_>>(),
         )
-        .map_with(|(((name, bits), endian_override), fields), extra| {
-            (
-                SASTToken {
-                    name,
-                    bits,
-                    endian_override,
-                    fields,
-                },
-                extra.span(),
-            )
+        .map(|(((name, bits), endian_override), fields)| SASTToken {
+            name,
+            bits,
+            endian_override,
+            fields,
         })
+        .map_with(spanned)
 }
