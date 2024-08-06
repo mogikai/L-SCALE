@@ -37,10 +37,7 @@ use chumsky::{
     Parser,
 };
 
-use crate::compiler::ast::{
-    Spanned,
-    SpannedToken,
-};
+use crate::compiler::ast::SpannedToken;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::inputcache::CompilerInputCache;
 use crate::compiler::tokens::{
@@ -52,10 +49,10 @@ use crate::compiler::tokens::{
 use crate::compiler::{
     CompilerContext,
     InputId,
-    StringId,
 };
+use crate::spec::StringId;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct InputSpan {
     range: Range<usize>,
     input_id: InputId,

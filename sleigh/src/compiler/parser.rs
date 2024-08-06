@@ -24,11 +24,11 @@ use crate::compiler::tokens::{
     SleighOperation,
     SleighToken,
 };
-use crate::compiler::{
-    CompilerContext,
+use crate::compiler::CompilerContext;
+use crate::spec::{
+    ProcessorSpecificationBuilder,
     StringId,
 };
-use crate::spec::ProcessorSpecificationBuilder;
 use ariadne::{
     Label,
     Report,

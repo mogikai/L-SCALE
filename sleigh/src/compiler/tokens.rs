@@ -1,8 +1,6 @@
 use crate::compiler::lexer::SleighTokens;
-use crate::compiler::{
-    InputId,
-    StringId,
-};
+use crate::compiler::InputId;
+use crate::spec::StringId;
 use std::fmt;
 use std::fmt::{
     Display,

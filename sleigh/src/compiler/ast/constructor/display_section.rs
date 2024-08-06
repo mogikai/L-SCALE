@@ -1,5 +1,5 @@
 use crate::compiler::ast::Spanned;
-use crate::compiler::StringId;
+use crate::spec::StringId;
 
 #[derive(Debug)]
 pub struct SASTDisplaySection {

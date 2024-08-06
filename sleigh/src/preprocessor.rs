@@ -55,10 +55,12 @@ use crate::compiler::tokens::{
 use crate::compiler::{
     CompilerContext,
     InputId,
-    StringId,
 };
 use crate::preprocessor::error::PreprocessorError;
-use crate::spec::ProcessorSpecificationBuilder;
+use crate::spec::{
+    ProcessorSpecificationBuilder,
+    StringId,
+};
 
 mod blocks;
 pub mod error;

@@ -8,6 +8,7 @@ use thiserror::Error;
 
 use crate::compiler::inputcache::InputCacheError;
 use crate::preprocessor::error::PreprocessorError;
+use crate::spec::ProcessorSpecificationError;
 
 #[derive(Error)]
 pub enum SleighCompilerError {
@@ -15,6 +16,8 @@ pub enum SleighCompilerError {
     PreprocessorError(#[from] PreprocessorError),
     #[error("The input cache encountered an error.")]
     InputCacheError(#[from] InputCacheError),
+    #[error("The processor specification encountered an error")]
+    ProcessorSpecificationError(#[from] ProcessorSpecificationError),
     #[error("An error occurred during lexical analysis.")]
     LexerError(String),
     #[error("An error  occurred during parsing")]

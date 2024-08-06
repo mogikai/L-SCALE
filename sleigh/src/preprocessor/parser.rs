@@ -24,7 +24,7 @@ use crate::compiler::parser::{
     maybe_parenthesized,
     parenthesized,
 };
-use crate::compiler::StringId;
+use crate::spec::StringId;
 use crate::compiler::tokens::{
     SleighKeyword,
     SleighOperation,

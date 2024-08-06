@@ -16,6 +16,7 @@ use ariadne::{
     ReportKind,
     Source,
 };
+use chumsky::container::Container;
 use chumsky::span::Span;
 use slotmap::{
     new_key_type,
@@ -58,8 +59,10 @@ use crate::preprocessor::SleighPreprocessorFactory;
 use crate::spec::moir::MOIRMacro;
 use crate::spec::{
     ProcessorEndianness,
+    ProcessorSpecification,
     ProcessorSpecificationBuilder,
     ProcessorSpecificationError,
+    StringId,
 };
 
 pub mod ast;
@@ -71,9 +74,6 @@ pub mod parser;
 pub mod tokens;
 
 new_key_type! { pub struct InputId; }
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct StringId(usize);
 
 impl Display for InputId {
     fn fmt(
@@ -99,34 +99,16 @@ pub(crate) trait CompilerContext {
     ) -> Option<&str>;
 }
 
-impl CompilerContext for ProcessorSpecificationBuilder {
-    fn intern<T: AsRef<str>>(
-        &mut self,
-        string: &T,
-    ) -> StringId {
-        StringId(self.interner.get_or_intern(string).to_usize())
-    }
-
-    /// Resolve a string id to the corresponding interned string.
-    fn string(
-        &self,
-        string_id: StringId,
-    ) -> Option<&str> {
-        self.interner
-            .resolve(<<StringBackend as Backend>::Symbol as Symbol>::try_from_usize(string_id.0)?)
-    }
-}
-
 pub type SleighCompilerResult<T = ()> = Result<T, SleighCompilerError>;
 
 #[derive(Debug)]
-pub struct SleighCompiler<'a> {
+pub struct SleighCompiler {
     preprocessor_factory: SleighPreprocessorFactory,
     lexer: SleighLexer<ProcessorSpecificationBuilder>,
     parser: SleighParser,
     input_cache: CompilerInputCache,
     specification: ProcessorSpecificationBuilder,
-    errors: Vec<Report<'a, InputSpan>>,
+    errors: Vec<Box<Report<'static, InputSpan>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -139,19 +121,19 @@ pub struct CompilerInput {
     tokens: Option<SleighTokens>,
 }
 
-impl SleighCompiler<'_> {
+impl SleighCompiler {
     /// Compile the provided sleigh specification, consuming the compiler instance.
     pub fn compile(
         mut self,
         spec_path: &Path,
-    ) -> SleighCompilerResult<ProcessorSpecificationBuilder> {
+    ) -> SleighCompilerResult<ProcessorSpecification> {
         let tokens = self.load_and_preprocess(spec_path)?;
         let ast = self
             .parser
             .parse(&mut self.input_cache, &mut self.specification, tokens)?;
         self.build(ast)?;
         if self.errors.is_empty() {
-            Ok(self.specification)
+            Ok(self.specification.build()?)
         } else {
             let mut error_description = vec![];
             let error_count = self.errors.len();
@@ -237,6 +219,11 @@ impl SleighCompiler<'_> {
         constructor: Spanned<SASTConstructor>,
     ) -> SleighCompilerResult {
         trace!("Processing constructor statement");
+        let (constructor, span) = constructor.into_tuple();
+        let table = match constructor.table.lift_option() {
+            None => self.specification.modify_root_table()?,
+            Some(id) => self.specification.modify_table(id)?,
+        };
         // let table = match lift_option(constructor.table) {
         //     None => MOIRIdentId::default(), // TODO: Root table
         //     Some(id) => self.specification.reserve_global_ident(id)?,
@@ -265,12 +252,8 @@ impl SleighCompiler<'_> {
         &mut self,
         endianness: Spanned<SASTEndianness>,
     ) -> SleighCompilerResult {
-        if let Some(old_endianness) = &self.specification.endianness {
-            self.errors
-                .push(self.generate_endianness_already_specified_report(old_endianness, endianness.into_span()));
-        } else {
-            self.specification.endianness = Some(endianness.transmute());
-        };
+        let result = self.specification.define_endianness(endianness.transmute());
+        self.report_error_or_unwrap(result)?;
         Ok(())
     }
 
@@ -278,12 +261,8 @@ impl SleighCompiler<'_> {
         &mut self,
         alignment: Spanned<SASTAlignment>,
     ) -> SleighCompilerResult {
-        if let Some(old_alignment) = &self.specification.alignment {
-            self.errors
-                .push(self.generate_alignment_already_specified_report(old_alignment, alignment.into_span()))
-        } else {
-            self.specification.alignment = Some(alignment.transmute())
-        }
+        let result = self.specification.define_alignment(alignment.transmute());
+        self.report_error_or_unwrap(result)?;
         Ok(())
     }
 
@@ -301,67 +280,39 @@ impl SleighCompiler<'_> {
         pcode_macro: Spanned<SASTPCodeMacro>,
     ) -> SleighCompilerResult {
         trace!("Processing pcode macro at {:?}", pcode_macro.span());
-        if let Err(report) = self.specification.define_macro(
+        let result = self.specification.define_macro(
             pcode_macro.into_value().ident.transmute(),
             MOIRMacro {
                 arguments: vec![],
                 code: vec![],
             },
-        ) {
-            // If defining the macro failed, we simply report the error and continue.
-            self.errors.push(report);
-        }
+        );
+        self.report_error_or_unwrap(result)?;
         Ok(())
     }
 
-    fn generate_endianness_already_specified_report<'a>(
-        &self,
-        old: &Spanned<ProcessorEndianness>,
-        new: InputSpan,
-    ) -> Report<'a, InputSpan> {
-        let mut colors = ColorGenerator::new();
-        let color_a = colors.next();
-        let report = Report::build(ReportKind::Error, new.context(), new.start())
-            .with_message("Endianness already specified")
-            .with_label(
-                Label::new(new)
-                    .with_message("Attempting to redefine endianness when it is already defined.")
-                    .with_color(color_a),
-            )
-            .with_label(
-                Label::new(old.span().clone())
-                    .with_message(format!("The endianness is already defined here as {}.", old.fg(color_a)))
-                    .with_color(color_a),
-            )
-            .finish();
-        report
-    }
-
-    fn generate_alignment_already_specified_report<'a>(
-        &self,
-        old: &Spanned<u16>,
-        new: InputSpan,
-    ) -> Report<'a, InputSpan> {
-        let mut colors = ColorGenerator::new();
-        let color_a = colors.next();
-        let report = Report::build(ReportKind::Error, new.context(), new.start())
-            .with_message("Alignment already specified")
-            .with_label(
-                Label::new(new)
-                    .with_message("Attempting to redefine alignment when it is already defined.")
-                    .with_color(color_a),
-            )
-            .with_label(
-                Label::new(old.span().clone())
-                    .with_message(format!("The alignment is already defined here as {}.", old.fg(color_a)))
-                    .with_color(color_a),
-            )
-            .finish();
-        report
+    /// Reports an error if the error type is `Report` and returns `None`.
+    /// If the result is Ok, then this function returns `Ok(Some(value))`
+    /// Otherwise, this function errors as well.
+    fn report_error_or_unwrap<T>(
+        &mut self,
+        result: Result<T, ProcessorSpecificationError>,
+    ) -> SleighCompilerResult<Option<T>> {
+        match result {
+            Ok(value) => Ok(Some(value)),
+            Err(err) => {
+                if let ProcessorSpecificationError::ErrorReport(report) = err {
+                    self.errors.push(report);
+                    Ok(None)
+                } else {
+                    Err(err)?
+                }
+            }
+        }
     }
 }
 
-impl SleighCompiler<'_> {
+impl SleighCompiler {
     fn new(preprocessor_factory: SleighPreprocessorFactory) -> Self {
         Self {
             preprocessor_factory,

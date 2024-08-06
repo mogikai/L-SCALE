@@ -3,7 +3,7 @@ use crate::compiler::ast::constructor::disassembly_section::SASTDisassemblySecti
 use crate::compiler::ast::constructor::display_section::SASTDisplaySection;
 use crate::compiler::ast::constructor::semantic_section::SASTSemanticSection;
 use crate::compiler::ast::Spanned;
-use crate::compiler::StringId;
+use crate::spec::StringId;
 
 pub mod bit_pattern_section;
 pub mod disassembly_section;

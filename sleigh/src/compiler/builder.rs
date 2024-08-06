@@ -21,7 +21,7 @@ impl SleighCompilerBuilder {
         self
     }
 
-    pub fn build<'a>(self) -> SleighCompiler<'a> {
+    pub fn build(self) -> SleighCompiler {
         SleighCompiler::new(self.preprocessor_factory.unwrap_or_default())
     }
 }
