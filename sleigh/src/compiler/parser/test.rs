@@ -5,7 +5,7 @@ use crate::compiler::lexer::{
     SleighTokens,
 };
 pub(crate) use crate::compiler::parser::report_errors;
-use crate::spec::ProcessorSpecificationBuilder;
+use crate::spec::builder::ProcessorSpecificationBuilder;
 
 pub type TestResult<T = ()> = Result<T, SleighCompilerError>;
 

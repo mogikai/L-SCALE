@@ -25,7 +25,7 @@ use crate::compiler::tokens::{
     SleighToken,
 };
 use crate::compiler::CompilerContext;
-use crate::spec::{
+use crate::spec::builder::{
     ProcessorSpecificationBuilder,
     StringId,
 };

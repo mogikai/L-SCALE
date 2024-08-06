@@ -56,13 +56,15 @@ use crate::compiler::lexer::{
 use crate::compiler::parser::SleighParser;
 use crate::preprocessor::error::PreprocessorError;
 use crate::preprocessor::SleighPreprocessorFactory;
+use crate::spec::builder::{
+    ProcessorSpecificationBuilder,
+    StringId,
+};
 use crate::spec::moir::MOIRMacro;
 use crate::spec::{
     ProcessorEndianness,
     ProcessorSpecification,
-    ProcessorSpecificationBuilder,
     ProcessorSpecificationError,
-    StringId,
 };
 
 pub mod ast;

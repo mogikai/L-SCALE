@@ -1,6 +1,6 @@
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::SleighTokens;
-use crate::spec::StringId;
+use crate::spec::builder::StringId;
 
 #[derive(Debug, Clone)]
 pub enum BinaryOp {

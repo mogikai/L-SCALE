@@ -57,7 +57,7 @@ use crate::compiler::{
     InputId,
 };
 use crate::preprocessor::error::PreprocessorError;
-use crate::spec::{
+use crate::spec::builder::{
     ProcessorSpecificationBuilder,
     StringId,
 };

@@ -50,7 +50,7 @@ use crate::compiler::{
     CompilerContext,
     InputId,
 };
-use crate::spec::StringId;
+use crate::spec::builder::StringId;
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct InputSpan {

@@ -24,7 +24,7 @@ use crate::compiler::parser::{
     maybe_parenthesized,
     parenthesized,
 };
-use crate::spec::StringId;
+use crate::spec::builder::StringId;
 use crate::compiler::tokens::{
     SleighKeyword,
     SleighOperation,
@@ -37,7 +37,7 @@ use crate::preprocessor::blocks::{
     Expression,
     PreprocessorBlock,
 };
-use crate::spec::ProcessorSpecificationBuilder;
+use crate::spec::builder::ProcessorSpecificationBuilder;
 
 type SleighPreprocessorExtra<'tokens> =
     extra::Full<Rich<'tokens, SleighToken, InputSpan>, ProcessorSpecificationBuilder, ()>;

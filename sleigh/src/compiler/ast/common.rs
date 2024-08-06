@@ -1,5 +1,5 @@
 use crate::compiler::ast::Spanned;
-use crate::spec::StringId;
+use crate::spec::builder::StringId;
 
 #[derive(Debug, Copy, Clone)]
 pub struct SASTIdent(pub StringId);

@@ -2,6 +2,13 @@ use crate::spec::MOIRVarNodeId;
 
 #[derive(Debug, Default)]
 pub struct MOIRTable {
+    // TODO: how to actually implement this?
+    // Ideally, each constructor inserts its bit pattern into a jump table
+    // The first pattern in the op points to the second pattern and so on until
+    // we reach the disassembly actions matchers. This can be a list, if multiple constructors
+    // match. We then have to match each of these sections, and use the one with the most
+    // constraints to finally lift the instruction.
+    bit_matching_table: Vec<Vec<()>>,
     constructors: Vec<()>,
     /// TODO: improve documentation
     /// 7.7.2.3. Exports
