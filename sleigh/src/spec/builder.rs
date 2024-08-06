@@ -1,33 +1,16 @@
-use crate::compiler::ast::Spanned;
-use crate::compiler::lexer::InputSpan;
-use crate::compiler::CompilerContext;
-use crate::spec::address_space::MOIRAddressSpace;
-use crate::spec::moir::MOIRMacro;
-use crate::spec::reporting::{
-    generate_alignment_already_specified_report,
-    generate_endianness_already_specified_report,
-    generate_identifier_exists_report,
-};
-use crate::spec::symbol_table::MOIRSymbolTable;
-use crate::spec::table::MOIRTable;
-use crate::spec::varnode::MOIRVarNode;
-use crate::spec::{
-    MOIRAddressSpaceId,
-    MOIRIdent,
-    MOIRMacroId,
-    MOIRSymbol,
-    MOIRTableId,
-    MOIRVarNodeId,
-    ProcessorEndianness,
-    ProcessorSpecification,
-    ProcessorSpecificationError,
-};
+//! The [ProcessorSpecificationBuilder] is used by the compiler to build up the [ProcessorSpecification].
+//! This is done, so that the compiler can work on an incomplete specification and do some final validations,
+//! before building the final [ProcessorSpecification].
+//! The final [ProcessorSpecification] cannot be modified further.
+//! TODO: Improve docs
+
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
+
 use slotmap::{
     SecondaryMap,
     SlotMap,
 };
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
 use string_interner::backend::{
     Backend,
     StringBackend,
@@ -36,10 +19,54 @@ use string_interner::symbol::Symbol;
 use string_interner::StringInterner;
 use tracing::debug;
 
+use crate::compiler::ast::Spanned;
+use crate::compiler::lexer::InputSpan;
+use crate::compiler::CompilerContext;
+use crate::spec::address_space::MOIRAddressSpace;
+use crate::spec::endianness::MOIREndianness;
+use crate::spec::field::{
+    MOIRField,
+    MOIRFieldId,
+};
+use crate::spec::moir::MOIRMacro;
+use crate::spec::reporting::{
+    generate_alignment_already_specified_report,
+    generate_endianness_already_specified_report,
+    generate_identifier_exists_report,
+};
+use crate::spec::symbol_table::MOIRSymbolTable;
+use crate::spec::table::MOIRTable;
+use crate::spec::token::{
+    MOIRToken,
+    MOIRTokenId,
+};
+use crate::spec::varnode::MOIRVarNode;
+use crate::spec::{
+    MOIRAddressSpaceId,
+    MOIRIdent,
+    MOIRMacroId,
+    MOIRSymbol,
+    MOIRTableId,
+    MOIRVarNodeId,
+    ProcessorSpecification,
+    ProcessorSpecificationError,
+};
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 /// StringId given out by interner. The interner is used by the compiler
 /// to simplify string comparisons by mapping ids to strings.
 pub struct StringId(usize);
+
+#[derive(Debug, Default)]
+/// A transparent helper struct that contains all the symbol tables to make the builder more manageable.
+struct SymbolTables {
+    macros: MOIRSymbolTable<MOIRMacroId, MOIRMacro>,
+    address_spaces: MOIRSymbolTable<MOIRAddressSpaceId, MOIRAddressSpace>,
+    tables: MOIRSymbolTable<MOIRTableId, MOIRTable>,
+    varnodes: MOIRSymbolTable<MOIRVarNodeId, MOIRVarNode>,
+    tokens: MOIRSymbolTable<MOIRTokenId, MOIRToken>,
+    fields: MOIRSymbolTable<MOIRFieldId, MOIRField>,
+}
 
 #[derive(Debug)]
 pub struct ProcessorSpecificationBuilder {
@@ -52,16 +79,18 @@ pub struct ProcessorSpecificationBuilder {
 
     /// Maps the identifier ids to corresponding strings.
     symbol_strings: SecondaryMap<MOIRIdent, Spanned<StringId>>,
-    macros: MOIRSymbolTable<MOIRMacroId, MOIRMacro>,
-    address_spaces: MOIRSymbolTable<MOIRAddressSpaceId, MOIRAddressSpace>,
-    tables: MOIRSymbolTable<MOIRTableId, MOIRTable>,
-    varnodes: MOIRSymbolTable<MOIRVarNodeId, MOIRVarNode>,
+    /// Contains a table for each symbol type. A [MOIRIdent] maps to a [MOIRSymbol], which in turn maps to the
+    /// corresponding [MOIRSymbolTable] with a table-specific id type.
+    symbol_tables: SymbolTables,
     /// The endianness of the processor. It must be defined.
-    endianness: Option<Spanned<ProcessorEndianness>>,
+    endianness: Option<Spanned<MOIREndianness>>,
     /// The alignment of instructions. This defaults to 1 if no alignment is specified.
     alignment: Option<Spanned<u16>>,
 
-    // lookup tables:
+    /// Maps a string identifier to the corresponding internal [MOIRIdent].
+    /// This is useful for the compiler, when an identifier string references another symbol.
+    /// This will need to be resolved to the correct [MOIRIdent], so that the PSB can then
+    /// use the internal identifiers, instead of the strings.
     string_to_ident_mapping: HashMap<StringId, MOIRIdent>,
 
     root_table: Spanned<StringId>,
@@ -71,7 +100,7 @@ impl ProcessorSpecificationBuilder {
     /// Define the endianness. If the endianness was previously defined, an error report is generated.
     pub(crate) fn define_endianness(
         &mut self,
-        endianness: Spanned<ProcessorEndianness>,
+        endianness: Spanned<MOIREndianness>,
     ) -> Result<(), ProcessorSpecificationError> {
         if let Some(old_endianness) = &self.endianness {
             Err(generate_endianness_already_specified_report(old_endianness, endianness.into_span()))
@@ -98,14 +127,36 @@ impl ProcessorSpecificationBuilder {
     /// If `ident` was already defined previously,
     /// an error report is returned, describing
     /// where the definition occurred.
-    pub(crate) fn define_macro<'a>(
+    pub(crate) fn define_macro(
         &mut self,
         ident: Spanned<StringId>,
         moir_macro: MOIRMacro,
     ) -> Result<MOIRIdent, ProcessorSpecificationError> {
         let symbol_id = self.declare_symbol(ident)?;
-        let macro_id = self.macros.insert(moir_macro);
+        let macro_id = self.symbol_tables.macros.insert(moir_macro);
         self.define_symbol(symbol_id, MOIRSymbol::Macro(macro_id))?;
+        Ok(symbol_id)
+    }
+
+    pub(crate) fn define_token(
+        &mut self,
+        ident: Spanned<StringId>,
+        token: MOIRToken,
+    ) -> Result<MOIRTokenId, ProcessorSpecificationError> {
+        let symbol_id = self.declare_symbol(ident)?;
+        let token_id = self.symbol_tables.tokens.insert(token);
+        self.define_symbol(symbol_id, MOIRSymbol::Token(token_id))?;
+        Ok(token_id)
+    }
+
+    pub(crate) fn define_field(
+        &mut self,
+        ident: Spanned<StringId>,
+        field: MOIRField,
+    ) -> Result<MOIRIdent, ProcessorSpecificationError> {
+        let symbol_id = self.declare_symbol(ident)?;
+        let field_id = self.symbol_tables.fields.insert(field);
+        self.define_symbol(symbol_id, MOIRSymbol::Field(field_id))?;
         Ok(symbol_id)
     }
 
@@ -127,11 +178,12 @@ impl ProcessorSpecificationBuilder {
         } else {
             // Symbol needs to be defined first.
             let symbol_id = self.declare_symbol(ident)?;
-            let table_id = self.tables.insert(MOIRTable::default());
+            let table_id = self.symbol_tables.tables.insert(MOIRTable::default());
             self.define_symbol(symbol_id, MOIRSymbol::Table(table_id))?;
             table_id
         };
         Ok(self
+            .symbol_tables
             .tables
             .get_mut(table_id)
             .expect("We either just inserted the new table, or fetched an existing one."))
@@ -171,6 +223,7 @@ impl ProcessorSpecificationBuilder {
             Entry::Vacant(entry) => {
                 // No symbol has been declared yet. We can now insert an empty declaration.
                 let id = self.symbols.insert(MOIRSymbol::Undefined);
+                self.symbol_strings.insert(id, ident);
                 entry.insert(id);
                 Ok(id)
             }
@@ -207,10 +260,7 @@ impl Default for ProcessorSpecificationBuilder {
             interner,
             symbols: Default::default(),
             symbol_strings: Default::default(),
-            macros: Default::default(),
-            address_spaces: Default::default(),
-            tables: Default::default(),
-            varnodes: Default::default(),
+            symbol_tables: Default::default(),
             endianness: None,
             alignment: None,
             string_to_ident_mapping: Default::default(),
@@ -231,8 +281,10 @@ impl ProcessorSpecificationBuilder {
     pub fn build(self) -> Result<ProcessorSpecification, ProcessorSpecificationError> {
         debug!("Finalizing spec:");
         debug!("Found {} symbols", self.symbols.len());
-        debug!("Found {} tables", self.tables.len());
-        debug!("Found {} macros", self.macros.len());
+        debug!("Found {} tables", self.symbol_tables.tables.len());
+        debug!("Found {} macros", self.symbol_tables.macros.len());
+        debug!("Found {} tokens", self.symbol_tables.tokens.len());
+        debug!("Found {} fields", self.symbol_tables.fields.len());
         Ok(Default::default())
     }
 }

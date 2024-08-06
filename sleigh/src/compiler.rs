@@ -34,11 +34,14 @@ use tracing::{
 
 use inputcache::CompilerInputCache;
 
+use crate::compiler::ast::constructor::bit_pattern_section::SASTBitPatternConstraint;
 use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::ast::define::{
     SASTAlignment,
     SASTDefine,
     SASTEndianness,
+    SASTToken,
+    SASTTokenField,
 };
 use crate::compiler::ast::item::SASTItem;
 use crate::compiler::ast::pcode_macro::SASTPCodeMacro;
@@ -60,9 +63,14 @@ use crate::spec::builder::{
     ProcessorSpecificationBuilder,
     StringId,
 };
+use crate::spec::endianness::MOIREndianness;
+use crate::spec::field::MOIRField;
 use crate::spec::moir::MOIRMacro;
+use crate::spec::token::{
+    MOIRToken,
+    MOIRTokenId,
+};
 use crate::spec::{
-    ProcessorEndianness,
     ProcessorSpecification,
     ProcessorSpecificationError,
 };
@@ -216,6 +224,8 @@ impl SleighCompiler {
         Ok(())
     }
 
+    /// Process a constructor. This will create the table in which the constructor is anchored, if it does not exist.
+    /// Then, the bit pattern section is validated.
     fn process_constructor(
         &mut self,
         constructor: Spanned<SASTConstructor>,
@@ -226,10 +236,25 @@ impl SleighCompiler {
             None => self.specification.modify_root_table()?,
             Some(id) => self.specification.modify_table(id)?,
         };
-        // let table = match lift_option(constructor.table) {
-        //     None => MOIRIdentId::default(), // TODO: Root table
-        //     Some(id) => self.specification.reserve_global_ident(id)?,
-        // };
+        self.validate_constraint(constructor.bit_pattern_section.into_value().constraint)?;
+        // TODO: we need to walk the constraint and find out the tokens that are used.
+        //       we also need to make sure that there is only one token per section
+        //       delimited by a semicolon.
+        Ok(())
+    }
+
+    fn validate_constraint(
+        &self,
+        constraint: Spanned<SASTBitPatternConstraint>,
+    ) -> SleighCompilerResult {
+        let (constraint, span) = constraint.into_tuple();
+        match constraint {
+            SASTBitPatternConstraint::Ident(_) => {}
+            SASTBitPatternConstraint::BinaryOp(_, _, _) => {}
+            SASTBitPatternConstraint::UnaryOp(_, _) => {}
+            SASTBitPatternConstraint::AdvancedConstraint(_, _, _) => {}
+            SASTBitPatternConstraint::Invalid => {}
+        };
         Ok(())
     }
 
@@ -239,18 +264,73 @@ impl SleighCompiler {
     ) -> SleighCompilerResult {
         trace!("Processing define statement");
         match define.into_value() {
-            SASTDefine::Endianness(endianness) => self.process_endianness(endianness),
-            SASTDefine::Alignment(alignment) => self.process_alignment(alignment),
+            SASTDefine::Endianness(endianness) => self.process_define_endianness(endianness),
+            SASTDefine::Alignment(alignment) => self.process_define_alignment(alignment),
             SASTDefine::AddressSpace(_) => Ok(()),
             SASTDefine::Register(_) => Ok(()),
             SASTDefine::BitrangeRegister(_) => Ok(()),
             SASTDefine::UserPcodeOp(_) => Ok(()),
-            SASTDefine::Token(_) => Ok(()),
+            SASTDefine::Token(token) => self.process_define_token(token),
             SASTDefine::Context(_) => Ok(()),
         }
     }
 
-    fn process_endianness(
+    fn process_define_token(
+        &mut self,
+        token: Spanned<SASTToken>,
+    ) -> SleighCompilerResult {
+        // TODO: Define token and its fields
+        // We first define the token and then we can define its fields, since they need to refer to the token.
+        let (token, _) = token.into_tuple();
+        let bits = token.bits.into_value();
+        let result = self.specification.define_token(
+            token.name.transmute(),
+            MOIRToken {
+                bits,
+                endianness_override: token.endian_override.map(|e| e.into_value().into()),
+            },
+        );
+        if let Some(token_id) = self.report_error_or_unwrap(result)? {
+            for field in token.fields.into_iter() {
+                let name = field.name.clone().transmute();
+                if let Some(field) = self.make_field(token_id, bits, field)? {
+                    let result = self.specification.define_field(name, field);
+                    self.report_error_or_unwrap(result)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Create a new field instance to be defined in the [ProcessorSpecificationBuilder].
+    /// The field is associated with the provided `token_id`.
+    /// This function also performs semantic checks, and thus needs the amount of bits
+    /// the token contains.
+    fn make_field(
+        &mut self,
+        token_id: MOIRTokenId,
+        bits: u64,
+        field: Spanned<SASTTokenField>,
+    ) -> Result<Option<MOIRField>, SleighCompilerError> {
+        let (field, _) = field.into_tuple();
+        if *field.start > *field.end {
+            todo!("Generate correct error report and return Ok(None)")
+        } else if *field.end >= bits {
+            todo!("Generate correct error report and return Ok(None)")
+        } else {
+            // The variables, values, and strings fields are later attached with attach statements.
+            let field = MOIRField {
+                token: token_id,
+                bits: field.start.into_value()..field.end.into_value(),
+                variables: vec![],
+                values: vec![],
+                strings: vec![],
+            };
+            Ok(Some(field))
+        }
+    }
+
+    fn process_define_endianness(
         &mut self,
         endianness: Spanned<SASTEndianness>,
     ) -> SleighCompilerResult {
@@ -259,7 +339,7 @@ impl SleighCompiler {
         Ok(())
     }
 
-    fn process_alignment(
+    fn process_define_alignment(
         &mut self,
         alignment: Spanned<SASTAlignment>,
     ) -> SleighCompilerResult {

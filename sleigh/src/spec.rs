@@ -6,6 +6,7 @@ use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::CompilerContext;
 use crate::spec::address_space::MOIRAddressSpace;
+use crate::spec::field::MOIRFieldId;
 use crate::spec::moir::MOIRMacro;
 use crate::spec::reporting::{
     generate_alignment_already_specified_report,
@@ -14,6 +15,7 @@ use crate::spec::reporting::{
 };
 use crate::spec::symbol_table::MOIRSymbolTable;
 use crate::spec::table::MOIRTable;
+use crate::spec::token::MOIRTokenId;
 use crate::spec::varnode::MOIRVarNode;
 use ariadne::Report;
 use slotmap::{
@@ -34,27 +36,21 @@ use tracing::debug;
 
 pub mod address_space;
 pub mod builder;
+pub mod endianness;
+pub mod field;
 pub mod moir;
 mod reporting;
 mod symbol_table;
-mod table;
+pub mod table;
+pub mod token;
 pub mod varnode;
 
-new_key_type! { pub struct MOIRIdent; }
-
-#[derive(Debug, strum_macros::Display, Copy, Clone)]
-pub enum ProcessorEndianness {
-    Big,
-    Little,
-}
-
-impl From<SASTEndianness> for ProcessorEndianness {
-    fn from(endianness: SASTEndianness) -> Self {
-        match endianness {
-            SASTEndianness::Big => ProcessorEndianness::Big,
-            SASTEndianness::Little => ProcessorEndianness::Little,
-        }
-    }
+new_key_type! {
+    /// [MOIRIdent] is the identifier type that is used by the [ProcessorSpecification] and [ProcessorSpecificationBuilder]
+    /// to refer to individual [MOIRSymbol]s. Each [MOIRSymbol] in turn refers to the corresponding symbol table.
+    /// The [ProcessorSpecification] can be used to fetch a symbol for a given [MOIRIdent].
+    /// TODO: Improve docs
+    pub struct MOIRIdent;
 }
 
 #[derive(Debug)]
@@ -64,6 +60,8 @@ pub enum MOIRSymbol {
     Macro(MOIRMacroId),
     Space(MOIRAddressSpaceId),
     Table(MOIRTableId),
+    Token(MOIRTokenId),
+    Field(MOIRFieldId),
 }
 
 #[derive(Debug, Default)]

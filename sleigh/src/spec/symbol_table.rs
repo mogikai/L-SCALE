@@ -1,7 +1,37 @@
 use std::marker::PhantomData;
 
-#[derive(Debug, Default)]
+/// Creates a new symbol table identifier that can be used to index a [MOIRSymbolTable].
+#[macro_export(local_inner_macros)]
+macro_rules! new_symbol_id_type {
+    ( $(#[$outer:meta])* $vis:vis struct $name:ident; ) => {
+        $(#[$outer])*
+        #[derive(Debug, Eq, PartialEq, Copy, Clone)]
+        #[repr(transparent)]
+        $vis struct $name(usize);
+        impl From<usize> for $name {
+            fn from(value: usize) -> Self {
+                Self(value)
+            }
+        }
+
+        impl From<$name> for usize {
+            fn from(value: $name) -> Self {
+                value.0
+            }
+        }
+    };
+}
+
+#[derive(Debug)]
 pub struct MOIRSymbolTable<K, V>(Vec<V>, PhantomData<K>);
+impl<K, V> Default for MOIRSymbolTable<K, V> {
+    fn default() -> Self {
+        Self {
+            0: vec![],
+            1: Default::default(),
+        }
+    }
+}
 
 impl<K, V> MOIRSymbolTable<K, V> {
     pub fn len(&self) -> usize {

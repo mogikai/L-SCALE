@@ -1,9 +1,6 @@
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::InputSpan;
-use crate::spec::{
-    ProcessorEndianness,
-    ProcessorSpecificationError,
-};
+use crate::spec::ProcessorSpecificationError;
 use ariadne::{
     ColorGenerator,
     Fmt,
@@ -12,6 +9,7 @@ use ariadne::{
     ReportKind,
 };
 
+use crate::spec::endianness::MOIREndianness;
 use chumsky::span::Span;
 
 /// Generates an error report for IdentAlreadyExists errors.
@@ -39,7 +37,7 @@ pub fn generate_identifier_exists_report(
 }
 
 pub fn generate_endianness_already_specified_report(
-    old: &Spanned<ProcessorEndianness>,
+    old: &Spanned<MOIREndianness>,
     new: InputSpan,
 ) -> ProcessorSpecificationError {
     let mut colors = ColorGenerator::new();
