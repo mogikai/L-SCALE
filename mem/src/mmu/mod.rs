@@ -431,16 +431,17 @@ mod test {
     use crate::mmu::MogiMMU;
     use crate::PAGE_SIZE;
     use addr_align::Align;
-    use mogi_system::components::mmu::Permission;
-    use mogi_utilities::addresses::{
-        EPAddr,
+    use mogi_system::components::mmu::{
+        Permission,
+        MMU,
     };
-    use mogi_utilities::addresses::EVAddr;
+    use mogi_utilities::addresses::EPAddr;
 
     #[test]
     fn test() {
         let mut mmu = MogiMMU::new();
-        mmu.alloc_physical(0x8000u64.into(), 10000.align_up(PAGE_SIZE)).unwrap();
+        mmu.alloc_physical(0x8000u64.into(), 10000.align_up(PAGE_SIZE))
+            .unwrap();
         // 1 to 1 mapping
         mmu.set_page_fault_callback(Box::new(|mmu, addr, action| {
             mmu.set_page_table_entry(addr, EPAddr::from(u64::from(addr)), Permission::ALL);

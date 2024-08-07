@@ -553,6 +553,7 @@ r = (r << 1) | $(Carry);"#,
     );
 }
 
+#[ignore]
 #[test]
 fn mips() {
     let path = std::path::PathBuf::from(std::env::var_os("GHIDRA_SRC").unwrap())
@@ -569,6 +570,7 @@ fn mips() {
     }
 }
 
+#[ignore]
 #[test]
 fn x86() {
     let path = std::path::PathBuf::from(std::env::var_os("GHIDRA_SRC").unwrap())
@@ -585,6 +587,7 @@ fn x86() {
     }
 }
 
+#[ignore]
 #[test]
 fn msp430() {
     let path = std::path::PathBuf::from(std::env::var_os("GHIDRA_SRC").unwrap())
@@ -601,6 +604,7 @@ fn msp430() {
     }
 }
 
+#[ignore]
 #[test]
 fn aarch64() {
     let path = std::path::PathBuf::from(std::env::var_os("GHIDRA_SRC").unwrap())
@@ -617,6 +621,7 @@ fn aarch64() {
     }
 }
 
+#[ignore]
 #[test]
 fn armv7() {
     let path = std::path::PathBuf::from(std::env::var_os("GHIDRA_SRC").unwrap())

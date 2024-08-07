@@ -9,24 +9,12 @@ use std::path::{
 };
 
 use ariadne::{
-    ColorGenerator,
-    Fmt,
     Label,
     Report,
     ReportKind,
     Source,
 };
-use chumsky::container::Container;
-use chumsky::span::Span;
-use slotmap::{
-    new_key_type,
-    SlotMap,
-};
-use string_interner::backend::{
-    Backend,
-    StringBackend,
-};
-use string_interner::Symbol;
+use slotmap::new_key_type;
 use tracing::{
     debug,
     trace,
@@ -71,7 +59,6 @@ use crate::spec::moir::address_space::{
     MOIRSpaceIsDefault,
     MOIRSpaceType,
 };
-use crate::spec::moir::endianness::MOIREndianness;
 use crate::spec::moir::field::MOIRField;
 use crate::spec::moir::r#macro::MOIRMacro;
 use crate::spec::moir::token::{
