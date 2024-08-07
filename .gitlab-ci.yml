@@ -9,7 +9,7 @@
 
 # Official language image. Look for the different tagged releases at:
 # https://hub.docker.com/r/library/rust/tags/
-image: "rustlang/rust:nightly"
+image: "$CI_REGISTRY/runner:latest"
 
 variables:
   GIT_SUBMODULE_STRATEGY: recursive
@@ -47,6 +47,13 @@ before_script:
     clang-13
     lld-13
     zstd
+
+build_runner:
+  image: docker
+  script:
+    - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+    - docker build --build-arg CI_TAG="$CI_COMMIT_TAG" --no-cache --pull -t "runner:latest" -f "runner.Dockerfile" "."
+    - docker push "$DOCKER_IMAGE_NAME:$DOCKER_TAG"
 
 # Use cargo to test the project
 test:cargo:
