@@ -34,7 +34,8 @@ pub struct SASTAddressSpace {
 pub struct SASTRegister {
     pub spacename: Spanned<SASTIdent>,
     pub offset: Spanned<u64>, // offset in register address space
-    pub size: Spanned<u64>,
+    /// The size of the varnode in bytes
+    pub size: Spanned<u16>,
     pub regnames: Vec<Spanned<SASTIdent>>,
 }
 

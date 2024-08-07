@@ -13,11 +13,11 @@ pub struct MOIRVarNode {
     /// is designated for storing certain values. For example, there may be a register
     /// space that is designated to saving the cpus registers when they are evicted from
     /// the host register.
-    space: MOIRSpaceId,
+    pub space: MOIRSpaceId,
     /// The offset specifies the offset from the start address of the space.
-    offset: u64,
+    pub offset: u64,
     /// The size specifies the size in bytes of the varnode.
-    size: u16,
+    pub size: u16,
 }
 
 new_symbol_id_type! { pub struct MOIRVarNodeId; }

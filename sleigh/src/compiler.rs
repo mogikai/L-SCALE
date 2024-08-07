@@ -42,6 +42,7 @@ use crate::compiler::ast::define::{
     SASTAlignment,
     SASTDefine,
     SASTEndianness,
+    SASTRegister,
     SASTToken,
     SASTTokenField,
 };
@@ -77,6 +78,7 @@ use crate::spec::moir::token::{
     MOIRToken,
     MOIRTokenId,
 };
+use crate::spec::moir::varnode::MOIRVarNode;
 use crate::spec::{
     ProcessorSpecification,
     ProcessorSpecificationError,
@@ -107,8 +109,14 @@ pub(crate) trait CompilerContext {
     /// Otherwise, a new entry is created and the key to that is returned.
     fn intern<T: AsRef<str>>(
         &mut self,
-        string: &T,
+        string: T,
     ) -> StringId;
+
+    /// Get the id for an interned string if it exists.
+    fn lookup<T: AsRef<str>>(
+        &self,
+        string: T,
+    ) -> Option<StringId>;
 
     fn string(
         &self,
@@ -124,7 +132,7 @@ pub struct SleighCompiler {
     lexer: SleighLexer<ProcessorSpecificationBuilder>,
     parser: SleighParser,
     input_cache: CompilerInputCache,
-    specification: ProcessorSpecificationBuilder,
+    spec_builder: ProcessorSpecificationBuilder,
     errors: Vec<Box<Report<'static, InputSpan>>>,
 }
 
@@ -147,10 +155,10 @@ impl SleighCompiler {
         let tokens = self.load_and_preprocess(spec_path)?;
         let ast = self
             .parser
-            .parse(&mut self.input_cache, &mut self.specification, tokens)?;
+            .parse(&mut self.input_cache, &mut self.spec_builder, tokens)?;
         self.build(ast)?;
         if self.errors.is_empty() {
-            Ok(self.specification.build()?)
+            Ok(self.spec_builder.build()?)
         } else {
             let mut error_description = vec![];
             let error_count = self.errors.len();
@@ -189,14 +197,14 @@ impl SleighCompiler {
                 // If the input was already tokenized, we can continue, otherwise tokenize now.
                 let tokens = self
                     .lexer
-                    .tokenize(&mut self.input_cache, &mut self.specification, input_id)?;
+                    .tokenize(&mut self.input_cache, &mut self.spec_builder, input_id)?;
                 debug!("Tokenized input {input_id:?}");
                 self.input_cache.attach_tokens(input_id, tokens)?;
             }
             // Parse the input that was loaded
             preprocessor.parse_input(&mut self.input_cache, input_id)?;
             // Continue preprocessing
-            match preprocessor.preprocess(&mut self.input_cache, &mut self.specification) {
+            match preprocessor.preprocess(&mut self.input_cache, &mut self.spec_builder) {
                 Ok(tokens) => break tokens,
                 Err(PreprocessorError::LoadingRequired(id)) => input_id = id,
                 Err(e) => Err(SleighCompilerError::from(e))?,
@@ -240,8 +248,8 @@ impl SleighCompiler {
         trace!("Processing constructor statement");
         let (constructor, span) = constructor.into_tuple();
         let table = match constructor.table.lift_option() {
-            None => self.specification.modify_root_table()?,
-            Some(id) => self.specification.modify_table(id)?,
+            None => self.spec_builder.modify_root_table()?,
+            Some(id) => self.spec_builder.modify_table(id)?,
         };
         self.validate_constraint(constructor.bit_pattern_section.into_value().constraint)?;
         // TODO: we need to walk the constraint and find out the tokens that are used.
@@ -274,12 +282,44 @@ impl SleighCompiler {
             SASTDefine::Endianness(endianness) => self.process_define_endianness(endianness),
             SASTDefine::Alignment(alignment) => self.process_define_alignment(alignment),
             SASTDefine::AddressSpace(space) => self.process_define_space(space),
-            SASTDefine::Register(_) => Ok(()),
+            SASTDefine::Register(varnodes) => self.process_define_varnodes(varnodes),
             SASTDefine::BitrangeRegister(_) => Ok(()),
             SASTDefine::UserPcodeOp(_) => Ok(()),
             SASTDefine::Token(token) => self.process_define_token(token),
             SASTDefine::Context(_) => Ok(()),
         }
+    }
+
+    fn process_define_varnodes(
+        &mut self,
+        varnodes: Spanned<SASTRegister>,
+    ) -> SleighCompilerResult {
+        let (varnodes, span) = varnodes.into_tuple();
+        let result = self
+            .spec_builder
+            .space_id_by_ident(varnodes.spacename.transmute());
+
+        let Some(space) = self.report_error_or_unwrap(result)? else {
+            // We reported an error already. Quit here for this define and try to continue.
+            return Ok(());
+        };
+
+        for (i, reg_name) in varnodes.regnames.into_iter().enumerate() {
+            if self.spec_builder.is_placeholder_ident((*reg_name).into())? {
+                // Placeholders are skipped.
+                continue;
+            }
+            let varnode = MOIRVarNode {
+                space,
+                offset: varnodes.offset.value() + (i as u64 * u64::from(*varnodes.size)),
+                size: *varnodes.size,
+            };
+            let result = self
+                .spec_builder
+                .define_varnode(reg_name.transmute(), varnode);
+            self.report_error_or_unwrap(result)?;
+        }
+        Ok(())
     }
 
     fn process_define_space(
@@ -332,7 +372,7 @@ impl SleighCompiler {
             address_size,
             wordsize: word_size.unwrap_or(1),
         };
-        self.specification
+        self.spec_builder
             .define_space(space.name.transmute(), moir_space, default)?;
         Ok(())
     }
@@ -345,7 +385,7 @@ impl SleighCompiler {
         // We first define the token and then we can define its fields, since they need to refer to the token.
         let (token, _) = token.into_tuple();
         let bits = token.bits.into_value();
-        let result = self.specification.define_token(
+        let result = self.spec_builder.define_token(
             token.name.transmute(),
             MOIRToken {
                 bits,
@@ -356,7 +396,7 @@ impl SleighCompiler {
             for field in token.fields.into_iter() {
                 let name = field.name.clone().transmute();
                 if let Some(field) = self.make_field(token_id, bits, field)? {
-                    let result = self.specification.define_field(name, field);
+                    let result = self.spec_builder.define_field(name, field);
                     self.report_error_or_unwrap(result)?;
                 }
             }
@@ -396,7 +436,7 @@ impl SleighCompiler {
         &mut self,
         endianness: Spanned<SASTEndianness>,
     ) -> SleighCompilerResult {
-        let result = self.specification.define_endianness(endianness.transmute());
+        let result = self.spec_builder.define_endianness(endianness.transmute());
         self.report_error_or_unwrap(result)?;
         Ok(())
     }
@@ -405,7 +445,7 @@ impl SleighCompiler {
         &mut self,
         alignment: Spanned<SASTAlignment>,
     ) -> SleighCompilerResult {
-        let result = self.specification.define_alignment(alignment.transmute());
+        let result = self.spec_builder.define_alignment(alignment.transmute());
         self.report_error_or_unwrap(result)?;
         Ok(())
     }
@@ -424,7 +464,7 @@ impl SleighCompiler {
         pcode_macro: Spanned<SASTPCodeMacro>,
     ) -> SleighCompilerResult {
         trace!("Processing pcode macro at {:?}", pcode_macro.span());
-        let result = self.specification.define_macro(
+        let result = self.spec_builder.define_macro(
             pcode_macro.into_value().ident.transmute(),
             MOIRMacro {
                 arguments: vec![],
@@ -463,7 +503,7 @@ impl SleighCompiler {
             lexer: Default::default(),
             parser: Default::default(),
             input_cache: Default::default(),
-            specification: Default::default(),
+            spec_builder: Default::default(),
             errors: vec![],
         }
     }

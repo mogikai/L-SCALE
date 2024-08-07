@@ -64,13 +64,13 @@ pub struct StringId(usize);
 
 #[derive(Debug, Default)]
 /// A transparent helper struct that contains all the symbol tables to make the builder more manageable.
-struct SymbolTables {
-    macros: MOIRSymbolTable<MOIRMacroId, MOIRMacro>,
-    spaces: MOIRSymbolTable<MOIRSpaceId, MOIRSpace>,
-    tables: MOIRSymbolTable<MOIRTableId, MOIRTable>,
-    varnodes: MOIRSymbolTable<MOIRVarNodeId, MOIRVarNode>,
-    tokens: MOIRSymbolTable<MOIRTokenId, MOIRToken>,
-    fields: MOIRSymbolTable<MOIRFieldId, MOIRField>,
+pub(super) struct SymbolTables {
+    pub(super) macros: MOIRSymbolTable<MOIRMacroId, MOIRMacro>,
+    pub(super) spaces: MOIRSymbolTable<MOIRSpaceId, MOIRSpace>,
+    pub(super) tables: MOIRSymbolTable<MOIRTableId, MOIRTable>,
+    pub(super) varnodes: MOIRSymbolTable<MOIRVarNodeId, MOIRVarNode>,
+    pub(super) tokens: MOIRSymbolTable<MOIRTokenId, MOIRToken>,
+    pub(super) fields: MOIRSymbolTable<MOIRFieldId, MOIRField>,
 }
 
 #[derive(Debug)]
@@ -102,6 +102,10 @@ pub struct ProcessorSpecificationBuilder {
     /// The default space. It has to be set at one point, and only once.
     /// The Ident is spanned with the location of the first definition.
     default_space: Option<Spanned<MOIRIdent>>,
+
+    /// The `_` character has special meaning as a placeholder in e.g. stringlists.
+    /// The id of the character is stored here for quick comparison.
+    placeholder_ident: StringId,
 }
 
 impl ProcessorSpecificationBuilder {
@@ -162,6 +166,17 @@ impl ProcessorSpecificationBuilder {
         let space_id = self.symbol_tables.spaces.insert(space);
         self.define_symbol(symbol_id, MOIRSymbol::Space(space_id))?;
         self.default_space = Some(Spanned::new(symbol_id, span));
+        Ok(symbol_id)
+    }
+
+    pub(crate) fn define_varnode(
+        &mut self,
+        ident: Spanned<StringId>,
+        varnode: MOIRVarNode,
+    ) -> Result<MOIRIdent, ProcessorSpecificationError> {
+        let symbol_id = self.declare_symbol(ident)?;
+        let varnode_id = self.symbol_tables.varnodes.insert(varnode);
+        self.define_symbol(symbol_id, MOIRSymbol::VarNode(varnode_id))?;
         Ok(symbol_id)
     }
 
@@ -270,6 +285,29 @@ impl ProcessorSpecificationBuilder {
         Ok(())
     }
 
+    pub(crate) fn space_id_by_ident(
+        &self,
+        ident: Spanned<StringId>,
+    ) -> Result<MOIRSpaceId, ProcessorSpecificationError> {
+        self.string_to_ident_mapping
+            .get(ident.value())
+            .and_then(|id| {
+                self.symbols.get(*id).and_then(|id| match id {
+                    MOIRSymbol::Space(space_id) => Some(*space_id),
+                    _ => None,
+                })
+            })
+            // TODO: Produce error report instead
+            .ok_or(ProcessorSpecificationError::SymbolUndeclared)
+    }
+
+    pub(crate) fn is_placeholder_ident(
+        &self,
+        ident: StringId,
+    ) -> Result<bool, ProcessorSpecificationError> {
+        Ok(self.placeholder_ident == ident)
+    }
+
     pub(crate) fn resolve_string_id(
         &self,
         ident: StringId,
@@ -282,6 +320,7 @@ impl ProcessorSpecificationBuilder {
 impl Default for ProcessorSpecificationBuilder {
     fn default() -> Self {
         let mut interner = StringInterner::new();
+        let placeholder_ident = interner.intern(&"_");
         let root_table = Spanned::new(interner.intern(&"instruction"), InputSpan::default());
         let mut slf = Self {
             interner,
@@ -293,6 +332,7 @@ impl Default for ProcessorSpecificationBuilder {
             string_to_ident_mapping: Default::default(),
             root_table,
             default_space: None,
+            placeholder_ident,
         };
         // Call modify once to create the table.
         slf.modify_root_table()
@@ -314,16 +354,45 @@ impl ProcessorSpecificationBuilder {
         debug!("Found {} tokens", self.symbol_tables.tokens.len());
         debug!("Found {} fields", self.symbol_tables.fields.len());
         debug!("Found {} spaces", self.symbol_tables.spaces.len());
-        Ok(Default::default())
+        debug!("Found {} global varnodes", self.symbol_tables.varnodes.len());
+
+        // TODO: Generate more helpful error reports during final build step
+        let spec = ProcessorSpecification {
+            // The endianness must be defined, so we return an error if it is undefined at this point.
+            interner: self.interner,
+            symbols: self.symbols,
+            symbol_strings: self.symbol_strings,
+            symbol_tables: self.symbol_tables,
+            string_to_ident_mapping: self.string_to_ident_mapping,
+            root_table: self.root_table.into_value(),
+            default_space: self
+                .default_space
+                .ok_or(ProcessorSpecificationError::MissingDefaultSpace)?
+                .into_value(),
+            endianness: self
+                .endianness
+                .ok_or(ProcessorSpecificationError::MissingEndiannessDefinition)?
+                .into_value(),
+            // The default alignment is 1
+            alignment: self.alignment.map(Spanned::into_value).unwrap_or(1),
+        };
+        Ok(spec)
     }
 }
 
 impl CompilerContext for StringInterner<StringBackend> {
     fn intern<T: AsRef<str>>(
         &mut self,
-        string: &T,
+        string: T,
     ) -> StringId {
         StringId(self.get_or_intern(string).to_usize())
+    }
+
+    fn lookup<T: AsRef<str>>(
+        &self,
+        string: T,
+    ) -> Option<StringId> {
+        self.get(string).map(|id| StringId(id.to_usize()))
     }
 
     fn string(
@@ -337,9 +406,16 @@ impl CompilerContext for StringInterner<StringBackend> {
 impl CompilerContext for ProcessorSpecificationBuilder {
     fn intern<T: AsRef<str>>(
         &mut self,
-        string: &T,
+        string: T,
     ) -> StringId {
         self.interner.intern(string)
+    }
+
+    fn lookup<T: AsRef<str>>(
+        &self,
+        string: T,
+    ) -> Option<StringId> {
+        self.interner.lookup(string)
     }
 
     /// Resolve a string id to the corresponding interned string.
