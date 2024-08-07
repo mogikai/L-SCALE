@@ -9,7 +9,7 @@ use moir::token::MOIRTokenId;
 use moir::varnode::MOIRVarNode;
 
 use crate::compiler::lexer::InputSpan;
-use crate::spec::moir::address_space::MOIRAddressSpaceId;
+use crate::spec::moir::address_space::MOIRSpaceId;
 use crate::spec::moir::r#macro::MOIRMacroId;
 use crate::spec::moir::table::MOIRTableId;
 use crate::spec::symbol_table::MOIRSymbolTable;
@@ -32,7 +32,7 @@ pub enum MOIRSymbol {
     /// The identifier is not defined yet and can be used to define a symbol.
     Undefined,
     Macro(MOIRMacroId),
-    Space(MOIRAddressSpaceId),
+    Space(MOIRSpaceId),
     Table(MOIRTableId),
     Token(MOIRTokenId),
     Field(MOIRFieldId),

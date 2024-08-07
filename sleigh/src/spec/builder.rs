@@ -22,7 +22,10 @@ use tracing::debug;
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::CompilerContext;
-use crate::spec::moir::address_space::MOIRAddressSpace;
+use crate::spec::moir::address_space::{
+    MOIRSpace,
+    MOIRSpaceIsDefault,
+};
 use crate::spec::moir::endianness::MOIREndianness;
 use crate::spec::moir::field::{
     MOIRField,
@@ -45,9 +48,9 @@ use crate::spec::reporting::{
 };
 use crate::spec::symbol_table::MOIRSymbolTable;
 use crate::spec::{
-    MOIRAddressSpaceId,
     MOIRIdent,
     MOIRMacroId,
+    MOIRSpaceId,
     MOIRSymbol,
     MOIRTableId,
     ProcessorSpecification,
@@ -63,7 +66,7 @@ pub struct StringId(usize);
 /// A transparent helper struct that contains all the symbol tables to make the builder more manageable.
 struct SymbolTables {
     macros: MOIRSymbolTable<MOIRMacroId, MOIRMacro>,
-    address_spaces: MOIRSymbolTable<MOIRAddressSpaceId, MOIRAddressSpace>,
+    spaces: MOIRSymbolTable<MOIRSpaceId, MOIRSpace>,
     tables: MOIRSymbolTable<MOIRTableId, MOIRTable>,
     varnodes: MOIRSymbolTable<MOIRVarNodeId, MOIRVarNode>,
     tokens: MOIRSymbolTable<MOIRTokenId, MOIRToken>,
@@ -96,6 +99,9 @@ pub struct ProcessorSpecificationBuilder {
     string_to_ident_mapping: HashMap<StringId, MOIRIdent>,
 
     root_table: Spanned<StringId>,
+    /// The default space. It has to be set at one point, and only once.
+    /// The Ident is spanned with the location of the first definition.
+    default_space: Option<Spanned<MOIRIdent>>,
 }
 
 impl ProcessorSpecificationBuilder {
@@ -137,6 +143,25 @@ impl ProcessorSpecificationBuilder {
         let symbol_id = self.declare_symbol(ident)?;
         let macro_id = self.symbol_tables.macros.insert(moir_macro);
         self.define_symbol(symbol_id, MOIRSymbol::Macro(macro_id))?;
+        Ok(symbol_id)
+    }
+
+    pub(crate) fn define_space(
+        &mut self,
+        ident: Spanned<StringId>,
+        space: MOIRSpace,
+        default: MOIRSpaceIsDefault,
+    ) -> Result<MOIRIdent, ProcessorSpecificationError> {
+        if matches!(default, MOIRSpaceIsDefault::Default) && self.default_space.is_some() {
+            todo!("Generate report that default space is already set")
+        }
+        // We take the span of the identifier to later add it to the symbol so we can find out where
+        // the default was previously defined.
+        let span = ident.span().clone();
+        let symbol_id = self.declare_symbol(ident)?;
+        let space_id = self.symbol_tables.spaces.insert(space);
+        self.define_symbol(symbol_id, MOIRSymbol::Space(space_id))?;
+        self.default_space = Some(Spanned::new(symbol_id, span));
         Ok(symbol_id)
     }
 
@@ -267,6 +292,7 @@ impl Default for ProcessorSpecificationBuilder {
             alignment: None,
             string_to_ident_mapping: Default::default(),
             root_table,
+            default_space: None,
         };
         // Call modify once to create the table.
         slf.modify_root_table()
@@ -287,6 +313,7 @@ impl ProcessorSpecificationBuilder {
         debug!("Found {} macros", self.symbol_tables.macros.len());
         debug!("Found {} tokens", self.symbol_tables.tokens.len());
         debug!("Found {} fields", self.symbol_tables.fields.len());
+        debug!("Found {} spaces", self.symbol_tables.spaces.len());
         Ok(Default::default())
     }
 }

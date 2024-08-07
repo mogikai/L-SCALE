@@ -80,20 +80,20 @@ impl EVAddress for BasicBlock {
 }
 
 #[repr(C)]
-struct Registers {
+struct Space {
     /// The storage vec contains all registers and temporaries in a serialized form.
     /// Each variable has an index and size.
     storage: [u8; 0x1000],
 }
 
-impl Registers {
+impl Space {
     fn new() -> Self {
         Self { storage: [0u8; 0x1000] }
     }
 }
 
 pub struct X86JitContext {
-    registers: Registers,
+    spaces: Vec<Space>,
     pc: usize,
 }
 
@@ -229,7 +229,7 @@ impl MogiJit for X86MogiJit {
 
     fn new_context(&self) -> Self::Context {
         X86JitContext {
-            registers: Registers::new(),
+            spaces: vec![Space::new()],
             pc: 0,
         }
     }

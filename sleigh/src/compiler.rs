@@ -37,6 +37,8 @@ use inputcache::CompilerInputCache;
 use crate::compiler::ast::constructor::bit_pattern_section::SASTBitPatternConstraint;
 use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::ast::define::{
+    SASTAddressSpace,
+    SASTAddressSpaceAttribute,
     SASTAlignment,
     SASTDefine,
     SASTEndianness,
@@ -62,6 +64,11 @@ use crate::preprocessor::SleighPreprocessorFactory;
 use crate::spec::builder::{
     ProcessorSpecificationBuilder,
     StringId,
+};
+use crate::spec::moir::address_space::{
+    MOIRSpace,
+    MOIRSpaceIsDefault,
+    MOIRSpaceType,
 };
 use crate::spec::moir::endianness::MOIREndianness;
 use crate::spec::moir::field::MOIRField;
@@ -266,13 +273,68 @@ impl SleighCompiler {
         match define.into_value() {
             SASTDefine::Endianness(endianness) => self.process_define_endianness(endianness),
             SASTDefine::Alignment(alignment) => self.process_define_alignment(alignment),
-            SASTDefine::AddressSpace(_) => Ok(()),
+            SASTDefine::AddressSpace(space) => self.process_define_space(space),
             SASTDefine::Register(_) => Ok(()),
             SASTDefine::BitrangeRegister(_) => Ok(()),
             SASTDefine::UserPcodeOp(_) => Ok(()),
             SASTDefine::Token(token) => self.process_define_token(token),
             SASTDefine::Context(_) => Ok(()),
         }
+    }
+
+    fn process_define_space(
+        &mut self,
+        space: Spanned<SASTAddressSpace>,
+    ) -> SleighCompilerResult {
+        let (space, _) = space.into_tuple();
+        let mut r#type = None;
+        let mut address_size = None;
+        let mut word_size = None;
+        let mut default = MOIRSpaceIsDefault::NotDefault;
+        for (attribute, _) in space.attributes.into_iter().map(Spanned::into_tuple) {
+            match attribute {
+                SASTAddressSpaceAttribute::Type(ty) => {
+                    if r#type.is_some() {
+                        todo!("Generate error report for duplicate space type attribute.")
+                    } else {
+                        r#type = Some(ty.into());
+                    }
+                }
+                SASTAddressSpaceAttribute::Size(size) => {
+                    if address_size.is_some() {
+                        todo!("Generate error report for duplicate size attribute.")
+                    } else {
+                        address_size = Some(size);
+                    }
+                }
+                SASTAddressSpaceAttribute::Wordsize(size) => {
+                    if word_size.is_some() {
+                        todo!("Generate error report for duplicate word size attribute.")
+                    } else {
+                        word_size = Some(size);
+                    }
+                }
+                SASTAddressSpaceAttribute::IsDefault => {
+                    if matches!(default, MOIRSpaceIsDefault::Default) {
+                        todo!("Generate error report for duplicate default attribute.")
+                    } else {
+                        default = MOIRSpaceIsDefault::Default;
+                    }
+                }
+            }
+        }
+        let Some(address_size) = address_size else {
+            todo!("Generate error report for missing size attribute.");
+            return Ok(());
+        };
+        let moir_space = MOIRSpace {
+            r#type: r#type.unwrap_or(MOIRSpaceType::Ram),
+            address_size,
+            wordsize: word_size.unwrap_or(1),
+        };
+        self.specification
+            .define_space(space.name.transmute(), moir_space, default)?;
+        Ok(())
     }
 
     fn process_define_token(
