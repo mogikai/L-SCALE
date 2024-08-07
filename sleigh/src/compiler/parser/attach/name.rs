@@ -30,7 +30,8 @@ pub(super) fn name<'tokens>(
             .delimited_by(
                 sleigh_control(SleighControlCharacter::OpenBracket),
                 sleigh_control(SleighControlCharacter::CloseBracket),
-            ));
+            ))
+        .boxed();
 
     sleigh_keyword(SleighKeyword::Names)
         .padded_by(sleigh_whitespace())
@@ -39,4 +40,5 @@ pub(super) fn name<'tokens>(
         .then(stringlist) // alternative strings
         .map(|(fields, strings)| SASTName { fields, strings })
         .map_with(spanned)
+        .boxed()
 }

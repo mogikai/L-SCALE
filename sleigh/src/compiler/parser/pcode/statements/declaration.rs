@@ -33,4 +33,5 @@ pub fn pcode_declaration_statement<'tokens>(
         .then_ignore(sleigh_control(SleighControlCharacter::SemiColon))
         .map(|(ident, size)| SASTPCodeStatement::Declaration(ident, size))
         .map_with(spanned)
+        .boxed()
 }

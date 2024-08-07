@@ -44,7 +44,8 @@ pub(super) fn token<'tokens>(
             sleigh_control(SleighControlCharacter::OpenParen),
             sleigh_control(SleighControlCharacter::CloseParen),
         )
-        .map(|((start, _), end)| (start, end));
+        .map(|((start, _), end)| (start, end))
+        .boxed();
 
     let attribute = select! {
         SleighToken::Keyword(SleighKeyword::Signed) => SASTTokenFieldAttribute::Signed,
@@ -56,7 +57,8 @@ pub(super) fn token<'tokens>(
         .map_with(spanned)
         .padded_by(sleigh_whitespace())
         .repeated()
-        .collect::<Vec<_>>();
+        .collect::<Vec<_>>()
+        .boxed();
 
     let field = sast_ident_spanned()
         .then(whitespace_padded(sleigh_operation(SleighOperation::Equals)))
@@ -69,7 +71,8 @@ pub(super) fn token<'tokens>(
             end,
             attributes,
         })
-        .map_with(spanned);
+        .map_with(spanned)
+        .boxed();
 
     sleigh_keyword(SleighKeyword::Token)
         .padded_by(sleigh_whitespace())
@@ -99,4 +102,5 @@ pub(super) fn token<'tokens>(
             fields,
         })
         .map_with(spanned)
+        .boxed()
 }

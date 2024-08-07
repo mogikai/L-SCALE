@@ -20,4 +20,5 @@ pub fn semantic_section<'tokens, 'src: 'tokens>(
         )
         .map(SASTSemanticSection)
         .map_with(spanned)
+        .boxed()
 }

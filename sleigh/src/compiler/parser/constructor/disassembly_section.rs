@@ -28,13 +28,15 @@ use crate::compiler::tokens::{
 
 pub fn disassembly_section<'tokens, 'src: 'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTDisassemblySection>, SleighParserExtra<'tokens>> {
+    // TODO: This needs some cleanup.
     let expression = recursive(|expr| {
         let terminal = sast_ident()
             .map(SASTPatternExpression::Symbol)
             .or(sleigh_number()
                 .map(|num: u64| num as _)
                 .map(SASTPatternExpression::Integer))
-            .map_with(spanned);
+            .map_with(spanned)
+            .boxed();
 
         let atom = terminal.or(expr.delimited_by(
             whitespace_padded(sleigh_control(SleighControlCharacter::OpenParen)),
@@ -45,17 +47,23 @@ pub fn disassembly_section<'tokens, 'src: 'tokens>(
         let unary = sleigh_operation(SleighOperation::BitNegate)
             .or(sleigh_operation(SleighOperation::Not))
             .repeated()
-            .foldr_with(atom, |_, rhs, extra| Spanned::new(SASTPatternExpression::Not(Box::new(rhs)), extra.span()));
+            .foldr_with(atom, |_, rhs, extra| Spanned::new(SASTPatternExpression::Not(Box::new(rhs)), extra.span()))
+            .boxed();
 
-        let product = unary.clone().foldl_with(
-            whitespace_padded(sleigh_operation(SleighOperation::Star))
-                .to(SASTPatternExpression::Mul as fn(_, _) -> _)
-                .or(whitespace_padded(sleigh_operation(SleighOperation::Division))
-                    .to(SASTPatternExpression::Div as fn(_, _) -> _))
-                .then(unary)
-                .repeated(),
-            |lhs, (op, rhs), extra| Spanned::new(op(Box::new(lhs), Box::new(rhs)), extra.span()),
-        );
+        // TODO: Each of these parsers can most likely be unified into one binary operation parser.
+
+        let product = unary
+            .clone()
+            .foldl_with(
+                whitespace_padded(sleigh_operation(SleighOperation::Star))
+                    .to(SASTPatternExpression::Mul as fn(_, _) -> _)
+                    .or(whitespace_padded(sleigh_operation(SleighOperation::Division))
+                        .to(SASTPatternExpression::Div as fn(_, _) -> _))
+                    .then(unary)
+                    .repeated(),
+                |lhs, (op, rhs), extra| Spanned::new(op(Box::new(lhs), Box::new(rhs)), extra.span()),
+            )
+            .boxed();
 
         let sum = product
             .clone()
@@ -79,13 +87,16 @@ pub fn disassembly_section<'tokens, 'src: 'tokens>(
         )
         .ignored();
 
-        let shift = sum.clone().foldl_with(
-            shl.to(SASTPatternExpression::Shl as fn(_, _) -> _)
-                .or(shr.to(SASTPatternExpression::Shr as fn(_, _) -> _))
-                .then(sum)
-                .repeated(),
-            |lhs, (op, rhs), extra| Spanned::new(op(Box::new(lhs), Box::new(rhs)), extra.span()),
-        );
+        let shift = sum
+            .clone()
+            .foldl_with(
+                shl.to(SASTPatternExpression::Shl as fn(_, _) -> _)
+                    .or(shr.to(SASTPatternExpression::Shr as fn(_, _) -> _))
+                    .then(sum)
+                    .repeated(),
+                |lhs, (op, rhs), extra| Spanned::new(op(Box::new(lhs), Box::new(rhs)), extra.span()),
+            )
+            .boxed();
 
         let and = shift
             .clone()
@@ -126,7 +137,8 @@ pub fn disassembly_section<'tokens, 'src: 'tokens>(
         .then(expression)
         .then_ignore(whitespace_padded(sleigh_control(SleighControlCharacter::SemiColon)))
         .map(|((ident, _), e)| SASTAction { lhs: ident, rhs: e })
-        .map_with(spanned);
+        .map_with(spanned)
+        .boxed();
 
     whitespace_padded(
         whitespace_padded(action)
@@ -140,6 +152,7 @@ pub fn disassembly_section<'tokens, 'src: 'tokens>(
             .map(|actions| SASTDisassemblySection { actions })
             .map_with(spanned),
     )
+    .boxed()
 }
 
 #[cfg(test)]

@@ -22,7 +22,9 @@ pub(super) fn target_expression<'tokens, 'src: 'tokens>(
     let bitrange = pcode_bitrange().map(SASTPCodeTargetExpression::BitRange);
     let store = pcode_deref(pcode_expression()).map(SASTPCodeTargetExpression::Store);
 
-    choice((store, subpiece, bitrange, ident)).map_with(spanned)
+    choice((store, subpiece, bitrange, ident))
+        .map_with(spanned)
+        .boxed()
 }
 
 #[cfg(test)]

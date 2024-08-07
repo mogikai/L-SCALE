@@ -26,7 +26,7 @@ pub fn with_block<'tokens, P>(
     items: P
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTWith>, SleighParserExtra<'tokens>>
 where
-    P: Parser<'tokens, ParserInput<'tokens>, Vec<SASTItem>, SleighParserExtra<'tokens>> + Clone,
+    P: Parser<'tokens, ParserInput<'tokens>, Vec<SASTItem>, SleighParserExtra<'tokens>> + Clone + 'tokens,
 {
     // The table can be either an identifier or it may be omitted, in which case the table referenced
     // will be the root table.
@@ -51,4 +51,5 @@ where
             items,
         })
         .map_with(spanned)
+        .boxed()
 }

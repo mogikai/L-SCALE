@@ -40,23 +40,25 @@ pub fn display_section<'tokens>(
         .collect::<Vec<String>>()
         .map(|s| s.into_iter().collect::<String>())
         .map_with(spanned)
-        .rewind();
-    let display = any().rewind().map(|_| String::new()).map_with(spanned);
+        .rewind()
+        .boxed();
+    // let display = any().rewind().map(|_| String::new()).map_with(spanned);
 
     // Parse mnemonic, removing any `^` and rewind.
     // If we encounter a whitespace in the beginning, the mnemonic is empty.
     let mnemonic = just(SleighToken::Whitespace)
         .to(String::new())
         .map_with(spanned)
-        .or(none_of((SleighToken::Whitespace))
+        .or(none_of(SleighToken::Whitespace)
             .then_ignore(sleigh_operation(SleighOperation::Hat).or_not())
             .map(|token: SleighToken| token.to_mnemonic().to_string())
             .repeated()
             .collect::<Vec<_>>()
             .map(|element| element.into_iter().collect::<String>())
             .map_with(spanned))
-        .rewind();
-    let mnemonic = any().rewind().map(|_| String::new()).map_with(spanned);
+        .rewind()
+        .boxed();
+    // let mnemonic = any().rewind().map(|_| String::new()).map_with(spanned);
 
     let not_ident = any().and_is(
         select! {
@@ -71,7 +73,8 @@ pub fn display_section<'tokens>(
         .map_with(spanned)
         .repeated()
         .collect::<Vec<_>>()
-        .then_ignore(end_of_display_section.clone());
+        .then_ignore(end_of_display_section.clone())
+        .boxed();
 
     let no_identifiers = not_ident
         .repeated()
@@ -88,6 +91,7 @@ pub fn display_section<'tokens>(
             display_str,
         })
         .map_with(spanned)
+        .boxed()
 }
 
 #[cfg(test)]

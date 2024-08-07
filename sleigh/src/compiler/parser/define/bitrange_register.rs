@@ -49,5 +49,7 @@ pub(super) fn bitrange_register<'tokens>(
         })
         .map_with(spanned);
 
-    sleigh_keyword(SleighKeyword::BitRange).ignore_then(whitespace_padded(register).repeated().collect::<Vec<_>>())
+    sleigh_keyword(SleighKeyword::BitRange)
+        .ignore_then(whitespace_padded(register).repeated().collect::<Vec<_>>())
+        .boxed()
 }

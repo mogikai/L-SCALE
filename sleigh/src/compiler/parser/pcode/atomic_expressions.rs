@@ -3,7 +3,6 @@ use std::fmt::{
     Display,
 };
 
-use chumsky::error::Rich;
 use chumsky::prelude::{
     none_of,
     via_parser,
@@ -95,6 +94,7 @@ pub fn pcode_subpiece<'tokens>(
         .or(paren_subpiece)
         .map(|(target, size)| SASTPCodeSubpiece { target, size })
         .map_with(spanned)
+        .boxed()
 }
 
 pub fn pcode_bitrange<'tokens>(
@@ -109,6 +109,7 @@ pub fn pcode_bitrange<'tokens>(
         )
         .map(|(ident, (lsb, bits))| SASTPCodeBitRange { ident, lsb, bits })
         .map_with(spanned)
+        .boxed()
 }
 
 /// Parse a pcode label identified by `<some_label>`.
@@ -124,7 +125,9 @@ pub fn pcode_deref<'tokens, P>(
     expression_parser: P
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeDeref>, SleighParserExtra<'tokens>> + Clone
 where
-    P: Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeExpression>, SleighParserExtra<'tokens>> + Clone,
+    P: Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeExpression>, SleighParserExtra<'tokens>>
+        + Clone
+        + 'tokens,
 {
     let space_recovery = none_of(SleighToken::Control(CloseBracket))
         .repeated()
@@ -150,6 +153,7 @@ where
             size,
         })
         .map_with(spanned)
+        .boxed()
 }
 
 pub fn pcode_address_of<'tokens, P>(

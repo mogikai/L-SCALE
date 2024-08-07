@@ -163,7 +163,7 @@ fn items_parser<'tokens, 'src: 'tokens>(
             .collect::<Vec<_>>()
             .map(|items| items.into_iter().flatten().collect()),
     );
-    items
+    items.boxed()
 }
 
 fn sleigh_inline_whitespace<'tokens, 'src, E>() -> impl Parser<'tokens, ParserInput<'tokens>, (), E> + Clone
@@ -240,6 +240,7 @@ where
         .recover_with(via_parser(
             parsed_number.try_map_with(|_, extra| T::try_from(0).map_err(|e| Rich::custom(extra.span(), e))),
         ))
+        .boxed()
 }
 
 /// Parses the same thing as `P`, but only if it is surrounded by parentheses.

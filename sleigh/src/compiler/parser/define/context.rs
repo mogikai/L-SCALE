@@ -70,7 +70,8 @@ pub(super) fn context<'tokens>(
             end,
             attributes,
         })
-        .map_with(spanned);
+        .map_with(spanned)
+        .boxed();
 
     sleigh_keyword(SleighKeyword::Context)
         .padded_by(sleigh_whitespace())
@@ -84,4 +85,5 @@ pub(super) fn context<'tokens>(
         )
         .map(|(reg, fields)| SASTContext { reg, fields })
         .map_with(spanned)
+        .boxed()
 }

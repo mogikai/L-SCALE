@@ -100,5 +100,5 @@ pub(super) fn binary_operator<'tokens>(
     ]);
     // Multi token ops need to be parsed first, otherwise the single token might incorrectly consume
     // the token and fail on the next token.
-    whitespace_padded(multi_token_ops.or(single_token_ops).map_with(spanned))
+    whitespace_padded(multi_token_ops.or(single_token_ops).map_with(spanned)).boxed()
 }

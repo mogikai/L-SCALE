@@ -59,6 +59,7 @@ pub(super) fn register<'tokens>(
             regnames,
         })
         .map_with(spanned)
+        .boxed()
 }
 
 #[cfg(test)]

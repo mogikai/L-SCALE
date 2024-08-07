@@ -20,7 +20,7 @@ pub enum SASTAddressSpaceType {
 pub enum SASTAddressSpaceAttribute {
     Type(SASTAddressSpaceType),
     Size(u64), // mandatory
-    Wordsize(u64),
+    Wordsize(u16),
     IsDefault,
 }
 

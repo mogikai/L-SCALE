@@ -34,7 +34,8 @@ pub(super) fn value<'tokens>(
             .delimited_by(
                 sleigh_control(SleighControlCharacter::OpenBracket),
                 sleigh_control(SleighControlCharacter::CloseBracket),
-            ));
+            ))
+        .boxed();
 
     let value_list = sleigh_number()
         .map_with(spanned)
@@ -47,7 +48,8 @@ pub(super) fn value<'tokens>(
             .delimited_by(
                 sleigh_control(SleighControlCharacter::OpenBracket),
                 sleigh_control(SleighControlCharacter::CloseBracket),
-            ));
+            ))
+        .boxed();
 
     sleigh_keyword(SleighKeyword::Values)
         .padded_by(sleigh_whitespace())
@@ -56,4 +58,5 @@ pub(super) fn value<'tokens>(
         .then(value_list)
         .map(|(fields, values)| SASTValue { fields, values })
         .map_with(spanned)
+        .boxed()
 }

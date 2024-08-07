@@ -348,7 +348,7 @@ where
         .map_with(intern_token)
         .map(SleighToken::Binary);
     let dec_int = int(10).map_with(intern_token).map(SleighToken::Decimal);
-    choice((hex_int, bin_int, dec_int))
+    choice((hex_int, bin_int, dec_int)).boxed()
 }
 fn intern_token<'src, O: AsRef<str>, ContextT>(
     stringy: O,
@@ -449,6 +449,7 @@ where
         '~' => SleighToken::Operation(SleighOperation::BitNegate),
         _ => panic!("This cannot happen"),
     }))
+    .boxed()
 }
 
 fn sleigh_control_character<'src, ContextT>(
@@ -470,6 +471,7 @@ where
             _ => panic!("This cannot happen"),
         })
         .or(just("...").map(|_| SleighToken::Control(SleighControlCharacter::Ellipsis)))
+        .boxed()
 }
 
 fn sleigh_keyword<'src, ContextT>(
@@ -531,5 +533,5 @@ where
         .or(end())
         .rewind();
 
-    keyword.then_ignore(keyword_padding)
+    keyword.then_ignore(keyword_padding).boxed()
 }

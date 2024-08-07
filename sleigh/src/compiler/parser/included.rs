@@ -19,7 +19,7 @@ pub fn included_tokens<'tokens, P>(
     items_parser: P
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Vec<SASTItem>, SleighParserExtra<'tokens>>
 where
-    P: Parser<'tokens, ParserInput<'tokens>, Vec<SASTItem>, SleighParserExtra<'tokens>> + Clone,
+    P: Parser<'tokens, ParserInput<'tokens>, Vec<SASTItem>, SleighParserExtra<'tokens>> + Clone + 'tokens,
 {
     let tokens = select_ref! {
         SleighToken::IncludedTokens(IncludedTokens::Loaded(tokens)) if !tokens.is_empty() => tokens.spanned()
@@ -35,4 +35,5 @@ where
                 .to_span()
                 .map(|span| vec![SASTItem::Error(span)]),
         ))
+        .boxed()
 }

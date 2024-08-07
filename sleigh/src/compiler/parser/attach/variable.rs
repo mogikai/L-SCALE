@@ -30,7 +30,8 @@ pub(super) fn variable<'tokens>(
             .delimited_by(
                 sleigh_control(SleighControlCharacter::OpenBracket),
                 sleigh_control(SleighControlCharacter::CloseBracket),
-            ));
+            ))
+        .boxed();
 
     sleigh_keyword(SleighKeyword::Variables)
         .padded_by(sleigh_whitespace())
@@ -39,4 +40,5 @@ pub(super) fn variable<'tokens>(
         .then(fieldlist)
         .map(|(fields, registers)| SASTVariable { fields, registers })
         .map_with(spanned)
+        .boxed()
 }

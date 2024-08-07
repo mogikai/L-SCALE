@@ -67,7 +67,8 @@ pub(super) fn address_space<'tokens>(
         .map(|a| a.0)
         .repeated()
         .collect::<Vec<_>>()
-        .map_with(spanned);
+        .map_with(spanned)
+        .boxed();
 
     let address_space = sleigh_keyword(SleighKeyword::Space)
         .ignore_then(sleigh_whitespace())
@@ -98,5 +99,5 @@ pub(super) fn address_space<'tokens>(
         })
         .map_with(spanned);
 
-    address_space
+    address_space.boxed()
 }

@@ -80,7 +80,8 @@ pub fn bit_pattern_section<'tokens>(
         .then(constraint_pattern)
         .map(|((lhs, op), rhs)| SASTBitPatternConstraint::AdvancedConstraint(lhs, op, rhs))
         .map_with(spanned)
-        .labelled("constraint");
+        .labelled("constraint")
+        .boxed();
 
     // An atom that can be unambiguously parsed. In this case either an identifier,
     // or a parenthesized constraint.
@@ -88,7 +89,8 @@ pub fn bit_pattern_section<'tokens>(
         .or(maybe_parenthesized(ident)
             .map(SASTBitPatternConstraint::Ident)
             .map_with(spanned))
-        .or(parenthesized(constraint.clone()));
+        .or(parenthesized(constraint.clone()))
+        .boxed();
 
     // A unary op is currently only justify left or justify right.
     let unary_op = {
@@ -100,14 +102,16 @@ pub fn bit_pattern_section<'tokens>(
             .map_with(spanned)
             .then(atom.clone().map(Box::new))
             .map(|(justify, atom)| SASTBitPatternConstraint::UnaryOp(justify, atom))
-            .map_with(spanned);
+            .map_with(spanned)
+            .boxed();
         // Justify right is represented by an expression, followed by an ellipsis.
         let justify_right = atom
             .clone()
             .map(Box::new)
             .then(ellipsis.to(SASTUnaryOp::JustifyRight).map_with(spanned))
             .map(|(atom, justify)| SASTBitPatternConstraint::UnaryOp(justify, atom))
-            .map_with(spanned);
+            .map_with(spanned)
+            .boxed();
 
         justify_left.or(justify_right)
     }
