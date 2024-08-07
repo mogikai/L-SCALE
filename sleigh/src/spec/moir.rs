@@ -1,10 +1,8 @@
-use crate::spec::MOIRVarNodeId;
-
-#[derive(Debug, Default)]
-pub struct MOIRMacro {
-    pub arguments: Vec<MOIRVarNodeId>,
-    pub code: Vec<MOIRInstruction>,
-}
-
-#[derive(Debug)]
-pub struct MOIRInstruction {}
+pub mod address_space;
+pub mod code;
+pub mod endianness;
+pub mod field;
+pub mod r#macro;
+pub mod table;
+pub mod token;
+pub mod varnode;

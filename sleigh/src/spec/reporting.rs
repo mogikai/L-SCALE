@@ -9,7 +9,7 @@ use ariadne::{
     ReportKind,
 };
 
-use crate::spec::endianness::MOIREndianness;
+use crate::spec::moir::endianness::MOIREndianness;
 use chumsky::span::Span;
 
 /// Generates an error report for IdentAlreadyExists errors.

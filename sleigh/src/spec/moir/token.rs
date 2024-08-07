@@ -1,5 +1,5 @@
 use crate::new_symbol_id_type;
-use crate::spec::endianness::MOIREndianness;
+use crate::spec::moir::endianness::MOIREndianness;
 
 #[derive(Debug)]
 pub struct MOIRToken {

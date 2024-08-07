@@ -1,4 +1,5 @@
-use crate::spec::MOIRVarNodeId;
+use crate::new_symbol_id_type;
+use crate::spec::moir::varnode::MOIRVarNodeId;
 
 #[derive(Debug, Default)]
 pub struct MOIRTable {
@@ -43,3 +44,5 @@ pub struct MOIRTable {
     /// address of the varnode being modified to be exported as an integer constant.
     export: Option<MOIRVarNodeId>,
 }
+
+new_symbol_id_type! { pub struct MOIRTableId; }

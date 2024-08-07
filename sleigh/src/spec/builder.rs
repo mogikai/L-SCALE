@@ -22,32 +22,34 @@ use tracing::debug;
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::CompilerContext;
-use crate::spec::address_space::MOIRAddressSpace;
-use crate::spec::endianness::MOIREndianness;
-use crate::spec::field::{
+use crate::spec::moir::address_space::MOIRAddressSpace;
+use crate::spec::moir::endianness::MOIREndianness;
+use crate::spec::moir::field::{
     MOIRField,
     MOIRFieldId,
 };
-use crate::spec::moir::MOIRMacro;
+use crate::spec::moir::r#macro::MOIRMacro;
+use crate::spec::moir::table::MOIRTable;
+use crate::spec::moir::token::{
+    MOIRToken,
+    MOIRTokenId,
+};
+use crate::spec::moir::varnode::{
+    MOIRVarNode,
+    MOIRVarNodeId,
+};
 use crate::spec::reporting::{
     generate_alignment_already_specified_report,
     generate_endianness_already_specified_report,
     generate_identifier_exists_report,
 };
 use crate::spec::symbol_table::MOIRSymbolTable;
-use crate::spec::table::MOIRTable;
-use crate::spec::token::{
-    MOIRToken,
-    MOIRTokenId,
-};
-use crate::spec::varnode::MOIRVarNode;
 use crate::spec::{
     MOIRAddressSpaceId,
     MOIRIdent,
     MOIRMacroId,
     MOIRSymbol,
     MOIRTableId,
-    MOIRVarNodeId,
     ProcessorSpecification,
     ProcessorSpecificationError,
 };

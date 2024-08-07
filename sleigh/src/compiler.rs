@@ -63,10 +63,10 @@ use crate::spec::builder::{
     ProcessorSpecificationBuilder,
     StringId,
 };
-use crate::spec::endianness::MOIREndianness;
-use crate::spec::field::MOIRField;
-use crate::spec::moir::MOIRMacro;
-use crate::spec::token::{
+use crate::spec::moir::endianness::MOIREndianness;
+use crate::spec::moir::field::MOIRField;
+use crate::spec::moir::r#macro::MOIRMacro;
+use crate::spec::moir::token::{
     MOIRToken,
     MOIRTokenId,
 };

@@ -1,5 +1,5 @@
 use crate::new_symbol_id_type;
-use crate::spec::token::MOIRTokenId;
+use crate::spec::moir::token::MOIRTokenId;
 use std::ops::Range;
 
 #[derive(Debug)]
