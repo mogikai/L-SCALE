@@ -3,6 +3,7 @@ use std::fmt::{
     Display,
     Formatter,
 };
+use std::ops::Range;
 use std::path::{
     Path,
     PathBuf,
@@ -30,7 +31,6 @@ use crate::compiler::ast::define::{
     SASTAlignment,
     SASTDefine,
     SASTEndianness,
-    SASTRegister,
     SASTToken,
     SASTTokenField,
 };
@@ -59,7 +59,8 @@ use crate::spec::moir::address_space::{
     MOIRSpaceIsDefault,
     MOIRSpaceType,
 };
-use crate::spec::moir::field::MOIRField;
+use crate::spec::moir::context::MOIRContext;
+use crate::spec::moir::field::{MOIRField, MOIRFieldParent};
 use crate::spec::moir::r#macro::MOIRMacro;
 use crate::spec::moir::token::{
     MOIRToken,
@@ -70,6 +71,9 @@ use crate::spec::{
     ProcessorSpecification,
     ProcessorSpecificationError,
 };
+
+use self::ast::attach::SASTAttach;
+use self::ast::define::{SASTContext, SASTVarnode};
 
 pub mod ast;
 pub mod builder;
@@ -153,7 +157,7 @@ impl SleighCompiler {
                 report
                     .write(&mut self.input_cache, &mut error_description)
                     .expect("There is no way this may fail.");
-            }
+                }
             error_description.extend(
                 format!(
                     "───────────────────────────────\nFound a total of {} errors.\n───────────────────────────────",
@@ -162,7 +166,7 @@ impl SleighCompiler {
                 .as_bytes(),
             );
             Err(SleighCompilerError::SemanticError(
-                String::from_utf8(error_description).expect("We only write utf8 strings."),
+                    String::from_utf8(error_description).expect("We only write utf8 strings."),
             ))
         }
     }
@@ -215,7 +219,7 @@ impl SleighCompiler {
     ) -> SleighCompilerResult {
         for item in items {
             match item {
-                SASTItem::Attach(attach) => {}
+                SASTItem::Attach(attach) => self.process_attach(attach)?,
                 SASTItem::Constructor(constructor) => self.process_constructor(constructor)?,
                 SASTItem::Define(define) => self.process_define(define)?,
                 SASTItem::Macro(pcode_macro) => self.process_pcode_macro(pcode_macro)?,
@@ -224,6 +228,32 @@ impl SleighCompiler {
             }
         }
         Ok(())
+    }
+
+    fn process_attach(
+        &mut self,
+        attach: Spanned<SASTAttach>
+    ) -> SleighCompilerResult {
+        match attach.into_value() {
+            SASTAttach::SASTVariable(variable) => {
+                let fields = variable.fields.iter().map(|fs| fs.clone().transmute()).collect::<Vec<_>>();
+                let varnodes = variable.varnodes.iter().map(|fs| fs.clone().transmute()).collect::<Vec<_>>();
+
+                Ok(self.spec_builder.attach_variables(fields, varnodes)?)
+            },
+            SASTAttach::SASTValue(value) => {
+                let fields = value.fields.iter().map(|fs| fs.clone().transmute()).collect::<Vec<_>>();
+                let values = value.values.iter().map(|fs| fs.clone().transmute()).collect::<Vec<_>>();
+
+                Ok(self.spec_builder.attach_values(fields, values)?)
+            },
+            SASTAttach::SASTName(name) => {
+                let fields = name.fields.iter().map(|fs| fs.clone().transmute()).collect::<Vec<_>>();
+                let strings = name.strings.iter().map(|fs| fs.clone().transmute()).collect::<Vec<_>>();
+
+                Ok(self.spec_builder.attach_names(fields, strings)?)
+            },
+        }
     }
 
     /// Process a constructor. This will create the table in which the constructor is anchored, if it does not exist.
@@ -269,17 +299,17 @@ impl SleighCompiler {
             SASTDefine::Endianness(endianness) => self.process_define_endianness(endianness),
             SASTDefine::Alignment(alignment) => self.process_define_alignment(alignment),
             SASTDefine::AddressSpace(space) => self.process_define_space(space),
-            SASTDefine::Register(varnodes) => self.process_define_varnodes(varnodes),
+            SASTDefine::Varnode(varnodes) => self.process_define_varnodes(varnodes),
             SASTDefine::BitrangeRegister(_) => Ok(()),
             SASTDefine::UserPcodeOp(_) => Ok(()),
             SASTDefine::Token(token) => self.process_define_token(token),
-            SASTDefine::Context(_) => Ok(()),
+            SASTDefine::Context(context) => self.process_context(context),
         }
     }
 
     fn process_define_varnodes(
         &mut self,
-        varnodes: Spanned<SASTRegister>,
+        varnodes: Spanned<SASTVarnode>,
     ) -> SleighCompilerResult {
         let (varnodes, span) = varnodes.into_tuple();
         let result = self
@@ -291,8 +321,8 @@ impl SleighCompiler {
             return Ok(());
         };
 
-        for (i, reg_name) in varnodes.regnames.into_iter().enumerate() {
-            if self.spec_builder.is_placeholder_ident((*reg_name).into())? {
+        for (i, name) in varnodes.names.into_iter().enumerate() {
+            if self.spec_builder.is_placeholder_ident((*name).into())? {
                 // Placeholders are skipped.
                 continue;
             }
@@ -303,7 +333,7 @@ impl SleighCompiler {
             };
             let result = self
                 .spec_builder
-                .define_varnode(reg_name.transmute(), varnode);
+                .define_varnode(name.transmute(), varnode);
             self.report_error_or_unwrap(result)?;
         }
         Ok(())
@@ -382,7 +412,8 @@ impl SleighCompiler {
         if let Some(token_id) = self.report_error_or_unwrap(result)? {
             for field in token.fields.into_iter() {
                 let name = field.name.clone().transmute();
-                if let Some(field) = self.make_field(token_id, bits, field)? {
+                let range = field.start.clone().into_value()..field.end.clone().into_value();
+                if let Some(field) = self.make_field(MOIRFieldParent::Token(token_id), bits, range)? {
                     let result = self.spec_builder.define_field(name, field);
                     self.report_error_or_unwrap(result)?;
                 }
@@ -391,26 +422,40 @@ impl SleighCompiler {
         Ok(())
     }
 
+    fn process_context(
+        &mut self,
+        context: Spanned<SASTContext>,
+    ) -> SleighCompilerResult {
+        let (context_id, bits) = self.spec_builder.define_context(context.varnode.clone().transmute())?;
+        for field in &context.fields {
+            let range = field.start.clone().into_value()..field.end.clone().into_value();
+            if let Some(moir_field) = self.make_field(MOIRFieldParent::Context(context_id), bits, range)? {
+                self.spec_builder.define_field(field.name.clone().transmute(), moir_field)?;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Create a new field instance to be defined in the [ProcessorSpecificationBuilder].
-    /// The field is associated with the provided `token_id`.
+    /// The field is associated with the provided `parent`.
     /// This function also performs semantic checks, and thus needs the amount of bits
     /// the token contains.
     fn make_field(
         &mut self,
-        token_id: MOIRTokenId,
+        parent: MOIRFieldParent,
         bits: u64,
-        field: Spanned<SASTTokenField>,
+        field_range: Range<u64>,
     ) -> Result<Option<MOIRField>, SleighCompilerError> {
-        let (field, _) = field.into_tuple();
-        if *field.start > *field.end {
+        if field_range.start > field_range.end {
             todo!("Generate correct error report and return Ok(None)")
-        } else if *field.end >= bits {
+        } else if field_range.end - field_range.start >= bits {
             todo!("Generate correct error report and return Ok(None)")
         } else {
             // The variables, values, and strings fields are later attached with attach statements.
             let field = MOIRField {
-                token: token_id,
-                bits: field.start.into_value()..field.end.into_value(),
+                parent,
+                bits: field_range,
                 variables: vec![],
                 values: vec![],
                 strings: vec![],

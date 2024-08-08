@@ -40,7 +40,7 @@ new_key_type! {
     pub struct MOIRIdent;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum MOIRSymbol {
     /// The identifier is not defined yet and can be used to define a symbol.
     Undefined,
@@ -127,8 +127,12 @@ impl ProcessorSpecification {
 pub enum ProcessorSpecificationError {
     #[error("The requested identifier is already used by something else.")]
     IdentAlreadyExists(InputSpan, InputSpan),
-    #[error("The symbol must first be declared before it can be defined")]
+    #[error("The symbol must first be declared before it can be used.")]
     SymbolUndeclared,
+    #[error("The identifier is not mapped to anything.")]
+    IdentifierNotMapped(Spanned<StringId>),
+    #[error("The symbol exists but its type does not match.")]
+    InvalidSymbolType(MOIRSymbol),
     #[error("The processor specification builder produced a detailed error message:")]
     ErrorReport(Box<Report<'static, InputSpan>>),
     #[error("The processor specification must contain a valid endianness definition.")]

@@ -7,6 +7,7 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
+use chumsky::container::Container;
 use slotmap::{
     SecondaryMap,
     SlotMap,
@@ -57,6 +58,8 @@ use crate::spec::{
     ProcessorSpecificationError,
 };
 
+use super::moir::context::{MOIRContext, MOIRContextId};
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 /// StringId given out by interner. The interner is used by the compiler
 /// to simplify string comparisons by mapping ids to strings.
@@ -91,6 +94,9 @@ pub struct ProcessorSpecificationBuilder {
     endianness: Option<Spanned<MOIREndianness>>,
     /// The alignment of instructions. This defaults to 1 if no alignment is specified.
     alignment: Option<Spanned<u16>>,
+    /// Context defined on top of existing varnodes containing context fields (e.g. a dedicated
+    /// `contextreg` varnode containing a field `longmode=(0,1)` for x86).
+    context: SlotMap<MOIRContextId, MOIRContext>,
 
     /// Maps a string identifier to the corresponding internal [MOIRIdent].
     /// This is useful for the compiler, when an identifier string references another symbol.
@@ -202,6 +208,132 @@ impl ProcessorSpecificationBuilder {
         Ok(symbol_id)
     }
 
+    pub(crate) fn attach_variables(
+        &mut self,
+        fields: Vec<Spanned<StringId>>,
+        varnodes: Vec<Spanned<StringId>>,
+    ) -> Result<(), ProcessorSpecificationError> {
+        let varnode_ids: Result<Vec<_>, _> = varnodes
+            .into_iter()
+            .filter_map(|vsid| {
+                if self.is_placeholder_ident(*vsid.value()).unwrap() {
+                    // skip placeholder
+                    return None;
+
+                }
+                Some(self.get_symbol_and_id(&vsid)
+                    .ok_or(ProcessorSpecificationError::IdentifierNotMapped(vsid))
+                    .and_then(|(symbol, _)| {
+                        eprintln!("symbol = {:#?}", symbol);
+                        if let MOIRSymbol::VarNode(vnid) = symbol {
+                            Ok(vnid.clone())
+                        } else {
+                            Err(ProcessorSpecificationError::InvalidSymbolType(*symbol))
+                        }
+                    }))
+            })
+        .collect();
+
+        let varnode_ids = varnode_ids?;
+
+        for field in fields.into_iter() {
+            let symbol = self
+                .get_symbol_and_id(&field)
+                .ok_or(ProcessorSpecificationError::IdentifierNotMapped(field))?
+                .0;
+
+            if let MOIRSymbol::Field(id) = symbol {
+                self.symbol_tables
+                    .fields
+                    .get_mut(*id)
+                    .expect("If the symbol is mapped there has to be an entry in the symbol table")
+                    .variables
+                    .append(&mut varnode_ids.clone());
+                } else {
+                    Err(ProcessorSpecificationError::InvalidSymbolType(*symbol))?
+                }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn attach_values(
+        &mut self,
+        fields: Vec<Spanned<StringId>>,
+        values: Vec<Spanned<u64>>,
+    ) -> Result<(), ProcessorSpecificationError> {
+        for field in fields.into_iter() {
+            let symbol = self.get_symbol_and_id(&field)
+                .ok_or(ProcessorSpecificationError::IdentifierNotMapped(field))?
+                .0;
+            if let MOIRSymbol::Field(id) = symbol {
+                self.symbol_tables
+                    .fields
+                    .get_mut(*id)
+                    .expect("If the symbol is mapped there has to be an entry in the symbol table")
+                    .values
+                    .extend(values.iter().map(|v| v.value()));
+                } else {
+                    Err(ProcessorSpecificationError::InvalidSymbolType(*symbol))?
+                }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn attach_names(
+        &mut self,
+        fields: Vec<Spanned<StringId>>,
+        strings: Vec<Spanned<StringId>>,
+    ) -> Result<(), ProcessorSpecificationError> {
+        for field in fields.into_iter() {
+            let symbol = self
+                            .get_symbol_and_id(&field)
+                                .ok_or(ProcessorSpecificationError::IdentifierNotMapped(field))?
+                                .0;
+            if let MOIRSymbol::Field(id) = symbol
+            {
+                self.symbol_tables
+                    .fields
+                    .get_mut(*id)
+                    .expect("If the symbol is mapped there has to be an entry in the symbol table")
+                    .strings
+                    .extend(strings.iter().map(|v| v.value()));
+                } else {
+                    Err(ProcessorSpecificationError::InvalidSymbolType(*symbol))?
+                }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn define_context(
+        &mut self,
+        varnode_ident: Spanned<StringId>,
+    ) -> Result<(MOIRContextId, u64), ProcessorSpecificationError> {
+        let varnode_id = self.get_symbol_and_id(&varnode_ident)
+            .ok_or(ProcessorSpecificationError::IdentifierNotMapped(varnode_ident))
+            .and_then(|(&symbol, _)| {
+                if let MOIRSymbol::VarNode(vnid) = symbol {
+                    Ok(vnid)
+                } else {
+                    Err(ProcessorSpecificationError::InvalidSymbolType(symbol))
+                }
+            })?;
+
+        let moir_context = MOIRContext {
+            varnode: varnode_id,
+        };
+
+        let varnode_bits = self.symbol_tables.varnodes
+            .get(varnode_id)
+            .expect("We just verified it")
+            .size;
+
+        let context_id = self.context.insert(moir_context);
+        Ok((context_id, varnode_bits as u64))
+    }
+
     pub(crate) fn modify_root_table(&mut self) -> Result<&mut MOIRTable, ProcessorSpecificationError> {
         self.modify_table(self.root_table.clone())
     }
@@ -238,8 +370,8 @@ impl ProcessorSpecificationBuilder {
         self.string_to_ident_mapping.get(ident).map(|ident| {
             (
                 self.symbols
-                    .get(*ident)
-                    .expect("If the ident is mapped, then there has to exist a symbol."),
+                .get(*ident)
+                .expect("If the ident is mapped, then there has to exist a symbol."),
                 *ident,
             )
         })
@@ -297,8 +429,8 @@ impl ProcessorSpecificationBuilder {
                     _ => None,
                 })
             })
-            // TODO: Produce error report instead
-            .ok_or(ProcessorSpecificationError::SymbolUndeclared)
+        // TODO: Produce error report instead
+        .ok_or(ProcessorSpecificationError::SymbolUndeclared)
     }
 
     pub(crate) fn is_placeholder_ident(
@@ -329,6 +461,7 @@ impl Default for ProcessorSpecificationBuilder {
             symbol_tables: Default::default(),
             endianness: None,
             alignment: None,
+            context: Default::default(),
             string_to_ident_mapping: Default::default(),
             root_table,
             default_space: None,
@@ -369,12 +502,12 @@ impl ProcessorSpecificationBuilder {
                 .default_space
                 .ok_or(ProcessorSpecificationError::MissingDefaultSpace)?
                 .into_value(),
-            endianness: self
-                .endianness
-                .ok_or(ProcessorSpecificationError::MissingEndiannessDefinition)?
-                .into_value(),
-            // The default alignment is 1
-            alignment: self.alignment.map(Spanned::into_value).unwrap_or(1),
+                endianness: self
+                    .endianness
+                    .ok_or(ProcessorSpecificationError::MissingEndiannessDefinition)?
+                    .into_value(),
+                    // The default alignment is 1
+                    alignment: self.alignment.map(Spanned::into_value).unwrap_or(1),
         };
         Ok(spec)
     }
