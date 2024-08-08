@@ -5,7 +5,7 @@ use chumsky::{
 
 use crate::compiler::ast::define::{
     SASTBitrangeRegister,
-    SASTRegister,
+    SASTVarnode,
 };
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
@@ -39,11 +39,11 @@ pub(super) fn bitrange_register<'tokens>(
 
     let register = sast_ident_spanned() // bitrange register name
         .then_ignore(sleigh_operation(SleighOperation::Equals))
-        .then(sast_ident_spanned()) // source register
+        .then(sast_ident_spanned()) // source varnode
         .then(number_pair)
-        .map(|((name, source_register), (offset, size))| SASTBitrangeRegister {
+        .map(|((name, source_varnode), (offset, size))| SASTBitrangeRegister {
             name,
-            source_register,
+            source_varnode,
             offset,
             size,
         })

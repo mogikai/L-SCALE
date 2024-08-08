@@ -3,19 +3,16 @@ use chumsky::{
     Parser,
 };
 
-use crate::compiler::ast::define::SASTRegister;
+use crate::compiler::ast::define::SASTVarnode;
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
-    sast_ident,
     sast_ident_spanned,
     sleigh_control,
-    sleigh_ident,
     sleigh_keyword,
     sleigh_number,
     sleigh_operation,
-    sleigh_whitespace,
     whitespace_padded,
     SleighParserExtra,
 };
@@ -23,11 +20,10 @@ use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighKeyword,
     SleighOperation,
-    SleighToken,
 };
 
-pub(super) fn register<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTRegister>, SleighParserExtra<'tokens>> {
+pub(super) fn varnodes<'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTVarnode>, SleighParserExtra<'tokens>> {
     let stringlist = sleigh_control(SleighControlCharacter::OpenBracket)
         .ignore_then(
             whitespace_padded(sast_ident_spanned())
@@ -36,7 +32,7 @@ pub(super) fn register<'tokens>(
         )
         .then_ignore(sleigh_control(SleighControlCharacter::CloseBracket));
 
-    let reg_name = whitespace_padded(sast_ident_spanned()).map(|name| vec![name]);
+    let names = whitespace_padded(sast_ident_spanned()).map(|name| vec![name]);
 
     let offset = sleigh_keyword(SleighKeyword::Offset)
         .ignore_then(whitespace_padded(sleigh_operation(SleighOperation::Equals)))
@@ -51,12 +47,12 @@ pub(super) fn register<'tokens>(
     whitespace_padded(sast_ident_spanned())
         .then(whitespace_padded(offset))
         .then(whitespace_padded(size))
-        .then(reg_name.or(stringlist))
-        .map(|(((spacename, offset), size), regnames)| SASTRegister {
+        .then(names.or(stringlist))
+        .map(|(((spacename, offset), size), names)| SASTVarnode {
             spacename,
             offset,
             size,
-            regnames,
+            names,
         })
         .map_with(spanned)
         .boxed()
@@ -69,19 +65,21 @@ mod test {
     use super::*;
     use crate::compiler::parser::test::TestResult;
 
-    fn test_register(expression: &str) -> TestResult {
+    fn test_varnode(expression: &str) -> TestResult {
         use crate::compiler::parser::test::{
             report_errors,
             test_parser,
         };
         test_parser(expression, |cache, context, tokens| {
-            report_errors(cache, register().parse_with_state(tokens.spanned(), context))
+            report_errors(cache, varnodes().parse_with_state(tokens.spanned(), context))
         })?;
         Ok(())
     }
 
     #[test]
-    fn single_register_parses() -> TestResult {
-        test_register("register offset=0x2000 size=8 contextreg")
+    fn varnode_parses() -> TestResult {
+        test_varnode("register offset=0x2000 size=8 contextreg")?;
+        test_varnode("ram offset=0x2000 size=1 contextreg")?;
+        Ok(())
     }
 }

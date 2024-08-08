@@ -3,7 +3,7 @@ use super::{common::SASTIdent, Spanned};
 #[derive(Debug)]
 pub struct SASTVariable {
     pub fields: Vec<Spanned<SASTIdent>>,
-    pub registers: Vec<Spanned<SASTIdent>>,
+    pub varnodes: Vec<Spanned<SASTIdent>>,
 }
 
 #[derive(Debug)]

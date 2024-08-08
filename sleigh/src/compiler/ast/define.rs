@@ -31,19 +31,19 @@ pub struct SASTAddressSpace {
 }
 
 #[derive(Debug)]
-pub struct SASTRegister {
+pub struct SASTVarnode {
     pub spacename: Spanned<SASTIdent>,
     pub offset: Spanned<u64>, // offset in register address space
     /// The size of the varnode in bytes
     pub size: Spanned<u16>,
-    pub regnames: Vec<Spanned<SASTIdent>>,
+    pub names: Vec<Spanned<SASTIdent>>,
 }
 
 #[derive(Debug)]
 pub struct SASTBitrangeRegister {
     pub name: Spanned<SASTIdent>,
-    pub source_register: Spanned<SASTIdent>,
-    pub offset: u64, // offset into source register
+    pub source_varnode: Spanned<SASTIdent>,
+    pub offset: u64, // offset into source varnode
     pub size: u64,   // number of bits
 }
 
@@ -97,7 +97,7 @@ pub struct SASTContextField {
 
 #[derive(Debug)]
 pub struct SASTContext {
-    pub reg: Spanned<SASTIdent>,
+    pub varnode: Spanned<SASTIdent>,
     pub fields: Vec<Spanned<SASTContextField>>,
 }
 
@@ -108,7 +108,7 @@ pub enum SASTDefine {
     Endianness(Spanned<SASTEndianness>),
     Alignment(Spanned<SASTAlignment>), // the disassembler checks against this
     AddressSpace(Spanned<SASTAddressSpace>),
-    Register(Spanned<SASTRegister>),
+    Varnode(Spanned<SASTVarnode>),
     BitrangeRegister(Vec<Spanned<SASTBitrangeRegister>>),
     UserPcodeOp(Spanned<SASTUserPcodeOp>),
     Token(Spanned<SASTToken>),

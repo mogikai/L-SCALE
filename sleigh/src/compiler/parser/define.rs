@@ -25,16 +25,16 @@ use self::address_space::address_space;
 use self::alignment::alignment;
 use self::bitrange_register::bitrange_register;
 use self::context::context;
-use self::register::register;
 use self::token::token;
 use self::user_pcode_op::user_pcode_op;
+use self::varnode::varnodes;
 
 mod address_space;
 mod alignment;
 mod bitrange_register;
 mod context;
 mod endianness;
-mod register;
+mod varnode;
 mod token;
 mod user_pcode_op;
 
@@ -44,7 +44,7 @@ pub(super) fn define<'tokens>(
     let endian = endianness().map(SASTDefine::Endianness);
     let alignment = alignment().map(SASTDefine::Alignment);
     let address_space = address_space().map(SASTDefine::AddressSpace);
-    let register = register().map(SASTDefine::Register);
+    let varnode = varnodes().map(SASTDefine::Varnode);
     let bitrange_register = bitrange_register().map(SASTDefine::BitrangeRegister);
     let user_pcode_op = user_pcode_op().map(SASTDefine::UserPcodeOp);
 
@@ -56,7 +56,7 @@ pub(super) fn define<'tokens>(
 
     // combined
     let definitions =
-        choice((endian, alignment, address_space, register, bitrange_register, user_pcode_op, token, context));
+        choice((endian, alignment, address_space, varnode, bitrange_register, user_pcode_op, token, context));
 
     whitespace_padded(sleigh_keyword(SleighKeyword::Define))
         .ignore_then(definitions)
@@ -104,10 +104,10 @@ mod test {
     }
 
     #[test]
-    fn define_register_parses() -> TestResult {
+    fn define_varnode_parses() -> TestResult {
         test_define("define register offset=0 size=4 [EAX ECX EDX EBX ESP EBP ESI EDI ];")?;
         test_define("define register offset=0 size=2 [AX _ CX _ DX _ BX _ SP _ BP _ SI _ DI];")?;
-        test_define("define register offset=0 size=1 [AL AH _ _ CL CH _ _ DL DH _ _ BL BH ];")
+        test_define("define ram offset=0 size=1 [AL AH _ _ CL CH _ _ DL DH _ _ BL BH ];")
     }
 
     #[test]

@@ -38,7 +38,7 @@ pub(super) fn variable<'tokens>(
         .ignore_then(fieldlist.clone())
         .padded_by(sleigh_whitespace())
         .then(fieldlist)
-        .map(|(fields, registers)| SASTVariable { fields, registers })
+        .map(|(fields, varnodes)| SASTVariable { fields, varnodes })
         .map_with(spanned)
         .boxed()
 }

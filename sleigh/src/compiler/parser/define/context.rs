@@ -83,7 +83,7 @@ pub(super) fn context<'tokens>(
                 .repeated()
                 .collect::<Vec<_>>(),
         )
-        .map(|(reg, fields)| SASTContext { reg, fields })
+        .map(|(reg, fields)| SASTContext { varnode: reg, fields })
         .map_with(spanned)
         .boxed()
 }
