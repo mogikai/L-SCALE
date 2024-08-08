@@ -13,7 +13,7 @@ image: "rustlang/rust:nightly"
 
 variables:
   GIT_SUBMODULE_STRATEGY: recursive
-  GIT_SUBMODULE_PATHS: :(exclude)cpu/Ghidra
+  GIT_SUBMODULE_PATHS: :(exclude)cpu
 
 default:
   tags:
