@@ -7,3 +7,4 @@ pub mod table;
 pub mod token;
 pub mod varnode;
 pub mod context;
+pub mod bitrange_register;

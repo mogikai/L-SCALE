@@ -27,6 +27,8 @@ use crate::spec::moir::varnode::{
 use moir::field::MOIRFieldId;
 use moir::token::MOIRTokenId;
 
+use self::moir::bitrange_register::MOIRBitrangeRegisterId;
+
 pub mod builder;
 pub mod moir;
 mod reporting;
@@ -50,6 +52,7 @@ pub enum MOIRSymbol {
     Token(MOIRTokenId),
     Field(MOIRFieldId),
     VarNode(MOIRVarNodeId),
+    BitrangeRegister(MOIRBitrangeRegisterId),
 }
 
 #[derive(Debug)]

@@ -60,7 +60,10 @@ use crate::spec::moir::address_space::{
     MOIRSpaceType,
 };
 use crate::spec::moir::context::MOIRContext;
-use crate::spec::moir::field::{MOIRField, MOIRFieldParent};
+use crate::spec::moir::field::{
+    MOIRField,
+    MOIRFieldParent,
+};
 use crate::spec::moir::r#macro::MOIRMacro;
 use crate::spec::moir::token::{
     MOIRToken,
@@ -73,7 +76,12 @@ use crate::spec::{
 };
 
 use self::ast::attach::SASTAttach;
-use self::ast::define::{SASTContext, SASTVarnode};
+use self::ast::define::{
+    SASTBitrangeRegister,
+    SASTContext,
+    SASTVarnode,
+};
+use self::ast::pcode::bitrange;
 
 pub mod ast;
 pub mod builder;
@@ -157,7 +165,7 @@ impl SleighCompiler {
                 report
                     .write(&mut self.input_cache, &mut error_description)
                     .expect("There is no way this may fail.");
-                }
+            }
             error_description.extend(
                 format!(
                     "───────────────────────────────\nFound a total of {} errors.\n───────────────────────────────",
@@ -166,7 +174,7 @@ impl SleighCompiler {
                 .as_bytes(),
             );
             Err(SleighCompilerError::SemanticError(
-                    String::from_utf8(error_description).expect("We only write utf8 strings."),
+                String::from_utf8(error_description).expect("We only write utf8 strings."),
             ))
         }
     }
@@ -232,27 +240,51 @@ impl SleighCompiler {
 
     fn process_attach(
         &mut self,
-        attach: Spanned<SASTAttach>
+        attach: Spanned<SASTAttach>,
     ) -> SleighCompilerResult {
         match attach.into_value() {
             SASTAttach::SASTVariable(variable) => {
-                let fields = variable.fields.iter().map(|fs| fs.clone().transmute()).collect::<Vec<_>>();
-                let varnodes = variable.varnodes.iter().map(|fs| fs.clone().transmute()).collect::<Vec<_>>();
+                let fields = variable
+                    .fields
+                    .iter()
+                    .map(|fs| fs.clone().transmute())
+                    .collect::<Vec<_>>();
+                let varnodes = variable
+                    .varnodes
+                    .iter()
+                    .map(|fs| fs.clone().transmute())
+                    .collect::<Vec<_>>();
 
                 Ok(self.spec_builder.attach_variables(fields, varnodes)?)
-            },
+            }
             SASTAttach::SASTValue(value) => {
-                let fields = value.fields.iter().map(|fs| fs.clone().transmute()).collect::<Vec<_>>();
-                let values = value.values.iter().map(|fs| fs.clone().transmute()).collect::<Vec<_>>();
+                let fields = value
+                    .fields
+                    .iter()
+                    .map(|fs| fs.clone().transmute())
+                    .collect::<Vec<_>>();
+                let values = value
+                    .values
+                    .iter()
+                    .map(|fs| fs.clone().transmute())
+                    .collect::<Vec<_>>();
 
                 Ok(self.spec_builder.attach_values(fields, values)?)
-            },
+            }
             SASTAttach::SASTName(name) => {
-                let fields = name.fields.iter().map(|fs| fs.clone().transmute()).collect::<Vec<_>>();
-                let strings = name.strings.iter().map(|fs| fs.clone().transmute()).collect::<Vec<_>>();
+                let fields = name
+                    .fields
+                    .iter()
+                    .map(|fs| fs.clone().transmute())
+                    .collect::<Vec<_>>();
+                let strings = name
+                    .strings
+                    .iter()
+                    .map(|fs| fs.clone().transmute())
+                    .collect::<Vec<_>>();
 
                 Ok(self.spec_builder.attach_names(fields, strings)?)
-            },
+            }
         }
     }
 
@@ -300,7 +332,7 @@ impl SleighCompiler {
             SASTDefine::Alignment(alignment) => self.process_define_alignment(alignment),
             SASTDefine::AddressSpace(space) => self.process_define_space(space),
             SASTDefine::Varnode(varnodes) => self.process_define_varnodes(varnodes),
-            SASTDefine::BitrangeRegister(_) => Ok(()),
+            SASTDefine::BitrangeRegister(bitrange_register) => self.process_define_bitrange_registers(bitrange_register),
             SASTDefine::UserPcodeOp(_) => Ok(()),
             SASTDefine::Token(token) => self.process_define_token(token),
             SASTDefine::Context(context) => self.process_context(context),
@@ -331,11 +363,25 @@ impl SleighCompiler {
                 offset: varnodes.offset.value() + (i as u64 * u64::from(*varnodes.size)),
                 size: *varnodes.size,
             };
-            let result = self
-                .spec_builder
-                .define_varnode(name.transmute(), varnode);
+            let result = self.spec_builder.define_varnode(name.transmute(), varnode);
             self.report_error_or_unwrap(result)?;
         }
+        Ok(())
+    }
+
+    fn process_define_bitrange_registers(
+        &mut self,
+        bitrange_registers: Vec<Spanned<SASTBitrangeRegister>>,
+    ) -> SleighCompilerResult {
+        for bitrange_register in bitrange_registers {
+            self.spec_builder.define_bitrange_register(
+                bitrange_register.name.clone().transmute(),
+                bitrange_register.source_varnode.clone().transmute(),
+                bitrange_register.offset,
+                bitrange_register.size,
+            )?;
+        }
+
         Ok(())
     }
 
@@ -426,11 +472,14 @@ impl SleighCompiler {
         &mut self,
         context: Spanned<SASTContext>,
     ) -> SleighCompilerResult {
-        let (context_id, bits) = self.spec_builder.define_context(context.varnode.clone().transmute())?;
+        let (context_id, bits) = self
+            .spec_builder
+            .define_context(context.varnode.clone().transmute())?;
         for field in &context.fields {
             let range = field.start.clone().into_value()..field.end.clone().into_value();
             if let Some(moir_field) = self.make_field(MOIRFieldParent::Context(context_id), bits, range)? {
-                self.spec_builder.define_field(field.name.clone().transmute(), moir_field)?;
+                self.spec_builder
+                    .define_field(field.name.clone().transmute(), moir_field)?;
             }
         }
 

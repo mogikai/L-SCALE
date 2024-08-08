@@ -58,6 +58,7 @@ use crate::spec::{
     ProcessorSpecificationError,
 };
 
+use super::moir::bitrange_register::{MOIRBitrangeRegisterId, MOIRTBitrangeRegister};
 use super::moir::context::{MOIRContext, MOIRContextId};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -74,6 +75,8 @@ pub(super) struct SymbolTables {
     pub(super) varnodes: MOIRSymbolTable<MOIRVarNodeId, MOIRVarNode>,
     pub(super) tokens: MOIRSymbolTable<MOIRTokenId, MOIRToken>,
     pub(super) fields: MOIRSymbolTable<MOIRFieldId, MOIRField>,
+    // bitrange registers are treated more like placeholders for the corresponding pcode operations to realize access
+    pub(super) bitrange_registers: MOIRSymbolTable<MOIRBitrangeRegisterId, MOIRTBitrangeRegister>,
 }
 
 #[derive(Debug)]
@@ -184,6 +187,37 @@ impl ProcessorSpecificationBuilder {
         let varnode_id = self.symbol_tables.varnodes.insert(varnode);
         self.define_symbol(symbol_id, MOIRSymbol::VarNode(varnode_id))?;
         Ok(symbol_id)
+    }
+
+    pub(crate) fn define_bitrange_register(
+        &mut self,
+        ident: Spanned<StringId>,
+        source_varnode: Spanned<StringId>,
+        offset: u64,
+        size: u64,
+    ) -> Result<MOIRBitrangeRegisterId, ProcessorSpecificationError> {
+        // validate that source_varnode is valid
+        let source_varnode_id = self.get_symbol_and_id(&source_varnode)
+            .ok_or(ProcessorSpecificationError::IdentifierNotMapped(source_varnode))
+            .and_then(|(symbol, _)| {
+                if let MOIRSymbol::VarNode(vnid) = symbol {
+                    Ok(vnid)
+                } else {
+                    Err(ProcessorSpecificationError::InvalidSymbolType(*symbol))
+                }
+            })?;
+
+        let moir_bitrange_register = MOIRTBitrangeRegister {
+            source_varnode: *source_varnode_id,
+            offset,
+            size,
+        };
+
+        // declare and define symbol
+        let symbol_id = self.declare_symbol(ident)?;
+        let bitrange_register_id = self.symbol_tables.bitrange_registers.insert(moir_bitrange_register);
+        self.define_symbol(symbol_id, MOIRSymbol::BitrangeRegister(bitrange_register_id))?;
+        Ok(bitrange_register_id)
     }
 
     pub(crate) fn define_token(

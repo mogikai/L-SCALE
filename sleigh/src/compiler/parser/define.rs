@@ -34,9 +34,9 @@ mod alignment;
 mod bitrange_register;
 mod context;
 mod endianness;
-mod varnode;
 mod token;
 mod user_pcode_op;
+mod varnode;
 
 pub(super) fn define<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTDefine>, SleighParserExtra<'tokens>> {
