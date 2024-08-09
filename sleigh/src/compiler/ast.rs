@@ -83,6 +83,20 @@ impl<T> Spanned<T> {
     }
 }
 
+pub trait TransmuteIntoVec<T>: IntoIterator<Item=Spanned<T>> {
+    /// Transmute the inner value from type `T` into type `U` as long as T implements Into<U> for a given iterable.
+    /// The output will be collected into a vec.
+    fn transmute_into_vec<U>(self) -> Vec<Spanned<U>>
+    where
+        Self: Sized,
+        T: Into<U>,
+    {
+        self.into_iter().map(Spanned::transmute).collect()
+    }
+}
+
+impl<T> TransmuteIntoVec<T> for Vec<Spanned<T>> {}
+
 impl<T> Spanned<Option<T>> {
     pub fn lift_option(self) -> Option<Spanned<T>> {
         self.value.map(|x| Spanned::new(x, self.span))

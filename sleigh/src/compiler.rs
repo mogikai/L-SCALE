@@ -23,6 +23,7 @@ use tracing::{
 
 use inputcache::CompilerInputCache;
 
+use crate::compiler::ast::attach::SASTVariable;
 use crate::compiler::ast::constructor::bit_pattern_section::SASTBitPatternConstraint;
 use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::ast::define::{
@@ -40,6 +41,7 @@ use crate::compiler::ast::with::SASTWith;
 use crate::compiler::ast::{
     SleighAST,
     Spanned,
+    TransmuteIntoVec,
 };
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::{
@@ -171,7 +173,7 @@ impl SleighCompiler {
                     "───────────────────────────────\nFound a total of {} errors.\n───────────────────────────────",
                     error_count
                 )
-                .as_bytes(),
+                    .as_bytes(),
             );
             Err(SleighCompilerError::SemanticError(
                 String::from_utf8(error_description).expect("We only write utf8 strings."),
@@ -244,44 +246,23 @@ impl SleighCompiler {
     ) -> SleighCompilerResult {
         match attach.into_value() {
             SASTAttach::SASTVariable(variable) => {
-                let fields = variable
-                    .fields
-                    .iter()
-                    .map(|fs| fs.clone().transmute())
-                    .collect::<Vec<_>>();
-                let varnodes = variable
-                    .varnodes
-                    .iter()
-                    .map(|fs| fs.clone().transmute())
-                    .collect::<Vec<_>>();
+                let variable = variable.into_value();
+                let fields = variable.fields.transmute_into_vec();
+                let varnodes = variable.varnodes.transmute_into_vec();
 
                 Ok(self.spec_builder.attach_variables(fields, varnodes)?)
             }
             SASTAttach::SASTValue(value) => {
-                let fields = value
-                    .fields
-                    .iter()
-                    .map(|fs| fs.clone().transmute())
-                    .collect::<Vec<_>>();
-                let values = value
-                    .values
-                    .iter()
-                    .map(|fs| fs.clone().transmute())
-                    .collect::<Vec<_>>();
+                let value = value.into_value();
+                let fields = value.fields.transmute_into_vec();
+                let values = value.values.transmute_into_vec();
 
                 Ok(self.spec_builder.attach_values(fields, values)?)
             }
             SASTAttach::SASTName(name) => {
-                let fields = name
-                    .fields
-                    .iter()
-                    .map(|fs| fs.clone().transmute())
-                    .collect::<Vec<_>>();
-                let strings = name
-                    .strings
-                    .iter()
-                    .map(|fs| fs.clone().transmute())
-                    .collect::<Vec<_>>();
+                let name = name.into_value();
+                let fields = name.fields.transmute_into_vec();
+                let strings = name.strings.transmute_into_vec();
 
                 Ok(self.spec_builder.attach_names(fields, strings)?)
             }
@@ -332,7 +313,9 @@ impl SleighCompiler {
             SASTDefine::Alignment(alignment) => self.process_define_alignment(alignment),
             SASTDefine::AddressSpace(space) => self.process_define_space(space),
             SASTDefine::Varnode(varnodes) => self.process_define_varnodes(varnodes),
-            SASTDefine::BitrangeRegister(bitrange_register) => self.process_define_bitrange_registers(bitrange_register),
+            SASTDefine::BitrangeRegister(bitrange_register) => {
+                self.process_define_bitrange_registers(bitrange_register)
+            }
             SASTDefine::UserPcodeOp(_) => Ok(()),
             SASTDefine::Token(token) => self.process_define_token(token),
             SASTDefine::Context(context) => self.process_context(context),
@@ -444,7 +427,6 @@ impl SleighCompiler {
         &mut self,
         token: Spanned<SASTToken>,
     ) -> SleighCompilerResult {
-        // TODO: Define token and its fields
         // We first define the token and then we can define its fields, since they need to refer to the token.
         let (token, _) = token.into_tuple();
         let bits = token.bits.into_value();
