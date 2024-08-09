@@ -52,8 +52,7 @@ use crate::compiler::tokens::{
     SleighToken,
 };
 
-pub(super) fn pcode_expression<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeExpression>, SleighParserExtra<'tokens>> + Clone {
+pub(super) fn pcode_expression<'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeExpression>, SleighParserExtra<'tokens>> + Clone {
     let ident_expression = pcode_ident().map(SASTPCodeExpression::Identifier);
 
     let bitrange = pcode_bitrange().map(SASTPCodeExpression::Bitrange);
@@ -86,6 +85,7 @@ pub(super) fn pcode_expression<'tokens>(
             .or(parenthesized(expression.clone())),
     );
 
+    // TODO: Replace with pratt parsing for correct operator precedence.
     let unary_op = unary_operator()
         .repeated()
         .foldr_with(atom.clone(), fold_unary_operation);
@@ -133,52 +133,69 @@ fn fold_binary_operation<'tokens>(
 
 #[cfg(test)]
 mod test {
-    use chumsky::Parser;
-
-    use crate::compiler::error::SleighCompilerError;
+    use crate::compiler::ast::pcode::expression::{
+        SASTPCodeBinaryOp,
+        SASTPCodeExpression,
+    };
+    use crate::compiler::ast::Spanned;
     use crate::compiler::parser::test::TestResult;
+    use chumsky::Parser;
 
     use super::pcode_expression;
 
-    fn test_pcode_expression(expression: &str) -> TestResult {
+    fn test_pcode_expression(expression: &str) -> TestResult<Spanned<SASTPCodeExpression>> {
         use crate::compiler::parser::test::{
             report_errors,
             test_parser,
         };
         test_parser(expression, |cache, context, tokens| {
             report_errors(cache, pcode_expression().parse_with_state(tokens.spanned(), context))
-        })?;
+        })
+    }
+
+    #[test]
+    fn mul_has_higher_precedence_than_add() -> TestResult {
+        let result = test_pcode_expression("a + b * c")?.into_value();
+        match result {
+            SASTPCodeExpression::BinaryOperation { lhs, op, rhs } => {
+                assert!(
+                    matches!(op.value(), SASTPCodeBinaryOp::IntAdd),
+                    "Expected the outermost operation to be IntAdd"
+                )
+            }
+            _ => panic!("Expected the parser to parse a binary expression."),
+        }
         Ok(())
     }
 
     #[test]
     fn address_of_parses() -> TestResult {
-        test_pcode_expression("push88(&:8 inst_next)")
+        test_pcode_expression("push88(&:8 inst_next)").map(|_| ())
     }
 
     #[test]
     fn deref_expression_parses() -> TestResult {
-        test_pcode_expression("*[spc]:10 (x + 5)")
+        test_pcode_expression("*[spc]:10 (x + 5)").map(|_| ())
     }
 
     #[test]
     fn func_with_expression_parses() -> TestResult {
-        test_pcode_expression("func(x >> (y - z))")
+        test_pcode_expression("func(x >> (y - z))").map(|_| ())
     }
 
     #[test]
     fn func_with_args_parses() -> TestResult {
-        test_pcode_expression("func(a, b)")
+        test_pcode_expression("func(a, b)").map(|_| ())
     }
 
     #[test]
     fn func_without_args_parses() -> TestResult {
-        test_pcode_expression("func()")
+        test_pcode_expression("func()").map(|_| ())
     }
 
     #[test]
     fn complex_expression_parses() -> TestResult {
-        test_pcode_expression("(-a * (b - c)) >> d")
+        test_pcode_expression("(-a * (b - c)) >> d").map(|_| ())
     }
 
     #[test]
@@ -186,7 +203,7 @@ mod test {
         test_pcode_expression("a:5")?;
         test_pcode_expression("a(5)")?;
         test_pcode_expression("2:4")?;
-        test_pcode_expression("2(4)")
+        test_pcode_expression("2(4)").map(|_| ())
     }
 
     #[test]
@@ -247,6 +264,6 @@ mod test {
         test_pcode_expression("round(v0)")?;
         test_pcode_expression("cpool(v0, v1, v2)")?;
         test_pcode_expression("newobject(v0)")?;
-        test_pcode_expression("ident(v0, v1, v2)")
+        test_pcode_expression("ident(v0, v1, v2)").map(|_| ())
     }
 }

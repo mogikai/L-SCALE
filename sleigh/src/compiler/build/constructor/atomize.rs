@@ -1,0 +1,139 @@
+mod expression;
+
+use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
+use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
+use crate::compiler::ast::pcode::statement::SASTPCodeStatement;
+use crate::compiler::ast::pcode::target_expression::SASTPCodeTargetExpression;
+use crate::compiler::ast::pcode::SASTPCode;
+use crate::compiler::ast::Spanned;
+use crate::compiler::{
+    SleighCompiler,
+    SleighCompilerResult,
+};
+use crate::spec::moir::code::{
+    MOIRConst,
+    MOIRInstruction,
+    MOIRValue,
+};
+use crate::spec::moir::varnode::{
+    MOIRVarNode,
+    MOIRVarNodeId,
+};
+use tracing::trace;
+
+impl SleighCompiler {
+    pub(super) fn atomize_pcode(
+        &mut self,
+        pcode: Spanned<SASTPCode>,
+    ) -> SleighCompilerResult<Vec<MOIRInstruction>> {
+        // TODO: Create table of locals? Lookup global identifiers?
+        let (pcode, _) = pcode.into_tuple();
+        let mut instructions = vec![];
+        let mut export = None;
+        for ((label, statement), _) in pcode.statements.into_iter().map(Spanned::into_tuple) {
+            if export.is_some() {
+                todo!("Generate error report for instruction after export statement")
+            }
+            let (statement, _) = statement.into_tuple();
+            match statement {
+                SASTPCodeStatement::Assignment {
+                    local,
+                    target,
+                    expression,
+                } => self.atomize_assignment(&mut instructions, local, target, expression)?,
+                SASTPCodeStatement::Invocation(invocation) => {
+                    // We ignore the output, since top level invocations do not output anything.
+                    // TODO: Maybe it makes sense to update the pcodeop definition here to "no output"?
+                    self.atomize_invocation(&mut instructions, invocation)?;
+                }
+                SASTPCodeStatement::Build(_) => {}
+                SASTPCodeStatement::Export(expression) => {
+                    export = Some(expression.span().clone());
+                    self.atomize_export(&mut instructions, expression)?;
+                }
+                SASTPCodeStatement::Delayslot(_) => {}
+                SASTPCodeStatement::Declaration(_, _) => {}
+                SASTPCodeStatement::Branch(_) => {}
+                SASTPCodeStatement::ConditionalBranch { .. } => {}
+                SASTPCodeStatement::BranchCall(_) => {}
+                SASTPCodeStatement::BranchReturn(_) => {}
+                SASTPCodeStatement::NOP => {}
+                SASTPCodeStatement::Error(_) => {}
+            }
+        }
+        Ok(instructions)
+    }
+
+    /// Atomizes the expression into multiple MOIRInstructions.
+    /// The function returns a [MOIRValue] that contains the result of the expression.
+    /// If the expression contains only constants, then this can be optimized down to
+    /// a single const [MOIRValue]. Otherwise, [MOIRValue] will be [MOIRValue::VarNode].
+    fn atomize_expression(
+        &mut self,
+        instructions: &mut Vec<MOIRInstruction>,
+        expression: Spanned<SASTPCodeExpression>,
+    ) -> SleighCompilerResult<MOIRValue> {
+        let (expression, _) = expression.into_tuple();
+        trace!("Atomizing expression {}", expression);
+        match expression {
+            SASTPCodeExpression::Invocation(invocation) => self.atomize_invocation(instructions, invocation),
+            SASTPCodeExpression::BinaryOperation { lhs, op, rhs } => {
+                self.atomize_binary_operation(instructions, *lhs, op, *rhs)
+            }
+            SASTPCodeExpression::UnaryOperation { .. } => self.atomize_unary_operation(instructions),
+            SASTPCodeExpression::Dereference { .. } => self.atomize_dereference(instructions),
+            SASTPCodeExpression::Subpiece(_) => self.atomize_subpiece(instructions),
+            SASTPCodeExpression::Bitrange(_) => self.atomize_bitrange(instructions),
+            SASTPCodeExpression::Identifier(_) => self.atomize_identifier(instructions),
+            SASTPCodeExpression::Load(_) => self.atomize_load(instructions),
+            SASTPCodeExpression::AddressOf(_) => self.atomize_address_of(instructions),
+            SASTPCodeExpression::Literal(literal) => self.atomize_literal(instructions, literal),
+            SASTPCodeExpression::Error(_) => {
+                panic!("An error in the AST should have lead to the compiler quitting earlier on.")
+            }
+        }
+    }
+
+    fn atomize_assignment(
+        &mut self,
+        instructions: &mut Vec<MOIRInstruction>,
+        local: Spanned<bool>,
+        target: Spanned<SASTPCodeTargetExpression>,
+        expression: Spanned<SASTPCodeExpression>,
+    ) -> SleighCompilerResult {
+        if *local && matches!(*target, SASTPCodeTargetExpression::Store(_)) {
+            todo!("Generate error report for local keyword on store assignment")
+        }
+        // TODO: Check if target ident exists. If not, require the local attribute to create a new local variable.
+        //       If the target is a store, require that the ident exists, and deny the local keyword, since it makes
+        //       no sense in this context.
+        // TODO: Atomize expression on the right hand side of the assignment.
+        // TODO: Check if the sizes on the left hand side match the right hand side.
+        self.atomize_expression(instructions, expression)?;
+        Ok(())
+    }
+
+    fn atomize_invocation(
+        &mut self,
+        instructions: &mut Vec<MOIRInstruction>,
+        invocation: Spanned<SASTPCodeInvocation>,
+    ) -> SleighCompilerResult<MOIRValue> {
+        let output = MOIRVarNodeId::from(0);
+        instructions.push(MOIRInstruction {
+            input_a: MOIRValue::Const(MOIRConst::Const8(0)),
+            input_b: MOIRValue::Const(MOIRConst::Const8(0)),
+            output,
+        });
+        Ok(MOIRValue::VarNode(output))
+    }
+
+    fn atomize_export(
+        &mut self,
+        instructions: &mut Vec<MOIRInstruction>,
+        expression: Spanned<SASTPCodeExpression>,
+    ) -> SleighCompilerResult {
+        // TODO: Handling dynamic references (e.g. export *:4 tmp) will require keeping track of the
+        //       dynamic references somewhere. We need to decide how to do this.
+        Ok(())
+    }
+}

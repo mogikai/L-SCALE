@@ -4,13 +4,16 @@
 //! The final [ProcessorSpecification] cannot be modified further.
 //! TODO: Improve docs
 
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-
 use chumsky::container::Container;
 use slotmap::{
     SecondaryMap,
     SlotMap,
+};
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
+use std::fmt::{
+    Display,
+    Formatter,
 };
 use string_interner::backend::{
     Backend,
@@ -74,6 +77,15 @@ use crate::spec::{
 /// StringId given out by interner. The interner is used by the compiler
 /// to simplify string comparisons by mapping ids to strings.
 pub struct StringId(usize);
+
+impl Display for StringId {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 #[derive(Debug, Default)]
 /// A transparent helper struct that contains all the symbol tables to make the builder more manageable.

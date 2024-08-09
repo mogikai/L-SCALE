@@ -6,6 +6,11 @@ use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::pcode::subpiece::SASTPCodeSubpiece;
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::InputSpan;
+use std::fmt::{
+    Display,
+    Formatter,
+};
+use strum_macros::Display;
 
 #[derive(Debug)]
 pub enum SASTPCodeExpression {
@@ -32,7 +37,30 @@ pub enum SASTPCodeExpression {
     Error(InputSpan),
 }
 
-#[derive(Debug, Copy, Clone)]
+impl Display for SASTPCodeExpression {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        match self {
+            SASTPCodeExpression::Invocation(_) => write!(f, "invocation"),
+            SASTPCodeExpression::BinaryOperation { lhs, op, rhs } => {
+                write!(f, "({} {} {})", lhs.value(), op.value(), rhs.value())
+            }
+            SASTPCodeExpression::UnaryOperation { op, operand } => write!(f, "unary"),
+            SASTPCodeExpression::Dereference { space, size } => write!(f, "*{}:{}", space.value(), size.value()),
+            SASTPCodeExpression::Subpiece(_) => write!(f, ""),
+            SASTPCodeExpression::Bitrange(_) => write!(f, ""),
+            SASTPCodeExpression::Identifier(ident) => write!(f, "{}", ident.value()),
+            SASTPCodeExpression::Load(_) => write!(f, ""),
+            SASTPCodeExpression::AddressOf(_) => write!(f, ""),
+            SASTPCodeExpression::Literal(literal) => write!(f, "{}", literal.value()),
+            SASTPCodeExpression::Error(_) => write!(f, ""),
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, Display)]
 pub enum SASTPCodeBinaryOp {
     /// `v0 + v1`: Addition of v0 and v1 as integers.
     IntAdd,

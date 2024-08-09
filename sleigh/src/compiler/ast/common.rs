@@ -1,8 +1,22 @@
 use crate::compiler::ast::Spanned;
 use crate::spec::builder::StringId;
+use std::fmt::{
+    Display,
+    Formatter,
+};
 
 #[derive(Debug, Copy, Clone)]
 pub struct SASTIdent(pub StringId);
+
+impl Display for SASTIdent {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "Ident{}", self.0)
+    }
+}
+
 #[derive(Debug)]
 pub struct SASTString(pub StringId);
 
