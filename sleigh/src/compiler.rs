@@ -174,7 +174,7 @@ impl SleighCompiler {
                     "───────────────────────────────\nFound a total of {} errors.\n───────────────────────────────",
                     error_count
                 )
-                    .as_bytes(),
+                .as_bytes(),
             );
             Err(SleighCompilerError::SemanticError(
                 String::from_utf8(error_description).expect("We only write utf8 strings."),
