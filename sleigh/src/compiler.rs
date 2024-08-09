@@ -34,6 +34,7 @@ use crate::compiler::ast::define::{
     SASTEndianness,
     SASTToken,
     SASTTokenField,
+    SASTUserPcodeOp,
 };
 use crate::compiler::ast::item::SASTItem;
 use crate::compiler::ast::pcode_macro::SASTPCodeMacro;
@@ -316,10 +317,17 @@ impl SleighCompiler {
             SASTDefine::BitrangeRegister(bitrange_register) => {
                 self.process_define_bitrange_registers(bitrange_register)
             }
-            SASTDefine::UserPcodeOp(_) => Ok(()),
+            SASTDefine::UserPcodeOp(pcode_op) => self.process_define_pcode_op(pcode_op),
             SASTDefine::Token(token) => self.process_define_token(token),
-            SASTDefine::Context(context) => self.process_context(context),
+            SASTDefine::Context(context) => self.process_define_context(context),
         }
+    }
+
+    fn process_define_pcode_op(
+        &mut self,
+        pcode_op: Spanned<SASTUserPcodeOp>,
+    ) -> SleighCompilerResult {
+        Ok(())
     }
 
     fn process_define_varnodes(
@@ -357,9 +365,10 @@ impl SleighCompiler {
         bitrange_registers: Vec<Spanned<SASTBitrangeRegister>>,
     ) -> SleighCompilerResult {
         for bitrange_register in bitrange_registers {
+            let bitrange_register = bitrange_register.into_value();
             self.spec_builder.define_bitrange_register(
-                bitrange_register.name.clone().transmute(),
-                bitrange_register.source_varnode.clone().transmute(),
+                bitrange_register.name.transmute(),
+                bitrange_register.source_varnode.transmute(),
                 bitrange_register.offset,
                 bitrange_register.size,
             )?;
@@ -450,7 +459,7 @@ impl SleighCompiler {
         Ok(())
     }
 
-    fn process_context(
+    fn process_define_context(
         &mut self,
         context: Spanned<SASTContext>,
     ) -> SleighCompilerResult {
