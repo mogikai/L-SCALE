@@ -20,12 +20,24 @@ use string_interner::symbol::Symbol;
 use string_interner::StringInterner;
 use tracing::debug;
 
+use super::moir::bitrange_register::{
+    MOIRBitrangeRegisterId,
+    MOIRTBitrangeRegister,
+};
+use super::moir::context::{
+    MOIRContext,
+    MOIRContextId,
+};
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::CompilerContext;
 use crate::spec::moir::address_space::{
     MOIRSpace,
     MOIRSpaceIsDefault,
+};
+use crate::spec::moir::custom_op::{
+    MOIRCustomOp,
+    MOIRCustomOpId,
 };
 use crate::spec::moir::endianness::MOIREndianness;
 use crate::spec::moir::field::{
@@ -58,15 +70,6 @@ use crate::spec::{
     ProcessorSpecificationError,
 };
 
-use super::moir::bitrange_register::{
-    MOIRBitrangeRegisterId,
-    MOIRTBitrangeRegister,
-};
-use super::moir::context::{
-    MOIRContext,
-    MOIRContextId,
-};
-
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 /// StringId given out by interner. The interner is used by the compiler
 /// to simplify string comparisons by mapping ids to strings.
@@ -81,6 +84,7 @@ pub(super) struct SymbolTables {
     pub(super) varnodes: MOIRSymbolTable<MOIRVarNodeId, MOIRVarNode>,
     pub(super) tokens: MOIRSymbolTable<MOIRTokenId, MOIRToken>,
     pub(super) fields: MOIRSymbolTable<MOIRFieldId, MOIRField>,
+    pub(super) custom_ops: MOIRSymbolTable<MOIRCustomOpId, MOIRCustomOp>,
     // bitrange registers are treated more like placeholders for the corresponding pcode operations to realize access
     pub(super) bitrange_registers: MOIRSymbolTable<MOIRBitrangeRegisterId, MOIRTBitrangeRegister>,
 }
@@ -148,6 +152,16 @@ impl ProcessorSpecificationBuilder {
             self.alignment = Some(alignment.transmute());
             Ok(())
         }
+    }
+
+    pub(crate) fn declare_custom_op(
+        &mut self,
+        ident: Spanned<StringId>,
+    ) -> Result<MOIRIdent, ProcessorSpecificationError> {
+        let symbol_id = self.declare_symbol(ident)?;
+        let custom_op_id = self.symbol_tables.custom_ops.insert(MOIRCustomOp::Declared);
+        self.define_symbol(symbol_id, MOIRSymbol::CustomOp(custom_op_id))?;
+        Ok(symbol_id)
     }
 
     /// Define a new macro identified by `ident`.
@@ -553,6 +567,7 @@ impl ProcessorSpecificationBuilder {
         debug!("Found {} fields", self.symbol_tables.fields.len());
         debug!("Found {} spaces", self.symbol_tables.spaces.len());
         debug!("Found {} global varnodes", self.symbol_tables.varnodes.len());
+        debug!("Found {} custom operations", self.symbol_tables.custom_ops.len());
 
         // TODO: Generate more helpful error reports during final build step
         let spec = ProcessorSpecification {

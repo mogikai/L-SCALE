@@ -1,10 +1,11 @@
 pub mod address_space;
+pub mod bitrange_register;
 pub mod code;
+pub mod context;
+pub mod custom_op;
 pub mod endianness;
 pub mod field;
 pub mod r#macro;
 pub mod table;
 pub mod token;
 pub mod varnode;
-pub mod context;
-pub mod bitrange_register;

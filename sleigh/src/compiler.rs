@@ -1,49 +1,21 @@
+use ariadne::{
+    Report,
+    Source,
+};
+use slotmap::new_key_type;
 use std::fmt::{
     Debug,
     Display,
     Formatter,
 };
-use std::ops::Range;
 use std::path::{
     Path,
     PathBuf,
 };
-
-use ariadne::{
-    Label,
-    Report,
-    ReportKind,
-    Source,
-};
-use slotmap::new_key_type;
-use tracing::{
-    debug,
-    trace,
-};
+use tracing::debug;
 
 use inputcache::CompilerInputCache;
 
-use crate::compiler::ast::attach::SASTVariable;
-use crate::compiler::ast::constructor::bit_pattern_section::SASTBitPatternConstraint;
-use crate::compiler::ast::constructor::SASTConstructor;
-use crate::compiler::ast::define::{
-    SASTAddressSpace,
-    SASTAddressSpaceAttribute,
-    SASTAlignment,
-    SASTDefine,
-    SASTEndianness,
-    SASTToken,
-    SASTTokenField,
-    SASTUserPcodeOp,
-};
-use crate::compiler::ast::item::SASTItem;
-use crate::compiler::ast::pcode_macro::SASTPCodeMacro;
-use crate::compiler::ast::with::SASTWith;
-use crate::compiler::ast::{
-    SleighAST,
-    Spanned,
-    TransmuteIntoVec,
-};
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::{
     InputSpan,
@@ -57,36 +29,13 @@ use crate::spec::builder::{
     ProcessorSpecificationBuilder,
     StringId,
 };
-use crate::spec::moir::address_space::{
-    MOIRSpace,
-    MOIRSpaceIsDefault,
-    MOIRSpaceType,
-};
-use crate::spec::moir::context::MOIRContext;
-use crate::spec::moir::field::{
-    MOIRField,
-    MOIRFieldParent,
-};
-use crate::spec::moir::r#macro::MOIRMacro;
-use crate::spec::moir::token::{
-    MOIRToken,
-    MOIRTokenId,
-};
-use crate::spec::moir::varnode::MOIRVarNode;
 use crate::spec::{
     ProcessorSpecification,
     ProcessorSpecificationError,
 };
 
-use self::ast::attach::SASTAttach;
-use self::ast::define::{
-    SASTBitrangeRegister,
-    SASTContext,
-    SASTVarnode,
-};
-use self::ast::pcode::bitrange;
-
 pub mod ast;
+pub mod build;
 pub mod builder;
 pub mod error;
 pub mod inputcache;
@@ -174,7 +123,7 @@ impl SleighCompiler {
                     "───────────────────────────────\nFound a total of {} errors.\n───────────────────────────────",
                     error_count
                 )
-                .as_bytes(),
+                    .as_bytes(),
             );
             Err(SleighCompilerError::SemanticError(
                 String::from_utf8(error_description).expect("We only write utf8 strings."),
@@ -213,338 +162,6 @@ impl SleighCompiler {
             }
         };
         Ok(tokens)
-    }
-
-    fn build(
-        &mut self,
-        ast: SleighAST,
-    ) -> SleighCompilerResult {
-        debug!("Building the processor specification from the AST.");
-        debug!("The AST has {} toplevel items", ast.items.len());
-        self.process_items(ast.items)
-    }
-
-    fn process_items(
-        &mut self,
-        items: Vec<SASTItem>,
-    ) -> SleighCompilerResult {
-        for item in items {
-            match item {
-                SASTItem::Attach(attach) => self.process_attach(attach)?,
-                SASTItem::Constructor(constructor) => self.process_constructor(constructor)?,
-                SASTItem::Define(define) => self.process_define(define)?,
-                SASTItem::Macro(pcode_macro) => self.process_pcode_macro(pcode_macro)?,
-                SASTItem::With(with) => self.process_with(with)?,
-                SASTItem::Error(_) => {}
-            }
-        }
-        Ok(())
-    }
-
-    fn process_attach(
-        &mut self,
-        attach: Spanned<SASTAttach>,
-    ) -> SleighCompilerResult {
-        match attach.into_value() {
-            SASTAttach::SASTVariable(variable) => {
-                let variable = variable.into_value();
-                let fields = variable.fields.transmute_into_vec();
-                let varnodes = variable.varnodes.transmute_into_vec();
-
-                Ok(self.spec_builder.attach_variables(fields, varnodes)?)
-            }
-            SASTAttach::SASTValue(value) => {
-                let value = value.into_value();
-                let fields = value.fields.transmute_into_vec();
-                let values = value.values.transmute_into_vec();
-
-                Ok(self.spec_builder.attach_values(fields, values)?)
-            }
-            SASTAttach::SASTName(name) => {
-                let name = name.into_value();
-                let fields = name.fields.transmute_into_vec();
-                let strings = name.strings.transmute_into_vec();
-
-                Ok(self.spec_builder.attach_names(fields, strings)?)
-            }
-        }
-    }
-
-    /// Process a constructor. This will create the table in which the constructor is anchored, if it does not exist.
-    /// Then, the bit pattern section is validated.
-    fn process_constructor(
-        &mut self,
-        constructor: Spanned<SASTConstructor>,
-    ) -> SleighCompilerResult {
-        trace!("Processing constructor statement");
-        let (constructor, span) = constructor.into_tuple();
-        let table = match constructor.table.lift_option() {
-            None => self.spec_builder.modify_root_table()?,
-            Some(id) => self.spec_builder.modify_table(id)?,
-        };
-        self.validate_constraint(constructor.bit_pattern_section.into_value().constraint)?;
-        // TODO: we need to walk the constraint and find out the tokens that are used.
-        //       we also need to make sure that there is only one token per section
-        //       delimited by a semicolon.
-        Ok(())
-    }
-
-    fn validate_constraint(
-        &self,
-        constraint: Spanned<SASTBitPatternConstraint>,
-    ) -> SleighCompilerResult {
-        let (constraint, span) = constraint.into_tuple();
-        match constraint {
-            SASTBitPatternConstraint::Ident(_) => {}
-            SASTBitPatternConstraint::BinaryOp(_, _, _) => {}
-            SASTBitPatternConstraint::UnaryOp(_, _) => {}
-            SASTBitPatternConstraint::AdvancedConstraint(_, _, _) => {}
-            SASTBitPatternConstraint::Invalid => {}
-        };
-        Ok(())
-    }
-
-    fn process_define(
-        &mut self,
-        define: Spanned<SASTDefine>,
-    ) -> SleighCompilerResult {
-        trace!("Processing define statement");
-        match define.into_value() {
-            SASTDefine::Endianness(endianness) => self.process_define_endianness(endianness),
-            SASTDefine::Alignment(alignment) => self.process_define_alignment(alignment),
-            SASTDefine::AddressSpace(space) => self.process_define_space(space),
-            SASTDefine::Varnode(varnodes) => self.process_define_varnodes(varnodes),
-            SASTDefine::BitrangeRegister(bitrange_register) => {
-                self.process_define_bitrange_registers(bitrange_register)
-            }
-            SASTDefine::UserPcodeOp(pcode_op) => self.process_define_pcode_op(pcode_op),
-            SASTDefine::Token(token) => self.process_define_token(token),
-            SASTDefine::Context(context) => self.process_define_context(context),
-        }
-    }
-
-    fn process_define_pcode_op(
-        &mut self,
-        pcode_op: Spanned<SASTUserPcodeOp>,
-    ) -> SleighCompilerResult {
-        Ok(())
-    }
-
-    fn process_define_varnodes(
-        &mut self,
-        varnodes: Spanned<SASTVarnode>,
-    ) -> SleighCompilerResult {
-        let (varnodes, span) = varnodes.into_tuple();
-        let result = self
-            .spec_builder
-            .space_id_by_ident(varnodes.spacename.transmute());
-
-        let Some(space) = self.report_error_or_unwrap(result)? else {
-            // We reported an error already. Quit here for this define and try to continue.
-            return Ok(());
-        };
-
-        for (i, name) in varnodes.names.into_iter().enumerate() {
-            if self.spec_builder.is_placeholder_ident((*name).into())? {
-                // Placeholders are skipped.
-                continue;
-            }
-            let varnode = MOIRVarNode {
-                space,
-                offset: varnodes.offset.value() + (i as u64 * u64::from(*varnodes.size)),
-                size: *varnodes.size,
-            };
-            let result = self.spec_builder.define_varnode(name.transmute(), varnode);
-            self.report_error_or_unwrap(result)?;
-        }
-        Ok(())
-    }
-
-    fn process_define_bitrange_registers(
-        &mut self,
-        bitrange_registers: Vec<Spanned<SASTBitrangeRegister>>,
-    ) -> SleighCompilerResult {
-        for bitrange_register in bitrange_registers {
-            let bitrange_register = bitrange_register.into_value();
-            self.spec_builder.define_bitrange_register(
-                bitrange_register.name.transmute(),
-                bitrange_register.source_varnode.transmute(),
-                bitrange_register.offset,
-                bitrange_register.size,
-            )?;
-        }
-
-        Ok(())
-    }
-
-    fn process_define_space(
-        &mut self,
-        space: Spanned<SASTAddressSpace>,
-    ) -> SleighCompilerResult {
-        let (space, _) = space.into_tuple();
-        let mut r#type = None;
-        let mut address_size = None;
-        let mut word_size = None;
-        let mut default = MOIRSpaceIsDefault::NotDefault;
-        for (attribute, _) in space.attributes.into_iter().map(Spanned::into_tuple) {
-            match attribute {
-                SASTAddressSpaceAttribute::Type(ty) => {
-                    if r#type.is_some() {
-                        todo!("Generate error report for duplicate space type attribute.")
-                    } else {
-                        r#type = Some(ty.into());
-                    }
-                }
-                SASTAddressSpaceAttribute::Size(size) => {
-                    if address_size.is_some() {
-                        todo!("Generate error report for duplicate size attribute.")
-                    } else {
-                        address_size = Some(size);
-                    }
-                }
-                SASTAddressSpaceAttribute::Wordsize(size) => {
-                    if word_size.is_some() {
-                        todo!("Generate error report for duplicate word size attribute.")
-                    } else {
-                        word_size = Some(size);
-                    }
-                }
-                SASTAddressSpaceAttribute::IsDefault => {
-                    if matches!(default, MOIRSpaceIsDefault::Default) {
-                        todo!("Generate error report for duplicate default attribute.")
-                    } else {
-                        default = MOIRSpaceIsDefault::Default;
-                    }
-                }
-            }
-        }
-        let Some(address_size) = address_size else {
-            todo!("Generate error report for missing size attribute.");
-            return Ok(());
-        };
-        let moir_space = MOIRSpace {
-            r#type: r#type.unwrap_or(MOIRSpaceType::Ram),
-            address_size,
-            wordsize: word_size.unwrap_or(1),
-        };
-        self.spec_builder
-            .define_space(space.name.transmute(), moir_space, default)?;
-        Ok(())
-    }
-
-    fn process_define_token(
-        &mut self,
-        token: Spanned<SASTToken>,
-    ) -> SleighCompilerResult {
-        // We first define the token and then we can define its fields, since they need to refer to the token.
-        let (token, _) = token.into_tuple();
-        let bits = token.bits.into_value();
-        let result = self.spec_builder.define_token(
-            token.name.transmute(),
-            MOIRToken {
-                bits,
-                endianness_override: token.endian_override.map(|e| e.into_value().into()),
-            },
-        );
-        if let Some(token_id) = self.report_error_or_unwrap(result)? {
-            for field in token.fields.into_iter() {
-                let name = field.name.clone().transmute();
-                let range = field.start.clone().into_value()..field.end.clone().into_value();
-                if let Some(field) = self.make_field(MOIRFieldParent::Token(token_id), bits, range)? {
-                    let result = self.spec_builder.define_field(name, field);
-                    self.report_error_or_unwrap(result)?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn process_define_context(
-        &mut self,
-        context: Spanned<SASTContext>,
-    ) -> SleighCompilerResult {
-        let (context_id, bits) = self
-            .spec_builder
-            .define_context(context.varnode.clone().transmute())?;
-        for field in &context.fields {
-            let range = field.start.clone().into_value()..field.end.clone().into_value();
-            if let Some(moir_field) = self.make_field(MOIRFieldParent::Context(context_id), bits, range)? {
-                self.spec_builder
-                    .define_field(field.name.clone().transmute(), moir_field)?;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Create a new field instance to be defined in the [ProcessorSpecificationBuilder].
-    /// The field is associated with the provided `parent`.
-    /// This function also performs semantic checks, and thus needs the amount of bits
-    /// the token contains.
-    fn make_field(
-        &mut self,
-        parent: MOIRFieldParent,
-        bits: u64,
-        field_range: Range<u64>,
-    ) -> Result<Option<MOIRField>, SleighCompilerError> {
-        if field_range.start > field_range.end {
-            todo!("Generate correct error report and return Ok(None)")
-        } else if field_range.end - field_range.start >= bits {
-            todo!("Generate correct error report and return Ok(None)")
-        } else {
-            // The variables, values, and strings fields are later attached with attach statements.
-            let field = MOIRField {
-                parent,
-                bits: field_range,
-                variables: vec![],
-                values: vec![],
-                strings: vec![],
-            };
-            Ok(Some(field))
-        }
-    }
-
-    fn process_define_endianness(
-        &mut self,
-        endianness: Spanned<SASTEndianness>,
-    ) -> SleighCompilerResult {
-        let result = self.spec_builder.define_endianness(endianness.transmute());
-        self.report_error_or_unwrap(result)?;
-        Ok(())
-    }
-
-    fn process_define_alignment(
-        &mut self,
-        alignment: Spanned<SASTAlignment>,
-    ) -> SleighCompilerResult {
-        let result = self.spec_builder.define_alignment(alignment.transmute());
-        self.report_error_or_unwrap(result)?;
-        Ok(())
-    }
-
-    fn process_with(
-        &mut self,
-        with: Spanned<SASTWith>,
-    ) -> SleighCompilerResult {
-        trace!("Processing with statement at {:?}.", with.span());
-        self.process_items(with.into_value().items)?;
-        Ok(())
-    }
-
-    fn process_pcode_macro(
-        &mut self,
-        pcode_macro: Spanned<SASTPCodeMacro>,
-    ) -> SleighCompilerResult {
-        trace!("Processing pcode macro at {:?}", pcode_macro.span());
-        let result = self.spec_builder.define_macro(
-            pcode_macro.into_value().ident.transmute(),
-            MOIRMacro {
-                arguments: vec![],
-                code: vec![],
-            },
-        );
-        self.report_error_or_unwrap(result)?;
-        Ok(())
     }
 
     /// Reports an error if the error type is `Report` and returns `None`.

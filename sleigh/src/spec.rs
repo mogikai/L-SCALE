@@ -9,6 +9,7 @@ use string_interner::backend::StringBackend;
 use string_interner::StringInterner;
 use thiserror::Error;
 
+use self::moir::bitrange_register::MOIRBitrangeRegisterId;
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::CompilerContext;
@@ -17,6 +18,7 @@ use crate::spec::builder::{
     SymbolTables,
 };
 use crate::spec::moir::address_space::MOIRSpaceId;
+use crate::spec::moir::custom_op::MOIRCustomOpId;
 use crate::spec::moir::endianness::MOIREndianness;
 use crate::spec::moir::r#macro::MOIRMacroId;
 use crate::spec::moir::table::MOIRTableId;
@@ -26,8 +28,6 @@ use crate::spec::moir::varnode::{
 };
 use moir::field::MOIRFieldId;
 use moir::token::MOIRTokenId;
-
-use self::moir::bitrange_register::MOIRBitrangeRegisterId;
 
 pub mod builder;
 pub mod moir;
@@ -53,6 +53,7 @@ pub enum MOIRSymbol {
     Field(MOIRFieldId),
     VarNode(MOIRVarNodeId),
     BitrangeRegister(MOIRBitrangeRegisterId),
+    CustomOp(MOIRCustomOpId),
 }
 
 #[derive(Debug)]
