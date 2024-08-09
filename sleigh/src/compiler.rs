@@ -12,7 +12,10 @@ use std::path::{
     Path,
     PathBuf,
 };
-use tracing::debug;
+use tracing::{
+    debug,
+    info,
+};
 
 use inputcache::CompilerInputCache;
 
@@ -103,10 +106,13 @@ impl SleighCompiler {
         mut self,
         spec_path: &Path,
     ) -> SleighCompilerResult<ProcessorSpecification> {
+        info!("Loading and preprocessing {spec_path:?} and the files it includes.");
         let tokens = self.load_and_preprocess(spec_path)?;
+        info!("Parsing the abstract syntax tree.");
         let ast = self
             .parser
             .parse(&mut self.input_cache, &mut self.spec_builder, tokens)?;
+        info!("Building the specification from the AST.");
         self.build(ast)?;
         if self.errors.is_empty() {
             Ok(self.spec_builder.build()?)

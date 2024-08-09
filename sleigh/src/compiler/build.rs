@@ -57,7 +57,6 @@ impl SleighCompiler {
         &mut self,
         ast: SleighAST,
     ) -> SleighCompilerResult {
-        debug!("Building the processor specification from the AST.");
         debug!("The AST has {} toplevel items", ast.items.len());
         self.process_items(ast.items)
     }

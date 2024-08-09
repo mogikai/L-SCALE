@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tracing = "0.1.40"
+tracing = { version = "0.1.40", features = ["release_max_level_debug"] }
 slotmap = "1.0.*"
 thiserror = "1.0.*"
 ariadne = "0.4.1"

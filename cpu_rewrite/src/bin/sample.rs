@@ -1,7 +1,13 @@
+use mogi_mem::mmu::MogiMMU;
+use mogi_neocpu::cpu::CPU;
+use mogi_neocpu::jit::x86::X86MogiJit;
+use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
+use mogi_sleigh::preprocessor::SleighPreprocessorFactory;
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
 use tracing::debug;
+use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{
@@ -9,16 +15,15 @@ use tracing_subscriber::{
     EnvFilter,
 };
 
-use mogi_mem::mmu::MogiMMU;
-use mogi_neocpu::cpu::CPU;
-use mogi_neocpu::jit::x86::X86MogiJit;
-use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
-use mogi_sleigh::preprocessor::SleighPreprocessorFactory;
-
 fn main() {
     tracing_subscriber::registry()
         .with(fmt::layer())
-        .with(EnvFilter::from_env("FUZE_LOG"))
+        .with(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::INFO.into())
+                .with_env_var("FUZE_LOG")
+                .from_env_lossy(),
+        )
         .init();
     let test_exe = include_bytes!("./../../../emulator/systems/ubuntu2304/home/user/main");
     let spec_path = Path::new("/home/mark/projects/fraunhofer/fuzzing/prototypes/fuzzyemu/cpu/Ghidra/Ghidra/Processors/x86/data/languages/x86-64.slaspec");
