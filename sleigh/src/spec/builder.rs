@@ -283,7 +283,6 @@ impl ProcessorSpecificationBuilder {
                     self.get_symbol_and_id(&vsid)
                         .ok_or(ProcessorSpecificationError::IdentifierNotMapped(vsid))
                         .and_then(|(symbol, _)| {
-                            eprintln!("symbol = {:#?}", symbol);
                             if let MOIRSymbol::VarNode(vnid) = symbol {
                                 Ok(*vnid)
                             } else {

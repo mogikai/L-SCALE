@@ -2,6 +2,8 @@
 //! Specification in the [ProcessorSpecificationBuilder] by walking over the abstract
 //! syntax tree and processing each item.
 
+mod constructor;
+
 use crate::compiler::ast::attach::SASTAttach;
 use crate::compiler::ast::constructor::bit_pattern_section::SASTBitPatternConstraint;
 use crate::compiler::ast::constructor::SASTConstructor;
@@ -107,40 +109,6 @@ impl SleighCompiler {
                 self.report_error_or_unwrap(result)?;
             }
         }
-        Ok(())
-    }
-
-    /// Process a constructor. This will create the table in which the constructor is anchored, if it does not exist.
-    /// Then, the bit pattern section is validated.
-    fn process_constructor(
-        &mut self,
-        constructor: Spanned<SASTConstructor>,
-    ) -> SleighCompilerResult {
-        trace!("Processing constructor statement");
-        let (constructor, span) = constructor.into_tuple();
-        let table = match constructor.table.lift_option() {
-            None => self.spec_builder.modify_root_table()?,
-            Some(id) => self.spec_builder.modify_table(id)?,
-        };
-        self.validate_constraint(constructor.bit_pattern_section.into_value().constraint)?;
-        // TODO: we need to walk the constraint and find out the tokens that are used.
-        //       we also need to make sure that there is only one token per section
-        //       delimited by a semicolon.
-        Ok(())
-    }
-
-    fn validate_constraint(
-        &self,
-        constraint: Spanned<SASTBitPatternConstraint>,
-    ) -> SleighCompilerResult {
-        let (constraint, span) = constraint.into_tuple();
-        match constraint {
-            SASTBitPatternConstraint::Ident(_) => {}
-            SASTBitPatternConstraint::BinaryOp(_, _, _) => {}
-            SASTBitPatternConstraint::UnaryOp(_, _) => {}
-            SASTBitPatternConstraint::AdvancedConstraint(_, _, _) => {}
-            SASTBitPatternConstraint::Invalid => {}
-        };
         Ok(())
     }
 

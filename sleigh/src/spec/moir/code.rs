@@ -2,10 +2,11 @@ use crate::spec::moir::varnode::MOIRVarNodeId;
 
 #[derive(Debug)]
 pub struct MOIRInstruction {
-    /// The inputs of the instruction.
-    inputs: Vec<MOIRValue>,
-    /// The outputs of the instruction. The outputs must always be varnodes, since they are written to.
-    outputs: Vec<MOIRVarNodeId>,
+    /// The first input of the instruction.
+    pub input_a: MOIRValue,
+    pub input_b: MOIRValue,
+    /// The output of the instruction. The output must always be a varnode, since it is written to.
+    pub output: MOIRVarNodeId,
 }
 
 #[derive(Debug)]

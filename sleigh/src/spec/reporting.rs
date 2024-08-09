@@ -11,7 +11,9 @@ use ariadne::{
 
 use crate::spec::moir::endianness::MOIREndianness;
 use chumsky::span::Span;
-
+// TODO: Pull the error reporting out of the spec and into the compiler.
+//       Also use SleighCompilerError instead of ProcessorSpecificationError
+//       The ProcessorSpecificationError should be reserved for the final spec.
 /// Generates an error report for IdentAlreadyExists errors.
 pub fn generate_identifier_exists_report(
     name: &str,
