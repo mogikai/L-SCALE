@@ -58,7 +58,9 @@ impl SleighCompiler {
         ast: SleighAST,
     ) -> SleighCompilerResult {
         debug!("The AST has {} toplevel items", ast.items.len());
-        self.process_items(ast.items)
+        let result = self.process_items(ast.items);
+        self.report_error_or_unwrap(result)?;
+        Ok(())
     }
 
     fn process_items(

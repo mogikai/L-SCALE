@@ -9,13 +9,13 @@ pub struct MOIRInstruction {
     pub output: MOIRVarNodeId,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum MOIRValue {
     VarNode(MOIRVarNodeId),
     Const(MOIRConst),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum MOIRConst {
     Const64(u64),
     Const32(u32),
@@ -23,4 +23,6 @@ pub enum MOIRConst {
     Const8(u8),
 }
 
-pub enum MOIRInstructionType {}
+pub enum MOIRInstructionType {
+    CustomOp(Vec<MOIRValue>),
+}

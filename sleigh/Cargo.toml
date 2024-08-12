@@ -10,4 +10,5 @@ thiserror = "1.0.*"
 ariadne = "0.4.1"
 chumsky = { features = ["label", "pratt"], git = "https://github.com/mlgiraud/chumsky.git" }
 string-interner = "0.17.0"
+num = "0.4.3"
 strum_macros = "0.26.4"

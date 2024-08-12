@@ -44,6 +44,7 @@ pub mod error;
 pub mod inputcache;
 pub mod lexer;
 pub mod parser;
+pub mod report;
 pub mod tokens;
 
 new_key_type! { pub struct InputId; }
@@ -175,16 +176,16 @@ impl SleighCompiler {
     /// Otherwise, this function errors as well.
     fn report_error_or_unwrap<T>(
         &mut self,
-        result: Result<T, ProcessorSpecificationError>,
+        result: Result<T, SleighCompilerError>,
     ) -> SleighCompilerResult<Option<T>> {
         match result {
             Ok(value) => Ok(Some(value)),
             Err(err) => {
-                if let ProcessorSpecificationError::ErrorReport(report) = err {
+                if let SleighCompilerError::ErrorReport(report) = err {
                     self.errors.push(report);
                     Ok(None)
                 } else {
-                    Err(err)?
+                    Err(err)
                 }
             }
         }

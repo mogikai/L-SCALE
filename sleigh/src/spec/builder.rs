@@ -32,8 +32,12 @@ use super::moir::context::{
     MOIRContextId,
 };
 use crate::compiler::ast::Spanned;
+use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::InputSpan;
-use crate::compiler::CompilerContext;
+use crate::compiler::{
+    CompilerContext,
+    SleighCompilerResult,
+};
 use crate::spec::moir::address_space::{
     MOIRSpace,
     MOIRSpaceIsDefault,
@@ -144,7 +148,7 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn define_endianness(
         &mut self,
         endianness: Spanned<MOIREndianness>,
-    ) -> Result<(), ProcessorSpecificationError> {
+    ) -> Result<(), SleighCompilerError> {
         if let Some(old_endianness) = &self.endianness {
             Err(generate_endianness_already_specified_report(old_endianness, endianness.into_span()))
         } else {
@@ -157,7 +161,7 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn define_alignment(
         &mut self,
         alignment: Spanned<u16>,
-    ) -> Result<(), ProcessorSpecificationError> {
+    ) -> SleighCompilerResult {
         if let Some(old_alignment) = &self.alignment {
             Err(generate_alignment_already_specified_report(old_alignment, alignment.into_span()))
         } else {
@@ -169,7 +173,7 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn declare_custom_op(
         &mut self,
         ident: Spanned<StringId>,
-    ) -> Result<MOIRIdent, ProcessorSpecificationError> {
+    ) -> Result<MOIRIdent, SleighCompilerError> {
         let symbol_id = self.declare_symbol(ident)?;
         let custom_op_id = self.symbol_tables.custom_ops.insert(MOIRCustomOp::Declared);
         self.define_symbol(symbol_id, MOIRSymbol::CustomOp(custom_op_id))?;
@@ -184,7 +188,7 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         ident: Spanned<StringId>,
         moir_macro: MOIRMacro,
-    ) -> Result<MOIRIdent, ProcessorSpecificationError> {
+    ) -> SleighCompilerResult<MOIRIdent> {
         let symbol_id = self.declare_symbol(ident)?;
         let macro_id = self.symbol_tables.macros.insert(moir_macro);
         self.define_symbol(symbol_id, MOIRSymbol::Macro(macro_id))?;
@@ -196,7 +200,7 @@ impl ProcessorSpecificationBuilder {
         ident: Spanned<StringId>,
         space: MOIRSpace,
         default: MOIRSpaceIsDefault,
-    ) -> Result<MOIRIdent, ProcessorSpecificationError> {
+    ) -> SleighCompilerResult<MOIRIdent> {
         if matches!(default, MOIRSpaceIsDefault::Default) && self.default_space.is_some() {
             todo!("Generate report that default space is already set")
         }
@@ -214,7 +218,7 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         ident: Spanned<StringId>,
         varnode: MOIRVarNode,
-    ) -> Result<MOIRIdent, ProcessorSpecificationError> {
+    ) -> Result<MOIRIdent, SleighCompilerError> {
         let symbol_id = self.declare_symbol(ident)?;
         let varnode_id = self.symbol_tables.varnodes.insert(varnode);
         self.define_symbol(symbol_id, MOIRSymbol::VarNode(varnode_id))?;
@@ -227,7 +231,7 @@ impl ProcessorSpecificationBuilder {
         source_varnode: Spanned<StringId>,
         offset: u64,
         size: u64,
-    ) -> Result<MOIRBitrangeRegisterId, ProcessorSpecificationError> {
+    ) -> Result<MOIRBitrangeRegisterId, SleighCompilerError> {
         // validate that source_varnode is valid
         // TODO: Generate error reports instead of normal errors.
         let source_varnode_id = self
@@ -261,7 +265,7 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         ident: Spanned<StringId>,
         token: MOIRToken,
-    ) -> Result<MOIRTokenId, ProcessorSpecificationError> {
+    ) -> Result<MOIRTokenId, SleighCompilerError> {
         let symbol_id = self.declare_symbol(ident)?;
         let token_id = self.symbol_tables.tokens.insert(token);
         self.define_symbol(symbol_id, MOIRSymbol::Token(token_id))?;
@@ -272,7 +276,7 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         ident: Spanned<StringId>,
         field: MOIRField,
-    ) -> Result<MOIRIdent, ProcessorSpecificationError> {
+    ) -> Result<MOIRIdent, SleighCompilerError> {
         let symbol_id = self.declare_symbol(ident)?;
         let field_id = self.symbol_tables.fields.insert(field);
         self.define_symbol(symbol_id, MOIRSymbol::Field(field_id))?;
@@ -283,7 +287,7 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         fields: Vec<Spanned<StringId>>,
         varnodes: Vec<Spanned<StringId>>,
-    ) -> Result<(), ProcessorSpecificationError> {
+    ) -> Result<(), SleighCompilerError> {
         let varnode_ids: Result<Vec<_>, _> = varnodes
             .into_iter()
             .filter_map(|vsid| {
@@ -329,11 +333,11 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         fields: Vec<Spanned<StringId>>,
         values: Vec<Spanned<u64>>,
-    ) -> Result<(), ProcessorSpecificationError> {
+    ) -> Result<(), SleighCompilerError> {
         for field in fields.into_iter() {
             let (symbol, _) = self
                 .get_symbol_and_id(&field)
-                .ok_or(ProcessorSpecificationError::IdentifierNotMapped(field))?;
+                .ok_or(SleighCompilerError::IdentifierNotMapped(field))?;
             if let MOIRSymbol::Field(id) = symbol {
                 self.field_by_symbol_id_mut(*id)
                     .expect("If the symbol is mapped there has to be an entry in the symbol table")
@@ -351,7 +355,7 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         fields: Vec<Spanned<StringId>>,
         strings: Vec<Spanned<StringId>>,
-    ) -> Result<(), ProcessorSpecificationError> {
+    ) -> Result<(), SleighCompilerError> {
         for field in fields.into_iter() {
             let (symbol, _) = self
                 .get_symbol_and_id(&field)
@@ -384,14 +388,14 @@ impl ProcessorSpecificationBuilder {
         Ok((context_id, varnode_bits as u64))
     }
 
-    pub(crate) fn modify_root_table(&mut self) -> Result<&mut MOIRTable, ProcessorSpecificationError> {
+    pub(crate) fn modify_root_table(&mut self) -> SleighCompilerResult<&mut MOIRTable> {
         self.modify_table(self.root_table.clone())
     }
 
     pub(crate) fn modify_table(
         &mut self,
         ident: Spanned<StringId>,
-    ) -> Result<&mut MOIRTable, ProcessorSpecificationError> {
+    ) -> SleighCompilerResult<&mut MOIRTable> {
         let table_id = if let Some((symbol, _)) = self.get_symbol_and_id(&ident) {
             // Symbol is defined. Do stuff with it.
             if let MOIRSymbol::Table(table_id) = symbol {
@@ -433,7 +437,7 @@ impl ProcessorSpecificationBuilder {
     fn declare_symbol(
         &mut self,
         ident: Spanned<StringId>,
-    ) -> Result<MOIRIdent, ProcessorSpecificationError> {
+    ) -> SleighCompilerResult<MOIRIdent> {
         match self.string_to_ident_mapping.entry(*ident) {
             // The identifier is already declared, and we do not allow re-declaring a symbol.
             Entry::Occupied(entry) => {
@@ -470,7 +474,7 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn space_id_by_ident(
         &self,
         ident: Spanned<StringId>,
-    ) -> Result<MOIRSpaceId, ProcessorSpecificationError> {
+    ) -> SleighCompilerResult<MOIRSpaceId> {
         self.string_to_ident_mapping
             .get(ident.value())
             .and_then(|id| {
@@ -480,7 +484,7 @@ impl ProcessorSpecificationBuilder {
                 })
             })
             // TODO: Produce error report instead
-            .ok_or(ProcessorSpecificationError::SymbolUndeclared)
+            .ok_or(SleighCompilerError::SymbolUndeclared)
     }
 
     /// Get the varnode id referred to by `ident`. If `ident` refers to an identifier that is not a varnode,

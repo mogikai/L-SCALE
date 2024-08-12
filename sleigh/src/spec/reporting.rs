@@ -9,8 +9,10 @@ use ariadne::{
     ReportKind,
 };
 
+use crate::compiler::error::SleighCompilerError;
 use crate::spec::moir::endianness::MOIREndianness;
 use chumsky::span::Span;
+
 // TODO: Pull the error reporting out of the spec and into the compiler.
 //       Also use SleighCompilerError instead of ProcessorSpecificationError
 //       The ProcessorSpecificationError should be reserved for the final spec.
@@ -19,7 +21,7 @@ pub fn generate_identifier_exists_report(
     name: &str,
     old: InputSpan,
     new: InputSpan,
-) -> ProcessorSpecificationError {
+) -> SleighCompilerError {
     let mut colors = ColorGenerator::new();
     let color_a = colors.next();
     let report = Report::build(ReportKind::Error, new.context(), new.start())
@@ -35,13 +37,13 @@ pub fn generate_identifier_exists_report(
                 .with_color(color_a),
         )
         .finish();
-    ProcessorSpecificationError::ErrorReport(Box::new(report))
+    SleighCompilerError::ErrorReport(Box::new(report))
 }
 
 pub fn generate_endianness_already_specified_report(
     old: &Spanned<MOIREndianness>,
     new: InputSpan,
-) -> ProcessorSpecificationError {
+) -> SleighCompilerError {
     let mut colors = ColorGenerator::new();
     let color_a = colors.next();
     let report = Report::build(ReportKind::Error, new.context(), new.start())
@@ -57,13 +59,13 @@ pub fn generate_endianness_already_specified_report(
                 .with_color(color_a),
         )
         .finish();
-    ProcessorSpecificationError::ErrorReport(Box::new(report))
+    SleighCompilerError::ErrorReport(Box::new(report))
 }
 
 pub fn generate_alignment_already_specified_report(
     old: &Spanned<u16>,
     new: InputSpan,
-) -> ProcessorSpecificationError {
+) -> SleighCompilerError {
     let mut colors = ColorGenerator::new();
     let color_a = colors.next();
     let report = Report::build(ReportKind::Error, new.context(), new.start())
@@ -79,5 +81,5 @@ pub fn generate_alignment_already_specified_report(
                 .with_color(color_a),
         )
         .finish();
-    ProcessorSpecificationError::ErrorReport(Box::new(report))
+    SleighCompilerError::ErrorReport(Box::new(report))
 }

@@ -1,14 +1,16 @@
+use crate::compiler::ast::Spanned;
+use crate::compiler::inputcache::InputCacheError;
+use crate::compiler::lexer::InputSpan;
+use crate::preprocessor::error::PreprocessorError;
+use crate::spec::builder::StringId;
+use crate::spec::ProcessorSpecificationError;
+use ariadne::Report;
 use std::fmt::{
     Debug,
     Display,
     Formatter,
 };
-
 use thiserror::Error;
-
-use crate::compiler::inputcache::InputCacheError;
-use crate::preprocessor::error::PreprocessorError;
-use crate::spec::ProcessorSpecificationError;
 
 #[derive(Error)]
 pub enum SleighCompilerError {
@@ -30,6 +32,16 @@ pub enum SleighCompilerError {
     NotPreprocessed,
     #[error("The compiler encountered an error during the semantic analysis phase.")]
     SemanticError(String),
+    #[error("The value cannot be converted into a boolean value")]
+    CannotConverToBool,
+    #[error("The operation encountered an overflow during constant folding")]
+    ConstEvalOverflow,
+    #[error("A detailed error report referencing the inputs.")]
+    ErrorReport(Box<Report<'static, InputSpan>>),
+    #[error("The identifier is not mapped.")]
+    IdentifierNotMapped(Spanned<StringId>),
+    #[error("The symbol was not declared before being defined.")]
+    SymbolUndeclared,
 }
 
 impl Debug for SleighCompilerError {

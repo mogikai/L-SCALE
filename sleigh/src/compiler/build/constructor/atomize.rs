@@ -61,6 +61,7 @@ impl SleighCompiler {
                 SASTPCodeStatement::Error(_) => {}
             }
         }
+        trace!("Instructions: {instructions:?}");
         Ok(instructions)
     }
 
@@ -70,6 +71,7 @@ impl SleighCompiler {
     /// a single const [MOIRValue]. Otherwise, [MOIRValue] will be [MOIRValue::VarNode].
     fn atomize_expression(
         &mut self,
+        out: MOIRVarNodeId,
         instructions: &mut Vec<MOIRInstruction>,
         expression: Spanned<SASTPCodeExpression>,
     ) -> SleighCompilerResult<MOIRValue> {
@@ -78,7 +80,7 @@ impl SleighCompiler {
         match expression {
             SASTPCodeExpression::Invocation(invocation) => self.atomize_invocation(instructions, invocation),
             SASTPCodeExpression::BinaryOperation { lhs, op, rhs } => {
-                self.atomize_binary_operation(instructions, *lhs, op, *rhs)
+                self.atomize_binary_operation(out, instructions, *lhs, op, *rhs)
             }
             SASTPCodeExpression::UnaryOperation { .. } => self.atomize_unary_operation(instructions),
             SASTPCodeExpression::Dereference { .. } => self.atomize_dereference(instructions),
@@ -109,7 +111,8 @@ impl SleighCompiler {
         //       no sense in this context.
         // TODO: Atomize expression on the right hand side of the assignment.
         // TODO: Check if the sizes on the left hand side match the right hand side.
-        self.atomize_expression(instructions, expression)?;
+        let out = MOIRVarNodeId::from(0);
+        self.atomize_expression(out, instructions, expression)?;
         Ok(())
     }
 
@@ -118,6 +121,7 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
         invocation: Spanned<SASTPCodeInvocation>,
     ) -> SleighCompilerResult<MOIRValue> {
+        trace!("Atomizing invocation with {} arguments.", invocation.value().arguments.len());
         let output = MOIRVarNodeId::from(0);
         instructions.push(MOIRInstruction {
             input_a: MOIRValue::Const(MOIRConst::Const8(0)),
