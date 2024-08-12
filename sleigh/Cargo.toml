@@ -8,6 +8,6 @@ tracing = { version = "0.1.40", features = ["release_max_level_debug"] }
 slotmap = "1.0.*"
 thiserror = "1.0.*"
 ariadne = "0.4.1"
-chumsky = { version = "1.0.0-alpha.7", features = ["label", "pratt"] }
+chumsky = { features = ["label", "pratt"], git = "https://github.com/mlgiraud/chumsky.git" }
 string-interner = "0.17.0"
 strum_macros = "0.26.4"

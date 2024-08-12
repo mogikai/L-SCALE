@@ -1,24 +1,8 @@
-use chumsky::input::MapExtra;
-use chumsky::prelude::{
-    any,
-    none_of,
-    recursive,
-};
-use chumsky::primitive::choice;
-use chumsky::recovery::via_parser;
-use chumsky::recursive::Recursive;
-use chumsky::{
-    select,
-    IterParser,
-    Parser,
-};
-
 use crate::compiler::ast::pcode::expression::{
     SASTPCodeBinaryOp,
     SASTPCodeExpression,
     SASTPCodeUnaryOp,
 };
-use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
@@ -36,23 +20,25 @@ use crate::compiler::parser::pcode::operators::{
 };
 use crate::compiler::parser::{
     parenthesized,
-    sast_ident_spanned,
-    sleigh_control,
     sleigh_number,
     whitespace_padded,
     SleighParserExtra,
 };
-use crate::compiler::tokens::SleighControlCharacter::{
-    CloseParen,
-    Comma,
-    OpenParen,
+use chumsky::input::MapExtra;
+use chumsky::pratt::{
+    infix,
+    left,
+    prefix,
 };
-use crate::compiler::tokens::{
-    SleighControlCharacter,
-    SleighToken,
+use chumsky::primitive::choice;
+use chumsky::recursive::Recursive;
+use chumsky::{
+    IterParser,
+    Parser,
 };
 
-pub(super) fn pcode_expression<'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeExpression>, SleighParserExtra<'tokens>> + Clone {
+pub(super) fn pcode_expression<'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeExpression>, SleighParserExtra<'tokens>> + Clone {
     let ident_expression = pcode_ident().map(SASTPCodeExpression::Identifier);
 
     let bitrange = pcode_bitrange().map(SASTPCodeExpression::Bitrange);
@@ -86,19 +72,67 @@ pub(super) fn pcode_expression<'tokens>() -> impl Parser<'tokens, ParserInput<'t
     );
 
     // TODO: Replace with pratt parsing for correct operator precedence.
-    let unary_op = unary_operator()
-        .repeated()
-        .foldr_with(atom.clone(), fold_unary_operation);
+    // let unary_op = unary_operator()
+    //     .repeated()
+    //     .foldr_with(atom.clone(), fold_unary_operation);
+    //
+    // let binary_operator = binary_operator();
+    //
+    // let binary_operation = whitespace_padded(
+    //     unary_op
+    //         .clone()
+    //         .foldl_with(binary_operator.then(unary_op.clone()).repeated(), fold_binary_operation),
+    // );
 
-    let binary_operator = binary_operator();
+    use crate::compiler::ast::pcode::expression::{
+        SASTPCodeBinaryOp as BOp,
+        SASTPCodeUnaryOp as UOp,
+    };
 
-    let binary_operation = whitespace_padded(
-        unary_op
-            .clone()
-            .foldl_with(binary_operator.then(unary_op.clone()).repeated(), fold_binary_operation),
-    );
+    let operation = atom.clone().pratt((
+        prefix(34, unary_operator(UOp::IntNegate), fold_unary_operation),
+        prefix(33, unary_operator(UOp::BoolNegate), fold_unary_operation),
+        prefix(32, unary_operator(UOp::BitNegate), fold_unary_operation),
+        prefix(31, unary_operator(UOp::FloatNegate), fold_unary_operation),
+        infix(left(30), binary_operator(BOp::IntMul), fold_binary_operation),
+        infix(left(29), binary_operator(BOp::IntDiv), fold_binary_operation),
+        infix(left(28), binary_operator(BOp::IntSDiv), fold_binary_operation),
+        infix(left(27), binary_operator(BOp::IntRemainder), fold_binary_operation),
+        infix(left(26), binary_operator(BOp::IntSRemainder), fold_binary_operation),
+        infix(left(25), binary_operator(BOp::FloatDiv), fold_binary_operation),
+        infix(left(24), binary_operator(BOp::FloatMul), fold_binary_operation),
+        infix(left(23), binary_operator(BOp::IntAdd), fold_binary_operation),
+        infix(left(22), binary_operator(BOp::IntSubtract), fold_binary_operation),
+        infix(left(21), binary_operator(BOp::FloatAdd), fold_binary_operation),
+        infix(left(20), binary_operator(BOp::FloatSubtract), fold_binary_operation),
+        infix(left(19), binary_operator(BOp::IntLeft), fold_binary_operation),
+        infix(left(18), binary_operator(BOp::IntRight), fold_binary_operation),
+        infix(left(17), binary_operator(BOp::IntSRight), fold_binary_operation),
+        infix(left(16), binary_operator(BOp::IntSLess), fold_binary_operation),
+        infix(left(16), binary_operator(BOp::IntSGreater), fold_binary_operation),
+        infix(left(15), binary_operator(BOp::IntSLessEqual), fold_binary_operation),
+        infix(left(15), binary_operator(BOp::IntSGreaterEqual), fold_binary_operation),
+        infix(left(14), binary_operator(BOp::IntLess), fold_binary_operation),
+        infix(left(14), binary_operator(BOp::IntGreater), fold_binary_operation),
+        infix(left(13), binary_operator(BOp::IntLessEqual), fold_binary_operation),
+        infix(left(13), binary_operator(BOp::IntGreaterEqual), fold_binary_operation),
+        infix(left(12), binary_operator(BOp::FloatLess), fold_binary_operation),
+        infix(left(12), binary_operator(BOp::FloatGreater), fold_binary_operation),
+        infix(left(11), binary_operator(BOp::FloatLessEqual), fold_binary_operation),
+        infix(left(11), binary_operator(BOp::FloatGreaterEqual), fold_binary_operation),
+        infix(left(10), binary_operator(BOp::IntEquals), fold_binary_operation),
+        infix(left(9), binary_operator(BOp::IntNotEquals), fold_binary_operation),
+        infix(left(8), binary_operator(BOp::FloatEquals), fold_binary_operation),
+        infix(left(7), binary_operator(BOp::FloatNotEquals), fold_binary_operation),
+        infix(left(6), binary_operator(BOp::IntAnd), fold_binary_operation),
+        infix(left(5), binary_operator(BOp::IntXor), fold_binary_operation),
+        infix(left(4), binary_operator(BOp::IntOr), fold_binary_operation),
+        infix(left(3), binary_operator(BOp::BoolXor), fold_binary_operation),
+        infix(left(2), binary_operator(BOp::BoolAnd), fold_binary_operation),
+        infix(left(1), binary_operator(BOp::BoolOr), fold_binary_operation),
+    ));
 
-    expression.define(choice((binary_operation, atom)));
+    expression.define(choice((operation, atom)));
     expression.boxed()
 }
 
@@ -118,7 +152,8 @@ fn fold_unary_operation<'tokens>(
 
 fn fold_binary_operation<'tokens>(
     lhs: Spanned<SASTPCodeExpression>,
-    (op, rhs): (Spanned<SASTPCodeBinaryOp>, Spanned<SASTPCodeExpression>),
+    op: Spanned<SASTPCodeBinaryOp>,
+    rhs: Spanned<SASTPCodeExpression>,
     extra: &mut MapExtra<'tokens, '_, ParserInput<'tokens>, SleighParserExtra<'tokens>>,
 ) -> Spanned<SASTPCodeExpression> {
     spanned(
