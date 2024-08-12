@@ -24,7 +24,7 @@ use crate::compiler::tokens::SleighOperation::{
 pub(super) fn unary_operator<'tokens>(
     op: SASTPCodeUnaryOp
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeUnaryOp>, SleighParserExtra<'tokens>> + Clone {
-    match op {
+    whitespace_padded(match op {
         SASTPCodeUnaryOp::IntNegate => sleigh_operation(Minus)
             .to(SASTPCodeUnaryOp::IntNegate)
             .map_with(spanned),
@@ -37,7 +37,7 @@ pub(super) fn unary_operator<'tokens>(
         SASTPCodeUnaryOp::FloatNegate => sleigh_operation(FMinus)
             .to(SASTPCodeUnaryOp::FloatNegate)
             .map_with(spanned),
-    }
+    })
 }
 
 pub(super) fn binary_operator<'tokens>(

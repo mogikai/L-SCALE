@@ -37,8 +37,7 @@ use chumsky::{
     Parser,
 };
 
-pub(super) fn pcode_expression<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeExpression>, SleighParserExtra<'tokens>> + Clone {
+pub(super) fn pcode_expression<'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeExpression>, SleighParserExtra<'tokens>> + Clone {
     let ident_expression = pcode_ident().map(SASTPCodeExpression::Identifier);
 
     let bitrange = pcode_bitrange().map(SASTPCodeExpression::Bitrange);
@@ -206,6 +205,11 @@ mod test {
     #[test]
     fn address_of_parses() -> TestResult {
         test_pcode_expression("push88(&:8 inst_next)").map(|_| ())
+    }
+
+    #[test]
+    fn test() -> TestResult {
+        test_pcode_expression("zext( !(xmmTmp1_Da f<= xmmTmp2_Da) ) * 0xFFFFFFFF").map(|_| ())
     }
 
     #[test]
