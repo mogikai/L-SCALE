@@ -7,6 +7,7 @@ use slotmap::{
 use std::collections::HashMap;
 use string_interner::backend::StringBackend;
 use string_interner::StringInterner;
+use strum_macros::Display;
 use thiserror::Error;
 
 use self::moir::bitrange_register::MOIRBitrangeRegisterId;
@@ -42,7 +43,7 @@ new_key_type! {
     pub struct MOIRIdent;
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Display)]
 pub enum MOIRSymbol {
     /// The identifier is not defined yet and can be used to define a symbol.
     Undefined,

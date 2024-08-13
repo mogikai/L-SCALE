@@ -21,7 +21,10 @@ use string_interner::backend::{
 };
 use string_interner::symbol::Symbol;
 use string_interner::StringInterner;
-use tracing::debug;
+use tracing::{
+    debug,
+    trace,
+};
 
 use super::moir::bitrange_register::{
     MOIRBitrangeRegisterId,
@@ -34,6 +37,10 @@ use super::moir::context::{
 use crate::compiler::ast::Spanned;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::InputSpan;
+use crate::compiler::report::{
+    generate_invalid_symbol_type_error,
+    generate_undefined_ident_error,
+};
 use crate::compiler::{
     CompilerContext,
     SleighCompilerResult,
@@ -58,6 +65,7 @@ use crate::spec::moir::token::{
     MOIRTokenId,
 };
 use crate::spec::moir::varnode::{
+    MOIRValue,
     MOIRVarNode,
     MOIRVarNodeId,
 };
@@ -376,7 +384,7 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn define_context(
         &mut self,
         varnode_ident: Spanned<StringId>,
-    ) -> Result<(MOIRContextId, u64), ProcessorSpecificationError> {
+    ) -> SleighCompilerResult<(MOIRContextId, u64)> {
         let varnode_id = self.varnode_id_by_ident(&varnode_ident)?;
         let moir_context = MOIRContext { varnode: varnode_id };
         let varnode_bits = self
@@ -492,17 +500,22 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn varnode_id_by_ident(
         &self,
         ident: &Spanned<StringId>,
-    ) -> Result<MOIRVarNodeId, ProcessorSpecificationError> {
-        Ok(*self
-            .get_symbol_and_id(ident)
-            .ok_or_else(|| todo!("Generate error report for undefined varnode access"))
-            .and_then(|(symbol, _)| {
-                let MOIRSymbol::VarNode(vnid) = symbol else {
-                    // todo!("Generate error report for incorrect symbol type")
-                    Err(ProcessorSpecificationError::InvalidSymbolType(*symbol))?
-                };
-                Ok(vnid)
-            })?)
+    ) -> SleighCompilerResult<MOIRVarNodeId> {
+        let symbol_reference = ident.map(|id| self.resolve_string_id(*id));
+        self.get_symbol_and_id(ident)
+            .ok_or_else(|| generate_undefined_ident_error(symbol_reference.clone()))
+            .and_then(|(symbol, id)| match symbol {
+                MOIRSymbol::VarNode(vnid) => Ok(*vnid),
+                _ => {
+                    let defined_symbol = self
+                        .symbol_strings
+                        .get(id)
+                        .expect("If the symbol exists, there must be a string associated with it.")
+                        .span()
+                        .clone();
+                    Err(generate_invalid_symbol_type_error(defined_symbol, symbol_reference, "VarNode", *symbol))?
+                }
+            })
     }
 
     /// Get the varnode pointed to by `id`

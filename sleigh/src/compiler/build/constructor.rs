@@ -1,22 +1,11 @@
 use crate::compiler::ast::constructor::bit_pattern_section::SASTBitPatternConstraint;
 use crate::compiler::ast::constructor::SASTConstructor;
-use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
-use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
-use crate::compiler::ast::pcode::statement::SASTPCodeStatement;
-use crate::compiler::ast::pcode::target_expression::SASTPCodeTargetExpression;
-use crate::compiler::ast::pcode::SASTPCode;
 use crate::compiler::ast::Spanned;
 use crate::compiler::{
     CompilerContext,
     SleighCompiler,
     SleighCompilerResult,
 };
-use crate::spec::moir::code::{
-    MOIRConst,
-    MOIRInstruction,
-    MOIRValue,
-};
-use crate::spec::moir::varnode::MOIRVarNodeId;
 use tracing::trace;
 
 pub mod atomize;
@@ -36,10 +25,6 @@ impl SleighCompiler {
             .flatten()
             .unwrap_or("instruction");
         trace!("Defining constructor in table {:?}", table_name);
-        let table = match constructor.table.lift_option() {
-            None => self.spec_builder.modify_root_table()?,
-            Some(id) => self.spec_builder.modify_table(id)?,
-        };
         self.validate_constraint(constructor.bit_pattern_section.into_value().constraint)?;
         // TODO: we need to walk the constraint and find out the tokens that are used.
         //       we also need to make sure that there is only one token per section
@@ -48,7 +33,15 @@ impl SleighCompiler {
         // The semantic section contains pcode which has to be converted into an atomic form.
         // Pcode can contain complex statements (e.g. x = (a+b) * c)) which have to be translated
         // into a form that consists only of atomic expressions (e.g. tmp = a + b; x = tmp * c;)
-        self.atomize_pcode(constructor.semantic_section.into_value().0)?;
+        let (export, instructions) = self.atomize_pcode(constructor.semantic_section.into_value().0)?;
+        let table = match constructor.table.lift_option() {
+            None => self.spec_builder.modify_root_table()?,
+            Some(id) => self.spec_builder.modify_table(id)?,
+        };
+        if table.export.is_some() && export.is_none() {
+            todo!("Generate error report for constructor missing an export statement")
+        }
+        table.export = export;
         Ok(())
     }
 

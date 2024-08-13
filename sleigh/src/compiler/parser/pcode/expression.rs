@@ -32,12 +32,10 @@ use chumsky::pratt::{
 };
 use chumsky::primitive::choice;
 use chumsky::recursive::Recursive;
-use chumsky::{
-    IterParser,
-    Parser,
-};
+use chumsky::Parser;
 
-pub(super) fn pcode_expression<'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeExpression>, SleighParserExtra<'tokens>> + Clone {
+pub(super) fn pcode_expression<'tokens>(
+) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeExpression>, SleighParserExtra<'tokens>> + Clone {
     let ident_expression = pcode_ident().map(SASTPCodeExpression::Identifier);
 
     let bitrange = pcode_bitrange().map(SASTPCodeExpression::Bitrange);

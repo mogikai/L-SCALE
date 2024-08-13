@@ -1,5 +1,4 @@
 use crate::new_symbol_id_type;
-use crate::spec::moir::varnode::MOIRVarNodeId;
 
 #[derive(Debug, Default)]
 pub struct MOIRTable {
@@ -42,7 +41,10 @@ pub struct MOIRTable {
     /// earlier statement. However, a single ‘&’ operator is allowed as part of the statement, and it behaves
     /// as it would in a normal expression (see Section 7.7.1.6, “Address-of Operator”). It causes the
     /// address of the varnode being modified to be exported as an integer constant.
-    export: Option<MOIRVarNodeId>,
+    ///
+    /// TODO: What type to use for the export? The actual varnode or value can only be computed at diassembly time
+    ///       so we might have to use some kind of reference here?
+    pub export: Option<()>,
 }
 
 new_symbol_id_type! { pub struct MOIRTableId; }

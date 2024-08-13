@@ -10,22 +10,22 @@ use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
-use crate::spec::moir::code::{
-    MOIRConst,
-    MOIRInstruction,
-    MOIRValue,
-};
+use crate::spec::builder::StringId;
+use crate::spec::moir::code::MOIRInstruction;
 use crate::spec::moir::varnode::{
+    MOIRConst,
+    MOIRValue,
     MOIRVarNode,
     MOIRVarNodeId,
 };
+use crate::spec::MOIRSymbol;
 use tracing::trace;
 
 impl SleighCompiler {
     pub(super) fn atomize_pcode(
         &mut self,
         pcode: Spanned<SASTPCode>,
-    ) -> SleighCompilerResult<Vec<MOIRInstruction>> {
+    ) -> SleighCompilerResult<(Option<()>, Vec<MOIRInstruction>)> {
         // TODO: Create table of locals? Lookup global identifiers?
         let (pcode, _) = pcode.into_tuple();
         let mut instructions = vec![];
@@ -62,7 +62,7 @@ impl SleighCompiler {
             }
         }
         trace!("Instructions: {instructions:?}");
-        Ok(instructions)
+        Ok((export.map(|_| ()), instructions))
     }
 
     /// Atomizes the expression into multiple MOIRInstructions.
@@ -103,8 +103,19 @@ impl SleighCompiler {
         target: Spanned<SASTPCodeTargetExpression>,
         expression: Spanned<SASTPCodeExpression>,
     ) -> SleighCompilerResult {
-        if *local && matches!(*target, SASTPCodeTargetExpression::Store(_)) {
-            todo!("Generate error report for local keyword on store assignment")
+        let (target, _) = target.into_tuple();
+        match target {
+            SASTPCodeTargetExpression::Variable(var) => {
+                let result = self.resolve_ident_to_moir_value(var.transmute());
+                self.report_error_or_unwrap(result)?;
+            }
+            SASTPCodeTargetExpression::Store(deref) => {
+                if *local {
+                    todo!("Generate error report for local keyword on store assignment")
+                }
+            }
+            SASTPCodeTargetExpression::BitRange(bitrange) => {}
+            SASTPCodeTargetExpression::Subpiece(subpiece) => {}
         }
         // TODO: Check if target ident exists. If not, require the local attribute to create a new local variable.
         //       If the target is a store, require that the ident exists, and deny the local keyword, since it makes
@@ -114,6 +125,36 @@ impl SleighCompiler {
         let out = MOIRVarNodeId::from(0);
         self.atomize_expression(out, instructions, expression)?;
         Ok(())
+    }
+
+    /// Resolve an identifier in a pcode section to a [MOIRValue].
+    fn resolve_ident_to_moir_value(
+        &mut self,
+        ident: Spanned<StringId>,
+    ) -> SleighCompilerResult<MOIRValue> {
+        // TODO: Look up local first, before checking globals.
+        let result = self.spec_builder.varnode_id_by_ident(&ident);
+        self.report_error_or_unwrap(result)?;
+        Ok(MOIRValue::Const(MOIRConst::Const64(0)))
+        // MOIRSymbol::Table(table) => {
+        //             let table = self
+        //                 .symbol_tables
+        //                 .tables
+        //                 .get(*table)
+        //                 .expect("The symbol must exist if we have an id for it.");
+        //             let ident = self.resolve_string_id(*ident.value());
+        //             trace!("Looking up varnode '{ident}' in constructor export.");
+        //             trace!("The constructor exports {:?}", table.export);
+        //             table
+        //                 .export
+        //                 .and_then(|value| {
+        //                     let MOIRValue::VarNode(vnid) = value else {
+        //                         return None;
+        //                     };
+        //                     Some(vnid)
+        //                 })
+        //                 .ok_or_else(|| todo!("Generate error for missing export"))
+        //         }
     }
 
     fn atomize_invocation(

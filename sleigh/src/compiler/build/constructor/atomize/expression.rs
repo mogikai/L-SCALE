@@ -13,12 +13,12 @@ use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
-use crate::spec::moir::code::{
+use crate::spec::moir::code::MOIRInstruction;
+use crate::spec::moir::varnode::{
     MOIRConst,
-    MOIRInstruction,
     MOIRValue,
+    MOIRVarNodeId,
 };
-use crate::spec::moir::varnode::MOIRVarNodeId;
 use num::{
     CheckedAdd,
     CheckedSub,

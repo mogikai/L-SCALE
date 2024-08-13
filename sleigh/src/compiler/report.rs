@@ -1,6 +1,11 @@
+use crate::compiler::ast::Spanned;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::InputSpan;
-use crate::spec::ProcessorSpecificationError;
+use crate::spec::builder::StringId;
+use crate::spec::{
+    MOIRSymbol,
+    ProcessorSpecificationError,
+};
 use ariadne::{
     ColorGenerator,
     Fmt,
@@ -23,6 +28,52 @@ pub fn generate_const_eval_error(
         .with_label(
             Label::new(span)
                 .with_message(format!("This went wrong"))
+                .with_color(color_a),
+        )
+        .finish();
+    SleighCompilerError::ErrorReport(Box::new(report))
+}
+
+pub fn generate_invalid_symbol_type_error(
+    defined_symbol: InputSpan,
+    symbol_reference: Spanned<&str>,
+    expected: &str,
+    found: MOIRSymbol,
+) -> SleighCompilerError {
+    let mut colors = ColorGenerator::new();
+    let color_a = colors.next();
+    let color_b = colors.next();
+    let (sym_ref, sym_ref_span) = symbol_reference.into_tuple();
+    let report = Report::build(ReportKind::Error, sym_ref_span.context(), sym_ref_span.start())
+        .with_message("Invalid symbol type.")
+        .with_label(
+            Label::new(defined_symbol)
+                .with_message(format!("The symbol is defined here as {}", found.fg(color_a)))
+                .with_color(color_a),
+        )
+        .with_label(
+            Label::new(sym_ref_span)
+                .with_message(format!(
+                    "The symbol referenced by {} has type {}, expected {}.",
+                    sym_ref.fg(color_a),
+                    found.fg(color_a),
+                    expected.fg(color_b)
+                ))
+                .with_color(color_a),
+        )
+        .finish();
+    SleighCompilerError::ErrorReport(Box::new(report))
+}
+
+pub fn generate_undefined_ident_error(symbol_reference: Spanned<&str>) -> SleighCompilerError {
+    let mut colors = ColorGenerator::new();
+    let color_a = colors.next();
+    let (sym_ref, sym_ref_span) = symbol_reference.into_tuple();
+    let report = Report::build(ReportKind::Error, sym_ref_span.context(), sym_ref_span.start())
+        .with_message("Undefined symbol.")
+        .with_label(
+            Label::new(sym_ref_span)
+                .with_message(format!("There is no definition for {}.", sym_ref.fg(color_a)))
                 .with_color(color_a),
         )
         .finish();
