@@ -132,6 +132,6 @@ pub(super) fn binary_operator<'tokens>(
                 .to(BinOp::FloatGreaterEqual)
                 .boxed(),
         }
-            .map_with(spanned),
+        .map_with(spanned),
     )
 }

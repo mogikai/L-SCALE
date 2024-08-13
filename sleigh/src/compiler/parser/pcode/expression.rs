@@ -70,19 +70,6 @@ pub(super) fn pcode_expression<'tokens>() -> impl Parser<'tokens, ParserInput<'t
             .or(parenthesized(expression.clone())),
     );
 
-    // TODO: Replace with pratt parsing for correct operator precedence.
-    // let unary_op = unary_operator()
-    //     .repeated()
-    //     .foldr_with(atom.clone(), fold_unary_operation);
-    //
-    // let binary_operator = binary_operator();
-    //
-    // let binary_operation = whitespace_padded(
-    //     unary_op
-    //         .clone()
-    //         .foldl_with(binary_operator.then(unary_op.clone()).repeated(), fold_binary_operation),
-    // );
-
     use crate::compiler::ast::pcode::expression::{
         SASTPCodeBinaryOp as BOp,
         SASTPCodeUnaryOp as UOp,
@@ -208,8 +195,8 @@ mod test {
     }
 
     #[test]
-    fn test() -> TestResult {
-        test_pcode_expression("zext( !(xmmTmp1_Da f<= xmmTmp2_Da) ) * 0xFFFFFFFF").map(|_| ())
+    fn whitespace_surrounded_ops_parse() -> TestResult {
+        test_pcode_expression("zext( ! ( xmmTmp1_Da f<= xmmTmp2_Da ) ) * 0xFFFFFFFF").map(|_| ())
     }
 
     #[test]
