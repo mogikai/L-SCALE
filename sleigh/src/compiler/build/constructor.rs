@@ -6,6 +6,7 @@ use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
+use crate::spec::moir::constructor::MOIRConstructor;
 use tracing::trace;
 
 pub mod atomize;
@@ -25,6 +26,10 @@ impl SleighCompiler {
             .flatten()
             .unwrap_or("instruction");
         trace!("Defining constructor in table {:?}", table_name);
+        let mut moir_constructor = MOIRConstructor {
+            local_scope: Default::default(),
+            instructions: vec![],
+        };
         self.validate_constraint(constructor.bit_pattern_section.into_value().constraint)?;
         // TODO: we need to walk the constraint and find out the tokens that are used.
         //       we also need to make sure that there is only one token per section
@@ -33,7 +38,11 @@ impl SleighCompiler {
         // The semantic section contains pcode which has to be converted into an atomic form.
         // Pcode can contain complex statements (e.g. x = (a+b) * c)) which have to be translated
         // into a form that consists only of atomic expressions (e.g. tmp = a + b; x = tmp * c;)
-        let (export, instructions) = self.atomize_pcode(constructor.semantic_section.into_value().0)?;
+        let export = self.atomize_pcode(
+            &mut moir_constructor.local_scope,
+            &mut moir_constructor.instructions,
+            constructor.semantic_section.into_value().0,
+        )?;
         let table = match constructor.table.lift_option() {
             None => self.spec_builder.modify_root_table()?,
             Some(id) => self.spec_builder.modify_table(id)?,

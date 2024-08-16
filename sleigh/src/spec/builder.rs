@@ -65,6 +65,7 @@ use crate::spec::moir::token::{
     MOIRTokenId,
 };
 use crate::spec::moir::varnode::{
+    MOIRSlice,
     MOIRValue,
     MOIRVarNode,
     MOIRVarNodeId,
@@ -524,6 +525,21 @@ impl ProcessorSpecificationBuilder {
         id: MOIRVarNodeId,
     ) -> Option<&MOIRVarNode> {
         self.symbol_tables.varnodes.get(id)
+    }
+
+    /// Get the varnode value referred to by `ident`. If `ident` refers to an identifier that is not a varnode,
+    /// or if the identifier is undefined, an error report is generated.
+    pub(crate) fn varnode_value_by_ident(
+        &self,
+        ident: &Spanned<StringId>,
+    ) -> SleighCompilerResult<MOIRValue> {
+        let symbol_reference = ident.map(|id| self.resolve_string_id(*id));
+        self.varnode_id_by_ident(ident).and_then(|vnid| {
+            let varnode = self
+                .varnode_by_symbol_id(vnid)
+                .expect("This must exist since we just got its id.");
+            Ok(MOIRValue::ValueSlice(MOIRSlice::varnode(vnid, 0, varnode.size.into())))
+        })
     }
 
     pub(crate) fn field_by_symbol_id(

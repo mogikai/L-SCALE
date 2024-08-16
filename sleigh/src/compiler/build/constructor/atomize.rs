@@ -12,8 +12,10 @@ use crate::compiler::{
 };
 use crate::spec::builder::StringId;
 use crate::spec::moir::code::MOIRInstruction;
+use crate::spec::moir::scope::MOIRScope;
 use crate::spec::moir::varnode::{
     MOIRConst,
+    MOIRSlice,
     MOIRValue,
     MOIRVarNode,
     MOIRVarNodeId,
@@ -24,11 +26,12 @@ use tracing::trace;
 impl SleighCompiler {
     pub(super) fn atomize_pcode(
         &mut self,
+        scope: &mut MOIRScope,
+        instructions: &mut Vec<MOIRInstruction>,
         pcode: Spanned<SASTPCode>,
-    ) -> SleighCompilerResult<(Option<()>, Vec<MOIRInstruction>)> {
+    ) -> SleighCompilerResult<Option<()>> {
         // TODO: Create table of locals? Lookup global identifiers?
         let (pcode, _) = pcode.into_tuple();
-        let mut instructions = vec![];
         let mut export = None;
         for ((label, statement), _) in pcode.statements.into_iter().map(Spanned::into_tuple) {
             if export.is_some() {
@@ -40,16 +43,16 @@ impl SleighCompiler {
                     local,
                     target,
                     expression,
-                } => self.atomize_assignment(&mut instructions, local, target, expression)?,
+                } => self.atomize_assignment(scope, instructions, local, target, expression)?,
                 SASTPCodeStatement::Invocation(invocation) => {
                     // We ignore the output, since top level invocations do not output anything.
                     // TODO: Maybe it makes sense to update the pcodeop definition here to "no output"?
-                    self.atomize_invocation(&mut instructions, invocation)?;
+                    self.atomize_invocation(instructions, invocation)?;
                 }
                 SASTPCodeStatement::Build(_) => {}
                 SASTPCodeStatement::Export(expression) => {
                     export = Some(expression.span().clone());
-                    self.atomize_export(&mut instructions, expression)?;
+                    self.atomize_export(instructions, expression)?;
                 }
                 SASTPCodeStatement::Delayslot(_) => {}
                 SASTPCodeStatement::Declaration(_, _) => {}
@@ -62,7 +65,7 @@ impl SleighCompiler {
             }
         }
         trace!("Instructions: {instructions:?}");
-        Ok((export.map(|_| ()), instructions))
+        Ok(export.map(|_| ()))
     }
 
     /// Atomizes the expression into multiple MOIRInstructions.
@@ -98,6 +101,7 @@ impl SleighCompiler {
 
     fn atomize_assignment(
         &mut self,
+        scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         local: Spanned<bool>,
         target: Spanned<SASTPCodeTargetExpression>,
@@ -106,7 +110,7 @@ impl SleighCompiler {
         let (target, _) = target.into_tuple();
         match target {
             SASTPCodeTargetExpression::Variable(var) => {
-                let result = self.resolve_ident_to_moir_value(var.transmute());
+                let result = scope.resolve_value(&self.spec_builder, var.transmute());
                 self.report_error_or_unwrap(result)?;
             }
             SASTPCodeTargetExpression::Store(deref) => {
@@ -127,36 +131,6 @@ impl SleighCompiler {
         Ok(())
     }
 
-    /// Resolve an identifier in a pcode section to a [MOIRValue].
-    fn resolve_ident_to_moir_value(
-        &mut self,
-        ident: Spanned<StringId>,
-    ) -> SleighCompilerResult<MOIRValue> {
-        // TODO: Look up local first, before checking globals.
-        let result = self.spec_builder.varnode_id_by_ident(&ident);
-        self.report_error_or_unwrap(result)?;
-        Ok(MOIRValue::Const(MOIRConst::Const64(0)))
-        // MOIRSymbol::Table(table) => {
-        //             let table = self
-        //                 .symbol_tables
-        //                 .tables
-        //                 .get(*table)
-        //                 .expect("The symbol must exist if we have an id for it.");
-        //             let ident = self.resolve_string_id(*ident.value());
-        //             trace!("Looking up varnode '{ident}' in constructor export.");
-        //             trace!("The constructor exports {:?}", table.export);
-        //             table
-        //                 .export
-        //                 .and_then(|value| {
-        //                     let MOIRValue::VarNode(vnid) = value else {
-        //                         return None;
-        //                     };
-        //                     Some(vnid)
-        //                 })
-        //                 .ok_or_else(|| todo!("Generate error for missing export"))
-        //         }
-    }
-
     fn atomize_invocation(
         &mut self,
         instructions: &mut Vec<MOIRInstruction>,
@@ -169,7 +143,7 @@ impl SleighCompiler {
             input_b: MOIRValue::Const(MOIRConst::Const8(0)),
             output,
         });
-        Ok(MOIRValue::VarNode(output))
+        Ok(MOIRValue::ValueSlice(MOIRSlice::varnode(output, 0, 0)))
     }
 
     fn atomize_export(

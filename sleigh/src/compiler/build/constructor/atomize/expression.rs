@@ -16,6 +16,7 @@ use crate::compiler::{
 use crate::spec::moir::code::MOIRInstruction;
 use crate::spec::moir::varnode::{
     MOIRConst,
+    MOIRSlice,
     MOIRValue,
     MOIRVarNodeId,
 };
@@ -67,7 +68,7 @@ impl SleighCompiler {
             input_b: rhs,
             output: out,
         });
-        Ok(MOIRValue::VarNode(MOIRVarNodeId::from(0)))
+        Ok(MOIRValue::ValueSlice(MOIRSlice::varnode(out, 0, 0)))
     }
 
     fn const_eval_binary_op(
@@ -110,7 +111,7 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
     ) -> SleighCompilerResult<MOIRValue> {
         // TODO
-        Ok(MOIRValue::VarNode(MOIRVarNodeId::from(0)))
+        Ok(MOIRValue::ValueSlice(MOIRSlice::varnode(MOIRVarNodeId::from(0), 0, 9)))
     }
 
     pub(super) fn atomize_dereference(
@@ -118,7 +119,7 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
     ) -> SleighCompilerResult<MOIRValue> {
         // TODO
-        Ok(MOIRValue::VarNode(MOIRVarNodeId::from(0)))
+        Ok(MOIRValue::ValueSlice(MOIRSlice::varnode(MOIRVarNodeId::from(0), 0, 9)))
     }
 
     pub(super) fn atomize_subpiece(
@@ -126,7 +127,7 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
     ) -> SleighCompilerResult<MOIRValue> {
         // TODO
-        Ok(MOIRValue::VarNode(MOIRVarNodeId::from(0)))
+        Ok(MOIRValue::ValueSlice(MOIRSlice::varnode(MOIRVarNodeId::from(0), 0, 9)))
     }
 
     pub(super) fn atomize_bitrange(
@@ -134,7 +135,7 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
     ) -> SleighCompilerResult<MOIRValue> {
         // TODO
-        Ok(MOIRValue::VarNode(MOIRVarNodeId::from(0)))
+        Ok(MOIRValue::ValueSlice(MOIRSlice::varnode(MOIRVarNodeId::from(0), 0, 9)))
     }
 
     pub(super) fn atomize_identifier(
@@ -142,7 +143,7 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
     ) -> SleighCompilerResult<MOIRValue> {
         // TODO
-        Ok(MOIRValue::VarNode(MOIRVarNodeId::from(0)))
+        Ok(MOIRValue::ValueSlice(MOIRSlice::varnode(MOIRVarNodeId::from(0), 0, 9)))
     }
 
     pub(super) fn atomize_load(
@@ -150,7 +151,7 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
     ) -> SleighCompilerResult<MOIRValue> {
         // TODO
-        Ok(MOIRValue::VarNode(MOIRVarNodeId::from(0)))
+        Ok(MOIRValue::ValueSlice(MOIRSlice::varnode(MOIRVarNodeId::from(0), 0, 9)))
     }
 
     pub(super) fn atomize_address_of(
@@ -158,7 +159,7 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
     ) -> SleighCompilerResult<MOIRValue> {
         // TODO
-        Ok(MOIRValue::VarNode(MOIRVarNodeId::from(0)))
+        Ok(MOIRValue::ValueSlice(MOIRSlice::varnode(MOIRVarNodeId::from(0), 0, 9)))
     }
 
     pub(super) fn atomize_literal(

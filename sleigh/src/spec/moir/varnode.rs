@@ -1,6 +1,8 @@
 use crate::new_symbol_id_type;
 use crate::spec::moir::address_space::MOIRSpaceId;
-use std::ops::Range;
+use crate::spec::moir::field::MOIRFieldId;
+use crate::spec::moir::scope::MOIRTemporaryId;
+use crate::spec::moir::table::MOIRTableId;
 
 #[derive(Debug)]
 /// A varnode is the unit of data manipulated by p-code.
@@ -23,26 +25,54 @@ pub struct MOIRVarNode {
 
 /// A slice of an existing varnode. The slice is at most as large as the original varnode.
 #[derive(Debug, Copy, Clone)]
-pub struct MOIRVarNodeSlice {
-    /// The id of the varnode this slice refers to.
-    pub varnode_id: MOIRVarNodeId,
+pub struct MOIRSlice {
+    /// The slice refers to a symbol. This can be for example a varnode, a subtable export, or a field.
+    pub reference: MOIRReference,
     /// The start byte of the slice
     pub start: u64,
     /// The end byte of the slice.
     pub end: u64,
 }
 
+impl MOIRSlice {
+    pub fn varnode(
+        varnode: MOIRVarNodeId,
+        start: u64,
+        end: u64,
+    ) -> Self {
+        Self {
+            reference: MOIRReference::VarNode(varnode),
+            start,
+            end,
+        }
+    }
+
+    pub fn temporary(
+        temporary: MOIRTemporaryId,
+        start: u64,
+        end: u64,
+    ) -> Self {
+        Self {
+            reference: MOIRReference::Temporary(temporary),
+            start,
+            end,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum MOIRReference {
+    Field(MOIRFieldId),
+    SubTable(MOIRTableId),
+    VarNode(MOIRVarNodeId),
+    Temporary(MOIRTemporaryId),
+}
+
+/// A value references either a constant, or a symbol that is later resolved to a const or a varnode.
 #[derive(Debug, Copy, Clone)]
 pub enum MOIRValue {
-    /// The value references a table export.
-    /// The correct constructor in the table has to
-    /// be constructed, before being able to refer to the
-    /// corresponding symbol.
-    Export(),
-    /// The value directly references a varnode
-    VarNode(MOIRVarNodeId),
-    /// The value references a slice of a varnode
-    VarNodeSlice(MOIRVarNodeSlice),
+    /// The value references a slice of a symbol
+    ValueSlice(MOIRSlice),
     /// The value is a constant value that can be used directly
     Const(MOIRConst),
 }
