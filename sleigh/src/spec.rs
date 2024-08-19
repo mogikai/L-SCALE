@@ -43,7 +43,7 @@ new_key_type! {
     pub struct MOIRIdent;
 }
 
-#[derive(Debug, Clone, Copy, Display)]
+#[derive(Debug, Clone, Copy, Display, PartialEq)]
 pub enum MOIRSymbol {
     /// The identifier is not defined yet and can be used to define a symbol.
     Undefined,

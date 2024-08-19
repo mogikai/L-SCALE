@@ -10,14 +10,7 @@ use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
-    maybe_parenthesized,
-    parenthesized,
-    sast_ident,
-    sleigh_control,
-    sleigh_number,
-    sleigh_whitespace,
-    whitespace_padded,
-    SleighParserExtra,
+    maybe_parenthesized, parenthesized, sast_ident, sast_ident_spanned, sleigh_control, sleigh_number, sleigh_whitespace, whitespace_padded, SleighParserExtra
 };
 use crate::compiler::tokens::SleighControlCharacter::{
     OpenBrace,
@@ -65,10 +58,12 @@ pub fn bit_pattern_section<'tokens>(
         .map_with(spanned),
     );
 
-    let bit_pattern = sleigh_number().map(SASTConstraintPattern::BitPattern);
+    let bit_pattern = sleigh_number()
+        .map_with(spanned)
+        .map(SASTConstraintPattern::BitPattern);
 
     let constraint_pattern = whitespace_padded(
-        sast_ident()
+        sast_ident_spanned()
             .map(SASTConstraintPattern::Ident)
             .or(bit_pattern)
             .map_with(spanned),

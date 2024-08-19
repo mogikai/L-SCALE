@@ -3,6 +3,7 @@
 //! syntax tree and processing each item.
 
 mod constructor;
+pub mod matcher;
 
 use crate::compiler::ast::attach::SASTAttach;
 use crate::compiler::ast::constructor::bit_pattern_section::SASTBitPatternConstraint;
@@ -58,9 +59,7 @@ impl SleighCompiler {
         ast: SleighAST,
     ) -> SleighCompilerResult {
         debug!("The AST has {} toplevel items", ast.items.len());
-        let result = self.process_items(ast.items);
-        self.report_error_or_unwrap(result)?;
-        Ok(())
+        self.process_items(ast.items)
     }
 
     fn process_items(
