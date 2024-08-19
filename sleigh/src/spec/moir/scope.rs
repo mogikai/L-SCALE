@@ -1,5 +1,5 @@
 use crate::compiler::ast::Spanned;
-use crate::compiler::error::SleighCompilerError;
+use crate::compiler::lexer::InputSpan;
 use crate::compiler::SleighCompilerResult;
 use crate::new_symbol_id_type;
 use crate::spec::builder::{
@@ -19,6 +19,7 @@ pub struct MOIRScope {
     /// Keeps track of the sizes of temporaries assigned as part of the semantic section.
     temporaries: MOIRSymbolTable<MOIRTemporaryId, MOIRTemporary>,
     locals: HashMap<StringId, MOIRValue>,
+    local_spans: HashMap<StringId, InputSpan>,
 }
 
 /// A temporary varnode. These have no backing varnode at this stage yet.
@@ -51,10 +52,12 @@ impl MOIRScope {
 
     pub fn allocate_named_temporary(
         &mut self,
-        ident: StringId,
+        ident: Spanned<StringId>,
         size: u16,
     ) {
+        let (ident, ident_span) = ident.into_tuple();
         let id = self.temporaries.insert(MOIRTemporary { size });
+        self.local_spans.insert(ident, ident_span);
         self.locals
             .insert(ident, MOIRValue::ValueSlice(MOIRSlice::temporary(id, 0, size.into())));
     }

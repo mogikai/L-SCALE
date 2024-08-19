@@ -3,6 +3,10 @@ mod expression;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::pcode::statement::SASTPCodeStatement;
+use crate::compiler::ast::pcode::subpiece::{
+    SASTPCodeSubpiece,
+    SASTPCodeSubpieceTarget,
+};
 use crate::compiler::ast::pcode::target_expression::SASTPCodeTargetExpression;
 use crate::compiler::ast::pcode::SASTPCode;
 use crate::compiler::ast::Spanned;
@@ -108,21 +112,42 @@ impl SleighCompiler {
         expression: Spanned<SASTPCodeExpression>,
     ) -> SleighCompilerResult {
         let (target, _) = target.into_tuple();
-        match target {
+        let value = match target {
             SASTPCodeTargetExpression::Variable(var) => {
-                let value = scope.resolve_value(&self.spec_builder, var.transmute())?;
+                if local.into_value() {
+                    scope.allocate_named_temporary(var.clone().transmute(), 0);
+                }
+                scope.resolve_value(&self.spec_builder, var.transmute())?
             }
             SASTPCodeTargetExpression::Store(deref) => {
                 if *local {
                     todo!("Generate error report for local keyword on store assignment")
                 }
+                todo!()
             }
             SASTPCodeTargetExpression::BitRange(bitrange) => {
                 let (bitrange, _) = bitrange.into_tuple();
-                let value = scope.resolve_value(&self.spec_builder, bitrange.ident.transmute())?;
+                if local.into_value() {
+                    scope.allocate_named_temporary(bitrange.ident.clone().transmute(), 0);
+                }
+                scope.resolve_value(&self.spec_builder, bitrange.ident.transmute())?
             }
-            SASTPCodeTargetExpression::Subpiece(subpiece) => {}
-        }
+            SASTPCodeTargetExpression::Subpiece(subpiece) => {
+                let (subpiece, _) = subpiece.into_tuple();
+                match subpiece.target.into_value() {
+                    SASTPCodeSubpieceTarget::Ident(ident) => {
+                        if local.into_value() {
+                            scope.allocate_named_temporary(ident.clone().transmute(), 0);
+                        }
+                        scope.resolve_value(&self.spec_builder, ident.transmute())?
+                    }
+                    SASTPCodeSubpieceTarget::Literal(_) => {
+                        todo!("Generate error report for unallowed literals in target expression")
+                    }
+                }
+            }
+        };
+        trace!("Resolved target to {value:?}");
         // TODO: Check if target ident exists. If not, require the local attribute to create a new local variable.
         //       If the target is a store, require that the ident exists, and deny the local keyword, since it makes
         //       no sense in this context.
