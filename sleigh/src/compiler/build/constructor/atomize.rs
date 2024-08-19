@@ -29,7 +29,7 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         pcode: Spanned<SASTPCode>,
-    ) -> SleighCompilerResult<Option<()>> {
+    ) -> SleighCompilerResult<Option<MOIRValue>> {
         // TODO: Create table of locals? Lookup global identifiers?
         let (pcode, _) = pcode.into_tuple();
         let mut export = None;
@@ -51,8 +51,8 @@ impl SleighCompiler {
                 }
                 SASTPCodeStatement::Build(_) => {}
                 SASTPCodeStatement::Export(expression) => {
-                    export = Some(expression.span().clone());
-                    self.atomize_export(instructions, expression)?;
+                    let span = expression.span().clone();
+                    export = Some(Spanned::new(self.atomize_export(instructions, expression)?, span));
                 }
                 SASTPCodeStatement::Delayslot(_) => {}
                 SASTPCodeStatement::Declaration(_, _) => {}
@@ -65,7 +65,7 @@ impl SleighCompiler {
             }
         }
         trace!("Instructions: {instructions:?}");
-        Ok(export.map(|_| ()))
+        Ok(export.map(|export| export.into_value()))
     }
 
     /// Atomizes the expression into multiple MOIRInstructions.
@@ -110,15 +110,17 @@ impl SleighCompiler {
         let (target, _) = target.into_tuple();
         match target {
             SASTPCodeTargetExpression::Variable(var) => {
-                let result = scope.resolve_value(&self.spec_builder, var.transmute());
-                self.report_error_or_unwrap(result)?;
+                let value = scope.resolve_value(&self.spec_builder, var.transmute())?;
             }
             SASTPCodeTargetExpression::Store(deref) => {
                 if *local {
                     todo!("Generate error report for local keyword on store assignment")
                 }
             }
-            SASTPCodeTargetExpression::BitRange(bitrange) => {}
+            SASTPCodeTargetExpression::BitRange(bitrange) => {
+                let (bitrange, _) = bitrange.into_tuple();
+                let value = scope.resolve_value(&self.spec_builder, bitrange.ident.transmute())?;
+            }
             SASTPCodeTargetExpression::Subpiece(subpiece) => {}
         }
         // TODO: Check if target ident exists. If not, require the local attribute to create a new local variable.
@@ -150,9 +152,9 @@ impl SleighCompiler {
         &mut self,
         instructions: &mut Vec<MOIRInstruction>,
         expression: Spanned<SASTPCodeExpression>,
-    ) -> SleighCompilerResult {
+    ) -> SleighCompilerResult<MOIRValue> {
         // TODO: Handling dynamic references (e.g. export *:4 tmp) will require keeping track of the
         //       dynamic references somewhere. We need to decide how to do this.
-        Ok(())
+        Ok(MOIRValue::ValueSlice(MOIRSlice::varnode(MOIRVarNodeId::from(0), 0, 8)))
     }
 }

@@ -47,10 +47,29 @@ impl SleighCompiler {
             None => self.spec_builder.modify_root_table()?,
             Some(id) => self.spec_builder.modify_table(id)?,
         };
-        if table.export.is_some() && export.is_none() {
-            todo!("Generate error report for constructor missing an export statement")
+        if table.exports.is_empty() {
+            // If the exports table is empty, we can just insert the export if we have one.
+            if let Some(export) = export {
+                table.exports.push(export);
+            }
+        } else {
+            // If the exports table already contains exports, we have to make sure that the sizes of all
+            // exports match. Also, it is not allowed, that a constructor has no export statement, if
+            // another constructor has an export statement. If one constructor exports, all of them have to.
+            let Some(export) = export else {
+                todo!("Generate error report for constructor missing an export statement")
+            };
+            let existing_export = table
+                .exports
+                .first()
+                .expect("We just made sure that at least one element exists");
+            if export.size() != existing_export.size() {
+                todo!("Generate error report for constructor missing an export statement")
+            } else {
+                // All is well, we can now just insert the export for later type lookup.
+                table.exports.push(export);
+            }
         }
-        table.export = export;
         Ok(())
     }
 

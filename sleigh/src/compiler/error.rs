@@ -42,6 +42,8 @@ pub enum SleighCompilerError {
     IdentifierNotMapped(Spanned<StringId>),
     #[error("The symbol was not declared before being defined.")]
     SymbolUndeclared,
+    #[error("The value cannot be sliced, since the requested slice is either too large or too small.")]
+    InvalidSliceSize,
 }
 
 impl Debug for SleighCompilerError {

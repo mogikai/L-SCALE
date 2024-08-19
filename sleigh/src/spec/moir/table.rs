@@ -1,4 +1,5 @@
 use crate::new_symbol_id_type;
+use crate::spec::moir::varnode::MOIRValue;
 
 #[derive(Debug, Default)]
 pub struct MOIRTable {
@@ -42,9 +43,9 @@ pub struct MOIRTable {
     /// as it would in a normal expression (see Section 7.7.1.6, “Address-of Operator”). It causes the
     /// address of the varnode being modified to be exported as an integer constant.
     ///
-    /// TODO: What type to use for the export? The actual varnode or value can only be computed at diassembly time
-    ///       so we might have to use some kind of reference here?
-    pub export: Option<()>,
+    /// The table lists all possible export types so that the compiler can check that if the export
+    /// is used on the left hand side of an assignment, the export does not resolve to a const value.
+    pub exports: Vec<MOIRValue>,
 }
 
 new_symbol_id_type! { pub struct MOIRTableId; }
