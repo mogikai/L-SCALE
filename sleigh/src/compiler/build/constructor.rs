@@ -60,7 +60,6 @@ impl SleighCompiler {
         trace!("Bit pattern section: {:?}", constructor.bit_pattern_section.value());
         let matcher = self.create_matcher(constructor.bit_pattern_section.into_value().constraint)?;
         self.resolve_symbols_to_local_scope(&mut moir_constructor.local_scope, &matcher.symbols_used)?;
-        trace!("scope = {:?}", moir_constructor.local_scope);
 
         // TODO: we need to walk the constraint and find out the tokens that are used.
         //       we also need to make sure that there is only one token per section
