@@ -1,4 +1,5 @@
 use crate::compiler::ast::Spanned;
+use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::SleighCompilerResult;
 use crate::new_symbol_id_type;
@@ -12,6 +13,7 @@ use crate::spec::moir::varnode::{
 };
 use crate::spec::symbol_table::MOIRSymbolTable;
 use std::collections::HashMap;
+use tracing::trace;
 
 /// A scope for locals used in constructors and macros
 #[derive(Debug, Default)]
@@ -76,11 +78,13 @@ impl MOIRScope {
         global: &ProcessorSpecificationBuilder,
         ident: Spanned<StringId>,
     ) -> SleighCompilerResult<MOIRValue> {
+        let ident_str = global.resolve_string_id(*ident.value());
+        trace!("Trying to resolve {:?} in scope {:?}", ident_str, self);
         // TODO: Generate proper error reports
         self.locals
             .get(ident.value())
             .copied()
-            .ok_or(todo!("Report error for undefined local"))
+            .ok_or_else(|| SleighCompilerError::TODO)
             .or_else(|e| {
                 global.varnode_value_by_ident(&ident).map_err(|ge| {
                     // TODO: Merge e and ge errors.

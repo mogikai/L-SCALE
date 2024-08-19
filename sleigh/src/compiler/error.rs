@@ -44,6 +44,8 @@ pub enum SleighCompilerError {
     SymbolUndeclared,
     #[error("The value cannot be sliced, since the requested slice is either too large or too small.")]
     InvalidSliceSize,
+    #[error("This error needs replacement")]
+    TODO,
 }
 
 impl Debug for SleighCompilerError {

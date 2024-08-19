@@ -123,7 +123,7 @@ impl SleighCompiler {
                 if *local {
                     todo!("Generate error report for local keyword on store assignment")
                 }
-                todo!()
+                MOIRValue::ValueSlice(MOIRSlice::varnode(MOIRVarNodeId::from(0), 0, 0))
             }
             SASTPCodeTargetExpression::BitRange(bitrange) => {
                 let (bitrange, _) = bitrange.into_tuple();

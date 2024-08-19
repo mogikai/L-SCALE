@@ -1,4 +1,9 @@
-use crate::compiler::ast::constructor::bit_pattern_section::{SASTBinaryOp, SASTBitPatternConstraint, SASTConstraintOp, SASTConstraintPattern};
+use crate::compiler::ast::constructor::bit_pattern_section::{
+    SASTBinaryOp,
+    SASTBitPatternConstraint,
+    SASTConstraintOp,
+    SASTConstraintPattern,
+};
 use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::ast::Spanned;
 use crate::compiler::error::SleighCompilerError;
@@ -11,11 +16,25 @@ use crate::spec::builder::ProcessorSpecificationBuilder;
 use crate::spec::moir::constructor::MOIRConstructor;
 use crate::spec::moir::field::MOIRFieldId;
 use crate::spec::moir::scope::MOIRScope;
-use crate::spec::moir::varnode::{MOIRConst, MOIRReference, MOIRSlice, MOIRValue};
-use crate::spec::{MOIRSymbol, ProcessorSpecificationError};
+use crate::spec::moir::varnode::{
+    MOIRConst,
+    MOIRReference,
+    MOIRSlice,
+    MOIRValue,
+};
+use crate::spec::{
+    MOIRSymbol,
+    ProcessorSpecificationError,
+};
 use tracing::trace;
 
-use super::matcher::{FieldMatcher, FieldMatcherConstraint, Matcher, MatcherExpression, MatcherReference};
+use super::matcher::{
+    FieldMatcher,
+    FieldMatcherConstraint,
+    Matcher,
+    MatcherExpression,
+    MatcherReference,
+};
 
 pub mod atomize;
 
@@ -39,14 +58,9 @@ impl SleighCompiler {
             instructions: vec![],
         };
         trace!("Bit pattern section: {:?}", constructor.bit_pattern_section.value());
-        let matcher = self.create_matcher(constructor.bit_pattern_section.into_value().constraint);
-        if let Some(matcher) = self.report_error_or_unwrap(matcher)? {
-            let scope = self.resolve_symbols_to_local_scope(&matcher.symbols_used)?;
-            // eprintln!("matcher = {:#?}", matcher);
-            trace!("scope = {:?}", scope);
-        } else {
-            println!("lmao");
-        }
+        let matcher = self.create_matcher(constructor.bit_pattern_section.into_value().constraint)?;
+        self.resolve_symbols_to_local_scope(&mut moir_constructor.local_scope, &matcher.symbols_used)?;
+        trace!("scope = {:?}", moir_constructor.local_scope);
 
         // TODO: we need to walk the constraint and find out the tokens that are used.
         //       we also need to make sure that there is only one token per section
@@ -94,54 +108,67 @@ impl SleighCompiler {
     /// [MOIRScope] of the constructor for usage in the semantic section.
     fn resolve_symbols_to_local_scope(
         &self,
-        symbols: &Vec<MOIRSymbol>
-    ) -> SleighCompilerResult<MOIRScope> {
+        scope: &mut MOIRScope,
+        symbols: &Vec<MOIRSymbol>,
+    ) -> SleighCompilerResult {
         trace!("Resolving {} symbols to a local scope", symbols.len());
-        let mut scope = MOIRScope::default();
-
         for symbol in symbols {
             let value = match symbol {
                 MOIRSymbol::Field(field_id) => {
-                    let field = self.spec_builder.field_by_symbol_id(*field_id)
+                    let field = self
+                        .spec_builder
+                        .field_by_symbol_id(*field_id)
                         .ok_or(ProcessorSpecificationError::SymbolUndeclared)?;
                     let num_bytes = (field.bits.clone().count() + 7) / 8;
-                    MOIRValue::ValueSlice(MOIRSlice {
+                    Some(MOIRValue::ValueSlice(MOIRSlice {
                         reference: MOIRReference::Field(*field_id),
                         start: 0,
                         end: num_bytes as u64,
-                    })
-                },
+                    }))
+                }
 
                 MOIRSymbol::Table(table_id) => {
-                    let table = self.spec_builder.table_by_symbol_id(*table_id)
+                    let table = self
+                        .spec_builder
+                        .table_by_symbol_id(*table_id)
                         .ok_or(ProcessorSpecificationError::SymbolUndeclared)?;
-                    let export_size = table.exports.first().ok_or_else(|| -> SleighCompilerError { todo!("Generate error report") })?.size();
-                    MOIRValue::ValueSlice(MOIRSlice {
-                        reference: MOIRReference::SubTable(*table_id),
-                        start: 0,
-                        end: export_size as u64,
-                    })
-                },
+                    let export = table.exports.first();
+                    if let Some(export) = export {
+                        Some(MOIRValue::ValueSlice(MOIRSlice {
+                            reference: MOIRReference::SubTable(*table_id),
+                            start: 0,
+                            end: export.size(),
+                        }))
+                    } else {
+                        None
+                    }
+                }
 
                 MOIRSymbol::VarNode(vnid) => {
-                    let varnode = self.spec_builder.varnode_by_symbol_id(*vnid)
+                    let varnode = self
+                        .spec_builder
+                        .varnode_by_symbol_id(*vnid)
                         .ok_or(ProcessorSpecificationError::SymbolUndeclared)?;
-                    MOIRValue::ValueSlice(MOIRSlice {
+                    Some(MOIRValue::ValueSlice(MOIRSlice {
                         reference: MOIRReference::VarNode(*vnid),
                         start: 0,
                         end: varnode.size as u64,
-                    })
+                    }))
                 }
 
-                _ => Err(ProcessorSpecificationError::InvalidSymbolType(*symbol))?
+                _ => Err(ProcessorSpecificationError::InvalidSymbolType(*symbol))?,
             };
 
-            let ident = self.spec_builder.ident_by_symbol(symbol)
+            let ident = self
+                .spec_builder
+                .ident_by_symbol(symbol)
                 .ok_or(ProcessorSpecificationError::SymbolUndeclared)?;
-            scope.declare_value(ident.clone().into_value(), value);
+            if let Some(value) = value {
+                scope.declare_value(ident.clone().into_value(), value);
+            }
         }
 
-        Ok(scope)
+        Ok(())
     }
 
     fn create_matcher(
@@ -167,7 +194,9 @@ impl SleighCompiler {
                 let mut matcher_rhs = self.create_matcher(*rhs)?;
 
                 let expression = match op.into_value() {
-                    SASTBinaryOp::And => Box::new(MatcherExpression::And(matcher_lhs.expression, matcher_rhs.expression)),
+                    SASTBinaryOp::And => {
+                        Box::new(MatcherExpression::And(matcher_lhs.expression, matcher_rhs.expression))
+                    }
                     SASTBinaryOp::Or => Box::new(MatcherExpression::Or(matcher_lhs.expression, matcher_rhs.expression)),
                     SASTBinaryOp::Concatenate => Box::new(MatcherExpression::Concat {
                         lhs: matcher_lhs.expression,
@@ -177,7 +206,9 @@ impl SleighCompiler {
                     }),
                 };
 
-                matcher_lhs.symbols_used.append(&mut matcher_rhs.symbols_used);
+                matcher_lhs
+                    .symbols_used
+                    .append(&mut matcher_rhs.symbols_used);
 
                 Ok(Matcher::new(expression, matcher_lhs.symbols_used))
             }
@@ -214,40 +245,34 @@ impl SleighCompiler {
         &self,
         field_id: MOIRFieldId,
         op: SASTConstraintOp,
-        pattern: SASTConstraintPattern
+        pattern: SASTConstraintPattern,
     ) -> SleighCompilerResult<Box<MatcherExpression>> {
-        let field = self.spec_builder.field_by_symbol_id(field_id)
+        let field = self
+            .spec_builder
+            .field_by_symbol_id(field_id)
             .ok_or(ProcessorSpecificationError::SymbolUndeclared)?;
 
         match op {
-            SASTConstraintOp::Equals => {
-                self.matcher_from_equals_constraint(field_id, pattern)
-            },
-            SASTConstraintOp::NotEquals => {
-                match pattern {
-                    SASTConstraintPattern::Ident(_) => todo!("Not clear how to negate other field"),
-                    SASTConstraintPattern::BitPattern(value) => {
-                        let bits = field.bits.clone().count() as u16;
-                        Ok(self.matcher_from_negate_constraint(field_id, bits, value.into_value()))
-                    },
+            SASTConstraintOp::Equals => self.matcher_from_equals_constraint(field_id, pattern),
+            SASTConstraintOp::NotEquals => match pattern {
+                SASTConstraintPattern::Ident(_) => todo!("Not clear how to negate other field"),
+                SASTConstraintPattern::BitPattern(value) => {
+                    let bits = field.bits.clone().count() as u16;
+                    Ok(self.matcher_from_negate_constraint(field_id, bits, value.into_value()))
                 }
             },
-            SASTConstraintOp::LessThan => {
-                match pattern {
-                    SASTConstraintPattern::Ident(_) => todo!("Not clear how to implement lt for other field"),
-                    SASTConstraintPattern::BitPattern(value) => {
-                        let bits = field.bits.clone().count() as u16;
-                        Ok(self.matcher_from_negate_constraint(field_id, bits, value.into_value()))
-                    },
+            SASTConstraintOp::LessThan => match pattern {
+                SASTConstraintPattern::Ident(_) => todo!("Not clear how to implement lt for other field"),
+                SASTConstraintPattern::BitPattern(value) => {
+                    let bits = field.bits.clone().count() as u16;
+                    Ok(self.matcher_from_negate_constraint(field_id, bits, value.into_value()))
                 }
             },
-            SASTConstraintOp::GreaterThan => {
-                match pattern {
-                    SASTConstraintPattern::Ident(_) => todo!("Not clear how to implement gt for other field"),
-                    SASTConstraintPattern::BitPattern(value) => {
-                        let bits = field.bits.clone().count() as u16;
-                        Ok(self.matcher_from_gt_constraint(field_id, bits, value.into_value()))
-                    },
+            SASTConstraintOp::GreaterThan => match pattern {
+                SASTConstraintPattern::Ident(_) => todo!("Not clear how to implement gt for other field"),
+                SASTConstraintPattern::BitPattern(value) => {
+                    let bits = field.bits.clone().count() as u16;
+                    Ok(self.matcher_from_gt_constraint(field_id, bits, value.into_value()))
                 }
             },
         }
@@ -265,9 +290,10 @@ impl SleighCompiler {
         pattern: SASTConstraintPattern,
     ) -> SleighCompilerResult<Box<MatcherExpression>> {
         let constraint = match pattern {
-            SASTConstraintPattern::Ident(ident) => {
-                self.spec_builder.field_id_by_ident(&ident.clone().transmute()).map(|field_id| FieldMatcherConstraint::Field(*field_id))
-            },
+            SASTConstraintPattern::Ident(ident) => self
+                .spec_builder
+                .field_id_by_ident(&ident.clone().transmute())
+                .map(|field_id| FieldMatcherConstraint::Field(*field_id)),
             SASTConstraintPattern::BitPattern(value) => Ok(FieldMatcherConstraint::BitPattern(value.into_value())),
         }?;
 
@@ -283,12 +309,17 @@ impl SleighCompiler {
         value: u64,
     ) -> Box<MatcherExpression> {
         (0u64..2u64.pow(bits as u32))
-            .filter_map(|v| if v != value {
-                Some(Box::new(MatcherExpression::Field(FieldMatcher::new(field_id, FieldMatcherConstraint::BitPattern(v)))))
-            } else {
-                None
+            .filter_map(|v| {
+                if v != value {
+                    Some(Box::new(MatcherExpression::Field(FieldMatcher::new(
+                        field_id,
+                        FieldMatcherConstraint::BitPattern(v),
+                    ))))
+                } else {
+                    None
+                }
             })
-        .reduce(|acc, expr| Box::new(MatcherExpression::Or(acc, expr)))
+            .reduce(|acc, expr| Box::new(MatcherExpression::Or(acc, expr)))
             .expect("There should be at least one possible value for which the matcher accepts.")
     }
 
@@ -301,12 +332,17 @@ impl SleighCompiler {
         value: u64,
     ) -> Box<MatcherExpression> {
         (0u64..2u64.pow(bits as u32))
-            .filter_map(|v| if v >= value {
-                Some(Box::new(MatcherExpression::Field(FieldMatcher::new(field_id, FieldMatcherConstraint::BitPattern(v)))))
-            } else {
-                None
+            .filter_map(|v| {
+                if v >= value {
+                    Some(Box::new(MatcherExpression::Field(FieldMatcher::new(
+                        field_id,
+                        FieldMatcherConstraint::BitPattern(v),
+                    ))))
+                } else {
+                    None
+                }
             })
-        .reduce(|acc, expr| Box::new(MatcherExpression::Or(acc, expr)))
+            .reduce(|acc, expr| Box::new(MatcherExpression::Or(acc, expr)))
             .expect("There should be at least one possible value for which the matcher accepts.")
     }
 
@@ -319,12 +355,17 @@ impl SleighCompiler {
         value: u64,
     ) -> Box<MatcherExpression> {
         (0u64..2u64.pow(bits as u32))
-            .filter_map(|v| if v <= value {
-                Some(Box::new(MatcherExpression::Field(FieldMatcher::new(field_id, FieldMatcherConstraint::BitPattern(v)))))
-            } else {
-                None
+            .filter_map(|v| {
+                if v <= value {
+                    Some(Box::new(MatcherExpression::Field(FieldMatcher::new(
+                        field_id,
+                        FieldMatcherConstraint::BitPattern(v),
+                    ))))
+                } else {
+                    None
+                }
             })
-        .reduce(|acc, expr| Box::new(MatcherExpression::Or(acc, expr)))
+            .reduce(|acc, expr| Box::new(MatcherExpression::Or(acc, expr)))
             .expect("There should be at least one possible value for which the matcher accepts.")
     }
 }

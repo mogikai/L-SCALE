@@ -69,7 +69,10 @@ impl SleighCompiler {
         for item in items {
             match item {
                 SASTItem::Attach(attach) => self.process_attach(attach)?,
-                SASTItem::Constructor(constructor) => self.process_constructor(constructor)?,
+                SASTItem::Constructor(constructor) => {
+                    let result = self.process_constructor(constructor);
+                    self.report_error_or_unwrap(result)?;
+                }
                 SASTItem::Define(define) => self.process_define(define)?,
                 SASTItem::Macro(pcode_macro) => self.process_pcode_macro(pcode_macro)?,
                 SASTItem::With(with) => self.process_with(with)?,
