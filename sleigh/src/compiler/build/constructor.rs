@@ -1,6 +1,7 @@
 use crate::compiler::ast::constructor::bit_pattern_section::{SASTBinaryOp, SASTBitPatternConstraint, SASTConstraintOp, SASTConstraintPattern};
 use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::ast::Spanned;
+use crate::compiler::error::SleighCompilerError;
 use crate::compiler::{
     CompilerContext,
     SleighCompiler,
@@ -40,7 +41,9 @@ impl SleighCompiler {
         trace!("Bit pattern section: {:?}", constructor.bit_pattern_section.value());
         let matcher = self.create_matcher(constructor.bit_pattern_section.into_value().constraint);
         if let Some(matcher) = self.report_error_or_unwrap(matcher)? {
-            eprintln!("matcher = {:#?}", matcher);
+            let scope = self.resolve_symbols_to_local_scope(&matcher.symbols_used)?;
+            // eprintln!("matcher = {:#?}", matcher);
+            trace!("scope = {:?}", scope);
         } else {
             println!("lmao");
         }
@@ -93,6 +96,7 @@ impl SleighCompiler {
         &self,
         symbols: &Vec<MOIRSymbol>
     ) -> SleighCompilerResult<MOIRScope> {
+        trace!("Resolving {} symbols to a local scope", symbols.len());
         let mut scope = MOIRScope::default();
 
         for symbol in symbols {
@@ -100,7 +104,7 @@ impl SleighCompiler {
                 MOIRSymbol::Field(field_id) => {
                     let field = self.spec_builder.field_by_symbol_id(*field_id)
                         .ok_or(ProcessorSpecificationError::SymbolUndeclared)?;
-                    let num_bytes = (field.bits.count() + 7) / 8;
+                    let num_bytes = (field.bits.clone().count() + 7) / 8;
                     MOIRValue::ValueSlice(MOIRSlice {
                         reference: MOIRReference::Field(*field_id),
                         start: 0,
@@ -111,7 +115,7 @@ impl SleighCompiler {
                 MOIRSymbol::Table(table_id) => {
                     let table = self.spec_builder.table_by_symbol_id(*table_id)
                         .ok_or(ProcessorSpecificationError::SymbolUndeclared)?;
-                    let export_size = &table.export.expect("A subtable has to have an export.");
+                    let export_size = table.exports.first().ok_or_else(|| -> SleighCompilerError { todo!("Generate error report") })?.size();
                     MOIRValue::ValueSlice(MOIRSlice {
                         reference: MOIRReference::SubTable(*table_id),
                         start: 0,
@@ -129,12 +133,12 @@ impl SleighCompiler {
                     })
                 }
 
-                _ => Err(ProcessorSpecificationError::InvalidSymbolType(symbol))?
+                _ => Err(ProcessorSpecificationError::InvalidSymbolType(*symbol))?
             };
 
             let ident = self.spec_builder.ident_by_symbol(symbol)
                 .ok_or(ProcessorSpecificationError::SymbolUndeclared)?;
-            scope.declare_value(ident.into_value(), value);
+            scope.declare_value(ident.clone().into_value(), value);
         }
 
         Ok(scope)
@@ -149,6 +153,7 @@ impl SleighCompiler {
             SASTBitPatternConstraint::Ident(ident) => {
                 let symbol = self.spec_builder.get_symbol(&ident.clone().transmute())?;
                 let reference = match symbol {
+                    MOIRSymbol::Field(field_id) => MatcherReference::Field(*field_id),
                     MOIRSymbol::Table(table_id) => MatcherReference::Subtable(*table_id),
                     MOIRSymbol::VarNode(varnode_id) => MatcherReference::Varnode(*varnode_id),
                     _ => Err(ProcessorSpecificationError::InvalidSymbolType(*symbol))?,

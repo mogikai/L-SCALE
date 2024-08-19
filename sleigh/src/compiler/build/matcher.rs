@@ -61,6 +61,7 @@ impl FieldMatcher {
 // TODO do we miss symbols?
 #[derive(Debug)]
 pub enum MatcherReference {
+    Field(MOIRFieldId),
     Subtable(MOIRTableId),
     Varnode(MOIRVarNodeId),
 }
