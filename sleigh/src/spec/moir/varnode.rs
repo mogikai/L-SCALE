@@ -30,7 +30,7 @@ pub struct MOIRVarNode {
 #[derive(Debug, Copy, Clone)]
 pub enum MOIRSliceEnd {
     /// The slice goes to a specific offset in the varnode.
-    Value(MOIRSize),
+    Determined(MOIRSize),
     /// The slice goes to the end of the underlying varnode.
     Undetermined,
 }
@@ -61,7 +61,7 @@ impl MOIRSlice {
         Self {
             reference: MOIRReference::VarNode(varnode),
             start,
-            end: MOIRSliceEnd::Value(end),
+            end: MOIRSliceEnd::Determined(end),
         }
     }
 
@@ -79,7 +79,7 @@ impl MOIRSlice {
 
     pub fn size(&self) -> Option<MOIRSize> {
         match self.end {
-            MOIRSliceEnd::Value(end) => Some(end.saturating_sub(self.start)),
+            MOIRSliceEnd::Determined(end) => Some(end.saturating_sub(self.start)),
             MOIRSliceEnd::Undetermined => None,
         }
     }
@@ -132,7 +132,7 @@ impl MOIRValue {
         }
         Ok(match self {
             MOIRValue::ValueSlice(slice) => {
-                let MOIRSliceEnd::Value(current_end) = slice.end else {
+                let MOIRSliceEnd::Determined(current_end) = slice.end else {
                     Err(SleighCompilerError::CannotSliceUndeterminedEnd)?
                 };
                 if end > current_end || start < slice.start {
@@ -141,7 +141,7 @@ impl MOIRValue {
                 MOIRValue::ValueSlice(MOIRSlice {
                     reference: slice.reference,
                     start,
-                    end: MOIRSliceEnd::Value(end),
+                    end: MOIRSliceEnd::Determined(end),
                 })
             }
             MOIRValue::Const(value) => MOIRValue::Const(slice_const(value, start, end)),

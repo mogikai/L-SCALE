@@ -17,7 +17,11 @@ use crate::compiler::{
 };
 use crate::spec::builder::StringId;
 use crate::spec::moir::code::MOIRInstruction;
-use crate::spec::moir::scope::MOIRScope;
+use crate::spec::moir::common::MOIRSize;
+use crate::spec::moir::scope::{
+    MOIRScope,
+    MOIRTemporarySize,
+};
 use crate::spec::moir::varnode::{
     MOIRConst,
     MOIRSlice,
@@ -61,7 +65,9 @@ impl SleighCompiler {
                     export = Some(Spanned::new(self.atomize_export(instructions, expression)?, span));
                 }
                 SASTPCodeStatement::Delayslot(_) => {}
-                SASTPCodeStatement::Declaration(_, _) => {}
+                SASTPCodeStatement::Declaration(ident, size) => {
+                    self.atomize_declaration(scope, ident.transmute(), size.map(Spanned::transmute))?
+                }
                 SASTPCodeStatement::Branch(_) => {}
                 SASTPCodeStatement::ConditionalBranch { .. } => {}
                 SASTPCodeStatement::BranchCall(_) => {}
@@ -119,7 +125,7 @@ impl SleighCompiler {
         let value = match target {
             SASTPCodeTargetExpression::Variable(var) => {
                 if local.into_value() {
-                    scope.allocate_named_temporary(var.clone().transmute(), 0);
+                    scope.allocate_named_temporary(var.clone().transmute(), MOIRTemporarySize::Undetermined)?;
                 }
                 scope.resolve_value(&self.spec_builder, var.transmute())?
             }
@@ -132,7 +138,10 @@ impl SleighCompiler {
             SASTPCodeTargetExpression::BitRange(bitrange) => {
                 let (bitrange, _) = bitrange.into_tuple();
                 if local.into_value() {
-                    scope.allocate_named_temporary(bitrange.ident.clone().transmute(), 0);
+                    scope.allocate_named_temporary(
+                        bitrange.ident.clone().transmute(),
+                        MOIRTemporarySize::Undetermined,
+                    )?;
                 }
                 scope.resolve_value(&self.spec_builder, bitrange.ident.transmute())?
             }
@@ -142,13 +151,13 @@ impl SleighCompiler {
                     SASTPCodeSubpieceTarget::Ident(ident) => {
                         let size = subpiece.size.into_value();
                         if local.into_value() {
-                            scope.allocate_named_temporary(ident.clone().transmute(), size);
+                            scope.allocate_named_temporary(ident.clone().transmute(), size.into())?;
                         }
                         let value = scope.resolve_value(&self.spec_builder, ident.transmute())?;
                         if size
                             > value.size().ok_or_else(|| -> SleighCompilerError {
-                                todo!("Generate error for undetermined size")
-                            })?
+                            todo!("Generate error for undetermined size")
+                        })?
                         {
                             todo!("Generate error for subpiece being larger than underlying slice.")
                         }
@@ -195,5 +204,17 @@ impl SleighCompiler {
         // TODO: Handling dynamic references (e.g. export *:4 tmp) will require keeping track of the
         //       dynamic references somewhere. We need to decide how to do this.
         Ok(MOIRValue::ValueSlice(MOIRSlice::varnode(MOIRVarNodeId::from(0), 0, 8)))
+    }
+
+    fn atomize_declaration(
+        &mut self,
+        scope: &mut MOIRScope,
+        ident: Spanned<StringId>,
+        size: Option<Spanned<MOIRSize>>,
+    ) -> SleighCompilerResult {
+        scope.allocate_named_temporary(
+            ident,
+            size.map_or(MOIRTemporarySize::Undetermined, |size| size.into_value().into()),
+        )
     }
 }

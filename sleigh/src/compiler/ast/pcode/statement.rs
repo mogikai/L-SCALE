@@ -1,4 +1,7 @@
-use crate::compiler::ast::common::SASTIdent;
+use crate::compiler::ast::common::{
+    SASTIdent,
+    SASTSize,
+};
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::pcode::target_expression::SASTPCodeTargetExpression;
@@ -21,7 +24,7 @@ pub enum SASTPCodeStatement {
     Export(Spanned<SASTPCodeExpression>),
     Delayslot(Spanned<u64>),
     /// Declare the identifier as a local variable with an optional size.
-    Declaration(Spanned<SASTIdent>, Option<Spanned<u16>>),
+    Declaration(Spanned<SASTIdent>, Option<Spanned<SASTSize>>),
     Branch(Spanned<SASTPCodeBranchTarget>),
     /// Goto label if `condition_expression` is true. Otherwise, execute the
     /// following instruction

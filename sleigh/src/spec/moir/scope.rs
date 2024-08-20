@@ -13,7 +13,9 @@ use crate::spec::moir::varnode::{
     MOIRSliceEnd,
     MOIRValue,
 };
+use crate::spec::reporting::generate_identifier_exists_report;
 use crate::spec::typed_index_table::TypedIndexTable;
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
 /// A scope for locals used in constructors and macros
@@ -29,7 +31,28 @@ pub struct MOIRScope {
 /// They will be mapped to concrete varnodes once the constructor is called.
 #[derive(Debug)]
 struct MOIRTemporary {
-    pub size: Option<MOIRSize>,
+    pub size: MOIRTemporarySize,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum MOIRTemporarySize {
+    Determined(MOIRSize),
+    Undetermined,
+}
+
+impl From<MOIRSize> for MOIRTemporarySize {
+    fn from(size: MOIRSize) -> Self {
+        MOIRTemporarySize::Determined(size)
+    }
+}
+
+impl From<MOIRTemporarySize> for MOIRSliceEnd {
+    fn from(size: MOIRTemporarySize) -> Self {
+        match size {
+            MOIRTemporarySize::Determined(size) => MOIRSliceEnd::Determined(size),
+            MOIRTemporarySize::Undetermined => MOIRSliceEnd::Undetermined,
+        }
+    }
 }
 
 new_typed_index_table_id! { pub struct MOIRTemporaryId; }
@@ -47,19 +70,39 @@ impl MOIRScope {
     /// the `local` keyword in pcode statements. Unnamed temporaries are created by the compiler
     /// for storing intermediate values when atomizing expressions.
     pub fn allocate_temporary(&mut self) -> MOIRSlice {
-        MOIRSlice::temporary(self.temporaries.insert(MOIRTemporary { size: None }), 0, MOIRSliceEnd::Undetermined)
+        MOIRSlice::temporary(
+            self.temporaries.insert(MOIRTemporary {
+                size: MOIRTemporarySize::Undetermined,
+            }),
+            0,
+            MOIRSliceEnd::Undetermined,
+        )
     }
 
+    /// Try to allocate a named temporary. If the temporary already exists,
+    /// an error report is generated.
     pub fn allocate_named_temporary(
         &mut self,
         ident: Spanned<StringId>,
-        size: MOIRSize,
-    ) {
+        size: MOIRTemporarySize,
+    ) -> SleighCompilerResult {
         let (ident, ident_span) = ident.into_tuple();
-        let id = self.temporaries.insert(MOIRTemporary { size: Some(size) });
-        self.local_spans.insert(ident, ident_span);
-        self.locals
-            .insert(ident, MOIRValue::ValueSlice(MOIRSlice::temporary(id, 0, MOIRSliceEnd::Value(size.into()))));
+        let id = self.temporaries.insert(MOIRTemporary { size });
+        match self.locals.entry(ident) {
+            Entry::Occupied(_) => Err(generate_identifier_exists_report(
+                "",
+                self.local_spans
+                    .get(&ident)
+                    .expect("This must exist, since the locals entry is occupied")
+                    .clone(),
+                ident_span,
+            )),
+            Entry::Vacant(entry) => {
+                self.local_spans.insert(ident, ident_span);
+                entry.insert(MOIRValue::ValueSlice(MOIRSlice::temporary(id, 0, size.into())));
+                Ok(())
+            }
+        }
     }
 
     pub fn local(

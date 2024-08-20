@@ -122,7 +122,7 @@ impl SleighCompiler {
                     Some(MOIRValue::ValueSlice(MOIRSlice {
                         reference: MOIRReference::Field(*field_id),
                         start: 0,
-                        end: MOIRSliceEnd::Value(num_bytes as u8),
+                        end: MOIRSliceEnd::Determined(num_bytes as u8),
                     }))
                 }
 
@@ -136,7 +136,7 @@ impl SleighCompiler {
                         Some(MOIRValue::ValueSlice(MOIRSlice {
                             reference: MOIRReference::SubTable(*table_id),
                             start: 0,
-                            end: MOIRSliceEnd::Value(
+                            end: MOIRSliceEnd::Determined(
                                 export
                                     .size()
                                     .expect("TODO: Generate error for undetermined size"),
@@ -155,7 +155,7 @@ impl SleighCompiler {
                     Some(MOIRValue::ValueSlice(MOIRSlice {
                         reference: MOIRReference::VarNode(*vnid),
                         start: 0,
-                        end: MOIRSliceEnd::Value(varnode.size as u8),
+                        end: MOIRSliceEnd::Determined(varnode.size as u8),
                     }))
                 }
 
