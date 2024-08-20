@@ -1,10 +1,13 @@
-use crate::compiler::ast::common::SASTIdent;
+use crate::compiler::ast::common::{
+    SASTIdent,
+    SASTSize,
+};
 use crate::compiler::ast::Spanned;
 
 #[derive(Debug)]
 pub struct SASTPCodeSubpiece {
     pub target: Spanned<SASTPCodeSubpieceTarget>,
-    pub size: Spanned<u16>,
+    pub size: Spanned<SASTSize>,
 }
 
 #[derive(Debug)]

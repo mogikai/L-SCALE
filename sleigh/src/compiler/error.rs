@@ -46,6 +46,8 @@ pub enum SleighCompilerError {
     InvalidSliceSize,
     #[error("This error needs replacement")]
     TODO,
+    #[error("The slice cannot be sliced as long as the end is not determined")]
+    CannotSliceUndeterminedEnd,
 }
 
 impl Debug for SleighCompilerError {

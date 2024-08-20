@@ -2,6 +2,7 @@ use crate::compiler::error::SleighCompilerError;
 use crate::compiler::SleighCompilerResult;
 use crate::new_symbol_id_type;
 use crate::spec::moir::address_space::MOIRSpaceId;
+use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::field::MOIRFieldId;
 use crate::spec::moir::scope::MOIRTemporaryId;
 use crate::spec::moir::table::MOIRTableId;
@@ -23,7 +24,15 @@ pub struct MOIRVarNode {
     /// The offset specifies the offset from the start address of the space.
     pub offset: u64,
     /// The size specifies the size in bytes of the varnode.
-    pub size: u16,
+    pub size: MOIRSize,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum MOIRSliceEnd {
+    /// The slice goes to a specific offset in the varnode.
+    Value(MOIRSize),
+    /// The slice goes to the end of the underlying varnode.
+    Undetermined,
 }
 
 /// A slice of an existing varnode. The slice is at most as large as the original varnode.
@@ -32,28 +41,34 @@ pub struct MOIRSlice {
     /// The slice refers to a symbol. This can be for example a varnode, a subtable export, or a field.
     pub reference: MOIRReference,
     /// The start byte of the slice
-    pub start: u64,
+    pub start: MOIRSize,
     /// The end byte of the slice.
-    pub end: u64,
+    pub end: MOIRSliceEnd,
+}
+
+impl From<MOIRSlice> for MOIRValue {
+    fn from(value: MOIRSlice) -> Self {
+        MOIRValue::ValueSlice(value)
+    }
 }
 
 impl MOIRSlice {
     pub fn varnode(
         varnode: MOIRVarNodeId,
-        start: u64,
-        end: u64,
+        start: MOIRSize,
+        end: MOIRSize,
     ) -> Self {
         Self {
             reference: MOIRReference::VarNode(varnode),
             start,
-            end,
+            end: MOIRSliceEnd::Value(end),
         }
     }
 
     pub fn temporary(
         temporary: MOIRTemporaryId,
-        start: u64,
-        end: u64,
+        start: MOIRSize,
+        end: MOIRSliceEnd,
     ) -> Self {
         Self {
             reference: MOIRReference::Temporary(temporary),
@@ -62,8 +77,11 @@ impl MOIRSlice {
         }
     }
 
-    pub fn size(&self) -> u64 {
-        self.end.saturating_sub(self.start)
+    pub fn size(&self) -> Option<MOIRSize> {
+        match self.end {
+            MOIRSliceEnd::Value(end) => Some(end.saturating_sub(self.start)),
+            MOIRSliceEnd::Undetermined => None,
+        }
     }
 }
 
@@ -84,35 +102,56 @@ pub enum MOIRValue {
     Const(MOIRConst),
 }
 
+macro_rules! impl_value_from_const {
+    ($typ:ty, $expr:expr) => {
+        impl From<$typ> for MOIRValue {
+            fn from(value: $typ) -> Self {
+                MOIRValue::Const($expr(value))
+            }
+        }
+    };
+}
+
+impl_value_from_const!(u64, MOIRConst::Const64);
+impl_value_from_const!(u32, MOIRConst::Const32);
+impl_value_from_const!(u16, MOIRConst::Const16);
+impl_value_from_const!(u8, MOIRConst::Const8);
+
 impl MOIRValue {
     pub fn slice(
         self,
-        start: u64,
-        end: u64,
+        start: MOIRSize,
+        end: MOIRSize,
     ) -> SleighCompilerResult<Self> {
         let new_size = end.saturating_sub(start);
-        if new_size == 0 || new_size > self.size() || start > end {
+        let current_size = self
+            .size()
+            .ok_or(SleighCompilerError::CannotSliceUndeterminedEnd)?;
+        if new_size == 0 || new_size > current_size || start > end {
             Err(SleighCompilerError::InvalidSliceSize)?
         }
         Ok(match self {
             MOIRValue::ValueSlice(slice) => {
-                if end > slice.end || start < slice.start {
+                let MOIRSliceEnd::Value(current_end) = slice.end else {
+                    Err(SleighCompilerError::CannotSliceUndeterminedEnd)?
+                };
+                if end > current_end || start < slice.start {
                     Err(SleighCompilerError::InvalidSliceSize)?
                 }
                 MOIRValue::ValueSlice(MOIRSlice {
                     reference: slice.reference,
                     start,
-                    end,
+                    end: MOIRSliceEnd::Value(end),
                 })
             }
             MOIRValue::Const(value) => MOIRValue::Const(slice_const(value, start, end)),
         })
     }
 
-    pub fn size(&self) -> u64 {
+    pub fn size(&self) -> Option<MOIRSize> {
         match self {
             MOIRValue::ValueSlice(slice) => slice.size(),
-            MOIRValue::Const(value) => value.size(),
+            MOIRValue::Const(value) => Some(value.size()),
         }
     }
 }
@@ -126,7 +165,7 @@ pub enum MOIRConst {
 }
 
 impl MOIRConst {
-    pub fn size(&self) -> u64 {
+    pub fn size(&self) -> MOIRSize {
         match self {
             MOIRConst::Const64(v) => 8,
             MOIRConst::Const32(v) => 4,
@@ -138,8 +177,8 @@ impl MOIRConst {
 
 fn slice_const(
     value: MOIRConst,
-    start: u64,
-    end: u64,
+    start: MOIRSize,
+    end: MOIRSize,
 ) -> MOIRConst {
     let new_size = end.saturating_sub(start);
     match value {

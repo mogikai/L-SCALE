@@ -1,4 +1,7 @@
-use super::common::SASTIdent;
+use super::common::{
+    SASTIdent,
+    SASTSize,
+};
 use super::Spanned;
 
 // basic definitions
@@ -35,7 +38,7 @@ pub struct SASTVarnode {
     pub spacename: Spanned<SASTIdent>,
     pub offset: Spanned<u64>, // offset in register address space
     /// The size of the varnode in bytes
-    pub size: Spanned<u16>,
+    pub size: Spanned<SASTSize>,
     pub names: Vec<Spanned<SASTIdent>>,
 }
 

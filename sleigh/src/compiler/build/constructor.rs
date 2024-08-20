@@ -20,6 +20,7 @@ use crate::spec::moir::varnode::{
     MOIRConst,
     MOIRReference,
     MOIRSlice,
+    MOIRSliceEnd,
     MOIRValue,
 };
 use crate::spec::{
@@ -57,7 +58,6 @@ impl SleighCompiler {
             local_scope: Default::default(),
             instructions: vec![],
         };
-        trace!("Bit pattern section: {:?}", constructor.bit_pattern_section.value());
         let matcher = self.create_matcher(constructor.bit_pattern_section.into_value().constraint)?;
         self.resolve_symbols_to_local_scope(&mut moir_constructor.local_scope, &matcher.symbols_used)?;
 
@@ -122,7 +122,7 @@ impl SleighCompiler {
                     Some(MOIRValue::ValueSlice(MOIRSlice {
                         reference: MOIRReference::Field(*field_id),
                         start: 0,
-                        end: num_bytes as u64,
+                        end: MOIRSliceEnd::Value(num_bytes as u8),
                     }))
                 }
 
@@ -136,7 +136,11 @@ impl SleighCompiler {
                         Some(MOIRValue::ValueSlice(MOIRSlice {
                             reference: MOIRReference::SubTable(*table_id),
                             start: 0,
-                            end: export.size(),
+                            end: MOIRSliceEnd::Value(
+                                export
+                                    .size()
+                                    .expect("TODO: Generate error for undetermined size"),
+                            ),
                         }))
                     } else {
                         None
@@ -151,7 +155,7 @@ impl SleighCompiler {
                     Some(MOIRValue::ValueSlice(MOIRSlice {
                         reference: MOIRReference::VarNode(*vnid),
                         start: 0,
-                        end: varnode.size as u64,
+                        end: MOIRSliceEnd::Value(varnode.size as u8),
                     }))
                 }
 

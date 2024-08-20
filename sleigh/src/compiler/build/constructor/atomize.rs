@@ -10,6 +10,7 @@ use crate::compiler::ast::pcode::subpiece::{
 use crate::compiler::ast::pcode::target_expression::SASTPCodeTargetExpression;
 use crate::compiler::ast::pcode::SASTPCode;
 use crate::compiler::ast::Spanned;
+use crate::compiler::error::SleighCompilerError;
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
@@ -20,6 +21,7 @@ use crate::spec::moir::scope::MOIRScope;
 use crate::spec::moir::varnode::{
     MOIRConst,
     MOIRSlice,
+    MOIRSliceEnd,
     MOIRValue,
     MOIRVarNode,
     MOIRVarNodeId,
@@ -51,7 +53,7 @@ impl SleighCompiler {
                 SASTPCodeStatement::Invocation(invocation) => {
                     // We ignore the output, since top level invocations do not output anything.
                     // TODO: Maybe it makes sense to update the pcodeop definition here to "no output"?
-                    self.atomize_invocation(instructions, invocation)?;
+                    self.atomize_invocation(scope, instructions, invocation)?;
                 }
                 SASTPCodeStatement::Build(_) => {}
                 SASTPCodeStatement::Export(expression) => {
@@ -78,18 +80,20 @@ impl SleighCompiler {
     /// a single const [MOIRValue]. Otherwise, [MOIRValue] will be [MOIRValue::VarNode].
     fn atomize_expression(
         &mut self,
-        out: MOIRVarNodeId,
+        scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         expression: Spanned<SASTPCodeExpression>,
     ) -> SleighCompilerResult<MOIRValue> {
         let (expression, _) = expression.into_tuple();
         trace!("Atomizing expression {}", expression);
         match expression {
-            SASTPCodeExpression::Invocation(invocation) => self.atomize_invocation(instructions, invocation),
+            SASTPCodeExpression::Invocation(invocation) => self.atomize_invocation(scope, instructions, invocation),
             SASTPCodeExpression::BinaryOperation { lhs, op, rhs } => {
-                self.atomize_binary_operation(out, instructions, *lhs, op, *rhs)
+                self.atomize_binary_operation(scope, instructions, *lhs, op, *rhs)
             }
-            SASTPCodeExpression::UnaryOperation { .. } => self.atomize_unary_operation(instructions),
+            SASTPCodeExpression::UnaryOperation { op, operand } => {
+                self.atomize_unary_operation(scope, instructions, op, *operand)
+            }
             SASTPCodeExpression::Dereference { .. } => self.atomize_dereference(instructions),
             SASTPCodeExpression::Subpiece(_) => self.atomize_subpiece(instructions),
             SASTPCodeExpression::Bitrange(_) => self.atomize_bitrange(instructions),
@@ -136,10 +140,19 @@ impl SleighCompiler {
                 let (subpiece, _) = subpiece.into_tuple();
                 match subpiece.target.into_value() {
                     SASTPCodeSubpieceTarget::Ident(ident) => {
+                        let size = subpiece.size.into_value();
                         if local.into_value() {
-                            scope.allocate_named_temporary(ident.clone().transmute(), 0);
+                            scope.allocate_named_temporary(ident.clone().transmute(), size);
                         }
-                        scope.resolve_value(&self.spec_builder, ident.transmute())?
+                        let value = scope.resolve_value(&self.spec_builder, ident.transmute())?;
+                        if size
+                            > value.size().ok_or_else(|| -> SleighCompilerError {
+                                todo!("Generate error for undetermined size")
+                            })?
+                        {
+                            todo!("Generate error for subpiece being larger than underlying slice.")
+                        }
+                        value
                     }
                     SASTPCodeSubpieceTarget::Literal(_) => {
                         todo!("Generate error report for unallowed literals in target expression")
@@ -153,24 +166,25 @@ impl SleighCompiler {
         //       no sense in this context.
         // TODO: Atomize expression on the right hand side of the assignment.
         // TODO: Check if the sizes on the left hand side match the right hand side.
-        let out = MOIRVarNodeId::from(0);
-        self.atomize_expression(out, instructions, expression)?;
+        let rhs = self.atomize_expression(scope, instructions, expression)?;
+        trace!("Assignment: {:?} = {:?}", value, rhs);
         Ok(())
     }
 
     fn atomize_invocation(
         &mut self,
+        scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         invocation: Spanned<SASTPCodeInvocation>,
     ) -> SleighCompilerResult<MOIRValue> {
         trace!("Atomizing invocation with {} arguments.", invocation.value().arguments.len());
-        let output = MOIRVarNodeId::from(0);
+        let output = scope.allocate_temporary();
         instructions.push(MOIRInstruction {
             input_a: MOIRValue::Const(MOIRConst::Const8(0)),
-            input_b: MOIRValue::Const(MOIRConst::Const8(0)),
+            input_b: Some(MOIRValue::Const(MOIRConst::Const8(0))),
             output,
         });
-        Ok(MOIRValue::ValueSlice(MOIRSlice::varnode(output, 0, 0)))
+        Ok(output.into())
     }
 
     fn atomize_export(

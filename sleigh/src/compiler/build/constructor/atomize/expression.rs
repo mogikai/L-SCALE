@@ -5,6 +5,7 @@ use crate::compiler::ast::constructor::bit_pattern_section::SASTBinaryOp;
 use crate::compiler::ast::pcode::expression::{
     SASTPCodeBinaryOp,
     SASTPCodeExpression,
+    SASTPCodeUnaryOp,
 };
 use crate::compiler::ast::Spanned;
 use crate::compiler::error::SleighCompilerError;
@@ -14,6 +15,7 @@ use crate::compiler::{
     SleighCompilerResult,
 };
 use crate::spec::moir::code::MOIRInstruction;
+use crate::spec::moir::scope::MOIRScope;
 use crate::spec::moir::varnode::{
     MOIRConst,
     MOIRSlice,
@@ -23,6 +25,7 @@ use crate::spec::moir::varnode::{
 use num::{
     CheckedAdd,
     CheckedSub,
+    Num,
 };
 use std::fmt::Display;
 use std::ops::{
@@ -32,6 +35,8 @@ use std::ops::{
     BitXor,
     Div,
     Mul,
+    Neg,
+    Not,
     Shl,
     Shr,
     Sub,
@@ -41,7 +46,7 @@ use tracing::trace;
 impl SleighCompiler {
     pub(super) fn atomize_binary_operation(
         &mut self,
-        out: MOIRVarNodeId,
+        scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         lhs: Spanned<SASTPCodeExpression>,
         op: Spanned<SASTPCodeBinaryOp>,
@@ -50,9 +55,8 @@ impl SleighCompiler {
         let lhs_span = lhs.span().clone();
         let rhs_span = rhs.span().clone();
         // TODO: Get other temp varnode.
-        let out2 = MOIRVarNodeId::from(1);
-        let lhs = self.atomize_expression(out, instructions, lhs)?;
-        let rhs = self.atomize_expression(out2, instructions, rhs)?;
+        let lhs = self.atomize_expression(scope, instructions, lhs)?;
+        let rhs = self.atomize_expression(scope, instructions, rhs)?;
         if let MOIRValue::Const(lhs) = lhs {
             if let MOIRValue::Const(rhs) = rhs {
                 trace!("Performing const optimization since lhs and rhs are const");
@@ -62,13 +66,14 @@ impl SleighCompiler {
                     .map_err(|e| generate_const_eval_error(e.to_string().as_str(), lhs_span, rhs_span));
             }
         }
+        let out = scope.allocate_temporary();
         // At least one side of the op is not const, so we cannot fold.
         instructions.push(MOIRInstruction {
             input_a: lhs,
-            input_b: rhs,
+            input_b: Some(rhs),
             output: out,
         });
-        Ok(MOIRValue::ValueSlice(MOIRSlice::varnode(out, 0, 0)))
+        Ok(out.into())
     }
 
     fn const_eval_binary_op(
@@ -108,10 +113,32 @@ impl SleighCompiler {
 
     pub(super) fn atomize_unary_operation(
         &mut self,
+        scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
+        op: Spanned<SASTPCodeUnaryOp>,
+        operand: Spanned<SASTPCodeExpression>,
     ) -> SleighCompilerResult<MOIRValue> {
-        // TODO
-        Ok(MOIRValue::ValueSlice(MOIRSlice::varnode(MOIRVarNodeId::from(0), 0, 9)))
+        let operand = self.atomize_expression(scope, instructions, operand)?;
+        match operand {
+            MOIRValue::ValueSlice(operand) => {
+                let out = scope.allocate_temporary();
+                instructions.push(MOIRInstruction {
+                    input_a: operand.into(),
+                    input_b: None,
+                    output: out,
+                });
+                Ok(out.into())
+            }
+            MOIRValue::Const(operand) => {
+                // We can do constant folding.
+                Ok(match operand {
+                    MOIRConst::Const64(operand) => const_eval_unary_op::<u64, i64>(op.into_value(), operand)?.into(),
+                    MOIRConst::Const32(operand) => const_eval_unary_op::<u32, i32>(op.into_value(), operand)?.into(),
+                    MOIRConst::Const16(operand) => const_eval_unary_op::<u16, i16>(op.into_value(), operand)?.into(),
+                    MOIRConst::Const8(operand) => const_eval_unary_op::<u8, i8>(op.into_value(), operand)?.into(),
+                })
+            }
+        }
     }
 
     pub(super) fn atomize_dereference(
@@ -244,6 +271,27 @@ where
     })
 }
 
+fn const_eval_unary_op<T, S>(
+    op: SASTPCodeUnaryOp,
+    operand: T,
+) -> Result<T, SleighCompilerError>
+where
+    T: Cast<S>,
+    T: Not<Output=T>,
+    T: Into<u64>,
+    T: From<u8>,
+    T: Display,
+    S: Neg<Output=S>,
+    S: Cast<T>,
+{
+    Ok(match op {
+        SASTPCodeUnaryOp::BoolNegate => from_bool(!into_bool(operand)),
+        SASTPCodeUnaryOp::BitNegate => !operand,
+        SASTPCodeUnaryOp::IntNegate => (-operand.cast()).cast(),
+        SASTPCodeUnaryOp::FloatNegate => todo!(),
+    })
+}
+
 fn into_bool<T>(val: T) -> bool
 where
     T: Into<u64>,
@@ -263,3 +311,26 @@ where
         true => 1.into(),
     }
 }
+
+trait Cast<T> {
+    fn cast(self) -> T;
+}
+
+macro_rules! impl_cast {
+    ($from:ty, $to:ty) => {
+        impl Cast<$to> for $from {
+            fn cast(self) -> $to {
+                self as $to
+            }
+        }
+    };
+}
+
+impl_cast!(u8, i8);
+impl_cast!(u16, i16);
+impl_cast!(u32, i32);
+impl_cast!(u64, i64);
+impl_cast!(i8, u8);
+impl_cast!(i16, u16);
+impl_cast!(i32, u32);
+impl_cast!(i64, u64);

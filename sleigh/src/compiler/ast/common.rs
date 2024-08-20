@@ -5,6 +5,8 @@ use std::fmt::{
     Formatter,
 };
 
+pub type SASTSize = u8;
+
 #[derive(Debug, Copy, Clone)]
 pub struct SASTIdent(pub StringId);
 

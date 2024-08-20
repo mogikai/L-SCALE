@@ -1,6 +1,7 @@
 pub mod address_space;
 pub mod bitrange_register;
 pub mod code;
+pub mod common;
 pub mod constructor;
 pub mod context;
 pub mod custom_op;

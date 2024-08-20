@@ -644,7 +644,7 @@ impl Default for ProcessorSpecificationBuilder {
                 size: 0,
             },
         )
-            .expect("This may not error at this point");
+        .expect("This may not error at this point");
         slf
     }
 }
