@@ -1,4 +1,4 @@
-use crate::new_symbol_id_type;
+use crate::new_typed_index_table_id;
 use crate::spec::moir::varnode::MOIRValue;
 
 #[derive(Debug, Default)]
@@ -48,4 +48,4 @@ pub struct MOIRTable {
     pub exports: Vec<MOIRValue>,
 }
 
-new_symbol_id_type! { pub struct MOIRTableId; }
+new_typed_index_table_id! { pub struct MOIRTableId; }

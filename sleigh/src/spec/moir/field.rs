@@ -1,4 +1,4 @@
-use crate::new_symbol_id_type;
+use crate::new_typed_index_table_id;
 use crate::spec::builder::StringId;
 use crate::spec::moir::token::MOIRTokenId;
 use std::ops::Range;
@@ -32,4 +32,4 @@ pub struct MOIRField {
     pub strings: Vec<StringId>,
 }
 
-new_symbol_id_type! { pub struct MOIRFieldId; }
+new_typed_index_table_id! { pub struct MOIRFieldId; }

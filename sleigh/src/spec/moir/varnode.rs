@@ -1,6 +1,6 @@
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::SleighCompilerResult;
-use crate::new_symbol_id_type;
+use crate::new_typed_index_table_id;
 use crate::spec::moir::address_space::MOIRSpaceId;
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::field::MOIRFieldId;
@@ -227,4 +227,4 @@ fn slice_const(
     }
 }
 
-new_symbol_id_type! { pub struct MOIRVarNodeId; }
+new_typed_index_table_id! { pub struct MOIRVarNodeId; }

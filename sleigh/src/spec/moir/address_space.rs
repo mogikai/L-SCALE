@@ -1,5 +1,6 @@
 use crate::compiler::ast::define::SASTAddressSpaceType;
-use crate::new_symbol_id_type;
+use crate::new_typed_index_table_id;
+use crate::spec::moir::common::MOIRSize;
 
 #[derive(Debug)]
 /// A space refers to an address space with which the cpu can interact by storing or reading data to or from.
@@ -11,7 +12,7 @@ pub struct MOIRSpace {
     /// The number of bytes an address in the space takes up
     pub address_size: u64,
     /// The size of data in bytes accessed by an address.
-    pub wordsize: u16,
+    pub wordsize: MOIRSize,
 }
 
 #[derive(Debug)]
@@ -37,4 +38,4 @@ impl From<SASTAddressSpaceType> for MOIRSpaceType {
     }
 }
 
-new_symbol_id_type! { pub struct MOIRSpaceId; }
+new_typed_index_table_id! { pub struct MOIRSpaceId; }

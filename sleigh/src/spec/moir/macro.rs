@@ -1,4 +1,4 @@
-use crate::new_symbol_id_type;
+use crate::new_typed_index_table_id;
 use crate::spec::moir::code::MOIRInstruction;
 use crate::spec::moir::varnode::MOIRVarNodeId;
 
@@ -8,4 +8,4 @@ pub struct MOIRMacro {
     pub code: Vec<MOIRInstruction>,
 }
 
-new_symbol_id_type! { pub struct MOIRMacroId; }
+new_typed_index_table_id! { pub struct MOIRMacroId; }

@@ -2,7 +2,7 @@ use crate::compiler::ast::Spanned;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::SleighCompilerResult;
-use crate::new_symbol_id_type;
+use crate::new_typed_index_table_id;
 use crate::spec::builder::{
     ProcessorSpecificationBuilder,
     StringId,
@@ -13,15 +13,14 @@ use crate::spec::moir::varnode::{
     MOIRSliceEnd,
     MOIRValue,
 };
-use crate::spec::symbol_table::MOIRSymbolTable;
+use crate::spec::typed_index_table::TypedIndexTable;
 use std::collections::HashMap;
-use tracing::trace;
 
 /// A scope for locals used in constructors and macros
 #[derive(Debug, Default)]
 pub struct MOIRScope {
     /// Keeps track of the sizes of temporaries assigned as part of the semantic section.
-    temporaries: MOIRSymbolTable<MOIRTemporaryId, MOIRTemporary>,
+    temporaries: TypedIndexTable<MOIRTemporaryId, MOIRTemporary>,
     locals: HashMap<StringId, MOIRValue>,
     local_spans: HashMap<StringId, InputSpan>,
 }
@@ -33,7 +32,7 @@ struct MOIRTemporary {
     pub size: Option<MOIRSize>,
 }
 
-new_symbol_id_type! { pub struct MOIRTemporaryId; }
+new_typed_index_table_id! { pub struct MOIRTemporaryId; }
 
 impl MOIRScope {
     pub fn declare_value(

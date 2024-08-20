@@ -1,4 +1,4 @@
-use crate::new_symbol_id_type;
+use crate::new_typed_index_table_id;
 
 /// A custom operation defined in the sleigh specification
 /// The operation will be called from jited code. Any implementation
@@ -23,4 +23,4 @@ pub struct MOIRCustomOpConstraint {
     size: u16,
 }
 
-new_symbol_id_type! { pub struct MOIRCustomOpId; }
+new_typed_index_table_id! { pub struct MOIRCustomOpId; }

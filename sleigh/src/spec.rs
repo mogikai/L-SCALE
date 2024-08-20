@@ -31,9 +31,10 @@ use moir::field::MOIRFieldId;
 use moir::token::MOIRTokenId;
 
 pub mod builder;
-pub mod moir;
+pub mod jir;
+pub(crate) mod moir;
 mod reporting;
-mod symbol_table;
+pub mod typed_index_table;
 
 new_key_type! {
     /// [MOIRIdent] is the identifier type that is used by the [ProcessorSpecification] and [ProcessorSpecificationBuilder]

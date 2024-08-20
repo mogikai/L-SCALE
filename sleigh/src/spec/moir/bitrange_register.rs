@@ -1,4 +1,4 @@
-use crate::new_symbol_id_type;
+use crate::new_typed_index_table_id;
 
 use super::varnode::MOIRVarNodeId;
 
@@ -9,4 +9,4 @@ pub struct MOIRTBitrangeRegister {
     pub size: u64,   // number of bits
 }
 
-new_symbol_id_type! { pub struct MOIRBitrangeRegisterId; }
+new_typed_index_table_id! { pub struct MOIRBitrangeRegisterId; }

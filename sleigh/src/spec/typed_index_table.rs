@@ -1,8 +1,8 @@
 use std::marker::PhantomData;
 
-/// Creates a new symbol table identifier that can be used to index a [MOIRSymbolTable].
+/// Creates a new symbol table identifier that can be used to index a [TypedIndexTable].
 #[macro_export(local_inner_macros)]
-macro_rules! new_symbol_id_type {
+macro_rules! new_typed_index_table_id {
     ( $(#[$outer:meta])* $vis:vis struct $name:ident; ) => {
         $(#[$outer])*
         #[derive(Debug, Eq, PartialEq, Copy, Clone)]
@@ -23,8 +23,8 @@ macro_rules! new_symbol_id_type {
 }
 
 #[derive(Debug)]
-pub struct MOIRSymbolTable<K, V>(Vec<V>, PhantomData<K>);
-impl<K, V> Default for MOIRSymbolTable<K, V> {
+pub struct TypedIndexTable<K, V>(Vec<V>, PhantomData<K>);
+impl<K, V> Default for TypedIndexTable<K, V> {
     fn default() -> Self {
         Self {
             0: vec![],
@@ -33,7 +33,7 @@ impl<K, V> Default for MOIRSymbolTable<K, V> {
     }
 }
 
-impl<K, V> MOIRSymbolTable<K, V> {
+impl<K, V> TypedIndexTable<K, V> {
     pub fn len(&self) -> usize {
         self.0.len()
     }
@@ -43,7 +43,7 @@ impl<K, V> MOIRSymbolTable<K, V> {
     }
 }
 
-impl<K, V> MOIRSymbolTable<K, V>
+impl<K, V> TypedIndexTable<K, V>
 where
     K: From<usize>,
 {
@@ -56,7 +56,7 @@ where
     }
 }
 
-impl<K, V> MOIRSymbolTable<K, V>
+impl<K, V> TypedIndexTable<K, V>
 where
     usize: From<K>,
 {

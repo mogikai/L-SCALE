@@ -79,7 +79,7 @@ use crate::spec::reporting::{
     generate_endianness_already_specified_report,
     generate_identifier_exists_report,
 };
-use crate::spec::symbol_table::MOIRSymbolTable;
+use crate::spec::typed_index_table::TypedIndexTable;
 use crate::spec::{
     MOIRIdent,
     MOIRMacroId,
@@ -107,15 +107,15 @@ impl Display for StringId {
 #[derive(Debug, Default)]
 /// A transparent helper struct that contains all the symbol tables to make the builder more manageable.
 pub(super) struct SymbolTables {
-    pub(super) macros: MOIRSymbolTable<MOIRMacroId, MOIRMacro>,
-    pub(super) spaces: MOIRSymbolTable<MOIRSpaceId, MOIRSpace>,
-    pub(super) tables: MOIRSymbolTable<MOIRTableId, MOIRTable>,
-    pub(super) varnodes: MOIRSymbolTable<MOIRVarNodeId, MOIRVarNode>,
-    pub(super) tokens: MOIRSymbolTable<MOIRTokenId, MOIRToken>,
-    pub(super) fields: MOIRSymbolTable<MOIRFieldId, MOIRField>,
-    pub(super) custom_ops: MOIRSymbolTable<MOIRCustomOpId, MOIRCustomOp>,
+    pub(super) macros: TypedIndexTable<MOIRMacroId, MOIRMacro>,
+    pub(super) spaces: TypedIndexTable<MOIRSpaceId, MOIRSpace>,
+    pub(super) tables: TypedIndexTable<MOIRTableId, MOIRTable>,
+    pub(super) varnodes: TypedIndexTable<MOIRVarNodeId, MOIRVarNode>,
+    pub(super) tokens: TypedIndexTable<MOIRTokenId, MOIRToken>,
+    pub(super) fields: TypedIndexTable<MOIRFieldId, MOIRField>,
+    pub(super) custom_ops: TypedIndexTable<MOIRCustomOpId, MOIRCustomOp>,
     // bitrange registers are treated more like placeholders for the corresponding pcode operations to realize access
-    pub(super) bitrange_registers: MOIRSymbolTable<MOIRBitrangeRegisterId, MOIRTBitrangeRegister>,
+    pub(super) bitrange_registers: TypedIndexTable<MOIRBitrangeRegisterId, MOIRTBitrangeRegister>,
 }
 
 #[derive(Debug)]
@@ -130,7 +130,7 @@ pub struct ProcessorSpecificationBuilder {
     /// Maps the identifier ids to corresponding strings.
     symbol_strings: SecondaryMap<MOIRIdent, Spanned<StringId>>,
     /// Contains a table for each symbol type. A [MOIRIdent] maps to a [MOIRSymbol], which in turn maps to the
-    /// corresponding [MOIRSymbolTable] with a table-specific id type.
+    /// corresponding [TypedIndexTable] with a table-specific id type.
     symbol_tables: SymbolTables,
     /// The endianness of the processor. It must be defined.
     endianness: Option<Spanned<MOIREndianness>>,

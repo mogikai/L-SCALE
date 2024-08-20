@@ -1,4 +1,4 @@
-use crate::new_symbol_id_type;
+use crate::new_typed_index_table_id;
 use crate::spec::moir::endianness::MOIREndianness;
 
 #[derive(Debug)]
@@ -8,4 +8,4 @@ pub struct MOIRToken {
     pub endianness_override: Option<MOIREndianness>,
 }
 
-new_symbol_id_type! { pub struct MOIRTokenId; }
+new_typed_index_table_id! { pub struct MOIRTokenId; }
