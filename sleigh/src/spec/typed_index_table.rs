@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 macro_rules! new_typed_index_table_id {
     ( $(#[$outer:meta])* $vis:vis struct $name:ident; ) => {
         $(#[$outer])*
-        #[derive(Debug, Eq, PartialEq, Copy, Clone)]
+        #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
         #[repr(transparent)]
         $vis struct $name(usize);
         impl From<usize> for $name {

@@ -1,3 +1,10 @@
+use super::matcher::{
+    FieldMatcher,
+    FieldMatcherConstraint,
+    Matcher,
+    MatcherExpression,
+    MatcherReference,
+};
 use crate::compiler::ast::constructor::bit_pattern_section::{
     SASTBinaryOp,
     SASTBitPatternConstraint,
@@ -12,30 +19,22 @@ use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
-use crate::spec::builder::ProcessorSpecificationBuilder;
+use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::MOIRConstructor;
 use crate::spec::moir::field::MOIRFieldId;
-use crate::spec::moir::scope::MOIRScope;
+use crate::spec::moir::scope::{
+    MOIRMaybeSize,
+    MOIRScope,
+};
 use crate::spec::moir::varnode::{
-    MOIRConst,
     MOIRReference,
     MOIRSlice,
-    MOIRSliceEnd,
-    MOIRValue,
 };
 use crate::spec::{
     MOIRSymbol,
     ProcessorSpecificationError,
 };
 use tracing::trace;
-
-use super::matcher::{
-    FieldMatcher,
-    FieldMatcherConstraint,
-    Matcher,
-    MatcherExpression,
-    MatcherReference,
-};
 
 pub mod atomize;
 
@@ -58,8 +57,33 @@ impl SleighCompiler {
             local_scope: Default::default(),
             instructions: vec![],
         };
-        let matcher = self.create_matcher(constructor.bit_pattern_section.into_value().constraint)?;
+        // Declare the special identifiers that are filled with constants upon calling the constructor.
+        // Their sizes are undetermined and inferred from context.
+        moir_constructor
+            .local_scope
+            .declare_local(self.spec_builder.intern("inst_start"), MOIRSlice::inst_start());
+        moir_constructor
+            .local_scope
+            .declare_local(self.spec_builder.intern("inst_next"), MOIRSlice::inst_next());
+        moir_constructor
+            .local_scope
+            .declare_local(self.spec_builder.intern("inst_next2"), MOIRSlice::inst_next2());
+
+        let mut matcher = self.create_matcher(constructor.bit_pattern_section.into_value().constraint)?;
+        // TODO: Need to parse the disassembly section here as well and add that information to the matcher
         self.resolve_symbols_to_local_scope(&mut moir_constructor.local_scope, &matcher.symbols_used)?;
+        for ident in &constructor.display_section.identifiers {
+            // TODO: We probably need to figure out a better way to handle these locals that are constructed
+            //       in the disassembly section.
+            let slice = moir_constructor.local_scope.local(*ident.value());
+            if slice.is_none() {
+                let str = self.spec_builder.resolve_string_id(*ident.value());
+                trace!("Local scope is missing identifier {str}. Allocating it now.");
+                moir_constructor
+                    .local_scope
+                    .allocate_named_temporary(ident.clone(), MOIRMaybeSize::Undetermined)?;
+            }
+        }
 
         // TODO: we need to walk the constraint and find out the tokens that are used.
         //       we also need to make sure that there is only one token per section
@@ -94,7 +118,7 @@ impl SleighCompiler {
                 .first()
                 .expect("We just made sure that at least one element exists");
             if export.size() != existing_export.size() {
-                todo!("Generate error report for constructor missing an export statement")
+                todo!("Generate error report for inconsistent sizes of exports")
             } else {
                 // All is well, we can now just insert the export for later type lookup.
                 table.exports.push(export);
@@ -118,12 +142,29 @@ impl SleighCompiler {
                         .spec_builder
                         .field_by_symbol_id(*field_id)
                         .ok_or(ProcessorSpecificationError::SymbolUndeclared)?;
-                    let num_bytes = (field.bits.clone().count() + 7) / 8;
-                    Some(MOIRValue::ValueSlice(MOIRSlice {
+                    let size = if !field.variables.is_empty() {
+                        // The field has variables attached. These will be later given to the constructor during
+                        // decoding. We can now set the size of the value that is referenced to the size of the
+                        // attached varnode.
+                        let vnid = *field
+                            .variables
+                            .first()
+                            .expect("We just made sure there is at least one element");
+                        self.spec_builder
+                            .varnode_by_symbol_id(vnid)
+                            .expect("This must exist. Otherwise we have a programming mistake")
+                            .size
+                            .into()
+                    } else {
+                        // TODO: Check if values are attached and infer the maximum size from them.
+                        // (((field.bits.clone().count() + 7) / 8) as MOIRSize).into()
+                        MOIRMaybeSize::Undetermined
+                    };
+                    Some(MOIRSlice {
                         reference: MOIRReference::Field(*field_id),
                         start: 0,
-                        end: MOIRSliceEnd::Determined(num_bytes as u8),
-                    }))
+                        end: size,
+                    })
                 }
 
                 MOIRSymbol::Table(table_id) => {
@@ -133,15 +174,11 @@ impl SleighCompiler {
                         .ok_or(ProcessorSpecificationError::SymbolUndeclared)?;
                     let export = table.exports.first();
                     if let Some(export) = export {
-                        Some(MOIRValue::ValueSlice(MOIRSlice {
+                        Some(MOIRSlice {
                             reference: MOIRReference::SubTable(*table_id),
                             start: 0,
-                            end: MOIRSliceEnd::Determined(
-                                export
-                                    .size()
-                                    .expect("TODO: Generate error for undetermined size"),
-                            ),
-                        }))
+                            end: export.size(),
+                        })
                     } else {
                         None
                     }
@@ -152,11 +189,11 @@ impl SleighCompiler {
                         .spec_builder
                         .varnode_by_symbol_id(*vnid)
                         .ok_or(ProcessorSpecificationError::SymbolUndeclared)?;
-                    Some(MOIRValue::ValueSlice(MOIRSlice {
+                    Some(MOIRSlice {
                         reference: MOIRReference::VarNode(*vnid),
                         start: 0,
-                        end: MOIRSliceEnd::Determined(varnode.size as u8),
-                    }))
+                        end: MOIRMaybeSize::Determined(varnode.size as u8),
+                    })
                 }
 
                 _ => Err(ProcessorSpecificationError::InvalidSymbolType(*symbol))?,
@@ -167,7 +204,7 @@ impl SleighCompiler {
                 .ident_by_symbol(symbol)
                 .ok_or(ProcessorSpecificationError::SymbolUndeclared)?;
             if let Some(value) = value {
-                scope.declare_value(ident.clone().into_value(), value);
+                scope.declare_local(ident.clone().into_value(), value);
             }
         }
 

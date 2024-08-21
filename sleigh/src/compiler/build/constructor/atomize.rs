@@ -11,22 +11,31 @@ use crate::compiler::ast::pcode::target_expression::SASTPCodeTargetExpression;
 use crate::compiler::ast::pcode::SASTPCode;
 use crate::compiler::ast::Spanned;
 use crate::compiler::error::SleighCompilerError;
+use crate::compiler::report::{
+    generate_cannot_slice_error,
+    generate_const_eval_error,
+};
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
 use crate::spec::builder::StringId;
-use crate::spec::moir::code::MOIRInstruction;
+use crate::spec::moir::code::{
+    moir_instruction,
+    MOIRInstruction,
+    MOIROpCategory,
+    MOIROperation,
+};
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::scope::{
+    MOIRMaybeSize,
     MOIRScope,
-    MOIRTemporarySize,
 };
+use crate::spec::moir::table::MOIRExport;
 use crate::spec::moir::varnode::{
     MOIRConst,
+    MOIRLocal,
     MOIRSlice,
-    MOIRSliceEnd,
-    MOIRValue,
     MOIRVarNode,
     MOIRVarNodeId,
 };
@@ -39,7 +48,7 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         pcode: Spanned<SASTPCode>,
-    ) -> SleighCompilerResult<Option<MOIRValue>> {
+    ) -> SleighCompilerResult<Option<MOIRExport>> {
         // TODO: Create table of locals? Lookup global identifiers?
         let (pcode, _) = pcode.into_tuple();
         let mut export = None;
@@ -57,12 +66,12 @@ impl SleighCompiler {
                 SASTPCodeStatement::Invocation(invocation) => {
                     // We ignore the output, since top level invocations do not output anything.
                     // TODO: Maybe it makes sense to update the pcodeop definition here to "no output"?
-                    self.atomize_invocation(scope, instructions, invocation)?;
+                    self.atomize_invocation(scope, instructions, MOIRMaybeSize::Undetermined, invocation)?;
                 }
                 SASTPCodeStatement::Build(_) => {}
                 SASTPCodeStatement::Export(expression) => {
                     let span = expression.span().clone();
-                    export = Some(Spanned::new(self.atomize_export(instructions, expression)?, span));
+                    export = Some(Spanned::new(self.atomize_export(scope, instructions, expression)?, span));
                 }
                 SASTPCodeStatement::Delayslot(_) => {}
                 SASTPCodeStatement::Declaration(ident, size) => {
@@ -77,7 +86,48 @@ impl SleighCompiler {
             }
         }
         trace!("Instructions: {instructions:?}");
-        Ok(export.map(|export| export.into_value()))
+        trace!("Doing size inference pass");
+        for instruction in instructions.iter_mut() {
+            trace!("{instruction:?}");
+            let output_size = scope.size_of_local(instruction.output);
+            let input_a_size = instruction
+                .input_a
+                .map(|v| v.size(scope))
+                .unwrap_or(MOIRMaybeSize::Undetermined);
+            let input_b_size = instruction
+                .input_b
+                .map(|v| v.size(scope))
+                .unwrap_or(MOIRMaybeSize::Undetermined);
+            trace!("{output_size:?} {input_a_size:?} {input_b_size:?}");
+            match instruction.operation.op_category() {
+                MOIROpCategory::Comparison => {}
+                MOIROpCategory::Shift => {}
+                MOIROpCategory::Regular => {
+                    // For regular operations all sizes have to match.
+                    // Check if any part of the operation has a determined size.
+                    let size = output_size.or(input_a_size).or(input_b_size);
+                    if let MOIRMaybeSize::Determined(size) = size {
+                        // If we have a size, we can constrain all values to this size.
+                        // Otherwise, we have to wait until the backwards pass.
+                        scope.constrain_local_size(&mut MOIRLocal::from(instruction.output), size)?;
+                        if let Some(local) = instruction.input_a.as_mut() {
+                            scope.constrain_local_size(local, size)?
+                        }
+                        if let Some(local) = instruction.input_b.as_mut() {
+                            scope.constrain_local_size(local, size)?
+                        }
+                    }
+                }
+                MOIROpCategory::CustomOp => {
+                    // There is nothing to do in this case.
+                }
+            }
+        }
+        trace!("Instructions: {instructions:?}");
+        Ok(export.map(|export| match export.into_value() {
+            MOIRLocal::Local(local) => MOIRExport::Slice(*scope.resolve_local(local).expect("TODO")),
+            MOIRLocal::Const(val) => MOIRExport::Const(val),
+        }))
     }
 
     /// Atomizes the expression into multiple MOIRInstructions.
@@ -88,25 +138,30 @@ impl SleighCompiler {
         &mut self,
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
+        size_constraint: MOIRMaybeSize,
         expression: Spanned<SASTPCodeExpression>,
-    ) -> SleighCompilerResult<MOIRValue> {
+    ) -> SleighCompilerResult<MOIRLocal> {
         let (expression, _) = expression.into_tuple();
         trace!("Atomizing expression {}", expression);
         match expression {
-            SASTPCodeExpression::Invocation(invocation) => self.atomize_invocation(scope, instructions, invocation),
+            SASTPCodeExpression::Invocation(invocation) => {
+                self.atomize_invocation(scope, instructions, size_constraint, invocation)
+            }
             SASTPCodeExpression::BinaryOperation { lhs, op, rhs } => {
-                self.atomize_binary_operation(scope, instructions, *lhs, op, *rhs)
+                self.atomize_binary_operation(scope, instructions, size_constraint, *lhs, op, *rhs)
             }
             SASTPCodeExpression::UnaryOperation { op, operand } => {
-                self.atomize_unary_operation(scope, instructions, op, *operand)
+                self.atomize_unary_operation(scope, instructions, size_constraint, op, *operand)
             }
             SASTPCodeExpression::Dereference { .. } => self.atomize_dereference(instructions),
-            SASTPCodeExpression::Subpiece(_) => self.atomize_subpiece(instructions),
-            SASTPCodeExpression::Bitrange(_) => self.atomize_bitrange(instructions),
-            SASTPCodeExpression::Identifier(_) => self.atomize_identifier(instructions),
-            SASTPCodeExpression::Load(_) => self.atomize_load(instructions),
+            SASTPCodeExpression::Subpiece(subpiece) => self.atomize_subpiece(scope, instructions, subpiece),
+            SASTPCodeExpression::Bitrange(bitrange) => self.atomize_bitrange(scope, instructions, bitrange),
+            SASTPCodeExpression::Identifier(ident) => {
+                self.atomize_identifier(scope, size_constraint, ident.transmute())
+            }
+            SASTPCodeExpression::Load(deref) => self.atomize_load(scope, instructions, deref),
             SASTPCodeExpression::AddressOf(_) => self.atomize_address_of(instructions),
-            SASTPCodeExpression::Literal(literal) => self.atomize_literal(instructions, literal),
+            SASTPCodeExpression::Literal(literal) => self.atomize_literal(size_constraint, literal),
             SASTPCodeExpression::Error(_) => {
                 panic!("An error in the AST should have lead to the compiler quitting earlier on.")
             }
@@ -122,88 +177,116 @@ impl SleighCompiler {
         expression: Spanned<SASTPCodeExpression>,
     ) -> SleighCompilerResult {
         let (target, _) = target.into_tuple();
-        let value = match target {
+        match target {
             SASTPCodeTargetExpression::Variable(var) => {
-                if local.into_value() {
-                    scope.allocate_named_temporary(var.clone().transmute(), MOIRTemporarySize::Undetermined)?;
-                }
-                scope.resolve_value(&self.spec_builder, var.transmute())?
+                let (lhs, rhs) = if local.into_value() {
+                    // The variable is not declared yet. First resolve the rhs and try to determine a size.
+                    let rhs = self.atomize_expression(scope, instructions, MOIRMaybeSize::Undetermined, expression)?;
+                    scope.allocate_named_temporary(var.clone().transmute(), rhs.size(scope))?;
+                    let lhs = scope.resolve_ident(&self.spec_builder, var.transmute())?;
+                    (lhs, rhs)
+                } else {
+                    // The variable is already declared and maybe has a size. pass the size as hint.
+                    let lhs = scope.resolve_ident(&self.spec_builder, var.transmute())?;
+                    let rhs = self.atomize_expression(scope, instructions, scope.size_of_local(lhs), expression)?;
+                    (lhs, rhs)
+                };
+                instructions.push(moir_instruction!(lhs = rhs));
+                Ok(())
             }
             SASTPCodeTargetExpression::Store(deref) => {
                 if *local {
                     todo!("Generate error report for local keyword on store assignment")
                 }
-                MOIRValue::ValueSlice(MOIRSlice::varnode(MOIRVarNodeId::from(0), 0, 0))
+                Ok(())
             }
             SASTPCodeTargetExpression::BitRange(bitrange) => {
                 let (bitrange, _) = bitrange.into_tuple();
                 if local.into_value() {
-                    scope.allocate_named_temporary(
-                        bitrange.ident.clone().transmute(),
-                        MOIRTemporarySize::Undetermined,
-                    )?;
+                    scope.allocate_named_temporary(bitrange.ident.clone().transmute(), MOIRMaybeSize::Undetermined)?;
                 }
-                scope.resolve_value(&self.spec_builder, bitrange.ident.transmute())?
+                scope.resolve_ident(&self.spec_builder, bitrange.ident.transmute())?;
+                Ok(())
             }
             SASTPCodeTargetExpression::Subpiece(subpiece) => {
+                // We are dealing with a subpiece assignment. This is similar to a normal assignment.
+                // However, we create a new slice and already have the required size, since it is
+                // specified in the subpiece operation.
                 let (subpiece, _) = subpiece.into_tuple();
                 match subpiece.target.into_value() {
                     SASTPCodeSubpieceTarget::Ident(ident) => {
                         let size = subpiece.size.into_value();
                         if local.into_value() {
+                            // We encountered a local definition. Define here and error out if it already exists.
                             scope.allocate_named_temporary(ident.clone().transmute(), size.into())?;
                         }
-                        let value = scope.resolve_value(&self.spec_builder, ident.transmute())?;
+                        // We can now resolve the ident.
+                        let lhs = scope.resolve_ident(&self.spec_builder, ident.clone().transmute())?;
+                        // If the subpiece tries to create a slice that is
+                        // larger than the original, we generate an error.
                         if size
-                            > value.size().ok_or_else(|| -> SleighCompilerError {
-                            todo!("Generate error for undetermined size")
-                        })?
+                            > scope
+                                .size_of_local(lhs)
+                                .ok_or_else(|| -> SleighCompilerError {
+                                    // We cannot slice a value that has an undetermined size
+                                    todo!("Generate error for undetermined size")
+                                })?
                         {
                             todo!("Generate error for subpiece being larger than underlying slice.")
                         }
-                        value
+                        let lhs = scope.truncate_local(lhs, size).map_err(|_| {
+                            let (ident, ident_span) = ident.into_tuple();
+                            let str = self.spec_builder.resolve_string_id(ident.into());
+                            generate_cannot_slice_error(str, ident_span, size)
+                        })?;
+                        // The variable is not declared yet. First resolve the rhs and try to determine a size.
+                        let rhs = self.atomize_expression(scope, instructions, scope.size_of_local(lhs), expression)?;
+                        instructions.push(moir_instruction!(lhs = rhs));
+                        Ok(())
                     }
                     SASTPCodeSubpieceTarget::Literal(_) => {
                         todo!("Generate error report for unallowed literals in target expression")
                     }
                 }
             }
-        };
-        trace!("Resolved target to {value:?}");
-        // TODO: Check if target ident exists. If not, require the local attribute to create a new local variable.
-        //       If the target is a store, require that the ident exists, and deny the local keyword, since it makes
-        //       no sense in this context.
-        // TODO: Atomize expression on the right hand side of the assignment.
-        // TODO: Check if the sizes on the left hand side match the right hand side.
-        let rhs = self.atomize_expression(scope, instructions, expression)?;
-        trace!("Assignment: {:?} = {:?}", value, rhs);
-        Ok(())
+        }
     }
 
     fn atomize_invocation(
         &mut self,
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
+        size_constraint: MOIRMaybeSize,
         invocation: Spanned<SASTPCodeInvocation>,
-    ) -> SleighCompilerResult<MOIRValue> {
+    ) -> SleighCompilerResult<MOIRLocal> {
         trace!("Atomizing invocation with {} arguments.", invocation.value().arguments.len());
-        let output = scope.allocate_temporary();
+        let (invocation, _) = invocation.into_tuple();
+        let output = scope.allocate_temporary(size_constraint);
+        let mut args = invocation
+            .arguments
+            .into_iter()
+            .map(|arg| self.atomize_expression(scope, instructions, MOIRMaybeSize::Undetermined, arg));
+        let input_a = args.next().transpose()?;
+        let input_b = args.next().transpose()?;
+        let args: Result<Vec<_>, _> = args.collect();
         instructions.push(MOIRInstruction {
-            input_a: MOIRValue::Const(MOIRConst::Const8(0)),
-            input_b: Some(MOIRValue::Const(MOIRConst::Const8(0))),
             output,
+            input_a,
+            input_b,
+            operation: MOIROperation::CustomOp(args?),
         });
         Ok(output.into())
     }
 
     fn atomize_export(
         &mut self,
+        scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         expression: Spanned<SASTPCodeExpression>,
-    ) -> SleighCompilerResult<MOIRValue> {
+    ) -> SleighCompilerResult<MOIRLocal> {
         // TODO: Handling dynamic references (e.g. export *:4 tmp) will require keeping track of the
         //       dynamic references somewhere. We need to decide how to do this.
-        Ok(MOIRValue::ValueSlice(MOIRSlice::varnode(MOIRVarNodeId::from(0), 0, 8)))
+        self.atomize_expression(scope, instructions, MOIRMaybeSize::Undetermined, expression)
     }
 
     fn atomize_declaration(
@@ -212,9 +295,6 @@ impl SleighCompiler {
         ident: Spanned<StringId>,
         size: Option<Spanned<MOIRSize>>,
     ) -> SleighCompilerResult {
-        scope.allocate_named_temporary(
-            ident,
-            size.map_or(MOIRTemporarySize::Undetermined, |size| size.into_value().into()),
-        )
+        scope.allocate_named_temporary(ident, size.map_or(MOIRMaybeSize::Undetermined, |size| size.into_value().into()))
     }
 }

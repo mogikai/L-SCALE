@@ -2,6 +2,26 @@ use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::pcode::addressof::SASTPCodeAddressOf;
 use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
+use crate::compiler::ast::pcode::expression::SASTPCodeBinaryOp::{
+    BoolAnd,
+    BoolOr,
+    BoolXor,
+    FloatEquals,
+    FloatGreater,
+    FloatGreaterEqual,
+    FloatLess,
+    FloatLessEqual,
+    FloatNotEquals,
+    IntEquals,
+    IntGreater,
+    IntGreaterEqual,
+    IntLess,
+    IntLessEqual,
+    IntNotEquals,
+    IntSGreater,
+    IntSGreaterEqual,
+    IntSLessEqual,
+};
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::pcode::subpiece::SASTPCodeSubpiece;
 use crate::compiler::ast::Spanned;
@@ -146,4 +166,29 @@ pub enum SASTPCodeUnaryOp {
     IntNegate,
     /// `f- v0`: Additive inverse of v0 as a floating-point number.
     FloatNegate,
+}
+
+impl SASTPCodeBinaryOp {
+    pub fn op_category(&self) -> SASTPcodeOpCategory {
+        use SASTPCodeBinaryOp::*;
+        match self {
+            BoolOr | BoolAnd | BoolXor | IntSGreater | IntSLessEqual | IntSGreaterEqual | IntLess | IntGreater
+            | IntLessEqual | IntGreaterEqual | FloatLess | FloatGreater | FloatLessEqual | FloatGreaterEqual
+            | FloatEquals | FloatNotEquals | IntEquals | IntNotEquals => SASTPcodeOpCategory::Comparison,
+            IntLeft | IntRight | IntSRight => SASTPcodeOpCategory::Shift,
+            _ => SASTPcodeOpCategory::Regular,
+        }
+    }
+}
+
+pub enum SASTPcodeOpCategory {
+    /// Comparison operations always produce outputs with one byte in size
+    /// and the inputs are only restricted in that they have to have the
+    /// same size, independent of the output.
+    Comparison,
+    /// Shift operations place no restrictions on the size of the shift amount.
+    /// The shiftee and output must however have the same sizes.
+    Shift,
+    /// A regular instruction with no special handling.
+    Regular,
 }

@@ -3,6 +3,8 @@ use crate::compiler::inputcache::InputCacheError;
 use crate::compiler::lexer::InputSpan;
 use crate::preprocessor::error::PreprocessorError;
 use crate::spec::builder::StringId;
+use crate::spec::moir::common::MOIRSize;
+use crate::spec::moir::scope::MOIRMaybeSize;
 use crate::spec::ProcessorSpecificationError;
 use ariadne::Report;
 use std::fmt::{
@@ -43,11 +45,22 @@ pub enum SleighCompilerError {
     #[error("The symbol was not declared before being defined.")]
     SymbolUndeclared,
     #[error("The value cannot be sliced, since the requested slice is either too large or too small.")]
-    InvalidSliceSize,
+    InvalidSliceSize { new: MOIRSize, current: MOIRSize },
+    #[error("The value cannot be sliced, since the slice range is invalid")]
+    InvalidSliceRange {
+        current_start: MOIRSize,
+        current_end: MOIRSize,
+        new_start: MOIRSize,
+        new_end: MOIRSize,
+    },
     #[error("This error needs replacement")]
     TODO,
     #[error("The slice cannot be sliced as long as the end is not determined")]
-    CannotSliceUndeterminedEnd,
+    CannotSliceUndetermined,
+    #[error("The compiler was configured to stop on the first error encountered")]
+    StopOnFirstError,
+    #[error("The constant value being constructed does not fit into the requested size")]
+    ConstDoesNotFit { val: u64, size: MOIRSize },
 }
 
 impl Debug for SleighCompilerError {

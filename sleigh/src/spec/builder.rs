@@ -70,7 +70,6 @@ use crate::spec::moir::token::{
 };
 use crate::spec::moir::varnode::{
     MOIRSlice,
-    MOIRValue,
     MOIRVarNode,
     MOIRVarNodeId,
 };
@@ -551,18 +550,18 @@ impl ProcessorSpecificationBuilder {
         self.symbol_tables.varnodes.get(id)
     }
 
-    /// Get the varnode value referred to by `ident`. If `ident` refers to an identifier that is not a varnode,
+    /// Get the varnode slice referred to by `ident`. If `ident` refers to an identifier that is not a varnode,
     /// or if the identifier is undefined, an error report is generated.
-    pub(crate) fn varnode_value_by_ident(
+    pub(crate) fn varnode_slice_by_ident(
         &self,
         ident: &Spanned<StringId>,
-    ) -> SleighCompilerResult<MOIRValue> {
+    ) -> SleighCompilerResult<MOIRSlice> {
         let symbol_reference = ident.map(|id| self.resolve_string_id(*id));
-        self.varnode_id_by_ident(ident).and_then(|vnid| {
+        self.varnode_id_by_ident(ident).map(|vnid| {
             let varnode = self
                 .varnode_by_symbol_id(vnid)
                 .expect("This must exist since we just got its id.");
-            Ok(MOIRValue::ValueSlice(MOIRSlice::varnode(vnid, 0, varnode.size.into())))
+            MOIRSlice::varnode(vnid, 0, varnode.size.into())
         })
     }
 
@@ -597,6 +596,16 @@ impl ProcessorSpecificationBuilder {
         self.symbol_tables.tables.get(id)
     }
 
+    /// Get the spanned default space identifier.
+    pub(crate) fn default_space_ident(&self) -> SleighCompilerResult<Spanned<StringId>> {
+        // TODO: Generate correct errors.
+        self.default_space
+            .as_ref()
+            .and_then(|id| self.symbol_strings.get(*id.value()))
+            .ok_or(SleighCompilerError::SymbolUndeclared)
+            .cloned()
+    }
+
     pub(crate) fn is_placeholder_ident(
         &self,
         ident: StringId,
@@ -616,9 +625,9 @@ impl ProcessorSpecificationBuilder {
 impl Default for ProcessorSpecificationBuilder {
     fn default() -> Self {
         let mut interner = StringInterner::new();
-        let placeholder_ident = interner.intern(&"_");
-        let epsilon = interner.intern(&"epsilon");
-        let root_table = Spanned::new(interner.intern(&"instruction"), InputSpan::default());
+        let placeholder_ident = interner.intern("_");
+        let epsilon = interner.intern("epsilon");
+        let root_table = Spanned::new(interner.intern("instruction"), InputSpan::default());
         let mut slf = Self {
             interner,
             symbols: Default::default(),
@@ -636,6 +645,7 @@ impl Default for ProcessorSpecificationBuilder {
         // Call modify once to create the table.
         slf.modify_root_table()
             .expect("This may not error at this point");
+        // TODO: Define the special varnodes in a special address space.
         slf.define_varnode(
             Spanned::new(epsilon, InputSpan::default()),
             MOIRVarNode {

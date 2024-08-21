@@ -1,4 +1,3 @@
-use chumsky::primitive::choice;
 use chumsky::Parser;
 
 use crate::compiler::ast::pcode::expression::{
@@ -83,14 +82,8 @@ pub(super) fn binary_operator<'tokens>(
                 .ignore_then(sleigh_operation(Equals))
                 .to(BinOp::IntEquals)
                 .boxed(),
-            BinOp::BoolOr => sleigh_operation(Or)
-                .ignore_then(sleigh_operation(Or))
-                .to(BinOp::BoolOr)
-                .boxed(),
-            BinOp::BoolAnd => sleigh_operation(And)
-                .ignore_then(sleigh_operation(And))
-                .to(BinOp::BoolAnd)
-                .boxed(),
+            BinOp::BoolOr => sleigh_operation(DoubleOr).to(BinOp::BoolOr).boxed(),
+            BinOp::BoolAnd => sleigh_operation(DoubleAnd).to(BinOp::BoolAnd).boxed(),
             BinOp::BoolXor => sleigh_operation(Hat)
                 .ignore_then(sleigh_operation(Hat))
                 .to(BinOp::BoolXor)

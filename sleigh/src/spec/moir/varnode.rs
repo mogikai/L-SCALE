@@ -4,7 +4,12 @@ use crate::new_typed_index_table_id;
 use crate::spec::moir::address_space::MOIRSpaceId;
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::field::MOIRFieldId;
-use crate::spec::moir::scope::MOIRTemporaryId;
+use crate::spec::moir::scope::{
+    MOIRLocalId,
+    MOIRMaybeSize,
+    MOIRScope,
+    MOIRTemporaryId,
+};
 use crate::spec::moir::table::MOIRTableId;
 use num::Saturating;
 
@@ -27,14 +32,6 @@ pub struct MOIRVarNode {
     pub size: MOIRSize,
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum MOIRSliceEnd {
-    /// The slice goes to a specific offset in the varnode.
-    Determined(MOIRSize),
-    /// The slice goes to the end of the underlying varnode.
-    Undetermined,
-}
-
 /// A slice of an existing varnode. The slice is at most as large as the original varnode.
 #[derive(Debug, Copy, Clone)]
 pub struct MOIRSlice {
@@ -43,13 +40,7 @@ pub struct MOIRSlice {
     /// The start byte of the slice
     pub start: MOIRSize,
     /// The end byte of the slice.
-    pub end: MOIRSliceEnd,
-}
-
-impl From<MOIRSlice> for MOIRValue {
-    fn from(value: MOIRSlice) -> Self {
-        MOIRValue::ValueSlice(value)
-    }
+    pub end: MOIRMaybeSize,
 }
 
 impl MOIRSlice {
@@ -61,14 +52,14 @@ impl MOIRSlice {
         Self {
             reference: MOIRReference::VarNode(varnode),
             start,
-            end: MOIRSliceEnd::Determined(end),
+            end: MOIRMaybeSize::Determined(end),
         }
     }
 
     pub fn temporary(
         temporary: MOIRTemporaryId,
         start: MOIRSize,
-        end: MOIRSliceEnd,
+        end: MOIRMaybeSize,
     ) -> Self {
         Self {
             reference: MOIRReference::Temporary(temporary),
@@ -77,10 +68,93 @@ impl MOIRSlice {
         }
     }
 
-    pub fn size(&self) -> Option<MOIRSize> {
+    pub fn inst_start() -> Self {
+        Self {
+            reference: MOIRReference::InstStart,
+            start: 0,
+            end: MOIRMaybeSize::Undetermined,
+        }
+    }
+
+    pub fn inst_next() -> Self {
+        Self {
+            reference: MOIRReference::InstNext,
+            start: 0,
+            end: MOIRMaybeSize::Undetermined,
+        }
+    }
+
+    pub fn inst_next2() -> Self {
+        Self {
+            reference: MOIRReference::InstNext2,
+            start: 0,
+            end: MOIRMaybeSize::Undetermined,
+        }
+    }
+
+    pub fn size(&self) -> MOIRMaybeSize {
         match self.end {
-            MOIRSliceEnd::Determined(end) => Some(end.saturating_sub(self.start)),
-            MOIRSliceEnd::Undetermined => None,
+            MOIRMaybeSize::Determined(end) => MOIRMaybeSize::Determined(end.saturating_sub(self.start)),
+            v => v,
+        }
+    }
+
+    pub fn slice(
+        self,
+        start: MOIRSize,
+        end: MOIRSize,
+    ) -> SleighCompilerResult<Self> {
+        let MOIRMaybeSize::Determined(current_end) = self.end else {
+            Err(SleighCompilerError::CannotSliceUndetermined)?
+        };
+        if end > current_end || start < self.start {
+            Err(SleighCompilerError::InvalidSliceRange {
+                current_start: self.start,
+                current_end,
+                new_start: start,
+                new_end: end,
+            })
+        } else {
+            Ok(MOIRSlice {
+                reference: self.reference,
+                start,
+                end: MOIRMaybeSize::Determined(end),
+            })
+        }
+    }
+
+    /// Truncates the slice to the specified size.
+    /// The size cannot be larger than the original slice.
+    pub fn truncate(
+        self,
+        size: MOIRSize,
+    ) -> SleighCompilerResult<Self> {
+        self.slice(self.start, self.start + size)
+    }
+
+    /// Sets the slice to the specified size. If the size is already determined this results in an error
+    /// if the sizes do not match.
+    pub fn set_size(
+        &mut self,
+        size: MOIRSize,
+    ) -> SleighCompilerResult {
+        // TODO: Maybe we need to look up the size of the value this slice references?
+        let new_end = self.start + size;
+        match self.end {
+            MOIRMaybeSize::Determined(end) => {
+                if end != new_end {
+                    Err(SleighCompilerError::InvalidSliceSize {
+                        new: size,
+                        current: end.saturating_sub(self.start),
+                    })
+                } else {
+                    Ok(())
+                }
+            }
+            MOIRMaybeSize::Undetermined => {
+                self.end = new_end.into();
+                Ok(())
+            }
         }
     }
 }
@@ -91,73 +165,104 @@ pub enum MOIRReference {
     SubTable(MOIRTableId),
     VarNode(MOIRVarNodeId),
     Temporary(MOIRTemporaryId),
+    /// The InstX References are special references that are resolved
+    /// to a constant as soon as the constructor is called.
+    InstStart,
+    InstNext,
+    InstNext2,
 }
 
-/// A value references either a constant, or a symbol that is later resolved to a const or a varnode.
+// /// A value references either a constant, or a symbol that is later resolved to a const or a varnode.
+// #[derive(Debug, Copy, Clone)]
+// pub enum MOIRValue {
+//     /// The value references a slice of a symbol
+//     ValueSlice(MOIRSlice),
+//     /// The value is a constant value that can be used directly
+//     Const(MOIRConst),
+// }
+
+/// A local either directly contains a constant value, or refers to a local stored in the scope.
 #[derive(Debug, Copy, Clone)]
-pub enum MOIRValue {
-    /// The value references a slice of a symbol
-    ValueSlice(MOIRSlice),
-    /// The value is a constant value that can be used directly
+pub enum MOIRLocal {
+    Local(MOIRLocalId),
     Const(MOIRConst),
 }
 
-macro_rules! impl_value_from_const {
+impl From<MOIRLocalId> for MOIRLocal {
+    fn from(local: MOIRLocalId) -> Self {
+        MOIRLocal::Local(local)
+    }
+}
+
+impl From<MOIRConst> for MOIRLocal {
+    fn from(value: MOIRConst) -> Self {
+        MOIRLocal::Const(value)
+    }
+}
+
+macro_rules! impl_local_from_const {
     ($typ:ty, $expr:expr) => {
-        impl From<$typ> for MOIRValue {
+        impl From<$typ> for MOIRLocal {
             fn from(value: $typ) -> Self {
-                MOIRValue::Const($expr(value))
+                $expr(value).into()
             }
         }
     };
 }
 
-impl_value_from_const!(u64, MOIRConst::Const64);
-impl_value_from_const!(u32, MOIRConst::Const32);
-impl_value_from_const!(u16, MOIRConst::Const16);
-impl_value_from_const!(u8, MOIRConst::Const8);
+impl_local_from_const!(u64, MOIRConst::Const64);
+impl_local_from_const!(u32, MOIRConst::Const32);
+impl_local_from_const!(u16, MOIRConst::Const16);
+impl_local_from_const!(u8, MOIRConst::Const8);
 
-impl MOIRValue {
+impl MOIRLocal {
     pub fn slice(
         self,
+        scope: &mut MOIRScope,
         start: MOIRSize,
         end: MOIRSize,
     ) -> SleighCompilerResult<Self> {
         let new_size = end.saturating_sub(start);
         let current_size = self
-            .size()
-            .ok_or(SleighCompilerError::CannotSliceUndeterminedEnd)?;
+            .size(scope)
+            .ok_or(SleighCompilerError::CannotSliceUndetermined)?;
         if new_size == 0 || new_size > current_size || start > end {
-            Err(SleighCompilerError::InvalidSliceSize)?
+            Err(SleighCompilerError::InvalidSliceSize {
+                new: new_size,
+                current: current_size,
+            })?
         }
         Ok(match self {
-            MOIRValue::ValueSlice(slice) => {
-                let MOIRSliceEnd::Determined(current_end) = slice.end else {
-                    Err(SleighCompilerError::CannotSliceUndeterminedEnd)?
-                };
-                if end > current_end || start < slice.start {
-                    Err(SleighCompilerError::InvalidSliceSize)?
-                }
-                MOIRValue::ValueSlice(MOIRSlice {
-                    reference: slice.reference,
-                    start,
-                    end: MOIRSliceEnd::Determined(end),
-                })
-            }
-            MOIRValue::Const(value) => MOIRValue::Const(slice_const(value, start, end)),
+            MOIRLocal::Local(local) => MOIRLocal::Local(scope.slice_local(local, start, end)?),
+            MOIRLocal::Const(value) => MOIRLocal::Const(value.slice(start, end)?),
         })
     }
 
-    pub fn size(&self) -> Option<MOIRSize> {
+    pub fn truncate(
+        self,
+        scope: &mut MOIRScope,
+        size: MOIRSize,
+    ) -> SleighCompilerResult<Self> {
+        Ok(match self {
+            MOIRLocal::Local(local) => MOIRLocal::Local(scope.truncate_local(local, size)?),
+            MOIRLocal::Const(value) => MOIRLocal::Const(value.truncate(size)?),
+        })
+    }
+
+    pub fn size(
+        &self,
+        scope: &MOIRScope,
+    ) -> MOIRMaybeSize {
         match self {
-            MOIRValue::ValueSlice(slice) => slice.size(),
-            MOIRValue::Const(value) => Some(value.size()),
+            MOIRLocal::Local(local) => scope.size_of_local(*local),
+            MOIRLocal::Const(value) => value.size(),
         }
     }
 }
 
 #[derive(Debug, Copy, Clone)]
 pub enum MOIRConst {
+    Undetermined(u64),
     Const64(u64),
     Const32(u32),
     Const16(u16),
@@ -165,65 +270,130 @@ pub enum MOIRConst {
 }
 
 impl MOIRConst {
-    pub fn size(&self) -> MOIRSize {
-        match self {
-            MOIRConst::Const64(v) => 8,
-            MOIRConst::Const32(v) => 4,
-            MOIRConst::Const16(v) => 2,
-            MOIRConst::Const8(v) => 1,
+    /// Create a new const value with the specified size in bytes. Allowed sizes currently are 8,4,2,1.
+    /// If the value is too large to fit in the specified size, an error is returned.
+    /// If size is undetermined, we simply save the unconstrained const value such that it can be
+    /// constrained later on.
+    pub fn new_with_size(
+        val: u64,
+        size: MOIRMaybeSize,
+    ) -> SleighCompilerResult<Self> {
+        use MOIRMaybeSize::*;
+        match size {
+            Undetermined => Ok(MOIRConst::Undetermined(val)),
+            Determined(8) => Ok(MOIRConst::Const64(val)),
+            Determined(4) => Ok(MOIRConst::Const32(
+                val.try_into()
+                    .map_err(|_| SleighCompilerError::ConstDoesNotFit { val, size: 4 })?,
+            )),
+            Determined(2) => Ok(MOIRConst::Const16(
+                val.try_into()
+                    .map_err(|_| SleighCompilerError::ConstDoesNotFit { val, size: 2 })?,
+            )),
+            Determined(1) => Ok(MOIRConst::Const8(
+                val.try_into()
+                    .map_err(|_| SleighCompilerError::ConstDoesNotFit { val, size: 1 })?,
+            )),
+            Determined(size) => Err(SleighCompilerError::ConstDoesNotFit { val, size }),
         }
     }
-}
 
-fn slice_const(
-    value: MOIRConst,
-    start: MOIRSize,
-    end: MOIRSize,
-) -> MOIRConst {
-    let new_size = end.saturating_sub(start);
-    match value {
-        MOIRConst::Const64(v) => {
-            let v = v >> start;
-            match new_size {
-                8 => MOIRConst::Const64(v),
-                4 => MOIRConst::Const32(v as _),
-                2 => MOIRConst::Const16(v as _),
-                1 => MOIRConst::Const8(v as _),
-                _ => {
-                    todo!("Generate error. We do not support const that are not u8, u16, u32, or u64")
+    pub fn size(&self) -> MOIRMaybeSize {
+        match self {
+            MOIRConst::Const64(_) => MOIRMaybeSize::Determined(8),
+            MOIRConst::Const32(_) => MOIRMaybeSize::Determined(4),
+            MOIRConst::Const16(_) => MOIRMaybeSize::Determined(2),
+            MOIRConst::Const8(_) => MOIRMaybeSize::Determined(1),
+            MOIRConst::Undetermined(_) => MOIRMaybeSize::Undetermined,
+        }
+    }
+
+    pub fn truncate(
+        self,
+        size: MOIRSize,
+    ) -> SleighCompilerResult<MOIRConst> {
+        self.slice(0, size)
+    }
+
+    /// Assign a size to the const if it does not already have one.
+    /// If the const already has a size that differs from the new one,
+    /// an error is returned.
+    pub fn constrain_size(
+        &mut self,
+        size: MOIRSize,
+    ) -> SleighCompilerResult {
+        match self {
+            MOIRConst::Undetermined(v) => {*self = MOIRConst::Const64(*v);}
+            v => {
+                if v.size() != MOIRMaybeSize::Determined(size) {
+                    Err(SleighCompilerError::InvalidSliceSize { new: size, current: v.size().determined_or(0) })?;
                 }
             }
+        };
+        Ok(())
+    }
+
+    fn slice(
+        self,
+        start: MOIRSize,
+        end: MOIRSize,
+    ) -> SleighCompilerResult<MOIRConst> {
+        let new_size = end.saturating_sub(start);
+        // We can only slice if the underlying value has a size already.
+        let MOIRMaybeSize::Determined(size) = self.size() else {
+            Err(SleighCompilerError::CannotSliceUndetermined)?
+        };
+        if new_size > size {
+            Err(SleighCompilerError::InvalidSliceSize {
+                new: new_size,
+                current: size,
+            })?
         }
-        MOIRConst::Const32(v) => {
-            let v = v >> start;
-            match new_size {
-                4 => MOIRConst::Const32(v as _),
-                2 => MOIRConst::Const16(v as _),
-                1 => MOIRConst::Const8(v as _),
-                _ => {
-                    todo!("Generate error. We do not support const that are not u8, u16, u32, or u64")
+        Ok(match self {
+            MOIRConst::Const64(v) => {
+                let v = v >> start;
+                match new_size {
+                    8 => MOIRConst::Const64(v),
+                    4 => MOIRConst::Const32(v as _),
+                    2 => MOIRConst::Const16(v as _),
+                    1 => MOIRConst::Const8(v as _),
+                    _ => {
+                        todo!("Generate error. We do not support const that are not u8, u16, u32, or u64")
+                    }
                 }
             }
-        }
-        MOIRConst::Const16(v) => {
-            let v = v >> start;
-            match new_size {
-                2 => MOIRConst::Const16(v as _),
-                1 => MOIRConst::Const8(v as _),
-                _ => {
-                    todo!("Generate error. We do not support const that are not u8, u16, u32, or u64")
+            MOIRConst::Const32(v) => {
+                let v = v >> start;
+                match new_size {
+                    4 => MOIRConst::Const32(v as _),
+                    2 => MOIRConst::Const16(v as _),
+                    1 => MOIRConst::Const8(v as _),
+                    _ => {
+                        todo!("Generate error. We do not support const that are not u8, u16, u32, or u64")
+                    }
                 }
             }
-        }
-        MOIRConst::Const8(v) => {
-            let v = v >> start;
-            match new_size {
-                1 => MOIRConst::Const8(v as _),
-                _ => {
-                    todo!("Generate error. We do not support const that are not u8, u16, u32, or u64")
+            MOIRConst::Const16(v) => {
+                let v = v >> start;
+                match new_size {
+                    2 => MOIRConst::Const16(v as _),
+                    1 => MOIRConst::Const8(v as _),
+                    _ => {
+                        todo!("Generate error. We do not support const that are not u8, u16, u32, or u64")
+                    }
                 }
             }
-        }
+            MOIRConst::Const8(v) => {
+                let v = v >> start;
+                match new_size {
+                    1 => MOIRConst::Const8(v as _),
+                    _ => {
+                        todo!("Generate error. We do not support const that are not u8, u16, u32, or u64")
+                    }
+                }
+            }
+            MOIRConst::Undetermined(_) => Err(SleighCompilerError::CannotSliceUndetermined)?,
+        })
     }
 }
 

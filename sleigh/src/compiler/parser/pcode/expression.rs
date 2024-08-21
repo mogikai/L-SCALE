@@ -152,6 +152,7 @@ fn fold_binary_operation<'tokens>(
 
 #[cfg(test)]
 mod test {
+    use super::pcode_expression;
     use crate::compiler::ast::pcode::expression::{
         SASTPCodeBinaryOp,
         SASTPCodeExpression,
@@ -159,8 +160,6 @@ mod test {
     use crate::compiler::ast::Spanned;
     use crate::compiler::parser::test::TestResult;
     use chumsky::Parser;
-
-    use super::pcode_expression;
 
     fn test_pcode_expression(expression: &str) -> TestResult<Spanned<SASTPCodeExpression>> {
         use crate::compiler::parser::test::{
@@ -185,6 +184,22 @@ mod test {
             _ => panic!("Expected the parser to parse a binary expression."),
         }
         Ok(())
+    }
+
+    #[test]
+    fn double_character_parses_correctly() -> TestResult {
+        let result = test_pcode_expression("ZF && SF");
+        match result {
+            Ok(expr) => {
+                let expr = expr.into_value();
+                let SASTPCodeExpression::BinaryOperation { lhs, op, rhs } = expr else {
+                    panic!("The expression is expected to be a binary expression.")
+                };
+                assert!(matches!(op.into_value(), SASTPCodeBinaryOp::BoolAnd));
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     }
 
     #[test]

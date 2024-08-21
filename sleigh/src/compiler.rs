@@ -89,6 +89,7 @@ pub struct SleighCompiler {
     input_cache: CompilerInputCache,
     spec_builder: ProcessorSpecificationBuilder,
     errors: Vec<Box<Report<'static, InputSpan>>>,
+    stop_on_first_error: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -114,7 +115,12 @@ impl SleighCompiler {
             .parser
             .parse(&mut self.input_cache, &mut self.spec_builder, tokens)?;
         info!("Building the specification from the AST.");
-        self.build(ast)?;
+        let result = self.build(ast);
+        // Continue if StopOnFirstError or if everything was ok.
+        match result {
+            Err(SleighCompilerError::StopOnFirstError) | Ok(_) => {}
+            Err(e) => Err(e)?,
+        }
         if self.errors.is_empty() {
             Ok(self.spec_builder.build()?)
         } else {
@@ -183,7 +189,11 @@ impl SleighCompiler {
             Err(err) => {
                 if let SleighCompilerError::ErrorReport(report) = err {
                     self.errors.push(report);
-                    Ok(None)
+                    if self.stop_on_first_error {
+                        Err(SleighCompilerError::StopOnFirstError)
+                    } else {
+                        Ok(None)
+                    }
                 } else {
                     Err(err)
                 }
@@ -201,6 +211,7 @@ impl SleighCompiler {
             input_cache: Default::default(),
             spec_builder: Default::default(),
             errors: vec![],
+            stop_on_first_error: true,
         }
     }
 }

@@ -44,7 +44,9 @@ impl SleighControlCharacter {
 pub enum SleighOperation {
     Equals,
     And,
+    DoubleAnd,
     Or,
+    DoubleOr,
     Plus,
     Minus,
     Not,
@@ -109,6 +111,8 @@ impl SleighOperation {
             SleighOperation::SRemainder => "s%",
             SleighOperation::SLessThan => "s<",
             SleighOperation::SGreaterThan => "s>",
+            SleighOperation::DoubleAnd => "&&",
+            SleighOperation::DoubleOr => "||",
         }
     }
 }

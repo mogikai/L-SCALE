@@ -416,6 +416,8 @@ where
 {
     // The single character tokens need to be parsed after the multi character tokens.
     choice([
+        just("&&").to(SleighToken::Operation(SleighOperation::DoubleAnd)),
+        just("||").to(SleighToken::Operation(SleighOperation::DoubleOr)),
         just("!=").to(SleighToken::Operation(SleighOperation::NotEquals)),
         just("$and").to(SleighToken::Operation(SleighOperation::BitAnd)),
         just("$or").to(SleighToken::Operation(SleighOperation::BitOr)),

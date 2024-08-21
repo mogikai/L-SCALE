@@ -1,4 +1,4 @@
-use crate::compiler::ast::common::SASTIdent;
+use crate::compiler::ast::common::{SASTIdent, SASTSize};
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::Spanned;
 
@@ -13,5 +13,5 @@ pub struct SASTPCodeDeref {
     /// Specifies the space to which the varnode is referring
     pub space: Option<Spanned<SASTIdent>>,
     /// The size in bytes of the value to load.
-    pub size: Option<Spanned<u16>>,
+    pub size: Option<Spanned<SASTSize>>,
 }

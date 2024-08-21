@@ -1,5 +1,9 @@
 use crate::new_typed_index_table_id;
-use crate::spec::moir::varnode::MOIRValue;
+use crate::spec::moir::scope::MOIRMaybeSize;
+use crate::spec::moir::varnode::{
+    MOIRConst,
+    MOIRSlice,
+};
 
 #[derive(Debug, Default)]
 pub struct MOIRTable {
@@ -45,7 +49,23 @@ pub struct MOIRTable {
     ///
     /// The table lists all possible export types so that the compiler can check that if the export
     /// is used on the left hand side of an assignment, the export does not resolve to a const value.
-    pub exports: Vec<MOIRValue>,
+    pub exports: Vec<MOIRExport>,
+}
+
+// TODO: This probably needs to look a little different than it does atm
+#[derive(Debug)]
+pub enum MOIRExport {
+    Const(MOIRConst),
+    Slice(MOIRSlice),
+}
+
+impl MOIRExport {
+    pub fn size(&self) -> MOIRMaybeSize {
+        match self {
+            MOIRExport::Const(val) => val.size(),
+            MOIRExport::Slice(slice) => slice.size(),
+        }
+    }
 }
 
 new_typed_index_table_id! { pub struct MOIRTableId; }
