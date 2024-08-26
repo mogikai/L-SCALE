@@ -65,6 +65,7 @@ use std::ops::{
 };
 use tracing::trace;
 use crate::compiler::ast::common::SASTLiteral;
+use crate::spec::moir::address_space::MOIRSpaceType;
 
 impl SleighCompiler {
     pub(super) fn atomize_binary_operation(
@@ -359,12 +360,11 @@ impl SleighCompiler {
         // We want to first try and use the output size. If it is undetermined, try to use the size specified in deref.
         let out = scope.allocate_temporary(size_constraint.or(value_size));
         // TODO: Maybe we can do this less dirty?
-        // let space_id = deref
-        //     .space
-        //     .map(Spanned::transmute)
-        //     .ok_or(|| SleighCompilerError::SymbolUndeclared)
-        //     .or_else(|_| self.spec_builder.default_space_ident())?;
-        let space_id = self.spec_builder.default_space_ident()?;
+        let space_id = deref
+            .space
+            .map(Spanned::transmute)
+            .ok_or(|| SleighCompilerError::SymbolUndeclared)
+            .or_else(|_| self.spec_builder.default_space_ident())?;
         let space = self.spec_builder.space_id_by_ident(space_id)?;
         let addr = self.atomize_expression(scope, instructions, MOIRMaybeSize::Undetermined, *deref.expression)?;
         if let MOIRMaybeSize::Determined(out_size ) = size_constraint {

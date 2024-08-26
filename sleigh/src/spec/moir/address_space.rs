@@ -15,11 +15,12 @@ pub struct MOIRSpace {
     pub wordsize: MOIRSize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum MOIRSpaceType {
     Ram,
     Rom,
     Register,
+    Const,
 }
 
 #[derive(Debug)]

@@ -156,6 +156,9 @@ pub enum MOIROperation {
     SignExtend,
 
     // Load and store operations
+    // When these operations are resolved into JIR upon calling the constructor, all values
+    // that refer to a `const` space are translated into actual constants, where their offset
+    // is interpreted as the constants' value.
     Load(MOIRSpaceId),
     Store(MOIRSpaceId),
 

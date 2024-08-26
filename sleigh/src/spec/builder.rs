@@ -49,10 +49,7 @@ use crate::compiler::{
     CompilerContext,
     SleighCompilerResult,
 };
-use crate::spec::moir::address_space::{
-    MOIRSpace,
-    MOIRSpaceIsDefault,
-};
+use crate::spec::moir::address_space::{MOIRSpace, MOIRSpaceIsDefault, MOIRSpaceType};
 use crate::spec::moir::custom_op::{
     MOIRCustomOp,
     MOIRCustomOpId,
@@ -224,7 +221,9 @@ impl ProcessorSpecificationBuilder {
         let symbol_id = self.declare_symbol(ident)?;
         let space_id = self.symbol_tables.spaces.insert(space);
         self.define_symbol(symbol_id, MOIRSymbol::Space(space_id))?;
-        self.default_space = Some(Spanned::new(symbol_id, span));
+        if matches!(default, MOIRSpaceIsDefault::Default) {
+            self.default_space = Some(Spanned::new(symbol_id, span));
+        }
         Ok(symbol_id)
     }
 
@@ -519,6 +518,10 @@ impl ProcessorSpecificationBuilder {
             .ok_or(SleighCompilerError::SymbolUndeclared)
     }
 
+    pub fn space_by_symbol_id(&self, symbol_id: MOIRSpaceId) -> Option<&MOIRSpace> {
+        self.symbol_tables.spaces.get(symbol_id)
+    }
+
     /// Get the varnode id referred to by `ident`. If `ident` refers to an identifier that is not a varnode,
     /// or if the identifier is undefined, an error report is generated.
     pub(crate) fn varnode_id_by_ident(
@@ -627,6 +630,7 @@ impl Default for ProcessorSpecificationBuilder {
         let mut interner = StringInterner::new();
         let placeholder_ident = interner.intern("_");
         let epsilon = interner.intern("epsilon");
+        let const_space = interner.intern("const");
         let root_table = Spanned::new(interner.intern("instruction"), InputSpan::default());
         let mut slf = Self {
             interner,
@@ -646,6 +650,11 @@ impl Default for ProcessorSpecificationBuilder {
         slf.modify_root_table()
             .expect("This may not error at this point");
         // TODO: Define the special varnodes in a special address space.
+        slf.define_space(Spanned::new(const_space, InputSpan::default()), MOIRSpace {
+            r#type: MOIRSpaceType::Const,
+            address_size: 0,
+            wordsize: 0,
+        }, MOIRSpaceIsDefault::NotDefault).expect("This may not error at this point");
         slf.define_varnode(
             Spanned::new(epsilon, InputSpan::default()),
             MOIRVarNode {
@@ -774,7 +783,7 @@ macro_rules! impl_get_symbol_struct {
     };
 }
 
-macro_rules! impl_get_symbol {
+macro_rules! impl_get_symbol_id {
     ($func_name:ident, $symbol:ty, $variant:pat => $id:expr) => {
         impl ProcessorSpecificationBuilder {
             pub(crate) fn $func_name(
@@ -800,4 +809,4 @@ impl_get_symbol_struct! { field_by_ident, field_by_ident_mut, fields, MOIRField,
 impl_get_symbol_struct! { custom_op_by_ident, custom_op_by_ident_mut, custom_ops, MOIRCustomOp, MOIRSymbol::CustomOp(id) => id}
 impl_get_symbol_struct! { bitrange_register_by_ident, bitrange_register_by_ident_mut, bitrange_registers, MOIRTBitrangeRegister, MOIRSymbol::BitrangeRegister(id) => id}
 
-impl_get_symbol! { field_id_by_ident, MOIRFieldId, MOIRSymbol::Field(id) => id}
+impl_get_symbol_id! { field_id_by_ident, MOIRFieldId, MOIRSymbol::Field(id) => id}
