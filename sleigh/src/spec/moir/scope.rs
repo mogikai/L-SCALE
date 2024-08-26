@@ -265,10 +265,16 @@ impl MOIRScope {
                             .field_sizes
                             .get_mut(&field_id)
                             .expect("We gave out the id so it must exist");
-                        if let MOIRMaybeSize::Determined(prev_size) = prev_size {
-                            if size != *prev_size {
-                                todo!("Generate error report for size constraint violation")
-                            } else {
+                        match prev_size {
+                            MOIRMaybeSize::Determined(prev_size) => {
+                                // If the size was previously determined, we need to make sure
+                                // that the slices' size does not exceed the underlying value.
+                                if size > *prev_size {
+                                    todo!("Generate error report for size constraint violation")
+                                }
+                            }
+                            MOIRMaybeSize::Undetermined => {
+                                // If the size was undetermined, we can simply set it now.
                                 *prev_size = size.into();
                             }
                         }

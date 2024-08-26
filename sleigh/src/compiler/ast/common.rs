@@ -6,6 +6,7 @@ use std::fmt::{
 };
 
 pub type SASTSize = u8;
+pub type SASTLiteral = u128;
 
 #[derive(Debug, Copy, Clone)]
 pub struct SASTIdent(pub StringId);

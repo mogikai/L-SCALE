@@ -97,7 +97,7 @@ impl SleighCompiler {
             &mut moir_constructor.instructions,
             constructor.semantic_section.into_value().0,
         )?;
-        let table = match constructor.table.lift_option() {
+        let table = match constructor.table.transpose() {
             None => self.spec_builder.modify_root_table()?,
             Some(id) => self.spec_builder.modify_table(id)?,
         };

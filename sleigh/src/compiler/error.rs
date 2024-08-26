@@ -44,7 +44,7 @@ pub enum SleighCompilerError {
     IdentifierNotMapped(Spanned<StringId>),
     #[error("The symbol was not declared before being defined.")]
     SymbolUndeclared,
-    #[error("The value cannot be sliced, since the requested slice is either too large or too small.")]
+    #[error("The value cannot be sliced, since the requested slice is either too large or too small. New size: {new:?}, current size: {current:?}")]
     InvalidSliceSize { new: MOIRSize, current: MOIRSize },
     #[error("The value cannot be sliced, since the slice range is invalid")]
     InvalidSliceRange {
@@ -59,8 +59,8 @@ pub enum SleighCompilerError {
     CannotSliceUndetermined,
     #[error("The compiler was configured to stop on the first error encountered")]
     StopOnFirstError,
-    #[error("The constant value being constructed does not fit into the requested size")]
-    ConstDoesNotFit { val: u64, size: MOIRSize },
+    #[error("The constant value being constructed does not fit into the requested size. Value: {val:?}, Requested size: {size:?}")]
+    ConstDoesNotFit { val: u128, size: MOIRSize },
 }
 
 impl Debug for SleighCompilerError {

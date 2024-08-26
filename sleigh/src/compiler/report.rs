@@ -18,6 +18,7 @@ use chumsky::span::Span;
 
 pub fn generate_invalid_sizes_error(
     ident: InputSpan,
+    actual_size: MOIRSize,
     expected_size: MOIRSize,
 ) -> SleighCompilerError {
     let mut colors = ColorGenerator::new();
@@ -26,7 +27,7 @@ pub fn generate_invalid_sizes_error(
         .with_message(format!("Invalid sizes"))
         .with_label(
             Label::new(ident)
-                .with_message(format!("The error occurred here with size {expected_size}"))
+                .with_message(format!("Expected size {expected_size} but got size {actual_size}"))
                 .with_color(color_a),
         )
         .finish();

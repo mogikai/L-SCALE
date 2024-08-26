@@ -73,13 +73,13 @@ impl<T> Spanned<T> {
     }
 
     pub fn map<F, U>(
-        &self,
+        self,
         map: F,
     ) -> Spanned<U>
     where
-        F: FnOnce(&T) -> U,
+        F: FnOnce(T) -> U,
     {
-        Spanned::new(map(&self.value), self.span.clone())
+        Spanned::new(map(self.value), self.span.clone())
     }
 }
 
@@ -98,7 +98,7 @@ pub trait TransmuteIntoVec<T>: IntoIterator<Item = Spanned<T>> {
 impl<T> TransmuteIntoVec<T> for Vec<Spanned<T>> {}
 
 impl<T> Spanned<Option<T>> {
-    pub fn lift_option(self) -> Option<Spanned<T>> {
+    pub fn transpose(self) -> Option<Spanned<T>> {
         self.value.map(|x| Spanned::new(x, self.span))
     }
 }

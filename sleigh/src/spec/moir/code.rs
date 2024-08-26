@@ -30,6 +30,12 @@ macro_rules! moir_instruction {
     ($out:ident = $lhs:ident $op:ident $rhs:ident) => {
         MOIRInstruction::binary_op($out, $lhs, $op, $rhs)
     };
+    ($lhs:ident = &$rhs:ident) => {
+        MOIRInstruction::address_of($lhs, $rhs)
+    };
+    ($lhs:ident = zext($rhs:ident)) => {
+        MOIRInstruction::zext($lhs, $rhs)
+    };
     ($target:ident = *[$space:ident]$addr:ident) => {
         MOIRInstruction::load($target, $addr, $space)
     };
@@ -55,6 +61,32 @@ impl MOIRInstruction {
             input_b: None,
             output: target,
             operation: MOIROperation::Load(space_id),
+        }
+    }
+
+    pub fn address_of(
+        lhs: MOIRLocalId,
+        rhs: MOIRLocal,
+    ) -> Self {
+        trace!("New instruction: {:?} = &{:?}", lhs, rhs);
+        MOIRInstruction {
+            output: lhs,
+            input_a: Some(rhs),
+            input_b: None,
+            operation: MOIROperation::AddressOf,
+        }
+    }
+
+    pub fn zext(
+        lhs: MOIRLocalId,
+        rhs: MOIRLocal,
+    ) -> Self {
+        trace!("New instruction: {:?} = zext({:?})", lhs, rhs);
+        MOIRInstruction {
+            output: lhs,
+            input_a: Some(rhs),
+            input_b: None,
+            operation: MOIROperation::ZeroExtend,
         }
     }
 
@@ -109,6 +141,20 @@ pub enum MOIROperation {
     Copy,
     CustomOp(Vec<MOIRLocal>),
 
+    // Special operations
+    /// Special AddressOf operation. This is translated into a constant, when the constructor is called.
+    AddressOf,
+    /// Zero extends the input if its size is less than the output.
+    /// If the sizes are equal this operation is optimized away.
+    /// If the input size is larger than the output size, this
+    /// will result in a size error.
+    ZeroExtend,
+    /// Sign extends the input if its size is less than the output.
+    /// If the sizes are equal this operation is optimized away.
+    /// If the input size is larger than the output size, this
+    /// will result in a size error.
+    SignExtend,
+
     // Load and store operations
     Load(MOIRSpaceId),
     Store(MOIRSpaceId),
@@ -162,11 +208,11 @@ impl MOIROperation {
     pub fn op_category(&self) -> MOIROpCategory {
         use MOIROperation::*;
         match self {
-            BoolOr | BoolAnd | BoolXor | IntSGreater | IntSLessEqual | IntSGreaterEqual | IntLess | IntGreater
+            BoolOr | BoolAnd | BoolXor | IntSGreater | IntSLess | IntSLessEqual | IntSGreaterEqual | IntLess | IntGreater
             | IntLessEqual | IntGreaterEqual | FloatLess | FloatGreater | FloatLessEqual | FloatGreaterEqual
             | FloatEquals | FloatNotEquals | IntEquals | IntNotEquals => MOIROpCategory::Comparison,
             IntLeft | IntRight | IntSRight => MOIROpCategory::Shift,
-            CustomOp(_) => MOIROpCategory::CustomOp,
+            CustomOp(_) | ZeroExtend | Load(_) | Store(_) => MOIROpCategory::Special,
             _ => MOIROpCategory::Regular,
         }
     }
@@ -181,7 +227,10 @@ pub enum MOIROpCategory {
     /// The shiftee and output must however have the same sizes.
     Shift,
     /// Custom operations can have independent input arg sizes and the output is also independent.
-    CustomOp,
+    /// This category also includes special pcode operations like zext.
+    /// The size dependance of input and output ultimately must be decided by looking at the individual
+    /// operation.
+    Special,
     /// A regular instruction with no special handling.
     Regular,
 }

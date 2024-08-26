@@ -207,9 +207,15 @@ macro_rules! impl_local_from_const {
                 $expr(value).into()
             }
         }
+        impl From<$typ> for MOIRConst {
+            fn from(value: $typ) -> Self {
+                $expr(value)
+            }
+        }
     };
 }
 
+impl_local_from_const!(u128, MOIRConst::Const128);
 impl_local_from_const!(u64, MOIRConst::Const64);
 impl_local_from_const!(u32, MOIRConst::Const32);
 impl_local_from_const!(u16, MOIRConst::Const16);
@@ -262,11 +268,14 @@ impl MOIRLocal {
 
 #[derive(Debug, Copy, Clone)]
 pub enum MOIRConst {
-    Undetermined(u64),
+    Undetermined(u128),
+    Const128(u128),
     Const64(u64),
     Const32(u32),
     Const16(u16),
     Const8(u8),
+    /// A generic const value with the specified size
+    ConstN(u128, MOIRSize),
 }
 
 impl MOIRConst {
@@ -275,13 +284,17 @@ impl MOIRConst {
     /// If size is undetermined, we simply save the unconstrained const value such that it can be
     /// constrained later on.
     pub fn new_with_size(
-        val: u64,
+        val: u128,
         size: MOIRMaybeSize,
     ) -> SleighCompilerResult<Self> {
         use MOIRMaybeSize::*;
         match size {
             Undetermined => Ok(MOIRConst::Undetermined(val)),
-            Determined(8) => Ok(MOIRConst::Const64(val)),
+            Determined(16) => Ok(MOIRConst::Const128(val)),
+            Determined(8) => Ok(MOIRConst::Const64(
+                val.try_into()
+                    .map_err(|_| SleighCompilerError::ConstDoesNotFit { val, size: 8 })?,
+            )),
             Determined(4) => Ok(MOIRConst::Const32(
                 val.try_into()
                     .map_err(|_| SleighCompilerError::ConstDoesNotFit { val, size: 4 })?,
@@ -294,17 +307,19 @@ impl MOIRConst {
                 val.try_into()
                     .map_err(|_| SleighCompilerError::ConstDoesNotFit { val, size: 1 })?,
             )),
-            Determined(size) => Err(SleighCompilerError::ConstDoesNotFit { val, size }),
+            Determined(size) => Ok(MOIRConst::ConstN(val, size)),
         }
     }
 
     pub fn size(&self) -> MOIRMaybeSize {
         match self {
+            MOIRConst::Const128(_) => MOIRMaybeSize::Determined(16),
             MOIRConst::Const64(_) => MOIRMaybeSize::Determined(8),
             MOIRConst::Const32(_) => MOIRMaybeSize::Determined(4),
             MOIRConst::Const16(_) => MOIRMaybeSize::Determined(2),
             MOIRConst::Const8(_) => MOIRMaybeSize::Determined(1),
             MOIRConst::Undetermined(_) => MOIRMaybeSize::Undetermined,
+            MOIRConst::ConstN(_, size) => MOIRMaybeSize::Determined(*size)
         }
     }
 
@@ -323,10 +338,15 @@ impl MOIRConst {
         size: MOIRSize,
     ) -> SleighCompilerResult {
         match self {
-            MOIRConst::Undetermined(v) => {*self = MOIRConst::Const64(*v);}
+            MOIRConst::Undetermined(v) => {
+                *self = MOIRConst::Const128(*v);
+            }
             v => {
                 if v.size() != MOIRMaybeSize::Determined(size) {
-                    Err(SleighCompilerError::InvalidSliceSize { new: size, current: v.size().determined_or(0) })?;
+                    Err(SleighCompilerError::InvalidSliceSize {
+                        new: size,
+                        current: v.size().determined_or(0),
+                    })?;
                 }
             }
         };
@@ -339,6 +359,8 @@ impl MOIRConst {
         end: MOIRSize,
     ) -> SleighCompilerResult<MOIRConst> {
         let new_size = end.saturating_sub(start);
+        // For each byte we need to shift 8 bit.
+        let start_bit = start * 8;
         // We can only slice if the underlying value has a size already.
         let MOIRMaybeSize::Determined(size) = self.size() else {
             Err(SleighCompilerError::CannotSliceUndetermined)?
@@ -350,8 +372,21 @@ impl MOIRConst {
             })?
         }
         Ok(match self {
+            MOIRConst::Const128(v) => {
+                let v: u128 = v >> start_bit;
+                match new_size {
+                    16 => MOIRConst::Const128(v),
+                    8 => MOIRConst::Const64(v as _),
+                    4 => MOIRConst::Const32(v as _),
+                    2 => MOIRConst::Const16(v as _),
+                    1 => MOIRConst::Const8(v as _),
+                    _ => {
+                        todo!("Generate error. We do not support const that are not u8, u16, u32, or u64")
+                    }
+                }
+            }
             MOIRConst::Const64(v) => {
-                let v = v >> start;
+                let v: u64 = v >> start_bit;
                 match new_size {
                     8 => MOIRConst::Const64(v),
                     4 => MOIRConst::Const32(v as _),
@@ -363,7 +398,7 @@ impl MOIRConst {
                 }
             }
             MOIRConst::Const32(v) => {
-                let v = v >> start;
+                let v: u32 = v >> start_bit;
                 match new_size {
                     4 => MOIRConst::Const32(v as _),
                     2 => MOIRConst::Const16(v as _),
@@ -374,7 +409,7 @@ impl MOIRConst {
                 }
             }
             MOIRConst::Const16(v) => {
-                let v = v >> start;
+                let v: u16 = v >> start_bit;
                 match new_size {
                     2 => MOIRConst::Const16(v as _),
                     1 => MOIRConst::Const8(v as _),
@@ -384,13 +419,16 @@ impl MOIRConst {
                 }
             }
             MOIRConst::Const8(v) => {
-                let v = v >> start;
+                let v: u8 = v >> start_bit;
                 match new_size {
                     1 => MOIRConst::Const8(v as _),
                     _ => {
                         todo!("Generate error. We do not support const that are not u8, u16, u32, or u64")
                     }
                 }
+            }
+            MOIRConst::ConstN(v, size) => {
+                todo!("ConstN slicing currently unsupported")
             }
             MOIRConst::Undetermined(_) => Err(SleighCompilerError::CannotSliceUndetermined)?,
         })

@@ -5,6 +5,7 @@ use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::pcode::statement::SASTPCodeStatement;
 use crate::compiler::ast::pcode::subpiece::{
     SASTPCodeSubpiece,
+    SASTPCodeSubpieceSelector,
     SASTPCodeSubpieceTarget,
 };
 use crate::compiler::ast::pcode::target_expression::SASTPCodeTargetExpression;
@@ -86,6 +87,15 @@ impl SleighCompiler {
             }
         }
         trace!("Instructions: {instructions:?}");
+        self.infer_sizes(scope, instructions)?;
+        trace!("Instructions: {instructions:?}");
+        Ok(export.map(|export| match export.into_value() {
+            MOIRLocal::Local(local) => MOIRExport::Slice(*scope.resolve_local(local).expect("TODO")),
+            MOIRLocal::Const(val) => MOIRExport::Const(val),
+        }))
+    }
+
+    fn infer_sizes(&mut self, scope: &mut MOIRScope, instructions: &mut Vec<MOIRInstruction>) -> SleighCompilerResult<()> {
         trace!("Doing size inference pass");
         for instruction in instructions.iter_mut() {
             trace!("{instruction:?}");
@@ -118,16 +128,32 @@ impl SleighCompiler {
                         }
                     }
                 }
-                MOIROpCategory::CustomOp => {
-                    // There is nothing to do in this case.
+                MOIROpCategory::Special => {
+                    match instruction.operation {
+                        MOIROperation::Load(_) => {
+                            // For load we only need to make sure the address is the correct size.
+                            // TODO: Where do we get the correct address size from?
+                            // TODO: This probably needs to match with inst_next?
+                        }
+                        MOIROperation::ZeroExtend => {
+                            // We cannot do any size inference, but we can make sure that the
+                            // sizes are valid, i.e. that output_size > input_size
+                            if let MOIRMaybeSize::Determined(output_size) = output_size {
+                                if let MOIRMaybeSize::Determined(input_a_size) = input_a_size {
+                                    if output_size <= input_a_size {
+                                        todo!("Generate error report for invalid sizes for zext")
+                                    }
+                                }
+                            }
+                        }
+                        _ => {
+                            // There is nothing to do in this case.
+                        }
+                    }
                 }
             }
         }
-        trace!("Instructions: {instructions:?}");
-        Ok(export.map(|export| match export.into_value() {
-            MOIRLocal::Local(local) => MOIRExport::Slice(*scope.resolve_local(local).expect("TODO")),
-            MOIRLocal::Const(val) => MOIRExport::Const(val),
-        }))
+        Ok(())
     }
 
     /// Atomizes the expression into multiple MOIRInstructions.
@@ -154,13 +180,17 @@ impl SleighCompiler {
                 self.atomize_unary_operation(scope, instructions, size_constraint, op, *operand)
             }
             SASTPCodeExpression::Dereference { .. } => self.atomize_dereference(instructions),
-            SASTPCodeExpression::Subpiece(subpiece) => self.atomize_subpiece(scope, instructions, subpiece),
+            SASTPCodeExpression::Subpiece(subpiece) => {
+                self.atomize_subpiece(scope, instructions, size_constraint, subpiece)
+            }
             SASTPCodeExpression::Bitrange(bitrange) => self.atomize_bitrange(scope, instructions, bitrange),
             SASTPCodeExpression::Identifier(ident) => {
                 self.atomize_identifier(scope, size_constraint, ident.transmute())
             }
-            SASTPCodeExpression::Load(deref) => self.atomize_load(scope, instructions, deref),
-            SASTPCodeExpression::AddressOf(_) => self.atomize_address_of(instructions),
+            SASTPCodeExpression::Load(deref) => self.atomize_load(scope, instructions, size_constraint, deref),
+            SASTPCodeExpression::AddressOf(address_of) => {
+                self.atomize_address_of(scope, instructions, size_constraint, address_of)
+            }
             SASTPCodeExpression::Literal(literal) => self.atomize_literal(size_constraint, literal),
             SASTPCodeExpression::Error(_) => {
                 panic!("An error in the AST should have lead to the compiler quitting earlier on.")
@@ -215,7 +245,12 @@ impl SleighCompiler {
                 let (subpiece, _) = subpiece.into_tuple();
                 match subpiece.target.into_value() {
                     SASTPCodeSubpieceTarget::Ident(ident) => {
-                        let size = subpiece.size.into_value();
+                        let size = match subpiece.selector.into_value() {
+                            SASTPCodeSubpieceSelector::Take(size) => size,
+                            SASTPCodeSubpieceSelector::Discard(_) => {
+                                todo!("Currently unimplemented")
+                            }
+                        };
                         if local.into_value() {
                             // We encountered a local definition. Define here and error out if it already exists.
                             scope.allocate_named_temporary(ident.clone().transmute(), size.into())?;

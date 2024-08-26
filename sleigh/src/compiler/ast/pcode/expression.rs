@@ -1,4 +1,4 @@
-use crate::compiler::ast::common::SASTIdent;
+use crate::compiler::ast::common::{SASTIdent, SASTLiteral};
 use crate::compiler::ast::pcode::addressof::SASTPCodeAddressOf;
 use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
@@ -53,7 +53,7 @@ pub enum SASTPCodeExpression {
     Identifier(Spanned<SASTIdent>),
     Load(Spanned<SASTPCodeDeref>),
     AddressOf(Spanned<SASTPCodeAddressOf>),
-    Literal(Spanned<u64>),
+    Literal(Spanned<SASTLiteral>),
     Error(InputSpan),
 }
 
@@ -172,7 +172,7 @@ impl SASTPCodeBinaryOp {
     pub fn op_category(&self) -> SASTPcodeOpCategory {
         use SASTPCodeBinaryOp::*;
         match self {
-            BoolOr | BoolAnd | BoolXor | IntSGreater | IntSLessEqual | IntSGreaterEqual | IntLess | IntGreater
+            BoolOr | BoolAnd | BoolXor | IntSGreater | IntSLess | IntSLessEqual | IntSGreaterEqual | IntLess | IntGreater
             | IntLessEqual | IntGreaterEqual | FloatLess | FloatGreater | FloatLessEqual | FloatGreaterEqual
             | FloatEquals | FloatNotEquals | IntEquals | IntNotEquals => SASTPcodeOpCategory::Comparison,
             IntLeft | IntRight | IntSRight => SASTPcodeOpCategory::Shift,

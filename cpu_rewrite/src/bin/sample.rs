@@ -33,6 +33,7 @@ fn main() {
         .preprocessor_factory(factory)
         .build();
     let specification = compiler.compile(spec_path).unwrap();
+    println!("{:?}", specification.list_global_varnode_strings());
     // TODO: Disassemble at offset 0x0000000000001060
     let mmu = Rc::new(RefCell::new(MogiMMU::new()));
     let mut cpu = CPU::new(X86MogiJit::new(mmu.clone()), mmu);

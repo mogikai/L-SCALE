@@ -525,7 +525,7 @@ impl ProcessorSpecificationBuilder {
         &self,
         ident: &Spanned<StringId>,
     ) -> SleighCompilerResult<MOIRVarNodeId> {
-        let symbol_reference = ident.map(|id| self.resolve_string_id(*id));
+        let symbol_reference = ident.clone().map(|id| self.resolve_string_id(id));
         self.get_symbol_and_ident(ident)
             .ok_or_else(|| generate_undefined_ident_error(symbol_reference.clone()))
             .and_then(|(symbol, id)| match symbol {
@@ -556,7 +556,7 @@ impl ProcessorSpecificationBuilder {
         &self,
         ident: &Spanned<StringId>,
     ) -> SleighCompilerResult<MOIRSlice> {
-        let symbol_reference = ident.map(|id| self.resolve_string_id(*id));
+        let symbol_reference = ident.clone().map(|id| self.resolve_string_id(id));
         self.varnode_id_by_ident(ident).map(|vnid| {
             let varnode = self
                 .varnode_by_symbol_id(vnid)

@@ -17,7 +17,10 @@ use SleighOperation::{
     LessThan,
 };
 
-use crate::compiler::ast::common::SASTIdent;
+use crate::compiler::ast::common::{
+    SASTIdent,
+    SASTSize,
+};
 use crate::compiler::ast::pcode::addressof::SASTPCodeAddressOf;
 use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
@@ -25,6 +28,7 @@ use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::pcode::subpiece::{
     SASTPCodeSubpiece,
+    SASTPCodeSubpieceSelector,
     SASTPCodeSubpieceTarget,
 };
 use crate::compiler::ast::Spanned;
@@ -76,25 +80,32 @@ where
 
 pub fn pcode_subpiece<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeSubpiece>, SleighParserExtra<'tokens>> + Clone {
-    let size = pcode_number_literal();
+    let size = pcode_number_literal::<SASTSize>();
 
     let target = pcode_ident()
         .map(SASTPCodeSubpieceTarget::Ident)
         .or(pcode_number_literal().map(SASTPCodeSubpieceTarget::Literal))
         .map_with(spanned);
 
+    // Colon means to take the specified number of bytes starting from lsb, and discarding the rest.
     let colon_subpiece = target
         .clone()
         .then_ignore(sleigh_control(SleighControlCharacter::Colon))
-        .then(size.clone());
+        .then(size.clone())
+        .map(|(target, size)| SASTPCodeSubpiece {
+            target,
+            selector: size.map(SASTPCodeSubpieceSelector::Take),
+        });
 
-    let paren_subpiece = target.then(parenthesized(size));
+    // Parentheses means to discard the specified number of bytes starting from the lsb and taking the rest.
+    let paren_subpiece = target
+        .then(parenthesized(size))
+        .map(|(target, size)| SASTPCodeSubpiece {
+            target,
+            selector: size.map(SASTPCodeSubpieceSelector::Discard),
+        });
 
-    colon_subpiece
-        .or(paren_subpiece)
-        .map(|(target, size)| SASTPCodeSubpiece { target, size })
-        .map_with(spanned)
-        .boxed()
+    colon_subpiece.or(paren_subpiece).map_with(spanned).boxed()
 }
 
 pub fn pcode_bitrange<'tokens>(
