@@ -45,7 +45,12 @@ use crate::spec::moir::varnode::{
     MOIRVarNodeId,
 };
 use crate::spec::MOIRSymbol;
-use tracing::trace;
+use tracing::{
+    debug,
+    trace,
+};
+
+use std::fmt::Write;
 
 impl SleighCompiler {
     pub(super) fn atomize_pcode(
@@ -87,12 +92,13 @@ impl SleighCompiler {
                 SASTPCodeStatement::BranchCall(_) => {}
                 SASTPCodeStatement::BranchReturn(_) => {}
                 SASTPCodeStatement::NOP => {}
-                SASTPCodeStatement::Error(_) => {}
+                SASTPCodeStatement::Error(_) => {
+                    panic!("If there is an error in the AST, then this function should never have been invoked");
+                }
             }
         }
-        trace!("Instructions: {instructions:?}");
         self.infer_sizes(scope, instructions)?;
-        trace!("Instructions: {instructions:?}");
+        debug_instructions(instructions);
         Ok(export.map(|export| match export.into_value() {
             MOIRLocal::Local(local) => MOIRExport::Slice(*scope.resolve_local(local).expect("TODO")),
             MOIRLocal::Const(val) => MOIRExport::Const(val),
@@ -190,4 +196,13 @@ impl SleighCompiler {
             .allocate_named_temporary(ident, size.map_or(MOIRMaybeSize::Undetermined, |size| size.into_value().into()))
             .map(|_| ())
     }
+}
+
+fn debug_instructions(instructions: &mut Vec<MOIRInstruction>) {
+    let mut instructions_str = String::new();
+    writeln!(&mut instructions_str, "The constructor pcode was atomized to the following instructions:").expect("");
+    for instruction in instructions {
+        writeln!(&mut instructions_str, "{}", instruction).expect("");
+    }
+    debug!("{instructions_str}");
 }

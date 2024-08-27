@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::SleighCompilerResult;
 use crate::new_typed_index_table_id;
@@ -188,6 +189,15 @@ pub enum MOIRLocal {
     Const(MOIRConst),
 }
 
+impl Display for MOIRLocal {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MOIRLocal::Local(local) => write!(f, "{}", local),
+            MOIRLocal::Const(value) => write!(f, "{}", value),
+        }
+    }
+}
+
 impl From<MOIRLocalId> for MOIRLocal {
     fn from(local: MOIRLocalId) -> Self {
         MOIRLocal::Local(local)
@@ -276,6 +286,20 @@ pub enum MOIRConst {
     Const8(u8),
     /// A generic const value with the specified size
     ConstN(u128, MOIRSize),
+}
+
+impl Display for MOIRConst {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MOIRConst::Undetermined(value) => write!(f, "{:#0x}", value),
+            MOIRConst::Const128(value) => write!(f, "{:#0x}", value),
+            MOIRConst::Const64(value) => write!(f, "{:#0x}", value),
+            MOIRConst::Const32(value) => write!(f, "{:#0x}", value),
+            MOIRConst::Const16(value) => write!(f, "{:#0x}", value),
+            MOIRConst::Const8(value) => write!(f, "{:#0x}", value),
+            MOIRConst::ConstN(value, _) => write!(f, "{:#0x}", value),
+        }
+    }
 }
 
 impl MOIRConst {

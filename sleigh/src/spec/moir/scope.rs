@@ -18,6 +18,7 @@ use crate::spec::reporting::generate_identifier_exists_report;
 use crate::spec::typed_index_table::TypedIndexTable;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 
 /// A scope for locals used in constructors and macros
 #[derive(Debug, Default)]
@@ -38,6 +39,12 @@ pub struct MOIRScope {
 }
 
 new_typed_index_table_id! { pub struct MOIRLocalId; }
+
+impl Display for MOIRLocalId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "L{}", self.0)
+    }
+}
 
 /// A temporary varnode. These have no backing varnode at this stage yet.
 /// They will be mapped to concrete varnodes once the constructor is called.

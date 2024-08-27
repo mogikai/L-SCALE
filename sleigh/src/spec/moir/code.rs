@@ -3,6 +3,11 @@ use crate::spec::moir::varnode::{
     MOIRSlice,
     MOIRVarNodeId,
 };
+use std::fmt::{
+    write,
+    Display,
+    Formatter,
+};
 use tracing::trace;
 
 #[derive(Debug)]
@@ -13,6 +18,49 @@ pub struct MOIRInstruction {
     pub input_a: Option<MOIRLocal>,
     pub input_b: Option<MOIRLocal>,
     pub operation: MOIROperation,
+}
+
+impl Display for MOIRInstruction {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        match self.operation {
+            MOIROperation::ZeroExtend | MOIROperation::SignExtend => {
+                write!(
+                    f,
+                    "{} = {}({})",
+                    self.output,
+                    self.operation,
+                    self.input_a.expect("Unary op has to have input_a")
+                )
+            }
+            MOIROperation::Load(space) => {
+                write!(f, "{} = *[{:?}]{}", self.output, space, self.input_a.expect("Load has to have input_a"))
+            }
+            MOIROperation::Copy => {
+                write!(f, "{} = {}", self.output, self.input_a.expect("Copy has to have input_a"))
+            }
+            MOIROperation::CustomOp(_) => {
+                write!(f, "{} = customOp", self.output)
+            }
+            MOIROperation::AddressOf
+            | MOIROperation::BoolNegate
+            | MOIROperation::BitNegate
+            | MOIROperation::IntNegate
+            | MOIROperation::FloatNegate => {
+                write!(f, "{} = {}{}", self.output, self.operation, self.input_a.expect("Unary op has to have input_a"))
+            }
+            _ => write!(
+                f,
+                "{} = {} {} {}",
+                self.output,
+                self.input_a.expect("Binary op must have input_a"),
+                self.operation,
+                self.input_b.expect("Binary op must have input_b")
+            ),
+        }
+    }
 }
 
 /// This maco provides a convenient wrapper for creating new instructions.
@@ -207,13 +255,70 @@ pub enum MOIROperation {
     FloatNegate,
 }
 
+impl Display for MOIROperation {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        match self {
+            MOIROperation::Copy => write!(f, ""),
+            MOIROperation::CustomOp(args) => write!(f, "custom"),
+            MOIROperation::AddressOf => write!(f, "&"),
+            MOIROperation::ZeroExtend => write!(f, "zext"),
+            MOIROperation::SignExtend => write!(f, "sext"),
+            MOIROperation::Load(_) => write!(f, "load"),
+            MOIROperation::Store(_) => write!(f, "store"),
+            MOIROperation::IntAdd => write!(f, "+"),
+            MOIROperation::IntSubtract => write!(f, "-"),
+            MOIROperation::IntMul => write!(f, "*"),
+            MOIROperation::IntDiv => write!(f, "/"),
+            MOIROperation::IntSDiv => write!(f, "s/"),
+            MOIROperation::IntRemainder => write!(f, "%"),
+            MOIROperation::IntSRemainder => write!(f, "s%"),
+            MOIROperation::FloatDiv => write!(f, "f/"),
+            MOIROperation::FloatMul => write!(f, "f*"),
+            MOIROperation::FloatAdd => write!(f, "f+"),
+            MOIROperation::FloatSubtract => write!(f, "f-"),
+            MOIROperation::BoolOr => write!(f, "||"),
+            MOIROperation::BoolAnd => write!(f, "&&"),
+            MOIROperation::BoolXor => write!(f, "^^"),
+            MOIROperation::IntLeft => write!(f, "<<"),
+            MOIROperation::IntRight => write!(f, ">>"),
+            MOIROperation::IntSRight => write!(f, "s>>"),
+            MOIROperation::IntSLess => write!(f, "s<"),
+            MOIROperation::IntSGreater => write!(f, "s>"),
+            MOIROperation::IntSLessEqual => write!(f, "s<="),
+            MOIROperation::IntSGreaterEqual => write!(f, "s>="),
+            MOIROperation::IntLess => write!(f, "<"),
+            MOIROperation::IntGreater => write!(f, ">"),
+            MOIROperation::IntLessEqual => write!(f, "<="),
+            MOIROperation::IntGreaterEqual => write!(f, ">="),
+            MOIROperation::FloatLess => write!(f, "f<"),
+            MOIROperation::FloatGreater => write!(f, "f>"),
+            MOIROperation::FloatLessEqual => write!(f, "f<="),
+            MOIROperation::FloatGreaterEqual => write!(f, "f>="),
+            MOIROperation::FloatEquals => write!(f, "f=="),
+            MOIROperation::FloatNotEquals => write!(f, "f!="),
+            MOIROperation::IntOr => write!(f, "|"),
+            MOIROperation::IntAnd => write!(f, "&"),
+            MOIROperation::IntXor => write!(f, "^"),
+            MOIROperation::IntEquals => write!(f, "=="),
+            MOIROperation::IntNotEquals => write!(f, "!="),
+            MOIROperation::BoolNegate => write!(f, "!"),
+            MOIROperation::BitNegate => write!(f, "~"),
+            MOIROperation::IntNegate => write!(f, "-"),
+            MOIROperation::FloatNegate => write!(f, "f-"),
+        }
+    }
+}
+
 impl MOIROperation {
     pub fn op_category(&self) -> MOIROpCategory {
         use MOIROperation::*;
         match self {
-            BoolOr | BoolAnd | BoolXor | IntSGreater | IntSLess | IntSLessEqual | IntSGreaterEqual | IntLess | IntGreater
-            | IntLessEqual | IntGreaterEqual | FloatLess | FloatGreater | FloatLessEqual | FloatGreaterEqual
-            | FloatEquals | FloatNotEquals | IntEquals | IntNotEquals => MOIROpCategory::Comparison,
+            BoolOr | BoolAnd | BoolXor | IntSGreater | IntSLess | IntSLessEqual | IntSGreaterEqual | IntLess
+            | IntGreater | IntLessEqual | IntGreaterEqual | FloatLess | FloatGreater | FloatLessEqual
+            | FloatGreaterEqual | FloatEquals | FloatNotEquals | IntEquals | IntNotEquals => MOIROpCategory::Comparison,
             IntLeft | IntRight | IntSRight => MOIROpCategory::Shift,
             CustomOp(_) | ZeroExtend | Load(_) | Store(_) => MOIROpCategory::Special,
             _ => MOIROpCategory::Regular,
