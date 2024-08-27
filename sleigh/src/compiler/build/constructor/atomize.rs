@@ -1,5 +1,8 @@
+mod assignment;
 mod expression;
+mod size_inference;
 
+use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::pcode::statement::SASTPCodeStatement;
@@ -95,67 +98,6 @@ impl SleighCompiler {
         }))
     }
 
-    fn infer_sizes(&mut self, scope: &mut MOIRScope, instructions: &mut Vec<MOIRInstruction>) -> SleighCompilerResult<()> {
-        trace!("Doing size inference pass");
-        for instruction in instructions.iter_mut() {
-            trace!("{instruction:?}");
-            let output_size = scope.size_of_local(instruction.output);
-            let input_a_size = instruction
-                .input_a
-                .map(|v| v.size(scope))
-                .unwrap_or(MOIRMaybeSize::Undetermined);
-            let input_b_size = instruction
-                .input_b
-                .map(|v| v.size(scope))
-                .unwrap_or(MOIRMaybeSize::Undetermined);
-            trace!("{output_size:?} {input_a_size:?} {input_b_size:?}");
-            match instruction.operation.op_category() {
-                MOIROpCategory::Comparison => {}
-                MOIROpCategory::Shift => {}
-                MOIROpCategory::Regular => {
-                    // For regular operations all sizes have to match.
-                    // Check if any part of the operation has a determined size.
-                    let size = output_size.or(input_a_size).or(input_b_size);
-                    if let MOIRMaybeSize::Determined(size) = size {
-                        // If we have a size, we can constrain all values to this size.
-                        // Otherwise, we have to wait until the backwards pass.
-                        scope.constrain_local_size(&mut MOIRLocal::from(instruction.output), size)?;
-                        if let Some(local) = instruction.input_a.as_mut() {
-                            scope.constrain_local_size(local, size)?
-                        }
-                        if let Some(local) = instruction.input_b.as_mut() {
-                            scope.constrain_local_size(local, size)?
-                        }
-                    }
-                }
-                MOIROpCategory::Special => {
-                    match instruction.operation {
-                        MOIROperation::Load(_) => {
-                            // For load we only need to make sure the address is the correct size.
-                            // TODO: Where do we get the correct address size from?
-                            // TODO: This probably needs to match with inst_next?
-                        }
-                        MOIROperation::ZeroExtend => {
-                            // We cannot do any size inference, but we can make sure that the
-                            // sizes are valid, i.e. that output_size > input_size
-                            if let MOIRMaybeSize::Determined(output_size) = output_size {
-                                if let MOIRMaybeSize::Determined(input_a_size) = input_a_size {
-                                    if output_size <= input_a_size {
-                                        todo!("Generate error report for invalid sizes for zext")
-                                    }
-                                }
-                            }
-                        }
-                        _ => {
-                            // There is nothing to do in this case.
-                        }
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
     /// Atomizes the expression into multiple MOIRInstructions.
     /// The function returns a [MOIRValue] that contains the result of the expression.
     /// If the expression contains only constants, then this can be optimized down to
@@ -194,95 +136,6 @@ impl SleighCompiler {
             SASTPCodeExpression::Literal(literal) => self.atomize_literal(size_constraint, literal),
             SASTPCodeExpression::Error(_) => {
                 panic!("An error in the AST should have lead to the compiler quitting earlier on.")
-            }
-        }
-    }
-
-    fn atomize_assignment(
-        &mut self,
-        scope: &mut MOIRScope,
-        instructions: &mut Vec<MOIRInstruction>,
-        local: Spanned<bool>,
-        target: Spanned<SASTPCodeTargetExpression>,
-        expression: Spanned<SASTPCodeExpression>,
-    ) -> SleighCompilerResult {
-        let (target, _) = target.into_tuple();
-        match target {
-            SASTPCodeTargetExpression::Variable(var) => {
-                let (lhs, rhs) = if local.into_value() {
-                    // The variable is not declared yet. First resolve the rhs and try to determine a size.
-                    let rhs = self.atomize_expression(scope, instructions, MOIRMaybeSize::Undetermined, expression)?;
-                    scope.allocate_named_temporary(var.clone().transmute(), rhs.size(scope))?;
-                    let lhs = scope.resolve_ident(&self.spec_builder, var.transmute())?;
-                    (lhs, rhs)
-                } else {
-                    // The variable is already declared and maybe has a size. pass the size as hint.
-                    let lhs = scope.resolve_ident(&self.spec_builder, var.transmute())?;
-                    let rhs = self.atomize_expression(scope, instructions, scope.size_of_local(lhs), expression)?;
-                    (lhs, rhs)
-                };
-                instructions.push(moir_instruction!(lhs = rhs));
-                Ok(())
-            }
-            SASTPCodeTargetExpression::Store(deref) => {
-                if *local {
-                    todo!("Generate error report for local keyword on store assignment")
-                }
-                Ok(())
-            }
-            SASTPCodeTargetExpression::BitRange(bitrange) => {
-                let (bitrange, _) = bitrange.into_tuple();
-                if local.into_value() {
-                    scope.allocate_named_temporary(bitrange.ident.clone().transmute(), MOIRMaybeSize::Undetermined)?;
-                }
-                scope.resolve_ident(&self.spec_builder, bitrange.ident.transmute())?;
-                Ok(())
-            }
-            SASTPCodeTargetExpression::Subpiece(subpiece) => {
-                // We are dealing with a subpiece assignment. This is similar to a normal assignment.
-                // However, we create a new slice and already have the required size, since it is
-                // specified in the subpiece operation.
-                let (subpiece, _) = subpiece.into_tuple();
-                match subpiece.target.into_value() {
-                    SASTPCodeSubpieceTarget::Ident(ident) => {
-                        let size = match subpiece.selector.into_value() {
-                            SASTPCodeSubpieceSelector::Take(size) => size,
-                            SASTPCodeSubpieceSelector::Discard(_) => {
-                                todo!("Currently unimplemented")
-                            }
-                        };
-                        if local.into_value() {
-                            // We encountered a local definition. Define here and error out if it already exists.
-                            scope.allocate_named_temporary(ident.clone().transmute(), size.into())?;
-                        }
-                        // We can now resolve the ident.
-                        let lhs = scope.resolve_ident(&self.spec_builder, ident.clone().transmute())?;
-                        // If the subpiece tries to create a slice that is
-                        // larger than the original, we generate an error.
-                        if size
-                            > scope
-                                .size_of_local(lhs)
-                                .ok_or_else(|| -> SleighCompilerError {
-                                    // We cannot slice a value that has an undetermined size
-                                    todo!("Generate error for undetermined size")
-                                })?
-                        {
-                            todo!("Generate error for subpiece being larger than underlying slice.")
-                        }
-                        let lhs = scope.truncate_local(lhs, size).map_err(|_| {
-                            let (ident, ident_span) = ident.into_tuple();
-                            let str = self.spec_builder.resolve_string_id(ident.into());
-                            generate_cannot_slice_error(str, ident_span, size)
-                        })?;
-                        // The variable is not declared yet. First resolve the rhs and try to determine a size.
-                        let rhs = self.atomize_expression(scope, instructions, scope.size_of_local(lhs), expression)?;
-                        instructions.push(moir_instruction!(lhs = rhs));
-                        Ok(())
-                    }
-                    SASTPCodeSubpieceTarget::Literal(_) => {
-                        todo!("Generate error report for unallowed literals in target expression")
-                    }
-                }
             }
         }
     }
