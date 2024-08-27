@@ -150,7 +150,7 @@ impl MOIRScope {
         &mut self,
         ident: Spanned<StringId>,
         size: MOIRMaybeSize,
-    ) -> SleighCompilerResult {
+    ) -> SleighCompilerResult<MOIRLocalId> {
         let (ident, ident_span) = ident.into_tuple();
         let id = self.temporaries.insert(MOIRTemporary { size });
         match self.locals.entry(ident) {
@@ -166,7 +166,7 @@ impl MOIRScope {
                 self.local_spans.insert(ident, ident_span);
                 let id = self.slices.insert(MOIRSlice::temporary(id, 0, size.into()));
                 entry.insert(id);
-                Ok(())
+                Ok(id)
             }
         }
     }
@@ -240,53 +240,62 @@ impl MOIRScope {
     ) -> SleighCompilerResult {
         match local {
             MOIRLocal::Local(local) => {
-                let slice = self
-                    .slices
-                    .get_mut(*local)
-                    .ok_or_else(|| -> SleighCompilerError { todo!() })?;
-                match slice.reference {
-                    MOIRReference::Temporary(temp) => {
-                        let temp = self
-                            .temporaries
-                            .get_mut(temp)
-                            .expect("We gave out the id so it must exist");
-                        if let MOIRMaybeSize::Determined(prev_size) = temp.size {
-                            if size > prev_size {
-                                // The size may be smaller, since we are dealing with slices, but never larger.
-                                todo!("Generate error report for size constraint violation.")
-                            }
-                        } else {
-                            // We can set the size since it was previously undetermined
-                            temp.size = MOIRMaybeSize::Determined(size);
-                        }
-                    }
-                    MOIRReference::Field(field_id) => {
-                        let prev_size = self
-                            .field_sizes
-                            .get_mut(&field_id)
-                            .expect("We gave out the id so it must exist");
-                        match prev_size {
-                            MOIRMaybeSize::Determined(prev_size) => {
-                                // If the size was previously determined, we need to make sure
-                                // that the slices' size does not exceed the underlying value.
-                                if size > *prev_size {
-                                    todo!("Generate error report for size constraint violation")
-                                }
-                            }
-                            MOIRMaybeSize::Undetermined => {
-                                // If the size was undetermined, we can simply set it now.
-                                *prev_size = size.into();
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-                slice.set_size(size)?;
+                self.constrain_local_id_size(*local, size)?;
             }
             MOIRLocal::Const(val) => {
                 val.constrain_size(size)?;
             }
         }
+        Ok(())
+    }
+
+    pub fn constrain_local_id_size(
+        &mut self,
+        local: MOIRLocalId,
+        size: MOIRSize,
+    ) -> SleighCompilerResult {
+        let slice = self
+            .slices
+            .get_mut(local)
+            .ok_or_else(|| -> SleighCompilerError { todo!() })?;
+        match slice.reference {
+            MOIRReference::Temporary(temp) => {
+                let temp = self
+                    .temporaries
+                    .get_mut(temp)
+                    .expect("We gave out the id so it must exist");
+                if let MOIRMaybeSize::Determined(prev_size) = temp.size {
+                    if size > prev_size {
+                        // The size may be smaller, since we are dealing with slices, but never larger.
+                        todo!("Generate error report for size constraint violation.")
+                    }
+                } else {
+                    // We can set the size since it was previously undetermined
+                    temp.size = MOIRMaybeSize::Determined(size);
+                }
+            }
+            MOIRReference::Field(field_id) => {
+                let prev_size = self
+                    .field_sizes
+                    .get_mut(&field_id)
+                    .expect("We gave out the id so it must exist");
+                match prev_size {
+                    MOIRMaybeSize::Determined(prev_size) => {
+                        // If the size was previously determined, we need to make sure
+                        // that the slices' size does not exceed the underlying value.
+                        if size > *prev_size {
+                            todo!("Generate error report for size constraint violation")
+                        }
+                    }
+                    MOIRMaybeSize::Undetermined => {
+                        // If the size was undetermined, we can simply set it now.
+                        *prev_size = size.into();
+                    }
+                }
+            }
+            _ => {}
+        }
+        slice.set_size(size)?;
         Ok(())
     }
 

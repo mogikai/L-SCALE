@@ -32,6 +32,7 @@ use crate::spec::moir::code::{
 };
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::scope::{
+    MOIRLocalId,
     MOIRMaybeSize,
     MOIRScope,
 };
@@ -70,7 +71,7 @@ impl SleighCompiler {
                 SASTPCodeStatement::Invocation(invocation) => {
                     // We ignore the output, since top level invocations do not output anything.
                     // TODO: Maybe it makes sense to update the pcodeop definition here to "no output"?
-                    self.atomize_invocation(scope, instructions, MOIRMaybeSize::Undetermined, invocation)?;
+                    self.atomize_invocation(scope, instructions, None, invocation)?;
                 }
                 SASTPCodeStatement::Build(_) => {}
                 SASTPCodeStatement::Export(expression) => {
@@ -99,41 +100,43 @@ impl SleighCompiler {
     }
 
     /// Atomizes the expression into multiple MOIRInstructions.
-    /// The function returns a [MOIRValue] that contains the result of the expression.
+    /// The function returns a [MOIRLocal] that contains the result of the expression.
+    /// If an out local was specified, it may be used to directly store the result.
+    /// In this case, the returned [MOIRLocal] will be the same as the provided out.
+    /// The result may not be stored in out, if it is for example a const value to give
+    /// other operations the opportunity to further fold the constants.
+    /// If not out local was specified, then this function returns a new [MOIRLocal].
     /// If the expression contains only constants, then this can be optimized down to
-    /// a single const [MOIRValue]. Otherwise, [MOIRValue] will be [MOIRValue::VarNode].
+    /// a single const [MOIRLocal::Const]. Otherwise, [MOIRLocal] will be [MOIRLocal::Local].
     fn atomize_expression(
         &mut self,
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
-        size_constraint: MOIRMaybeSize,
+        out: Option<MOIRLocalId>,
         expression: Spanned<SASTPCodeExpression>,
     ) -> SleighCompilerResult<MOIRLocal> {
         let (expression, _) = expression.into_tuple();
         trace!("Atomizing expression {}", expression);
+        let out_size = out
+            .map(|id| scope.size_of_local(id))
+            .unwrap_or(MOIRMaybeSize::Undetermined);
         match expression {
             SASTPCodeExpression::Invocation(invocation) => {
-                self.atomize_invocation(scope, instructions, size_constraint, invocation)
+                self.atomize_invocation(scope, instructions, out, invocation)
             }
             SASTPCodeExpression::BinaryOperation { lhs, op, rhs } => {
-                self.atomize_binary_operation(scope, instructions, size_constraint, *lhs, op, *rhs)
+                self.atomize_binary_operation(scope, instructions, out, *lhs, op, *rhs)
             }
             SASTPCodeExpression::UnaryOperation { op, operand } => {
-                self.atomize_unary_operation(scope, instructions, size_constraint, op, *operand)
+                self.atomize_unary_operation(scope, instructions, out, op, *operand)
             }
             SASTPCodeExpression::Dereference { .. } => self.atomize_dereference(instructions),
-            SASTPCodeExpression::Subpiece(subpiece) => {
-                self.atomize_subpiece(scope, instructions, size_constraint, subpiece)
-            }
+            SASTPCodeExpression::Subpiece(subpiece) => self.atomize_subpiece(scope, instructions, out_size, subpiece),
             SASTPCodeExpression::Bitrange(bitrange) => self.atomize_bitrange(scope, instructions, bitrange),
-            SASTPCodeExpression::Identifier(ident) => {
-                self.atomize_identifier(scope, size_constraint, ident.transmute())
-            }
-            SASTPCodeExpression::Load(deref) => self.atomize_load(scope, instructions, size_constraint, deref),
-            SASTPCodeExpression::AddressOf(address_of) => {
-                self.atomize_address_of(scope, instructions, size_constraint, address_of)
-            }
-            SASTPCodeExpression::Literal(literal) => self.atomize_literal(size_constraint, literal),
+            SASTPCodeExpression::Identifier(ident) => self.atomize_identifier(scope, out_size, ident.transmute()),
+            SASTPCodeExpression::Load(deref) => self.atomize_load(scope, instructions, out, deref),
+            SASTPCodeExpression::AddressOf(address_of) => self.atomize_address_of(scope, instructions, out, address_of),
+            SASTPCodeExpression::Literal(literal) => self.atomize_literal(out_size, literal),
             SASTPCodeExpression::Error(_) => {
                 panic!("An error in the AST should have lead to the compiler quitting earlier on.")
             }
@@ -144,16 +147,16 @@ impl SleighCompiler {
         &mut self,
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
-        size_constraint: MOIRMaybeSize,
+        out: Option<MOIRLocalId>,
         invocation: Spanned<SASTPCodeInvocation>,
     ) -> SleighCompilerResult<MOIRLocal> {
         trace!("Atomizing invocation with {} arguments.", invocation.value().arguments.len());
         let (invocation, _) = invocation.into_tuple();
-        let output = scope.allocate_temporary(size_constraint);
+        let output = out.unwrap_or_else(|| scope.allocate_temporary(MOIRMaybeSize::Undetermined));
         let mut args = invocation
             .arguments
             .into_iter()
-            .map(|arg| self.atomize_expression(scope, instructions, MOIRMaybeSize::Undetermined, arg));
+            .map(|arg| self.atomize_expression(scope, instructions, None, arg));
         let input_a = args.next().transpose()?;
         let input_b = args.next().transpose()?;
         let args: Result<Vec<_>, _> = args.collect();
@@ -174,7 +177,7 @@ impl SleighCompiler {
     ) -> SleighCompilerResult<MOIRLocal> {
         // TODO: Handling dynamic references (e.g. export *:4 tmp) will require keeping track of the
         //       dynamic references somewhere. We need to decide how to do this.
-        self.atomize_expression(scope, instructions, MOIRMaybeSize::Undetermined, expression)
+        self.atomize_expression(scope, instructions, None, expression)
     }
 
     fn atomize_declaration(
@@ -183,6 +186,8 @@ impl SleighCompiler {
         ident: Spanned<StringId>,
         size: Option<Spanned<MOIRSize>>,
     ) -> SleighCompilerResult {
-        scope.allocate_named_temporary(ident, size.map_or(MOIRMaybeSize::Undetermined, |size| size.into_value().into()))
+        scope
+            .allocate_named_temporary(ident, size.map_or(MOIRMaybeSize::Undetermined, |size| size.into_value().into()))
+            .map(|_| ())
     }
 }

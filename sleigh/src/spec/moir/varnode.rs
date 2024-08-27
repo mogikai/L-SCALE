@@ -182,7 +182,7 @@ pub enum MOIRReference {
 // }
 
 /// A local either directly contains a constant value, or refers to a local stored in the scope.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum MOIRLocal {
     Local(MOIRLocalId),
     Const(MOIRConst),
@@ -266,7 +266,7 @@ impl MOIRLocal {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MOIRConst {
     Undetermined(u128),
     Const128(u128),
@@ -319,7 +319,7 @@ impl MOIRConst {
             MOIRConst::Const16(_) => MOIRMaybeSize::Determined(2),
             MOIRConst::Const8(_) => MOIRMaybeSize::Determined(1),
             MOIRConst::Undetermined(_) => MOIRMaybeSize::Undetermined,
-            MOIRConst::ConstN(_, size) => MOIRMaybeSize::Determined(*size)
+            MOIRConst::ConstN(_, size) => MOIRMaybeSize::Determined(*size),
         }
     }
 

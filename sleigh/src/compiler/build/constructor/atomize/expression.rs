@@ -1,7 +1,7 @@
 //! This module implements the atomization of PCodeExpressions.
 //! The entry function is [SleighCompiler::atomize_expression].
 
-use std::cmp::Ordering;
+use crate::compiler::ast::common::SASTLiteral;
 use crate::compiler::ast::constructor::bit_pattern_section::SASTBinaryOp;
 use crate::compiler::ast::pcode::addressof::SASTPCodeAddressOf;
 use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
@@ -29,12 +29,14 @@ use crate::compiler::{
     SleighCompilerResult,
 };
 use crate::spec::builder::StringId;
+use crate::spec::moir::address_space::MOIRSpaceType;
 use crate::spec::moir::code::{
     moir_instruction,
     MOIRInstruction,
     MOIROperation,
 };
 use crate::spec::moir::scope::{
+    MOIRLocalId,
     MOIRMaybeSize,
     MOIRScope,
 };
@@ -49,6 +51,7 @@ use num::{
     CheckedSub,
     Num,
 };
+use std::cmp::Ordering;
 use std::fmt::Display;
 use std::ops::{
     Add,
@@ -64,38 +67,55 @@ use std::ops::{
     Sub,
 };
 use tracing::trace;
-use crate::compiler::ast::common::SASTLiteral;
-use crate::spec::moir::address_space::MOIRSpaceType;
 
 impl SleighCompiler {
-    pub(super) fn atomize_binary_operation(
+    pub fn atomize_binary_operation(
         &mut self,
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
-        mut size_constraint: MOIRMaybeSize,
-        lhs: Spanned<SASTPCodeExpression>,
+        out: Option<MOIRLocalId>,
+        ast_lhs: Spanned<SASTPCodeExpression>,
         op: Spanned<SASTPCodeBinaryOp>,
-        rhs: Spanned<SASTPCodeExpression>,
+        ast_rhs: Spanned<SASTPCodeExpression>,
     ) -> SleighCompilerResult<MOIRLocal> {
-        let lhs_span = lhs.span().clone();
-        let rhs_span = rhs.span().clone();
+        let lhs_span = ast_lhs.span().clone();
+        let rhs_span = ast_rhs.span().clone();
         let mut independent_rhs_size = false;
-
-        match op.value().op_category() {
+        let (out, lhs) = match op.value().op_category() {
             SASTPcodeOpCategory::Comparison => {
                 // If op is a comparison operation, it will output either 0 or 1, which is put into a single byte.
                 // See 7.7.3. Varnode Sizes.
-                // We set the size to undetermined, to allow the lhs and rhs to resolve to fitting values.
-                // The output however, will be constrained to a single byte.
-                size_constraint = MOIRMaybeSize::Undetermined;
+                // The output is constrained to a single byte.
+                let out = out.unwrap_or_else(|| scope.allocate_temporary(MOIRMaybeSize::Determined(1)));
+                match scope.size_of_local(out) {
+                    MOIRMaybeSize::Determined(1) => {}
+                    MOIRMaybeSize::Determined(_) => {
+                        todo!("Generate error for invalid size for comparison operation. Out must be size 1")
+                    }
+                    MOIRMaybeSize::Undetermined => {
+                        // The size of out was undetermined, so we can just constrain it now.
+                        let mut out = out.into();
+                        scope.constrain_local_size(&mut out, 1)?;
+                    }
+                }
+                (out, None)
             }
             SASTPcodeOpCategory::Shift => {
                 // The rhs for shift operations is unconstrained.
                 independent_rhs_size = true;
+                let out = out.unwrap_or_else(|| scope.allocate_temporary(MOIRMaybeSize::Undetermined));
+                // Use the same temporary for out and lhs since they have to be the same size.
+                (out, Some(out))
             }
-            SASTPcodeOpCategory::Regular => {}
-        }
-        let lhs = self.atomize_expression(scope, instructions, size_constraint, lhs)?;
+            SASTPcodeOpCategory::Regular => {
+                let out = out.unwrap_or_else(|| scope.allocate_temporary(MOIRMaybeSize::Undetermined));
+                // Use the same temporary for out and lhs since they have to be the same size.
+                (out, Some(out))
+            }
+        };
+
+        let lhs = self.atomize_expression(scope, instructions, lhs, ast_lhs)?;
+
         // The size of the rhs must be the same as the lhs. Since size_constraint was given to lhs,
         // we can now just assume lhs has a determined size if size_constraint had a determined size.
         // The exception to this are shift operations, where th rhs is independent of the lhs.
@@ -104,29 +124,41 @@ impl SleighCompiler {
         } else {
             lhs.size(scope)
         };
-        let rhs = self.atomize_expression(scope, instructions, rhs_size, rhs)?;
-        // rhs.size must be equal to lhs.size at this point. Either both undefined or both the same size.
+        // Rhs needs to be allocated separately, since we need to keep both intermediate values at the same time
+        // However, we can directly allocate the correct size.
+        let rhs = scope.allocate_temporary(rhs_size);
+        let rhs = self.atomize_expression(scope, instructions, Some(rhs), ast_rhs)?;
+
         if let MOIRLocal::Const(lhs) = lhs {
             if let MOIRLocal::Const(rhs) = rhs {
                 trace!("Performing const optimization since lhs and rhs are const");
                 // Constant folding. We can calculate this at compile time.
                 return self
                     .const_eval_binary_op(lhs, op.into_value(), rhs)
+                    .map(MOIRLocal::Const)
                     .map_err(|e| generate_const_eval_error(e.to_string().as_str(), lhs_span, rhs_span));
             }
         }
 
+        // If out is not yet determined, try to constrain its size now.
+        if let MOIRMaybeSize::Undetermined = scope.size_of_local(out) {
+            match op.value().op_category() {
+                SASTPcodeOpCategory::Comparison => {
+                    let mut out = out.into();
+                    scope.constrain_local_size(&mut out, 1)?;
+                }
+                SASTPcodeOpCategory::Shift | SASTPcodeOpCategory::Regular => {
+                    let mut out = out.into();
+                    if let MOIRMaybeSize::Determined(lhs_size) = lhs.size(scope) {
+                        scope.constrain_local_size(&mut out, lhs_size)?;
+                    }
+                }
+            }
+        }
+
         // At least one side of the op is not const, so we cannot fold.
-        let out = if let SASTPcodeOpCategory::Comparison = op.value().op_category() {
-            // if we have a comparison operation, the size of out is always one byte.
-            // See 7.7.3 Varnode Sizes.
-            scope.allocate_temporary(MOIRMaybeSize::Determined(1))
-        } else {
-            // if lhs and rhs depend on each other, then lhs must have the correct size.
-            // if they don't depend on each other, then lhs is the only relevant size to consider.
-            scope.allocate_temporary(lhs.size(scope))
-        };
         let op = op.into_value().into();
+        trace!("Sizes: {:?} = {:?} op {:?}", scope.size_of_local(out), lhs.size(scope), rhs.size(scope));
         instructions.push(moir_instruction!(out = lhs op rhs));
         Ok(out.into())
     }
@@ -136,7 +168,7 @@ impl SleighCompiler {
         lhs: MOIRConst,
         op: SASTPCodeBinaryOp,
         rhs: MOIRConst,
-    ) -> SleighCompilerResult<MOIRLocal> {
+    ) -> SleighCompilerResult<MOIRConst> {
         match lhs {
             MOIRConst::ConstN(v, size) => {
                 todo!("Const eval on ConstN currently unsupported")
@@ -175,25 +207,21 @@ impl SleighCompiler {
                 todo!("Cannot const evaluate undetermined size constants")
             }
         }
-        .map(MOIRLocal::Const)
     }
 
-    pub(super) fn atomize_unary_operation(
+    pub fn atomize_unary_operation(
         &mut self,
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
-        size_constraint: MOIRMaybeSize,
+        out: Option<MOIRLocalId>,
         op: Spanned<SASTPCodeUnaryOp>,
         operand: Spanned<SASTPCodeExpression>,
     ) -> SleighCompilerResult<MOIRLocal> {
-        let rhs = self.atomize_expression(scope, instructions, size_constraint, operand)?;
-        match rhs {
-            MOIRLocal::Local(rhs) => {
-                // rhs is a value slice. Generate an instruction to process the value with op.
-                // If rhs is determined, use its size. Otherwise, use the size_constraint.
-                let out = scope.allocate_temporary(scope.size_of_local(rhs).or(size_constraint));
+        let out = self.atomize_expression(scope, instructions, out, operand)?;
+        match out {
+            MOIRLocal::Local(out) => {
                 let op = MOIROperation::from(op.into_value());
-                instructions.push(moir_instruction!(out = op rhs));
+                instructions.push(moir_instruction!(out = op out));
                 Ok(out.into())
             }
             MOIRLocal::Const(operand) => {
@@ -202,12 +230,8 @@ impl SleighCompiler {
                     MOIRConst::ConstN(operand, size) => {
                         todo!("Constant folding for ConstN currently unsupported")
                     }
-                    MOIRConst::Const128(operand) => {
-                        const_eval_unary_op::<u128, i128>(op.into_value(), operand)?.into()
-                    }
-                    MOIRConst::Const64(operand) => {
-                        const_eval_unary_op::<u64, i64>(op.into_value(), operand)?.into()
-                    }
+                    MOIRConst::Const128(operand) => const_eval_unary_op::<u128, i128>(op.into_value(), operand)?.into(),
+                    MOIRConst::Const64(operand) => const_eval_unary_op::<u64, i64>(op.into_value(), operand)?.into(),
                     MOIRConst::Const32(operand) => const_eval_unary_op::<u32, i32>(op.into_value(), operand)?.into(),
                     MOIRConst::Const16(operand) => const_eval_unary_op::<u16, i16>(op.into_value(), operand)?.into(),
                     MOIRConst::Const8(operand) => const_eval_unary_op::<u8, i8>(op.into_value(), operand)?.into(),
@@ -219,7 +243,7 @@ impl SleighCompiler {
         }
     }
 
-    pub(super) fn atomize_dereference(
+    pub fn atomize_dereference(
         &mut self,
         instructions: &mut Vec<MOIRInstruction>,
     ) -> SleighCompilerResult<MOIRLocal> {
@@ -228,7 +252,10 @@ impl SleighCompiler {
 
     /// The subpiece operation throws away the lower N bits.
     /// The resulting size of the output is thus (size - N).
-    pub(super) fn atomize_subpiece(
+    /// Since we simply transform a local with this atomization,
+    /// we only need a size constraint and no out node and also
+    /// always return a local.
+    pub fn atomize_subpiece(
         &mut self,
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
@@ -273,12 +300,13 @@ impl SleighCompiler {
         value.slice(scope, offset, offset + size)
     }
 
-    pub(super) fn atomize_bitrange(
+    pub fn atomize_bitrange(
         &mut self,
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         bitrange: Spanned<SASTPCodeBitRange>,
     ) -> SleighCompilerResult<MOIRLocal> {
+        // TODO: Rework this to take in an out var from the outside.
         let (bitrange, bitrange_scope) = bitrange.into_tuple();
         let value = scope.resolve_ident(&self.spec_builder, bitrange.ident.transmute())?;
         let shift_amount = MOIRLocal::from(bitrange.lsb.into_value());
@@ -302,7 +330,109 @@ impl SleighCompiler {
         Ok(out.into())
     }
 
-    pub(super) fn atomize_identifier(
+    pub fn atomize_load(
+        &mut self,
+        scope: &mut MOIRScope,
+        instructions: &mut Vec<MOIRInstruction>,
+        out: Option<MOIRLocalId>,
+        deref: Spanned<SASTPCodeDeref>,
+    ) -> SleighCompilerResult<MOIRLocal> {
+        trace!("Atomizing load expression");
+        let (deref, deref_span) = deref.into_tuple();
+        let value_size = deref
+            .size
+            .map(Spanned::into_value)
+            .map(MOIRMaybeSize::Determined)
+            .unwrap_or(MOIRMaybeSize::Undetermined);
+        let out_size = out
+            .map(|id| scope.size_of_local(id))
+            .unwrap_or(MOIRMaybeSize::Undetermined);
+
+        // If out is not specified we allocate our own out variable to store the result in.
+        let out = out.unwrap_or_else(|| scope.allocate_temporary(out_size.or(value_size)));
+        // TODO: Maybe we can do this less dirty?
+        let space_id = deref
+            .space
+            .map(Spanned::transmute)
+            .ok_or(|| SleighCompilerError::SymbolUndeclared)
+            .or_else(|_| self.spec_builder.default_space_ident())?;
+        let space = self.spec_builder.space_id_by_ident(space_id)?;
+        let addr = self.atomize_expression(scope, instructions, None, *deref.expression)?;
+        if let MOIRMaybeSize::Determined(out_size) = out_size {
+            if let MOIRMaybeSize::Determined(value_size) = value_size {
+                match out_size.cmp(&value_size) {
+                    Ordering::Less => {
+                        todo!("Generate error for out too small for loaded value")
+                    }
+                    Ordering::Equal => {
+                        // If the size of out is equal to the size of the load, we can just perform the load.
+                        instructions.push(moir_instruction!(out = *[space]addr));
+                    }
+                    Ordering::Greater => {
+                        // If the size of out is larger than the loaded value, we perform a zero extend.
+                        // Insert the operation here. The jit might optimize the zero extend + load into one op.
+                        // Allocate tmp for loading the value into a correctly sized varnode.
+                        let tmp = scope.allocate_temporary(value_size.into());
+                        // Load the value
+                        instructions.push(moir_instruction!(tmp = *[space]addr));
+                        // Convert localid into local and then push zext instruction.
+                        let tmp = tmp.into();
+                        instructions.push(moir_instruction!(out = zext(tmp)));
+                    }
+                }
+            }
+        }
+        Ok(out.into())
+    }
+
+    /// Translate the address_of operation. The sleigh specification allows taking the
+    /// address of a varnode in the const space. This however translates directly
+    /// to just providing the constant value, since the sleigh spec says that the offset
+    /// of a varnode in the const address space corresponds to its value.
+    /// I.e. the address of varnode {space: id_const, offset: 42, size: 4} translates to
+    /// the constant value 42 with size 4.
+    /// The address of and deref operations on values in the const address space or on
+    /// constant values are translated on constructor invocation into their constant values.
+    ///
+    /// Quote from pcoderef.html:
+    /// If a varnode is specified as an offset into the constant address space, that
+    /// offset is interpreted as a constant, or immediate value, in any p-code operation
+    /// that uses that varnode. The size of the varnode, in this case, can be treated
+    /// as the size or precision available for the encoding of the constant.
+    pub fn atomize_address_of(
+        &mut self,
+        scope: &mut MOIRScope,
+        instructions: &mut Vec<MOIRInstruction>,
+        out: Option<MOIRLocalId>,
+        address_of: Spanned<SASTPCodeAddressOf>,
+    ) -> SleighCompilerResult<MOIRLocal> {
+        let (address_of, _) = address_of.into_tuple();
+        let size = address_of
+            .size
+            .map(|s| MOIRMaybeSize::Determined(s.into_value()))
+            .unwrap_or(MOIRMaybeSize::Undetermined);
+        if let MOIRMaybeSize::Determined(size_constraint) = out
+            .map(|id| scope.size_of_local(id))
+            .unwrap_or(MOIRMaybeSize::Undetermined)
+        {
+            // If out has a size and the address_of operator also specifies
+            // a size, they have to match.
+            if let MOIRMaybeSize::Determined(size) = size {
+                if size != size_constraint {
+                    todo!("Generate error report for mismatched sizes")
+                }
+            }
+        }
+        // The size of rhs is not relevant, so we leave it up to the atomization to allocate if necessary.
+        let rhs = self.atomize_expression(scope, instructions, None, *address_of.expression)?;
+        let lhs = out.unwrap_or_else(|| scope.allocate_temporary(size));
+        instructions.push(moir_instruction!(lhs = &rhs));
+        Ok(lhs.into())
+    }
+
+    /// Atomizing an identifier always returns a local since we don't want to simply copy this into an out local.
+    /// Hence, we also just need a size constraint if applicable.
+    pub fn atomize_identifier(
         &mut self,
         scope: &mut MOIRScope,
         size_constraint: MOIRMaybeSize,
@@ -343,98 +473,9 @@ impl SleighCompiler {
         Ok(local.into())
     }
 
-    pub(super) fn atomize_load(
-        &mut self,
-        scope: &mut MOIRScope,
-        instructions: &mut Vec<MOIRInstruction>,
-        size_constraint: MOIRMaybeSize,
-        deref: Spanned<SASTPCodeDeref>,
-    ) -> SleighCompilerResult<MOIRLocal> {
-        trace!("Atomizing load expression");
-        let (deref, deref_span) = deref.into_tuple();
-        let value_size = deref
-                .size
-                .map(Spanned::into_value)
-                .map(MOIRMaybeSize::Determined)
-                .unwrap_or(MOIRMaybeSize::Undetermined);
-        // We want to first try and use the output size. If it is undetermined, try to use the size specified in deref.
-        let out = scope.allocate_temporary(size_constraint.or(value_size));
-        // TODO: Maybe we can do this less dirty?
-        let space_id = deref
-            .space
-            .map(Spanned::transmute)
-            .ok_or(|| SleighCompilerError::SymbolUndeclared)
-            .or_else(|_| self.spec_builder.default_space_ident())?;
-        let space = self.spec_builder.space_id_by_ident(space_id)?;
-        let addr = self.atomize_expression(scope, instructions, MOIRMaybeSize::Undetermined, *deref.expression)?;
-        if let MOIRMaybeSize::Determined(out_size ) = size_constraint {
-            if let MOIRMaybeSize::Determined(value_size) = value_size {
-                match out_size.cmp(&value_size) {
-                    Ordering::Less => {todo!("Generate error for out too small for loaded value")}
-                    Ordering::Equal => {
-                        // If the size of out is equal to the size of the load, we can just perform the load.
-                        instructions.push(moir_instruction!(out = *[space]addr));
-                    }
-                    Ordering::Greater => {
-                        // If the size of out is larger than the loaded value, we perform a zero extend.
-                        // Insert the operation here. The jit might optimize the zero extend + load into one op.
-                        // Allocate tmp for loading the value into a correctly sized varnode.
-                        let tmp = scope.allocate_temporary(value_size.into());
-                        // Load the value
-                        instructions.push(moir_instruction!(tmp = *[space]addr));
-                        // Convert localid into local and then push zext instruction.
-                        let tmp = tmp.into();
-                        instructions.push(moir_instruction!(out = zext(tmp)));
-                    }
-                }
-            }
-        }
-        Ok(out.into())
-    }
-
-    /// Translate the address_of operation. The sleigh specification allows taking the
-    /// address of a varnode in the const space. This however translates directly
-    /// to just providing the constant value, since the sleigh spec says that the offset
-    /// of a varnode in the const address space corresponds to its value.
-    /// I.e. the address of varnode {space: id_const, offset: 42, size: 4} translates to
-    /// the constant value 42 with size 4.
-    /// The address of and deref operations on values in the const address space or on
-    /// constant values are translated on constructor invocation into their constant values.
-    ///
-    /// Quote from pcoderef.html:
-    /// If a varnode is specified as an offset into the constant address space, that
-    /// offset is interpreted as a constant, or immediate value, in any p-code operation
-    /// that uses that varnode. The size of the varnode, in this case, can be treated
-    /// as the size or precision available for the encoding of the constant.
-    pub(super) fn atomize_address_of(
-        &mut self,
-        scope: &mut MOIRScope,
-        instructions: &mut Vec<MOIRInstruction>,
-        size_constraint: MOIRMaybeSize,
-        address_of: Spanned<SASTPCodeAddressOf>,
-    ) -> SleighCompilerResult<MOIRLocal> {
-        let (address_of, _) = address_of.into_tuple();
-        let size = address_of
-            .size
-            .map(|s| MOIRMaybeSize::Determined(s.into_value()))
-            .unwrap_or(MOIRMaybeSize::Undetermined);
-        if let MOIRMaybeSize::Determined(size_constraint) = size_constraint {
-            // If the constraint is specified and the address_of operator also specifies
-            // a size, they have to match.
-            if let MOIRMaybeSize::Determined(size) = size {
-                if size != size_constraint {
-                    todo!("Generate error report for mismatched sizes")
-                }
-            }
-        }
-        let size = size_constraint.or(size);
-        let lhs = scope.allocate_temporary(size);
-        let rhs = self.atomize_expression(scope, instructions, size, *address_of.expression)?;
-        instructions.push(moir_instruction!(lhs = &rhs));
-        Ok(lhs.into())
-    }
-
-    pub(super) fn atomize_literal(
+    /// Atomizing a literal always returns a local since we don't want to simply copy this into an out local.
+    /// Hence, we also just need a size constraint if applicable.
+    pub fn atomize_literal(
         &mut self,
         size_constraint: MOIRMaybeSize,
         literal: Spanned<SASTLiteral>,
@@ -442,7 +483,7 @@ impl SleighCompiler {
         Ok(MOIRConst::new_with_size(literal.into_value(), size_constraint)?.into())
     }
 
-    pub(super) fn atomize_error(
+    pub fn atomize_error(
         &mut self,
         instructions: &mut Vec<MOIRInstruction>,
     ) -> SleighCompilerResult<MOIRLocal> {

@@ -1,4 +1,7 @@
-use crate::compiler::ast::common::{SASTIdent, SASTLiteral};
+use crate::compiler::ast::common::{
+    SASTIdent,
+    SASTLiteral,
+};
 use crate::compiler::ast::pcode::addressof::SASTPCodeAddressOf;
 use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
@@ -67,15 +70,15 @@ impl Display for SASTPCodeExpression {
             SASTPCodeExpression::BinaryOperation { lhs, op, rhs } => {
                 write!(f, "({} {} {})", lhs.value(), op.value(), rhs.value())
             }
-            SASTPCodeExpression::UnaryOperation { op, operand } => write!(f, "unary"),
+            SASTPCodeExpression::UnaryOperation { op, operand } => write!(f, "{} {}", op.value(), operand.value()),
             SASTPCodeExpression::Dereference { space, size } => write!(f, "*{}:{}", space.value(), size.value()),
-            SASTPCodeExpression::Subpiece(_) => write!(f, ""),
-            SASTPCodeExpression::Bitrange(_) => write!(f, ""),
+            SASTPCodeExpression::Subpiece(subpiece) => write!(f, "subpiece"),
+            SASTPCodeExpression::Bitrange(_) => write!(f, "bitrange"),
             SASTPCodeExpression::Identifier(ident) => write!(f, "{}", ident.value()),
-            SASTPCodeExpression::Load(_) => write!(f, ""),
-            SASTPCodeExpression::AddressOf(_) => write!(f, ""),
+            SASTPCodeExpression::Load(load) => write!(f, "load"),
+            SASTPCodeExpression::AddressOf(_) => write!(f, "address_of"),
             SASTPCodeExpression::Literal(literal) => write!(f, "{}", literal.value()),
-            SASTPCodeExpression::Error(_) => write!(f, ""),
+            SASTPCodeExpression::Error(_) => write!(f, "error"),
         }
     }
 }
@@ -156,7 +159,7 @@ pub enum SASTPCodeBinaryOp {
     IntNotEquals,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Display)]
 pub enum SASTPCodeUnaryOp {
     /// `!v0`: Negation of boolean value v0.
     BoolNegate,
@@ -172,9 +175,11 @@ impl SASTPCodeBinaryOp {
     pub fn op_category(&self) -> SASTPcodeOpCategory {
         use SASTPCodeBinaryOp::*;
         match self {
-            BoolOr | BoolAnd | BoolXor | IntSGreater | IntSLess | IntSLessEqual | IntSGreaterEqual | IntLess | IntGreater
-            | IntLessEqual | IntGreaterEqual | FloatLess | FloatGreater | FloatLessEqual | FloatGreaterEqual
-            | FloatEquals | FloatNotEquals | IntEquals | IntNotEquals => SASTPcodeOpCategory::Comparison,
+            BoolOr | BoolAnd | BoolXor | IntSGreater | IntSLess | IntSLessEqual | IntSGreaterEqual | IntLess
+            | IntGreater | IntLessEqual | IntGreaterEqual | FloatLess | FloatGreater | FloatLessEqual
+            | FloatGreaterEqual | FloatEquals | FloatNotEquals | IntEquals | IntNotEquals => {
+                SASTPcodeOpCategory::Comparison
+            }
             IntLeft | IntRight | IntSRight => SASTPcodeOpCategory::Shift,
             _ => SASTPcodeOpCategory::Regular,
         }
