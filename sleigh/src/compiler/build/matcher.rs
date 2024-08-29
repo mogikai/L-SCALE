@@ -2,7 +2,7 @@
 use slotmap::new_key_type;
 
 use crate::spec::builder::MOIRSymbolId;
-use crate::spec::moir::field::FieldId;
+use crate::spec::moir::field::{FieldId, MOIRFieldParent};
 use crate::spec::moir::table::TableId;
 use crate::spec::moir::token::TokenId;
 use crate::spec::moir::varnode::VarNodeId;
@@ -10,127 +10,85 @@ use crate::spec::moir::varnode::VarNodeId;
 // TODO: for now we assume each token to be of a maximum of 8 bytes, but this doesn't have to be
 // the case probably
 
-#[derive(Debug)]
-pub enum FieldMatcherConstraint {
-    BitPattern(u64), // r1=0xff00
-    Field(FieldId),  // r1=r2
+#[derive(Debug, Clone)]
+pub enum FieldMatcherPattern {
+    // r1=0xff00
+    BitPattern {
+        value: u64,
+        shift: u8,
+        mask: u64,
+    },
+    // r1=r2
+    Field(FieldId),
 }
 
 /// The simplest kind of matcher. It matches a single field against a value or another field.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FieldMatcher {
-    field: FieldId,
-    constraint: FieldMatcherConstraint,
+    pub(super) field: FieldId,
+    pub(super) pattern: FieldMatcherPattern,
 }
 
 impl FieldMatcher {
     pub fn new(
         field: FieldId,
-        constraint: FieldMatcherConstraint,
+        pattern: FieldMatcherPattern,
     ) -> Self {
-        Self { field, constraint }
-    }
-
-    pub fn r#match(
-        &self,
-        token_value: u64,
-    ) -> Option<Matching> {
-        todo!("Pass shift, mask, value and match")
-        // match self.constraint {
-        //     FieldMatcherConstraint::BitPattern { shift, mask, value } => {
-        //         if ((token_value >> shift) & mask) == value {
-        //             return Some(self.field);
-        //         }
-
-        //         None
-        //     }
-        //     FieldMatcherConstraint::Field(other) => {
-        //         if self.field == other {
-        //             return Some(self.field);
-        //         }
-
-        //         None
-        //     }
-        // }
+        Self { field, pattern }
     }
 }
 
 // the left-hand side of a matcher expression can be a reference to either a field or a subtable
 // TODO do we miss symbols?
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MatcherReference {
     Field(FieldId),
     Subtable(TableId),
     Varnode(VarNodeId),
 }
 
-#[derive(Debug)]
-pub enum MatcherExpression {
-    Field(FieldMatcher),                                 // field=value or field=field
-    Linkage(MatcherReference),                           // links a local symbol to a global symbol
-    Or(Box<MatcherExpression>, Box<MatcherExpression>),  // lhs | rhs
-    And(Box<MatcherExpression>, Box<MatcherExpression>), // lhs & rhs
-    Concat {
-        // need to store tokens for each Concat since they are different (no need
-        // to store for Or and And since they always have to use the same)
-        lhs: Box<MatcherExpression>,
-        lhs_tokens: Vec<(TokenId, u16)>,
-        rhs: Box<MatcherExpression>,
-        rhs_tokens: Vec<(TokenId, u16)>,
-    },
+#[derive(Debug, Clone)]
+pub enum MatcherAtom {
+    Field(FieldMatcher), // field=value or field=field
+    Linkage(MatcherReference),  // links a local symbol to a global symbol (subtable, varnode...)
 }
 
-impl MatcherExpression {
-    pub fn r#match(
-        &self,
-        bytes: &[u8],
-    ) -> Option<Vec<Matching>> {
-        // bytes are exactly the ones needed for the tokens
+/// Or and Concat expressions are removed so we end up with only And at the end
+#[derive(Debug, Clone)]
+pub struct MatcherConjunction {
+    pub(super) matcher_atoms: Vec<MatcherAtom>,
+}
 
-        match self {
-            MatcherExpression::Field(field_matcher) => {
-                let token_value = u64::from_be_bytes(
-                    bytes
-                        .try_into()
-                        .expect("Token byte slice has incorrect length"),
-                );
-                field_matcher.r#match(token_value).map(|m| vec![m])
-            }
-            MatcherExpression::Linkage(reference) => todo!("Get subtable matcher and return its result"),
-            MatcherExpression::Or(lhs, rhs) => lhs.r#match(bytes).or_else(|| rhs.r#match(bytes)),
-            MatcherExpression::And(lhs, rhs) => {
-                if let Some(mut m_lhs) = lhs.r#match(bytes) {
-                    if let Some(mut m_rhs) = rhs.r#match(bytes) {
-                        m_lhs.append(&mut m_rhs);
-                        return Some(m_lhs);
-                    }
-                }
-
-                None
-            }
-            MatcherExpression::Concat {
-                lhs,
-                lhs_tokens,
-                rhs,
-                rhs_tokens,
-            } => {
-                todo!()
-            }
+impl MatcherConjunction {
+    pub fn new(matcher_atoms: Vec<MatcherAtom>) -> Self {
+        Self {
+            matcher_atoms,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum MatcherToken {
+    Determined(MOIRFieldParent),
+    Undetermined, // put at either end of list for left/right justify
 }
 
 /// Match a token against an expression using field matchers.
 #[derive(Debug)]
 pub struct Matcher {
-    pub(super) expression: Box<MatcherExpression>,
+    // Each conjunction belongs to the corresponding MOIRFieldParent defined down below in
+    // token_list.
+    pub(super) conjunctions: Vec<MatcherConjunction>,
+    // ordered list of used tokens and context registers
+    pub(super) token_list: Vec<MatcherToken>,
 
     // this is known before the matcher is run on anything and should only
-    // contain fields as well as matcherreference types (i.e. subtables and varnodes)
+    // contain fields as well as MatcherReference types (i.e. fields, subtables and varnodes)
     pub(super) symbols_used: Vec<MOIRSymbolId>,
 }
 
 /// A list of all symbols that matched are implicitly given through the matcher
+/// TODO find good structure
 #[derive(Debug)]
 pub enum Matching {
     FieldConstant(FieldId, u64),
@@ -140,11 +98,15 @@ pub enum Matching {
 
 impl Matcher {
     pub fn new(
-        expression: Box<MatcherExpression>,
+        conjunctions: Vec<MatcherConjunction>,
+        // we need to include fields from context as well to be able to extract them later, but
+        // they are skipped when validating e.g. token equality for And expressions
+        token_list: Vec<MatcherToken>,
         symbols_used: Vec<MOIRSymbolId>,
     ) -> Self {
         Self {
-            expression,
+            conjunctions,
+            token_list,
             symbols_used,
         }
     }
@@ -153,16 +115,8 @@ impl Matcher {
         &self,
         bytes: &[u8],
     ) -> Option<Vec<Matching>> {
-        todo!()
+        todo!("Match")
     }
 }
-
-// #[derive(Error)]
-// pub enum MatcherError {
-//     #[error("The number of bytes does not fit the matcher.")]
-//     SizeError,
-// }
-
-// pub type MatcherResult<T = ()> = Result<T, MatcherError>;
 
 new_key_type! { pub struct MatcherId; }

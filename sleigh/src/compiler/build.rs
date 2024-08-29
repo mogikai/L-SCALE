@@ -38,8 +38,7 @@ use crate::spec::moir::address_space::{
     MOIRSpaceType,
 };
 use crate::spec::moir::field::{
-    MOIRField,
-    MOIRFieldParent,
+    MOIRBitRange, MOIRField, MOIRFieldParent
 };
 use crate::spec::moir::token::MOIRToken;
 use crate::spec::moir::varnode::MOIRVarNode;
@@ -263,7 +262,7 @@ impl SleighCompiler {
         if let Some(token_id) = self.report_error_or_unwrap(result)? {
             for field in token.fields.into_iter() {
                 let name = field.name.clone().transmute();
-                let range = field.start.clone().into_value()..field.end.clone().into_value() + 1;
+                let range = MOIRBitRange::new(*field.start.value() as u8, *field.end.value() as u8);
                 if let Some(field) = self.make_field(MOIRFieldParent::Token(token_id), bits, range)? {
                     let result = self.spec_builder.define_field(name, field);
                     self.report_error_or_unwrap(result)?;
@@ -281,7 +280,7 @@ impl SleighCompiler {
             .spec_builder
             .define_context(context.varnode.clone().transmute())?;
         for field in &context.fields {
-            let range = field.start.clone().into_value()..field.end.clone().into_value() + 1;
+            let range = MOIRBitRange::new(*field.start.value() as u8, *field.end.value() as u8);
             if let Some(moir_field) = self.make_field(MOIRFieldParent::Context(context_id), bits, range)? {
                 let result = self
                     .spec_builder
@@ -301,11 +300,11 @@ impl SleighCompiler {
         &mut self,
         parent: MOIRFieldParent,
         bits: u64,
-        field_range: Range<u64>,
+        field_range: MOIRBitRange,
     ) -> Result<Option<MOIRField>, SleighCompilerError> {
         if field_range.start > field_range.end {
             todo!("Generate correct error report and return Ok(None)")
-        } else if field_range.end - field_range.start > bits {
+        } else if field_range.end - field_range.start >= bits as u8 {
             todo!("Generate correct error report and return Ok(None)")
         } else {
             // The variables, values, and strings fields are later attached with attach statements.

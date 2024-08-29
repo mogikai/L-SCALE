@@ -6,9 +6,27 @@ use std::ops::Range;
 use super::context::MOIRContextId;
 use super::varnode::VarNodeId;
 
+#[derive(Debug, Clone)]
+pub struct MOIRBitRange {
+    pub start: u8,
+    pub end: u8,
+}
+
+impl MOIRBitRange {
+    pub fn new(start: u8, end: u8) -> Self {
+        Self {
+            start, end
+        }
+    }
+
+    pub fn size(&self) -> u8 {
+        self.end - self.start
+    }
+}
+
 // context and token fields are treated the same due to their similarity and are
 // only discernible by their respective parent (either a token or a context definition)
-#[derive(Debug)]
+#[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
 pub enum MOIRFieldParent {
     Token(TokenId),
     Context(MOIRContextId),
@@ -18,7 +36,7 @@ pub enum MOIRFieldParent {
 pub struct MOIRField {
     /// The token or context this field is associated with.
     pub parent: MOIRFieldParent,
-    pub bits: Range<u64>,
+    pub bits: MOIRBitRange,
     /// Attach variables can attach varnodes to the field.
     /// Each value is then mapped to a specific varnode identifier.
     /// e.g. 0 -> EAX, 1 -> EBX, 2 -> ECX, 3 -> EDX

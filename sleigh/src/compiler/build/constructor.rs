@@ -1,16 +1,3 @@
-use super::matcher::{
-    FieldMatcher,
-    FieldMatcherConstraint,
-    Matcher,
-    MatcherExpression,
-    MatcherReference,
-};
-use crate::compiler::ast::constructor::bit_pattern_section::{
-    SASTBinaryOp,
-    SASTBitPatternConstraint,
-    SASTConstraintOp,
-    SASTConstraintPattern,
-};
 use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::ast::Spanned;
 use crate::compiler::build::trace_build;
