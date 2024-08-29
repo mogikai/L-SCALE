@@ -23,7 +23,10 @@ use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
-use crate::spec::builder::StringId;
+use crate::spec::builder::{
+    MOIRSymbolId,
+    StringId,
+};
 use crate::spec::moir::code::{
     moir_instruction,
     MOIRInstruction,
@@ -42,9 +45,8 @@ use crate::spec::moir::varnode::{
     MOIRLocal,
     MOIRSlice,
     MOIRVarNode,
-    MOIRVarNodeId,
+    VarNodeId,
 };
-use crate::spec::MOIRSymbol;
 use tracing::{
     debug,
     trace,

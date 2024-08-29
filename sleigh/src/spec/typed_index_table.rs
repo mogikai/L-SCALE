@@ -33,6 +33,24 @@ impl<K, V> Default for TypedIndexTable<K, V> {
     }
 }
 
+impl<K, V> FromIterator<(K, V)> for TypedIndexTable<K, V> {
+    fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
+        Self {
+            0: Vec::from_iter(iter.into_iter().map(|(k, v)| v)),
+            1: Default::default(),
+        }
+    }
+}
+
+impl<K, V> Extend<(K, V)> for TypedIndexTable<K, V> {
+    fn extend<T: IntoIterator<Item = (K, V)>>(
+        &mut self,
+        iter: T,
+    ) {
+        self.0.extend(iter.into_iter().map(|(k, v)| v));
+    }
+}
+
 impl<K, V> TypedIndexTable<K, V> {
     pub fn len(&self) -> usize {
         self.0.len()
@@ -53,6 +71,18 @@ where
     ) -> K {
         self.0.push(element);
         K::from(self.0.len() - 1)
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &V> {
+        self.0.iter()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (K, &V)> {
+        self.0.iter().enumerate().map(|(i, v)| (K::from(i), v))
+    }
+
+    pub fn into_iter(self) -> impl Iterator<Item = (K, V)> {
+        self.0.into_iter().enumerate().map(|(i, v)| (K::from(i), v))
     }
 }
 

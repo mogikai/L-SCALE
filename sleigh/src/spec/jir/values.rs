@@ -1,17 +1,22 @@
-use crate::new_typed_index_table_id;
 use crate::spec::jir::common::JIRSize;
-use crate::spec::jir::space::JIRSpaceId;
+use crate::spec::moir::address_space::SpaceId;
+use crate::spec::moir::varnode::VarNodeId;
 
+#[derive(Debug)]
 pub struct JIRVarNode {
-    pub space_id: JIRSpaceId,
+    pub space_id: SpaceId,
     pub offset: u64,
     pub size: JIRSize,
 }
 
-new_typed_index_table_id! { pub struct JIRVarNodeId; }
+impl JIRVarNode {
+    pub fn end(&self) -> u64 {
+        self.offset + self.size as u64
+    }
+}
 
 pub struct JIRSlice {
-    pub varnode_id: JIRVarNodeId,
+    pub varnode_id: VarNodeId,
     pub start: JIRSize,
     pub end: JIRSize,
 }

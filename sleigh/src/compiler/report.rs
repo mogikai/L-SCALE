@@ -1,12 +1,8 @@
 use crate::compiler::ast::Spanned;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::InputSpan;
-use crate::spec::builder::StringId;
+use crate::spec::builder::MOIRSymbolId;
 use crate::spec::moir::common::MOIRSize;
-use crate::spec::{
-    MOIRSymbol,
-    ProcessorSpecificationError,
-};
 use ariadne::{
     ColorGenerator,
     Fmt,
@@ -75,7 +71,7 @@ pub fn generate_invalid_symbol_type_error(
     defined_symbol: InputSpan,
     symbol_reference: Spanned<&str>,
     expected: &str,
-    found: MOIRSymbol,
+    found: MOIRSymbolId,
 ) -> SleighCompilerError {
     let mut colors = ColorGenerator::new();
     let color_a = colors.next();

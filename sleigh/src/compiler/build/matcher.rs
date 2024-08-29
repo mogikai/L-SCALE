@@ -1,33 +1,31 @@
 use chumsky::primitive::todo;
 use slotmap::new_key_type;
 
-use crate::spec::moir::field::{
-    MOIRFieldId,
-};
-use crate::spec::moir::table::MOIRTableId;
-use crate::spec::moir::token::MOIRTokenId;
-use crate::spec::moir::varnode::MOIRVarNodeId;
-use crate::spec::MOIRSymbol;
+use crate::spec::builder::MOIRSymbolId;
+use crate::spec::moir::field::FieldId;
+use crate::spec::moir::table::TableId;
+use crate::spec::moir::token::TokenId;
+use crate::spec::moir::varnode::VarNodeId;
 
 // TODO: for now we assume each token to be of a maximum of 8 bytes, but this doesn't have to be
 // the case probably
 
 #[derive(Debug)]
 pub enum FieldMatcherConstraint {
-    BitPattern(u64),    // r1=0xff00
-    Field(MOIRFieldId), // r1=r2
+    BitPattern(u64), // r1=0xff00
+    Field(FieldId),  // r1=r2
 }
 
 /// The simplest kind of matcher. It matches a single field against a value or another field.
 #[derive(Debug)]
 pub struct FieldMatcher {
-    field: MOIRFieldId,
+    field: FieldId,
     constraint: FieldMatcherConstraint,
 }
 
 impl FieldMatcher {
     pub fn new(
-        field: MOIRFieldId,
+        field: FieldId,
         constraint: FieldMatcherConstraint,
     ) -> Self {
         Self { field, constraint }
@@ -38,22 +36,22 @@ impl FieldMatcher {
         token_value: u64,
     ) -> Option<Matching> {
         todo!("Pass shift, mask, value and match")
-            // match self.constraint {
-            //     FieldMatcherConstraint::BitPattern { shift, mask, value } => {
-            //         if ((token_value >> shift) & mask) == value {
-            //             return Some(self.field);
-            //         }
+        // match self.constraint {
+        //     FieldMatcherConstraint::BitPattern { shift, mask, value } => {
+        //         if ((token_value >> shift) & mask) == value {
+        //             return Some(self.field);
+        //         }
 
-            //         None
-            //     }
-            //     FieldMatcherConstraint::Field(other) => {
-            //         if self.field == other {
-            //             return Some(self.field);
-            //         }
+        //         None
+        //     }
+        //     FieldMatcherConstraint::Field(other) => {
+        //         if self.field == other {
+        //             return Some(self.field);
+        //         }
 
-            //         None
-            //     }
-            // }
+        //         None
+        //     }
+        // }
     }
 }
 
@@ -61,24 +59,24 @@ impl FieldMatcher {
 // TODO do we miss symbols?
 #[derive(Debug)]
 pub enum MatcherReference {
-    Field(MOIRFieldId),
-    Subtable(MOIRTableId),
-    Varnode(MOIRVarNodeId),
+    Field(FieldId),
+    Subtable(TableId),
+    Varnode(VarNodeId),
 }
 
 #[derive(Debug)]
 pub enum MatcherExpression {
-    Field(FieldMatcher), // field=value or field=field
-    Linkage(MatcherReference),  // links a local symbol to a global symbol
+    Field(FieldMatcher),                                 // field=value or field=field
+    Linkage(MatcherReference),                           // links a local symbol to a global symbol
     Or(Box<MatcherExpression>, Box<MatcherExpression>),  // lhs | rhs
     And(Box<MatcherExpression>, Box<MatcherExpression>), // lhs & rhs
     Concat {
         // need to store tokens for each Concat since they are different (no need
         // to store for Or and And since they always have to use the same)
         lhs: Box<MatcherExpression>,
-        lhs_tokens: Vec<(MOIRTokenId, u16)>,
+        lhs_tokens: Vec<(TokenId, u16)>,
         rhs: Box<MatcherExpression>,
-        rhs_tokens: Vec<(MOIRTokenId, u16)>,
+        rhs_tokens: Vec<(TokenId, u16)>,
     },
 }
 
@@ -91,13 +89,15 @@ impl MatcherExpression {
 
         match self {
             MatcherExpression::Field(field_matcher) => {
-                let token_value = u64::from_be_bytes(bytes.try_into().expect("Token byte slice has incorrect length"));
+                let token_value = u64::from_be_bytes(
+                    bytes
+                        .try_into()
+                        .expect("Token byte slice has incorrect length"),
+                );
                 field_matcher.r#match(token_value).map(|m| vec![m])
-            },
+            }
             MatcherExpression::Linkage(reference) => todo!("Get subtable matcher and return its result"),
-            MatcherExpression::Or(lhs, rhs) => {
-                lhs.r#match(bytes).or_else(|| rhs.r#match(bytes))
-            },
+            MatcherExpression::Or(lhs, rhs) => lhs.r#match(bytes).or_else(|| rhs.r#match(bytes)),
             MatcherExpression::And(lhs, rhs) => {
                 if let Some(mut m_lhs) = lhs.r#match(bytes) {
                     if let Some(mut m_rhs) = rhs.r#match(bytes) {
@@ -107,7 +107,7 @@ impl MatcherExpression {
                 }
 
                 None
-            },
+            }
             MatcherExpression::Concat {
                 lhs,
                 lhs_tokens,
@@ -115,7 +115,7 @@ impl MatcherExpression {
                 rhs_tokens,
             } => {
                 todo!()
-            },
+            }
         }
     }
 }
@@ -127,13 +127,13 @@ pub struct Matcher {
 
     // this is known before the matcher is run on anything and should only
     // contain fields as well as matcherreference types (i.e. subtables and varnodes)
-    pub(super) symbols_used: Vec<MOIRSymbol>,
+    pub(super) symbols_used: Vec<MOIRSymbolId>,
 }
 
 /// A list of all symbols that matched are implicitly given through the matcher
 #[derive(Debug)]
 pub enum Matching {
-    FieldConstant(MOIRFieldId, u64),
+    FieldConstant(FieldId, u64),
     SubtableConstant,
     SubtableVarNode,
 }
@@ -141,7 +141,7 @@ pub enum Matching {
 impl Matcher {
     pub fn new(
         expression: Box<MatcherExpression>,
-        symbols_used: Vec<MOIRSymbol>,
+        symbols_used: Vec<MOIRSymbolId>,
     ) -> Self {
         Self {
             expression,

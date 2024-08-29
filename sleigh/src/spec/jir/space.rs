@@ -1,6 +1,7 @@
 use crate::new_typed_index_table_id;
 use crate::spec::jir::common::JIRSize;
 
+#[derive(Debug)]
 pub struct JIRSpace {
     pub r#type: JIRSpaceType,
     /// The number of bytes an address in the space takes up
@@ -9,10 +10,11 @@ pub struct JIRSpace {
     pub wordsize: JIRSize,
 }
 
-new_typed_index_table_id! { pub struct JIRSpaceId; }
-
+#[derive(Debug)]
 pub enum JIRSpaceType {
     Ram,
     Rom,
     Register,
+    Const,
+    Temporary,
 }

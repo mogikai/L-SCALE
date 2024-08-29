@@ -1,18 +1,21 @@
-use std::fmt::{Display, Formatter};
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::SleighCompilerResult;
 use crate::new_typed_index_table_id;
-use crate::spec::moir::address_space::MOIRSpaceId;
+use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::common::MOIRSize;
-use crate::spec::moir::field::MOIRFieldId;
+use crate::spec::moir::field::FieldId;
 use crate::spec::moir::scope::{
     MOIRLocalId,
     MOIRMaybeSize,
     MOIRScope,
     MOIRTemporaryId,
 };
-use crate::spec::moir::table::MOIRTableId;
+use crate::spec::moir::table::TableId;
 use num::Saturating;
+use std::fmt::{
+    Display,
+    Formatter,
+};
 
 #[derive(Debug)]
 /// A varnode is the unit of data manipulated by p-code.
@@ -26,7 +29,7 @@ pub struct MOIRVarNode {
     /// is designated for storing certain values. For example, there may be a register
     /// space that is designated to saving the cpus registers when they are evicted from
     /// the host register.
-    pub space: MOIRSpaceId,
+    pub space: SpaceId,
     /// The offset specifies the offset from the start address of the space.
     pub offset: u64,
     /// The size specifies the size in bytes of the varnode.
@@ -46,7 +49,7 @@ pub struct MOIRSlice {
 
 impl MOIRSlice {
     pub fn varnode(
-        varnode: MOIRVarNodeId,
+        varnode: VarNodeId,
         start: MOIRSize,
         end: MOIRSize,
     ) -> Self {
@@ -162,9 +165,9 @@ impl MOIRSlice {
 
 #[derive(Debug, Copy, Clone)]
 pub enum MOIRReference {
-    Field(MOIRFieldId),
-    SubTable(MOIRTableId),
-    VarNode(MOIRVarNodeId),
+    Field(FieldId),
+    SubTable(TableId),
+    VarNode(VarNodeId),
     Temporary(MOIRTemporaryId),
     /// The InstX References are special references that are resolved
     /// to a constant as soon as the constructor is called.
@@ -190,7 +193,10 @@ pub enum MOIRLocal {
 }
 
 impl Display for MOIRLocal {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
         match self {
             MOIRLocal::Local(local) => write!(f, "{}", local),
             MOIRLocal::Const(value) => write!(f, "{}", value),
@@ -289,7 +295,10 @@ pub enum MOIRConst {
 }
 
 impl Display for MOIRConst {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
         match self {
             MOIRConst::Undetermined(value) => write!(f, "{:#0x}", value),
             MOIRConst::Const128(value) => write!(f, "{:#0x}", value),
@@ -459,4 +468,4 @@ impl MOIRConst {
     }
 }
 
-new_typed_index_table_id! { pub struct MOIRVarNodeId; }
+new_typed_index_table_id! { pub struct VarNodeId; }

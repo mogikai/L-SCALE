@@ -34,6 +34,7 @@ fn main() {
         .build();
     let specification = compiler.compile(spec_path).unwrap();
     // println!("{:?}", specification.list_global_varnode_strings());
+    println!("{:?}", specification.space_max_used_offset(2.into()).unwrap());
     // TODO: Disassemble at offset 0x0000000000001060
     let mmu = Rc::new(RefCell::new(MogiMMU::new()));
     let mut cpu = CPU::new(X86MogiJit::new(mmu.clone()), mmu);

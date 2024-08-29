@@ -4,30 +4,8 @@
 //! The final [ProcessorSpecification] cannot be modified further.
 //! TODO: Improve docs
 
-use chumsky::container::Container;
-use slotmap::{
-    SecondaryMap,
-    SlotMap,
-};
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-use std::fmt::{
-    Display,
-    Formatter,
-};
-use string_interner::backend::{
-    Backend,
-    StringBackend,
-};
-use string_interner::symbol::Symbol;
-use string_interner::StringInterner;
-use tracing::{
-    debug,
-    trace,
-};
-
 use super::moir::bitrange_register::{
-    MOIRBitrangeRegisterId,
+    BitrangeRegisterId,
     MOIRTBitrangeRegister,
 };
 use super::moir::context::{
@@ -49,26 +27,32 @@ use crate::compiler::{
     CompilerContext,
     SleighCompilerResult,
 };
-use crate::spec::moir::address_space::{MOIRSpace, MOIRSpaceIsDefault, MOIRSpaceType};
+use crate::spec::builder::transform::MOIRToJIRTransformer;
+use crate::spec::jir::space::JIRSpace;
+use crate::spec::moir::address_space::{
+    MOIRSpace,
+    MOIRSpaceIsDefault,
+    MOIRSpaceType,
+};
 use crate::spec::moir::custom_op::{
+    CustomOpId,
     MOIRCustomOp,
-    MOIRCustomOpId,
 };
 use crate::spec::moir::endianness::MOIREndianness;
 use crate::spec::moir::field::{
+    FieldId,
     MOIRField,
-    MOIRFieldId,
 };
 use crate::spec::moir::r#macro::MOIRMacro;
 use crate::spec::moir::table::MOIRTable;
 use crate::spec::moir::token::{
     MOIRToken,
-    MOIRTokenId,
+    TokenId,
 };
 use crate::spec::moir::varnode::{
     MOIRSlice,
     MOIRVarNode,
-    MOIRVarNodeId,
+    VarNodeId,
 };
 use crate::spec::reporting::{
     generate_alignment_already_specified_report,
@@ -77,14 +61,40 @@ use crate::spec::reporting::{
 };
 use crate::spec::typed_index_table::TypedIndexTable;
 use crate::spec::{
-    MOIRIdent,
-    MOIRMacroId,
-    MOIRSpaceId,
-    MOIRSymbol,
-    MOIRTableId,
+    Ident,
+    JIRSymbolId,
+    MacroId,
     ProcessorSpecification,
     ProcessorSpecificationError,
+    SpaceId,
+    SymbolTables,
+    TableId,
 };
+use chumsky::container::Container;
+use slotmap::{
+    new_key_type,
+    SecondaryMap,
+    SlotMap,
+};
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
+use std::fmt::{
+    Display,
+    Formatter,
+};
+use string_interner::backend::{
+    Backend,
+    StringBackend,
+};
+use string_interner::symbol::Symbol;
+use string_interner::StringInterner;
+use strum_macros::Display;
+use tracing::{
+    debug,
+    trace,
+};
+
+mod transform;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 /// StringId given out by interner. The interner is used by the compiler
@@ -100,18 +110,32 @@ impl Display for StringId {
     }
 }
 
+#[derive(Debug, Clone, Copy, Display, PartialEq)]
+pub enum MOIRSymbolId {
+    /// The identifier is not defined yet and can be used to define a symbol.
+    Undefined,
+    Macro(MacroId),
+    Space(SpaceId),
+    Table(TableId),
+    Token(TokenId),
+    Field(FieldId),
+    VarNode(VarNodeId),
+    BitrangeRegister(BitrangeRegisterId),
+    CustomOp(CustomOpId),
+}
+
 #[derive(Debug, Default)]
 /// A transparent helper struct that contains all the symbol tables to make the builder more manageable.
-pub(super) struct SymbolTables {
-    pub(super) macros: TypedIndexTable<MOIRMacroId, MOIRMacro>,
-    pub(super) spaces: TypedIndexTable<MOIRSpaceId, MOIRSpace>,
-    pub(super) tables: TypedIndexTable<MOIRTableId, MOIRTable>,
-    pub(super) varnodes: TypedIndexTable<MOIRVarNodeId, MOIRVarNode>,
-    pub(super) tokens: TypedIndexTable<MOIRTokenId, MOIRToken>,
-    pub(super) fields: TypedIndexTable<MOIRFieldId, MOIRField>,
-    pub(super) custom_ops: TypedIndexTable<MOIRCustomOpId, MOIRCustomOp>,
+pub(super) struct MOIRSymbolTables {
+    pub(super) macros: TypedIndexTable<MacroId, MOIRMacro>,
+    pub(super) spaces: TypedIndexTable<SpaceId, MOIRSpace>,
+    pub(super) tables: TypedIndexTable<TableId, MOIRTable>,
+    pub(super) varnodes: TypedIndexTable<VarNodeId, MOIRVarNode>,
+    pub(super) tokens: TypedIndexTable<TokenId, MOIRToken>,
+    pub(super) fields: TypedIndexTable<FieldId, MOIRField>,
+    pub(super) custom_ops: TypedIndexTable<CustomOpId, MOIRCustomOp>,
     // bitrange registers are treated more like placeholders for the corresponding pcode operations to realize access
-    pub(super) bitrange_registers: TypedIndexTable<MOIRBitrangeRegisterId, MOIRTBitrangeRegister>,
+    pub(super) bitrange_registers: TypedIndexTable<BitrangeRegisterId, MOIRTBitrangeRegister>,
 }
 
 #[derive(Debug)]
@@ -121,13 +145,13 @@ pub struct ProcessorSpecificationBuilder {
     /// The main symbol map of the specification.
     /// Each identifier points to a specific symbol id.
     /// The symbols are saved in separate lists, one for each symbol type.
-    symbols: SlotMap<MOIRIdent, MOIRSymbol>,
+    symbol_ids: TypedIndexTable<Ident, MOIRSymbolId>,
 
     /// Maps the identifier ids to corresponding strings.
-    symbol_strings: SecondaryMap<MOIRIdent, Spanned<StringId>>,
-    /// Contains a table for each symbol type. A [MOIRIdent] maps to a [MOIRSymbol], which in turn maps to the
+    symbol_strings: HashMap<Ident, Spanned<StringId>>,
+    /// Contains a table for each symbol type. A [Ident] maps to a [MOIRSymbolId], which in turn maps to the
     /// corresponding [TypedIndexTable] with a table-specific id type.
-    symbol_tables: SymbolTables,
+    symbol_tables: MOIRSymbolTables,
     /// The endianness of the processor. It must be defined.
     endianness: Option<Spanned<MOIREndianness>>,
     /// The alignment of instructions. This defaults to 1 if no alignment is specified.
@@ -138,16 +162,16 @@ pub struct ProcessorSpecificationBuilder {
 
     matchers: SlotMap<MatcherId, Matcher>,
 
-    /// Maps a string identifier to the corresponding internal [MOIRIdent].
+    /// Maps a string identifier to the corresponding internal [Ident].
     /// This is useful for the compiler, when an identifier string references another symbol.
-    /// This will need to be resolved to the correct [MOIRIdent], so that the PSB can then
+    /// This will need to be resolved to the correct [Ident], so that the PSB can then
     /// use the internal identifiers, instead of the strings.
-    string_to_ident_mapping: HashMap<StringId, MOIRIdent>,
+    string_to_ident_mapping: HashMap<StringId, Ident>,
 
     root_table: Spanned<StringId>,
     /// The default space. It has to be set at one point, and only once.
     /// The Ident is spanned with the location of the first definition.
-    default_space: Option<Spanned<MOIRIdent>>,
+    default_space: Option<Spanned<Ident>>,
 
     /// The `_` character has special meaning as a placeholder in e.g. stringlists.
     /// The id of the character is stored here for quick comparison.
@@ -184,10 +208,10 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn declare_custom_op(
         &mut self,
         ident: Spanned<StringId>,
-    ) -> Result<MOIRIdent, SleighCompilerError> {
+    ) -> Result<Ident, SleighCompilerError> {
         let symbol_id = self.declare_symbol(ident)?;
         let custom_op_id = self.symbol_tables.custom_ops.insert(MOIRCustomOp::Declared);
-        self.define_symbol(symbol_id, MOIRSymbol::CustomOp(custom_op_id))?;
+        self.define_symbol(symbol_id, MOIRSymbolId::CustomOp(custom_op_id))?;
         Ok(symbol_id)
     }
 
@@ -199,10 +223,10 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         ident: Spanned<StringId>,
         moir_macro: MOIRMacro,
-    ) -> SleighCompilerResult<MOIRIdent> {
+    ) -> SleighCompilerResult<Ident> {
         let symbol_id = self.declare_symbol(ident)?;
         let macro_id = self.symbol_tables.macros.insert(moir_macro);
-        self.define_symbol(symbol_id, MOIRSymbol::Macro(macro_id))?;
+        self.define_symbol(symbol_id, MOIRSymbolId::Macro(macro_id))?;
         Ok(symbol_id)
     }
 
@@ -211,7 +235,7 @@ impl ProcessorSpecificationBuilder {
         ident: Spanned<StringId>,
         space: MOIRSpace,
         default: MOIRSpaceIsDefault,
-    ) -> SleighCompilerResult<MOIRIdent> {
+    ) -> SleighCompilerResult<Ident> {
         if matches!(default, MOIRSpaceIsDefault::Default) && self.default_space.is_some() {
             todo!("Generate report that default space is already set")
         }
@@ -220,7 +244,7 @@ impl ProcessorSpecificationBuilder {
         let span = ident.span().clone();
         let symbol_id = self.declare_symbol(ident)?;
         let space_id = self.symbol_tables.spaces.insert(space);
-        self.define_symbol(symbol_id, MOIRSymbol::Space(space_id))?;
+        self.define_symbol(symbol_id, MOIRSymbolId::Space(space_id))?;
         if matches!(default, MOIRSpaceIsDefault::Default) {
             self.default_space = Some(Spanned::new(symbol_id, span));
         }
@@ -231,10 +255,10 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         ident: Spanned<StringId>,
         varnode: MOIRVarNode,
-    ) -> Result<MOIRIdent, SleighCompilerError> {
+    ) -> Result<Ident, SleighCompilerError> {
         let symbol_id = self.declare_symbol(ident)?;
         let varnode_id = self.symbol_tables.varnodes.insert(varnode);
-        self.define_symbol(symbol_id, MOIRSymbol::VarNode(varnode_id))?;
+        self.define_symbol(symbol_id, MOIRSymbolId::VarNode(varnode_id))?;
         Ok(symbol_id)
     }
 
@@ -244,14 +268,14 @@ impl ProcessorSpecificationBuilder {
         source_varnode: Spanned<StringId>,
         offset: u64,
         size: u64,
-    ) -> Result<MOIRBitrangeRegisterId, SleighCompilerError> {
+    ) -> Result<BitrangeRegisterId, SleighCompilerError> {
         // validate that source_varnode is valid
         // TODO: Generate error reports instead of normal errors.
         let source_varnode_id = self
             .get_symbol_and_ident(&source_varnode)
             .ok_or(ProcessorSpecificationError::IdentifierNotMapped(source_varnode))
             .and_then(|(symbol, _)| {
-                if let MOIRSymbol::VarNode(vnid) = symbol {
+                if let MOIRSymbolId::VarNode(vnid) = symbol {
                     Ok(vnid)
                 } else {
                     Err(ProcessorSpecificationError::InvalidSymbolType(*symbol))
@@ -270,7 +294,7 @@ impl ProcessorSpecificationBuilder {
             .symbol_tables
             .bitrange_registers
             .insert(moir_bitrange_register);
-        self.define_symbol(symbol_id, MOIRSymbol::BitrangeRegister(bitrange_register_id))?;
+        self.define_symbol(symbol_id, MOIRSymbolId::BitrangeRegister(bitrange_register_id))?;
         Ok(bitrange_register_id)
     }
 
@@ -278,10 +302,10 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         ident: Spanned<StringId>,
         token: MOIRToken,
-    ) -> Result<MOIRTokenId, SleighCompilerError> {
+    ) -> Result<TokenId, SleighCompilerError> {
         let symbol_id = self.declare_symbol(ident)?;
         let token_id = self.symbol_tables.tokens.insert(token);
-        self.define_symbol(symbol_id, MOIRSymbol::Token(token_id))?;
+        self.define_symbol(symbol_id, MOIRSymbolId::Token(token_id))?;
         Ok(token_id)
     }
 
@@ -289,10 +313,10 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         ident: Spanned<StringId>,
         field: MOIRField,
-    ) -> Result<MOIRIdent, SleighCompilerError> {
+    ) -> Result<Ident, SleighCompilerError> {
         let symbol_id = self.declare_symbol(ident)?;
         let field_id = self.symbol_tables.fields.insert(field);
-        self.define_symbol(symbol_id, MOIRSymbol::Field(field_id))?;
+        self.define_symbol(symbol_id, MOIRSymbolId::Field(field_id))?;
         Ok(symbol_id)
     }
 
@@ -312,7 +336,7 @@ impl ProcessorSpecificationBuilder {
                     self.get_symbol_and_ident(&vsid)
                         .ok_or(ProcessorSpecificationError::IdentifierNotMapped(vsid))
                         .and_then(|(symbol, _)| {
-                            if let MOIRSymbol::VarNode(vnid) = symbol {
+                            if let MOIRSymbolId::VarNode(vnid) = symbol {
                                 Ok(*vnid)
                             } else {
                                 Err(ProcessorSpecificationError::InvalidSymbolType(*symbol))
@@ -329,7 +353,7 @@ impl ProcessorSpecificationBuilder {
                 .get_symbol_and_ident(&field)
                 .ok_or(ProcessorSpecificationError::IdentifierNotMapped(field))?;
 
-            if let MOIRSymbol::Field(id) = symbol {
+            if let MOIRSymbolId::Field(id) = symbol {
                 self.field_by_symbol_id_mut(*id)
                     .expect("If the symbol is mapped there has to be an entry in the symbol table")
                     .variables
@@ -351,7 +375,7 @@ impl ProcessorSpecificationBuilder {
             let (symbol, _) = self
                 .get_symbol_and_ident(&field)
                 .ok_or(SleighCompilerError::IdentifierNotMapped(field))?;
-            if let MOIRSymbol::Field(id) = symbol {
+            if let MOIRSymbolId::Field(id) = symbol {
                 self.field_by_symbol_id_mut(*id)
                     .expect("If the symbol is mapped there has to be an entry in the symbol table")
                     .values
@@ -373,7 +397,7 @@ impl ProcessorSpecificationBuilder {
             let (symbol, _) = self
                 .get_symbol_and_ident(&field)
                 .ok_or(ProcessorSpecificationError::IdentifierNotMapped(field))?;
-            if let MOIRSymbol::Field(id) = symbol {
+            if let MOIRSymbolId::Field(id) = symbol {
                 self.field_by_symbol_id_mut(*id)
                     .expect("If the symbol is mapped there has to be an entry in the symbol table")
                     .strings
@@ -411,7 +435,7 @@ impl ProcessorSpecificationBuilder {
     ) -> SleighCompilerResult<&mut MOIRTable> {
         let table_id = if let Some((symbol, _)) = self.get_symbol_and_ident(&ident) {
             // Symbol is defined. Do stuff with it.
-            if let MOIRSymbol::Table(table_id) = symbol {
+            if let MOIRSymbolId::Table(table_id) = symbol {
                 *table_id
             } else {
                 todo!("Generate error report")
@@ -420,7 +444,7 @@ impl ProcessorSpecificationBuilder {
             // Symbol needs to be defined first.
             let symbol_id = self.declare_symbol(ident)?;
             let table_id = self.symbol_tables.tables.insert(MOIRTable::default());
-            self.define_symbol(symbol_id, MOIRSymbol::Table(table_id))?;
+            self.define_symbol(symbol_id, MOIRSymbolId::Table(table_id))?;
             table_id
         };
         Ok(self
@@ -433,10 +457,10 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn get_symbol_and_ident(
         &self,
         ident: &Spanned<StringId>,
-    ) -> Option<(&MOIRSymbol, MOIRIdent)> {
+    ) -> Option<(&MOIRSymbolId, Ident)> {
         self.string_to_ident_mapping.get(ident).map(|ident| {
             (
-                self.symbols
+                self.symbol_ids
                     .get(*ident)
                     .expect("If the ident is mapped, then there has to exist a symbol."),
                 *ident,
@@ -448,11 +472,11 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn get_symbol(
         &self,
         ident: &Spanned<StringId>,
-    ) -> SleighCompilerResult<&MOIRSymbol> {
+    ) -> SleighCompilerResult<&MOIRSymbolId> {
         self.string_to_ident_mapping
             .get(ident)
             .map(|ident| {
-                self.symbols
+                self.symbol_ids
                     .get(*ident)
                     .expect("If the ident is mapped, then there has to exist a symbol")
             })
@@ -468,20 +492,20 @@ impl ProcessorSpecificationBuilder {
     fn declare_symbol(
         &mut self,
         ident: Spanned<StringId>,
-    ) -> SleighCompilerResult<MOIRIdent> {
+    ) -> SleighCompilerResult<Ident> {
         match self.string_to_ident_mapping.entry(*ident) {
             // The identifier is already declared, and we do not allow re-declaring a symbol.
             Entry::Occupied(entry) => {
                 let name = self
                     .symbol_strings
-                    .get(*entry.get())
+                    .get(entry.get())
                     .expect("The symbol string must exist");
                 let name_str = self.resolve_string_id(**name);
                 Err(generate_identifier_exists_report(name_str, name.span().clone(), ident.into_span()))
             }
             Entry::Vacant(entry) => {
                 // No symbol has been declared yet. We can now insert an empty declaration.
-                let id = self.symbols.insert(MOIRSymbol::Undefined);
+                let id = self.symbol_ids.insert(MOIRSymbolId::Undefined);
                 self.symbol_strings.insert(id, ident);
                 entry.insert(id);
                 Ok(id)
@@ -492,25 +516,25 @@ impl ProcessorSpecificationBuilder {
     /// Helper function to define a symbol after declaring it.
     fn define_symbol(
         &mut self,
-        symbol_id: MOIRIdent,
-        symbol: MOIRSymbol,
-    ) -> Result<(), ProcessorSpecificationError> {
+        symbol_id: Ident,
+        symbol: MOIRSymbolId,
+    ) -> SleighCompilerResult {
         *self
-            .symbols
+            .symbol_ids
             .get_mut(symbol_id)
-            .ok_or(ProcessorSpecificationError::SymbolUndeclared)? = symbol;
+            .ok_or(SleighCompilerError::SymbolUndeclared)? = symbol;
         Ok(())
     }
 
     pub(crate) fn space_id_by_ident(
         &self,
         ident: Spanned<StringId>,
-    ) -> SleighCompilerResult<MOIRSpaceId> {
+    ) -> SleighCompilerResult<SpaceId> {
         self.string_to_ident_mapping
             .get(ident.value())
             .and_then(|id| {
-                self.symbols.get(*id).and_then(|id| match id {
-                    MOIRSymbol::Space(space_id) => Some(*space_id),
+                self.symbol_ids.get(*id).and_then(|id| match id {
+                    MOIRSymbolId::Space(space_id) => Some(*space_id),
                     _ => None,
                 })
             })
@@ -518,7 +542,10 @@ impl ProcessorSpecificationBuilder {
             .ok_or(SleighCompilerError::SymbolUndeclared)
     }
 
-    pub fn space_by_symbol_id(&self, symbol_id: MOIRSpaceId) -> Option<&MOIRSpace> {
+    pub fn space_by_symbol_id(
+        &self,
+        symbol_id: SpaceId,
+    ) -> Option<&MOIRSpace> {
         self.symbol_tables.spaces.get(symbol_id)
     }
 
@@ -527,16 +554,16 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn varnode_id_by_ident(
         &self,
         ident: &Spanned<StringId>,
-    ) -> SleighCompilerResult<MOIRVarNodeId> {
+    ) -> SleighCompilerResult<VarNodeId> {
         let symbol_reference = ident.clone().map(|id| self.resolve_string_id(id));
         self.get_symbol_and_ident(ident)
             .ok_or_else(|| generate_undefined_ident_error(symbol_reference.clone()))
             .and_then(|(symbol, id)| match symbol {
-                MOIRSymbol::VarNode(vnid) => Ok(*vnid),
+                MOIRSymbolId::VarNode(vnid) => Ok(*vnid),
                 _ => {
                     let defined_symbol = self
                         .symbol_strings
-                        .get(id)
+                        .get(&id)
                         .expect("If the symbol exists, there must be a string associated with it.")
                         .span()
                         .clone();
@@ -548,7 +575,7 @@ impl ProcessorSpecificationBuilder {
     /// Get the varnode pointed to by `id`
     pub(crate) fn varnode_by_symbol_id(
         &self,
-        id: MOIRVarNodeId,
+        id: VarNodeId,
     ) -> Option<&MOIRVarNode> {
         self.symbol_tables.varnodes.get(id)
     }
@@ -570,31 +597,31 @@ impl ProcessorSpecificationBuilder {
 
     pub(crate) fn ident_by_symbol(
         &self,
-        symbol: &MOIRSymbol,
+        symbol: &MOIRSymbolId,
     ) -> Option<&Spanned<StringId>> {
-        self.symbols
+        self.symbol_ids
             .iter()
-            .find_map(|(k, v)| if v == symbol { self.symbol_strings.get(k) } else { None })
+            .find_map(|(k, v)| if v == symbol { self.symbol_strings.get(&k) } else { None })
     }
 
     // TODO put into macro
     pub(crate) fn field_by_symbol_id(
         &self,
-        id: MOIRFieldId,
+        id: FieldId,
     ) -> Option<&MOIRField> {
         self.symbol_tables.fields.get(id)
     }
 
     pub(crate) fn field_by_symbol_id_mut(
         &mut self,
-        id: MOIRFieldId,
+        id: FieldId,
     ) -> Option<&mut MOIRField> {
         self.symbol_tables.fields.get_mut(id)
     }
 
     pub(crate) fn table_by_symbol_id(
         &self,
-        id: MOIRTableId,
+        id: TableId,
     ) -> Option<&MOIRTable> {
         self.symbol_tables.tables.get(id)
     }
@@ -604,7 +631,7 @@ impl ProcessorSpecificationBuilder {
         // TODO: Generate correct errors.
         self.default_space
             .as_ref()
-            .and_then(|id| self.symbol_strings.get(*id.value()))
+            .and_then(|id| self.symbol_strings.get(id.value()))
             .ok_or(SleighCompilerError::SymbolUndeclared)
             .cloned()
     }
@@ -634,7 +661,7 @@ impl Default for ProcessorSpecificationBuilder {
         let root_table = Spanned::new(interner.intern("instruction"), InputSpan::default());
         let mut slf = Self {
             interner,
-            symbols: Default::default(),
+            symbol_ids: Default::default(),
             symbol_strings: Default::default(),
             symbol_tables: Default::default(),
             endianness: None,
@@ -650,15 +677,20 @@ impl Default for ProcessorSpecificationBuilder {
         slf.modify_root_table()
             .expect("This may not error at this point");
         // TODO: Define the special varnodes in a special address space.
-        slf.define_space(Spanned::new(const_space, InputSpan::default()), MOIRSpace {
-            r#type: MOIRSpaceType::Const,
-            address_size: 0,
-            wordsize: 0,
-        }, MOIRSpaceIsDefault::NotDefault).expect("This may not error at this point");
+        slf.define_space(
+            Spanned::new(const_space, InputSpan::default()),
+            MOIRSpace {
+                r#type: MOIRSpaceType::Const,
+                address_size: 0,
+                wordsize: 0,
+            },
+            MOIRSpaceIsDefault::NotDefault,
+        )
+        .expect("This may not error at this point");
         slf.define_varnode(
             Spanned::new(epsilon, InputSpan::default()),
             MOIRVarNode {
-                space: MOIRSpaceId::from(0),
+                space: SpaceId::from(0),
                 offset: 0,
                 size: 0,
             },
@@ -673,9 +705,9 @@ impl ProcessorSpecificationBuilder {
         Self::default()
     }
 
-    pub fn build(self) -> Result<ProcessorSpecification, ProcessorSpecificationError> {
+    pub fn build(self) -> SleighCompilerResult<ProcessorSpecification> {
         debug!("Finalizing spec:");
-        debug!("Found {} symbols", self.symbols.len());
+        debug!("Found {} symbols", self.symbol_ids.len());
         debug!("Found {} tables", self.symbol_tables.tables.len());
         debug!("Found {} macros", self.symbol_tables.macros.len());
         debug!("Found {} tokens", self.symbol_tables.tokens.len());
@@ -683,15 +715,21 @@ impl ProcessorSpecificationBuilder {
         debug!("Found {} spaces", self.symbol_tables.spaces.len());
         debug!("Found {} global varnodes", self.symbol_tables.varnodes.len());
         debug!("Found {} custom operations", self.symbol_tables.custom_ops.len());
-
+        let mut context = MOIRToJIRTransformer::new(
+            self.symbol_ids,
+            self.symbol_strings,
+            self.symbol_tables,
+            self.string_to_ident_mapping,
+        );
+        let jir = context.transform()?;
         // TODO: Generate more helpful error reports during final build step
         let spec = ProcessorSpecification {
             // The endianness must be defined, so we return an error if it is undefined at this point.
             interner: self.interner,
-            symbols: self.symbols,
-            symbol_strings: self.symbol_strings,
-            symbol_tables: self.symbol_tables,
-            string_to_ident_mapping: self.string_to_ident_mapping,
+            symbol_ids: jir.symbol_ids,
+            symbol_strings: jir.symbol_strings,
+            symbol_tables: jir.symbol_tables,
+            string_to_ident_mapping: jir.string_to_ident_mapping,
             root_table: self.root_table.into_value(),
             default_space: self
                 .default_space
@@ -800,13 +838,13 @@ macro_rules! impl_get_symbol_id {
     };
 }
 
-impl_get_symbol_struct! { macro_by_ident, macro_by_ident_mut, macros, MOIRMacro, MOIRSymbol::Macro(id) => id}
-impl_get_symbol_struct! { space_by_ident, space_by_ident_mut, spaces, MOIRSpace, MOIRSymbol::Space(id) => id}
-impl_get_symbol_struct! { table_by_ident, table_by_ident_mut, tables, MOIRTable, MOIRSymbol::Table(id) => id}
-impl_get_symbol_struct! { varnode_by_ident, varnode_by_ident_mut, varnodes, MOIRVarNode, MOIRSymbol::VarNode(id) => id}
-impl_get_symbol_struct! { token_by_ident, token_by_ident_mut, tokens, MOIRToken, MOIRSymbol::Token(id) => id}
-impl_get_symbol_struct! { field_by_ident, field_by_ident_mut, fields, MOIRField, MOIRSymbol::Field(id) => id}
-impl_get_symbol_struct! { custom_op_by_ident, custom_op_by_ident_mut, custom_ops, MOIRCustomOp, MOIRSymbol::CustomOp(id) => id}
-impl_get_symbol_struct! { bitrange_register_by_ident, bitrange_register_by_ident_mut, bitrange_registers, MOIRTBitrangeRegister, MOIRSymbol::BitrangeRegister(id) => id}
+impl_get_symbol_struct! { macro_by_ident, macro_by_ident_mut, macros, MOIRMacro, MOIRSymbolId::Macro(id) => id}
+impl_get_symbol_struct! { space_by_ident, space_by_ident_mut, spaces, MOIRSpace, MOIRSymbolId::Space(id) => id}
+impl_get_symbol_struct! { table_by_ident, table_by_ident_mut, tables, MOIRTable, MOIRSymbolId::Table(id) => id}
+impl_get_symbol_struct! { varnode_by_ident, varnode_by_ident_mut, varnodes, MOIRVarNode, MOIRSymbolId::VarNode(id) => id}
+impl_get_symbol_struct! { token_by_ident, token_by_ident_mut, tokens, MOIRToken, MOIRSymbolId::Token(id) => id}
+impl_get_symbol_struct! { field_by_ident, field_by_ident_mut, fields, MOIRField, MOIRSymbolId::Field(id) => id}
+impl_get_symbol_struct! { custom_op_by_ident, custom_op_by_ident_mut, custom_ops, MOIRCustomOp, MOIRSymbolId::CustomOp(id) => id}
+impl_get_symbol_struct! { bitrange_register_by_ident, bitrange_register_by_ident_mut, bitrange_registers, MOIRTBitrangeRegister, MOIRSymbolId::BitrangeRegister(id) => id}
 
-impl_get_symbol_id! { field_id_by_ident, MOIRFieldId, MOIRSymbol::Field(id) => id}
+impl_get_symbol_id! { field_id_by_ident, FieldId, MOIRSymbolId::Field(id) => id}

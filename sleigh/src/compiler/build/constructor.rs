@@ -19,9 +19,10 @@ use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
+use crate::spec::builder::MOIRSymbolId;
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::MOIRConstructor;
-use crate::spec::moir::field::MOIRFieldId;
+use crate::spec::moir::field::FieldId;
 use crate::spec::moir::scope::{
     MOIRMaybeSize,
     MOIRScope,
@@ -30,10 +31,7 @@ use crate::spec::moir::varnode::{
     MOIRReference,
     MOIRSlice,
 };
-use crate::spec::{
-    MOIRSymbol,
-    ProcessorSpecificationError,
-};
+use crate::spec::ProcessorSpecificationError;
 use tracing::trace;
 
 pub mod atomize;
@@ -127,21 +125,21 @@ impl SleighCompiler {
         Ok(())
     }
 
-    /// Resolve a given list of [MOIRSymbol] used by [Matcher] in its bit pattern section to the
+    /// Resolve a given list of [MOIRSymbolId] used by [Matcher] in its bit pattern section to the
     /// [MOIRScope] of the constructor for usage in the semantic section.
     fn resolve_symbols_to_local_scope(
         &self,
         scope: &mut MOIRScope,
-        symbols: &Vec<MOIRSymbol>,
+        symbols: &Vec<MOIRSymbolId>,
     ) -> SleighCompilerResult {
         trace!("Resolving {} symbols to a local scope", symbols.len());
         for symbol in symbols {
             let value = match symbol {
-                MOIRSymbol::Field(field_id) => {
+                MOIRSymbolId::Field(field_id) => {
                     let field = self
                         .spec_builder
                         .field_by_symbol_id(*field_id)
-                        .ok_or(ProcessorSpecificationError::SymbolUndeclared)?;
+                        .ok_or(SleighCompilerError::SymbolUndeclared)?;
                     let size = if !field.variables.is_empty() {
                         // The field has variables attached. These will be later given to the constructor during
                         // decoding. We can now set the size of the value that is referenced to the size of the
@@ -167,11 +165,11 @@ impl SleighCompiler {
                     })
                 }
 
-                MOIRSymbol::Table(table_id) => {
+                MOIRSymbolId::Table(table_id) => {
                     let table = self
                         .spec_builder
                         .table_by_symbol_id(*table_id)
-                        .ok_or(ProcessorSpecificationError::SymbolUndeclared)?;
+                        .ok_or(SleighCompilerError::SymbolUndeclared)?;
                     let export = table.exports.first();
                     if let Some(export) = export {
                         Some(MOIRSlice {
@@ -184,11 +182,11 @@ impl SleighCompiler {
                     }
                 }
 
-                MOIRSymbol::VarNode(vnid) => {
+                MOIRSymbolId::VarNode(vnid) => {
                     let varnode = self
                         .spec_builder
                         .varnode_by_symbol_id(*vnid)
-                        .ok_or(ProcessorSpecificationError::SymbolUndeclared)?;
+                        .ok_or(SleighCompilerError::SymbolUndeclared)?;
                     Some(MOIRSlice {
                         reference: MOIRReference::VarNode(*vnid),
                         start: 0,
@@ -202,7 +200,7 @@ impl SleighCompiler {
             let ident = self
                 .spec_builder
                 .ident_by_symbol(symbol)
-                .ok_or(ProcessorSpecificationError::SymbolUndeclared)?;
+                .ok_or(SleighCompilerError::SymbolUndeclared)?;
             if let Some(value) = value {
                 scope.declare_local(ident.clone().into_value(), value);
             }
@@ -220,9 +218,9 @@ impl SleighCompiler {
             SASTBitPatternConstraint::Ident(ident) => {
                 let symbol = self.spec_builder.get_symbol(&ident.clone().transmute())?;
                 let reference = match symbol {
-                    MOIRSymbol::Field(field_id) => MatcherReference::Field(*field_id),
-                    MOIRSymbol::Table(table_id) => MatcherReference::Subtable(*table_id),
-                    MOIRSymbol::VarNode(varnode_id) => MatcherReference::Varnode(*varnode_id),
+                    MOIRSymbolId::Field(field_id) => MatcherReference::Field(*field_id),
+                    MOIRSymbolId::Table(table_id) => MatcherReference::Subtable(*table_id),
+                    MOIRSymbolId::VarNode(varnode_id) => MatcherReference::Varnode(*varnode_id),
                     _ => Err(ProcessorSpecificationError::InvalidSymbolType(*symbol))?,
                 };
                 let expression = Box::new(MatcherExpression::Linkage(reference));
@@ -262,10 +260,10 @@ impl SleighCompiler {
                 let lhs_symbol = self.spec_builder.get_symbol(&lhs.clone().transmute())?;
 
                 let expression = match lhs_symbol {
-                    MOIRSymbol::Field(field_id) => {
+                    MOIRSymbolId::Field(field_id) => {
                         self.matcher_from_advanced_constraint(*field_id, op.into_value(), pattern.into_value())
                     }
-                    MOIRSymbol::Table(_) => todo!("Integrate subtable into matcher"),
+                    MOIRSymbolId::Table(_) => todo!("Integrate subtable into matcher"),
                     _ => Err(ProcessorSpecificationError::InvalidSymbolType(*lhs_symbol))?,
                 }?;
 
@@ -283,14 +281,14 @@ impl SleighCompiler {
     /// create an extremely large matcher expression.
     fn matcher_from_advanced_constraint(
         &self,
-        field_id: MOIRFieldId,
+        field_id: FieldId,
         op: SASTConstraintOp,
         pattern: SASTConstraintPattern,
     ) -> SleighCompilerResult<Box<MatcherExpression>> {
         let field = self
             .spec_builder
             .field_by_symbol_id(field_id)
-            .ok_or(ProcessorSpecificationError::SymbolUndeclared)?;
+            .ok_or(SleighCompilerError::SymbolUndeclared)?;
 
         match op {
             SASTConstraintOp::Equals => self.matcher_from_equals_constraint(field_id, pattern),
@@ -326,7 +324,7 @@ impl SleighCompiler {
     /// pattern.
     fn matcher_from_equals_constraint(
         &self,
-        field_id: MOIRFieldId,
+        field_id: FieldId,
         pattern: SASTConstraintPattern,
     ) -> SleighCompilerResult<Box<MatcherExpression>> {
         let constraint = match pattern {
@@ -344,7 +342,7 @@ impl SleighCompiler {
     /// value of field except the provided value.
     fn matcher_from_negate_constraint(
         &self,
-        field_id: MOIRFieldId,
+        field_id: FieldId,
         bits: u16,
         value: u64,
     ) -> Box<MatcherExpression> {
@@ -367,7 +365,7 @@ impl SleighCompiler {
     /// value of field except values not less than the provided value.
     fn matcher_from_lt_constraint(
         &self,
-        field_id: MOIRFieldId,
+        field_id: FieldId,
         bits: u16,
         value: u64,
     ) -> Box<MatcherExpression> {
@@ -390,7 +388,7 @@ impl SleighCompiler {
     /// value of field except values not greater than the provided value.
     fn matcher_from_gt_constraint(
         &self,
-        field_id: MOIRFieldId,
+        field_id: FieldId,
         bits: u16,
         value: u64,
     ) -> Box<MatcherExpression> {

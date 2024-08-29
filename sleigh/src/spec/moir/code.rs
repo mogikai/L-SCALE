@@ -1,7 +1,7 @@
 use crate::spec::moir::varnode::{
     MOIRLocal,
     MOIRSlice,
-    MOIRVarNodeId,
+    VarNodeId,
 };
 use std::fmt::{
     write,
@@ -93,7 +93,7 @@ use crate::compiler::ast::pcode::expression::{
     SASTPCodeBinaryOp,
     SASTPCodeUnaryOp,
 };
-use crate::spec::moir::address_space::MOIRSpaceId;
+use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::scope::MOIRLocalId;
 pub(crate) use moir_instruction;
 
@@ -101,7 +101,7 @@ impl MOIRInstruction {
     pub fn load(
         target: MOIRLocalId,
         addr: MOIRLocal,
-        space_id: MOIRSpaceId,
+        space_id: SpaceId,
     ) -> Self {
         trace!("New instruction: {:?} = *[{:?}]{:?}", target, space_id, addr);
         MOIRInstruction {
@@ -207,8 +207,8 @@ pub enum MOIROperation {
     // When these operations are resolved into JIR upon calling the constructor, all values
     // that refer to a `const` space are translated into actual constants, where their offset
     // is interpreted as the constants' value.
-    Load(MOIRSpaceId),
-    Store(MOIRSpaceId),
+    Load(SpaceId),
+    Store(SpaceId),
 
     // Binary operations
     IntAdd,

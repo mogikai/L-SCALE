@@ -23,4 +23,4 @@ pub struct MOIRCustomOpConstraint {
     size: u16,
 }
 
-new_typed_index_table_id! { pub struct MOIRCustomOpId; }
+new_typed_index_table_id! { pub struct CustomOpId; }

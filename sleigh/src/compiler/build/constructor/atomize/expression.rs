@@ -44,7 +44,7 @@ use crate::spec::moir::varnode::{
     MOIRConst,
     MOIRLocal,
     MOIRSlice,
-    MOIRVarNodeId,
+    VarNodeId,
 };
 use num::{
     CheckedAdd,

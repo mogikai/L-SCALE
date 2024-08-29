@@ -8,7 +8,7 @@ use crate::spec::builder::{
     StringId,
 };
 use crate::spec::moir::common::MOIRSize;
-use crate::spec::moir::field::MOIRFieldId;
+use crate::spec::moir::field::FieldId;
 use crate::spec::moir::varnode::{
     MOIRLocal,
     MOIRReference,
@@ -18,7 +18,10 @@ use crate::spec::reporting::generate_identifier_exists_report;
 use crate::spec::typed_index_table::TypedIndexTable;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
+use std::fmt::{
+    Display,
+    Formatter,
+};
 
 /// A scope for locals used in constructors and macros
 #[derive(Debug, Default)]
@@ -33,7 +36,7 @@ pub struct MOIRScope {
     /// be determined by the constructor parsing before the semantic section.
     /// Otherwise, the semantic section first needs to be parsed in order to find the right
     /// size constraint. The resulting size constraint for a field will then be
-    field_sizes: HashMap<MOIRFieldId, MOIRMaybeSize>,
+    field_sizes: HashMap<FieldId, MOIRMaybeSize>,
     /// The input span of where each local was first defined. For error report generation.
     local_spans: HashMap<StringId, InputSpan>,
 }
@@ -41,7 +44,10 @@ pub struct MOIRScope {
 new_typed_index_table_id! { pub struct MOIRLocalId; }
 
 impl Display for MOIRLocalId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
         write!(f, "L{}", self.0)
     }
 }
