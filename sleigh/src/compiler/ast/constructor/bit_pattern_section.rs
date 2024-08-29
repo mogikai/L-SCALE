@@ -28,7 +28,7 @@ pub enum SASTBitPatternConstraint {
     Invalid,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum SASTBinaryOp {
     And,
     Or,
@@ -41,7 +41,7 @@ pub enum SASTUnaryOp {
     JustifyRight,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SASTConstraintOp {
     Equals,
     NotEquals,
