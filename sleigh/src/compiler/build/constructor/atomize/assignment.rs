@@ -24,6 +24,7 @@ use crate::spec::moir::scope::{
     MOIRScope,
 };
 use crate::spec::moir::varnode::MOIRLocal;
+use tracing::trace;
 
 impl SleighCompiler {
     /// Process an assignment statement in the AST. The right hand side of the assignment will
@@ -114,6 +115,8 @@ impl SleighCompiler {
         expression: Spanned<SASTPCodeExpression>,
         bitrange: Spanned<SASTPCodeBitRange>,
     ) -> SleighCompilerResult<()> {
+        // TODO: Actually implement this
+        instructions.push(moir_instruction!(nop));
         let (bitrange, _) = bitrange.into_tuple();
         if local.into_value() {
             scope.allocate_named_temporary(bitrange.ident.clone().transmute(), MOIRMaybeSize::Undetermined)?;

@@ -1,14 +1,8 @@
-use crate::spec::moir::varnode::{
-    MOIRLocal,
-    MOIRSlice,
-    VarNodeId,
-};
+use crate::spec::moir::varnode::MOIRLocal;
 use std::fmt::{
-    write,
     Display,
     Formatter,
 };
-use tracing::trace;
 
 #[derive(Debug)]
 pub struct MOIRInstruction {
@@ -19,6 +13,7 @@ pub struct MOIRInstruction {
     pub input_a: Option<MOIRLocal>,
     pub input_b: Option<MOIRLocal>,
     pub operation: MOIROperation,
+    pub label: Option<StringId>,
 }
 
 impl Display for MOIRInstruction {
@@ -74,8 +69,9 @@ impl Display for MOIRInstruction {
                 )
             }
             MOIROperation::GotoAbsolute => write!(f, "goto [{}]", self.input_a.expect("Goto has to have input_a")),
-            MOIROperation::BranchOffset => write!(f, "goto {}", self.input_a.expect("Goto has to have input_a")),
-            MOIROperation::BranchLabel() => write!(f, "goto <{}>", self.input_a.expect("Goto has to have input_a")),
+            MOIROperation::GotoOffset => write!(f, "goto {}", self.input_a.expect("Goto has to have input_a")),
+            MOIROperation::GotoLabel(label) => write!(f, "goto <{:?}>", label),
+            MOIROperation::Nop => write!(f, "nop"),
             _ => write!(
                 f,
                 "{} = {} {} {}",
@@ -94,6 +90,9 @@ impl Display for MOIRInstruction {
 /// A binary operation can be created by calling `moir_instruction!(out = lhs op rhs)`
 /// A unary operation can be created by calling `moir_instruction!(out = op operand)`
 macro_rules! moir_instruction {
+    (nop) => {
+        MOIRInstruction::nop()
+    };
     ($lhs:ident = $rhs:ident) => {
         MOIRInstruction::copy($lhs, $rhs)
     };
@@ -127,11 +126,25 @@ use crate::compiler::ast::pcode::expression::{
     SASTPCodeBinaryOp,
     SASTPCodeUnaryOp,
 };
+use crate::spec::builder::StringId;
 use crate::spec::moir::address_space::SpaceId;
-use crate::spec::moir::scope::MOIRLocalId;
+use crate::spec::moir::scope::{
+    LabelId,
+    MOIRLocalId,
+};
 pub(crate) use moir_instruction;
 
 impl MOIRInstruction {
+    pub fn nop() -> Self {
+        MOIRInstruction {
+            output: None,
+            input_a: None,
+            input_b: None,
+            operation: MOIROperation::Nop,
+            label: None,
+        }
+    }
+
     pub fn load(
         target: MOIRLocalId,
         addr: MOIRLocal,
@@ -142,6 +155,7 @@ impl MOIRInstruction {
             input_b: None,
             output: Some(target),
             operation: MOIROperation::Load(space_id),
+            label: None,
         }
     }
 
@@ -154,6 +168,7 @@ impl MOIRInstruction {
             input_a: Some(rhs),
             input_b: None,
             operation: MOIROperation::AddressOf,
+            label: None,
         }
     }
 
@@ -166,6 +181,7 @@ impl MOIRInstruction {
             input_a: Some(rhs),
             input_b: None,
             operation: MOIROperation::ZeroExtend,
+            label: None,
         }
     }
 
@@ -180,6 +196,7 @@ impl MOIRInstruction {
             input_a: Some(lhs.into()),
             input_b: Some(rhs.into()),
             operation: op,
+            label: None,
         }
     }
 
@@ -189,6 +206,7 @@ impl MOIRInstruction {
             input_a: Some(target.into()),
             input_b: None,
             operation: MOIROperation::GotoAbsolute,
+            label: None,
         }
     }
 
@@ -197,16 +215,18 @@ impl MOIRInstruction {
             output: None,
             input_a: Some(target.into()),
             input_b: None,
-            operation: MOIROperation::GotoAbsolute,
+            operation: MOIROperation::GotoOffset,
+            label: None,
         }
     }
 
-    pub fn goto_label(target: impl Into<MOIRLocal>) -> Self {
+    pub fn goto_label(target: LabelId) -> Self {
         MOIRInstruction {
             output: None,
-            input_a: Some(target.into()),
+            input_a: None,
             input_b: None,
-            operation: MOIROperation::GotoAbsolute,
+            operation: MOIROperation::GotoLabel(target),
+            label: None,
         }
     }
 
@@ -220,6 +240,7 @@ impl MOIRInstruction {
             input_b: None,
             output: Some(out),
             operation: op,
+            label: None,
         }
     }
 
@@ -232,6 +253,7 @@ impl MOIRInstruction {
             input_a: Some(from.into()),
             input_b: None,
             operation: MOIROperation::Copy,
+            label: None,
         }
     }
 }
@@ -240,6 +262,8 @@ impl MOIRInstruction {
 pub enum MOIROperation {
     Copy,
     CustomOp(Vec<MOIRLocal>),
+    /// This operation does nothing. Its inputs and outputs are ignored.
+    Nop,
 
     // Special operations
     /// Special AddressOf operation. This is translated into a constant, when the constructor is called.
@@ -266,9 +290,9 @@ pub enum MOIROperation {
     /// Branch to the absolute EVAddr specified in local input_a.
     GotoAbsolute,
     /// Branch to the EVAddr at inst_next + the offset specified in input_a.
-    BranchOffset,
+    GotoOffset,
     /// Branch to the scope local label specified in this operator.
-    BranchLabel(),
+    GotoLabel(LabelId),
 
     // Binary operations
     IntAdd,
@@ -369,8 +393,9 @@ impl Display for MOIROperation {
             MOIROperation::IntNegate => write!(f, "-"),
             MOIROperation::FloatNegate => write!(f, "f-"),
             MOIROperation::GotoAbsolute => write!(f, "goto"),
-            MOIROperation::BranchOffset => write!(f, "goto"),
-            MOIROperation::BranchLabel() => write!(f, "goto"),
+            MOIROperation::GotoOffset => write!(f, "goto"),
+            MOIROperation::GotoLabel(_) => write!(f, "goto"),
+            MOIROperation::Nop => write!(f, "nop"),
         }
     }
 }

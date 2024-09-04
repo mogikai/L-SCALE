@@ -68,6 +68,13 @@ impl SleighCompiler {
         let (pcode, _) = pcode.into_tuple();
         let mut export = None;
         for ((label, statement), _) in pcode.statements.into_iter().map(Spanned::into_tuple) {
+            let label = if let Some(label) = label {
+                // If we have a label, we define it to point to the first instruction of the atomized statement.
+                let label_id = instructions.len();
+                Some(scope.define_label(&self.spec_builder, label.transmute(), label_id)?)
+            } else {
+                None
+            };
             if export.is_some() {
                 todo!("Generate error report for instruction after export statement")
             }
@@ -83,23 +90,29 @@ impl SleighCompiler {
                     // TODO: Maybe it makes sense to update the pcodeop definition here to "no output"?
                     self.atomize_invocation(scope, instructions, None, invocation)?;
                 }
-                SASTPCodeStatement::Build(_) => {}
+                SASTPCodeStatement::Build(_) => instructions.push(moir_instruction!(nop)),
                 SASTPCodeStatement::Export(expression) => {
                     let span = expression.span().clone();
                     export = Some(Spanned::new(self.atomize_export(scope, instructions, expression)?, span));
                 }
-                SASTPCodeStatement::Delayslot(_) => {}
+                SASTPCodeStatement::Delayslot(_) => instructions.push(moir_instruction!(nop)),
                 SASTPCodeStatement::Declaration(ident, size) => {
                     self.atomize_declaration(scope, ident.transmute(), size.map(Spanned::transmute))?
                 }
                 SASTPCodeStatement::Branch(branch) => self.atomize_branch(scope, instructions, branch)?,
-                SASTPCodeStatement::ConditionalBranch { .. } => {}
-                SASTPCodeStatement::BranchCall(_) => {}
-                SASTPCodeStatement::BranchReturn(_) => {}
-                SASTPCodeStatement::NOP => {}
+                SASTPCodeStatement::ConditionalBranch { .. } => instructions.push(moir_instruction!(nop)),
+                SASTPCodeStatement::BranchCall(_) => instructions.push(moir_instruction!(nop)),
+                SASTPCodeStatement::BranchReturn(_) => instructions.push(moir_instruction!(nop)),
+                SASTPCodeStatement::NOP => instructions.push(moir_instruction!(nop)),
                 SASTPCodeStatement::Error(_) => {
                     panic!("If there is an error in the AST, then this function should never have been invoked");
                 }
+            }
+
+            if let Some((label, label_id)) = label {
+                debug_instructions(instructions);
+                // If we defined a label for the first instruction, we want to add this information to the first instruction now.
+                instructions[label_id].label = Some(label);
             }
         }
         self.infer_sizes(scope, instructions)?;
@@ -176,6 +189,7 @@ impl SleighCompiler {
             input_a,
             input_b,
             operation: MOIROperation::CustomOp(args?),
+            label: None,
         });
         Ok(output.into())
     }
@@ -197,6 +211,7 @@ impl SleighCompiler {
         ident: Spanned<StringId>,
         size: Option<Spanned<MOIRSize>>,
     ) -> SleighCompilerResult {
+        trace!("Atomizing declaration");
         scope
             .allocate_named_temporary(ident, size.map_or(MOIRMaybeSize::Undetermined, |size| size.into_value().into()))
             .map(|_| ())
@@ -211,7 +226,7 @@ impl SleighCompiler {
         let (branch, _) = branch.into_tuple();
         match branch {
             SASTPCodeBranchTarget::Label(label) => {
-                let target = scope.resolve_ident(&self.spec_builder, label.transmute())?;
+                let target = scope.resolve_label(&self.spec_builder, label.transmute())?;
                 instructions.push(moir_instruction!(goto<target>))
             }
             SASTPCodeBranchTarget::Absolute(expr) => {

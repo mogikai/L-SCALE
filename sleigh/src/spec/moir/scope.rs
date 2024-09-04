@@ -1,6 +1,7 @@
 use crate::compiler::ast::Spanned;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::InputSpan;
+use crate::compiler::report::generate_undefined_ident_error;
 use crate::compiler::SleighCompilerResult;
 use crate::new_typed_index_table_id;
 use crate::spec::builder::{
@@ -23,9 +24,15 @@ use std::fmt::{
     Formatter,
 };
 
-/// A scope for locals used in constructors and macros
+/// A scope for locals and labels used in constructors and macros
 #[derive(Debug, Default)]
 pub struct MOIRScope {
+    /// A hashmap to keep track of label ids and the location of their first definition in the span.
+    labels_definitions: HashMap<StringId, Spanned<LabelId>>,
+    /// Labels can be used ahead of their definition. Their usage declares them, and they can
+    /// be defined later on. If no definition was found after processing the entire semantic
+    /// section, this will produce an error.
+    labels: TypedIndexTable<LabelId, Option<InstructionId>>,
     /// Keeps track of the sizes of temporaries assigned as part of the semantic section.
     temporaries: TypedIndexTable<MOIRTemporaryId, MOIRTemporary>,
     /// A map that is used to lookup local ids by their string identifiers.
@@ -42,6 +49,10 @@ pub struct MOIRScope {
 }
 
 new_typed_index_table_id! { pub struct MOIRLocalId; }
+new_typed_index_table_id! { pub struct LabelId; }
+
+/// InstructionId is simply an index into the instruction list.
+pub type InstructionId = usize;
 
 impl Display for MOIRLocalId {
     fn fmt(
@@ -320,6 +331,48 @@ impl MOIRScope {
         self.slices
             .get(local)
             .ok_or(SleighCompilerError::SymbolUndeclared)
+    }
+
+    /// Defines the label to point to a specific instruction.
+    /// This definition can occur only once and will return an error otherwise.
+    pub fn define_label(
+        &mut self,
+        global: &ProcessorSpecificationBuilder,
+        label: Spanned<StringId>,
+        id: InstructionId,
+    ) -> SleighCompilerResult<(StringId, InstructionId)> {
+        let label_name = *label.value();
+        let label_id = self.resolve_label(global, label)?;
+        let instruction_id = self
+            .labels
+            .get_mut(label_id)
+            .expect("If this does not exist we have an internal bookkeeping error");
+        if instruction_id.is_some() {
+            todo!("Generate error for duplicate label definition")
+        } else {
+            *instruction_id = Some(id);
+        }
+        Ok((label_name, id))
+    }
+
+    /// Resolve the label to its LabelId. If this is the first time this label is encountered, an id is generated.
+    /// If the label is not defined after processing the semantic section, this will result in an error being
+    /// generated.
+    pub fn resolve_label(
+        &mut self,
+        global: &ProcessorSpecificationBuilder,
+        label: Spanned<StringId>,
+    ) -> SleighCompilerResult<LabelId> {
+        match self.labels_definitions.entry(*label.value()) {
+            Entry::Occupied(entry) => Ok(*entry.get().value()),
+            Entry::Vacant(entry) => {
+                // Insert None for the location since we don't know this during lookup.
+                // A later call to [define_label] has to occur, in order to avoid an error.
+                let id = self.labels.insert(None);
+                // We can then return the newly generated label id.
+                Ok(*entry.insert(Spanned::new(id, label.into_span())).value())
+            }
+        }
     }
 
     /// Resolves the provided `ident` to a local. If the `ident does not exist in the local
