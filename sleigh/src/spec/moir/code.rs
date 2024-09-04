@@ -3,6 +3,8 @@ use std::fmt::{
     Display,
     Formatter,
 };
+use std::io::Read;
+use std::iter::{empty, once};
 
 #[derive(Debug)]
 pub struct MOIRInstruction {
@@ -21,7 +23,7 @@ impl Display for MOIRInstruction {
         &self,
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
-        match self.operation {
+        match &self.operation {
             MOIROperation::ZeroExtend | MOIROperation::SignExtend => {
                 write!(
                     f,
@@ -40,6 +42,15 @@ impl Display for MOIRInstruction {
                     self.input_a.expect("Load has to have input_a")
                 )
             }
+            MOIROperation::Store(space) => {
+                write!(
+                    f,
+                    "*[{:?}]{} = {}",
+                    space,
+                    self.input_a.expect("Store has to have input_a"),
+                    self.input_b.expect("Store has to have input_b")
+                )
+            }
             MOIROperation::Copy => {
                 write!(
                     f,
@@ -48,12 +59,30 @@ impl Display for MOIRInstruction {
                     self.input_a.expect("Copy has to have input_a")
                 )
             }
-            MOIROperation::CustomOp(_) => {
+            MOIROperation::CustomOp(args) => {
                 if let Some(output) = self.output {
-                    write!(f, "{} = customOp", output)
+                    write!(f, "{} = customOp(", output)?
                 } else {
-                    write!(f, "customOp")
+                    write!(f, "customOp(")?
                 }
+                let mut inputs = vec![];
+                if let Some(input) = self.input_a {
+                    inputs.push(input);
+                }
+                if let Some(input) = self.input_b {
+                    inputs.push(input);
+                }
+                inputs.extend(args);
+                let len = inputs.len();
+                if len >= 2 {
+                    for input in inputs[..(len - 1)].iter() {
+                        write!(f, "{}, ", input)?;
+                    }
+                }
+                if len >= 1 {
+                    write!(f, "{})", inputs.last().expect("There has to be at least one element"))?
+                }
+                Ok(())
             }
             MOIROperation::AddressOf
             | MOIROperation::BoolNegate
@@ -120,6 +149,9 @@ macro_rules! moir_instruction {
     ($target:ident = *[$space:ident]$addr:ident) => {
         MOIRInstruction::load($target, $addr, $space)
     };
+    (*[$space:ident]$addr:ident = $value:ident) => {
+        MOIRInstruction::store($addr, $space, $value)
+    };
 }
 
 use crate::compiler::ast::pcode::expression::{
@@ -147,25 +179,39 @@ impl MOIRInstruction {
 
     pub fn load(
         target: MOIRLocalId,
-        addr: MOIRLocal,
+        addr: impl Into<MOIRLocal>,
         space_id: SpaceId,
     ) -> Self {
         MOIRInstruction {
-            input_a: Some(addr),
-            input_b: None,
             output: Some(target),
+            input_a: Some(addr.into()),
+            input_b: None,
             operation: MOIROperation::Load(space_id),
+            label: None,
+        }
+    }
+
+    pub fn store(
+        addr: impl Into<MOIRLocal>,
+        space_id: SpaceId,
+        value: impl Into<MOIRLocal>,
+    ) -> Self {
+        MOIRInstruction {
+            output: None,
+            input_a: Some(addr.into()),
+            input_b: Some(value.into()),
+            operation: MOIROperation::Store(space_id),
             label: None,
         }
     }
 
     pub fn address_of(
         lhs: MOIRLocalId,
-        rhs: MOIRLocal,
+        rhs: impl Into<MOIRLocal>,
     ) -> Self {
         MOIRInstruction {
             output: Some(lhs),
-            input_a: Some(rhs),
+            input_a: Some(rhs.into()),
             input_b: None,
             operation: MOIROperation::AddressOf,
             label: None,
@@ -174,11 +220,11 @@ impl MOIRInstruction {
 
     pub fn zext(
         lhs: MOIRLocalId,
-        rhs: MOIRLocal,
+        rhs: impl Into<MOIRLocal>,
     ) -> Self {
         MOIRInstruction {
             output: Some(lhs),
-            input_a: Some(rhs),
+            input_a: Some(rhs.into()),
             input_b: None,
             operation: MOIROperation::ZeroExtend,
             label: None,

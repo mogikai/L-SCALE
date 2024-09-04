@@ -110,7 +110,6 @@ impl SleighCompiler {
             }
 
             if let Some((label, label_id)) = label {
-                debug_instructions(instructions);
                 // If we defined a label for the first instruction, we want to add this information to the first instruction now.
                 instructions[label_id].label = Some(label);
             }

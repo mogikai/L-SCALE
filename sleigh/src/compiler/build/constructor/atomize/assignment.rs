@@ -1,19 +1,11 @@
+mod store;
 mod subpiece;
 mod variable;
 
-use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
-use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
-use crate::compiler::ast::pcode::subpiece::{
-    SASTPCodeSubpiece,
-    SASTPCodeSubpieceSelector,
-    SASTPCodeSubpieceTarget,
-};
 use crate::compiler::ast::pcode::target_expression::SASTPCodeTargetExpression;
 use crate::compiler::ast::Spanned;
-use crate::compiler::error::SleighCompilerError;
-use crate::compiler::report::generate_cannot_slice_error;
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
@@ -26,8 +18,6 @@ use crate::spec::moir::scope::{
     MOIRMaybeSize,
     MOIRScope,
 };
-use crate::spec::moir::varnode::MOIRLocal;
-use tracing::trace;
 
 impl SleighCompiler {
     /// Process an assignment statement in the AST. The right hand side of the assignment will
@@ -58,20 +48,6 @@ impl SleighCompiler {
                 self.atomize_assignment_subpiece(scope, instructions, local, expression, subpiece)
             }
         }
-    }
-
-    fn atomize_assignment_store(
-        &mut self,
-        scope: &mut MOIRScope,
-        instructions: &mut Vec<MOIRInstruction>,
-        local: Spanned<bool>,
-        expression: Spanned<SASTPCodeExpression>,
-        deref: Spanned<SASTPCodeDeref>,
-    ) -> SleighCompilerResult<()> {
-        if *local {
-            todo!("Generate error report for local keyword on store assignment")
-        }
-        Ok(())
     }
 
     fn atomize_assignment_bitrange(

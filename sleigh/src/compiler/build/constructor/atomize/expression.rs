@@ -1,7 +1,10 @@
 //! This module implements the atomization of PCodeExpressions.
 //! The entry function is [SleighCompiler::atomize_expression].
 
-use crate::compiler::ast::common::SASTLiteral;
+use crate::compiler::ast::common::{
+    SASTIdent,
+    SASTLiteral,
+};
 use crate::compiler::ast::constructor::bit_pattern_section::SASTBinaryOp;
 use crate::compiler::ast::pcode::addressof::SASTPCodeAddressOf;
 use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
@@ -29,7 +32,10 @@ use crate::compiler::{
     SleighCompilerResult,
 };
 use crate::spec::builder::StringId;
-use crate::spec::moir::address_space::MOIRSpaceType;
+use crate::spec::moir::address_space::{
+    MOIRSpaceType,
+    SpaceId,
+};
 use crate::spec::moir::code::{
     moir_instruction,
     MOIRInstruction,
@@ -351,12 +357,7 @@ impl SleighCompiler {
         // If out is not specified we allocate our own out variable to store the result in.
         let out = out.unwrap_or_else(|| scope.allocate_temporary(out_size.or(value_size)));
         // TODO: Maybe we can do this less dirty?
-        let space_id = deref
-            .space
-            .map(Spanned::transmute)
-            .ok_or(|| SleighCompilerError::SymbolUndeclared)
-            .or_else(|_| self.spec_builder.default_space_ident())?;
-        let space = self.spec_builder.space_id_by_ident(space_id)?;
+        let space = self.spec_builder.resolve_space(deref.space.map(Spanned::transmute))?;
         let addr = self.atomize_expression(scope, instructions, None, *deref.expression)?;
         if let MOIRMaybeSize::Determined(out_size) = out_size {
             if let MOIRMaybeSize::Determined(value_size) = value_size {
@@ -375,8 +376,6 @@ impl SleighCompiler {
                         let tmp = scope.allocate_temporary(value_size.into());
                         // Load the value
                         instructions.push(moir_instruction!(tmp = *[space]addr));
-                        // Convert localid into local and then push zext instruction.
-                        let tmp = tmp.into();
                         instructions.push(moir_instruction!(out = zext(tmp)));
                     }
                 }

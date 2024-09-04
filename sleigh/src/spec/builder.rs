@@ -12,6 +12,7 @@ use super::moir::context::{
     MOIRContext,
     MOIRContextId,
 };
+use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::Spanned;
 use crate::compiler::build::matcher::{
     Matcher,
@@ -649,6 +650,18 @@ impl ProcessorSpecificationBuilder {
     ) -> &str {
         self.string(ident)
             .expect("The string must have been interned if we gave out an id")
+    }
+
+    /// Resolve the space to its id if a string ident is given, and otherwise return the default space.
+    pub fn resolve_space(
+        &mut self,
+        space: Option<Spanned<StringId>>,
+    ) -> Result<SpaceId, SleighCompilerError> {
+        let space_id = space
+            .ok_or(|| SleighCompilerError::SymbolUndeclared)
+            .or_else(|_| self.default_space_ident())?;
+        let space = self.space_id_by_ident(space_id)?;
+        Ok(space)
     }
 }
 
