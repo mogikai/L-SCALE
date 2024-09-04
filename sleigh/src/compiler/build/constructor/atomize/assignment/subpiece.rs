@@ -15,6 +15,7 @@ use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
+use crate::spec::builder::ProcessorSpecificationBuilder;
 use crate::spec::moir::code::{
     moir_instruction,
     MOIRInstruction,
@@ -64,9 +65,9 @@ impl SleighCompiler {
                 todo!("Currently unimplemented")
             }
         };
-        let lhs = self.resolve_lhs(scope, local, ident.clone(), size)?;
-        self.ensure_valid_subpiece_size(scope, lhs, size)?;
-        let lhs = self.truncate_lhs(scope, ident, lhs, size)?;
+        let lhs = resolve_lhs(&self.spec_builder, scope, local, ident.clone(), size)?;
+        ensure_valid_subpiece_size(scope, lhs, size)?;
+        let lhs = truncate_lhs(&self.spec_builder, scope, ident, lhs, size)?;
         // The variable is not declared yet. First resolve the rhs and try to determine a size.
         let rhs = self.atomize_expression(scope, instructions, Some(lhs), expression)?;
         if MOIRLocal::from(lhs) != rhs {
@@ -75,54 +76,53 @@ impl SleighCompiler {
         }
         Ok(())
     }
+}
 
-    fn resolve_lhs(
-        &self,
-        scope: &mut MOIRScope,
-        local: Spanned<bool>,
-        ident: Spanned<SASTIdent>,
-        size: SASTSize,
-    ) -> SleighCompilerResult<MOIRLocalId> {
-        if local.into_value() {
-            // We encountered a local definition. Define here and error out if it already exists.
-            scope.allocate_named_temporary(ident.transmute(), size.into())
-        } else {
-            scope.resolve_ident(&self.spec_builder, ident.transmute())
-        }
+fn ensure_valid_subpiece_size(
+    scope: &MOIRScope,
+    lhs: MOIRLocalId,
+    size: SASTSize,
+) -> SleighCompilerResult<()> {
+    // If the subpiece tries to create a slice that is
+    // larger than the original, we generate an error.
+    if size
+        > scope
+            .size_of_local(lhs)
+            .ok_or_else(|| -> SleighCompilerError {
+                // We cannot slice a value that has an undetermined size
+                todo!("Generate error for undetermined size")
+            })?
+    {
+        todo!("Generate error for subpiece being larger than underlying slice.")
     }
+    Ok(())
+}
 
-    fn ensure_valid_subpiece_size(
-        &self,
-        scope: &MOIRScope,
-        lhs: MOIRLocalId,
-        size: SASTSize,
-    ) -> SleighCompilerResult<()> {
-        // If the subpiece tries to create a slice that is
-        // larger than the original, we generate an error.
-        if size
-            > scope
-                .size_of_local(lhs)
-                .ok_or_else(|| -> SleighCompilerError {
-                    // We cannot slice a value that has an undetermined size
-                    todo!("Generate error for undetermined size")
-                })?
-        {
-            todo!("Generate error for subpiece being larger than underlying slice.")
-        }
-        Ok(())
+fn resolve_lhs(
+    spec_builder: &ProcessorSpecificationBuilder,
+    scope: &mut MOIRScope,
+    local: Spanned<bool>,
+    ident: Spanned<SASTIdent>,
+    size: SASTSize,
+) -> SleighCompilerResult<MOIRLocalId> {
+    if local.into_value() {
+        // We encountered a local definition. Define here and error out if it already exists.
+        scope.allocate_named_temporary(ident.transmute(), size.into())
+    } else {
+        scope.resolve_ident(spec_builder, ident.transmute())
     }
+}
 
-    fn truncate_lhs(
-        &mut self,
-        scope: &mut MOIRScope,
-        ident: Spanned<SASTIdent>,
-        lhs: MOIRLocalId,
-        size: SASTSize,
-    ) -> Result<MOIRLocalId, SleighCompilerError> {
-        scope.truncate_local(lhs, size).map_err(|_| {
-            let (ident, ident_span) = ident.into_tuple();
-            let str = self.spec_builder.resolve_string_id(ident.into());
-            generate_cannot_slice_error(str, ident_span, size)
-        })
-    }
+fn truncate_lhs(
+    spec_builder: &ProcessorSpecificationBuilder,
+    scope: &mut MOIRScope,
+    ident: Spanned<SASTIdent>,
+    lhs: MOIRLocalId,
+    size: SASTSize,
+) -> Result<MOIRLocalId, SleighCompilerError> {
+    scope.truncate_local(lhs, size).map_err(|_| {
+        let (ident, ident_span) = ident.into_tuple();
+        let str = spec_builder.resolve_string_id(ident.into());
+        generate_cannot_slice_error(str, ident_span, size)
+    })
 }
