@@ -5,7 +5,10 @@ mod size_inference;
 use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
-use crate::compiler::ast::pcode::statement::SASTPCodeStatement;
+use crate::compiler::ast::pcode::statement::{
+    SASTPCodeBranchTarget,
+    SASTPCodeStatement,
+};
 use crate::compiler::ast::pcode::subpiece::{
     SASTPCodeSubpiece,
     SASTPCodeSubpieceSelector,
@@ -89,7 +92,7 @@ impl SleighCompiler {
                 SASTPCodeStatement::Declaration(ident, size) => {
                     self.atomize_declaration(scope, ident.transmute(), size.map(Spanned::transmute))?
                 }
-                SASTPCodeStatement::Branch(_) => {}
+                SASTPCodeStatement::Branch(branch) => self.atomize_branch(scope, instructions, branch)?,
                 SASTPCodeStatement::ConditionalBranch { .. } => {}
                 SASTPCodeStatement::BranchCall(_) => {}
                 SASTPCodeStatement::BranchReturn(_) => {}
@@ -169,7 +172,7 @@ impl SleighCompiler {
         let input_b = args.next().transpose()?;
         let args: Result<Vec<_>, _> = args.collect();
         instructions.push(MOIRInstruction {
-            output,
+            output: Some(output),
             input_a,
             input_b,
             operation: MOIROperation::CustomOp(args?),
@@ -197,6 +200,33 @@ impl SleighCompiler {
         scope
             .allocate_named_temporary(ident, size.map_or(MOIRMaybeSize::Undetermined, |size| size.into_value().into()))
             .map(|_| ())
+    }
+
+    fn atomize_branch(
+        &mut self,
+        scope: &mut MOIRScope,
+        instructions: &mut Vec<MOIRInstruction>,
+        branch: Spanned<SASTPCodeBranchTarget>,
+    ) -> SleighCompilerResult {
+        let (branch, _) = branch.into_tuple();
+        match branch {
+            SASTPCodeBranchTarget::Label(label) => {
+                let target = scope.resolve_ident(&self.spec_builder, label.transmute())?;
+                instructions.push(moir_instruction!(goto<target>))
+            }
+            SASTPCodeBranchTarget::Absolute(expr) => {
+                let target = self.atomize_expression(scope, instructions, None, expr)?;
+                instructions.push(moir_instruction!(goto[target]))
+            }
+            SASTPCodeBranchTarget::Relative(expr) => {
+                let target = self.atomize_expression(scope, instructions, None, expr)?;
+                instructions.push(moir_instruction!(goto target));
+            }
+            SASTPCodeBranchTarget::Invalid(_) => {
+                panic!("An invalid branch target should have lead to the compiler quitting earlier.")
+            }
+        };
+        Ok(())
     }
 }
 

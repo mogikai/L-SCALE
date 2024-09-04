@@ -13,7 +13,8 @@ use tracing::trace;
 #[derive(Debug)]
 pub struct MOIRInstruction {
     /// The output of the instruction. The output must always be a varnode, since it is written to.
-    pub output: MOIRLocalId,
+    /// Some operations may have no output at all.
+    pub output: Option<MOIRLocalId>,
     /// The first input of the instruction.
     pub input_a: Option<MOIRLocal>,
     pub input_b: Option<MOIRLocal>,
@@ -30,31 +31,55 @@ impl Display for MOIRInstruction {
                 write!(
                     f,
                     "{} = {}({})",
-                    self.output,
+                    self.output.expect("Extend ops have an output"),
                     self.operation,
-                    self.input_a.expect("Unary op has to have input_a")
+                    self.input_a.expect("Extend ops have to have input_a")
                 )
             }
             MOIROperation::Load(space) => {
-                write!(f, "{} = *[{:?}]{}", self.output, space, self.input_a.expect("Load has to have input_a"))
+                write!(
+                    f,
+                    "{} = *[{:?}]{}",
+                    self.output.expect("Load ops have an output"),
+                    space,
+                    self.input_a.expect("Load has to have input_a")
+                )
             }
             MOIROperation::Copy => {
-                write!(f, "{} = {}", self.output, self.input_a.expect("Copy has to have input_a"))
+                write!(
+                    f,
+                    "{} = {}",
+                    self.output.expect("Copy ops have an output"),
+                    self.input_a.expect("Copy has to have input_a")
+                )
             }
             MOIROperation::CustomOp(_) => {
-                write!(f, "{} = customOp", self.output)
+                if let Some(output) = self.output {
+                    write!(f, "{} = customOp", output)
+                } else {
+                    write!(f, "customOp")
+                }
             }
             MOIROperation::AddressOf
             | MOIROperation::BoolNegate
             | MOIROperation::BitNegate
             | MOIROperation::IntNegate
             | MOIROperation::FloatNegate => {
-                write!(f, "{} = {}{}", self.output, self.operation, self.input_a.expect("Unary op has to have input_a"))
+                write!(
+                    f,
+                    "{} = {}{}",
+                    self.output.expect("Unary op has to have an output"),
+                    self.operation,
+                    self.input_a.expect("Unary op has to have input_a")
+                )
             }
+            MOIROperation::GotoAbsolute => write!(f, "goto [{}]", self.input_a.expect("Goto has to have input_a")),
+            MOIROperation::BranchOffset => write!(f, "goto {}", self.input_a.expect("Goto has to have input_a")),
+            MOIROperation::BranchLabel() => write!(f, "goto <{}>", self.input_a.expect("Goto has to have input_a")),
             _ => write!(
                 f,
                 "{} = {} {} {}",
-                self.output,
+                self.output.expect("Binary op has to have an output"),
                 self.input_a.expect("Binary op must have input_a"),
                 self.operation,
                 self.input_b.expect("Binary op must have input_b")
@@ -71,6 +96,15 @@ impl Display for MOIRInstruction {
 macro_rules! moir_instruction {
     ($lhs:ident = $rhs:ident) => {
         MOIRInstruction::copy($lhs, $rhs)
+    };
+    (goto [$target:ident]) => {
+        MOIRInstruction::goto_absolute($target)
+    };
+    (goto $target:ident) => {
+        MOIRInstruction::goto_relative($target)
+    };
+    (goto <$target:ident>) => {
+        MOIRInstruction::goto_label($target)
     };
     ($out:ident = $op:ident $operand:ident) => {
         MOIRInstruction::unary_op($out, $op, $operand)
@@ -103,11 +137,10 @@ impl MOIRInstruction {
         addr: MOIRLocal,
         space_id: SpaceId,
     ) -> Self {
-        trace!("New instruction: {:?} = *[{:?}]{:?}", target, space_id, addr);
         MOIRInstruction {
             input_a: Some(addr),
             input_b: None,
-            output: target,
+            output: Some(target),
             operation: MOIROperation::Load(space_id),
         }
     }
@@ -116,9 +149,8 @@ impl MOIRInstruction {
         lhs: MOIRLocalId,
         rhs: MOIRLocal,
     ) -> Self {
-        trace!("New instruction: {:?} = &{:?}", lhs, rhs);
         MOIRInstruction {
-            output: lhs,
+            output: Some(lhs),
             input_a: Some(rhs),
             input_b: None,
             operation: MOIROperation::AddressOf,
@@ -129,9 +161,8 @@ impl MOIRInstruction {
         lhs: MOIRLocalId,
         rhs: MOIRLocal,
     ) -> Self {
-        trace!("New instruction: {:?} = zext({:?})", lhs, rhs);
         MOIRInstruction {
-            output: lhs,
+            output: Some(lhs),
             input_a: Some(rhs),
             input_b: None,
             operation: MOIROperation::ZeroExtend,
@@ -144,14 +175,38 @@ impl MOIRInstruction {
         op: MOIROperation,
         rhs: impl Into<MOIRLocal>,
     ) -> Self {
-        let lhs = lhs.into();
-        let rhs = rhs.into();
-        trace!("New instruction: {:?} = {:?} {:?} {:?}", out, lhs, op, rhs);
         MOIRInstruction {
-            input_a: Some(lhs),
-            input_b: Some(rhs),
-            output: out,
+            output: Some(out),
+            input_a: Some(lhs.into()),
+            input_b: Some(rhs.into()),
             operation: op,
+        }
+    }
+
+    pub fn goto_absolute(target: impl Into<MOIRLocal>) -> Self {
+        MOIRInstruction {
+            output: None,
+            input_a: Some(target.into()),
+            input_b: None,
+            operation: MOIROperation::GotoAbsolute,
+        }
+    }
+
+    pub fn goto_relative(target: impl Into<MOIRLocal>) -> Self {
+        MOIRInstruction {
+            output: None,
+            input_a: Some(target.into()),
+            input_b: None,
+            operation: MOIROperation::GotoAbsolute,
+        }
+    }
+
+    pub fn goto_label(target: impl Into<MOIRLocal>) -> Self {
+        MOIRInstruction {
+            output: None,
+            input_a: Some(target.into()),
+            input_b: None,
+            operation: MOIROperation::GotoAbsolute,
         }
     }
 
@@ -160,25 +215,22 @@ impl MOIRInstruction {
         op: MOIROperation,
         operand: impl Into<MOIRLocal>,
     ) -> Self {
-        let operand = operand.into();
-        trace!("New instruction: {:?} = {:?} {:?}", out, op, operand);
         MOIRInstruction {
-            input_a: Some(operand),
+            input_a: Some(operand.into()),
             input_b: None,
-            output: out,
+            output: Some(out),
             operation: op,
         }
     }
 
     pub fn copy(
         to: MOIRLocalId,
-        from: MOIRLocal,
+        from: impl Into<MOIRLocal>,
     ) -> Self {
-        trace!("New instruction: {:?} = {:?}", to, from);
         MOIRInstruction {
-            input_a: Some(from),
+            output: Some(to),
+            input_a: Some(from.into()),
             input_b: None,
-            output: to,
             operation: MOIROperation::Copy,
         }
     }
@@ -209,6 +261,14 @@ pub enum MOIROperation {
     // is interpreted as the constants' value.
     Load(SpaceId),
     Store(SpaceId),
+
+    // Branch instructions.
+    /// Branch to the absolute EVAddr specified in local input_a.
+    GotoAbsolute,
+    /// Branch to the EVAddr at inst_next + the offset specified in input_a.
+    BranchOffset,
+    /// Branch to the scope local label specified in this operator.
+    BranchLabel(),
 
     // Binary operations
     IntAdd,
@@ -308,6 +368,9 @@ impl Display for MOIROperation {
             MOIROperation::BitNegate => write!(f, "~"),
             MOIROperation::IntNegate => write!(f, "-"),
             MOIROperation::FloatNegate => write!(f, "f-"),
+            MOIROperation::GotoAbsolute => write!(f, "goto"),
+            MOIROperation::BranchOffset => write!(f, "goto"),
+            MOIROperation::BranchLabel() => write!(f, "goto"),
         }
     }
 }

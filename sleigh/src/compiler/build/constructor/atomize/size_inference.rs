@@ -23,7 +23,10 @@ impl SleighCompiler {
         trace!("Doing size inference pass");
         for instruction in instructions.iter_mut() {
             trace!("{instruction:?}");
-            let output_size = scope.size_of_local(instruction.output);
+            let output_size = instruction
+                .output
+                .map(|v| scope.size_of_local(v))
+                .unwrap_or(MOIRMaybeSize::Undetermined);
             let input_a_size = instruction
                 .input_a
                 .map(|v| v.size(scope))
@@ -43,7 +46,9 @@ impl SleighCompiler {
                     if let MOIRMaybeSize::Determined(size) = size {
                         // If we have a size, we can constrain all values to this size.
                         // Otherwise, we have to wait until the backwards pass.
-                        scope.constrain_local_size(&mut MOIRLocal::from(instruction.output), size)?;
+                        if let Some(output) = instruction.output {
+                            scope.constrain_local_size(&mut MOIRLocal::from(output), size)?;
+                        }
                         if let Some(local) = instruction.input_a.as_mut() {
                             scope.constrain_local_size(local, size)?
                         }
