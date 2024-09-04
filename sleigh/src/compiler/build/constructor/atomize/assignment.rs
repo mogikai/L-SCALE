@@ -1,3 +1,5 @@
+mod subpiece;
+
 use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
@@ -122,63 +124,6 @@ impl SleighCompiler {
             scope.allocate_named_temporary(bitrange.ident.clone().transmute(), MOIRMaybeSize::Undetermined)?;
         }
         scope.resolve_ident(&self.spec_builder, bitrange.ident.transmute())?;
-        Ok(())
-    }
-
-    fn atomize_assignment_subpiece(
-        &mut self,
-        scope: &mut MOIRScope,
-        instructions: &mut Vec<MOIRInstruction>,
-        local: Spanned<bool>,
-        expression: Spanned<SASTPCodeExpression>,
-        subpiece: Spanned<SASTPCodeSubpiece>,
-    ) -> SleighCompilerResult<()> {
-        // We are dealing with a subpiece assignment. This is similar to a normal assignment.
-        // However, we create a new slice and already have the required size, since it is
-        // specified in the subpiece operation.
-        let (subpiece, _) = subpiece.into_tuple();
-        match subpiece.target.into_value() {
-            SASTPCodeSubpieceTarget::Ident(ident) => {
-                let size = match subpiece.selector.into_value() {
-                    SASTPCodeSubpieceSelector::Take(size) => size,
-                    SASTPCodeSubpieceSelector::Discard(_) => {
-                        todo!("Currently unimplemented")
-                    }
-                };
-                let lhs = if local.into_value() {
-                    // We encountered a local definition. Define here and error out if it already exists.
-                    scope.allocate_named_temporary(ident.clone().transmute(), size.into())?
-                } else {
-                    scope.resolve_ident(&self.spec_builder, ident.clone().transmute())?
-                };
-                // If the subpiece tries to create a slice that is
-                // larger than the original, we generate an error.
-                if size
-                    > scope
-                        .size_of_local(lhs)
-                        .ok_or_else(|| -> SleighCompilerError {
-                            // We cannot slice a value that has an undetermined size
-                            todo!("Generate error for undetermined size")
-                        })?
-                {
-                    todo!("Generate error for subpiece being larger than underlying slice.")
-                }
-                let lhs = scope.truncate_local(lhs, size).map_err(|_| {
-                    let (ident, ident_span) = ident.into_tuple();
-                    let str = self.spec_builder.resolve_string_id(ident.into());
-                    generate_cannot_slice_error(str, ident_span, size)
-                })?;
-                // The variable is not declared yet. First resolve the rhs and try to determine a size.
-                let rhs = self.atomize_expression(scope, instructions, Some(lhs), expression)?;
-                if MOIRLocal::from(lhs) != rhs {
-                    // The atomization could not directly assign to lhs, so we need to emit a copy.
-                    instructions.push(moir_instruction!(lhs = rhs));
-                }
-            }
-            SASTPCodeSubpieceTarget::Literal(_) => {
-                todo!("Generate error report for unallowed literals in target expression")
-            }
-        }
         Ok(())
     }
 }
