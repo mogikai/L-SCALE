@@ -1,3 +1,4 @@
+mod bitrange;
 mod store;
 mod subpiece;
 mod variable;
@@ -48,23 +49,5 @@ impl SleighCompiler {
                 self.atomize_assignment_subpiece(scope, instructions, local, expression, subpiece)
             }
         }
-    }
-
-    fn atomize_assignment_bitrange(
-        &mut self,
-        scope: &mut MOIRScope,
-        instructions: &mut Vec<MOIRInstruction>,
-        local: Spanned<bool>,
-        expression: Spanned<SASTPCodeExpression>,
-        bitrange: Spanned<SASTPCodeBitRange>,
-    ) -> SleighCompilerResult<()> {
-        // TODO: Actually implement this
-        instructions.push(moir_instruction!(nop));
-        let (bitrange, _) = bitrange.into_tuple();
-        if local.into_value() {
-            scope.allocate_named_temporary(bitrange.ident.clone().transmute(), MOIRMaybeSize::Undetermined)?;
-        }
-        scope.resolve_ident(&self.spec_builder, bitrange.ident.transmute())?;
-        Ok(())
     }
 }

@@ -139,7 +139,7 @@ impl SleighCompiler {
         expression: Spanned<SASTPCodeExpression>,
     ) -> SleighCompilerResult<MOIRLocal> {
         let (expression, _) = expression.into_tuple();
-        trace!("Atomizing expression {}", expression);
+        trace!("Atomizing expression {} with out {:?}", expression, out);
         let out_size = out
             .map(|id| scope.size_of_local(id))
             .unwrap_or(MOIRMaybeSize::Undetermined);
@@ -155,7 +155,7 @@ impl SleighCompiler {
             }
             SASTPCodeExpression::Dereference { .. } => self.atomize_dereference(instructions),
             SASTPCodeExpression::Subpiece(subpiece) => self.atomize_subpiece(scope, instructions, out_size, subpiece),
-            SASTPCodeExpression::Bitrange(bitrange) => self.atomize_bitrange(scope, instructions, bitrange),
+            SASTPCodeExpression::Bitrange(bitrange) => self.atomize_bitrange(scope, instructions, out, bitrange),
             SASTPCodeExpression::Identifier(ident) => self.atomize_identifier(scope, out_size, ident.transmute()),
             SASTPCodeExpression::Load(deref) => self.atomize_load(scope, instructions, out, deref),
             SASTPCodeExpression::AddressOf(address_of) => self.atomize_address_of(scope, instructions, out, address_of),

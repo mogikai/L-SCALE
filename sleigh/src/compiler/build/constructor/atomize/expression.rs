@@ -310,29 +310,48 @@ impl SleighCompiler {
         &mut self,
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
+        out: Option<MOIRLocalId>,
         bitrange: Spanned<SASTPCodeBitRange>,
     ) -> SleighCompilerResult<MOIRLocal> {
-        // TODO: Rework this to take in an out var from the outside.
-        let (bitrange, bitrange_scope) = bitrange.into_tuple();
+        let (bitrange, _) = bitrange.into_tuple();
         let value = scope.resolve_ident(&self.spec_builder, bitrange.ident.transmute())?;
         let shift_amount = MOIRLocal::from(bitrange.lsb.into_value());
         let bits = bitrange.bits.into_value();
         // The size of the output is the smallest size in bytes that still fits the output.
-        let size = ((bits + 7) / 8).into();
+        let size = (bits + 7) / 8;
+
+        // Allocate an out local if none was provided. Otherwise, we need to make sure,
+        // that the size of out is correct.
+        let out = if let Some(out) = out {
+            scope.constrain_local_size(&mut MOIRLocal::from(out), size)?;
+            out
+        } else {
+            scope.allocate_temporary(size)
+        };
 
         // Bitrange is an emulated instruction. We first shift the bits right until we have the lsb at position 0
-        let int_right = MOIROperation::IntRight;
-        let out = scope.allocate_temporary(MOIRMaybeSize::from(size));
-        instructions.push(moir_instruction!(out = value int_right shift_amount));
+        // We do not want to modify the original value, so we need to create a copy here.
+        let tmp = scope.allocate_temporary(scope.size_of_local(value));
+        instructions.push(moir_instruction!(tmp = value >> shift_amount));
 
         // We can now reduce the size of the slice, discarding the remaining bits.
-        let out = scope.truncate_local(out, size)?;
+        let tmp = scope.truncate_local(tmp, size)?;
+        instructions.push(moir_instruction!(out = tmp));
 
         // And then mask out the bits that remain which we don't need.
-        let int_and = MOIROperation::IntAnd;
         // Truncate the mask to correct size before storing it in a local
-        let mask = MOIRLocal::from(MOIRConst::from((1u128 << bits) - 1).truncate(size)?);
-        instructions.push(moir_instruction!(out = out int_and mask));
+        let mask = if size < 16 {
+            // The mask constant can be calculated internally. If it is too large we have to calculate in pcode.
+            MOIRLocal::from(MOIRConst::from((1u128 << bits) - 1).truncate(size)?)
+        } else {
+            // The mask is too large, calculate in pcode.
+            // TODO: We might be able to do this as constant calculation in the future.
+            let mask = scope.allocate_temporary(size);
+            instructions.push(moir_instruction!(mask = { MOIRConst::new_with_size(1, size)? } << bits));
+            instructions.push(moir_instruction!(mask = mask - { MOIRConst::new_with_size(1, size)? }));
+            mask.into()
+        };
+        instructions.push(moir_instruction!(out = out & mask));
         Ok(out.into())
     }
 
@@ -344,7 +363,7 @@ impl SleighCompiler {
         deref: Spanned<SASTPCodeDeref>,
     ) -> SleighCompilerResult<MOIRLocal> {
         trace!("Atomizing load expression");
-        let (deref, deref_span) = deref.into_tuple();
+        let (deref, _) = deref.into_tuple();
         let value_size = deref
             .size
             .map(Spanned::into_value)
@@ -356,8 +375,9 @@ impl SleighCompiler {
 
         // If out is not specified we allocate our own out variable to store the result in.
         let out = out.unwrap_or_else(|| scope.allocate_temporary(out_size.or(value_size)));
-        // TODO: Maybe we can do this less dirty?
-        let space = self.spec_builder.resolve_space(deref.space.map(Spanned::transmute))?;
+        let space = self
+            .spec_builder
+            .resolve_space(deref.space.map(Spanned::transmute))?;
         let addr = self.atomize_expression(scope, instructions, None, *deref.expression)?;
         if let MOIRMaybeSize::Determined(out_size) = out_size {
             if let MOIRMaybeSize::Determined(value_size) = value_size {
@@ -373,7 +393,7 @@ impl SleighCompiler {
                         // If the size of out is larger than the loaded value, we perform a zero extend.
                         // Insert the operation here. The jit might optimize the zero extend + load into one op.
                         // Allocate tmp for loading the value into a correctly sized varnode.
-                        let tmp = scope.allocate_temporary(value_size.into());
+                        let tmp = scope.allocate_temporary(value_size);
                         // Load the value
                         instructions.push(moir_instruction!(tmp = *[space]addr));
                         instructions.push(moir_instruction!(out = zext(tmp)));

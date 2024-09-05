@@ -5,7 +5,10 @@ use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
-use crate::spec::moir::code::{moir_instruction, MOIRInstruction};
+use crate::spec::moir::code::{
+    moir_instruction,
+    MOIRInstruction,
+};
 use crate::spec::moir::scope::{
     MOIRMaybeSize,
     MOIRScope,
@@ -26,7 +29,9 @@ impl SleighCompiler {
         let (deref, _) = deref.into_tuple();
 
         let addr = self.atomize_expression(scope, instructions, None, *deref.expression)?;
-        let space = self.spec_builder.resolve_space(deref.space.map(Spanned::transmute))?;
+        let space = self
+            .spec_builder
+            .resolve_space(deref.space.map(Spanned::transmute))?;
         let value_size = deref
             .size
             .map(Spanned::into_value)

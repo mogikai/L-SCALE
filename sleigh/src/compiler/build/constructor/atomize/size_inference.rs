@@ -22,7 +22,7 @@ impl SleighCompiler {
     ) -> SleighCompilerResult<()> {
         trace!("Doing size inference pass");
         for instruction in instructions.iter_mut() {
-            trace!("{instruction:?}");
+            trace!("{instruction}");
             let output_size = instruction
                 .output
                 .map(|v| scope.size_of_local(v))

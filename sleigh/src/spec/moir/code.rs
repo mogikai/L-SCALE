@@ -4,7 +4,10 @@ use std::fmt::{
     Formatter,
 };
 use std::io::Read;
-use std::iter::{empty, once};
+use std::iter::{
+    empty,
+    once,
+};
 
 #[derive(Debug)]
 pub struct MOIRInstruction {
@@ -122,28 +125,40 @@ macro_rules! moir_instruction {
     (nop) => {
         MOIRInstruction::nop()
     };
-    ($lhs:ident = $rhs:ident) => {
-        MOIRInstruction::copy($lhs, $rhs)
-    };
-    (goto [$target:ident]) => {
+    (goto [$target:tt]) => {
         MOIRInstruction::goto_absolute($target)
     };
-    (goto $target:ident) => {
+    (goto $target:tt) => {
         MOIRInstruction::goto_relative($target)
     };
-    (goto <$target:ident>) => {
+    (goto <$target:tt>) => {
         MOIRInstruction::goto_label($target)
     };
-    ($out:ident = $op:ident $operand:ident) => {
-        MOIRInstruction::unary_op($out, $op, $operand)
+    ($out:ident = $lhs:tt - $rhs:tt) => {
+        MOIRInstruction::binary_op($out, $lhs, MOIROperation::IntSubtract, $rhs)
     };
-    ($out:ident = $lhs:ident $op:ident $rhs:ident) => {
+    ($out:ident = $lhs:tt ^ $rhs:tt) => {
+        MOIRInstruction::binary_op($out, $lhs, MOIROperation::IntXor, $rhs)
+    };
+    ($out:ident = $lhs:tt & $rhs:tt) => {
+        MOIRInstruction::binary_op($out, $lhs, MOIROperation::IntAnd, $rhs)
+    };
+    ($out:ident = $lhs:tt | $rhs:tt) => {
+        MOIRInstruction::binary_op($out, $lhs, MOIROperation::IntOr, $rhs)
+    };
+    ($out:ident = $lhs:tt >> $rhs:tt) => {
+        MOIRInstruction::binary_op($out, $lhs, MOIROperation::IntRight, $rhs)
+    };
+    ($out:ident = $lhs:tt << $rhs:tt) => {
+        MOIRInstruction::binary_op($out, $lhs, MOIROperation::IntLeft, $rhs)
+    };
+    ($out:ident = $lhs:tt $op:ident $rhs:tt) => {
         MOIRInstruction::binary_op($out, $lhs, $op, $rhs)
     };
     ($lhs:ident = &$rhs:ident) => {
         MOIRInstruction::address_of($lhs, $rhs)
     };
-    ($lhs:ident = zext($rhs:ident)) => {
+    ($lhs:ident = zext($rhs:tt)) => {
         MOIRInstruction::zext($lhs, $rhs)
     };
     ($target:ident = *[$space:ident]$addr:ident) => {
@@ -151,6 +166,15 @@ macro_rules! moir_instruction {
     };
     (*[$space:ident]$addr:ident = $value:ident) => {
         MOIRInstruction::store($addr, $space, $value)
+    };
+    ($lhs:ident = $rhs:tt) => {
+        MOIRInstruction::copy($lhs, $rhs)
+    };
+    ($out:ident = ~$operand:tt) => {
+        MOIRInstruction::unary_op($out, MOIROperation::BitNegate, $operand)
+    };
+    ($out:ident = $op:tt $operand:tt) => {
+        MOIRInstruction::unary_op($out, $op, $operand)
     };
 }
 

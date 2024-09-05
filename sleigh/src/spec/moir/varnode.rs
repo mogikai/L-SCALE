@@ -192,6 +192,24 @@ pub enum MOIRLocal {
     Const(MOIRConst),
 }
 
+impl PartialEq<MOIRLocalId> for MOIRLocal {
+    fn eq(
+        &self,
+        other: &MOIRLocalId,
+    ) -> bool {
+        self.eq(&MOIRLocal::from(*other))
+    }
+}
+
+impl PartialEq<MOIRLocal> for MOIRLocalId {
+    fn eq(
+        &self,
+        other: &MOIRLocal,
+    ) -> bool {
+        MOIRLocal::from(*self).eq(other)
+    }
+}
+
 impl Display for MOIRLocal {
     fn fmt(
         &self,
@@ -318,9 +336,10 @@ impl MOIRConst {
     /// constrained later on.
     pub fn new_with_size(
         val: u128,
-        size: MOIRMaybeSize,
+        size: impl Into<MOIRMaybeSize>,
     ) -> SleighCompilerResult<Self> {
         use MOIRMaybeSize::*;
+        let size = size.into();
         match size {
             Undetermined => Ok(MOIRConst::Undetermined(val)),
             Determined(16) => Ok(MOIRConst::Const128(val)),
@@ -372,7 +391,7 @@ impl MOIRConst {
     ) -> SleighCompilerResult {
         match self {
             MOIRConst::Undetermined(v) => {
-                *self = MOIRConst::Const128(*v);
+                *self = MOIRConst::new_with_size(*v, size)?;
             }
             v => {
                 if v.size() != MOIRMaybeSize::Determined(size) {

@@ -1,7 +1,6 @@
 use crate::compiler::ast::Spanned;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::InputSpan;
-use crate::compiler::report::generate_undefined_ident_error;
 use crate::compiler::SleighCompilerResult;
 use crate::new_typed_index_table_id;
 use crate::spec::builder::{
@@ -23,6 +22,7 @@ use std::fmt::{
     Display,
     Formatter,
 };
+use tracing::trace;
 
 /// A scope for locals and labels used in constructors and macros
 #[derive(Debug, Default)]
@@ -162,8 +162,9 @@ impl MOIRScope {
     /// for storing intermediate values when atomizing expressions.
     pub fn allocate_temporary(
         &mut self,
-        size: MOIRMaybeSize,
+        size: impl Into<MOIRMaybeSize>,
     ) -> MOIRLocalId {
+        let size = size.into();
         self.slices
             .insert(MOIRSlice::temporary(self.temporaries.insert(MOIRTemporary { size }), 0, size))
     }
