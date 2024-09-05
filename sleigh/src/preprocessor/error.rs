@@ -4,7 +4,6 @@ use std::fmt::{
     Debug,
     Display,
     Formatter,
-    Pointer,
 };
 use thiserror::Error;
 

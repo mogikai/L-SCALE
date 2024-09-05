@@ -1,6 +1,5 @@
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::InputSpan;
-use crate::spec::ProcessorSpecificationError;
 use ariadne::{
     ColorGenerator,
     Fmt,
@@ -13,7 +12,6 @@ use crate::compiler::error::SleighCompilerError;
 use crate::spec::moir::endianness::MOIREndianness;
 use chumsky::span::Span;
 
-use super::builder::StringId;
 
 // TODO: Pull the error reporting out of the spec and into the compiler.
 //       Also use SleighCompilerError instead of ProcessorSpecificationError

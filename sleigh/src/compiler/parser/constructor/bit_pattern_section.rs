@@ -6,7 +6,6 @@ use crate::compiler::ast::constructor::bit_pattern_section::{
     SASTConstraintPattern,
     SASTUnaryOp,
 };
-use crate::compiler::ast::define::SASTToken;
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
@@ -18,7 +17,6 @@ use crate::compiler::parser::{
     sleigh_control,
     sleigh_number,
     sleigh_operation,
-    sleigh_whitespace,
     whitespace_padded,
     SleighParserExtra,
 };

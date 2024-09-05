@@ -5,26 +5,6 @@ use crate::compiler::ast::common::{
 use crate::compiler::ast::pcode::addressof::SASTPCodeAddressOf;
 use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
-use crate::compiler::ast::pcode::expression::SASTPCodeBinaryOp::{
-    BoolAnd,
-    BoolOr,
-    BoolXor,
-    FloatEquals,
-    FloatGreater,
-    FloatGreaterEqual,
-    FloatLess,
-    FloatLessEqual,
-    FloatNotEquals,
-    IntEquals,
-    IntGreater,
-    IntGreaterEqual,
-    IntLess,
-    IntLessEqual,
-    IntNotEquals,
-    IntSGreater,
-    IntSGreaterEqual,
-    IntSLessEqual,
-};
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::pcode::subpiece::SASTPCodeSubpiece;
 use crate::compiler::ast::Spanned;
@@ -72,10 +52,10 @@ impl Display for SASTPCodeExpression {
             }
             SASTPCodeExpression::UnaryOperation { op, operand } => write!(f, "{} {}", op.value(), operand.value()),
             SASTPCodeExpression::Dereference { space, size } => write!(f, "*{}:{}", space.value(), size.value()),
-            SASTPCodeExpression::Subpiece(subpiece) => write!(f, "subpiece"),
+            SASTPCodeExpression::Subpiece(_) => write!(f, "subpiece"),
             SASTPCodeExpression::Bitrange(_) => write!(f, "bitrange"),
             SASTPCodeExpression::Identifier(ident) => write!(f, "{}", ident.value()),
-            SASTPCodeExpression::Load(load) => write!(f, "load"),
+            SASTPCodeExpression::Load(_) => write!(f, "load"),
             SASTPCodeExpression::AddressOf(_) => write!(f, "address_of"),
             SASTPCodeExpression::Literal(literal) => write!(f, "{}", literal.value()),
             SASTPCodeExpression::Error(_) => write!(f, "error"),

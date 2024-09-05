@@ -10,10 +10,7 @@ use crate::compiler::parser::{
     sleigh_whitespace,
     SleighParserExtra,
 };
-use crate::compiler::tokens::{
-    SleighControlCharacter,
-    SleighKeyword,
-};
+use crate::compiler::tokens::SleighKeyword;
 
 pub(super) fn user_pcode_op<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTUserPcodeOp>, SleighParserExtra<'tokens>> {

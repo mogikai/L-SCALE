@@ -1,4 +1,3 @@
-use chumsky::primitive::choice;
 use chumsky::{
     select,
     IterParser,
@@ -9,9 +8,6 @@ use crate::compiler::ast::define::{
     SASTContext,
     SASTContextField,
     SASTContextFieldAttribute,
-    SASTToken,
-    SASTTokenField,
-    SASTTokenFieldAttribute,
 };
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
@@ -31,8 +27,6 @@ use crate::compiler::tokens::{
     SleighOperation,
     SleighToken,
 };
-
-use super::endianness::endianness;
 
 pub(super) fn context<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTContext>, SleighParserExtra<'tokens>> {

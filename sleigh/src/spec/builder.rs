@@ -12,7 +12,6 @@ use super::moir::context::{
     MOIRContext,
     MOIRContextId,
 };
-use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::Spanned;
 use crate::compiler::build::matcher::{
     Matcher,
@@ -29,7 +28,6 @@ use crate::compiler::{
     SleighCompilerResult,
 };
 use crate::spec::builder::transform::MOIRToJIRTransformer;
-use crate::spec::jir::space::JIRSpace;
 use crate::spec::moir::address_space::{
     MOIRSpace,
     MOIRSpaceIsDefault,
@@ -63,20 +61,13 @@ use crate::spec::reporting::{
 use crate::spec::typed_index_table::TypedIndexTable;
 use crate::spec::{
     Ident,
-    JIRSymbolId,
     MacroId,
     ProcessorSpecification,
     ProcessorSpecificationError,
     SpaceId,
-    SymbolTables,
     TableId,
 };
-use chumsky::container::Container;
-use slotmap::{
-    new_key_type,
-    SecondaryMap,
-    SlotMap,
-};
+use slotmap::SlotMap;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::{
@@ -90,10 +81,7 @@ use string_interner::backend::{
 use string_interner::symbol::Symbol;
 use string_interner::StringInterner;
 use strum_macros::Display;
-use tracing::{
-    debug,
-    trace,
-};
+use tracing::debug;
 
 mod transform;
 
@@ -587,12 +575,11 @@ impl ProcessorSpecificationBuilder {
         &self,
         ident: &Spanned<StringId>,
     ) -> SleighCompilerResult<MOIRSlice> {
-        let symbol_reference = ident.clone().map(|id| self.resolve_string_id(id));
         self.varnode_id_by_ident(ident).map(|vnid| {
             let varnode = self
                 .varnode_by_symbol_id(vnid)
                 .expect("This must exist since we just got its id.");
-            MOIRSlice::varnode(vnid, 0, varnode.size.into())
+            MOIRSlice::varnode(vnid, 0, varnode.size)
         })
     }
 
@@ -728,7 +715,7 @@ impl ProcessorSpecificationBuilder {
         debug!("Found {} spaces", self.symbol_tables.spaces.len());
         debug!("Found {} global varnodes", self.symbol_tables.varnodes.len());
         debug!("Found {} custom operations", self.symbol_tables.custom_ops.len());
-        let mut context = MOIRToJIRTransformer::new(
+        let context = MOIRToJIRTransformer::new(
             self.symbol_ids,
             self.symbol_strings,
             self.symbol_tables,

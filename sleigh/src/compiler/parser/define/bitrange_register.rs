@@ -3,22 +3,16 @@ use chumsky::{
     Parser,
 };
 
-use crate::compiler::ast::define::{
-    SASTBitrangeRegister,
-    SASTVarnode,
-};
+use crate::compiler::ast::define::SASTBitrangeRegister;
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
-    sast_ident,
     sast_ident_spanned,
     sleigh_control,
-    sleigh_ident,
     sleigh_keyword,
     sleigh_number,
     sleigh_operation,
-    sleigh_whitespace,
     whitespace_padded,
     SleighParserExtra,
 };
@@ -26,7 +20,6 @@ use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighKeyword,
     SleighOperation,
-    SleighToken,
 };
 
 pub(super) fn bitrange_register<'tokens>(

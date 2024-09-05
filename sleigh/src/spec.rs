@@ -17,11 +17,6 @@ use crate::spec::moir::varnode::VarNodeId;
 use crate::spec::typed_index_table::TypedIndexTable;
 use ariadne::Report;
 use builder::MOIRSymbolId;
-use slotmap::{
-    new_key_type,
-    SecondaryMap,
-    SlotMap,
-};
 use std::collections::HashMap;
 use string_interner::backend::StringBackend;
 use string_interner::StringInterner;
@@ -135,7 +130,7 @@ impl ProcessorSpecification {
         &self,
         space_id: SpaceId,
     ) -> ProcessorSpecResult<u64> {
-        let space = self
+        let _ = self
             .symbol_tables
             .spaces
             .get(space_id)

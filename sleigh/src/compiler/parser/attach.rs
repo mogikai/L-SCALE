@@ -1,11 +1,7 @@
 use chumsky::primitive::choice;
 use chumsky::Parser;
 
-use crate::compiler::ast::attach::{
-    SASTAttach,
-    SASTValue,
-    SASTVariable,
-};
+use crate::compiler::ast::attach::SASTAttach;
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;

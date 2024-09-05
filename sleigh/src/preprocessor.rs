@@ -17,12 +17,8 @@ use ariadne::{
     Report,
     ReportKind,
 };
-use chumsky::prelude::end;
 use chumsky::span::Span;
-use chumsky::{
-    select,
-    Parser,
-};
+use chumsky::Parser;
 use tracing::trace;
 
 use blocks::{
@@ -37,19 +33,11 @@ use crate::compiler::ast::Spanned;
 use crate::compiler::inputcache::CompilerInputCache;
 use crate::compiler::lexer::{
     InputSpan,
-    ParserInput,
     SleighLexer,
     SleighTokens,
 };
-use crate::compiler::parser::{
-    inline_whitespace_padded,
-    maybe_parenthesized,
-    parenthesized,
-};
 use crate::compiler::tokens::{
     IncludedTokens,
-    SleighKeyword,
-    SleighOperation,
     SleighToken,
 };
 use crate::compiler::{
@@ -178,7 +166,7 @@ impl SleighPreprocessor {
         );
         let tokens = result
             .into_result()
-            .map_err(|e| PreprocessorError::ParseError("Failed macro expansion".to_string()))?
+            .map_err(|_| PreprocessorError::ParseError("Failed macro expansion".to_string()))?
             .into_iter()
             // TODO: This currently only reports the point of expansion on error during parsing.
             //       We will need to somehow extend the spans with more information?

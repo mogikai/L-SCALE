@@ -1,4 +1,4 @@
-use crate::compiler::ast::common::{SASTIdent, SASTSize};
+use crate::compiler::ast::common::SASTSize;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::Spanned;
 

@@ -38,10 +38,7 @@ use chumsky::combinator::{
     DelimitedBy,
     PaddedBy,
 };
-use chumsky::error::{
-    Error,
-    Rich,
-};
+use chumsky::error::Rich;
 use chumsky::extra::ParserExtra;
 use chumsky::input::MapExtra;
 use chumsky::label::LabelError;

@@ -26,19 +26,13 @@ macro_rules! new_typed_index_table_id {
 pub struct TypedIndexTable<K, V>(Vec<V>, PhantomData<K>);
 impl<K, V> Default for TypedIndexTable<K, V> {
     fn default() -> Self {
-        Self {
-            0: vec![],
-            1: Default::default(),
-        }
+        Self(vec![], Default::default())
     }
 }
 
 impl<K, V> FromIterator<(K, V)> for TypedIndexTable<K, V> {
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
-        Self {
-            0: Vec::from_iter(iter.into_iter().map(|(k, v)| v)),
-            1: Default::default(),
-        }
+        Self(Vec::from_iter(iter.into_iter().map(|(_, v)| v)), Default::default())
     }
 }
 
@@ -47,7 +41,7 @@ impl<K, V> Extend<(K, V)> for TypedIndexTable<K, V> {
         &mut self,
         iter: T,
     ) {
-        self.0.extend(iter.into_iter().map(|(k, v)| v));
+        self.0.extend(iter.into_iter().map(|(_, v)| v));
     }
 }
 

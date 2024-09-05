@@ -1,19 +1,15 @@
 //! This module implements the atomization of PCodeExpressions.
 //! The entry function is [SleighCompiler::atomize_expression].
 
-use crate::compiler::ast::common::{
-    SASTIdent,
-    SASTLiteral,
-};
-use crate::compiler::ast::constructor::bit_pattern_section::SASTBinaryOp;
+mod binary;
+
+use crate::compiler::ast::common::SASTLiteral;
 use crate::compiler::ast::pcode::addressof::SASTPCodeAddressOf;
 use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::ast::pcode::expression::{
-    SASTPCodeBinaryOp,
     SASTPCodeExpression,
     SASTPCodeUnaryOp,
-    SASTPcodeOpCategory,
 };
 use crate::compiler::ast::pcode::subpiece::{
     SASTPCodeSubpiece,
@@ -23,8 +19,6 @@ use crate::compiler::ast::pcode::subpiece::{
 use crate::compiler::ast::Spanned;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::report::{
-    generate_cannot_slice_error,
-    generate_const_eval_error,
     generate_invalid_sizes_error,
 };
 use crate::compiler::{
@@ -32,10 +26,6 @@ use crate::compiler::{
     SleighCompilerResult,
 };
 use crate::spec::builder::StringId;
-use crate::spec::moir::address_space::{
-    MOIRSpaceType,
-    SpaceId,
-};
 use crate::spec::moir::code::{
     moir_instruction,
     MOIRInstruction,
@@ -49,172 +39,55 @@ use crate::spec::moir::scope::{
 use crate::spec::moir::varnode::{
     MOIRConst,
     MOIRLocal,
-    MOIRSlice,
-    VarNodeId,
-};
-use num::{
-    CheckedAdd,
-    CheckedSub,
-    Num,
 };
 use std::cmp::Ordering;
 use std::fmt::Display;
 use std::ops::{
-    Add,
-    BitAnd,
-    BitOr,
-    BitXor,
-    Div,
-    Mul,
     Neg,
     Not,
-    Shl,
-    Shr,
-    Sub,
 };
 use tracing::trace;
 
 impl SleighCompiler {
-    pub fn atomize_binary_operation(
+    /// Atomizes the expression into multiple MOIRInstructions.
+    /// The function returns a [MOIRLocal] that contains the result of the expression.
+    /// If an out local was specified, it may be used to directly store the result.
+    /// In this case, the returned [MOIRLocal] will be the same as the provided out.
+    /// The result may not be stored in out, if it is for example a const value to give
+    /// other operations the opportunity to further fold the constants.
+    /// If not out local was specified, then this function returns a new [MOIRLocal].
+    /// If the expression contains only constants, then this can be optimized down to
+    /// a single const [MOIRLocal::Const]. Otherwise, [MOIRLocal] will be [MOIRLocal::Local].
+    pub fn atomize_expression(
         &mut self,
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         out: Option<MOIRLocalId>,
-        ast_lhs: Spanned<SASTPCodeExpression>,
-        op: Spanned<SASTPCodeBinaryOp>,
-        ast_rhs: Spanned<SASTPCodeExpression>,
+        expression: Spanned<SASTPCodeExpression>,
     ) -> SleighCompilerResult<MOIRLocal> {
-        let lhs_span = ast_lhs.span().clone();
-        let rhs_span = ast_rhs.span().clone();
-        let mut independent_rhs_size = false;
-        let (out, lhs) = match op.value().op_category() {
-            SASTPcodeOpCategory::Comparison => {
-                // If op is a comparison operation, it will output either 0 or 1, which is put into a single byte.
-                // See 7.7.3. Varnode Sizes.
-                // The output is constrained to a single byte.
-                let out = out.unwrap_or_else(|| scope.allocate_temporary(MOIRMaybeSize::Determined(1)));
-                match scope.size_of_local(out) {
-                    MOIRMaybeSize::Determined(1) => {}
-                    MOIRMaybeSize::Determined(_) => {
-                        todo!("Generate error for invalid size for comparison operation. Out must be size 1")
-                    }
-                    MOIRMaybeSize::Undetermined => {
-                        // The size of out was undetermined, so we can just constrain it now.
-                        let mut out = out.into();
-                        scope.constrain_local_size(&mut out, 1)?;
-                    }
-                }
-                (out, None)
-            }
-            SASTPcodeOpCategory::Shift => {
-                // The rhs for shift operations is unconstrained.
-                independent_rhs_size = true;
-                let out = out.unwrap_or_else(|| scope.allocate_temporary(MOIRMaybeSize::Undetermined));
-                // Use the same temporary for out and lhs since they have to be the same size.
-                (out, Some(out))
-            }
-            SASTPcodeOpCategory::Regular => {
-                let out = out.unwrap_or_else(|| scope.allocate_temporary(MOIRMaybeSize::Undetermined));
-                // Use the same temporary for out and lhs since they have to be the same size.
-                (out, Some(out))
-            }
-        };
+        let (expression, _) = expression.into_tuple();
+        trace!("Atomizing expression {} with out {:?}", expression, out);
+        let out_size = out
+            .map(|id| scope.size_of_local(id))
+            .unwrap_or(MOIRMaybeSize::Undetermined);
 
-        let lhs = self.atomize_expression(scope, instructions, lhs, ast_lhs)?;
-
-        // The size of the rhs must be the same as the lhs. Since size_constraint was given to lhs,
-        // we can now just assume lhs has a determined size if size_constraint had a determined size.
-        // The exception to this are shift operations, where th rhs is independent of the lhs.
-        let rhs_size = if independent_rhs_size {
-            MOIRMaybeSize::Undetermined
-        } else {
-            lhs.size(scope)
-        };
-        // Rhs needs to be allocated separately, since we need to keep both intermediate values at the same time
-        // However, we can directly allocate the correct size.
-        let rhs = scope.allocate_temporary(rhs_size);
-        let rhs = self.atomize_expression(scope, instructions, Some(rhs), ast_rhs)?;
-
-        if let MOIRLocal::Const(lhs) = lhs {
-            if let MOIRLocal::Const(rhs) = rhs {
-                trace!("Performing const optimization since lhs and rhs are const");
-                // Constant folding. We can calculate this at compile time.
-                return self
-                    .const_eval_binary_op(lhs, op.into_value(), rhs)
-                    .map(MOIRLocal::Const)
-                    .map_err(|e| generate_const_eval_error(e.to_string().as_str(), lhs_span, rhs_span));
-            }
-        }
-
-        // If out is not yet determined, try to constrain its size now.
-        if let MOIRMaybeSize::Undetermined = scope.size_of_local(out) {
-            match op.value().op_category() {
-                SASTPcodeOpCategory::Comparison => {
-                    let mut out = out.into();
-                    scope.constrain_local_size(&mut out, 1)?;
-                }
-                SASTPcodeOpCategory::Shift | SASTPcodeOpCategory::Regular => {
-                    let mut out = out.into();
-                    if let MOIRMaybeSize::Determined(lhs_size) = lhs.size(scope) {
-                        scope.constrain_local_size(&mut out, lhs_size)?;
-                    }
-                }
-            }
-        }
-
-        // At least one side of the op is not const, so we cannot fold.
-        let op = op.into_value().into();
-        trace!("Sizes: {:?} = {:?} op {:?}", scope.size_of_local(out), lhs.size(scope), rhs.size(scope));
-        instructions.push(moir_instruction!(out = lhs op rhs));
-        Ok(out.into())
-    }
-
-    fn const_eval_binary_op(
-        &mut self,
-        lhs: MOIRConst,
-        op: SASTPCodeBinaryOp,
-        rhs: MOIRConst,
-    ) -> SleighCompilerResult<MOIRConst> {
-        match lhs {
-            MOIRConst::ConstN(v, size) => {
-                todo!("Const eval on ConstN currently unsupported")
-            }
-            MOIRConst::Const128(lhs) => {
-                let MOIRConst::Const128(rhs) = rhs else {
-                    todo!("Generate error report for incorrect sizes")
-                };
-                Ok(MOIRConst::Const128(const_eval_binary_op(lhs, op, rhs)?))
-            }
-            MOIRConst::Const64(lhs) => {
-                let MOIRConst::Const64(rhs) = rhs else {
-                    todo!("Generate error report for incorrect sizes")
-                };
-                Ok(MOIRConst::Const64(const_eval_binary_op(lhs, op, rhs)?))
-            }
-            MOIRConst::Const32(lhs) => {
-                let MOIRConst::Const32(rhs) = rhs else {
-                    todo!("Generate error report for incorrect sizes")
-                };
-                Ok(MOIRConst::Const32(const_eval_binary_op(lhs, op, rhs)?))
-            }
-            MOIRConst::Const16(lhs) => {
-                let MOIRConst::Const16(rhs) = rhs else {
-                    todo!("Generate error report for incorrect sizes")
-                };
-                Ok(MOIRConst::Const16(const_eval_binary_op(lhs, op, rhs)?))
-            }
-            MOIRConst::Const8(lhs) => {
-                let MOIRConst::Const8(rhs) = rhs else {
-                    todo!("Generate error report for incorrect sizes")
-                };
-                Ok(MOIRConst::Const8(const_eval_binary_op(lhs, op, rhs)?))
-            }
-            MOIRConst::Undetermined(_) => {
-                todo!("Cannot const evaluate undetermined size constants")
+        use SASTPCodeExpression::*;
+        match expression {
+            Invocation(invocation) => self.atomize_invocation(scope, instructions, out, invocation),
+            BinaryOperation { lhs, op, rhs } => self.atomize_binary_operation(scope, instructions, out, *lhs, op, *rhs),
+            UnaryOperation { op, operand } => self.atomize_unary_operation(scope, instructions, out, op, *operand),
+            Dereference { .. } => self.atomize_dereference(instructions),
+            Subpiece(subpiece) => self.atomize_subpiece(scope, out_size, subpiece),
+            Bitrange(bitrange) => self.atomize_bitrange(scope, instructions, out, bitrange),
+            Identifier(ident) => self.atomize_identifier(scope, out_size, ident.transmute()),
+            Load(deref) => self.atomize_load(scope, instructions, out, deref),
+            AddressOf(address_of) => self.atomize_address_of(scope, instructions, out, address_of),
+            Literal(literal) => self.atomize_literal(out_size, literal),
+            Error(_) => {
+                panic!("An error in the AST should have lead to the compiler quitting earlier on.")
             }
         }
     }
-
     pub fn atomize_unary_operation(
         &mut self,
         scope: &mut MOIRScope,
@@ -233,7 +106,7 @@ impl SleighCompiler {
             MOIRLocal::Const(operand) => {
                 // We can do constant folding.
                 Ok(match operand {
-                    MOIRConst::ConstN(operand, size) => {
+                    MOIRConst::ConstN(..) => {
                         todo!("Constant folding for ConstN currently unsupported")
                     }
                     MOIRConst::Const128(operand) => const_eval_unary_op::<u128, i128>(op.into_value(), operand)?.into(),
@@ -251,7 +124,7 @@ impl SleighCompiler {
 
     pub fn atomize_dereference(
         &mut self,
-        instructions: &mut Vec<MOIRInstruction>,
+        _instructions: &mut Vec<MOIRInstruction>,
     ) -> SleighCompilerResult<MOIRLocal> {
         todo!()
     }
@@ -264,11 +137,10 @@ impl SleighCompiler {
     pub fn atomize_subpiece(
         &mut self,
         scope: &mut MOIRScope,
-        instructions: &mut Vec<MOIRInstruction>,
         size_constraint: MOIRMaybeSize,
         subpiece: Spanned<SASTPCodeSubpiece>,
     ) -> SleighCompilerResult<MOIRLocal> {
-        let (subpiece, subpiece_span) = subpiece.into_tuple();
+        let (subpiece, _) = subpiece.into_tuple();
         let (offset, size) = match subpiece.selector.into_value() {
             SASTPCodeSubpieceSelector::Take(size) => {
                 // If we take n, the offset is zero, and the size is determined as n
@@ -486,7 +358,7 @@ impl SleighCompiler {
             }
             MOIRMaybeSize::Undetermined => {
                 // Size constraint is undetermined. We can just return the resolved value.
-                scope.resolve_ident(&self.spec_builder, ident)?.into()
+                scope.resolve_ident(&self.spec_builder, ident)?
             }
         };
         Ok(local.into())
@@ -501,81 +373,7 @@ impl SleighCompiler {
     ) -> SleighCompilerResult<MOIRLocal> {
         Ok(MOIRConst::new_with_size(literal.into_value(), size_constraint)?.into())
     }
-
-    pub fn atomize_error(
-        &mut self,
-        instructions: &mut Vec<MOIRInstruction>,
-    ) -> SleighCompilerResult<MOIRLocal> {
-        // TODO
-        Ok(MOIRLocal::Const(MOIRConst::Const64(0)))
-    }
 }
-
-fn const_eval_binary_op<T>(
-    lhs: T,
-    op: SASTPCodeBinaryOp,
-    rhs: T,
-) -> Result<T, SleighCompilerError>
-where
-    T: CheckedAdd<Output = T>,
-    T: CheckedSub<Output = T>,
-    T: Mul<Output = T>,
-    T: Div<Output = T>,
-    T: Shr<Output = T>,
-    T: Shl<Output = T>,
-    T: BitAnd<Output = T>,
-    T: BitOr<Output = T>,
-    T: BitXor<Output = T>,
-    T: PartialEq<T>,
-    T: Into<u128>,
-    T: From<u8>,
-    T: Display,
-{
-    trace!("Const eval for {lhs} {op:?} {rhs}");
-    Ok(match op {
-        SASTPCodeBinaryOp::IntAdd => lhs
-            .checked_add(&rhs)
-            .ok_or(SleighCompilerError::ConstEvalOverflow)?,
-        SASTPCodeBinaryOp::IntSubtract => lhs
-            .checked_sub(&rhs)
-            .ok_or(SleighCompilerError::ConstEvalOverflow)?,
-        SASTPCodeBinaryOp::IntMul => lhs * rhs,
-        SASTPCodeBinaryOp::IntDiv => lhs / rhs,
-        SASTPCodeBinaryOp::IntSDiv => todo!(),
-        SASTPCodeBinaryOp::IntRemainder => todo!(),
-        SASTPCodeBinaryOp::IntSRemainder => todo!(),
-        SASTPCodeBinaryOp::FloatDiv => todo!(),
-        SASTPCodeBinaryOp::FloatMul => todo!(),
-        SASTPCodeBinaryOp::FloatAdd => todo!(),
-        SASTPCodeBinaryOp::FloatSubtract => todo!(),
-        SASTPCodeBinaryOp::BoolOr => from_bool(into_bool(lhs) || into_bool(rhs)),
-        SASTPCodeBinaryOp::BoolAnd => from_bool(into_bool(lhs) && into_bool(rhs)),
-        SASTPCodeBinaryOp::BoolXor => from_bool(into_bool(lhs) ^ into_bool(rhs)),
-        SASTPCodeBinaryOp::IntLeft => lhs << rhs,
-        SASTPCodeBinaryOp::IntRight => lhs >> rhs,
-        SASTPCodeBinaryOp::IntSRight => todo!(),
-        SASTPCodeBinaryOp::IntSLess => todo!(),
-        SASTPCodeBinaryOp::IntSGreater => todo!(),
-        SASTPCodeBinaryOp::IntSLessEqual => todo!(),
-        SASTPCodeBinaryOp::IntSGreaterEqual => todo!(),
-        SASTPCodeBinaryOp::IntLess => todo!(),
-        SASTPCodeBinaryOp::IntGreater => todo!(),
-        SASTPCodeBinaryOp::IntLessEqual => todo!(),
-        SASTPCodeBinaryOp::IntGreaterEqual => todo!(),
-        SASTPCodeBinaryOp::FloatLess => todo!(),
-        SASTPCodeBinaryOp::FloatGreater => todo!(),
-        SASTPCodeBinaryOp::FloatLessEqual => todo!(),
-        SASTPCodeBinaryOp::FloatGreaterEqual => todo!(),
-        SASTPCodeBinaryOp::FloatEquals => todo!(),
-        SASTPCodeBinaryOp::FloatNotEquals => todo!(),
-        SASTPCodeBinaryOp::IntOr => lhs | rhs,
-        SASTPCodeBinaryOp::IntAnd => lhs & rhs,
-        SASTPCodeBinaryOp::IntXor => lhs ^ rhs,
-        SASTPCodeBinaryOp::IntEquals => from_bool(lhs == rhs),
-        SASTPCodeBinaryOp::IntNotEquals => from_bool(lhs != rhs),
-    })
-}
-
 fn const_eval_unary_op<T, S>(
     op: SASTPCodeUnaryOp,
     operand: T,
@@ -601,10 +399,7 @@ fn into_bool<T>(val: T) -> bool
 where
     T: Into<u128>,
 {
-    match val.into() {
-        0u128 => false,
-        _ => true,
-    }
+    !matches!(val.into(), 0u128)
 }
 
 fn from_bool<T>(val: bool) -> T

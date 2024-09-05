@@ -1,4 +1,3 @@
-use chumsky::primitive::choice;
 use chumsky::{
     select,
     IterParser,

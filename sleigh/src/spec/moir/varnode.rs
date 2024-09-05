@@ -11,7 +11,6 @@ use crate::spec::moir::scope::{
     MOIRTemporaryId,
 };
 use crate::spec::moir::table::TableId;
-use num::Saturating;
 use std::fmt::{
     Display,
     Formatter,
@@ -479,7 +478,7 @@ impl MOIRConst {
                     }
                 }
             }
-            MOIRConst::ConstN(v, size) => {
+            MOIRConst::ConstN(..) => {
                 todo!("ConstN slicing currently unsupported")
             }
             MOIRConst::Undetermined(_) => Err(SleighCompilerError::CannotSliceUndetermined)?,

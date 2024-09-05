@@ -6,8 +6,6 @@ mod constructor;
 pub mod matcher;
 
 use crate::compiler::ast::attach::SASTAttach;
-use crate::compiler::ast::constructor::bit_pattern_section::SASTBitPatternConstraint;
-use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::ast::define::{
     SASTAddressSpace,
     SASTAddressSpaceAttribute,
@@ -138,7 +136,7 @@ impl SleighCompiler {
         &mut self,
         pcode_op: Spanned<SASTUserPcodeOp>,
     ) -> SleighCompilerResult {
-        let (pcode_op, span) = pcode_op.into_tuple();
+        let (pcode_op, _) = pcode_op.into_tuple();
         let result = self
             .spec_builder
             .declare_custom_op(pcode_op.name.transmute());
@@ -150,7 +148,7 @@ impl SleighCompiler {
         &mut self,
         varnodes: Spanned<SASTVarnode>,
     ) -> SleighCompilerResult {
-        let (varnodes, span) = varnodes.into_tuple();
+        let (varnodes, _) = varnodes.into_tuple();
         let result = self
             .spec_builder
             .space_id_by_ident(varnodes.spacename.transmute());
@@ -237,7 +235,6 @@ impl SleighCompiler {
         }
         let Some(address_size) = address_size else {
             todo!("Generate error report for missing size attribute.");
-            return Ok(());
         };
         let moir_space = MOIRSpace {
             r#type: r#type.unwrap_or(MOIRSpaceType::Ram),

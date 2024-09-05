@@ -1,8 +1,5 @@
 use chumsky::primitive::choice;
-use chumsky::{
-    IterParser,
-    Parser,
-};
+use chumsky::Parser;
 
 use crate::compiler::ast::define::SASTDefine;
 use crate::compiler::ast::Spanned;

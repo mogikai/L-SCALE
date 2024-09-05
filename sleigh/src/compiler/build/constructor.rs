@@ -20,7 +20,6 @@ use crate::compiler::{
     SleighCompilerResult,
 };
 use crate::spec::builder::MOIRSymbolId;
-use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::MOIRConstructor;
 use crate::spec::moir::field::FieldId;
 use crate::spec::moir::scope::{
@@ -43,7 +42,7 @@ impl SleighCompiler {
         &mut self,
         constructor: Spanned<SASTConstructor>,
     ) -> SleighCompilerResult {
-        let (constructor, span) = constructor.into_tuple();
+        let (constructor, _) = constructor.into_tuple();
         let table_name = constructor
             .table
             .value()
@@ -67,7 +66,7 @@ impl SleighCompiler {
             .local_scope
             .declare_local(self.spec_builder.intern("inst_next2"), MOIRSlice::inst_next2());
 
-        let mut matcher = self.create_matcher(constructor.bit_pattern_section.into_value().constraint)?;
+        let matcher = self.create_matcher(constructor.bit_pattern_section.into_value().constraint)?;
         // TODO: Need to parse the disassembly section here as well and add that information to the matcher
         self.resolve_symbols_to_local_scope(&mut moir_constructor.local_scope, &matcher.symbols_used)?;
         for ident in &constructor.display_section.identifiers {
@@ -213,7 +212,7 @@ impl SleighCompiler {
         &mut self,
         constraint: Spanned<SASTBitPatternConstraint>,
     ) -> SleighCompilerResult<Matcher> {
-        let (constraint, span) = constraint.into_tuple();
+        let (constraint, _) = constraint.into_tuple();
         match constraint {
             SASTBitPatternConstraint::Ident(ident) => {
                 let symbol = self.spec_builder.get_symbol(&ident.clone().transmute())?;
@@ -250,7 +249,7 @@ impl SleighCompiler {
 
                 Ok(Matcher::new(expression, matcher_lhs.symbols_used))
             }
-            SASTBitPatternConstraint::UnaryOp(op, val) => {
+            SASTBitPatternConstraint::UnaryOp(_, val) => {
                 // TODO implement
                 // todo!("Handle unary op (left-right justify/...)")
                 let matcher = self.create_matcher(*val)?;

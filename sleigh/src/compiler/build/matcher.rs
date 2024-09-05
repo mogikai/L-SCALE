@@ -1,4 +1,4 @@
-use chumsky::primitive::todo;
+#![allow(unused_variables)]
 use slotmap::new_key_type;
 
 use crate::spec::builder::MOIRSymbolId;

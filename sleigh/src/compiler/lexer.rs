@@ -181,7 +181,7 @@ impl SleighTokens {
 }
 
 #[derive(Debug)]
-pub struct SleighLexer<ContextT> {
+pub(crate) struct SleighLexer<ContextT> {
     phantom: PhantomData<ContextT>,
 }
 
@@ -245,7 +245,7 @@ where
 
 pub type SleighLexerExtra<'src, ContextT> = extra::Full<Rich<'src, char>, ContextT, ()>;
 
-pub fn lexer<'src, ContextT>(
+fn lexer<'src, ContextT>(
     input_id: InputId,
     offset: usize,
 ) -> impl Parser<'src, &'src str, SleighTokens, SleighLexerExtra<'src, ContextT>>

@@ -1,4 +1,3 @@
-use crate::compiler::ast::Spanned;
 use crate::spec::builder::StringId;
 use std::fmt::{
     Display,

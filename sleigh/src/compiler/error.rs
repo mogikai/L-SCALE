@@ -4,7 +4,6 @@ use crate::compiler::lexer::InputSpan;
 use crate::preprocessor::error::PreprocessorError;
 use crate::spec::builder::StringId;
 use crate::spec::moir::common::MOIRSize;
-use crate::spec::moir::scope::MOIRMaybeSize;
 use crate::spec::ProcessorSpecificationError;
 use ariadne::Report;
 use std::fmt::{

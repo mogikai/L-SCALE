@@ -25,10 +25,6 @@ use crate::spec::{
     JIRSymbolId,
     SymbolTables,
 };
-use slotmap::{
-    SecondaryMap,
-    SlotMap,
-};
 use std::collections::HashMap;
 
 #[derive(Debug)]

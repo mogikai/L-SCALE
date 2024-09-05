@@ -1,4 +1,3 @@
-use crate::new_typed_index_table_id;
 use crate::spec::jir::common::JIRSize;
 
 #[derive(Debug)]

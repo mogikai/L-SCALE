@@ -1,13 +1,7 @@
-use std::fmt::{
-    Debug,
-    Display,
-};
+use std::fmt::Debug;
 
 use crate::compiler::ast::Spanned;
-use crate::compiler::lexer::{
-    InputSpan,
-    ParserInput,
-};
+use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::SleighParserExtra;
 use chumsky::input::MapExtra;
 

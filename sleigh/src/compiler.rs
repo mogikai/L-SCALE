@@ -34,7 +34,6 @@ use crate::spec::builder::{
 };
 use crate::spec::{
     ProcessorSpecification,
-    ProcessorSpecificationError,
 };
 
 pub mod ast;

@@ -22,7 +22,6 @@ use std::fmt::{
     Display,
     Formatter,
 };
-use tracing::trace;
 
 /// A scope for locals and labels used in constructors and macros
 #[derive(Debug, Default)]
@@ -338,12 +337,11 @@ impl MOIRScope {
     /// This definition can occur only once and will return an error otherwise.
     pub fn define_label(
         &mut self,
-        global: &ProcessorSpecificationBuilder,
         label: Spanned<StringId>,
         id: InstructionId,
     ) -> SleighCompilerResult<(StringId, InstructionId)> {
         let label_name = *label.value();
-        let label_id = self.resolve_label(global, label)?;
+        let label_id = self.resolve_label(label)?;
         let instruction_id = self
             .labels
             .get_mut(label_id)
@@ -361,7 +359,6 @@ impl MOIRScope {
     /// generated.
     pub fn resolve_label(
         &mut self,
-        global: &ProcessorSpecificationBuilder,
         label: Spanned<StringId>,
     ) -> SleighCompilerResult<LabelId> {
         match self.labels_definitions.entry(*label.value()) {

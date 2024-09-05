@@ -3,11 +3,6 @@ use std::fmt::{
     Display,
     Formatter,
 };
-use std::io::Read;
-use std::iter::{
-    empty,
-    once,
-};
 
 #[derive(Debug)]
 pub struct MOIRInstruction {
@@ -416,7 +411,7 @@ impl Display for MOIROperation {
     ) -> std::fmt::Result {
         match self {
             MOIROperation::Copy => write!(f, ""),
-            MOIROperation::CustomOp(args) => write!(f, "custom"),
+            MOIROperation::CustomOp(_) => write!(f, "custom"),
             MOIROperation::AddressOf => write!(f, "&"),
             MOIROperation::ZeroExtend => write!(f, "zext"),
             MOIROperation::SignExtend => write!(f, "sext"),
