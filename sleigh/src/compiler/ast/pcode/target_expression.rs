@@ -4,7 +4,7 @@ use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::ast::pcode::subpiece::SASTPCodeSubpiece;
 use crate::compiler::ast::Spanned;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SASTPCodeTargetExpression {
     /// Store the right hand side in the variable specified by `identifier`
     Variable(Spanned<SASTIdent>),

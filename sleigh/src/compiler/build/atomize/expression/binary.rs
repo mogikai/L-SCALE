@@ -4,7 +4,7 @@ use crate::compiler::ast::pcode::expression::{
     SASTPcodeOpCategory,
 };
 use crate::compiler::ast::Spanned;
-use crate::compiler::build::constructor::atomize::expression::{
+use crate::compiler::build::atomize::expression::{
     from_bool,
     into_bool,
 };

@@ -15,7 +15,7 @@ use std::fmt::{
 };
 use strum_macros::Display;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SASTPCodeExpression {
     Invocation(Spanned<SASTPCodeInvocation>),
     BinaryOperation {

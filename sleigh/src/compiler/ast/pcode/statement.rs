@@ -8,7 +8,7 @@ use crate::compiler::ast::pcode::target_expression::SASTPCodeTargetExpression;
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::InputSpan;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SASTPCodeStatement {
     /// Assign the right hand expression to the left hand target expression.
     Assignment {
@@ -40,7 +40,7 @@ pub enum SASTPCodeStatement {
     Error(InputSpan),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SASTPCodeBranchTarget {
     Label(Spanned<SASTIdent>),
     Absolute(Spanned<SASTPCodeExpression>),

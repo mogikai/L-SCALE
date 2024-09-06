@@ -14,7 +14,7 @@ use crate::compiler::ast::Spanned;
 /// Each pcode statement may have an optional label
 pub type SASTPCodeLabelledStatement = (Option<Spanned<SASTIdent>>, Spanned<SASTPCodeStatement>);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SASTPCode {
     pub statements: Vec<Spanned<SASTPCodeLabelledStatement>>,
 }

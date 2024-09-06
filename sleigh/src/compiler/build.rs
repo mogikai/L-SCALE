@@ -2,7 +2,9 @@
 //! Specification in the [ProcessorSpecificationBuilder] by walking over the abstract
 //! syntax tree and processing each item.
 
+pub mod atomize;
 mod constructor;
+mod r#macro;
 pub mod matcher;
 
 use crate::compiler::ast::attach::SASTAttach;
@@ -19,7 +21,6 @@ use crate::compiler::ast::define::{
     SASTVarnode,
 };
 use crate::compiler::ast::item::SASTItem;
-use crate::compiler::ast::pcode_macro::SASTPCodeMacro;
 use crate::compiler::ast::with::SASTWith;
 use crate::compiler::ast::{
     SleighAST,
@@ -40,7 +41,6 @@ use crate::spec::moir::field::{
     MOIRField,
     MOIRFieldParent,
 };
-use crate::spec::moir::r#macro::MOIRMacro;
 use crate::spec::moir::token::MOIRToken;
 use crate::spec::moir::varnode::MOIRVarNode;
 use std::ops::Range;
@@ -65,17 +65,17 @@ impl SleighCompiler {
         items: Vec<SASTItem>,
     ) -> SleighCompilerResult {
         for item in items {
-            match item {
-                SASTItem::Attach(attach) => self.process_attach(attach)?,
-                SASTItem::Constructor(constructor) => {
-                    let result = self.process_constructor(constructor);
-                    self.report_error_or_unwrap(result)?;
+            let result = match item {
+                SASTItem::Attach(attach) => self.process_attach(attach),
+                SASTItem::Constructor(constructor) => self.process_constructor(constructor),
+                SASTItem::Define(define) => self.process_define(define),
+                SASTItem::Macro(pcode_macro) => self.process_pcode_macro(pcode_macro),
+                SASTItem::With(with) => self.process_with(with),
+                SASTItem::Error(_) => {
+                    panic!()
                 }
-                SASTItem::Define(define) => self.process_define(define)?,
-                SASTItem::Macro(pcode_macro) => self.process_pcode_macro(pcode_macro)?,
-                SASTItem::With(with) => self.process_with(with)?,
-                SASTItem::Error(_) => {}
-            }
+            };
+            self.report_error_or_unwrap(result)?;
         }
         Ok(())
     }
@@ -344,22 +344,6 @@ impl SleighCompiler {
     ) -> SleighCompilerResult {
         trace!("Processing with statement at {:?}.", with.span());
         self.process_items(with.into_value().items)?;
-        Ok(())
-    }
-
-    fn process_pcode_macro(
-        &mut self,
-        pcode_macro: Spanned<SASTPCodeMacro>,
-    ) -> SleighCompilerResult {
-        trace!("Processing pcode macro at {:?}", pcode_macro.span());
-        let result = self.spec_builder.define_macro(
-            pcode_macro.into_value().ident.transmute(),
-            MOIRMacro {
-                arguments: vec![],
-                code: vec![],
-            },
-        );
-        self.report_error_or_unwrap(result)?;
         Ok(())
     }
 }

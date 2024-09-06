@@ -1,5 +1,6 @@
 mod assignment;
 mod expression;
+mod invocation;
 mod size_inference;
 
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
@@ -8,7 +9,10 @@ use crate::compiler::ast::pcode::statement::{
     SASTPCodeBranchTarget,
     SASTPCodeStatement,
 };
-use crate::compiler::ast::pcode::SASTPCode;
+use crate::compiler::ast::pcode::{
+    SASTPCode,
+    SASTPCodeLabelledStatement,
+};
 use crate::compiler::ast::Spanned;
 use crate::compiler::{
     SleighCompiler,
@@ -36,7 +40,7 @@ use tracing::{
 use std::fmt::Write;
 
 impl SleighCompiler {
-    pub(super) fn atomize_pcode(
+    pub fn atomize_pcode(
         &mut self,
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
@@ -44,8 +48,23 @@ impl SleighCompiler {
     ) -> SleighCompilerResult<Option<MOIRExport>> {
         // TODO: Create table of locals? Lookup global identifiers?
         let (pcode, _) = pcode.into_tuple();
+        let export = self.atomize_statements(scope, instructions, pcode.statements)?;
+        self.infer_sizes(scope, instructions)?;
+        debug_instructions(instructions);
+        Ok(export.map(|export| match export.into_value() {
+            MOIRLocal::Local(local) => MOIRExport::Slice(*scope.resolve_local(local).expect("TODO")),
+            MOIRLocal::Const(val) => MOIRExport::Const(val),
+        }))
+    }
+
+    pub fn atomize_statements(
+        &mut self,
+        scope: &mut MOIRScope,
+        instructions: &mut Vec<MOIRInstruction>,
+        statements: Vec<Spanned<SASTPCodeLabelledStatement>>,
+    ) -> SleighCompilerResult<Option<Spanned<MOIRLocal>>> {
         let mut export = None;
-        for ((label, statement), _) in pcode.statements.into_iter().map(Spanned::into_tuple) {
+        for ((label, statement), _) in statements.into_iter().map(Spanned::into_tuple) {
             let label = if let Some(label) = label {
                 // If we have a label, we define it to point to the first instruction of the atomized statement.
                 let label_id = instructions.len();
@@ -92,39 +111,7 @@ impl SleighCompiler {
                 instructions[label_id].label = Some(label);
             }
         }
-        self.infer_sizes(scope, instructions)?;
-        debug_instructions(instructions);
-        Ok(export.map(|export| match export.into_value() {
-            MOIRLocal::Local(local) => MOIRExport::Slice(*scope.resolve_local(local).expect("TODO")),
-            MOIRLocal::Const(val) => MOIRExport::Const(val),
-        }))
-    }
-
-    fn atomize_invocation(
-        &mut self,
-        scope: &mut MOIRScope,
-        instructions: &mut Vec<MOIRInstruction>,
-        out: Option<MOIRLocalId>,
-        invocation: Spanned<SASTPCodeInvocation>,
-    ) -> SleighCompilerResult<MOIRLocal> {
-        trace!("Atomizing invocation with {} arguments.", invocation.value().arguments.len());
-        let (invocation, _) = invocation.into_tuple();
-        let output = out.unwrap_or_else(|| scope.allocate_temporary(MOIRMaybeSize::Undetermined));
-        let mut args = invocation
-            .arguments
-            .into_iter()
-            .map(|arg| self.atomize_expression(scope, instructions, None, arg));
-        let input_a = args.next().transpose()?;
-        let input_b = args.next().transpose()?;
-        let args: Result<Vec<_>, _> = args.collect();
-        instructions.push(MOIRInstruction {
-            output: Some(output),
-            input_a,
-            input_b,
-            operation: MOIROperation::CustomOp(args?),
-            label: None,
-        });
-        Ok(output.into())
+        Ok(export)
     }
 
     fn atomize_export(

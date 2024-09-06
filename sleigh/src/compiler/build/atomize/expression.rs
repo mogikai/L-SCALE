@@ -53,7 +53,9 @@ impl SleighCompiler {
 
         use SASTPCodeExpression::*;
         match expression {
-            Invocation(invocation) => self.atomize_invocation(scope, instructions, out, invocation),
+            Invocation(invocation) => self
+                .atomize_invocation(scope, instructions, out, invocation)?
+                .ok_or_else(|| todo!("Generate error report for invocation without output")),
             BinaryOperation { lhs, op, rhs } => self.atomize_binary_operation(scope, instructions, out, *lhs, op, *rhs),
             UnaryOperation { op, operand } => self.atomize_unary_operation(scope, instructions, out, op, *operand),
             Dereference { .. } => self.atomize_dereference(instructions),

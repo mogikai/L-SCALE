@@ -1,13 +1,17 @@
-use crate::compiler::ast::common::{SASTIdent, SASTLiteral, SASTSize};
+use crate::compiler::ast::common::{
+    SASTIdent,
+    SASTLiteral,
+    SASTSize,
+};
 use crate::compiler::ast::Spanned;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SASTPCodeSubpiece {
     pub target: Spanned<SASTPCodeSubpieceTarget>,
     pub selector: Spanned<SASTPCodeSubpieceSelector>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SASTPCodeSubpieceSelector {
     /// Truncate to the desired size, only keeping the specified number of bytes starting from LSB.
     Take(SASTSize),
@@ -15,7 +19,7 @@ pub enum SASTPCodeSubpieceSelector {
     Discard(SASTSize),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SASTPCodeSubpieceTarget {
     Ident(Spanned<SASTIdent>),
     Literal(Spanned<SASTLiteral>),

@@ -33,8 +33,6 @@ use crate::spec::moir::varnode::{
 use crate::spec::ProcessorSpecificationError;
 use tracing::trace;
 
-pub mod atomize;
-
 impl SleighCompiler {
     /// Process a constructor. This will create the table in which the constructor is anchored, if it does not exist.
     /// Then, the bit pattern section is validated.

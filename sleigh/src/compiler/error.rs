@@ -60,6 +60,8 @@ pub enum SleighCompilerError {
     StopOnFirstError,
     #[error("The constant value being constructed does not fit into the requested size. Value: {val:?}, Requested size: {size:?}")]
     ConstDoesNotFit { val: u128, size: MOIRSize },
+    #[error("The symbol is already defined")]
+    DuplicateDefinition,
 }
 
 impl Debug for SleighCompilerError {

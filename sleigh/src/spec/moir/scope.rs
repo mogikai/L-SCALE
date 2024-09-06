@@ -28,14 +28,16 @@ use std::fmt::{
 pub struct MOIRScope {
     /// A hashmap to keep track of label ids and the location of their first definition in the span.
     labels_definitions: HashMap<StringId, Spanned<LabelId>>,
+    /// A map that is used to lookup local ids by their string identifiers.
+    locals: HashMap<StringId, MOIRLocalId>,
+    /// The input span of where each local was first defined. For error report generation.
+    local_spans: HashMap<StringId, InputSpan>,
     /// Labels can be used ahead of their definition. Their usage declares them, and they can
     /// be defined later on. If no definition was found after processing the entire semantic
     /// section, this will produce an error.
     labels: TypedIndexTable<LabelId, Option<InstructionId>>,
     /// Keeps track of the sizes of temporaries assigned as part of the semantic section.
     temporaries: TypedIndexTable<MOIRTemporaryId, MOIRTemporary>,
-    /// A map that is used to lookup local ids by their string identifiers.
-    locals: HashMap<StringId, MOIRLocalId>,
     /// Contains the actual local variables.
     slices: TypedIndexTable<MOIRLocalId, MOIRSlice>,
     /// The field sizes we have inferred. If fields resolve to varnodes, then the size can
@@ -43,8 +45,6 @@ pub struct MOIRScope {
     /// Otherwise, the semantic section first needs to be parsed in order to find the right
     /// size constraint. The resulting size constraint for a field will then be
     field_sizes: HashMap<FieldId, MOIRMaybeSize>,
-    /// The input span of where each local was first defined. For error report generation.
-    local_spans: HashMap<StringId, InputSpan>,
 }
 
 new_typed_index_table_id! { pub struct MOIRLocalId; }
@@ -139,6 +139,43 @@ impl From<MOIRSize> for MOIRMaybeSize {
 new_typed_index_table_id! { pub struct MOIRTemporaryId; }
 
 impl MOIRScope {
+    /// Clears the namespace before calling the provided function and afterward restores it to its original state.
+    /// This allows atomization of macro calls, because they have their own name resolution, but use the same
+    /// scope of locals, just with different name mappings.
+    pub fn with_empty_namespace<F, R>(
+        &mut self,
+        mut f: F,
+    ) -> SleighCompilerResult<R>
+    where
+        F: FnOnce(&mut Self) -> SleighCompilerResult<R>,
+    {
+        let label_definitions = std::mem::take(&mut self.labels_definitions);
+        let locals = std::mem::take(&mut self.locals);
+        let local_spans = std::mem::take(&mut self.local_spans);
+        let result = f(self);
+        self.local_spans = local_spans;
+        self.locals = locals;
+        self.labels_definitions = label_definitions;
+        result
+    }
+
+    /// Declares a name for an existing local. If the name already exists, an error is returned.
+    /// This is usually used in conjunction with [with_empty_namespace] in order to create an
+    /// aliased scope for macros to work in.
+    pub fn declare_local_reference(
+        &mut self,
+        ident: Spanned<StringId>,
+        local: MOIRLocalId,
+    ) -> SleighCompilerResult {
+        let (ident, span) = ident.into_tuple();
+        match self.locals.entry(ident) {
+            Entry::Occupied(_) => Err(SleighCompilerError::DuplicateDefinition)?,
+            Entry::Vacant(entry) => entry.insert(local),
+        };
+        self.local_spans.insert(ident, span);
+        Ok(())
+    }
+
     /// Declares that the local exists and points it to the corresponding slice.
     pub fn declare_local(
         &mut self,

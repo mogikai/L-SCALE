@@ -3,7 +3,7 @@ use crate::compiler::ast::pcode::expression::{
     SASTPCodeUnaryOp,
 };
 use crate::compiler::ast::Spanned;
-use crate::compiler::build::constructor::atomize::expression::{
+use crate::compiler::build::atomize::expression::{
     from_bool,
     into_bool,
     Cast,

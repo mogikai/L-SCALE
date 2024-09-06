@@ -1,11 +1,14 @@
+use crate::compiler::ast::common::SASTIdent;
+use crate::compiler::ast::pcode::SASTPCode;
+use crate::compiler::ast::Spanned;
 use crate::new_typed_index_table_id;
-use crate::spec::moir::code::MOIRInstruction;
-use crate::spec::moir::varnode::VarNodeId;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone)]
 pub struct MOIRMacro {
-    pub arguments: Vec<VarNodeId>,
-    pub code: Vec<MOIRInstruction>,
+    /// The arguments are simply a list of named identifiers that are mapped to concrete locals on invocation.
+    pub arguments: Vec<Spanned<SASTIdent>>,
+    /// Macros contain the AST for the respective pcode, so it can be atomized on the fly in the correct context.
+    pub pcode: SASTPCode,
 }
 
 new_typed_index_table_id! { pub struct MacroId; }
