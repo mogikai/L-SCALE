@@ -1,14 +1,13 @@
 pub mod tlb;
 pub mod tlb_entry;
 
-use mogi_utilities::addresses::{EPAddr, EVAddr};
+use mogi_utilities::addresses::{
+    EPAddr,
+    EVAddr,
+};
 use mogi_utilities::error::memory::MemoryError;
 
-use std::num::TryFromIntError;
-
 use bitflags::bitflags;
-use byteorder::ByteOrder;
-use thiserror::Error;
 
 // TODO: Extract memory error from utilities into system crate?
 
@@ -28,14 +27,10 @@ pub trait MMU {
     // effect on the currently loaded context
 
     /// Create a new context which refers to an initially blank page table.
-    fn new_context(
-        &self
-    ) -> Self::MemoryContext;
+    fn new_context(&self) -> Self::MemoryContext;
 
     /// Clone the currently active context
-    fn clone_context(
-        &self
-    ) -> Self::MemoryContext;
+    fn clone_context(&self) -> Self::MemoryContext;
 
     /// Load the previously created `context` so that all future memory operations
     /// use the corresponding page table for address translation, mapping and permission checks.
@@ -43,20 +38,18 @@ pub trait MMU {
     /// when needed. Returns the old memory context.
     fn load_context(
         &mut self,
-        context: &Self::MemoryContext
+        context: &Self::MemoryContext,
     ) -> Self::MemoryContext;
 
     /// Flush the page table as well as the TLB region given by `addr` and `len`.
     fn flush_vaddr(
         &mut self,
         addr: EVAddr,
-        len: usize
+        len: usize,
     ) -> MmuResult<MemoryError>;
 
     /// Flush the whole page table as well as the TLB
-    fn flush_all(
-        &mut self
-    ) -> MmuResult<()>;
+    fn flush_all(&mut self) -> MmuResult<()>;
 
     // Point page table entry at `addr` to `paddr` with permissions `permissions`
     fn set_page_table_entry(
@@ -76,13 +69,13 @@ pub trait MMU {
     fn read_physical(
         &mut self,
         addr: EPAddr,
-        buffer: &mut [u8]
+        buffer: &mut [u8],
     ) -> MmuResult<()>;
     /// Write `data` to the physical location specified by `addr`.
     fn write_physical(
         &mut self,
         addr: EPAddr,
-        data: &[u8]
+        data: &[u8],
     ) -> MmuResult<()>;
     // Fetch bytes for execution from the physical location specified by `addr` into `buffer`.
     fn fetch_physical(
@@ -96,14 +89,14 @@ pub trait MMU {
     fn read(
         &mut self,
         addr: EVAddr,
-        buffer: &mut [u8]
+        buffer: &mut [u8],
     ) -> MmuResult<()>;
     /// Write `len` bytes from the virtual location specified by `addr`.
     /// Will fail if no memory is mapped or memory is readonly.
     fn write(
         &mut self,
         addr: EVAddr,
-        data: &[u8]
+        data: &[u8],
     ) -> MmuResult<()>;
     // Fetch bytes for execution from the virtual location specified by `addr` into `buffer`.
     fn fetch(
@@ -112,21 +105,20 @@ pub trait MMU {
         buffer: &mut [u8],
     ) -> Result<(), MemoryError>;
 
-
     // TODO should physical memory allocation be part of the trait or be done reactively on e.g.
     // page fault by the MMU internally?
     /// Make `size` physical memory at address `addr` available to the emulator.
     fn alloc_physical(
         &mut self,
         addr: EPAddr,
-        size: usize
+        size: usize,
     ) -> MmuResult<()>;
 
     /// Free `size` physical memory at address `addr` by cutting out.
     fn free_physical(
         &mut self,
         addr: EPAddr,
-        size: usize
+        size: usize,
     ) -> MmuResult<()>;
 
     /// `hook` will be called whenever
@@ -134,7 +126,7 @@ pub trait MMU {
     /// - a readonly page is written to
     fn set_page_fault_callback(
         &mut self,
-        callback: PageFaultCallback<Self::MemoryContext>
+        callback: PageFaultCallback<Self::MemoryContext>,
     ) -> MmuResult<()>;
 }
 

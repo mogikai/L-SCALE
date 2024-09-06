@@ -2,7 +2,6 @@ use quote::quote;
 use syn::{
     parse_macro_input,
     DeriveInput,
-    ItemFn,
 };
 
 use crate::decode::derive_decode_impl;
@@ -58,11 +57,12 @@ pub fn derive_decode(input: proc_macro::TokenStream) -> proc_macro::TokenStream 
 /// once the code in question is reached.
 #[proc_macro_attribute]
 pub fn unfinished(
-    attr: proc_macro::TokenStream,
+    _: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     #[cfg(feature = "panic_on_unfinished")]
     return {
+        use syn::ItemFn;
         let ItemFn { attrs, vis, sig, block } = parse_macro_input!(item as ItemFn);
         let statements = &block.stmts;
         proc_macro::TokenStream::from(quote! {
@@ -74,6 +74,7 @@ pub fn unfinished(
     };
     #[cfg(feature = "do_not_compile_unfinished")]
     return {
+        use syn::ItemFn;
         let ItemFn { attrs, vis, sig, block } = parse_macro_input!(item as ItemFn);
         let statements = &block.stmts;
         proc_macro::TokenStream::from(quote! {

@@ -4,11 +4,7 @@ use crate::encoding::{
     RequiredMem,
 };
 use crate::error::memory::MemoryError;
-use byteorder::{
-    BigEndian,
-    ByteOrder,
-    LittleEndian,
-};
+use byteorder::ByteOrder;
 use static_assertions::assert_eq_size;
 
 impl RequiredMem for i32 {}

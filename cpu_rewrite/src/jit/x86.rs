@@ -1,3 +1,4 @@
+#![allow(unused_variables)]
 //! The x86 JIT implementation can make use of all registers, except RBP, since RBP stores the cpu context.
 use crate::jit::api::{
     JitContext,

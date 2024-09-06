@@ -1,8 +1,4 @@
 use mogi_utilities::addresses::EVAddr;
-use num_enum::{
-    FromPrimitive,
-    IntoPrimitive,
-};
 use thiserror::Error;
 
 #[derive(Error, Debug, Copy, Clone)]

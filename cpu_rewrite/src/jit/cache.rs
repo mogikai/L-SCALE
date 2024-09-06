@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::ffi::c_void;
 use std::marker::PhantomData;
 
-use addr_align::Align4k;
 use thiserror::Error;
 
 use mogi_utilities::addresses::{

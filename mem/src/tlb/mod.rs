@@ -3,7 +3,6 @@ pub mod tlb;
 
 use crate::PAGE_OFFSET_BITS;
 use mogi_utilities::addresses::EVAddr;
-use std::convert::Into;
 
 // TODO: Experiment with tlb sizes, and with per-process tables
 pub const TLB_INDEX_BITS: usize = 12;

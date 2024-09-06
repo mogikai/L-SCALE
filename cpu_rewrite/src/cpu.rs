@@ -30,6 +30,7 @@ pub enum StopReason {
     JitError(#[from] JitError),
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 enum MustInterpret {
     Yes,

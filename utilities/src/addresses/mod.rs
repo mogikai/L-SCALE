@@ -1,4 +1,3 @@
-use crate as mogi_utilities;
 use crate::addresses::r#impl::addr_impl;
 use crate::encoding::RequiredMem;
 use std::ptr::NonNull;
@@ -10,11 +9,15 @@ pub trait EVAddress {
     fn ev_address(&self) -> EVAddr;
 }
 
-/// Emulated virtual address
-addr_impl!(EVAddr("V"));
+addr_impl! {
+    /// Emulated virtual address
+    EVAddr("V")
+}
 
-/// Emulated physical address
-addr_impl!(EPAddr("P"));
+addr_impl! {
+    /// Emulated physical address
+    EPAddr("P")
+}
 
 /// Host virtual address
 pub type HVAddr<T> = NonNull<T>;

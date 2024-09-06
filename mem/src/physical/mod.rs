@@ -1,17 +1,8 @@
-use crate::physical::mapping::{
-    Contains,
-    PhysicalMapping,
-};
-use crate::{
-    PageOffset,
-    PAGE_SIZE,
-};
+use crate::physical::mapping::PhysicalMapping;
+use crate::PAGE_SIZE;
 use addr_align::Align;
 use mogi_system::components::mmu::Permission;
-use mogi_utilities::addresses::{
-    EPAddr,
-    EVAddr,
-};
+use mogi_utilities::addresses::EPAddr;
 use mogi_utilities::error::memory::MemoryError;
 pub use page::Page;
 use std::array;
@@ -22,9 +13,7 @@ use std::cmp::{
 use std::fmt::{
     Debug,
     Formatter,
-    Pointer,
 };
-use std::iter::once;
 
 pub mod mapping;
 pub mod page;
@@ -115,7 +104,7 @@ impl PhysicalMemory {
     /// The allocation will be lazy, if the permissions are either read only, or read/write.
     pub fn alloc_page(
         &mut self,
-        addr: EPAddr,
+        _addr: EPAddr,
         permission: Permission,
     ) -> Result<PageId, MemoryError> {
         if let Some(index) = self.free_pages.pop_back() {
@@ -202,7 +191,7 @@ impl PhysicalMemory {
     /// Allocate a copy of a page.
     pub fn clone_page(
         &mut self,
-        index: PageId,
+        _index: PageId,
     ) -> Option<PageId> {
         todo!()
     }
@@ -230,8 +219,7 @@ impl PhysicalMemory {
         let addr = addr.align_down(PAGE_SIZE as u64);
         self.physical_address_space
             .get_prev(&addr)
-            .map(|mapping| mapping.page_id(addr).map(|page_id| &self.pages[page_id.0]))
-            .flatten()
+            .and_then(|mapping| mapping.page_id(addr).map(|page_id| &self.pages[page_id.0]))
             .ok_or(MemoryError::NoPhysicalMapping(addr))
     }
 
@@ -242,12 +230,11 @@ impl PhysicalMemory {
         let addr = addr.align_down(PAGE_SIZE as u64);
         self.physical_address_space
             .get_prev(&addr)
-            .map(|mapping| {
+            .and_then(|mapping| {
                 mapping
                     .page_id(addr)
                     .map(|page_id| &mut self.pages[page_id.0])
             })
-            .flatten()
             .ok_or(MemoryError::NoPhysicalMapping(addr))
     }
 
@@ -276,8 +263,7 @@ impl PhysicalMemory {
         let addr = addr.align_down(PAGE_SIZE as u64);
         self.physical_address_space
             .get_prev(&addr)
-            .map(|mapping| mapping.page_id(addr))
-            .flatten()
+            .and_then(|mapping| mapping.page_id(addr))
             .ok_or(MemoryError::NoPhysicalMapping(addr))
     }
 }

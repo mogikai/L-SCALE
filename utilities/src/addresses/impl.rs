@@ -1,6 +1,3 @@
-use crate as mogi_utilities;
-use crate::encoding::RequiredMem;
-
 macro_rules! addr_impl {
     ($(#[$outer:meta])* $name:ident($debug:literal)) => {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

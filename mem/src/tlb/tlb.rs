@@ -1,12 +1,10 @@
 use crate::physical::page::PageData;
-use crate::physical::Page;
 use crate::tlb::entry::TLBEntry;
 use crate::tlb::{
     PageIndex,
     PageTag,
     TLB_INDEX_BITS,
     TLB_SIZE,
-    TLB_TAG_BITS,
 };
 use crate::PAGE_OFFSET_BITS;
 use mogi_utilities::addresses::{
@@ -17,8 +15,6 @@ use std::fmt::{
     Debug,
     Formatter,
 };
-use std::mem::offset_of;
-use tracing::error;
 
 #[derive(Clone, Copy)]
 #[repr(C)]

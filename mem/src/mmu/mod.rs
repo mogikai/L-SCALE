@@ -50,10 +50,12 @@ impl MemoryContext {
         }
     }
 
+    #[allow(dead_code)]
     fn page_table(&self) -> &PageTable {
         &self.page_table
     }
 
+    #[allow(dead_code)]
     fn page_table_mut(&mut self) -> &mut PageTable {
         &mut self.page_table
     }
@@ -124,6 +126,7 @@ impl MogiMMU {
         })
     }
 
+    #[allow(dead_code)]
     fn resolve_to_page(
         &mut self,
         addr: EVAddr,
@@ -249,8 +252,8 @@ impl MMU for MogiMMU {
 
     fn flush_vaddr(
         &mut self,
-        addr: EVAddr,
-        len: usize,
+        _addr: EVAddr,
+        _len: usize,
     ) -> MmuResult<MemoryError> {
         todo!()
     }
@@ -418,8 +421,7 @@ fn check_permissions(
 ) -> Result<(), MemoryError> {
     if permissions
         .iter()
-        .find(|&&perm| !perm.contains(required_permissions))
-        .is_some()
+        .any(|&perm| !perm.contains(required_permissions))
     {
         Err(MemoryError::InvalidPermission)?
     }
@@ -444,8 +446,10 @@ mod test {
             .unwrap();
         // 1 to 1 mapping
         mmu.set_page_fault_callback(Box::new(|mmu, addr, action| {
-            mmu.set_page_table_entry(addr, EPAddr::from(u64::from(addr)), Permission::ALL);
-        }));
+            mmu.set_page_table_entry(addr, EPAddr::from(u64::from(addr)), Permission::ALL)
+                .unwrap();
+        }))
+        .unwrap();
         mmu.write(0x8ff0u64.into(), &[b'A'; 8000]).unwrap();
         let mut buffer = [0u8; 8000];
         mmu.read(0x8ff0u64.into(), &mut buffer).unwrap();

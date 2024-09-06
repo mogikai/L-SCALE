@@ -1,5 +1,4 @@
 use crate::physical::page::PageData;
-use crate::physical::Page;
 use crate::tlb::PageTag;
 use mogi_utilities::addresses::{
     EVAddr,

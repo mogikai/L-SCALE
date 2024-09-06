@@ -49,7 +49,7 @@ pub enum MemoryError {
 }
 
 impl From<TryFromIntError> for MemoryError {
-    fn from(value: TryFromIntError) -> Self {
+    fn from(_: TryFromIntError) -> Self {
         todo!()
     }
 }

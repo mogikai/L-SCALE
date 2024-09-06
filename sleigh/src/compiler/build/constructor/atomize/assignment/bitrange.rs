@@ -13,7 +13,6 @@ use crate::spec::builder::ProcessorSpecificationBuilder;
 use crate::spec::moir::code::{
     moir_instruction,
     MOIRInstruction,
-    MOIROperation,
 };
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::scope::{

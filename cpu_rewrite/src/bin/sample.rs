@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_variables, unused_mut)]
 use mogi_mem::mmu::MogiMMU;
 use mogi_neocpu::cpu::CPU;
 use mogi_neocpu::jit::x86::X86MogiJit;
@@ -6,7 +7,6 @@ use mogi_sleigh::preprocessor::SleighPreprocessorFactory;
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
-use tracing::debug;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;

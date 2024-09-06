@@ -2,7 +2,6 @@ use mogi_utilities::addresses::{
     EPAddr,
     EVAddr,
 };
-use std::any::Any;
 
 pub mod deprecated;
 pub mod mmu;

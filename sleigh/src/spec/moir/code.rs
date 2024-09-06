@@ -130,22 +130,22 @@ macro_rules! moir_instruction {
         MOIRInstruction::goto_label($target)
     };
     ($out:ident = $lhs:tt - $rhs:tt) => {
-        MOIRInstruction::binary_op($out, $lhs, MOIROperation::IntSubtract, $rhs)
+        MOIRInstruction::binary_op($out, $lhs, crate::spec::moir::code::MOIROperation::IntSubtract, $rhs)
     };
     ($out:ident = $lhs:tt ^ $rhs:tt) => {
-        MOIRInstruction::binary_op($out, $lhs, MOIROperation::IntXor, $rhs)
+        MOIRInstruction::binary_op($out, $lhs, crate::spec::moir::code::MOIROperation::IntXor, $rhs)
     };
     ($out:ident = $lhs:tt & $rhs:tt) => {
-        MOIRInstruction::binary_op($out, $lhs, MOIROperation::IntAnd, $rhs)
+        MOIRInstruction::binary_op($out, $lhs, crate::spec::moir::code::MOIROperation::IntAnd, $rhs)
     };
     ($out:ident = $lhs:tt | $rhs:tt) => {
-        MOIRInstruction::binary_op($out, $lhs, MOIROperation::IntOr, $rhs)
+        MOIRInstruction::binary_op($out, $lhs, crate::spec::moir::code::MOIROperation::IntOr, $rhs)
     };
     ($out:ident = $lhs:tt >> $rhs:tt) => {
-        MOIRInstruction::binary_op($out, $lhs, MOIROperation::IntRight, $rhs)
+        MOIRInstruction::binary_op($out, $lhs, crate::spec::moir::code::MOIROperation::IntRight, $rhs)
     };
     ($out:ident = $lhs:tt << $rhs:tt) => {
-        MOIRInstruction::binary_op($out, $lhs, MOIROperation::IntLeft, $rhs)
+        MOIRInstruction::binary_op($out, $lhs, crate::spec::moir::code::MOIROperation::IntLeft, $rhs)
     };
     ($out:ident = $lhs:tt $op:ident $rhs:tt) => {
         MOIRInstruction::binary_op($out, $lhs, $op, $rhs)
@@ -166,7 +166,7 @@ macro_rules! moir_instruction {
         MOIRInstruction::copy($lhs, $rhs)
     };
     ($out:ident = ~$operand:tt) => {
-        MOIRInstruction::unary_op($out, MOIROperation::BitNegate, $operand)
+        MOIRInstruction::unary_op($out, crate::spec::moir::code::MOIROperation::BitNegate, $operand)
     };
     ($out:ident = $op:tt $operand:tt) => {
         MOIRInstruction::unary_op($out, $op, $operand)

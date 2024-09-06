@@ -46,7 +46,7 @@ impl<Endianness: ByteOrder> Encoder<Endianness> {
     }
 
     pub fn encode_with<F>(
-        mut self,
+        self,
         encode: F,
     ) -> Self
     where

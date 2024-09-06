@@ -1,22 +1,15 @@
 use crate::physical::PageId;
 use crate::PAGE_SIZE;
 use addr_align::Align;
-use mogi_system::components::mmu::{
-    MemoryAction,
-    Permission,
-};
-use mogi_utilities::addresses::{
-    EPAddr,
-    EVAddr,
-};
+use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::error::memory::MemoryError;
 
-struct PageTableEntry {
-    page_id: PageId,
-    perms: [Permission; PAGE_SIZE],
-}
+// struct PageTableEntry {
+//     page_id: PageId,
+//     perms: [Permission; PAGE_SIZE],
+// }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct PageTable {
     table: imbl::OrdMap<EVAddr, PageId>,
 }
