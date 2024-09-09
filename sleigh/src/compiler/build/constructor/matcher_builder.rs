@@ -147,6 +147,8 @@ impl SleighCompiler {
         let new_matchers = match op.into_value() {
             SASTBinaryOp::And => {
                 let mut new_matchers = Vec::new();
+                let mut token_lists_seen = HashSet::new();
+
                 // combining them has to be done as a Cartesian product
                 for matcher_lhs in &matchers_lhs {
                     for matcher_rhs in &matchers_rhs {
@@ -155,6 +157,13 @@ impl SleighCompiler {
                         let tl_lhs = &matcher_lhs.token_list;
                         let tl_rhs = &matcher_rhs.token_list;
                         if let Ok(tl_longest) = tokens_compatible(tl_lhs, tl_rhs) {
+                            // the resulting token lists are not unique so we should
+                            // eliminate duplicates
+                            // TODO storing the vector twice is unnecessary
+                            if !token_lists_seen.insert(tl_longest.to_vec()) {
+                                continue;
+                            }
+
                             // this should only be reported as an error if no compatible token
                             // lists exist for all lhs and rhs matchers
                             // TODO: todo!("Generate warning for inconsistent tokens.");
@@ -170,7 +179,6 @@ impl SleighCompiler {
                                 })
                             .collect::<Vec<_>>();
 
-                            // TODO remove Undetermined when merging
                             let token_list = tl_longest.to_vec();
                             let mut symbols_used = matcher_lhs.symbols_used.clone();
                             symbols_used.append(&mut matcher_rhs.symbols_used.clone());
@@ -458,7 +466,21 @@ fn tokens_compatible<'a>(
     let rhs_padded_start = matches!(rhs.first().expect("We just checked this"), MatcherToken::Undetermined);
     let rhs_padded_end = matches!(rhs.last().expect("We just checked this"), MatcherToken::Undetermined);
 
-    // TODO should we add cases where both are justified?
+    eprintln!("(lhs, rhs) = {:#?}", (lhs, rhs));
+
+    if lhs_padded_start && rhs_padded_start {
+        // find most common suffix
+        let i = lhs.iter().zip(rhs.iter()).rev().take_while(|(l, r)| l == r && !matches!(l, MatcherToken::Undetermined)).count();
+        return Ok(&lhs[(lhs.len() + 1 - i)..]);
+    }
+
+    if lhs_padded_end && rhs_padded_end {
+        // find most common prefix
+        let i = lhs.iter().zip(rhs.iter()).take_while(|(l, r)| l == r && !matches!(l, MatcherToken::Undetermined)).count();
+        return Ok(&lhs[0..i]);
+    }
+
+    // padded one contained in longer? (start/end/middle)
     let (padded, non_padded, pad_left, pad_right) = if lhs_padded_start || lhs_padded_end {
         (lhs, rhs, lhs_padded_start, lhs_padded_end)
     } else {
