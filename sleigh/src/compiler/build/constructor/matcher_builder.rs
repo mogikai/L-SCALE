@@ -12,7 +12,11 @@ use tracing::trace;
 
 use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::constructor::bit_pattern_section::{
-    SASTBinaryOp, SASTBitPatternConstraint, SASTConstraintOp, SASTConstraintPattern, SASTUnaryOp
+    SASTBinaryOp,
+    SASTBitPatternConstraint,
+    SASTConstraintOp,
+    SASTConstraintPattern,
+    SASTUnaryOp,
 };
 use crate::compiler::ast::Spanned;
 use crate::compiler::build::matcher::{
@@ -42,65 +46,91 @@ use crate::spec::moir::varnode::{
 use crate::spec::ProcessorSpecificationError;
 
 impl SleighCompiler {
-    /// Create a [Matcher] from a [SASTBitPatternConstraint]. Multiple matchers might
-    /// be created due to the splitting of Or operations. The vector will never be
-    /// empty on successful return.
+    /// Create a [Matcher] from a [SASTBitPatternConstraint]. Multiple matchers might be created
+    /// due to the splitting of Or operations and the integration of subtables.
     pub(super) fn create_matchers(
         &self,
         constraint: Spanned<SASTBitPatternConstraint>,
     ) -> SleighCompilerResult<Vec<Matcher>> {
         let (constraint, span) = constraint.into_tuple();
-        match constraint {
+        let new_matchers = match constraint {
             SASTBitPatternConstraint::Ident(ident) => {
-                // Ident case: freestanding fields, varnodes or subtables linking global to local symbols. This
-                // is one of the base cases and yields a simple [Matcher] with [MatcherAtom::Linkage]
-                // and the corresponding symbols and fields.
-
-                let symbol = self.spec_builder.get_symbol(&ident.clone().transmute())?;
-                let (reference, tokens) = match symbol {
-                    MOIRSymbolId::Table(tid) => {
-                        // table: pull out all matchers and substitute
-                        let tokens = Vec::new();
-                        (MatcherReference::Subtable(*tid), tokens)
-                    }
-                    MOIRSymbolId::Field(fid) => {
-                        let field =
-                            self.spec_builder
-                            .field_by_symbol_id(*fid)
-                            .ok_or_else(|| -> SleighCompilerError {
-                                todo!("Generate error report for missing field mapping")
-                            })?;
-                        (MatcherReference::Field(*fid), vec![MatcherToken::Determined(field.parent)])
-                    }
-                    MOIRSymbolId::VarNode(vnid) => {
-                        let tokens = Vec::new(); // is a varnode even contained in a token? TODO: remove (probably)
-                        (MatcherReference::Varnode(*vnid), tokens)
-                    }
-                    _ => todo!("Generate error report for invalid symbol type"),
-                };
-
-                let conjunction = MatcherConjunction::new(vec![MatcherAtom::Linkage(reference)]);
-                Ok(vec![Matcher::new(vec![conjunction], tokens, vec![*symbol])])
+                self.process_ident(ident)
             }
             SASTBitPatternConstraint::BinaryOp(lhs, op, rhs) => {
-                let new_matchers = self.process_binary_op(lhs, op, rhs);
-                new_matchers
+                self.process_binary_op(lhs, op, rhs)
             }
             SASTBitPatternConstraint::UnaryOp(op, operand) => {
-                let new_matchers = self.process_unary_op(op, operand);
-                new_matchers
+                self.process_unary_op(op, operand)
             }
             SASTBitPatternConstraint::AdvancedConstraint(lhs, op, pattern) => {
-                let new_matchers = self.process_advanced_constraint(lhs, op, pattern);
-                new_matchers
+                self.process_advanced_constraint(lhs, op, pattern)
             }
             SASTBitPatternConstraint::Invalid => {
                 todo!("Generate error report for an invalid constraint");
             }
-        }
+        };
+
+        new_matchers
     }
 
     // private helper functions
+
+    fn process_ident(
+        &self,
+        ident: Spanned<SASTIdent>,
+    ) -> SleighCompilerResult<Vec<Matcher>> {
+        // Ident case: freestanding fields, varnodes or subtables linking global to local symbols. This
+        // is one of the base cases and yields multiple simple [Matcher] with [MatcherAtom::Linkage]
+        // and the corresponding symbols, fields and tokens.
+
+        let symbol = self.spec_builder.get_symbol(&ident.clone().transmute())?;
+        let matchers = match symbol {
+            MOIRSymbolId::Table(tid) => {
+                // expansion strategy: create new matchers for all possible token
+                // lists of submatchers (TODO: is this too expensive?)
+                let table = self
+                    .spec_builder
+                    .table_by_symbol_id(*tid)
+                    .ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing symbol") })?;
+                let token_lists: HashSet<_> = table.matchers.values().map(|m| &m.token_list).collect();
+                let matchers = token_lists
+                    .into_iter()
+                    .map(|tl| {
+                        let atoms = vec![MatcherAtom::Linkage(MatcherReference::Subtable(*tid))];
+                        let tokens = tl.clone();
+
+                        Matcher::new(vec![MatcherConjunction::new(atoms)], tokens, vec![*symbol])
+                    })
+                .collect::<Vec<_>>();
+
+                matchers
+            }
+            MOIRSymbolId::Field(fid) => {
+                let field = self
+                    .spec_builder
+                    .field_by_symbol_id(*fid)
+                    .ok_or_else(|| -> SleighCompilerError {
+                        todo!("Generate error report for missing field mapping")
+                    })?;
+
+                let atoms = vec![MatcherAtom::Linkage(MatcherReference::Field(*fid))];
+                let tokens = vec![MatcherToken::Determined(field.parent)];
+
+                vec![Matcher::new(
+                    vec![MatcherConjunction::new(atoms)],
+                    tokens,
+                    vec![*symbol],
+                )]
+            }
+            MOIRSymbolId::VarNode(vnid) => {
+                todo!("Handle varnode reference");
+            }
+            _ => todo!("Generate error report for invalid symbol type"),
+        };
+
+        Ok(matchers)
+    }
 
     fn process_binary_op(
         &self,
@@ -116,50 +146,47 @@ impl SleighCompiler {
 
         let new_matchers = match op.into_value() {
             SASTBinaryOp::And => {
-                // make sure tokens are the same (since lhs and rhs are consistent
-                // themselves, it's enough to check the first elements)
-                let tl_lhs = &matchers_lhs
-                    .first()
-                    .expect("A matcher has to exist on successful return")
-                    .token_list;
-                let tl_rhs = &matchers_rhs
-                    .first()
-                    .expect("A matcher has to exist on successful return")
-                    .token_list;
-                if !tokens_compatible(tl_lhs, tl_rhs) {
-                    todo!("Generate error report for inconsistent tokens.");
-                }
-
                 let mut new_matchers = Vec::new();
                 // combining them has to be done as a Cartesian product
                 for matcher_lhs in &matchers_lhs {
                     for matcher_rhs in &matchers_rhs {
-                        // TODO merge justify
-                        let conjunctions = matcher_lhs
-                            .conjunctions
-                            .iter()
-                            .zip(matcher_rhs.conjunctions.iter())
-                            .map(|(c_lhs, c_rhs)| {
-                                let mut merged_atoms = c_lhs.matcher_atoms.clone();
-                                merged_atoms.append(&mut c_rhs.matcher_atoms.clone());
-                                MatcherConjunction::new(merged_atoms)
-                            })
-                        .collect::<Vec<_>>();
+                        // make sure tokens are the same (since lhs and rhs can be inconsistent in
+                        // case a subtable with multiple constructors was used)
+                        let tl_lhs = &matcher_lhs.token_list;
+                        let tl_rhs = &matcher_rhs.token_list;
+                        if let Ok(tl_longest) = tokens_compatible(tl_lhs, tl_rhs) {
+                            // this should only be reported as an error if no compatible token
+                            // lists exist for all lhs and rhs matchers
+                            // TODO: todo!("Generate warning for inconsistent tokens.");
 
-                        let token_list = matcher_lhs.token_list.clone(); // just the same
-                        let mut symbols_used = matcher_lhs.symbols_used.clone();
-                        symbols_used.append(&mut matcher_rhs.symbols_used.clone());
+                            let conjunctions = matcher_lhs
+                                .conjunctions
+                                .iter()
+                                .zip(matcher_rhs.conjunctions.iter())
+                                .map(|(c_lhs, c_rhs)| {
+                                    let mut merged_atoms = c_lhs.matcher_atoms.clone();
+                                    merged_atoms.append(&mut c_rhs.matcher_atoms.clone());
+                                    MatcherConjunction::new(merged_atoms)
+                                })
+                            .collect::<Vec<_>>();
 
-                        new_matchers.push(Matcher::new(conjunctions, token_list, symbols_used));
+                            // TODO remove Undetermined when merging
+                            let token_list = tl_longest.to_vec();
+                            let mut symbols_used = matcher_lhs.symbols_used.clone();
+                            symbols_used.append(&mut matcher_rhs.symbols_used.clone());
+
+                            new_matchers.push(Matcher::new(conjunctions, token_list, symbols_used));
+                        }
                     }
                 }
 
                 new_matchers
             }
             SASTBinaryOp::Or => {
-                // make sure tokens are the same (since lhs and rhs are consistent
-                // themselves, it's enough to check the first elements) taking
-                // left/right justification into account (tl.lhs.len() !+ tl_rhs.len())
+                // TODO is this correct? what do we need to check here?
+                // make sure tokens are the same (since lhs and rhs are consistent themselves *in
+                // the Or case*, it's enough to check the first elements) taking left/right
+                // justification into account
                 let tl_lhs = &matchers_lhs
                     .first()
                     .expect("A matcher has to exist on successful return")
@@ -168,9 +195,15 @@ impl SleighCompiler {
                     .first()
                     .expect("A matcher has to exist on successful return")
                     .token_list;
-                if !tokens_compatible(tl_lhs, tl_rhs) {
-                    todo!("Generate error report for inconsistent tokens.");
-                }
+
+                let token_list = tokens_compatible(tl_lhs, tl_rhs)?.to_vec();
+                matchers_lhs.iter_mut().for_each(|matcher| {
+                    matcher.token_list = token_list.clone();
+                });
+
+                matchers_rhs.iter_mut().for_each(|matcher| {
+                    matcher.token_list = token_list.clone();
+                });
 
                 // combining them is done by union
                 matchers_lhs.append(&mut matchers_rhs);
@@ -214,7 +247,7 @@ impl SleighCompiler {
     fn process_unary_op(
         &self,
         op: Spanned<SASTUnaryOp>,
-        operand: Box<Spanned<SASTBitPatternConstraint>>
+        operand: Box<Spanned<SASTBitPatternConstraint>>,
     ) -> SleighCompilerResult<Vec<Matcher>> {
         let mut matchers = self.create_matchers(*operand)?;
         // append/prepend undetermined token to each matcher
@@ -223,7 +256,7 @@ impl SleighCompiler {
                 for matcher in matchers.iter_mut() {
                     matcher.token_list.push(MatcherToken::Undetermined);
                 }
-            },
+            }
             SASTUnaryOp::JustifyRight => {
                 for matcher in matchers.iter_mut() {
                     let mut new_tokens = Vec::with_capacity(matcher.token_list.len() + 1);
@@ -231,7 +264,7 @@ impl SleighCompiler {
                     new_tokens.append(&mut matcher.token_list);
                     matcher.token_list = new_tokens;
                 }
-            },
+            }
         }
 
         Ok(matchers)
@@ -245,22 +278,22 @@ impl SleighCompiler {
     ) -> SleighCompilerResult<Vec<Matcher>> {
         let lhs_symbol = self.spec_builder.get_symbol(&lhs.clone().transmute())?;
 
-        let (conjunctions, parent) =
-            match lhs_symbol {
-                MOIRSymbolId::Field(field_id) => {
-                    let conjunctions = self.matcher_conjunctions_from_advanced_constraint(
-                        *field_id,
-                        op.into_value(),
-                        pattern.into_value(),
-                    )?;
-                    let field = self.spec_builder.field_by_symbol_id(*field_id).ok_or_else(
-                        || -> SleighCompilerError { todo!("Generate error report for missing field") },
-                    )?;
-                    Ok::<_, SleighCompilerError>((conjunctions, MatcherToken::Determined(field.parent)))
-                }
-                MOIRSymbolId::Table(_) => todo!("Integrate subtable into matcher"),
-                _ => Err(ProcessorSpecificationError::InvalidSymbolType(*lhs_symbol))?,
-            }?;
+        let (conjunctions, parent) = match lhs_symbol {
+            MOIRSymbolId::Field(field_id) => {
+                let conjunctions = self.matcher_conjunctions_from_advanced_constraint(
+                    *field_id,
+                    op.into_value(),
+                    pattern.into_value(),
+                )?;
+                let field = self
+                    .spec_builder
+                    .field_by_symbol_id(*field_id)
+                    .ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing field") })?;
+                Ok::<_, SleighCompilerError>((conjunctions, MatcherToken::Determined(field.parent)))
+            }
+            MOIRSymbolId::Table(_) => todo!("Integrate subtable into matcher"),
+            _ => Err(ProcessorSpecificationError::InvalidSymbolType(*lhs_symbol))?,
+        }?;
 
         let token_list = vec![parent];
 
@@ -286,45 +319,40 @@ impl SleighCompiler {
             .field_by_symbol_id(field_id)
             .ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for symbol undeclared") })?;
 
-        match op {
-            SASTConstraintOp::Equals => match pattern {
-                SASTConstraintPattern::Ident(ident) => {
-                    let lhs_field_id = self.spec_builder.field_id_by_ident(&ident.transmute())?;
-                    let lhs_field = self
-                        .spec_builder
-                        .field_by_symbol_id(*lhs_field_id)
-                        .ok_or_else(|| -> SleighCompilerError {
-                            todo!("Generate error report for wrong symbol type or missing symbol")
-                        })?;
-                    if lhs_field.bits.size() != field.bits.size() {
-                        todo!("Generate error report for mismatching field sizes");
-                    }
+        match pattern {
+            SASTConstraintPattern::Ident(ident) => {
+                let lhs_field_id = self.spec_builder.field_id_by_ident(&ident.transmute())?;
+                let lhs_field = self
+                    .spec_builder
+                    .field_by_symbol_id(*lhs_field_id)
+                    .ok_or_else(|| -> SleighCompilerError {
+                        todo!("Generate error report for wrong symbol type or missing symbol")
+                    })?;
+                if lhs_field.bits.size() != field.bits.size() {
+                    todo!("Generate error report for mismatching field sizes");
+                }
 
-                    let field_matcher = FieldMatcher::new(field_id, FieldMatcherPattern::Field(*lhs_field_id));
-                    Ok(vec![MatcherConjunction::new(vec![MatcherAtom::Field(field_matcher)])])
-                }
-                SASTConstraintPattern::BitPattern(value) => {
-                    Ok(vec![self.matcher_conjunction_from_equals_constraint(field_id, field, value.into_value())])
-                }
-            },
-            SASTConstraintOp::NotEquals => match pattern {
-                SASTConstraintPattern::Ident(_) => todo!("Not clear how to negate other field"),
-                SASTConstraintPattern::BitPattern(value) => {
-                    Ok(self.matcher_conjunction_from_negate_constraint(field_id, field, value.into_value()))
-                }
-            },
-            SASTConstraintOp::LessThan => match pattern {
-                SASTConstraintPattern::Ident(_) => todo!("Not clear how to implement lt for other field"),
-                SASTConstraintPattern::BitPattern(value) => {
-                    Ok(self.matcher_conjunction_from_lt_constraint(field_id, field, value.into_value()))
-                }
-            },
-            SASTConstraintOp::GreaterThan => match pattern {
-                SASTConstraintPattern::Ident(_) => todo!("Not clear how to implement gt for other field"),
-                SASTConstraintPattern::BitPattern(value) => {
-                    Ok(self.matcher_conjunction_from_gt_constraint(field_id, field, value.into_value()))
-                }
-            },
+                let pattern = match op {
+                    SASTConstraintOp::Equals => FieldMatcherPattern::Equals(*lhs_field_id),
+                    SASTConstraintOp::NotEquals => FieldMatcherPattern::NotEquals(*lhs_field_id),
+                    SASTConstraintOp::LessThan => FieldMatcherPattern::LessThan(*lhs_field_id),
+                    SASTConstraintOp::GreaterThan => FieldMatcherPattern::GreaterThan(*lhs_field_id),
+                };
+
+                let field_matcher = FieldMatcher::new(field_id, pattern);
+                Ok(vec![MatcherConjunction::new(vec![MatcherAtom::Field(field_matcher)])])
+
+            }
+            SASTConstraintPattern::BitPattern(value) => {
+                let conjunctions = match op {
+                    SASTConstraintOp::Equals => vec![self.matcher_conjunction_from_equals_constraint(field_id, field, value.into_value())],
+                    SASTConstraintOp::NotEquals => self.matcher_conjunction_from_negate_constraint(field_id, field, value.into_value()),
+                    SASTConstraintOp::LessThan => self.matcher_conjunction_from_lt_constraint(field_id, field, value.into_value()),
+                    SASTConstraintOp::GreaterThan => self.matcher_conjunction_from_gt_constraint(field_id, field, value.into_value()),
+                };
+
+                Ok(conjunctions)
+            }
         }
     }
 
@@ -409,38 +437,63 @@ impl SleighCompiler {
 }
 
 /// Tests whether two token lists are compatible with one another, i.e. if they are equal taking
-/// potential left/right justification for different lengths into account.
-fn tokens_compatible(
-    lhs: &Vec<MatcherToken>,
-    rhs: &Vec<MatcherToken>,
-) -> bool {
-    let (short, long) = if lhs.len() < rhs.len() { (lhs, rhs) } else { (rhs, lhs) };
-    if short.len() == 0 {
-        return long.len() == 0;
+/// potential left/right justification for different lengths into account. Assume only one
+/// of rhs and lhs contains padding, either left or right.
+
+/// # Return
+/// - Ok(list) if the lists are compatible with `list` being the more specific (i.e. longer) one
+/// - Err() if the lists are not compatible
+fn tokens_compatible<'a>(
+    lhs: &'a [MatcherToken],
+    rhs: &'a [MatcherToken],
+) -> SleighCompilerResult<&'a [MatcherToken]> {
+    if lhs.len() == 0 && rhs.len() == 0 {
+        return Ok(&lhs);
+    } else if (lhs.len() == 0 && rhs.len() != 0) || (lhs.len() != 0 && rhs.len() == 0) {
+        Err(SleighCompilerError::TODO)?;
     }
 
-    let padded_start = matches!(lhs.first().expect("We just checked this"), MatcherToken::Undetermined);
-    let padded_end = matches!(lhs.last().expect("We just checked this"), MatcherToken::Undetermined);
+    let lhs_padded_start = matches!(lhs.first().expect("We just checked this"), MatcherToken::Undetermined);
+    let lhs_padded_end = matches!(lhs.last().expect("We just checked this"), MatcherToken::Undetermined);
+    let rhs_padded_start = matches!(rhs.first().expect("We just checked this"), MatcherToken::Undetermined);
+    let rhs_padded_end = matches!(rhs.last().expect("We just checked this"), MatcherToken::Undetermined);
 
-    if padded_start && padded_end {
-        // both padded => is smaller list contained in larger?
-        for si in 0..(long.len() - short.len() + 1) {
-            if &short[..] == &long[si..] {
-                return true;
+    // TODO should we add cases where both are justified?
+    let (padded, non_padded, pad_left, pad_right) = if lhs_padded_start || lhs_padded_end {
+        (lhs, rhs, lhs_padded_start, lhs_padded_end)
+    } else {
+        (rhs, lhs, rhs_padded_start, rhs_padded_end)
+    };
+
+    if padded.len() > non_padded.len() {
+        Err(SleighCompilerError::TODO)?;
+    }
+
+    eprintln!("(padded, non_padded) = {:#?}", (padded, non_padded));
+
+    if pad_left && pad_right {
+        // both padded => is padded list contained in non_padded? (excluding Undetermined)
+        for si in 0..non_padded.len() {
+            if &padded[1..(padded.len() - 1)] == &non_padded[si..(si + padded.len() - 2)] {
+                return Ok(non_padded);
             }
         }
-    } else if padded_start {
-        // start padded => is smaller list present at end of larger?
-        if &short[..] == &long[long.len() - short.len()..] {
-            return true;
+    } else if pad_left {
+        // start padded => is smaller list present at end of larger? (excluding Undetermined)
+        if &padded[1..(padded.len())] == &non_padded[(non_padded.len() + 1 - padded.len())..] {
+            return Ok(non_padded);
         }
-    } else if padded_end {
-        // end padded => is smaller list present at start of larger?
-        if &short[..] == &long[..short.len()] {
-            return true;
+    } else if pad_right {
+        // end padded => is smaller list present at start of larger? (excluding Undetermined)
+        if &padded[..(padded.len() - 1)] == &non_padded[..(padded.len() - 1)] {
+            return Ok(non_padded);
         }
     }
 
     // nothing padded => regular full-length search
-    short == long
+    if padded == non_padded {
+        Ok(non_padded)
+    } else {
+        Err(SleighCompilerError::TODO)
+    }
 }

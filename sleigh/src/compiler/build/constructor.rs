@@ -114,6 +114,12 @@ impl SleighCompiler {
             None => self.spec_builder.modify_root_table()?,
             Some(id) => self.spec_builder.modify_table(id)?,
         };
+        eprintln!("matchers = {:#?}", matchers);
+        matchers.into_iter().for_each(|matcher| {
+            // TODO matcher.constructor =
+            table.matchers.insert(matcher);
+        });
+
         if table.exports.is_empty() {
             // If the exports table is empty, we can just insert the export if we have one.
             if let Some(export) = export {

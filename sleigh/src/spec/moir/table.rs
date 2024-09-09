@@ -1,10 +1,11 @@
-use crate::compiler::build::matcher::MatcherId;
+use crate::compiler::build::matcher::{Matcher, MatcherId};
 use crate::new_typed_index_table_id;
 use crate::spec::moir::scope::MOIRMaybeSize;
 use crate::spec::moir::varnode::{
     MOIRConst,
     MOIRSlice,
 };
+use crate::spec::typed_index_table::TypedIndexTable;
 
 #[derive(Debug, Default)]
 pub struct MOIRTable {
@@ -16,7 +17,7 @@ pub struct MOIRTable {
     // constraints to finally lift the instruction.
     bit_matching_table: Vec<Vec<()>>,
     constructors: Vec<()>,
-    pub(crate) matchers: Vec<MatcherId>,
+    pub matchers: TypedIndexTable<MatcherId, Matcher>,
     /// TODO: improve documentation
     /// 7.7.2.3. Exports
     ///

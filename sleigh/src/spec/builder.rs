@@ -161,8 +161,6 @@ pub struct ProcessorSpecificationBuilder {
     /// `contextreg` varnode containing a field `longmode=(0,1)` for x86).
     context: SlotMap<MOIRContextId, MOIRContext>,
 
-    matchers: SlotMap<MatcherId, Matcher>,
-
     /// Maps a string identifier to the corresponding internal [Ident].
     /// This is useful for the compiler, when an identifier string references another symbol.
     /// This will need to be resolved to the correct [Ident], so that the PSB can then
@@ -468,6 +466,14 @@ impl ProcessorSpecificationBuilder {
             .expect("We either just inserted the new table, or fetched an existing one."))
     }
 
+    pub(crate) fn register_matchers(
+        &mut self,
+        table: TableId,
+        matchers: Vec<Matcher>,
+    ) -> MatcherId {
+        todo!("Implement matcher insertion");
+    }
+
     pub(crate) fn get_symbol_and_ident(
         &self,
         ident: &Spanned<StringId>,
@@ -701,7 +707,6 @@ impl Default for ProcessorSpecificationBuilder {
             endianness: None,
             alignment: None,
             context: Default::default(),
-            matchers: Default::default(),
             string_to_ident_mapping: Default::default(),
             root_table,
             default_space: None,

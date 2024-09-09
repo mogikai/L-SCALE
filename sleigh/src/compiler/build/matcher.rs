@@ -4,7 +4,6 @@ use slotmap::new_key_type;
 use crate::spec::builder::MOIRSymbolId;
 use crate::spec::moir::field::{FieldId, MOIRFieldParent};
 use crate::spec::moir::table::TableId;
-use crate::spec::moir::token::TokenId;
 use crate::spec::moir::varnode::VarNodeId;
 
 // TODO: for now we assume each token to be of a maximum of 8 bytes, but this doesn't have to be
@@ -19,7 +18,13 @@ pub enum FieldMatcherPattern {
         mask: u64,
     },
     // r1=r2
-    Field(FieldId),
+    Equals(FieldId),
+    // r1!=r2
+    NotEquals(FieldId),
+    // r1<r2
+    LessThan(FieldId),
+    // r1>r2
+    GreaterThan(FieldId),
 }
 
 /// The simplest kind of matcher. It matches a single field against a value or another field.
@@ -67,7 +72,7 @@ impl MatcherConjunction {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum MatcherToken {
     Determined(MOIRFieldParent),
     Undetermined, // put at either end of list for left/right justify
@@ -85,6 +90,9 @@ pub struct Matcher {
     // this is known before the matcher is run on anything and should only
     // contain fields as well as MatcherReference types (i.e. fields, subtables and varnodes)
     pub(super) symbols_used: Vec<MOIRSymbolId>,
+
+    // TODO constructor will be linked here (no need for constructor -> matcher mapping)
+    pub(super) constructor: (),
 }
 
 /// A list of all symbols that matched are implicitly given through the matcher
@@ -108,6 +116,7 @@ impl Matcher {
             conjunctions,
             token_list,
             symbols_used,
+            constructor: (),
         }
     }
 
@@ -115,8 +124,14 @@ impl Matcher {
         &self,
         bytes: &[u8],
     ) -> Option<Vec<Matching>> {
-        todo!("Match")
+        // extract tokens
+        todo!("Matching");
+        // self.token_list.iter().filter_map(|matcher_token| {
+        //     if let MatcherToken::Determined(parent) = matcher_token {
+
+        //     }
+        // })
     }
 }
 
-new_key_type! { pub struct MatcherId; }
+new_typed_index_table_id! { pub struct MatcherId; }
