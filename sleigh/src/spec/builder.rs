@@ -33,6 +33,7 @@ use crate::spec::moir::address_space::{
     MOIRSpaceIsDefault,
     MOIRSpaceType,
 };
+use crate::spec::moir::code::MOIROperation;
 use crate::spec::moir::custom_op::{
     CustomOpId,
     MOIRCustomOp,
@@ -130,6 +131,10 @@ pub(super) struct MOIRSymbolTables {
 #[derive(Debug)]
 pub struct ProcessorSpecificationBuilder {
     interner: StringInterner<StringBackend>,
+
+    /// This hashmap simply keeps track of which string id is associated with which builtin operation.
+    /// It is used to look up the operation type when resolving invocations.
+    builtin_ops: HashMap<StringId, MOIROperation>,
 
     /// The main symbol map of the specification.
     /// Each identifier points to a specific symbol id.
@@ -650,6 +655,13 @@ impl ProcessorSpecificationBuilder {
         let space = self.space_id_by_ident(space_id)?;
         Ok(space)
     }
+
+    pub fn builtin_op_by_ident(
+        &self,
+        ident: &Spanned<StringId>,
+    ) -> Option<MOIROperation> {
+        self.builtin_ops.get(ident.value()).cloned()
+    }
 }
 
 impl Default for ProcessorSpecificationBuilder {
@@ -661,6 +673,7 @@ impl Default for ProcessorSpecificationBuilder {
         let root_table = Spanned::new(interner.intern("instruction"), InputSpan::default());
         let mut slf = Self {
             interner,
+            builtin_ops: Default::default(),
             symbol_ids: Default::default(),
             symbol_strings: Default::default(),
             symbol_tables: Default::default(),
@@ -673,6 +686,22 @@ impl Default for ProcessorSpecificationBuilder {
             default_space: None,
             placeholder_ident,
         };
+        use MOIROperation::*;
+        let builtins = &mut slf.builtin_ops;
+        builtins.insert(slf.interner.intern("zext"), ZeroExtend);
+        builtins.insert(slf.interner.intern("sext"), SignExtend);
+        builtins.insert(slf.interner.intern("carry"), Carry);
+        builtins.insert(slf.interner.intern("scarry"), SignCarry);
+        builtins.insert(slf.interner.intern("sborrow"), SignBorrow);
+        builtins.insert(slf.interner.intern("nan"), Nan);
+        builtins.insert(slf.interner.intern("abs"), Abs);
+        builtins.insert(slf.interner.intern("sqrt"), Sqrt);
+        builtins.insert(slf.interner.intern("int2float"), IntToFloat);
+        builtins.insert(slf.interner.intern("float2float"), FloatToFloat);
+        builtins.insert(slf.interner.intern("trunc"), Trunc);
+        builtins.insert(slf.interner.intern("ceil"), Ceil);
+        builtins.insert(slf.interner.intern("floor"), Floor);
+        builtins.insert(slf.interner.intern("round"), Round);
         // Call modify once to create the table.
         slf.modify_root_table()
             .expect("This may not error at this point");

@@ -62,6 +62,8 @@ pub enum SleighCompilerError {
     ConstDoesNotFit { val: u128, size: MOIRSize },
     #[error("The symbol is already defined")]
     DuplicateDefinition,
+    #[error("The builtin operation was called with an incorrect number of arguments")]
+    InvalidArgumentCount,
 }
 
 impl Debug for SleighCompilerError {

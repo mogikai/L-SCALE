@@ -154,7 +154,46 @@ macro_rules! moir_instruction {
         MOIRInstruction::address_of($lhs, $rhs)
     };
     ($lhs:ident = zext($rhs:tt)) => {
-        MOIRInstruction::zext($lhs, $rhs)
+        MOIRInstruction::unary_op($lhs, crate::spec::moir::code::MOIROperation::ZeroExtend, $rhs)
+    };
+    ($lhs:ident = sext($rhs:tt)) => {
+        MOIRInstruction::unary_op($lhs, crate::spec::moir::code::MOIROperation::SignExtend, $rhs)
+    };
+    ($out:ident = carry($lhs:tt, $rhs:tt)) => {
+        MOIRInstruction::binary_op($out, $lhs, crate::spec::moir::code::MOIROperation::Carry, $rhs)
+    };
+    ($out:ident = scarry($lhs:tt, $rhs:tt)) => {
+        MOIRInstruction::binary_op($out, $lhs, crate::spec::moir::code::MOIROperation::SignCarry, $rhs)
+    };
+    ($out:ident = sborrow($lhs:tt, $rhs:tt)) => {
+        MOIRInstruction::binary_op($out, $lhs, crate::spec::moir::code::MOIROperation::SignBorrow, $rhs)
+    };
+    ($lhs:ident = nan($rhs:tt)) => {
+        MOIRInstruction::unary_op($lhs, crate::spec::moir::code::MOIROperation::Nan, $rhs)
+    };
+    ($lhs:ident = abs($rhs:tt)) => {
+        MOIRInstruction::unary_op($lhs, crate::spec::moir::code::MOIROperation::Abs, $rhs)
+    };
+    ($lhs:ident = sqrt($rhs:tt)) => {
+        MOIRInstruction::unary_op($lhs, crate::spec::moir::code::MOIROperation::Sqrt, $rhs)
+    };
+    ($lhs:ident = int2float($rhs:tt)) => {
+        MOIRInstruction::unary_op($lhs, crate::spec::moir::code::MOIROperation::IntToFloat, $rhs)
+    };
+    ($lhs:ident = float2float($rhs:tt)) => {
+        MOIRInstruction::unary_op($lhs, crate::spec::moir::code::MOIROperation::FloatToFloat, $rhs)
+    };
+    ($lhs:ident = trunc($rhs:tt)) => {
+        MOIRInstruction::unary_op($lhs, crate::spec::moir::code::MOIROperation::Trunc, $rhs)
+    };
+    ($lhs:ident = ceil($rhs:tt)) => {
+        MOIRInstruction::unary_op($lhs, crate::spec::moir::code::MOIROperation::Ceil, $rhs)
+    };
+    ($lhs:ident = floor($rhs:tt)) => {
+        MOIRInstruction::unary_op($lhs, crate::spec::moir::code::MOIROperation::Floor, $rhs)
+    };
+    ($lhs:ident = round($rhs:tt)) => {
+        MOIRInstruction::unary_op($lhs, crate::spec::moir::code::MOIROperation::Round, $rhs)
     };
     ($target:ident = *[$space:ident]$addr:ident) => {
         MOIRInstruction::load($target, $addr, $space)
@@ -239,19 +278,6 @@ impl MOIRInstruction {
         }
     }
 
-    pub fn zext(
-        lhs: MOIRLocalId,
-        rhs: impl Into<MOIRLocal>,
-    ) -> Self {
-        MOIRInstruction {
-            output: Some(lhs),
-            input_a: Some(rhs.into()),
-            input_b: None,
-            operation: MOIROperation::ZeroExtend,
-            label: None,
-        }
-    }
-
     pub fn binary_op(
         out: MOIRLocalId,
         lhs: impl Into<MOIRLocal>,
@@ -303,9 +329,9 @@ impl MOIRInstruction {
         operand: impl Into<MOIRLocal>,
     ) -> Self {
         MOIRInstruction {
+            output: Some(out),
             input_a: Some(operand.into()),
             input_b: None,
-            output: Some(out),
             operation: op,
             label: None,
         }
@@ -348,6 +374,18 @@ pub enum MOIROperation {
     /// If the input size is larger than the output size, this
     /// will result in a size error.
     SignExtend,
+    Carry,
+    SignCarry,
+    SignBorrow,
+    Nan,
+    Abs,
+    Sqrt,
+    IntToFloat,
+    FloatToFloat,
+    Trunc,
+    Ceil,
+    Floor,
+    Round,
 
     // Load and store operations
     // When these operations are resolved into JIR upon calling the constructor, all values
@@ -420,6 +458,18 @@ impl Display for MOIROperation {
             MOIROperation::AddressOf => write!(f, "&"),
             MOIROperation::ZeroExtend => write!(f, "zext"),
             MOIROperation::SignExtend => write!(f, "sext"),
+            MOIROperation::Carry => write!(f, "carry"),
+            MOIROperation::SignCarry => write!(f, "scarry"),
+            MOIROperation::SignBorrow => write!(f, "sborrow"),
+            MOIROperation::Nan => write!(f, "nan"),
+            MOIROperation::Abs => write!(f, "abs"),
+            MOIROperation::Sqrt => write!(f, "sqrt"),
+            MOIROperation::IntToFloat => write!(f, "int2float"),
+            MOIROperation::FloatToFloat => write!(f, "float2float"),
+            MOIROperation::Trunc => write!(f, "trunc"),
+            MOIROperation::Ceil => write!(f, "ceil"),
+            MOIROperation::Floor => write!(f, "floor"),
+            MOIROperation::Round => write!(f, "round"),
             MOIROperation::Load(_) => write!(f, "load"),
             MOIROperation::Store(_) => write!(f, "store"),
             MOIROperation::IntAdd => write!(f, "+"),

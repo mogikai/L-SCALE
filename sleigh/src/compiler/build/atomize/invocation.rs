@@ -21,6 +21,9 @@ use crate::spec::moir::scope::{
     MOIRScope,
 };
 use crate::spec::moir::varnode::MOIRLocal;
+use chumsky::Parser;
+use itertools::traits::HomogeneousTuple;
+use itertools::Itertools;
 use tracing::trace;
 
 impl SleighCompiler {
@@ -37,7 +40,9 @@ impl SleighCompiler {
         let args = self.atomize_invocation_arguments(scope, instructions, invocation.arguments)?;
 
         let name = invocation.name.transmute();
-        if let Some(moir_macro) = self.spec_builder.macro_by_ident(&name).cloned() {
+        if let Some(op) = self.spec_builder.builtin_op_by_ident(&name) {
+            self.atomize_builtin_op_invocation(scope, instructions, out, args, op)
+        } else if let Some(moir_macro) = self.spec_builder.macro_by_ident(&name).cloned() {
             self.atomize_macro_invocation(scope, instructions, args, moir_macro)
         } else {
             self.atomize_custom_op_invocation(scope, instructions, out, args, name)
@@ -124,6 +129,79 @@ impl SleighCompiler {
             .collect::<Result<Vec<_>, _>>()
     }
 
+    fn atomize_builtin_op_invocation(
+        &mut self,
+        scope: &mut MOIRScope,
+        instructions: &mut Vec<MOIRInstruction>,
+        out: Option<MOIRLocalId>,
+        args: Vec<MOIRLocal>,
+        op: MOIROperation,
+    ) -> SleighCompilerResult<Option<MOIRLocal>> {
+        let out = out.unwrap_or_else(|| scope.allocate_temporary(MOIRMaybeSize::Undetermined));
+        match op {
+            MOIROperation::ZeroExtend => {
+                let (arg,) = unpack_args(args)?;
+                instructions.push(moir_instruction!(out = zext(arg)));
+            }
+            MOIROperation::SignExtend => {
+                let (arg,) = unpack_args(args)?;
+                instructions.push(moir_instruction!(out = sext(arg)));
+            }
+            MOIROperation::Carry => {
+                let (a, b) = unpack_args(args)?;
+                instructions.push(moir_instruction!(out = carry(a, b)));
+            }
+            MOIROperation::SignCarry => {
+                let (a, b) = unpack_args(args)?;
+                instructions.push(moir_instruction!(out = scarry(a, b)));
+            }
+            MOIROperation::SignBorrow => {
+                let (a, b) = unpack_args(args)?;
+                instructions.push(moir_instruction!(out = sborrow(a, b)));
+            }
+            MOIROperation::Nan => {
+                let (a,) = unpack_args(args)?;
+                instructions.push(moir_instruction!(out = nan(a)));
+            }
+            MOIROperation::Abs => {
+                let (a,) = unpack_args(args)?;
+                instructions.push(moir_instruction!(out = abs(a)));
+            }
+            MOIROperation::Sqrt => {
+                let (a,) = unpack_args(args)?;
+                instructions.push(moir_instruction!(out = sqrt(a)));
+            }
+            MOIROperation::IntToFloat => {
+                let (a,) = unpack_args(args)?;
+                instructions.push(moir_instruction!(out = int2float(a)));
+            }
+            MOIROperation::FloatToFloat => {
+                let (a,) = unpack_args(args)?;
+                instructions.push(moir_instruction!(out = float2float(a)));
+            }
+            MOIROperation::Trunc => {
+                let (a,) = unpack_args(args)?;
+                instructions.push(moir_instruction!(out = trunc(a)));
+            }
+            MOIROperation::Ceil => {
+                let (a,) = unpack_args(args)?;
+                instructions.push(moir_instruction!(out = ceil(a)));
+            }
+            MOIROperation::Floor => {
+                let (a,) = unpack_args(args)?;
+                instructions.push(moir_instruction!(out = floor(a)));
+            }
+            MOIROperation::Round => {
+                let (a,) = unpack_args(args)?;
+                instructions.push(moir_instruction!(out = round(a)));
+            }
+            _ => {
+                todo!()
+            }
+        }
+        Ok(Some(out.into()))
+    }
+
     fn atomize_macro_invocation(
         &mut self,
         scope: &mut MOIRScope,
@@ -146,6 +224,15 @@ impl SleighCompiler {
             Ok(None)
         })
     }
+}
+
+fn unpack_args<T>(args: Vec<MOIRLocal>) -> SleighCompilerResult<T>
+where
+    T: HomogeneousTuple<Item = MOIRLocal>,
+{
+    args.into_iter()
+        .collect_tuple()
+        .ok_or(SleighCompilerError::InvalidArgumentCount)
 }
 
 /// Resolves the provided args to the argument names in the macro definition.

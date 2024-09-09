@@ -12,3 +12,4 @@ chumsky = { features = ["label", "pratt"], git = "https://github.com/mlgiraud/ch
 string-interner = "0.17.0"
 num = "0.4.3"
 strum_macros = "0.26.4"
+itertools = "0.13.0"
