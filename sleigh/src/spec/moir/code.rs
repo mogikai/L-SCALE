@@ -57,7 +57,7 @@ impl Display for MOIRInstruction {
                     self.input_a.expect("Copy has to have input_a")
                 )
             }
-            MOIROperation::CustomOp(args) => {
+            MOIROperation::CustomOp { op_id, extra_args } => {
                 if let Some(output) = self.output {
                     write!(f, "{} = customOp(", output)?
                 } else {
@@ -70,7 +70,7 @@ impl Display for MOIRInstruction {
                 if let Some(input) = self.input_b {
                     inputs.push(input);
                 }
-                inputs.extend(args);
+                inputs.extend(extra_args);
                 let len = inputs.len();
                 if len >= 2 {
                     for input in inputs[..(len - 1)].iter() {
@@ -168,6 +168,7 @@ macro_rules! moir_instruction {
     ($out:ident = ~$operand:tt) => {
         MOIRInstruction::unary_op($out, crate::spec::moir::code::MOIROperation::BitNegate, $operand)
     };
+    ($out:ident = call()) => {};
     ($out:ident = $op:tt $operand:tt) => {
         MOIRInstruction::unary_op($out, $op, $operand)
     };
@@ -179,6 +180,7 @@ use crate::compiler::ast::pcode::expression::{
 };
 use crate::spec::builder::StringId;
 use crate::spec::moir::address_space::SpaceId;
+use crate::spec::moir::custom_op::CustomOpId;
 use crate::spec::moir::scope::{
     LabelId,
     MOIRLocalId,
@@ -326,7 +328,10 @@ impl MOIRInstruction {
 #[derive(Debug, Clone)]
 pub enum MOIROperation {
     Copy,
-    CustomOp(Vec<MOIRLocal>),
+    CustomOp {
+        op_id: CustomOpId,
+        extra_args: Vec<MOIRLocal>,
+    },
     /// This operation does nothing. Its inputs and outputs are ignored.
     Nop,
 
@@ -411,7 +416,7 @@ impl Display for MOIROperation {
     ) -> std::fmt::Result {
         match self {
             MOIROperation::Copy => write!(f, ""),
-            MOIROperation::CustomOp(_) => write!(f, "custom"),
+            MOIROperation::CustomOp { .. } => write!(f, "custom"),
             MOIROperation::AddressOf => write!(f, "&"),
             MOIROperation::ZeroExtend => write!(f, "zext"),
             MOIROperation::SignExtend => write!(f, "sext"),
@@ -473,7 +478,7 @@ impl MOIROperation {
             | IntGreater | IntLessEqual | IntGreaterEqual | FloatLess | FloatGreater | FloatLessEqual
             | FloatGreaterEqual | FloatEquals | FloatNotEquals | IntEquals | IntNotEquals => MOIROpCategory::Comparison,
             IntLeft | IntRight | IntSRight => MOIROpCategory::Shift,
-            CustomOp(_) | ZeroExtend | Load(_) | Store(_) => MOIROpCategory::Special,
+            CustomOp { .. } | ZeroExtend | Load(_) | Store(_) => MOIROpCategory::Special,
             _ => MOIROpCategory::Regular,
         }
     }

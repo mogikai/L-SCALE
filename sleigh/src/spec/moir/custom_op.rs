@@ -1,4 +1,5 @@
 use crate::new_typed_index_table_id;
+use crate::spec::moir::scope::MOIRMaybeSize;
 
 /// A custom operation defined in the sleigh specification
 /// The operation will be called from jited code. Any implementation
@@ -11,16 +12,10 @@ pub enum MOIRCustomOp {
     Defined {
         /// The input constraints of the custom operation. The compiler will check if all calls
         /// satisfy the same constraints, i.e. the number of parameters and their sizes are equal.
-        input_constraints: Vec<MOIRCustomOpConstraint>,
-        /// The output constraint. See above.
-        output: MOIRCustomOpConstraint,
+        input_constraints: Vec<MOIRMaybeSize>,
+        /// The output constraint. It may be None, if there is no output. See above.
+        output: Option<MOIRMaybeSize>,
     },
-}
-
-#[derive(Debug)]
-pub struct MOIRCustomOpConstraint {
-    /// The size in bytes of the input value
-    size: u16,
 }
 
 new_typed_index_table_id! { pub struct CustomOpId; }

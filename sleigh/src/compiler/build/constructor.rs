@@ -328,7 +328,7 @@ impl SleighCompiler {
             SASTConstraintPattern::Ident(ident) => self
                 .spec_builder
                 .field_id_by_ident(&ident.clone().transmute())
-                .map(|field_id| FieldMatcherConstraint::Field(*field_id)),
+                .map(|field_id| FieldMatcherConstraint::Field(field_id)),
             SASTConstraintPattern::BitPattern(value) => Ok(FieldMatcherConstraint::BitPattern(value.into_value())),
         }?;
 

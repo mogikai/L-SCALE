@@ -808,12 +808,12 @@ macro_rules! impl_get_symbol_struct {
             }
 
             pub(crate) fn $func_name_mut(
-                &self,
+                &mut self,
                 ident: &Spanned<StringId>,
-            ) -> Option<&$symbol> {
+            ) -> Option<&mut $symbol> {
                 let (symbol, _) = self.get_symbol_and_ident(ident)?;
                 match symbol {
-                    $variant => self.symbol_tables.$table.get(*$id),
+                    $variant => self.symbol_tables.$table.get_mut(*$id),
                     _ => None,
                 }
             }
@@ -827,10 +827,10 @@ macro_rules! impl_get_symbol_id {
             pub(crate) fn $func_name(
                 &self,
                 ident: &Spanned<StringId>,
-            ) -> SleighCompilerResult<&$symbol> {
+            ) -> SleighCompilerResult<$symbol> {
                 let symbol = self.get_symbol(ident)?;
                 match symbol {
-                    $variant => Ok($id),
+                    $variant => Ok(*$id),
                     _ => Err(ProcessorSpecificationError::MissingDefaultSpace)?, // TODO proper report for wrong symbol type
                 }
             }
@@ -848,3 +848,4 @@ impl_get_symbol_struct! { custom_op_by_ident, custom_op_by_ident_mut, custom_ops
 impl_get_symbol_struct! { bitrange_register_by_ident, bitrange_register_by_ident_mut, bitrange_registers, MOIRTBitrangeRegister, MOIRSymbolId::BitrangeRegister(id) => id}
 
 impl_get_symbol_id! { field_id_by_ident, FieldId, MOIRSymbolId::Field(id) => id}
+impl_get_symbol_id! { custom_op_id_by_ident, CustomOpId, MOIRSymbolId::CustomOp(id) => id}
