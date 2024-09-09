@@ -38,7 +38,9 @@ use crate::spec::moir::address_space::{
     MOIRSpaceType,
 };
 use crate::spec::moir::field::{
-    MOIRBitRange, MOIRField, MOIRFieldParent
+    MOIRBitRange,
+    MOIRField,
+    MOIRFieldParent,
 };
 use crate::spec::moir::token::MOIRToken;
 use crate::spec::moir::varnode::MOIRVarNode;

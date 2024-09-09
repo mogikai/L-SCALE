@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::ast::Spanned;
 use crate::compiler::build::trace_build;

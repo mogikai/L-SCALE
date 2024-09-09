@@ -1,4 +1,7 @@
-use crate::compiler::build::matcher::{Matcher, MatcherId};
+use crate::compiler::build::matcher::{
+    Matcher,
+    MatcherId,
+};
 use crate::new_typed_index_table_id;
 use crate::spec::moir::scope::MOIRMaybeSize;
 use crate::spec::moir::varnode::{

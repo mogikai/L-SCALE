@@ -2,7 +2,10 @@
 use slotmap::new_key_type;
 
 use crate::spec::builder::MOIRSymbolId;
-use crate::spec::moir::field::{FieldId, MOIRFieldParent};
+use crate::spec::moir::field::{
+    FieldId,
+    MOIRFieldParent,
+};
 use crate::spec::moir::table::TableId;
 use crate::spec::moir::varnode::VarNodeId;
 
@@ -12,11 +15,7 @@ use crate::spec::moir::varnode::VarNodeId;
 #[derive(Debug, Clone)]
 pub enum FieldMatcherPattern {
     // r1=0xff00
-    BitPattern {
-        value: u64,
-        shift: u8,
-        mask: u64,
-    },
+    BitPattern { value: u64, shift: u8, mask: u64 },
     // r1=r2
     Equals(FieldId),
     // r1!=r2
@@ -54,8 +53,8 @@ pub enum MatcherReference {
 
 #[derive(Debug, Clone)]
 pub enum MatcherAtom {
-    Field(FieldMatcher), // field=value or field=field
-    Linkage(MatcherReference),  // links a local symbol to a global symbol (subtable, varnode...)
+    Field(FieldMatcher),       // field=value or field=field
+    Linkage(MatcherReference), // links a local symbol to a global symbol (subtable, varnode...)
 }
 
 /// Or and Concat expressions are removed so we end up with only And at the end
@@ -66,9 +65,7 @@ pub struct MatcherConjunction {
 
 impl MatcherConjunction {
     pub fn new(matcher_atoms: Vec<MatcherAtom>) -> Self {
-        Self {
-            matcher_atoms,
-        }
+        Self { matcher_atoms }
     }
 }
 
@@ -89,7 +86,7 @@ pub struct Matcher {
 
     // this is known before the matcher is run on anything and should only
     // contain fields as well as MatcherReference types (i.e. fields, subtables and varnodes)
-    pub(super) symbols_used: Vec<MOIRSymbolId>,
+    pub(super) symbols_used: HashSet<MOIRSymbolId>,
 
     // TODO constructor will be linked here (no need for constructor -> matcher mapping)
     pub(super) constructor: (),
@@ -110,7 +107,7 @@ impl Matcher {
         // we need to include fields from context as well to be able to extract them later, but
         // they are skipped when validating e.g. token equality for And expressions
         token_list: Vec<MatcherToken>,
-        symbols_used: Vec<MOIRSymbolId>,
+        symbols_used: HashSet<MOIRSymbolId>,
     ) -> Self {
         Self {
             conjunctions,

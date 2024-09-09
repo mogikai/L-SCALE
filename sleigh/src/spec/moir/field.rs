@@ -13,10 +13,11 @@ pub struct MOIRBitRange {
 }
 
 impl MOIRBitRange {
-    pub fn new(start: u8, end: u8) -> Self {
-        Self {
-            start, end
-        }
+    pub fn new(
+        start: u8,
+        end: u8,
+    ) -> Self {
+        Self { start, end }
     }
 
     pub fn size(&self) -> u8 {

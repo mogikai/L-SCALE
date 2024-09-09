@@ -85,12 +85,14 @@ pub fn bit_pattern_section<'tokens>(
 
     // An atom that can be unambiguously parsed. In this case either an identifier,
     // or a parenthesized constraint.
-    let atom = whitespace_padded(maybe_parenthesized(advanced_constraint)
-        .or(maybe_parenthesized(ident)
-            .map(SASTBitPatternConstraint::Ident)
-            .map_with(spanned))
-        .or(parenthesized(constraint.clone())))
-        .boxed();
+    let atom = whitespace_padded(
+        maybe_parenthesized(advanced_constraint)
+            .or(maybe_parenthesized(ident)
+                .map(SASTBitPatternConstraint::Ident)
+                .map_with(spanned))
+            .or(parenthesized(constraint.clone())),
+    )
+    .boxed();
 
     let operation = atom.clone().pratt((
         prefix(16, unary_operator(), fold_unary_prefix),
