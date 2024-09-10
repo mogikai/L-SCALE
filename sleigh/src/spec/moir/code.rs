@@ -4,7 +4,6 @@ use std::fmt::{
     Formatter,
 };
 use std::ops::Deref;
-use tracing::Value;
 
 #[derive(Debug)]
 pub struct MOIRInstruction {

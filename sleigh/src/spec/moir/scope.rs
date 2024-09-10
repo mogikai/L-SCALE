@@ -17,10 +17,7 @@ use crate::spec::moir::varnode::{
 use crate::spec::reporting::generate_identifier_exists_report;
 use crate::spec::typed_index_table::TypedIndexTable;
 use std::collections::hash_map::Entry;
-use std::collections::{
-    HashMap,
-    HashSet,
-};
+use std::collections::HashMap;
 use std::fmt::{
     Display,
     Formatter,

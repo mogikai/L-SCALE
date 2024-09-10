@@ -22,12 +22,9 @@ use crate::spec::moir::code::{
     moir_instruction,
     MOIRGotoType,
     MOIRInstruction,
-    MOIROperation,
 };
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::scope::{
-    InstructionId,
-    MOIRLocalId,
     MOIRMaybeSize,
     MOIRScope,
 };
@@ -88,7 +85,7 @@ impl SleighCompiler {
                     // TODO: Maybe it makes sense to update the pcodeop definition here to "no output"?
                     self.atomize_invocation(scope, instructions, None, invocation)?;
                 }
-                SASTPCodeStatement::Build(table) => instructions.push(moir_instruction!(nop)),
+                SASTPCodeStatement::Build(_) => instructions.push(moir_instruction!(nop)),
                 SASTPCodeStatement::Export(expression) => {
                     let span = expression.span().clone();
                     export = Some(Spanned::new(self.atomize_export(scope, instructions, expression)?, span));

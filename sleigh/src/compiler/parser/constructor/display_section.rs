@@ -109,8 +109,8 @@ fn make_display_string<'tokens>(
         SleighToken::Binary(id) => interner.resolve_string_id(id),
         SleighToken::With(id) => interner.resolve_string_id(id),
         SleighToken::MacroBegin => panic!("This should not occur"),
-        SleighToken::MacroExpansion(id) => panic!("This should not occur"),
-        SleighToken::IncludedTokens(tokens) => panic!("This should not occur"),
+        SleighToken::MacroExpansion(_) => panic!("This should not occur"),
+        SleighToken::IncludedTokens(_) => panic!("This should not occur"),
         SleighToken::Keyword(keyword) => {
             use SleighKeyword::*;
             match keyword {

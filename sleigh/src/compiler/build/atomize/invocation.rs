@@ -23,10 +23,7 @@ use crate::spec::moir::scope::{
 use crate::spec::moir::varnode::MOIRLocal;
 use itertools::traits::HomogeneousTuple;
 use itertools::Itertools;
-use tracing::{
-    trace,
-    warn,
-};
+use tracing::trace;
 
 impl SleighCompiler {
     pub fn atomize_invocation(
@@ -71,10 +68,7 @@ impl SleighCompiler {
                     output: out.map(|local| scope.size_of_local(local)),
                 }
             }
-            MOIRCustomOp::Defined {
-                input_constraints,
-                output,
-            } => {
+            MOIRCustomOp::Defined { input_constraints, .. } => {
                 for ((arg, constraint), size) in args
                     .iter_mut()
                     .zip(input_constraints.iter_mut())
