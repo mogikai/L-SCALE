@@ -15,7 +15,7 @@ pub struct MOIRInstruction {
     pub input_a: Option<MOIRLocal>,
     pub input_b: Option<MOIRLocal>,
     pub operation: MOIROperation,
-    pub label: Option<StringId>,
+    pub label: Option<LabelId>,
 }
 
 impl Display for MOIRInstruction {
@@ -23,6 +23,9 @@ impl Display for MOIRInstruction {
         &self,
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
+        if let Some(label) = self.label {
+            writeln!(f, "<{label}>")?;
+        }
         match &self.operation {
             MOIROperation::PopCount
             | MOIROperation::LZCount
@@ -102,9 +105,10 @@ impl Display for MOIRInstruction {
                     }
                 }
                 if len >= 1 {
-                    write!(f, "{})", inputs.last().expect("There has to be at least one element"))?
+                    write!(f, "{})", inputs.last().expect("There has to be at least one element"))
+                } else {
+                    write!(f, ")")
                 }
-                Ok(())
             }
             MOIROperation::AddressOf
             | MOIROperation::BoolNegate
@@ -119,9 +123,24 @@ impl Display for MOIRInstruction {
                     self.input_a.expect("Unary op has to have input_a")
                 )
             }
-            MOIROperation::GotoAbsolute => write!(f, "goto [{}]", self.input_a.expect("Goto has to have input_a")),
-            MOIROperation::GotoOffset => write!(f, "goto {}", self.input_a.expect("Goto has to have input_a")),
-            MOIROperation::GotoLabel(label) => write!(f, "goto <{:?}>", label),
+            MOIROperation::GotoDirect(ty) => write!(f, "{ty} [{}]", self.input_a.expect("Goto has to have input_a")),
+            MOIROperation::GotoIndirect(ty) => write!(f, "{ty} {}", self.input_a.expect("Goto has to have input_a")),
+            MOIROperation::GotoLabel(ty, label) => write!(f, "{ty} <{:?}>", label),
+            MOIROperation::GotoDirectIf => write!(
+                f,
+                "if ({}) goto [{}]",
+                self.input_b.expect("GotoIf has to have input_b"),
+                self.input_a.expect("Goto has to have input_a")
+            ),
+            MOIROperation::GotoIndirectIf => write!(
+                f,
+                "if ({}) goto {}",
+                self.input_b.expect("GotoIf has to have input_b"),
+                self.input_a.expect("Goto has to have input_a")
+            ),
+            MOIROperation::GotoLabelIf(label) => {
+                write!(f, "if ({}) goto <{:?}>", self.input_b.expect("GotoIf has to have input_b"), label)
+            }
             MOIROperation::Nop => write!(f, "nop"),
             _ => write!(
                 f,
@@ -144,14 +163,41 @@ macro_rules! moir_instruction {
     (nop) => {
         MOIRInstruction::nop()
     };
+    (if ($cond:tt) goto [$target:tt]) => {
+        MOIRInstruction::goto_direct_if($target, $cond)
+    };
+    (if ($cond:tt) goto $target:tt) => {
+        MOIRInstruction::goto_indirect_if($target, $cond)
+    };
+    (if ($cond:tt) goto <$target:tt>) => {
+        MOIRInstruction::goto_label_if($target, $cond)
+    };
     (goto [$target:tt]) => {
-        MOIRInstruction::goto_absolute($target)
+        MOIRInstruction::goto_direct($target, crate::spec::moir::code::MOIRGotoType::Regular)
     };
     (goto $target:tt) => {
-        MOIRInstruction::goto_relative($target)
+        MOIRInstruction::goto_indirect($target, crate::spec::moir::code::MOIRGotoType::Regular)
     };
     (goto <$target:tt>) => {
-        MOIRInstruction::goto_label($target)
+        MOIRInstruction::goto_label($target, crate::spec::moir::code::MOIRGotoType::Regular)
+    };
+    (call [$target:tt]) => {
+        MOIRInstruction::goto_direct($target, crate::spec::moir::code::MOIRGotoType::Call)
+    };
+    (call $target:tt) => {
+        MOIRInstruction::goto_indirect($target, crate::spec::moir::code::MOIRGotoType::Call)
+    };
+    (call <$target:tt>) => {
+        MOIRInstruction::goto_label($target, crate::spec::moir::code::MOIRGotoType::Call)
+    };
+    (return [$target:tt]) => {
+        MOIRInstruction::goto_direct($target, crate::spec::moir::code::MOIRGotoType::Return)
+    };
+    (return $target:tt) => {
+        MOIRInstruction::goto_indirect($target, crate::spec::moir::code::MOIRGotoType::Return)
+    };
+    (return <$target:tt>) => {
+        MOIRInstruction::goto_label($target, crate::spec::moir::code::MOIRGotoType::Return)
     };
     ($out:ident = $lhs:tt - $rhs:tt) => {
         MOIRInstruction::binary_op($out, $lhs, crate::spec::moir::code::MOIROperation::IntSubtract, $rhs)
@@ -249,7 +295,6 @@ use crate::compiler::ast::pcode::expression::{
     SASTPCodeBinaryOp,
     SASTPCodeUnaryOp,
 };
-use crate::spec::builder::StringId;
 use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::custom_op::CustomOpId;
 use crate::spec::moir::scope::{
@@ -349,32 +394,80 @@ impl MOIRInstruction {
         }
     }
 
-    pub fn goto_absolute(target: impl Into<MOIRLocal>) -> Self {
+    pub fn goto_direct_if(
+        target: impl Into<MOIRLocal>,
+        cond: impl Into<MOIRLocal>,
+    ) -> Self {
         MOIRInstruction {
             output: None,
             input_a: Some(target.into()),
-            input_b: None,
-            operation: MOIROperation::GotoAbsolute,
+            input_b: Some(cond.into()),
+            operation: MOIROperation::GotoDirectIf,
             label: None,
         }
     }
 
-    pub fn goto_relative(target: impl Into<MOIRLocal>) -> Self {
+    pub fn goto_indirect_if(
+        target: impl Into<MOIRLocal>,
+        cond: impl Into<MOIRLocal>,
+    ) -> Self {
         MOIRInstruction {
             output: None,
             input_a: Some(target.into()),
-            input_b: None,
-            operation: MOIROperation::GotoOffset,
+            input_b: Some(cond.into()),
+            operation: MOIROperation::GotoIndirectIf,
             label: None,
         }
     }
 
-    pub fn goto_label(target: LabelId) -> Self {
+    pub fn goto_label_if(
+        target: LabelId,
+        cond: impl Into<MOIRLocal>,
+    ) -> Self {
+        MOIRInstruction {
+            output: None,
+            input_a: None,
+            input_b: Some(cond.into()),
+            operation: MOIROperation::GotoLabelIf(target),
+            label: None,
+        }
+    }
+
+    pub fn goto_direct(
+        target: impl Into<MOIRLocal>,
+        marker: MOIRGotoType,
+    ) -> Self {
+        MOIRInstruction {
+            output: None,
+            input_a: Some(target.into()),
+            input_b: None,
+            operation: MOIROperation::GotoDirect(marker),
+            label: None,
+        }
+    }
+
+    pub fn goto_indirect(
+        target: impl Into<MOIRLocal>,
+        marker: MOIRGotoType,
+    ) -> Self {
+        MOIRInstruction {
+            output: None,
+            input_a: Some(target.into()),
+            input_b: None,
+            operation: MOIROperation::GotoIndirect(marker),
+            label: None,
+        }
+    }
+
+    pub fn goto_label(
+        target: LabelId,
+        marker: MOIRGotoType,
+    ) -> Self {
         MOIRInstruction {
             output: None,
             input_a: None,
             input_b: None,
-            operation: MOIROperation::GotoLabel(target),
+            operation: MOIROperation::GotoLabel(marker, target),
             label: None,
         }
     }
@@ -452,13 +545,18 @@ pub enum MOIROperation {
     Load(SpaceId),
     Store(SpaceId),
 
-    // Branch instructions.
-    /// Branch to the absolute EVAddr specified in local input_a.
-    GotoAbsolute,
-    /// Branch to the EVAddr at inst_next + the offset specified in input_a.
-    GotoOffset,
+    // Branch instructions. Direct and Indirect Branch instructions use absolute addresses.
+    // The label branch instruction uses a pcode relative label that is local to the scope.
+    /// Branch to the EVAddr of the varnode input_a. The space of the varnode must be the same
+    /// as the goto instruction.
+    GotoDirect(MOIRGotoType),
+    /// Branch to the EVAddr that is stored at the provided varnode input_a.
+    GotoIndirect(MOIRGotoType),
     /// Branch to the scope local label specified in this operator.
-    GotoLabel(LabelId),
+    GotoLabel(MOIRGotoType, LabelId),
+    GotoDirectIf,
+    GotoIndirectIf,
+    GotoLabelIf(LabelId),
 
     // Binary operations
     IntAdd,
@@ -503,6 +601,26 @@ pub enum MOIROperation {
     BitNegate,
     IntNegate,
     FloatNegate,
+}
+
+#[derive(Debug, Clone)]
+pub enum MOIRGotoType {
+    Call,
+    Return,
+    Regular,
+}
+
+impl Display for MOIRGotoType {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        match self {
+            MOIRGotoType::Regular => write!(f, "goto"),
+            MOIRGotoType::Call => write!(f, "call"),
+            MOIRGotoType::Return => write!(f, "return"),
+        }
+    }
 }
 
 impl Display for MOIROperation {
@@ -572,9 +690,12 @@ impl Display for MOIROperation {
             MOIROperation::BitNegate => write!(f, "~"),
             MOIROperation::IntNegate => write!(f, "-"),
             MOIROperation::FloatNegate => write!(f, "f-"),
-            MOIROperation::GotoAbsolute => write!(f, "goto"),
-            MOIROperation::GotoOffset => write!(f, "goto"),
-            MOIROperation::GotoLabel(_) => write!(f, "goto"),
+            MOIROperation::GotoDirect(ty) | MOIROperation::GotoIndirect(ty) | MOIROperation::GotoLabel(ty, _) => {
+                write!(f, "{ty}")
+            }
+            MOIROperation::GotoDirectIf | MOIROperation::GotoIndirectIf | MOIROperation::GotoLabelIf(_) => {
+                write!(f, "goto")
+            }
             MOIROperation::Nop => write!(f, "nop"),
         }
     }
@@ -607,6 +728,9 @@ impl MOIROperation {
             | Round
             | Load(_)
             | Store(_) => MOIROpCategory::Special,
+            GotoDirect(_) | GotoIndirect(_) | GotoLabel(..) | GotoDirectIf | GotoIndirectIf | GotoLabelIf(_) => {
+                MOIROpCategory::Branch
+            }
             _ => MOIROpCategory::Regular,
         }
     }
@@ -625,6 +749,8 @@ pub enum MOIROpCategory {
     /// The size dependance of input and output ultimately must be decided by looking at the individual
     /// operation.
     Special,
+    /// Branching operations
+    Branch,
     /// A regular instruction with no special handling.
     Regular,
 }

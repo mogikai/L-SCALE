@@ -159,7 +159,7 @@ impl MOIRScope {
     /// scope of locals, just with different name mappings.
     pub fn with_empty_namespace<F, R>(
         &mut self,
-        mut f: F,
+        f: F,
     ) -> SleighCompilerResult<R>
     where
         F: FnOnce(&mut Self) -> SleighCompilerResult<R>,
@@ -398,8 +398,7 @@ impl MOIRScope {
         &mut self,
         label: Spanned<StringId>,
         id: InstructionId,
-    ) -> SleighCompilerResult<(StringId, InstructionId)> {
-        let label_name = *label.value();
+    ) -> SleighCompilerResult<(LabelId, InstructionId)> {
         let label_id = self.resolve_label(label)?;
         let instruction_id = self
             .labels
@@ -410,7 +409,7 @@ impl MOIRScope {
         } else {
             *instruction_id = Some(id);
         }
-        Ok((label_name, id))
+        Ok((label_id, id))
     }
 
     /// Resolve the label to its LabelId. If this is the first time this label is encountered, an id is generated.

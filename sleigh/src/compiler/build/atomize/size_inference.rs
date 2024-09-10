@@ -57,6 +57,9 @@ impl SleighCompiler {
                         }
                     }
                 }
+                MOIROpCategory::Branch => {
+                    // Probably no need to do anything?
+                }
                 MOIROpCategory::Special => {
                     match instruction.operation {
                         MOIROperation::Load(_) => {

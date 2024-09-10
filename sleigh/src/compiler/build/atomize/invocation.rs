@@ -85,7 +85,8 @@ impl SleighCompiler {
                             // both are defined and need to be equal
                             if *constraint != size {
                                 // TODO: Handle this case in some manner. I don't know why the sleigh spec allows this :(
-                                warn!("Pcode operation is called with differently sized arguments")
+                                // Maybe it would make sense to save all used configurations of input sizes, to make
+                                // this available to the runtime?
                             }
                         } else {
                             // constraint is defined but size isn't. We can constrain size now

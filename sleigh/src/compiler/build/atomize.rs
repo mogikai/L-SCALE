@@ -20,11 +20,13 @@ use crate::compiler::{
 use crate::spec::builder::StringId;
 use crate::spec::moir::code::{
     moir_instruction,
+    MOIRGotoType,
     MOIRInstruction,
     MOIROperation,
 };
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::scope::{
+    InstructionId,
     MOIRLocalId,
     MOIRMaybeSize,
     MOIRScope,
@@ -86,19 +88,30 @@ impl SleighCompiler {
                     // TODO: Maybe it makes sense to update the pcodeop definition here to "no output"?
                     self.atomize_invocation(scope, instructions, None, invocation)?;
                 }
-                SASTPCodeStatement::Build(_) => instructions.push(moir_instruction!(nop)),
+                SASTPCodeStatement::Build(table) => instructions.push(moir_instruction!(nop)),
                 SASTPCodeStatement::Export(expression) => {
                     let span = expression.span().clone();
                     export = Some(Spanned::new(self.atomize_export(scope, instructions, expression)?, span));
                 }
-                SASTPCodeStatement::Delayslot(_) => instructions.push(moir_instruction!(nop)),
+                SASTPCodeStatement::Delayslot(_) => {
+                    todo!()
+                }
                 SASTPCodeStatement::Declaration(ident, size) => {
                     self.atomize_declaration(scope, ident.transmute(), size.map(Spanned::transmute))?
                 }
-                SASTPCodeStatement::Branch(branch) => self.atomize_branch(scope, instructions, branch)?,
-                SASTPCodeStatement::ConditionalBranch { .. } => instructions.push(moir_instruction!(nop)),
-                SASTPCodeStatement::BranchCall(_) => instructions.push(moir_instruction!(nop)),
-                SASTPCodeStatement::BranchReturn(_) => instructions.push(moir_instruction!(nop)),
+                SASTPCodeStatement::Branch(branch) => {
+                    self.atomize_branch(scope, instructions, MOIRGotoType::Regular, branch)?
+                }
+                SASTPCodeStatement::ConditionalBranch {
+                    condition_expression,
+                    target,
+                } => self.atomize_conditional_branch(scope, instructions, condition_expression, target)?,
+                SASTPCodeStatement::BranchCall(target) => {
+                    self.atomize_branch(scope, instructions, MOIRGotoType::Call, target)?
+                }
+                SASTPCodeStatement::BranchReturn(target) => {
+                    self.atomize_branch(scope, instructions, MOIRGotoType::Return, target)?
+                }
                 SASTPCodeStatement::NOP => instructions.push(moir_instruction!(nop)),
                 SASTPCodeStatement::Error(_) => {
                     panic!("If there is an error in the AST, then this function should never have been invoked");
@@ -136,25 +149,67 @@ impl SleighCompiler {
             .map(|_| ())
     }
 
+    fn atomize_conditional_branch(
+        &mut self,
+        scope: &mut MOIRScope,
+        instructions: &mut Vec<MOIRInstruction>,
+        condition: Spanned<SASTPCodeExpression>,
+        branch: Spanned<SASTPCodeBranchTarget>,
+    ) -> SleighCompilerResult {
+        let (branch, _) = branch.into_tuple();
+        let cond = self.atomize_expression(scope, instructions, None, condition)?;
+        match branch {
+            SASTPCodeBranchTarget::Label(label) => {
+                let target = scope.resolve_label(label.transmute())?;
+                instructions.push(moir_instruction!(if (cond) goto <target>))
+            }
+            SASTPCodeBranchTarget::Indirect(expr) => {
+                let target = self.atomize_expression(scope, instructions, None, expr)?;
+                instructions.push(moir_instruction!(if (cond) goto [target]))
+            }
+            SASTPCodeBranchTarget::Direct(expr) => {
+                let target = self.atomize_expression(scope, instructions, None, expr)?;
+                instructions.push(moir_instruction!(if (cond) goto target))
+            }
+            SASTPCodeBranchTarget::Invalid(_) => {
+                panic!("An invalid branch target should have lead to the compiler quitting earlier.")
+            }
+        };
+        Ok(())
+    }
+
     fn atomize_branch(
         &mut self,
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
+        branch_type: MOIRGotoType,
         branch: Spanned<SASTPCodeBranchTarget>,
     ) -> SleighCompilerResult {
         let (branch, _) = branch.into_tuple();
         match branch {
             SASTPCodeBranchTarget::Label(label) => {
                 let target = scope.resolve_label(label.transmute())?;
-                instructions.push(moir_instruction!(goto<target>))
+                match branch_type {
+                    MOIRGotoType::Call => instructions.push(moir_instruction!(call<target>)),
+                    MOIRGotoType::Return => instructions.push(moir_instruction!(return <target>)),
+                    MOIRGotoType::Regular => instructions.push(moir_instruction!(goto<target>)),
+                }
             }
-            SASTPCodeBranchTarget::Absolute(expr) => {
+            SASTPCodeBranchTarget::Indirect(expr) => {
                 let target = self.atomize_expression(scope, instructions, None, expr)?;
-                instructions.push(moir_instruction!(goto[target]))
+                match branch_type {
+                    MOIRGotoType::Call => instructions.push(moir_instruction!(call[target])),
+                    MOIRGotoType::Return => instructions.push(moir_instruction!(return [target])),
+                    MOIRGotoType::Regular => instructions.push(moir_instruction!(goto[target])),
+                }
             }
-            SASTPCodeBranchTarget::Relative(expr) => {
+            SASTPCodeBranchTarget::Direct(expr) => {
                 let target = self.atomize_expression(scope, instructions, None, expr)?;
-                instructions.push(moir_instruction!(goto target));
+                match branch_type {
+                    MOIRGotoType::Call => instructions.push(moir_instruction!(call target)),
+                    MOIRGotoType::Return => instructions.push(moir_instruction!(return target)),
+                    MOIRGotoType::Regular => instructions.push(moir_instruction!(goto target)),
+                }
             }
             SASTPCodeBranchTarget::Invalid(_) => {
                 panic!("An invalid branch target should have lead to the compiler quitting earlier.")

@@ -43,8 +43,8 @@ pub enum SASTPCodeStatement {
 #[derive(Debug, Clone)]
 pub enum SASTPCodeBranchTarget {
     Label(Spanned<SASTIdent>),
-    Absolute(Spanned<SASTPCodeExpression>),
-    Relative(Spanned<SASTPCodeExpression>),
+    Indirect(Spanned<SASTPCodeExpression>),
+    Direct(Spanned<SASTPCodeExpression>),
     /// The branch target didn't parse correctly
     Invalid(InputSpan),
 }

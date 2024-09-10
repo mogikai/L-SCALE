@@ -97,10 +97,10 @@ pub fn pcode_branch_target<'tokens>(
 ) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeBranchTarget>, SleighParserExtra<'tokens>> + Clone {
     choice((
         pcode_label().map(SASTPCodeBranchTarget::Label),
-        pcode_expression().map(SASTPCodeBranchTarget::Absolute),
+        pcode_expression().map(SASTPCodeBranchTarget::Indirect),
         pcode_expression()
             .delimited_by(sleigh_control(OpenBracket), sleigh_control(CloseBracket))
-            .map(SASTPCodeBranchTarget::Relative),
+            .map(SASTPCodeBranchTarget::Direct),
     ))
     .map_with(spanned)
     .boxed()
