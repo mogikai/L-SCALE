@@ -11,4 +11,4 @@ pub struct MOIRMacro {
     pub pcode: SASTPCode,
 }
 
-new_typed_index_table_id! { pub struct MacroId; }
+new_typed_index_table_id! { pub struct MacroId; "M"; }

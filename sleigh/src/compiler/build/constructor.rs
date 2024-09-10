@@ -31,7 +31,10 @@ use crate::spec::moir::varnode::{
     MOIRSlice,
 };
 use crate::spec::ProcessorSpecificationError;
-use tracing::trace;
+use tracing::{
+    debug,
+    trace,
+};
 
 impl SleighCompiler {
     /// Process a constructor. This will create the table in which the constructor is anchored, if it does not exist.
@@ -48,6 +51,7 @@ impl SleighCompiler {
             .flatten()
             .unwrap_or("instruction");
         trace!("Defining constructor in table {:?}", table_name);
+        debug!("Instruction: {}", constructor.display_section.display_str.value());
         let mut moir_constructor = MOIRConstructor {
             local_scope: Default::default(),
             instructions: vec![],

@@ -1,5 +1,9 @@
 use crate::new_typed_index_table_id;
 use crate::spec::moir::scope::MOIRMaybeSize;
+use std::fmt::{
+    Display,
+    Formatter,
+};
 
 /// A custom operation defined in the sleigh specification
 /// The operation will be called from jited code. Any implementation
@@ -18,4 +22,4 @@ pub enum MOIRCustomOp {
     },
 }
 
-new_typed_index_table_id! { pub struct CustomOpId; }
+new_typed_index_table_id! { pub struct CustomOpId; "OP"; }

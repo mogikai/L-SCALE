@@ -68,4 +68,4 @@ impl MOIRExport {
     }
 }
 
-new_typed_index_table_id! { pub struct TableId; }
+new_typed_index_table_id! { pub struct TableId; "TBL"; }

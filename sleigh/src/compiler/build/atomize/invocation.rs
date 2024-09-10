@@ -21,10 +21,12 @@ use crate::spec::moir::scope::{
     MOIRScope,
 };
 use crate::spec::moir::varnode::MOIRLocal;
-use chumsky::Parser;
 use itertools::traits::HomogeneousTuple;
 use itertools::Itertools;
-use tracing::trace;
+use tracing::{
+    trace,
+    warn,
+};
 
 impl SleighCompiler {
     pub fn atomize_invocation(
@@ -75,43 +77,29 @@ impl SleighCompiler {
             } => {
                 for ((arg, constraint), size) in args
                     .iter_mut()
-                    .zip(input_constraints.into_iter())
+                    .zip(input_constraints.iter_mut())
                     .zip(arg_sizes)
                 {
                     if let MOIRMaybeSize::Determined(constraint) = constraint {
                         if let MOIRMaybeSize::Determined(size) = size {
                             // both are defined and need to be equal
                             if *constraint != size {
-                                todo!("Generate error for invalid size constraints in invocation")
+                                // TODO: Handle this case in some manner. I don't know why the sleigh spec allows this :(
+                                warn!("Pcode operation is called with differently sized arguments")
                             }
                         } else {
                             // constraint is defined but size isn't. We can constrain size now
                             scope.constrain_local_size(arg, *constraint)?
                         }
-                    } else {
-                        if let MOIRMaybeSize::Determined(size) = size {
-                            // Constraint is undetermined, but size is. we can determine the constraint now
-                            *constraint = size.into();
-                        }
-                        // If both are undetermined we don't need to do anything.
+                    } else if let MOIRMaybeSize::Determined(size) = size {
+                        // Constraint is undetermined, but size is. we can determine the constraint now
+                        *constraint = size.into();
                     }
                 }
             }
         }
         let op_id = self.spec_builder.custom_op_id_by_ident(&name)?;
-        instructions.push(MOIRInstruction {
-            output: out,
-            input_a: args.first().copied(),
-            input_b: args.get(1).copied(),
-            operation: MOIROperation::CustomOp {
-                op_id,
-                extra_args: args
-                    .split_at_checked(2)
-                    .map(|(_, args)| args.to_vec())
-                    .unwrap_or(vec![]),
-            },
-            label: None,
-        });
+        instructions.push(moir_instruction!(out = op_id(args)));
         Ok(out.map(MOIRLocal::from))
     }
 
@@ -139,6 +127,14 @@ impl SleighCompiler {
     ) -> SleighCompilerResult<Option<MOIRLocal>> {
         let out = out.unwrap_or_else(|| scope.allocate_temporary(MOIRMaybeSize::Undetermined));
         match op {
+            MOIROperation::PopCount => {
+                let (arg,) = unpack_args(args)?;
+                instructions.push(moir_instruction!(out = popcount(arg)));
+            }
+            MOIROperation::LZCount => {
+                let (arg,) = unpack_args(args)?;
+                instructions.push(moir_instruction!(out = lzcount(arg)));
+            }
             MOIROperation::ZeroExtend => {
                 let (arg,) = unpack_args(args)?;
                 instructions.push(moir_instruction!(out = zext(arg)));

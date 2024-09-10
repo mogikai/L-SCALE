@@ -8,4 +8,4 @@ pub struct MOIRToken {
     pub endianness_override: Option<MOIREndianness>,
 }
 
-new_typed_index_table_id! { pub struct TokenId; }
+new_typed_index_table_id! { pub struct TokenId;  "TOK"; }

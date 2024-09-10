@@ -34,6 +34,7 @@ new_typed_index_table_id! {
     /// to refer to individual [JIRSymbolId]s. Each [JIRSymbolId] in turn refers to the corresponding symbol table.
     /// TODO: Improve docs
     pub struct Ident;
+    "ID";
 }
 
 pub type ProcessorSpecResult<T = ()> = Result<T, ProcessorSpecificationError>;

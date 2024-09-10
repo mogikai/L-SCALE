@@ -1,14 +1,3 @@
-use chumsky::prelude::{
-    any,
-    just,
-};
-use chumsky::primitive::none_of;
-use chumsky::{
-    select,
-    IterParser,
-    Parser,
-};
-
 use crate::compiler::ast::constructor::display_section::SASTDisplaySection;
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
@@ -23,8 +12,20 @@ use crate::compiler::parser::{
 use crate::compiler::tokens::SleighKeyword::Is;
 use crate::compiler::tokens::{
     SleighControlCharacter,
+    SleighKeyword,
     SleighOperation,
     SleighToken,
+};
+use chumsky::input::MapExtra;
+use chumsky::prelude::{
+    any,
+    just,
+};
+use chumsky::primitive::none_of;
+use chumsky::{
+    select,
+    IterParser,
+    Parser,
 };
 
 pub fn display_section<'tokens>(
@@ -35,7 +36,7 @@ pub fn display_section<'tokens>(
     // Parse the display string but then rewind, so we can parse mnemonic and identifiers.
     let display = any()
         .and_is(end_of_display_section.clone().not())
-        .map(|tok: SleighToken| tok.to_mnemonic().to_string())
+        .map_with(make_display_string)
         .repeated()
         .collect::<Vec<String>>()
         .map(|s| s.into_iter().collect::<String>())
@@ -69,7 +70,7 @@ pub fn display_section<'tokens>(
     );
 
     let identifiers = sleigh_ident()
-        .padded_by(not_ident.clone().repeated())
+        .padded_by(not_ident.repeated())
         .map_with(spanned)
         .repeated()
         .collect::<Vec<_>>()
@@ -92,6 +93,129 @@ pub fn display_section<'tokens>(
         })
         .map_with(spanned)
         .boxed()
+}
+
+fn make_display_string<'tokens>(
+    tok: SleighToken,
+    extra: &mut MapExtra<'tokens, '_, ParserInput<'tokens>, SleighParserExtra<'tokens>>,
+) -> String {
+    let interner = extra.state();
+    match tok {
+        SleighToken::String(id) => interner.resolve_string_id(id),
+        SleighToken::Ident(id) => interner.resolve_string_id(id),
+        SleighToken::Comment(id) => interner.resolve_string_id(id),
+        SleighToken::Decimal(id) => interner.resolve_string_id(id),
+        SleighToken::Hexadecimal(id) => interner.resolve_string_id(id),
+        SleighToken::Binary(id) => interner.resolve_string_id(id),
+        SleighToken::With(id) => interner.resolve_string_id(id),
+        SleighToken::MacroBegin => panic!("This should not occur"),
+        SleighToken::MacroExpansion(id) => panic!("This should not occur"),
+        SleighToken::IncludedTokens(tokens) => panic!("This should not occur"),
+        SleighToken::Keyword(keyword) => {
+            use SleighKeyword::*;
+            match keyword {
+                Attach => "attach",
+                Variables => "variables",
+                Values => "values",
+                Names => "names",
+                Context => "context",
+                Macro => "macro",
+                Include => "include",
+                Define => "define",
+                Endian => "endian",
+                Alignment => "alignment",
+                Type => "type",
+                Size => "size",
+                Default => "default",
+                WordSize => "wordsize",
+                RamSpace => "ramspace",
+                RomSpace => "romspace",
+                RegisterSpace => "registerspace",
+                With => "with",
+                BitRange => "bitrange",
+                Offset => "offset",
+                PCodeOp => "pcodeop",
+                Token => "token",
+                Signed => "signed",
+                Hex => "hex",
+                Dec => "dec",
+                Noflow => "noflow",
+                Is => "is",
+                Local => "local",
+                If => "if",
+                Goto => "goto",
+                Undefine => "undefine",
+                IfDef => "ifdef",
+                Else => "else",
+                EndIf => "endif",
+                IfNdef => "ifndef",
+                Defined => "defined",
+                Big => "big",
+                Little => "little",
+                Space => "space",
+                Build => "build",
+                Call => "call",
+                Return => "return",
+                Export => "export",
+            }
+        }
+        SleighToken::Control(control) => {
+            use SleighControlCharacter::*;
+            match control {
+                SemiColon => ";",
+                OpenParen => "(",
+                CloseParen => ")",
+                OpenBracket => "[",
+                CloseBracket => "]",
+                OpenBrace => "{",
+                CloseBrace => "}",
+                Comma => ",",
+                Ellipsis => "...",
+                Colon => ":",
+            }
+        }
+        SleighToken::Operation(operation) => {
+            use SleighOperation::*;
+            match operation {
+                Equals => "==",
+                And => "&",
+                DoubleAnd => "&&",
+                Or => "|",
+                DoubleOr => "||",
+                Plus => "+",
+                Minus => "-",
+                Not => "!",
+                Hat => "^",
+                Star => "*",
+                LessThan => "<",
+                GreaterThan => ">",
+                BitNegate => "~",
+                Division => "/",
+                Remainder => "%",
+                NotEquals => "!=",
+                BitAnd => "$and",
+                BitOr => "$or",
+                BitXor => "$xor",
+                FPlus => "f+",
+                FMinus => "f-",
+                FStar => "f*",
+                FDivision => "f/",
+                FLessThan => "f<",
+                FGreaterThan => "f>",
+                FEquals => "f==",
+                FNotEquals => "f!=",
+                SDivision => "s/",
+                SRemainder => "s%",
+                SLessThan => "s<",
+                SGreaterThan => "s>",
+            }
+        }
+        SleighToken::Whitespace => " ",
+        SleighToken::Newline => {
+            panic!("this should not occur")
+        }
+    }
+    .to_string()
 }
 
 #[cfg(test)]

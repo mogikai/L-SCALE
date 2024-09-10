@@ -4,7 +4,6 @@ mod invocation;
 mod size_inference;
 
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
-use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::pcode::statement::{
     SASTPCodeBranchTarget,
     SASTPCodeStatement,
@@ -50,7 +49,7 @@ impl SleighCompiler {
         let (pcode, _) = pcode.into_tuple();
         let export = self.atomize_statements(scope, instructions, pcode.statements)?;
         self.infer_sizes(scope, instructions)?;
-        debug_instructions(instructions);
+        debug_instructions(scope, instructions);
         Ok(export.map(|export| match export.into_value() {
             MOIRLocal::Local(local) => MOIRExport::Slice(*scope.resolve_local(local).expect("TODO")),
             MOIRLocal::Const(val) => MOIRExport::Const(val),
@@ -165,9 +164,14 @@ impl SleighCompiler {
     }
 }
 
-fn debug_instructions(instructions: &mut Vec<MOIRInstruction>) {
+fn debug_instructions(
+    scope: &MOIRScope,
+    instructions: &[MOIRInstruction],
+) {
     let mut instructions_str = String::new();
     writeln!(&mut instructions_str, "The constructor pcode was atomized to the following instructions:").expect("");
+    writeln!(&mut instructions_str, "Scope:\n{scope}").expect("");
+    writeln!(&mut instructions_str, "Instructions:").expect("");
     for instruction in instructions {
         writeln!(&mut instructions_str, "{}", instruction).expect("");
     }

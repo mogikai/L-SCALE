@@ -32,4 +32,4 @@ pub struct MOIRField {
     pub strings: Vec<StringId>,
 }
 
-new_typed_index_table_id! { pub struct FieldId; }
+new_typed_index_table_id! { pub struct FieldId; "F"; }

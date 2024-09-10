@@ -9,4 +9,4 @@ pub struct MOIRTBitrangeRegister {
     pub size: u64,   // number of bits
 }
 
-new_typed_index_table_id! { pub struct BitrangeRegisterId; }
+new_typed_index_table_id! { pub struct BitrangeRegisterId; "BR"; }

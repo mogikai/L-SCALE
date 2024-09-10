@@ -39,4 +39,4 @@ impl From<SASTAddressSpaceType> for MOIRSpaceType {
     }
 }
 
-new_typed_index_table_id! { pub struct SpaceId; }
+new_typed_index_table_id! { pub struct SpaceId; "S"; }

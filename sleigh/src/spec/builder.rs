@@ -688,6 +688,8 @@ impl Default for ProcessorSpecificationBuilder {
         };
         use MOIROperation::*;
         let builtins = &mut slf.builtin_ops;
+        builtins.insert(slf.interner.intern("popcount"), PopCount);
+        builtins.insert(slf.interner.intern("lzcount"), LZCount);
         builtins.insert(slf.interner.intern("zext"), ZeroExtend);
         builtins.insert(slf.interner.intern("sext"), SignExtend);
         builtins.insert(slf.interner.intern("carry"), Carry);

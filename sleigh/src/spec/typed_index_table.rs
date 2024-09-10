@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 /// Creates a new symbol table identifier that can be used to index a [TypedIndexTable].
 #[macro_export(local_inner_macros)]
 macro_rules! new_typed_index_table_id {
-    ( $(#[$outer:meta])* $vis:vis struct $name:ident; ) => {
+    ( $(#[$outer:meta])* $vis:vis struct $name:ident; $display_prefix:literal;) => {
         $(#[$outer])*
         #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
         #[repr(transparent)]
@@ -17,6 +17,14 @@ macro_rules! new_typed_index_table_id {
         impl From<$name> for usize {
             fn from(value: $name) -> Self {
                 value.0
+            }
+        }
+        impl std::fmt::Display for $name {
+            fn fmt(
+                &self,
+                f: &mut std::fmt::Formatter<'_>,
+            ) -> std::fmt::Result {
+                std::write!(f, "{}{}", $display_prefix, self.0)
             }
         }
     };

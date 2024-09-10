@@ -17,7 +17,10 @@ use crate::spec::moir::varnode::{
 use crate::spec::reporting::generate_identifier_exists_report;
 use crate::spec::typed_index_table::TypedIndexTable;
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{
+    HashMap,
+    HashSet,
+};
 use std::fmt::{
     Display,
     Formatter,
@@ -47,20 +50,11 @@ pub struct MOIRScope {
     field_sizes: HashMap<FieldId, MOIRMaybeSize>,
 }
 
-new_typed_index_table_id! { pub struct MOIRLocalId; }
-new_typed_index_table_id! { pub struct LabelId; }
+new_typed_index_table_id! { pub struct MOIRLocalId; "L"; }
+new_typed_index_table_id! { pub struct LabelId; "LBL"; }
 
 /// InstructionId is simply an index into the instruction list.
 pub type InstructionId = usize;
-
-impl Display for MOIRLocalId {
-    fn fmt(
-        &self,
-        f: &mut Formatter<'_>,
-    ) -> std::fmt::Result {
-        write!(f, "L{}", self.0)
-    }
-}
 
 /// A temporary varnode. These have no backing varnode at this stage yet.
 /// They will be mapped to concrete varnodes once the constructor is called.
@@ -73,6 +67,27 @@ struct MOIRTemporary {
 pub enum MOIRMaybeSize {
     Determined(MOIRSize),
     Undetermined,
+}
+
+impl PartialEq<MOIRSize> for MOIRMaybeSize {
+    fn eq(
+        &self,
+        other: &MOIRSize,
+    ) -> bool {
+        self.eq(&MOIRMaybeSize::Determined(*other))
+    }
+}
+
+impl Display for MOIRMaybeSize {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        match self {
+            MOIRMaybeSize::Determined(size) => write!(f, "{size}"),
+            MOIRMaybeSize::Undetermined => write!(f, "UD"),
+        }
+    }
 }
 
 impl MOIRMaybeSize {
@@ -136,7 +151,7 @@ impl From<MOIRSize> for MOIRMaybeSize {
     }
 }
 
-new_typed_index_table_id! { pub struct MOIRTemporaryId; }
+new_typed_index_table_id! { pub struct MOIRTemporaryId; "T"; }
 
 impl MOIRScope {
     /// Clears the namespace before calling the provided function and afterward restores it to its original state.
@@ -266,6 +281,9 @@ impl MOIRScope {
     }
 
     /// Creates a new unnamed local slice by truncating the given local.
+    /// If the size of the local is already the same as the specified size,
+    /// then this operation does nothing, and simply returns the existing
+    /// local.
     pub fn truncate_local(
         &mut self,
         local: MOIRLocalId,
@@ -275,6 +293,10 @@ impl MOIRScope {
             .slices
             .get_mut(local)
             .expect("The local id was given out by us so it must exist");
+        if slice.size() == size {
+            // We can return early, since the size is already determined and the same as the current slice.
+            return Ok(local);
+        }
         if let MOIRReference::Field(field_id) = slice.reference {
             if slice.size().is_undetermined() {
                 // This is the first time we are dealing with the size of this field.
@@ -449,5 +471,17 @@ impl MOIRScope {
             .expect("The local id was given out by us so it must exist");
         slice.set_size(size)?;
         Ok(local)
+    }
+}
+
+impl Display for MOIRScope {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        for (id, slice) in self.slices.iter() {
+            writeln!(f, "{: <4} {}", format!("{}:", id), slice)?;
+        }
+        Ok(())
     }
 }

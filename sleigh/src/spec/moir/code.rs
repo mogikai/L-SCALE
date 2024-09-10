@@ -3,6 +3,8 @@ use std::fmt::{
     Display,
     Formatter,
 };
+use std::ops::Deref;
+use tracing::Value;
 
 #[derive(Debug)]
 pub struct MOIRInstruction {
@@ -22,13 +24,35 @@ impl Display for MOIRInstruction {
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
         match &self.operation {
-            MOIROperation::ZeroExtend | MOIROperation::SignExtend => {
+            MOIROperation::PopCount
+            | MOIROperation::LZCount
+            | MOIROperation::ZeroExtend
+            | MOIROperation::SignExtend
+            | MOIROperation::Nan
+            | MOIROperation::Abs
+            | MOIROperation::Sqrt
+            | MOIROperation::IntToFloat
+            | MOIROperation::FloatToFloat
+            | MOIROperation::Trunc
+            | MOIROperation::Ceil
+            | MOIROperation::Floor
+            | MOIROperation::Round => {
                 write!(
                     f,
                     "{} = {}({})",
                     self.output.expect("Extend ops have an output"),
                     self.operation,
                     self.input_a.expect("Extend ops have to have input_a")
+                )
+            }
+            MOIROperation::Carry | MOIROperation::SignCarry | MOIROperation::SignBorrow => {
+                write!(
+                    f,
+                    "{} = {}({}, {})",
+                    self.output.expect("op has to have an output"),
+                    self.operation,
+                    self.input_a.expect("op has to have input_a"),
+                    self.input_b.expect("op has to have input_a")
                 )
             }
             MOIROperation::Load(space) => {
@@ -59,9 +83,9 @@ impl Display for MOIRInstruction {
             }
             MOIROperation::CustomOp { op_id, extra_args } => {
                 if let Some(output) = self.output {
-                    write!(f, "{} = customOp(", output)?
+                    write!(f, "{} = {}(", output, op_id)?
                 } else {
-                    write!(f, "customOp(")?
+                    write!(f, "{}(", op_id)?
                 }
                 let mut inputs = vec![];
                 if let Some(input) = self.input_a {
@@ -153,6 +177,12 @@ macro_rules! moir_instruction {
     ($lhs:ident = &$rhs:ident) => {
         MOIRInstruction::address_of($lhs, $rhs)
     };
+    ($lhs:ident = popcount($rhs:tt)) => {
+        MOIRInstruction::unary_op($lhs, crate::spec::moir::code::MOIROperation::PopCount, $rhs)
+    };
+    ($lhs:ident = lzcount($rhs:tt)) => {
+        MOIRInstruction::unary_op($lhs, crate::spec::moir::code::MOIROperation::LZCount, $rhs)
+    };
     ($lhs:ident = zext($rhs:tt)) => {
         MOIRInstruction::unary_op($lhs, crate::spec::moir::code::MOIROperation::ZeroExtend, $rhs)
     };
@@ -195,6 +225,9 @@ macro_rules! moir_instruction {
     ($lhs:ident = round($rhs:tt)) => {
         MOIRInstruction::unary_op($lhs, crate::spec::moir::code::MOIROperation::Round, $rhs)
     };
+    ($output:ident = $op_id:tt($args:tt)) => {
+        MOIRInstruction::custom_op($output, $op_id, $args)
+    };
     ($target:ident = *[$space:ident]$addr:ident) => {
         MOIRInstruction::load($target, $addr, $space)
     };
@@ -207,7 +240,6 @@ macro_rules! moir_instruction {
     ($out:ident = ~$operand:tt) => {
         MOIRInstruction::unary_op($out, crate::spec::moir::code::MOIROperation::BitNegate, $operand)
     };
-    ($out:ident = call()) => {};
     ($out:ident = $op:tt $operand:tt) => {
         MOIRInstruction::unary_op($out, $op, $operand)
     };
@@ -233,6 +265,30 @@ impl MOIRInstruction {
             input_a: None,
             input_b: None,
             operation: MOIROperation::Nop,
+            label: None,
+        }
+    }
+
+    pub fn custom_op<T, V>(
+        output: Option<MOIRLocalId>,
+        op_id: CustomOpId,
+        args: V,
+    ) -> Self
+    where
+        V: Deref<Target = [T]>,
+        T: Into<MOIRLocal> + Copy,
+    {
+        MOIRInstruction {
+            output,
+            input_a: args.first().copied().map(|arg| arg.into()),
+            input_b: args.get(1).copied().map(|arg| arg.into()),
+            operation: MOIROperation::CustomOp {
+                op_id,
+                extra_args: args
+                    .split_at_checked(2)
+                    .map(|(_, args)| args.iter().copied().map(|arg| arg.into()).collect())
+                    .unwrap_or_default(),
+            },
             label: None,
         }
     }
@@ -364,6 +420,8 @@ pub enum MOIROperation {
     // Special operations
     /// Special AddressOf operation. This is translated into a constant, when the constructor is called.
     AddressOf,
+    PopCount,
+    LZCount,
     /// Zero extends the input if its size is less than the output.
     /// If the sizes are equal this operation is optimized away.
     /// If the input size is larger than the output size, this
@@ -456,6 +514,8 @@ impl Display for MOIROperation {
             MOIROperation::Copy => write!(f, ""),
             MOIROperation::CustomOp { .. } => write!(f, "custom"),
             MOIROperation::AddressOf => write!(f, "&"),
+            MOIROperation::PopCount => write!(f, "popcount"),
+            MOIROperation::LZCount => write!(f, "lzcount"),
             MOIROperation::ZeroExtend => write!(f, "zext"),
             MOIROperation::SignExtend => write!(f, "sext"),
             MOIROperation::Carry => write!(f, "carry"),
@@ -528,7 +588,25 @@ impl MOIROperation {
             | IntGreater | IntLessEqual | IntGreaterEqual | FloatLess | FloatGreater | FloatLessEqual
             | FloatGreaterEqual | FloatEquals | FloatNotEquals | IntEquals | IntNotEquals => MOIROpCategory::Comparison,
             IntLeft | IntRight | IntSRight => MOIROpCategory::Shift,
-            CustomOp { .. } | ZeroExtend | Load(_) | Store(_) => MOIROpCategory::Special,
+            CustomOp { .. }
+            | PopCount
+            | LZCount
+            | ZeroExtend
+            | SignExtend
+            | Carry
+            | SignCarry
+            | SignBorrow
+            | Nan
+            | Abs
+            | Sqrt
+            | IntToFloat
+            | FloatToFloat
+            | Trunc
+            | Ceil
+            | Floor
+            | Round
+            | Load(_)
+            | Store(_) => MOIROpCategory::Special,
             _ => MOIROpCategory::Regular,
         }
     }

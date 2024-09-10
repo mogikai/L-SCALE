@@ -65,9 +65,9 @@ impl SleighCompiler {
                 todo!("Currently unimplemented")
             }
         };
-        let lhs = resolve_lhs(&self.spec_builder, scope, local, ident.clone(), size)?;
+        let lhs = resolve_lhs(&self.spec_builder, scope, local.clone(), ident.clone(), size)?;
         ensure_valid_subpiece_size(scope, lhs, size)?;
-        let lhs = truncate_lhs(&self.spec_builder, scope, ident, lhs, size)?;
+        let lhs = truncate_lhs(&self.spec_builder, scope, local, ident, lhs, size)?;
         // The variable is not declared yet. First resolve the rhs and try to determine a size.
         let rhs = self.atomize_expression(scope, instructions, Some(lhs), expression)?;
         if MOIRLocal::from(lhs) != rhs {
@@ -116,13 +116,19 @@ fn resolve_lhs(
 fn truncate_lhs(
     spec_builder: &ProcessorSpecificationBuilder,
     scope: &mut MOIRScope,
+    local: Spanned<bool>,
     ident: Spanned<SASTIdent>,
     lhs: MOIRLocalId,
     size: SASTSize,
 ) -> Result<MOIRLocalId, SleighCompilerError> {
-    scope.truncate_local(lhs, size).map_err(|_| {
-        let (ident, ident_span) = ident.into_tuple();
-        let str = spec_builder.resolve_string_id(ident.into());
-        generate_cannot_slice_error(str, ident_span, size)
-    })
+    if *local {
+        // If we defined a new local, then there is no need to truncate.
+        Ok(lhs)
+    } else {
+        scope.truncate_local(lhs, size).map_err(|_| {
+            let (ident, ident_span) = ident.into_tuple();
+            let str = spec_builder.resolve_string_id(ident.into());
+            generate_cannot_slice_error(str, ident_span, size)
+        })
+    }
 }

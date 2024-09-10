@@ -162,6 +162,15 @@ impl MOIRSlice {
     }
 }
 
+impl Display for MOIRSlice {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "{}<{},{}>", self.reference, self.start, self.end)
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub enum MOIRReference {
     Field(FieldId),
@@ -175,14 +184,22 @@ pub enum MOIRReference {
     InstNext2,
 }
 
-// /// A value references either a constant, or a symbol that is later resolved to a const or a varnode.
-// #[derive(Debug, Copy, Clone)]
-// pub enum MOIRValue {
-//     /// The value references a slice of a symbol
-//     ValueSlice(MOIRSlice),
-//     /// The value is a constant value that can be used directly
-//     Const(MOIRConst),
-// }
+impl Display for MOIRReference {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        match self {
+            MOIRReference::Field(id) => write!(f, "{id}"),
+            MOIRReference::SubTable(id) => write!(f, "{id}"),
+            MOIRReference::VarNode(id) => write!(f, "{id}"),
+            MOIRReference::Temporary(id) => write!(f, "{id}"),
+            MOIRReference::InstStart => write!(f, "inst_start"),
+            MOIRReference::InstNext => write!(f, "inst_next"),
+            MOIRReference::InstNext2 => write!(f, "inst_next2"),
+        }
+    }
+}
 
 /// A local either directly contains a constant value, or refers to a local stored in the scope.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -486,4 +503,4 @@ impl MOIRConst {
     }
 }
 
-new_typed_index_table_id! { pub struct VarNodeId; }
+new_typed_index_table_id! { pub struct VarNodeId; "V"; }
