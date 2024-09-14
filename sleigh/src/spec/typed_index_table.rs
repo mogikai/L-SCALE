@@ -79,6 +79,10 @@ where
         self.0.iter()
     }
 
+    pub fn into_values(self) -> impl Iterator<Item = V> {
+        self.0.into_iter()
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (K, &V)> {
         self.0.iter().enumerate().map(|(i, v)| (K::from(i), v))
     }

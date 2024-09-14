@@ -23,6 +23,14 @@ impl MOIRBitRange {
     pub fn size(&self) -> u8 {
         self.end - self.start
     }
+
+    pub fn mask(&self) -> u64 {
+        (1 << self.size()) - 1
+    }
+
+    pub fn extract_from(&self, v: u64) -> u64 {
+        (v >> self.start) & self.mask()
+    }
 }
 
 // context and token fields are treated the same due to their similarity and are

@@ -1,4 +1,4 @@
-use slotmap::new_key_type;
+use crate::new_typed_index_table_id;
 
 use super::varnode::VarNodeId;
 
@@ -18,4 +18,4 @@ pub struct MOIRContext {
 }
 
 // define MOIRContextId as a key for a SlotMap instead because it's not a symbol
-new_key_type! { pub struct MOIRContextId; }
+new_typed_index_table_id! { pub struct MOIRContextId; }

@@ -66,7 +66,8 @@ mod test {
 
     #[test]
     fn basic_constructor_parses() -> TestResult {
-        test_constructor(":INST reg is reg=0xf { x = func(y); fpop(); }")
+        test_constructor(":INST reg is reg=0xf { x = func(y); fpop(); }")?;
+        test_constructor("reptail:    is (repprefx=1 | repneprefx=1) & rep_update    { goto inst_start; }")
     }
 
     #[test]

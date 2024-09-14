@@ -226,13 +226,50 @@ impl SleighCompiler {
                     let export = table.exports.first();
                     if let Some(export) = export {
                         Some(MOIRSlice {
-                            reference: MOIRReference::SubTable(*table_id),
+                            reference: MOIRReference::Field(*field_id),
                             start: 0,
-                            end: export.size(),
+                            end: size,
                         })
-                    } else {
-                        None
                     }
+
+                    MOIRSymbolId::Table(table_id) => {
+                        let table = self
+                            .spec_builder
+                            .table_by_symbol_id(*table_id)
+                            .ok_or(SleighCompilerError::SymbolUndeclared)?;
+                        let export = table.exports.first();
+                        if let Some(export) = export {
+                            Some(MOIRSlice {
+                                reference: MOIRReference::SubTable(*table_id),
+                                start: 0,
+                                end: export.size(),
+                            })
+                        } else {
+                            None
+                        }
+                    }
+
+                    MOIRSymbolId::VarNode(vnid) => {
+                        let varnode = self
+                            .spec_builder
+                            .varnode_by_symbol_id(*vnid)
+                            .ok_or(SleighCompilerError::SymbolUndeclared)?;
+                        Some(MOIRSlice {
+                            reference: MOIRReference::VarNode(*vnid),
+                            start: 0,
+                            end: MOIRMaybeSize::Determined(varnode.size as u8),
+                        })
+                    }
+
+                    _ => Err(ProcessorSpecificationError::InvalidSymbolType(*symbol))?,
+                };
+
+                let ident = self
+                    .spec_builder
+                    .ident_by_symbol(symbol)
+                    .ok_or(SleighCompilerError::SymbolUndeclared)?;
+                if let Some(value) = value {
+                    scope.declare_local(ident.clone().into_value(), value);
                 }
 
                 MOIRSymbolId::VarNode(vnid) => {
@@ -257,8 +294,8 @@ impl SleighCompiler {
             if let Some(value) = value {
                 scope.declare_local(ident.clone().into_value(), value);
             }
-        }
 
+        }
         Ok(())
     }
 

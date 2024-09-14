@@ -159,7 +159,7 @@ pub struct ProcessorSpecificationBuilder {
     alignment: Option<Spanned<u16>>,
     /// Context defined on top of existing varnodes containing context fields (e.g. a dedicated
     /// `contextreg` varnode containing a field `longmode=(0,1)` for x86).
-    context: SlotMap<MOIRContextId, MOIRContext>,
+    context: TypedIndexTable<MOIRContextId, MOIRContext>,
 
     /// Maps a string identifier to the corresponding internal [Ident].
     /// This is useful for the compiler, when an identifier string references another symbol.
