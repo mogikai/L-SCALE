@@ -109,7 +109,7 @@ pub enum MatcherAtom {
     Linkage(MatcherReference), // links a local symbol to a global symbol (subtable, varnode...)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MatcherToken {
     Determined(MOIRFieldParent),
     Undetermined, // put at either end of list for left/right justify
