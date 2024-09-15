@@ -147,7 +147,6 @@ impl SleighCompiler {
         let new_matchers = match op.into_value() {
             SASTBinaryOp::And => {
                 let mut new_matchers = Vec::new();
-                let mut token_lists_seen = HashSet::new();
 
                 // combining them has to be done as a Cartesian product
                 for matcher_lhs in &matchers_lhs {
@@ -167,13 +166,6 @@ impl SleighCompiler {
                         {
                             let mut token_list = context_matcher.token_list;
                             token_list.append(&mut tl_longest.to_vec());
-
-                            // The resulting token lists are not unique so we should
-                            // eliminate duplicates. Identical token lists also imply identical
-                            // conjunctions and symbols used so there's no need to check that.
-                            if !token_lists_seen.insert(tl_longest.to_vec()) {
-                                continue;
-                            }
 
                             // this should only be reported as an error if no compatible token
                             // lists exist for all lhs and rhs matchers
