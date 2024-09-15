@@ -141,8 +141,6 @@ impl SleighCompiler {
 
         let mut matchers_lhs = self.create_matchers(*lhs)?;
         let mut matchers_rhs = self.create_matchers(*rhs)?;
-        // eprintln!("matchers_lhs = {:#?}", matchers_lhs);
-        // eprintln!("matchers_rhs = {:#?}", matchers_rhs);
 
         let new_matchers = match op.into_value() {
             SASTBinaryOp::And => {
@@ -477,11 +475,14 @@ fn merge_token_lists<'a>(
     lhs: &'a [MatcherToken],
     rhs: &'a [MatcherToken],
 ) -> SleighCompilerResult<&'a [MatcherToken]> {
-    if lhs.len() == 0 {
+    if lhs.len() == 0 || lhs == &[MatcherToken::Undetermined] {
         return Ok(&rhs);
-    } else if rhs.len() == 0 {
+    } else if rhs.len() == 0 || rhs == &[MatcherToken::Undetermined] {
         return Ok(&lhs);
     }
+
+    eprintln!("lhs = {:#?}", lhs);
+    eprintln!("rhs = {:#?}", rhs);
 
     let lhs_padded_start = matches!(lhs.first().expect("We just checked this"), MatcherToken::Undetermined);
     let lhs_padded_end = matches!(lhs.last().expect("We just checked this"), MatcherToken::Undetermined);

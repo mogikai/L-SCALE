@@ -193,6 +193,13 @@ impl Matcher {
         Ok(Some(Matching::new(fields, bytes_consumed)))
     }
 
+    /// A matcher with a higher specificity needs to be checked before lower-specificity ones when
+    /// iterating over all matchers to find a possible match.
+    pub fn specificity(&self) -> usize {
+        // TODO is this correct?
+        self.symbols_used.iter().map(HashSet::len).sum()
+    }
+
     fn extract_fields(
         &self,
         bytes: &[u8],
