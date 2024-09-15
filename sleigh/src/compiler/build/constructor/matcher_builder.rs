@@ -349,7 +349,7 @@ impl SleighCompiler {
                 let lhs_field_id = self.spec_builder.field_id_by_ident(&ident.transmute())?;
                 let lhs_field = self
                     .spec_builder
-                    .field_by_symbol_id(*lhs_field_id)
+                    .field_by_symbol_id(lhs_field_id)
                     .ok_or_else(|| -> SleighCompilerError {
                         todo!("Generate error report for wrong symbol type or missing symbol")
                     })?;
@@ -358,10 +358,10 @@ impl SleighCompiler {
                 }
 
                 let pattern = match op {
-                    SASTConstraintOp::Equals => FieldMatcherPattern::Equals(*lhs_field_id),
-                    SASTConstraintOp::NotEquals => FieldMatcherPattern::NotEquals(*lhs_field_id),
-                    SASTConstraintOp::LessThan => FieldMatcherPattern::LessThan(*lhs_field_id),
-                    SASTConstraintOp::GreaterThan => FieldMatcherPattern::GreaterThan(*lhs_field_id),
+                    SASTConstraintOp::Equals => FieldMatcherPattern::Equals(lhs_field_id),
+                    SASTConstraintOp::NotEquals => FieldMatcherPattern::NotEquals(lhs_field_id),
+                    SASTConstraintOp::LessThan => FieldMatcherPattern::LessThan(lhs_field_id),
+                    SASTConstraintOp::GreaterThan => FieldMatcherPattern::GreaterThan(lhs_field_id),
                 };
 
                 let field_matcher = FieldMatcher::new(field_id, pattern);

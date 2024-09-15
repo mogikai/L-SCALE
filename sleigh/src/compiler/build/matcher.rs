@@ -1,6 +1,10 @@
 #![allow(unused_variables)]
-use slotmap::new_key_type;
 
+use std::collections::{HashMap, HashSet};
+
+use crate::compiler::error::SleighCompilerError;
+use crate::compiler::SleighCompilerResult;
+use crate::new_typed_index_table_id;
 use crate::spec::builder::MOIRSymbolId;
 use crate::spec::moir::context::{
     MOIRContext,
@@ -291,4 +295,4 @@ impl Matcher {
     }
 }
 
-new_typed_index_table_id! { pub struct MatcherId; }
+new_typed_index_table_id! { pub struct MatcherId; "MTCHR"; }
