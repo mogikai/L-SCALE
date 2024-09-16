@@ -1,7 +1,9 @@
+cargo-features = ["edition2024"]
+
 [package]
 name = "mogi_sleigh"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 tracing = { version = "0.1.40", features = ["release_max_level_trace"] }

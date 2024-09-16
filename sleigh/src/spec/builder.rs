@@ -34,6 +34,10 @@ use crate::spec::moir::address_space::{
     MOIRSpaceType,
 };
 use crate::spec::moir::code::MOIROperation;
+use crate::spec::moir::constructor::{
+    ConstructorId,
+    MOIRConstructor,
+};
 use crate::spec::moir::custom_op::{
     CustomOpId,
     MOIRCustomOp,
@@ -120,6 +124,7 @@ pub(super) struct MOIRSymbolTables {
     pub(super) macros: TypedIndexTable<MacroId, MOIRMacro>,
     pub(super) spaces: TypedIndexTable<SpaceId, MOIRSpace>,
     pub(super) tables: TypedIndexTable<TableId, MOIRTable>,
+    pub(super) constructors: TypedIndexTable<ConstructorId, MOIRConstructor>,
     pub(super) varnodes: TypedIndexTable<VarNodeId, MOIRVarNode>,
     pub(super) tokens: TypedIndexTable<TokenId, MOIRToken>,
     pub(super) fields: TypedIndexTable<FieldId, MOIRField>,

@@ -19,13 +19,17 @@ use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
-use crate::spec::builder::MOIRSymbolId;
+use crate::spec::builder::{
+    MOIRSymbolId,
+    StringId,
+};
 use crate::spec::moir::constructor::MOIRConstructor;
 use crate::spec::moir::field::FieldId;
 use crate::spec::moir::scope::{
     MOIRMaybeSize,
     MOIRScope,
 };
+use crate::spec::moir::table::MOIRExport;
 use crate::spec::moir::varnode::{
     MOIRReference,
     MOIRSlice,
@@ -52,37 +56,17 @@ impl SleighCompiler {
             .unwrap_or("instruction");
         trace!("Defining constructor in table {:?}", table_name);
         debug!("Instruction: {}", constructor.display_section.display_str.value());
+
+        // TODO: Need to parse the disassembly section here as well and add that information to the matcher
+        let matcher = self.create_matcher(constructor.bit_pattern_section.into_value().constraint)?;
+
+        let scope =
+            self.pc_create_scope(constructor.display_section.into_value().identifiers, &matcher.symbols_used)?;
+
         let mut moir_constructor = MOIRConstructor {
-            local_scope: Default::default(),
+            local_scope: scope,
             instructions: vec![],
         };
-        // Declare the special identifiers that are filled with constants upon calling the constructor.
-        // Their sizes are undetermined and inferred from context.
-        moir_constructor
-            .local_scope
-            .declare_local(self.spec_builder.intern("inst_start"), MOIRSlice::inst_start());
-        moir_constructor
-            .local_scope
-            .declare_local(self.spec_builder.intern("inst_next"), MOIRSlice::inst_next());
-        moir_constructor
-            .local_scope
-            .declare_local(self.spec_builder.intern("inst_next2"), MOIRSlice::inst_next2());
-
-        let matcher = self.create_matcher(constructor.bit_pattern_section.into_value().constraint)?;
-        // TODO: Need to parse the disassembly section here as well and add that information to the matcher
-        self.resolve_symbols_to_local_scope(&mut moir_constructor.local_scope, &matcher.symbols_used)?;
-        for ident in &constructor.display_section.identifiers {
-            // TODO: We probably need to figure out a better way to handle these locals that are constructed
-            //       in the disassembly section.
-            let slice = moir_constructor.local_scope.local(*ident.value());
-            if slice.is_none() {
-                let str = self.spec_builder.resolve_string_id(*ident.value());
-                trace!("Local scope is missing identifier {str}. Allocating it now.");
-                moir_constructor
-                    .local_scope
-                    .allocate_named_temporary(ident.clone(), MOIRMaybeSize::Undetermined)?;
-            }
-        }
 
         // TODO: we need to walk the constraint and find out the tokens that are used.
         //       we also need to make sure that there is only one token per section
@@ -96,7 +80,17 @@ impl SleighCompiler {
             &mut moir_constructor.instructions,
             constructor.semantic_section.into_value().0,
         )?;
-        let table = match constructor.table.transpose() {
+        self.pc_handle_export(constructor.table.transpose(), export)?;
+
+        Ok(())
+    }
+
+    fn pc_handle_export(
+        &mut self,
+        table: Option<Spanned<StringId>>,
+        export: Option<MOIRExport>,
+    ) -> Result<(), SleighCompilerError> {
+        let table = match table {
             None => self.spec_builder.modify_root_table()?,
             Some(id) => self.spec_builder.modify_table(id)?,
         };
@@ -126,12 +120,38 @@ impl SleighCompiler {
         Ok(())
     }
 
+    fn pc_create_scope(
+        &mut self,
+        display_identifiers: Vec<Spanned<StringId>>,
+        matcher_symbols: &[MOIRSymbolId],
+    ) -> Result<MOIRScope, SleighCompilerError> {
+        let mut scope = MOIRScope::default();
+        // Declare the special identifiers that are filled with constants upon calling the constructor.
+        // Their sizes are undetermined and inferred from context.
+        scope.declare_local(self.spec_builder.intern("inst_start"), MOIRSlice::inst_start());
+        scope.declare_local(self.spec_builder.intern("inst_next"), MOIRSlice::inst_next());
+        scope.declare_local(self.spec_builder.intern("inst_next2"), MOIRSlice::inst_next2());
+
+        self.resolve_symbols_to_local_scope(&mut scope, matcher_symbols)?;
+        for ident in display_identifiers {
+            // TODO: We probably need to figure out a better way to handle these locals that are constructed
+            //       in the disassembly section.
+            let local = scope.local(*ident.value());
+            if local.is_none() {
+                let str = self.spec_builder.resolve_string_id(*ident.value());
+                trace!("Local scope is missing identifier {str}. Allocating it now.");
+                scope.allocate_named_temporary(ident.clone(), MOIRMaybeSize::Undetermined)?;
+            }
+        }
+        Ok(scope)
+    }
+
     /// Resolve a given list of [MOIRSymbolId] used by [Matcher] in its bit pattern section to the
     /// [MOIRScope] of the constructor for usage in the semantic section.
     fn resolve_symbols_to_local_scope(
         &self,
         scope: &mut MOIRScope,
-        symbols: &Vec<MOIRSymbolId>,
+        symbols: &[MOIRSymbolId],
     ) -> SleighCompilerResult {
         trace!("Resolving {} symbols to a local scope", symbols.len());
         for symbol in symbols {
