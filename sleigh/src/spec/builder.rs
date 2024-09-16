@@ -229,6 +229,18 @@ impl ProcessorSpecificationBuilder {
         Ok(symbol_id)
     }
 
+    /// Define a constructor and get the id in the symbol table. Since constructors are not associated
+    /// directly with a symbol, this id is the only reference to the constructor, and needs to be stored
+    /// somewhere for further access. Usually, the corresponding matcher will receive the id of the
+    /// constructor in order to look it up in order to construct an instruction if the matcher matched
+    /// the input.
+    pub fn define_constructor(
+        &mut self,
+        constructor: MOIRConstructor,
+    ) -> SleighCompilerResult<ConstructorId> {
+        Ok(self.symbol_tables.constructors.insert(constructor))
+    }
+
     pub(crate) fn define_space(
         &mut self,
         ident: Spanned<StringId>,

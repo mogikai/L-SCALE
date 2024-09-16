@@ -81,7 +81,8 @@ impl SleighCompiler {
             constructor.semantic_section.into_value().0,
         )?;
         self.pc_handle_export(constructor.table.transpose(), export)?;
-
+        let _id = self.spec_builder.define_constructor(moir_constructor)?;
+        // TODO: Insert the constructor id into the corresponding matcher and/or the table.
         Ok(())
     }
 
