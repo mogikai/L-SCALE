@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use chumsky::container::Container;
 
@@ -44,12 +44,17 @@ impl SleighCompiler {
     pub(super) fn create_matchers(
         &self,
         constraint: Spanned<SASTBitPatternConstraint>,
-    ) -> SleighCompilerResult<Vec<Matcher>> {
-        let new_matchers = self.create_matchers_recursive(constraint);
+    ) -> SleighCompilerResult<BTreeSet<Matcher>> {
+        let new_matchers = self.create_matchers_recursive(constraint)?;
 
         // TODO remove trailing Undetermined (or not, idk yet)
 
-        new_matchers
+        let mut matchers = BTreeSet::with_capacity(new_matchers.len());
+        new_matchers.into_iter().for_each(|matcher| {
+            matchers.insert(matcher);
+        });
+
+        Ok(matchers)
     }
 
     // private helper functions
@@ -95,7 +100,7 @@ impl SleighCompiler {
                     .table_by_symbol_id(*tid)
                     .ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing symbol") })?;
 
-                table.matchers.values().cloned().collect::<Vec<_>>()
+                table.matchers.iter().cloned().collect::<Vec<_>>()
             }
             MOIRSymbolId::Field(fid) => {
                 let field = self
@@ -139,8 +144,8 @@ impl SleighCompiler {
         // Binary op case (mode=1 & op=0x7). Or expressions will be split and Concat
         // expressions verified, replaced by & and local tokens will be assigned.
 
-        let mut matchers_lhs = self.create_matchers(*lhs)?;
-        let mut matchers_rhs = self.create_matchers(*rhs)?;
+        let mut matchers_lhs = self.create_matchers_recursive(*lhs)?;
+        let mut matchers_rhs = self.create_matchers_recursive(*rhs)?;
 
         let new_matchers = match op.into_value() {
             SASTBinaryOp::And => {
@@ -274,7 +279,7 @@ impl SleighCompiler {
         op: Spanned<SASTUnaryOp>,
         operand: Box<Spanned<SASTBitPatternConstraint>>,
     ) -> SleighCompilerResult<Vec<Matcher>> {
-        let mut matchers = self.create_matchers(*operand)?;
+        let mut matchers = self.create_matchers_recursive(*operand)?;
         // append/prepend undetermined token to each matcher
         match op.into_value() {
             SASTUnaryOp::JustifyLeft => {
@@ -480,9 +485,6 @@ fn merge_token_lists<'a>(
     } else if rhs.len() == 0 || rhs == &[MatcherToken::Undetermined] {
         return Ok(&lhs);
     }
-
-    eprintln!("lhs = {:#?}", lhs);
-    eprintln!("rhs = {:#?}", rhs);
 
     let lhs_padded_start = matches!(lhs.first().expect("We just checked this"), MatcherToken::Undetermined);
     let lhs_padded_end = matches!(lhs.last().expect("We just checked this"), MatcherToken::Undetermined);

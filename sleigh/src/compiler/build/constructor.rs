@@ -41,8 +41,7 @@ impl SleighCompiler {
         &mut self,
         constructor: Spanned<SASTConstructor>,
     ) -> SleighCompilerResult {
-        let (constructor, _) = constructor.into_tuple();
-        #[allow(unused_variables)]
+        let (constructor, span) = constructor.into_tuple();
         let table_name = constructor
             .table
             .value()
@@ -64,10 +63,6 @@ impl SleighCompiler {
             display: display_section.display_str.into_value(),
         };
         trace_build!("{}", moir_constructor.debug_scope());
-
-        // TODO: we need to walk the constraint and find out the tokens that are used.
-        //       we also need to make sure that there is only one token per section
-        //       delimited by a semicolon.
 
         // The semantic section contains pcode which has to be converted into an atomic form.
         // Pcode can contain complex statements (e.g. x = (a+b) * c)) which have to be translated
@@ -118,7 +113,7 @@ impl SleighCompiler {
             None => self.spec_builder.modify_root_table()?,
             Some(id) => self.spec_builder.modify_table(id)?,
         };
-        eprintln!("matchers = {:#?}", matchers);
+
         matchers.into_iter().for_each(|matcher| {
             // TODO matcher.constructor =
             table.matchers.insert(matcher);

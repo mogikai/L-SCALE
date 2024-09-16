@@ -1,5 +1,6 @@
 #![allow(unused_variables)]
 
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
 use crate::compiler::error::SleighCompilerError;
@@ -134,7 +135,7 @@ impl Matching {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Matcher {
     // Each conjunction belongs to the corresponding MOIRFieldParent defined down below in
     // token_list.
@@ -148,6 +149,27 @@ pub struct Matcher {
 
     // TODO constructor will be linked here (no need for constructor -> matcher mapping)
     pub(super) constructor: (),
+}
+
+// ordering w.r.t. specificity
+impl Ord for Matcher {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        if self.eq(other) {
+            Ordering::Equal
+        } else {
+            if self.specificity() > other.specificity() {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            }
+        }
+    }
+}
+
+impl PartialOrd for Matcher {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.specificity().partial_cmp(&other.specificity())
+    }
 }
 
 impl Matcher {

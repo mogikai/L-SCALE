@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use crate::compiler::build::matcher::{Matcher, MatcherId};
 use crate::new_typed_index_table_id;
 use crate::spec::moir::scope::MOIRMaybeSize;
@@ -17,7 +19,7 @@ pub struct MOIRTable {
     // constraints to finally lift the instruction.
     bit_matching_table: Vec<Vec<()>>,
     constructors: Vec<()>,
-    pub(crate) matchers: TypedIndexTable<MatcherId, Matcher>,
+    pub(crate) matchers: BTreeSet<Matcher>,
     /// TODO: improve documentation
     /// 7.7.2.3. Exports
     ///
