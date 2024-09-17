@@ -175,7 +175,7 @@ mod test {
     fn mul_has_higher_precedence_than_add() -> TestResult {
         let result = test_pcode_expression("a + b * c")?.into_value();
         match result {
-            SASTPCodeExpression::BinaryOperation { lhs, op, rhs } => {
+            SASTPCodeExpression::BinaryOperation { op, .. } => {
                 assert!(
                     matches!(op.value(), SASTPCodeBinaryOp::IntAdd),
                     "Expected the outermost operation to be IntAdd"
@@ -192,7 +192,7 @@ mod test {
         match result {
             Ok(expr) => {
                 let expr = expr.into_value();
-                let SASTPCodeExpression::BinaryOperation { lhs, op, rhs } = expr else {
+                let SASTPCodeExpression::BinaryOperation { op, .. } = expr else {
                     panic!("The expression is expected to be a binary expression.")
                 };
                 assert!(matches!(op.into_value(), SASTPCodeBinaryOp::BoolAnd));

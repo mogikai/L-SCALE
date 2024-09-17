@@ -19,7 +19,6 @@ use crate::spec::moir::scope::{
 use crate::spec::moir::varnode::{
     MOIRConst,
     MOIRLocal,
-    MOIRVarNode,
 };
 use tracing::trace;
 

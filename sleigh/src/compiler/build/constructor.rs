@@ -23,7 +23,6 @@ use crate::spec::builder::{
     MOIRSymbolId,
     StringId,
 };
-use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::MOIRConstructor;
 use crate::spec::moir::field::FieldId;
 use crate::spec::moir::scope::{

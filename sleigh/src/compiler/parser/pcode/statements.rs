@@ -55,10 +55,7 @@ pub fn pcode_statement<'tokens>() -> impl Parser<
 mod test {
     use crate::compiler::error::SleighCompilerError;
     use crate::compiler::parser::report_errors;
-    use crate::compiler::parser::test::{
-        test_parser,
-        TestResult,
-    };
+    use crate::compiler::parser::test::test_parser;
 
     use super::*;
 
