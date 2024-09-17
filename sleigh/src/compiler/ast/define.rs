@@ -22,7 +22,7 @@ pub enum SASTAddressSpaceType {
 #[derive(Debug, Clone, Copy)]
 pub enum SASTAddressSpaceAttribute {
     Type(SASTAddressSpaceType),
-    Size(u64), // mandatory
+    Size(SASTSize), // mandatory
     Wordsize(SASTSize),
     IsDefault,
 }
@@ -94,6 +94,7 @@ pub enum SASTContextFieldAttribute {
 pub struct SASTContextField {
     pub name: Spanned<SASTIdent>,
     pub start: Spanned<u64>,
+    /// The end byte. CAVEAT: This end byte is inclusive.
     pub end: Spanned<u64>,
     pub attributes: Vec<Spanned<SASTContextFieldAttribute>>,
 }

@@ -1,3 +1,5 @@
+use crate::spec::moir::common::MOIRSize;
+
 pub mod address_space;
 pub mod bitrange_register;
 pub mod code;
@@ -12,3 +14,5 @@ pub mod scope;
 pub mod table;
 pub mod token;
 pub mod varnode;
+
+pub const MOIR_ADDRESS_SIZE: MOIRSize = 8;

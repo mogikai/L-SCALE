@@ -47,8 +47,8 @@ impl SleighCompiler {
         // TODO: Create table of locals? Lookup global identifiers?
         let (pcode, _) = pcode.into_tuple();
         let export = self.atomize_statements(scope, instructions, pcode.statements)?;
-        self.infer_sizes(scope, instructions)?;
         debug_instructions(scope, instructions);
+        self.infer_sizes(scope, instructions)?;
         Ok(export.map(|export| match export.into_value() {
             MOIRLocal::Local(local) => MOIRExport::Slice(*scope.resolve_local(local).expect("TODO")),
             MOIRLocal::Const(val) => MOIRExport::Const(val),

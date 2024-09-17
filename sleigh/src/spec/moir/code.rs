@@ -162,6 +162,12 @@ macro_rules! moir_instruction {
     (nop) => {
         MOIRInstruction::nop()
     };
+    ($target:ident = *[$space:ident]$addr:ident) => {
+        MOIRInstruction::load($target, $addr, $space)
+    };
+    (*[$space:ident]$addr:ident = $value:ident) => {
+        MOIRInstruction::store($addr, $space, $value)
+    };
     (if ($cond:tt) goto [$target:tt]) => {
         MOIRInstruction::goto_direct_if($target, $cond)
     };
@@ -272,12 +278,6 @@ macro_rules! moir_instruction {
     };
     ($output:ident = $op_id:tt($args:tt)) => {
         MOIRInstruction::custom_op($output, $op_id, $args)
-    };
-    ($target:ident = *[$space:ident]$addr:ident) => {
-        MOIRInstruction::load($target, $addr, $space)
-    };
-    (*[$space:ident]$addr:ident = $value:ident) => {
-        MOIRInstruction::store($addr, $space, $value)
     };
     ($lhs:ident = $rhs:tt) => {
         MOIRInstruction::copy($lhs, $rhs)
@@ -726,7 +726,8 @@ impl MOIROperation {
             | Floor
             | Round
             | Load(_)
-            | Store(_) => MOIROpCategory::Special,
+            | Store(_)
+            | AddressOf => MOIROpCategory::Special,
             GotoDirect(_) | GotoIndirect(_) | GotoLabel(..) | GotoDirectIf | GotoIndirectIf | GotoLabelIf(_) => {
                 MOIROpCategory::Branch
             }

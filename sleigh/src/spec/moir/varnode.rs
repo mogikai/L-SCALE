@@ -11,6 +11,7 @@ use crate::spec::moir::scope::{
     MOIRTemporaryId,
 };
 use crate::spec::moir::table::TableId;
+use crate::spec::moir::MOIR_ADDRESS_SIZE;
 use std::fmt::{
     Display,
     Formatter,
@@ -75,7 +76,7 @@ impl MOIRSlice {
         Self {
             reference: MOIRReference::InstStart,
             start: 0,
-            end: MOIRMaybeSize::Undetermined,
+            end: MOIRMaybeSize::Determined(MOIR_ADDRESS_SIZE),
         }
     }
 
@@ -83,7 +84,7 @@ impl MOIRSlice {
         Self {
             reference: MOIRReference::InstNext,
             start: 0,
-            end: MOIRMaybeSize::Undetermined,
+            end: MOIRMaybeSize::Determined(MOIR_ADDRESS_SIZE),
         }
     }
 
@@ -91,7 +92,7 @@ impl MOIRSlice {
         Self {
             reference: MOIRReference::InstNext2,
             start: 0,
-            end: MOIRMaybeSize::Undetermined,
+            end: MOIRMaybeSize::Determined(MOIR_ADDRESS_SIZE),
         }
     }
 

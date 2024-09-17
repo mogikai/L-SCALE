@@ -23,6 +23,7 @@ use crate::spec::builder::{
     MOIRSymbolId,
     StringId,
 };
+use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::MOIRConstructor;
 use crate::spec::moir::field::FieldId;
 use crate::spec::moir::scope::{
@@ -177,6 +178,9 @@ impl SleighCompiler {
                             .into()
                     } else {
                         // TODO: Check if values are attached and infer the maximum size from them.
+                        // TODO: We cannot pass a size here since then the sleigh spec breaks
+                        //       because they cannot decide whether to explicitly enforce sizes
+                        //       or to just implicitly extend sizes because reasons.......
                         // (((field.bits.clone().count() + 7) / 8) as MOIRSize).into()
                         MOIRMaybeSize::Undetermined
                     };

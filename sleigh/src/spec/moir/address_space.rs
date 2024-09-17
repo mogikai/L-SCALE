@@ -10,7 +10,7 @@ use crate::spec::moir::common::MOIRSize;
 pub struct MOIRSpace {
     pub r#type: MOIRSpaceType,
     /// The number of bytes an address in the space takes up
-    pub address_size: u64,
+    pub address_size: MOIRSize,
     /// The size of data in bytes accessed by an address.
     pub wordsize: MOIRSize,
 }

@@ -133,6 +133,20 @@ impl MOIRMaybeSize {
         }
     }
 
+    pub fn or_else<F>(
+        self,
+        f: F,
+    ) -> Self
+    where
+        F: FnOnce() -> Self,
+    {
+        if matches!(self, MOIRMaybeSize::Determined(_)) {
+            self
+        } else {
+            f()
+        }
+    }
+
     pub fn is_determined(&self) -> bool {
         matches!(self, MOIRMaybeSize::Determined(_))
     }
