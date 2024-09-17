@@ -117,4 +117,5 @@ pub enum SASTDefine {
     UserPcodeOp(Spanned<SASTUserPcodeOp>),
     Token(Spanned<SASTToken>),
     Context(Spanned<SASTContext>),
+    Invalid,
 }

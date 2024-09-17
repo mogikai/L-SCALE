@@ -4,7 +4,7 @@ use std::fmt::{
     Formatter,
 };
 
-pub type SASTSize = u8;
+pub type SASTSize = u16;
 pub type SASTLiteral = u128;
 
 #[derive(Debug, Copy, Clone)]

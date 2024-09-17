@@ -1,1 +1,1 @@
-pub type MOIRSize = u8;
+pub type MOIRSize = u16;

@@ -10,6 +10,7 @@ use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
     sleigh_keyword,
     sleigh_operation,
+    whitespace_padded,
     SleighParserExtra,
 };
 use crate::compiler::tokens::{
@@ -26,7 +27,7 @@ pub(super) fn endianness<'tokens>(
     };
 
     sleigh_keyword(SleighKeyword::Endian)
-        .then(sleigh_operation(SleighOperation::Equals))
+        .then(whitespace_padded(sleigh_operation(SleighOperation::Equals)))
         .ignore_then(big_little)
         .map_with(spanned)
 }

@@ -1,6 +1,3 @@
-use chumsky::primitive::choice;
-use chumsky::Parser;
-
 use crate::compiler::ast::define::SASTDefine;
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
@@ -9,7 +6,12 @@ use crate::compiler::parser::helpers::spanned;
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighKeyword,
+    SleighToken,
 };
+use chumsky::prelude::none_of;
+use chumsky::primitive::choice;
+use chumsky::recovery::via_parser;
+use chumsky::Parser;
 
 use super::{
     sleigh_control,
@@ -55,9 +57,15 @@ pub(super) fn define<'tokens>(
     let definitions =
         choice((endian, alignment, address_space, varnode, bitrange_register, user_pcode_op, token, context));
 
+    let recovery = whitespace_padded(sleigh_keyword(SleighKeyword::Define))
+        .ignore_then(none_of([SleighToken::Control(SleighControlCharacter::SemiColon)]).repeated())
+        .ignore_then(sleigh_control(SleighControlCharacter::SemiColon))
+        .map(|_| SASTDefine::Invalid);
+
     whitespace_padded(sleigh_keyword(SleighKeyword::Define))
         .ignore_then(definitions)
         .then_ignore(whitespace_padded(sleigh_control(SleighControlCharacter::SemiColon)))
+        .recover_with(via_parser(recovery))
         .map_with(spanned)
         .boxed()
 }

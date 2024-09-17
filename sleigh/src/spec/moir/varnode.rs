@@ -449,9 +449,7 @@ impl MOIRConst {
                     4 => MOIRConst::Const32(v as _),
                     2 => MOIRConst::Const16(v as _),
                     1 => MOIRConst::Const8(v as _),
-                    _ => {
-                        todo!("Generate error. We do not support const that are not u8, u16, u32, or u64")
-                    }
+                    _ => MOIRConst::ConstN(v, new_size),
                 }
             }
             MOIRConst::Const64(v) => {

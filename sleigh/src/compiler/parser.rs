@@ -163,7 +163,7 @@ fn items_parser<'tokens, 'src: 'tokens>(
     items.boxed()
 }
 
-fn sleigh_inline_whitespace<'tokens, 'src, E>() -> impl Parser<'tokens, ParserInput<'tokens>, (), E> + Clone
+pub fn sleigh_inline_whitespace<'tokens, 'src, E>() -> impl Parser<'tokens, ParserInput<'tokens>, (), E> + Clone
 where
     'src: 'tokens,
     E: ParserExtra<'tokens, ParserInput<'tokens>>,

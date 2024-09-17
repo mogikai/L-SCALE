@@ -430,7 +430,8 @@ impl ProcessorSpecificationBuilder {
         let varnode_bits = self
             .varnode_by_symbol_id(varnode_id)
             .expect("We just verified it")
-            .size;
+            .size
+            * 8;
 
         let context_id = self.context.insert(moir_context);
         Ok((context_id, varnode_bits as u64))

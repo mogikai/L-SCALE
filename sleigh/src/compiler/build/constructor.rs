@@ -216,7 +216,7 @@ impl SleighCompiler {
                     Some(MOIRSlice {
                         reference: MOIRReference::VarNode(*vnid),
                         start: 0,
-                        end: MOIRMaybeSize::Determined(varnode.size as u8),
+                        end: MOIRMaybeSize::Determined(varnode.size),
                     })
                 }
 

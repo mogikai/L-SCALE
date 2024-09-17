@@ -129,6 +129,7 @@ impl SleighCompiler {
             SASTDefine::UserPcodeOp(pcode_op) => self.process_define_pcode_op(pcode_op),
             SASTDefine::Token(token) => self.process_define_token(token),
             SASTDefine::Context(context) => self.process_define_context(context),
+            SASTDefine::Invalid => panic!("This should have been handled earlier."),
         }
     }
 

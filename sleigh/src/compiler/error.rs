@@ -73,6 +73,7 @@ impl Debug for SleighCompilerError {
     ) -> std::fmt::Result {
         match self {
             SleighCompilerError::PreprocessorError(e) => Debug::fmt(e, f),
+            SleighCompilerError::ProcessorSpecificationError(e) => Debug::fmt(e, f),
             SleighCompilerError::LexerError(e) => Display::fmt(e, f),
             SleighCompilerError::InputCacheError(e) => Debug::fmt(e, f),
             SleighCompilerError::SemanticError(e) => Display::fmt(e, f),

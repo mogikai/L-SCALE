@@ -19,6 +19,7 @@ use crate::compiler::parser::{
     sleigh_number,
     sleigh_operation,
     sleigh_whitespace,
+    whitespace_padded,
     SleighParserExtra,
 };
 use crate::compiler::tokens::{
@@ -47,16 +48,13 @@ pub(super) fn context<'tokens>(
         SleighToken::Keyword(SleighKeyword::Noflow) => SASTContextFieldAttribute::Noflow,
     };
 
-    let attributelist = attribute
-        .map_with(spanned)
-        .padded_by(sleigh_whitespace())
+    let attributelist = whitespace_padded(attribute.map_with(spanned))
         .repeated()
         .collect::<Vec<_>>();
 
     let field = sast_ident_spanned()
-        .then(sleigh_operation(SleighOperation::Equals))
+        .then(whitespace_padded(sleigh_operation(SleighOperation::Equals)))
         .then(number_pair)
-        .padded_by(sleigh_whitespace())
         .then(attributelist)
         .map(|(((name, _), (start, end)), attributes)| SASTContextField {
             name,

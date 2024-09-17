@@ -1,18 +1,3 @@
-use chumsky::{
-    extra,
-    IterParser,
-    Parser,
-    select,
-};
-use chumsky::error::Rich;
-use chumsky::input::MapExtra;
-use chumsky::prelude::{
-    any,
-    end,
-    just,
-    Recursive,
-};
-
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::{
     InputSpan,
@@ -23,8 +8,8 @@ use crate::compiler::parser::{
     inline_whitespace_padded,
     maybe_parenthesized,
     parenthesized,
+    sleigh_inline_whitespace,
 };
-use crate::spec::builder::StringId;
 use crate::compiler::tokens::{
     SleighKeyword,
     SleighOperation,
@@ -37,7 +22,24 @@ use crate::preprocessor::blocks::{
     Expression,
     PreprocessorBlock,
 };
-use crate::spec::builder::ProcessorSpecificationBuilder;
+use crate::spec::builder::{
+    ProcessorSpecificationBuilder,
+    StringId,
+};
+use chumsky::error::Rich;
+use chumsky::input::MapExtra;
+use chumsky::prelude::{
+    any,
+    end,
+    just,
+    Recursive,
+};
+use chumsky::{
+    extra,
+    select,
+    IterParser,
+    Parser,
+};
 
 type SleighPreprocessorExtra<'tokens> =
     extra::Full<Rich<'tokens, SleighToken, InputSpan>, ProcessorSpecificationBuilder, ()>;
@@ -228,6 +230,7 @@ fn pp_macro_kw<'tokens>(
 where
 {
     just(SleighToken::Keyword(macro_keyword))
+        .ignore_then(sleigh_inline_whitespace())
         .ignored()
         .delimited_by(just(SleighToken::MacroBegin), macro_end())
 }
