@@ -1,4 +1,7 @@
-use std::collections::HashSet;
+use std::collections::{
+    BTreeSet,
+    HashSet,
+};
 
 use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::ast::Spanned;
@@ -30,7 +33,16 @@ use crate::spec::moir::varnode::{
     MOIRSlice,
 };
 use crate::spec::ProcessorSpecificationError;
-use tracing::debug;
+use itertools::Itertools;
+use tracing::{
+    debug,
+    trace,
+};
+
+use super::matcher::{
+    Matcher,
+    MatcherReference,
+};
 
 mod matcher_builder;
 
@@ -51,11 +63,18 @@ impl SleighCompiler {
         trace_build!("Defining constructor in table {:?}", table_name);
 
         // TODO: Need to parse the disassembly section here as well and add that information to the matcher
-        let matcher = self.create_matcher(constructor.bit_pattern_section.into_value().constraint)?;
+        let matchers = self.create_matchers(constructor.bit_pattern_section.into_value().constraint)?;
+        let mut references = HashSet::new();
+        matchers.iter().for_each(|matcher| {
+            references.extend(matcher.references.clone());
+        });
+        let references = references.into_iter().collect_vec();
+        println!("-------------------------------------- created {} matchers for input {:?}", matchers.len(), span);
+        // eprintln!("matchers = {:#?}", matchers);
 
-        let display_section = constructor.display_section.into_value();
-        let scope =
-            self.pc_create_scope(display_section.identifiers, &matcher.symbols_used)?;
+        self.register_matchers(constructor.table.clone().transpose(), matchers)?;
+
+        let scope = self.pc_create_scope(constructor.display_section.into_value().identifiers, &references)?;
 
         let mut moir_constructor = MOIRConstructor {
             local_scope: scope,
@@ -80,27 +99,23 @@ impl SleighCompiler {
         Ok(())
     }
 
-    fn pc_mark_used_locals(
+    fn register_matchers(
         &mut self,
-        scope: &mut MOIRScope,
-        instructions: &[MOIRInstruction],
+        table: Option<Spanned<StringId>>,
+        matchers: BTreeSet<Matcher>,
     ) -> SleighCompilerResult {
-        for instruction in instructions {
-            if let Some(output) = instruction.output {
-                scope.mark_local_as_used(MOIRLocal::from(output))?;
-            }
-            if let Some(input_a) = instruction.input_a {
-                scope.mark_local_as_used(input_a)?;
-            }
-            if let Some(input_b) = instruction.input_b {
-                scope.mark_local_as_used(input_b)?;
-            }
-            if let MOIROperation::CustomOp { extra_args, .. } = &instruction.operation {
-                for arg in extra_args {
-                    scope.mark_local_as_used(*arg)?;
-                }
-            }
-        }
+        let table = match table {
+            None => self.spec_builder.modify_root_table()?,
+            Some(id) => self.spec_builder.modify_table(id)?,
+        };
+
+        matchers.into_iter().for_each(|matcher| {
+            // TODO matcher.constructor =
+            table.matchers.insert(matcher);
+        });
+
+        // eprintln!("table.matchers = {:#?}", table.matchers);
+
         Ok(())
     }
 
@@ -113,11 +128,6 @@ impl SleighCompiler {
             None => self.spec_builder.modify_root_table()?,
             Some(id) => self.spec_builder.modify_table(id)?,
         };
-
-        matchers.into_iter().for_each(|matcher| {
-            // TODO matcher.constructor =
-            table.matchers.insert(matcher);
-        });
 
         if table.exports.is_empty() {
             // If the exports table is empty, we can just insert the export if we have one.
@@ -148,7 +158,7 @@ impl SleighCompiler {
     fn pc_create_scope(
         &mut self,
         display_identifiers: Vec<Spanned<StringId>>,
-        matcher_symbols: &[MOIRSymbolId],
+        references: &[MatcherReference],
     ) -> Result<MOIRScope, SleighCompilerError> {
         let mut scope = MOIRScope::default();
         // Declare the special identifiers that are filled with constants upon calling the constructor.
@@ -157,7 +167,7 @@ impl SleighCompiler {
         scope.declare_local(self.spec_builder.intern("inst_next"), MOIRSlice::inst_next());
         scope.declare_local(self.spec_builder.intern("inst_next2"), MOIRSlice::inst_next2());
 
-        self.resolve_symbols_to_local_scope(&mut scope, matcher_symbols)?;
+        self.resolve_references_to_local_scope(&mut scope, references)?;
         for ident in display_identifiers {
             // TODO: We probably need to figure out a better way to handle these locals that are constructed
             //       in the disassembly section.
@@ -172,17 +182,17 @@ impl SleighCompiler {
         Ok(scope)
     }
 
-    /// Resolve a given list of [MOIRSymbolId] used by [Matcher] in its bit pattern section to the
+    /// Resolve a given list of [MatcherReference] used by [Matcher] in its bit pattern section to the
     /// [MOIRScope] of the constructor for usage in the semantic section.
-    fn resolve_symbols_to_local_scope(
+    fn resolve_references_to_local_scope(
         &self,
         scope: &mut MOIRScope,
-        symbols: &[MOIRSymbolId],
+        references: &[MatcherReference],
     ) -> SleighCompilerResult {
-        trace_build!("Resolving {} symbols to a local scope", symbols.len());
-        for symbol in symbols {
-            let value = match symbol {
-                MOIRSymbolId::Field(field_id) => {
+        trace!("Resolving {} symbols to a local scope", references.len());
+        for reference in references {
+            let value = match reference {
+                MatcherReference::Field(field_id) => {
                     let field = self
                         .spec_builder
                         .field_by_symbol_id(*field_id)
@@ -202,9 +212,6 @@ impl SleighCompiler {
                             .into()
                     } else {
                         // TODO: Check if values are attached and infer the maximum size from them.
-                        // TODO: We cannot pass a size here since then the sleigh spec breaks
-                        //       because they cannot decide whether to explicitly enforce sizes
-                        //       or to just implicitly extend sizes because reasons.......
                         // (((field.bits.clone().count() + 7) / 8) as MOIRSize).into()
                         MOIRMaybeSize::Undetermined
                     };
@@ -214,8 +221,7 @@ impl SleighCompiler {
                         end: size,
                     })
                 }
-
-                MOIRSymbolId::Table(table_id) => {
+                MatcherReference::Subtable(table_id) => {
                     let table = self
                         .spec_builder
                         .table_by_symbol_id(*table_id)
@@ -223,53 +229,15 @@ impl SleighCompiler {
                     let export = table.exports.first();
                     if let Some(export) = export {
                         Some(MOIRSlice {
-                            reference: MOIRReference::Field(*field_id),
+                            reference: MOIRReference::SubTable(*table_id),
                             start: 0,
-                            end: size,
+                            end: export.size(),
                         })
+                    } else {
+                        None
                     }
-
-                    MOIRSymbolId::Table(table_id) => {
-                        let table = self
-                            .spec_builder
-                            .table_by_symbol_id(*table_id)
-                            .ok_or(SleighCompilerError::SymbolUndeclared)?;
-                        let export = table.exports.first();
-                        if let Some(export) = export {
-                            Some(MOIRSlice {
-                                reference: MOIRReference::SubTable(*table_id),
-                                start: 0,
-                                end: export.size(),
-                            })
-                        } else {
-                            None
-                        }
-                    }
-
-                    MOIRSymbolId::VarNode(vnid) => {
-                        let varnode = self
-                            .spec_builder
-                            .varnode_by_symbol_id(*vnid)
-                            .ok_or(SleighCompilerError::SymbolUndeclared)?;
-                        Some(MOIRSlice {
-                            reference: MOIRReference::VarNode(*vnid),
-                            start: 0,
-                            end: MOIRMaybeSize::Determined(varnode.size as u8),
-                        })
-                    }
-
-                    _ => Err(ProcessorSpecificationError::InvalidSymbolType(*symbol))?,
-                };
-
-                let ident = self
-                    .spec_builder
-                    .ident_by_symbol(symbol)
-                    .ok_or(SleighCompilerError::SymbolUndeclared)?;
-                if let Some(value) = value {
-                    scope.declare_local(ident.clone().into_value(), value);
                 }
-
-                MOIRSymbolId::VarNode(vnid) => {
+                MatcherReference::Varnode(vnid) => {
                     let varnode = self
                         .spec_builder
                         .varnode_by_symbol_id(*vnid)
@@ -277,21 +245,18 @@ impl SleighCompiler {
                     Some(MOIRSlice {
                         reference: MOIRReference::VarNode(*vnid),
                         start: 0,
-                        end: MOIRMaybeSize::Determined(varnode.size),
+                        end: MOIRMaybeSize::Determined(varnode.size as u8),
                     })
                 }
-
-                _ => Err(ProcessorSpecificationError::InvalidSymbolType(*symbol))?,
             };
 
             let ident = self
                 .spec_builder
-                .ident_by_symbol(symbol)
+                .ident_by_symbol(&MOIRSymbolId::from(reference))
                 .ok_or(SleighCompilerError::SymbolUndeclared)?;
             if let Some(value) = value {
                 scope.declare_local(ident.clone().into_value(), value);
             }
-
         }
         Ok(())
     }

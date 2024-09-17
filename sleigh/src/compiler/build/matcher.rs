@@ -1,7 +1,12 @@
 #![allow(unused_variables)]
 
 use std::cmp::Ordering;
-use std::collections::{HashMap, HashSet};
+use std::collections::{
+    HashMap,
+    HashSet,
+};
+
+use itertools::Itertools;
 
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::SleighCompilerResult;
@@ -99,8 +104,7 @@ impl FieldMatcher {
     }
 }
 
-// the left-hand side of a matcher expression can be a reference to either a field or a submatcher
-// TODO do we miss symbols?
+// every symbol type that can appear in the bit pattern section
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MatcherReference {
     Field(FieldId),
@@ -108,30 +112,59 @@ pub enum MatcherReference {
     Varnode(VarNodeId),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum MatcherAtom {
-    Field(FieldMatcher), // field=value or field=field
-    Linkage(MatcherReference), // links a local symbol to a global symbol (subtable, varnode...)
+impl From<MatcherReference> for MOIRSymbolId {
+    fn from(value: MatcherReference) -> Self {
+        match value {
+            MatcherReference::Field(fid) => MOIRSymbolId::Field(fid),
+            MatcherReference::Subtable(stid) => MOIRSymbolId::Table(stid),
+            MatcherReference::Varnode(vnid) => MOIRSymbolId::VarNode(vnid),
+        }
+    }
+}
+
+impl From<&MatcherReference> for MOIRSymbolId {
+    fn from(value: &MatcherReference) -> Self {
+        match value {
+            MatcherReference::Field(fid) => MOIRSymbolId::Field(*fid),
+            MatcherReference::Subtable(stid) => MOIRSymbolId::Table(*stid),
+            MatcherReference::Varnode(vnid) => MOIRSymbolId::VarNode(*vnid),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum MatcherToken {
-    Determined(MOIRFieldParent),
-    Undetermined, // put at either end of list for left/right justify
+pub enum MatcherAtom {
+    Field(FieldMatcher),       // field=value or field=field
+    Linkage(MatcherReference), // links a local symbol to a global symbol (subtable, varnode...)
 }
 
 #[derive(Debug)]
 pub struct Matching {
-    pub fields: HashMap<FieldId, u64>,
+    pub fields: Vec<HashMap<FieldId, u64>>,
     pub bytes_consumed: usize,
 }
 
 impl Matching {
     pub fn new(
-        fields: HashMap<FieldId, u64>,
+        fields: Vec<HashMap<FieldId, u64>>,
         bytes_consumed: usize,
     ) -> Self {
         Self { fields, bytes_consumed }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TokenList {
+    pub list: Vec<MOIRFieldParent>,
+    pub justify_left: bool,
+    pub justify_right: bool,
+}
+
+impl TokenList {
+    pub fn new(list: Vec<MOIRFieldParent>, justify_left: bool, justify_right: bool) -> Self { Self { list, justify_left, justify_right } }
+    pub fn remove_padding(&mut self) {
+        self.justify_right = false;
+        self.justify_left = false;
     }
 }
 
@@ -140,12 +173,16 @@ pub struct Matcher {
     // Each conjunction belongs to the corresponding MOIRFieldParent defined down below in
     // token_list.
     pub(super) conjunctions: Vec<HashSet<MatcherAtom>>,
-    // ordered list of used tokens and context registers
-    pub(super) token_list: Vec<MatcherToken>,
 
-    // this is known before the matcher is run on anything and should only
-    // contain fields as well as MatcherReference types (i.e. fields, subtables and varnodes)
-    pub(super) symbols_used: Vec<HashSet<MOIRSymbolId>>,
+    // ordered list of used tokens and context registers
+    pub(super) token_list: TokenList,
+
+    // symbols whose value needs to be extracted for later use (either for matching, displaying or semantics)
+    pub(super) token_fields: Vec<HashSet<FieldId>>,
+
+    // symbols whose presence needs to be known, but whose value does not matter or cannot be
+    // extracted in the first place
+    pub(super) references: HashSet<MatcherReference>,
 
     // TODO constructor will be linked here (no need for constructor -> matcher mapping)
     pub(super) constructor: (),
@@ -153,7 +190,10 @@ pub struct Matcher {
 
 // ordering w.r.t. specificity
 impl Ord for Matcher {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(
+        &self,
+        other: &Self,
+    ) -> std::cmp::Ordering {
         if self.eq(other) {
             Ordering::Equal
         } else {
@@ -167,7 +207,10 @@ impl Ord for Matcher {
 }
 
 impl PartialOrd for Matcher {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    fn partial_cmp(
+        &self,
+        other: &Self,
+    ) -> Option<Ordering> {
         self.specificity().partial_cmp(&other.specificity())
     }
 }
@@ -175,15 +218,15 @@ impl PartialOrd for Matcher {
 impl Matcher {
     pub fn new(
         conjunctions: Vec<HashSet<MatcherAtom>>,
-        // we need to include fields from context as well to be able to extract them later, but
-        // they are skipped when validating e.g. token equality for And expressions
-        token_list: Vec<MatcherToken>,
-        symbols_used: Vec<HashSet<MOIRSymbolId>>,
+        token_list: TokenList,
+        token_fields: Vec<HashSet<FieldId>>,
+        references: HashSet<MatcherReference>,
     ) -> Self {
         Self {
             conjunctions,
             token_list,
-            symbols_used,
+            token_fields,
+            references,
             constructor: (),
         }
     }
@@ -198,13 +241,14 @@ impl Matcher {
         moir_context: &TypedIndexTable<MOIRContextId, MOIRContext>,
         moir_tables: &TypedIndexTable<TableId, MOIRTable>,
     ) -> SleighCompilerResult<Option<Matching>> {
-        let (fields, bytes_consumed) = self.extract_fields(bytes, endianness, moir_fields, moir_tokens, moir_context)?;
+        let (fields, bytes_consumed) =
+            self.extract_fields(bytes, endianness, moir_fields, moir_tokens, moir_context)?;
 
-        for conjunction in &self.conjunctions {
+        for (conjunction, conjunction_fields) in self.conjunctions.iter().zip(fields.iter()) {
             for atom in conjunction {
                 match atom {
                     MatcherAtom::Field(field_matcher) => {
-                        if !field_matcher.matches(&fields)? {
+                        if !field_matcher.matches(&conjunction_fields)? {
                             return Ok(None);
                         }
                     }
@@ -223,7 +267,7 @@ impl Matcher {
     /// iterating over all matchers to find a possible match.
     pub fn specificity(&self) -> usize {
         // TODO is this correct?
-        self.symbols_used.iter().map(HashSet::len).sum()
+        self.token_fields.iter().map(HashSet::len).sum()
     }
 
     fn extract_fields(
@@ -233,88 +277,80 @@ impl Matcher {
         moir_fields: &TypedIndexTable<FieldId, MOIRField>,
         moir_tokens: &TypedIndexTable<TokenId, MOIRToken>,
         moir_context: &TypedIndexTable<MOIRContextId, MOIRContext>,
-    ) -> SleighCompilerResult<(HashMap<FieldId, u64>, usize)> {
+    ) -> SleighCompilerResult<(Vec<HashMap<FieldId, u64>>, usize)> {
         // extract tokens (including context) from bytes
         let mut bytes_consumed: usize = 0;
         let mut token_values = Vec::new();
-        for token in self.token_list.iter() {
-            if let MatcherToken::Determined(parent) = token {
-                match parent {
-                    MOIRFieldParent::Token(tid) => {
-                        let moir_token = moir_tokens
-                            .get(*tid)
-                            .ok_or_else(|| -> SleighCompilerError {
-                                todo!("Generate error report for missing token");
-                            })?;
-                        let token_bytes = &bytes[bytes_consumed..((moir_token.bits / 8) as usize)];
-                        let token_endian = if let Some(endian) = moir_token.endianness_override {
-                            endian
-                        } else {
-                            endianness
-                        };
+        for parent in self.token_list.list.iter() {
+            match parent {
+                MOIRFieldParent::Token(tid) => {
+                    let moir_token = moir_tokens
+                        .get(*tid)
+                        .ok_or_else(|| -> SleighCompilerError {
+                            todo!("Generate error report for missing token");
+                        })?;
+                    let token_bytes = &bytes[bytes_consumed..((moir_token.bits / 8) as usize)];
+                    let token_endian = if let Some(endian) = moir_token.endianness_override {
+                        endian
+                    } else {
+                        endianness
+                    };
 
-                        let mut token_value = 0u64;
+                    let mut token_value = 0u64;
 
-                        match token_endian {
-                            MOIREndianness::Big => {
-                                for (bytei, byte) in token_bytes.iter().enumerate().rev() {
-                                    token_value += (*byte as u64) << (8 * bytei);
-                                }
+                    match token_endian {
+                        MOIREndianness::Big => {
+                            for (bytei, byte) in token_bytes.iter().enumerate().rev() {
+                                token_value += (*byte as u64) << (8 * bytei);
                             }
-                            MOIREndianness::Little => {
-                                for (bytei, byte) in token_bytes.iter().enumerate() {
-                                    token_value += (*byte as u64) << (8 * bytei);
-                                }
+                        }
+                        MOIREndianness::Little => {
+                            for (bytei, byte) in token_bytes.iter().enumerate() {
+                                token_value += (*byte as u64) << (8 * bytei);
                             }
-                        };
+                        }
+                    };
 
-                        bytes_consumed += token_bytes.len();
-                        token_values.push(token_value);
-                    }
-                    MOIRFieldParent::Context(cid) => {
-                        let moir_context = moir_context
-                            .get(*cid)
-                            .ok_or_else(|| -> SleighCompilerError {
-                                todo!("Generate error report for missing context");
-                            })?;
-                        todo!("get varnode value");
-                    }
+                    bytes_consumed += token_bytes.len();
+                    token_values.push(token_value);
                 }
-            } else {
-                todo!("Generate error report for leftover undetermined token in finished matcher");
+                MOIRFieldParent::Context(cid) => {
+                    let moir_context = moir_context
+                        .get(*cid)
+                        .ok_or_else(|| -> SleighCompilerError {
+                            todo!("Generate error report for missing context");
+                        })?;
+                    todo!("get varnode value");
+                }
             }
         }
 
-        let mut fields = HashMap::new();
-
         // extract fields from tokens
-        token_values
+        let fields = token_values
             .iter()
-            .zip(self.symbols_used.iter())
-            .map(|(token_value, symbols)| {
-                symbols.iter().filter_map(|symbol| {
-                    match symbol {
-                        MOIRSymbolId::Field(fid) => {
-                            // TODO handle error
-                            let moir_field = moir_fields
-                                .get(*fid)
-                                .ok_or_else(|| -> SleighCompilerError {
-                                    todo!("Generate error report for missing field");
-                                })
-                            .unwrap();
-                            let field_value = moir_field.bits.extract_from(*token_value);
-                            Some((*fid, field_value))
-                        }
-                        _ => None,
-                    }
-                })
+            .zip(self.token_fields.iter())
+            .map(|(token_value, token_fields)| {
+                token_fields
+                    .iter()
+                    .filter_map(|token_field| {
+                        // TODO handle error
+                        let moir_field = moir_fields
+                            .get(*token_field)
+                            .ok_or_else(|| -> SleighCompilerError {
+                                todo!("Generate error report for missing field");
+                            })
+                        .unwrap();
+                        let field_value = moir_field.bits.extract_from(*token_value);
+                        Some((*token_field, field_value))
+                    })
+                .collect::<HashMap<_, _>>()
             })
-        .for_each(|iter| {
-            fields.extend(iter);
-        });
+        .collect_vec();
 
         Ok((fields, bytes_consumed))
     }
 }
 
 new_typed_index_table_id! { pub struct MatcherId; "MTCHR"; }
+
+// r0=0; r1=1...
