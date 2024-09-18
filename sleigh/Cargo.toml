@@ -15,3 +15,6 @@ string-interner = "0.17.0"
 num = "0.4.3"
 strum_macros = "0.26.4"
 itertools = "0.13.0"
+
+[features]
+trace_build = []

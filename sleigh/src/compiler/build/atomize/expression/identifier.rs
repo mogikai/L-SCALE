@@ -1,4 +1,5 @@
 use crate::compiler::ast::Spanned;
+use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::report::generate_invalid_sizes_error;
 use crate::compiler::{
@@ -11,7 +12,6 @@ use crate::spec::moir::scope::{
     MOIRScope,
 };
 use crate::spec::moir::varnode::MOIRLocal;
-use tracing::trace;
 
 impl SleighCompiler {
     /// Atomizing an identifier always returns a local since we don't want to simply copy this into an out local.
@@ -22,7 +22,7 @@ impl SleighCompiler {
         size_constraint: MOIRMaybeSize,
         ident: Spanned<StringId>,
     ) -> SleighCompilerResult<MOIRLocal> {
-        trace!("Atomizing identifier with size_constraint {size_constraint:?}");
+        trace_build!("Atomizing identifier with size_constraint {size_constraint:?}");
         match size_constraint {
             MOIRMaybeSize::Determined(size) => {
                 // The size constraint is determined. Update the size in the scope.

@@ -1,5 +1,6 @@
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::ast::Spanned;
+use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::{
     SleighCompiler,
@@ -18,7 +19,6 @@ use crate::spec::moir::scope::{
 use crate::spec::moir::varnode::MOIRLocal;
 use crate::spec::moir::MOIR_ADDRESS_SIZE;
 use std::cmp::Ordering;
-use tracing::trace;
 
 impl SleighCompiler {
     pub fn atomize_load(
@@ -28,7 +28,7 @@ impl SleighCompiler {
         out: Option<MOIRLocalId>,
         deref: Spanned<SASTPCodeDeref>,
     ) -> SleighCompilerResult<MOIRLocal> {
-        trace!("Atomizing load expression");
+        trace_build!("Atomizing load expression");
         let (deref, _) = deref.into_tuple();
         let value_size = deref
             .size
@@ -68,7 +68,7 @@ impl SleighCompiler {
                 scope.constrain_local_size(&mut addr, MOIR_ADDRESS_SIZE)?;
             }
         } else {
-            trace!("Constraining addr size to {}", spc.address_size);
+            trace_build!("Constraining addr size to {}", spc.address_size);
             scope.constrain_local_size(&mut addr, spc.address_size)?;
         };
 

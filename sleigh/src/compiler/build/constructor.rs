@@ -13,6 +13,7 @@ use crate::compiler::ast::constructor::bit_pattern_section::{
 };
 use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::ast::Spanned;
+use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::{
     CompilerContext,
@@ -35,10 +36,7 @@ use crate::spec::moir::varnode::{
     MOIRSlice,
 };
 use crate::spec::ProcessorSpecificationError;
-use tracing::{
-    debug,
-    trace,
-};
+use tracing::debug;
 
 impl SleighCompiler {
     /// Process a constructor. This will create the table in which the constructor is anchored, if it does not exist.
@@ -48,13 +46,14 @@ impl SleighCompiler {
         constructor: Spanned<SASTConstructor>,
     ) -> SleighCompilerResult {
         let (constructor, _) = constructor.into_tuple();
+        #[allow(unused_variables)]
         let table_name = constructor
             .table
             .value()
             .map(|sid| self.spec_builder.string(sid))
             .flatten()
             .unwrap_or("instruction");
-        trace!("Defining constructor in table {:?}", table_name);
+        trace_build!("Defining constructor in table {:?}", table_name);
         debug!("Instruction: {}", constructor.display_section.display_str.value());
 
         // TODO: Need to parse the disassembly section here as well and add that information to the matcher
@@ -139,8 +138,9 @@ impl SleighCompiler {
             //       in the disassembly section.
             let local = scope.local(*ident.value());
             if local.is_none() {
+                #[allow(unused_variables)]
                 let str = self.spec_builder.resolve_string_id(*ident.value());
-                trace!("Local scope is missing identifier {str}. Allocating it now.");
+                trace_build!("Local scope is missing identifier {str}. Allocating it now.");
                 scope.allocate_named_temporary(ident.clone(), MOIRMaybeSize::Undetermined)?;
             }
         }
@@ -154,7 +154,7 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         symbols: &[MOIRSymbolId],
     ) -> SleighCompilerResult {
-        trace!("Resolving {} symbols to a local scope", symbols.len());
+        trace_build!("Resolving {} symbols to a local scope", symbols.len());
         for symbol in symbols {
             let value = match symbol {
                 MOIRSymbolId::Field(field_id) => {

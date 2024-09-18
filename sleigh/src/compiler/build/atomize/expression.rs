@@ -12,6 +12,7 @@ mod unary;
 use crate::compiler::ast::common::SASTLiteral;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::Spanned;
+use crate::compiler::build::trace_build;
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
@@ -26,7 +27,6 @@ use crate::spec::moir::varnode::{
     MOIRConst,
     MOIRLocal,
 };
-use tracing::trace;
 
 impl SleighCompiler {
     /// Atomizes the expression into multiple MOIRInstructions.
@@ -46,7 +46,7 @@ impl SleighCompiler {
         expression: Spanned<SASTPCodeExpression>,
     ) -> SleighCompilerResult<MOIRLocal> {
         let (expression, _) = expression.into_tuple();
-        trace!("Atomizing expression {} with out {:?}", expression, out);
+        trace_build!("Atomizing expression {} with out {:?}", expression, out);
         let out_size = out
             .map(|id| scope.size_of_local(id))
             .unwrap_or(MOIRMaybeSize::Undetermined);

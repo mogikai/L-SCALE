@@ -1,3 +1,4 @@
+use crate::compiler::build::trace_build;
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
@@ -20,7 +21,6 @@ use crate::spec::moir::varnode::{
     MOIRConst,
     MOIRLocal,
 };
-use tracing::trace;
 
 impl SleighCompiler {
     pub fn infer_sizes(
@@ -28,8 +28,9 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
     ) -> SleighCompilerResult<()> {
-        trace!("Doing size inference pass");
+        trace_build!("Doing size inference forward pass");
         forward_pass(scope, instructions)?;
+        trace_build!("Doing size inference backward pass");
         backward_pass(scope, instructions)?;
         Ok(())
     }
@@ -40,12 +41,7 @@ fn forward_pass(
     instructions: &mut Vec<MOIRInstruction>,
 ) -> SleighCompilerResult<()> {
     for instruction in instructions.iter_mut() {
-        let (output_size, input_a_size, input_b_size) = get_sizes(scope, instruction);
-        trace!("Inferring: {instruction}");
-        trace!("Before: {output_size:?} {input_a_size:?} {input_b_size:?}");
         infer_size(scope, instruction)?;
-        let (output_size, input_a_size, input_b_size) = get_sizes(scope, instruction);
-        trace!("After: {output_size:?} {input_a_size:?} {input_b_size:?}");
     }
     Ok(())
 }
@@ -54,11 +50,7 @@ fn backward_pass(
     scope: &mut MOIRScope,
     instructions: &mut Vec<MOIRInstruction>,
 ) -> SleighCompilerResult<()> {
-    trace!("Backward pass---------");
     for instruction in instructions.iter_mut().rev() {
-        let (output_size, input_a_size, input_b_size) = get_sizes(scope, instruction);
-        trace!("Inferring: {instruction}");
-        trace!("Before: {output_size:?} {input_a_size:?} {input_b_size:?}");
         infer_size(scope, instruction)?;
         let (output_size, input_a_size, input_b_size) = get_sizes(scope, instruction);
         if instruction.output.is_some() && output_size.is_undetermined() {
@@ -70,7 +62,6 @@ fn backward_pass(
         if instruction.input_b.is_some() && input_b_size.is_undetermined() {
             todo!("Generate error report: Unable to infer sizes of input_b")
         }
-        trace!("After: {output_size:?} {input_a_size:?} {input_b_size:?}");
     }
     Ok(())
 }
@@ -103,7 +94,7 @@ fn infer_comparison(
     scope: &mut MOIRScope,
     instruction: &mut MOIRInstruction,
 ) -> SleighCompilerResult {
-    trace!("Inferring comparison sizes");
+    trace_build!("Inferring comparison sizes");
     let (_, input_a_size, input_b_size) = get_sizes(scope, instruction);
     // Output of cmp is always 1 byte (true / false)
     scope.constrain_local_size(
@@ -176,7 +167,7 @@ fn infer_shift(
                 let size = ((value.checked_ilog2().unwrap_or(1) + 7) / 8)
                     .try_into()
                     .expect("The maximum size of 128 bit integers is 128 bit which fits into a u8");
-                trace!("Constraining size of input_b to {size}");
+                trace_build!("Constraining size of input_b to {size}");
                 scope.constrain_local_size(
                     instruction
                         .input_b

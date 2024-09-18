@@ -8,6 +8,7 @@ use crate::compiler::build::atomize::expression::{
     from_bool,
     into_bool,
 };
+use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::report::generate_const_eval_error;
 use crate::compiler::{
@@ -41,7 +42,6 @@ use std::ops::{
     Shl,
     Shr,
 };
-use tracing::trace;
 
 impl SleighCompiler {
     pub fn atomize_binary_operation(
@@ -106,7 +106,7 @@ impl SleighCompiler {
 
         if let MOIRLocal::Const(lhs) = lhs {
             if let MOIRLocal::Const(rhs) = rhs {
-                trace!("Performing const optimization since lhs and rhs are const");
+                trace_build!("Performing const optimization since lhs and rhs are const");
                 // Constant folding. We can calculate this at compile time.
                 return const_eval_binary_op(lhs, op.into_value(), rhs)
                     .map(MOIRLocal::Const)
@@ -132,7 +132,7 @@ impl SleighCompiler {
 
         // At least one side of the op is not const, so we cannot fold.
         let op = op.into_value().into();
-        trace!("Sizes: {:?} = {:?} op {:?}", scope.size_of_local(out), lhs.size(scope), rhs.size(scope));
+        trace_build!("Sizes: {:?} = {:?} op {:?}", scope.size_of_local(out), lhs.size(scope), rhs.size(scope));
         instructions.push(moir_instruction!(out = lhs op rhs));
         Ok(out.into())
     }
@@ -203,7 +203,7 @@ where
     T: From<u8>,
     T: Display,
 {
-    trace!("Const eval for {lhs} {op:?} {rhs}");
+    trace_build!("Const eval for {lhs} {op:?} {rhs}");
     Ok(match op {
         SASTPCodeBinaryOp::IntAdd => lhs
             .checked_add(&rhs)

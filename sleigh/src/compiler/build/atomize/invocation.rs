@@ -2,6 +2,7 @@ use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::Spanned;
+use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::{
     SleighCompiler,
@@ -23,7 +24,6 @@ use crate::spec::moir::scope::{
 use crate::spec::moir::varnode::MOIRLocal;
 use itertools::traits::HomogeneousTuple;
 use itertools::Itertools;
-use tracing::trace;
 
 impl SleighCompiler {
     pub fn atomize_invocation(
@@ -33,7 +33,7 @@ impl SleighCompiler {
         out: Option<MOIRLocalId>,
         invocation: Spanned<SASTPCodeInvocation>,
     ) -> SleighCompilerResult<Option<MOIRLocal>> {
-        trace!("Atomizing invocation with {} arguments.", invocation.value().arguments.len());
+        trace_build!("Atomizing invocation with {} arguments.", invocation.value().arguments.len());
         let (invocation, _) = invocation.into_tuple();
 
         let args = self.atomize_invocation_arguments(scope, instructions, invocation.arguments)?;
@@ -57,7 +57,7 @@ impl SleighCompiler {
         name: Spanned<StringId>,
     ) -> SleighCompilerResult<Option<MOIRLocal>> {
         let Some(custom_op) = self.spec_builder.custom_op_by_ident_mut(&name) else {
-            trace!("Missing custom op {}", self.spec_builder.resolve_string_id(name.into_value()));
+            trace_build!("Missing custom op {}", self.spec_builder.resolve_string_id(name.into_value()));
             todo!("Generate error for missing custom op")
         };
         let arg_sizes = args.iter().map(|arg| arg.size(scope)).collect::<Vec<_>>();

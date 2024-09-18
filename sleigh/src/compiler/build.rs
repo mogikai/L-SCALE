@@ -348,3 +348,16 @@ impl SleighCompiler {
         Ok(())
     }
 }
+
+#[cfg(feature = "trace_build")]
+macro_rules! trace_build {
+    ($($arg:tt)*) => {
+        tracing::trace!($($arg)*)
+    };
+}
+#[cfg(not(feature = "trace_build"))]
+macro_rules! trace_build {
+    ($($arg:tt)*) => {};
+}
+
+pub(crate) use trace_build;

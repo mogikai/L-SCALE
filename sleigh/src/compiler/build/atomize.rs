@@ -30,11 +30,9 @@ use crate::spec::moir::scope::{
 };
 use crate::spec::moir::table::MOIRExport;
 use crate::spec::moir::varnode::MOIRLocal;
-use tracing::{
-    debug,
-    trace,
-};
+use tracing::debug;
 
+use crate::compiler::build::trace_build;
 use std::fmt::Write;
 
 impl SleighCompiler {
@@ -140,7 +138,7 @@ impl SleighCompiler {
         ident: Spanned<StringId>,
         size: Option<Spanned<MOIRSize>>,
     ) -> SleighCompilerResult {
-        trace!("Atomizing declaration");
+        trace_build!("Atomizing declaration");
         scope
             .allocate_named_temporary(ident, size.map_or(MOIRMaybeSize::Undetermined, |size| size.into_value().into()))
             .map(|_| ())
