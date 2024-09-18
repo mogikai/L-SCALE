@@ -25,6 +25,7 @@ use thiserror::Error;
 
 pub mod builder;
 pub mod jir;
+pub mod lifter;
 pub(crate) mod moir;
 mod reporting;
 pub mod typed_index_table;
