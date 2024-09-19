@@ -21,6 +21,7 @@ impl MOIRBitRange {
     }
 
     pub fn size(&self) -> u8 {
+        // a bit range is inclusive
         self.end - self.start
     }
 

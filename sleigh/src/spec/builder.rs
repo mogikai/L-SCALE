@@ -45,9 +45,7 @@ use crate::spec::moir::custom_op::{
 };
 use crate::spec::moir::endianness::MOIREndianness;
 use crate::spec::moir::field::{
-    FieldId,
-    MOIRField,
-    MOIRFieldParent,
+    FieldId, MOIRBitRange, MOIRField, MOIRFieldParent
 };
 use crate::spec::moir::r#macro::MOIRMacro;
 use crate::spec::moir::table::MOIRTable;
@@ -160,6 +158,7 @@ pub struct ProcessorSpecificationBuilder {
     /// Context defined on top of existing varnodes containing context fields (e.g. a dedicated
     /// `contextreg` varnode containing a field `longmode=(0,1)` for x86).
     context: TypedIndexTable<MOIRContextId, MOIRContext>,
+    zero_token: Option<TokenId>,
 
     /// Maps a string identifier to the corresponding internal [Ident].
     /// This is useful for the compiler, when an identifier string references another symbol.
@@ -315,8 +314,16 @@ impl ProcessorSpecificationBuilder {
         token: MOIRToken,
     ) -> Result<TokenId, SleighCompilerError> {
         let symbol_id = self.declare_symbol(ident)?;
-        let token_id = self.symbol_tables.tokens.insert(token);
+        let token_id = self.define_unnamed_token(token)?;
         self.define_symbol(symbol_id, MOIRSymbolId::Token(token_id))?;
+        Ok(token_id)
+    }
+
+    pub(crate) fn define_unnamed_token(
+        &mut self,
+        token: MOIRToken,
+    ) -> SleighCompilerResult<TokenId> {
+        let token_id = self.symbol_tables.tokens.insert(token);
         Ok(token_id)
     }
 
@@ -437,11 +444,15 @@ impl ProcessorSpecificationBuilder {
         Ok((context_id, varnode_bits as u64))
     }
 
-    pub(crate) fn modify_root_table(&mut self) -> SleighCompilerResult<&mut MOIRTable> {
-        self.modify_table(self.root_table.clone())
+    pub(crate) fn root_table_mut(&mut self) -> SleighCompilerResult<&mut MOIRTable> {
+        self.table_mut(self.root_table.clone())
     }
 
-    pub(crate) fn modify_table(
+    pub(crate) fn root_table(&self) -> SleighCompilerResult<&MOIRTable> {
+        self.table(self.root_table.clone())
+    }
+
+    pub(crate) fn table_mut(
         &mut self,
         ident: Spanned<StringId>,
     ) -> SleighCompilerResult<&mut MOIRTable> {
@@ -463,6 +474,31 @@ impl ProcessorSpecificationBuilder {
             .symbol_tables
             .tables
             .get_mut(table_id)
+            .expect("We either just inserted the new table, or fetched an existing one."))
+    }
+
+    pub(crate) fn table(
+        &self,
+        ident: Spanned<StringId>,
+    ) -> SleighCompilerResult<&MOIRTable> {
+        let table_id = self
+            .get_symbol_and_ident(&ident)
+            .and_then(|(symbol, _)| {
+                // Symbol is defined. Do stuff with it.
+                if let MOIRSymbolId::Table(table_id) = symbol {
+                    Some(*table_id)
+                } else {
+                    todo!("Generate error report")
+                }
+            })
+            .ok_or_else(|| -> SleighCompilerError {
+                todo!("Generate error report for missing symbol");
+            })?;
+
+        Ok(self
+            .symbol_tables
+            .tables
+            .get(table_id)
             .expect("We either just inserted the new table, or fetched an existing one."))
     }
 
@@ -689,6 +725,10 @@ impl ProcessorSpecificationBuilder {
     ) -> Option<MOIROperation> {
         self.builtin_ops.get(ident.value()).cloned()
     }
+
+    pub fn zero_token(&self) -> Option<TokenId> {
+        self.zero_token
+    }
 }
 
 impl Default for ProcessorSpecificationBuilder {
@@ -707,6 +747,7 @@ impl Default for ProcessorSpecificationBuilder {
             endianness: None,
             alignment: None,
             context: Default::default(),
+            zero_token: None,
             string_to_ident_mapping: Default::default(),
             root_table,
             default_space: None,
@@ -731,7 +772,7 @@ impl Default for ProcessorSpecificationBuilder {
         builtins.insert(slf.interner.intern("floor"), Floor);
         builtins.insert(slf.interner.intern("round"), Round);
         // Call modify once to create the table.
-        slf.modify_root_table()
+        slf.root_table_mut()
             .expect("This may not error at this point");
         // TODO: Define the special varnodes in a special address space.
         slf.define_space(
@@ -750,6 +791,23 @@ impl Default for ProcessorSpecificationBuilder {
             size: 0,
         })
         .expect("This may not error at this point");
+
+        // define epsilon as field belonging to a zero-sized token
+        let zero_token = slf.define_unnamed_token(MOIRToken {
+            bits: 0,
+            endianness_override: None,
+        }).expect("This may not error at this point");
+        slf.zero_token = Some(zero_token);
+        slf.define_field(
+            Spanned::new(epsilon, InputSpan::default()),
+            MOIRField {
+                parent: MOIRFieldParent::Token(zero_token),
+                bits: MOIRBitRange::new(0, 0),
+                variables: vec![],
+                values: vec![],
+                strings: vec![],
+            },
+        );
         slf
     }
 }
@@ -760,6 +818,21 @@ impl ProcessorSpecificationBuilder {
     }
 
     pub fn build(self) -> SleighCompilerResult<ProcessorSpecification> {
+        let root_table = self.root_table()?;
+        let bytes = [0x04, 0x69];
+        for root_matcher in root_table.matchers.values() {
+            let matching = root_matcher.matches(
+                &bytes,
+                MOIREndianness::Big,
+                &self.symbol_tables.fields,
+                &self.symbol_tables.tokens,
+                &self.context,
+                &HashMap::new(),
+                &self.symbol_tables.tables,
+            );
+            eprintln!("matching = {:#?}", matching);
+        }
+
         debug!("Finalizing spec:");
         debug!("Found {} symbols", self.symbol_ids.len());
         debug!("Found {} tables", self.symbol_tables.tables.len());

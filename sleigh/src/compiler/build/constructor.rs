@@ -32,6 +32,7 @@ use crate::spec::moir::varnode::{
     MOIRReference,
     MOIRSlice,
 };
+use crate::spec::typed_index_table::TypedIndexTable;
 use crate::spec::ProcessorSpecificationError;
 use itertools::Itertools;
 use tracing::{
@@ -69,7 +70,7 @@ impl SleighCompiler {
             references.extend(matcher.references.clone());
         });
         let references = references.into_iter().collect_vec();
-        println!("-------------------------------------- created {} matchers for input {:?}", matchers.len(), span);
+        // println!("-------------------------------------- created {} matchers for input {:?}", matchers.len(), span);
         // eprintln!("matchers = {:#?}", matchers);
 
         self.register_matchers(constructor.table.clone().transpose(), matchers)?;
@@ -105,16 +106,22 @@ impl SleighCompiler {
         matchers: BTreeSet<Matcher>,
     ) -> SleighCompilerResult {
         let table = match table {
-            None => self.spec_builder.modify_root_table()?,
-            Some(id) => self.spec_builder.modify_table(id)?,
+            None => self.spec_builder.root_table_mut()?,
+            Some(id) => self.spec_builder.table_mut(id)?,
         };
 
+        // append
         matchers.into_iter().for_each(|matcher| {
-            // TODO matcher.constructor =
             table.matchers.insert(matcher);
         });
 
-        // eprintln!("table.matchers = {:#?}", table.matchers);
+        // sort
+        let mut map = std::mem::take(&mut table.matchers);
+        let mut table_matchers = map.into_iter().collect_vec();
+        table_matchers.sort_by(|(_, m1), (_, m2)| {
+            m1.cmp(m2)
+        });
+        table.matchers = TypedIndexTable::from_iter(table_matchers);
 
         Ok(())
     }
@@ -125,8 +132,8 @@ impl SleighCompiler {
         export: Option<MOIRExport>,
     ) -> Result<(), SleighCompilerError> {
         let table = match table {
-            None => self.spec_builder.modify_root_table()?,
-            Some(id) => self.spec_builder.modify_table(id)?,
+            None => self.spec_builder.root_table_mut()?,
+            Some(id) => self.spec_builder.table_mut(id)?,
         };
 
         if table.exports.is_empty() {
@@ -221,15 +228,15 @@ impl SleighCompiler {
                         end: size,
                     })
                 }
-                MatcherReference::Subtable(table_id) => {
+                MatcherReference::Subtable(stid) => {
                     let table = self
                         .spec_builder
-                        .table_by_symbol_id(*table_id)
+                        .table_by_symbol_id(*stid)
                         .ok_or(SleighCompilerError::SymbolUndeclared)?;
                     let export = table.exports.first();
                     if let Some(export) = export {
                         Some(MOIRSlice {
-                            reference: MOIRReference::SubTable(*table_id),
+                            reference: MOIRReference::SubTable(*stid),
                             start: 0,
                             end: export.size(),
                         })

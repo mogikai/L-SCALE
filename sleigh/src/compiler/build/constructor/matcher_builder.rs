@@ -1,9 +1,10 @@
+use core::panic;
 use std::collections::{
-    BTreeSet,
-    HashSet,
+    BTreeSet, HashMap, HashSet
 };
 
 use chumsky::container::Container;
+use itertools::Itertools;
 
 use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::constructor::bit_pattern_section::{
@@ -28,6 +29,7 @@ use crate::spec::moir::field::{
     MOIRField,
     MOIRFieldParent,
 };
+use crate::spec::moir::token::TokenId;
 use crate::spec::ProcessorSpecificationError;
 
 impl SleighCompiler {
@@ -92,24 +94,45 @@ impl SleighCompiler {
 
         let matchers = match symbol {
             MOIRSymbolId::Table(tid) => {
-                // expansion strategy: hoist matchers of subtable up (this might be too expensive
-                // but probably isn't since most matchers are removed when merging token lists)
+                // expansion strategy: create one matcher per unique token list of matchers
+                // contained in the subtable
                 let table = self
                     .spec_builder
                     .table_by_symbol_id(*tid)
                     .ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing symbol") })?;
 
-                table
-                    .matchers
-                    .iter()
-                    .cloned()
-                    .map(|matcher| Matcher {
-                        references: HashSet::from([MatcherReference::Subtable(*tid)]), // don't hoist subtable references
-                        ..matcher
-                    })
-                    .collect::<Vec<_>>()
+                // partition table matchers by token list
+                let mut partition: HashMap<_, Vec<_>> = HashMap::new();
+                table.matchers.iter().for_each(|(id, matcher)| {
+                    if let Some(list) = partition.get_mut(&matcher.token_list.list) {
+                        list.push(id);
+                    } else {
+                        partition.insert(matcher.token_list.list.clone(), vec![id]);
+                    }
+                });
+
+                let zero_token = self.spec_builder.zero_token().ok_or_else(|| -> SleighCompilerError { todo!("The zero token has to be defined at this point."); })?;
+
+                // create a new matcher for each bin
+                partition.into_iter().map(|(token_list, matchers)| {
+                    // associate all matchers with equal token_list with a new matcher
+                    let token_list = if token_list.is_empty() {
+                        vec![MOIRFieldParent::Token(zero_token)]
+                    } else {
+                        token_list
+                    };
+
+                    let atom = MatcherAtom::Submatchers { table: *tid, matchers  };
+                    let mut conjunctions = vec![HashSet::from([atom])];
+                    conjunctions.append(&mut vec![HashSet::new(); token_list.len() - 1]);
+                    let token_list = TokenList::new(token_list, false, false);
+                    let references = HashSet::from([MatcherReference::Subtable(*tid)]);
+
+                    Matcher::new(conjunctions, token_list, references)
+                }).collect_vec()
             }
             MOIRSymbolId::Field(fid) => {
+                // create a wildcard field matcher to extract value later on
                 let field = self
                     .spec_builder
                     .field_by_symbol_id(*fid)
@@ -117,25 +140,26 @@ impl SleighCompiler {
                         todo!("Generate error report for missing field mapping")
                     })?;
 
-                let atom = MatcherAtom::Linkage(MatcherReference::Field(*fid));
-                let tokens = TokenList::new(vec![field.parent], false, false);
+                let field_matcher = FieldMatcher::new(*fid, FieldMatcherPattern::Wildcard);
+                let atom = MatcherAtom::Field(field_matcher);
+                let tokens = TokenList::new(vec![field.parent], false, false);
 
                 vec![Matcher::new(
                     vec![HashSet::from([atom])],
                     tokens,
-                    vec![HashSet::from([*fid])],
                     HashSet::from([MatcherReference::Field(*fid)]),
                 )]
             }
             MOIRSymbolId::VarNode(vnid) => {
-                let atom = MatcherAtom::Linkage(MatcherReference::Varnode(*vnid));
-                let tokens = TokenList::new(vec![], true, true);
+                // include in references
+                let conjunctions = vec![];
+                let token_list = TokenList::default();
+                let references = HashSet::from([MatcherReference::Varnode(*vnid)]);
 
                 vec![Matcher::new(
-                    vec![HashSet::from([atom])],
-                    tokens,
-                    vec![HashSet::new()],
-                    HashSet::from([MatcherReference::Varnode(*vnid)]),
+                    conjunctions,
+                    token_list,
+                    references
                 )]
             }
             _ => todo!("Generate error report for invalid symbol type"),
@@ -186,20 +210,14 @@ impl SleighCompiler {
 
                             let mut conjunctions = context_matcher.conjunctions;
                             conjunctions.append(&mut merge_conjunctions(
-                                &matcher_lhs_nc.conjunctions,
-                                &matcher_rhs_nc.conjunctions,
-                            ));
-
-                            let mut token_fields = context_matcher.token_fields;
-                            token_fields.append(&mut merge_symbols_used(
-                                &matcher_lhs_nc.token_fields,
-                                &matcher_rhs_nc.token_fields,
+                                    &matcher_lhs_nc.conjunctions,
+                                    &matcher_rhs_nc.conjunctions,
                             ));
 
                             let mut references = matcher_lhs.references.clone();
-                            references.extend(matcher_rhs.references.iter());
+                            references.extend(matcher_rhs.references.clone().into_iter());
 
-                            new_matchers.push(Matcher::new(conjunctions, token_list, token_fields, references));
+                            new_matchers.push(Matcher::new(conjunctions, token_list, references));
                         }
                     }
                 }
@@ -236,7 +254,6 @@ impl SleighCompiler {
                     token_list.list.append(&mut merged_tokens.clone());
                     token_list.remove_padding();
                     for _ in matcher.token_list.list.len()..token_list.list.len() {
-                        matcher.token_fields.push(HashSet::new());
                         matcher.conjunctions.push(HashSet::new());
                     }
                     matcher.token_list = token_list;
@@ -247,7 +264,6 @@ impl SleighCompiler {
                     token_list.list.append(&mut merged_tokens);
                     token_list.remove_padding();
                     for _ in matcher.token_list.list.len()..token_list.list.len() {
-                        matcher.token_fields.push(HashSet::new());
                         matcher.conjunctions.push(HashSet::new());
                     }
                     matcher.token_list = token_list;
@@ -279,14 +295,10 @@ impl SleighCompiler {
                         token_list.list.append(&mut matcher_rhs_nc.token_list.list.clone());
                         token_list.remove_padding();
 
-                        let mut token_fields = context_matcher.token_fields.clone();
-                        token_fields.append(&mut matcher_lhs_nc.token_fields.clone());
-                        token_fields.append(&mut matcher_rhs_nc.token_fields.clone());
-
                         let mut references = matcher_lhs.references.clone();
-                        references.extend(matcher_rhs.references.iter());
+                        references.extend(matcher_rhs.references.clone().into_iter());
 
-                        new_matchers.push(Matcher::new(conjunctions, token_list, token_fields, references));
+                        new_matchers.push(Matcher::new(conjunctions, token_list, references));
                     }
                 }
 
@@ -331,15 +343,6 @@ impl SleighCompiler {
             _ => todo!("Generate error report for invalid lhs of advanced constraint"),
         };
 
-        let mut token_fields = HashSet::from([lhs_field_id]);
-
-        if let SASTConstraintPattern::Ident(ident) = pattern.value() {
-            let rhs_field_id = self
-                .spec_builder
-                .field_id_by_ident(&ident.clone().transmute())?;
-            token_fields.insert(rhs_field_id);
-        }
-
         let conjunctions =
             self.matcher_conjunctions_from_advanced_constraint(lhs_field_id, op.into_value(), pattern.into_value())?;
 
@@ -349,15 +352,25 @@ impl SleighCompiler {
             .ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing field") })?;
 
         let token_list = TokenList::new(vec![lhs_field.parent], false, false);
-        let references = token_fields
-            .iter()
-            .map(|field| MatcherReference::Field(*field))
-            .collect::<HashSet<_>>();
+        let mut references = HashSet::new();
+        conjunctions.iter().for_each(|conjunction| {
+            conjunction.iter().for_each(|atom| {
+                match atom {
+                    MatcherAtom::Field(field_matcher) => {
+                        references.insert(MatcherReference::Field(field_matcher.field));
+                        if let Some(sfid) = field_matcher.secondary_field() {
+                            references.insert(MatcherReference::Field(sfid));
+                        }
+                    },
+                    MatcherAtom::Submatchers { table, matchers } => panic!("Submatcher used in advanced constraint"),
+                }
+            })
+        });
 
         // one matcher per conjunction returned
         Ok(conjunctions
             .into_iter()
-            .map(|c| Matcher::new(vec![c], token_list.clone(), vec![token_fields.clone()], references.clone()))
+            .map(|c| Matcher::new(vec![c], token_list.clone(), references.clone()))
             .collect::<Vec<_>>())
     }
 
@@ -453,7 +466,7 @@ impl SleighCompiler {
                     None
                 }
             })
-            .collect::<Vec<_>>()
+        .collect::<Vec<_>>()
     }
 
     /// Generate multiple matcher atoms matching on every possible
@@ -472,7 +485,7 @@ impl SleighCompiler {
                     None
                 }
             })
-            .collect::<Vec<_>>()
+        .collect::<Vec<_>>()
     }
 
     /// Generate an or chain of matcher atoms matching on every possible
@@ -491,7 +504,7 @@ impl SleighCompiler {
                     None
                 }
             })
-            .collect::<Vec<_>>()
+        .collect::<Vec<_>>()
     }
 }
 
@@ -531,24 +544,24 @@ fn merge_token_lists<'a>(
         (rhs, lhs)
     };
 
-    if padded.list.len() > non_padded.list.len() {
+    if (padded.justify_left || padded.justify_right) && padded.list.len() > non_padded.list.len() {
         todo!("Generate error report for padded length greater than non-padded length");
     }
 
     if padded.justify_right && padded.justify_left {
-        // both padded => is padded list contained in non_padded? (excluding Undetermined)
+        // both padded => is padded list contained in non_padded?
         for si in 0..(non_padded.list.len() - padded.list.len()) {
             if &padded.list[..] == &non_padded.list[si..(si + padded.list.len())] {
                 return Ok(&non_padded.list);
             }
         }
     } else if padded.justify_right {
-        // start padded => is smaller list present at end of larger? (excluding Undetermined)
+        // start padded => is smaller list present at end of larger?
         if &padded.list[..] == &non_padded.list[(non_padded.list.len() - padded.list.len())..] {
             return Ok(&non_padded.list);
         }
     } else if padded.justify_left {
-        // end padded => is smaller list present at start of larger? (excluding Undetermined)
+        // end padded => is smaller list present at start of larger?
         if &padded.list[..] == &non_padded.list[..padded.list.len()] {
             return Ok(&non_padded.list);
         }
@@ -564,7 +577,7 @@ fn merge_token_lists<'a>(
 
 /// Removes all [MOIRFieldParent::Context] tokens as well as token fields from `lhs` and `rhs` and
 /// returns them in a new list with duplicates removed. This is a helper function which assumes the
-/// resulting matchers are merged again some time later so references are not changed, yielding
+/// resulting matchers are merged again some time later so references are not set, yielding
 /// inconsistent matchers.
 fn extract_context(
     lhs: &mut Matcher,
@@ -572,11 +585,10 @@ fn extract_context(
 ) -> Matcher {
     let context_lhs = lhs.token_list.list
         .iter()
-        .zip(lhs.token_fields.iter())
         .zip(lhs.conjunctions.iter())
-        .filter_map(|((token, token_fields), conjunction)| {
+        .filter_map(|(token, conjunction)| {
             match token {
-                MOIRFieldParent::Context(_) => Some(((token.clone(), token_fields.clone()), conjunction.clone())),
+                MOIRFieldParent::Context(_) => Some((token.clone(), conjunction.clone())),
                 MOIRFieldParent::Token(_) => None
             }
         });
@@ -584,67 +596,61 @@ fn extract_context(
     let mut context_rhs = if let Some(ref rhs) = rhs_maybe {
         rhs.token_list.list
             .iter()
-            .zip(rhs.token_fields.iter())
             .zip(rhs.conjunctions.iter())
-            .filter_map(|((token, token_fields), conjunction)| {
+            .filter_map(|(token, conjunction)| {
                 match token {
-                    MOIRFieldParent::Context(_) => Some(((token.clone(), token_fields.clone()), conjunction.clone())),
+                    MOIRFieldParent::Context(_) => Some((token.clone(), conjunction.clone())),
                     MOIRFieldParent::Token(_) => None
                 }
             })
-            .collect::<Vec<_>>()
+        .collect::<Vec<_>>()
     } else {
         Vec::new()
     };
 
     // merge context_lhs into context_rhs and create context matcher
-    'next: for ((token, token_fields), conjunctions) in context_lhs {
-        for ((token_rhs, token_fields_rhs), conjunctions_rhs) in context_rhs.iter_mut() {
+    'next: for (token, conjunctions) in context_lhs {
+        for (token_rhs, conjunctions_rhs) in context_rhs.iter_mut() {
             if token == *token_rhs {
-                token_fields_rhs.extend(token_fields);
                 conjunctions_rhs.extend(conjunctions);
                 break 'next;
             }
         }
 
-        context_rhs.push(((token.clone(), token_fields.clone()), conjunctions.clone()));
+        context_rhs.push((token.clone(), conjunctions.clone()));
     }
 
-    let ((context_tokens, context_token_fields), context_conjunctions): ((Vec<_>, Vec<_>), Vec<_>) =
-        context_rhs.into_iter().unzip();
-    let context_matcher = Matcher::new(context_conjunctions, TokenList::new(context_tokens, false, false), context_token_fields, HashSet::new());
+    let (context_tokens, context_conjunctions): (Vec<_>, Vec<_>) = context_rhs.into_iter().unzip();
+    let context_matcher = Matcher::new(context_conjunctions, TokenList::new(context_tokens, false, false), HashSet::new());
 
     let lhs_new = lhs
         .token_list.list
         .iter()
-        .zip(lhs.token_fields.iter())
         .zip(lhs.conjunctions.iter())
-        .filter_map(|((token, symbols), conjunction)| {
+        .filter_map(|(token, conjunction)| {
             match token {
                 MOIRFieldParent::Context(_) => None,
-                MOIRFieldParent::Token(_) => Some(((token.clone(), symbols.clone()), conjunction.clone())),
+                MOIRFieldParent::Token(_) => Some((token.clone(), conjunction.clone())),
             }
         });
 
-    let ((lhs_tokens, lhs_token_fields), lhs_conjunctions): ((Vec<_>, Vec<_>), Vec<_>) = lhs_new.into_iter().unzip();
-    *lhs = Matcher::new(lhs_conjunctions, TokenList { list: lhs_tokens, ..lhs.token_list }, lhs_token_fields, HashSet::new());
+    let (lhs_tokens, lhs_conjunctions): (Vec<_>, Vec<_>) = lhs_new.into_iter().unzip();
+    *lhs = Matcher::new(lhs_conjunctions, TokenList { list: lhs_tokens, ..lhs.token_list }, HashSet::new());
 
     if let Some(rhs) = rhs_maybe {
         let rhs_new = rhs
             .token_list.list
             .iter()
-            .zip(rhs.token_fields.iter())
             .zip(rhs.conjunctions.iter())
-            .filter_map(|((token, symbols), conjunction)| {
+            .filter_map(|(token, conjunction)| {
                 match token {
                     MOIRFieldParent::Context(_) => None,
-                    MOIRFieldParent::Token(_) => Some(((token.clone(), symbols.clone()), conjunction.clone())),
+                    MOIRFieldParent::Token(_) => Some((token.clone(), conjunction.clone())),
                 }
             });
 
-        let ((rhs_tokens, rhs_token_fields), rhs_conjunctions): ((Vec<_>, Vec<_>), Vec<_>) =
-            rhs_new.into_iter().unzip();
-        *rhs = Matcher::new(rhs_conjunctions, TokenList { list: rhs_tokens, ..rhs.token_list }, rhs_token_fields, HashSet::new());
+        let (rhs_tokens, rhs_conjunctions): (Vec<_>, Vec<_>) = rhs_new.into_iter().unzip();
+        *rhs = Matcher::new(rhs_conjunctions, TokenList { list: rhs_tokens, ..rhs.token_list }, HashSet::new());
     }
 
     context_matcher
@@ -678,7 +684,7 @@ fn merge_conjunctions(
 
     for (i, conjunctions_rhs) in rhs.iter().enumerate() {
         if let Some(conjunctions) = conjunctions_combined.get_mut(i) {
-            conjunctions.extend(conjunctions_rhs);
+            conjunctions.extend(conjunctions_rhs.clone());
         } else {
             conjunctions_combined.push(conjunctions_rhs.clone());
         }

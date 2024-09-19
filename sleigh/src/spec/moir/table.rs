@@ -19,7 +19,7 @@ pub struct MOIRTable {
     // constraints to finally lift the instruction.
     bit_matching_table: Vec<Vec<()>>,
     constructors: Vec<()>,
-    pub(crate) matchers: BTreeSet<Matcher>,
+    pub(crate) matchers: TypedIndexTable<MatcherId, Matcher>,
     /// TODO: improve documentation
     /// 7.7.2.3. Exports
     ///
