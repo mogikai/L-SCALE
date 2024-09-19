@@ -871,21 +871,55 @@ macro_rules! impl_get_symbol_struct {
 }
 
 macro_rules! impl_get_symbol_id {
-    ($func_name:ident, $symbol:ty, $variant:pat => $id:expr) => {
+    ($func_name:ident, $symbol_id:ty, $variant:pat => $id:expr) => {
         impl ProcessorSpecificationBuilder {
-            pub(crate) fn $func_name(
+            /// Get the symbol id referred to by `ident`. If `ident` refers to an identifier that has the wrong type,
+            /// or if the identifier is undefined, an error report is generated.
+            pub fn $func_name(
                 &self,
                 ident: &Spanned<StringId>,
-            ) -> SleighCompilerResult<$symbol> {
-                let symbol = self.get_symbol(ident)?;
-                match symbol {
-                    $variant => Ok(*$id),
-                    _ => Err(ProcessorSpecificationError::MissingDefaultSpace)?, // TODO proper report for wrong symbol type
-                }
+            ) -> SleighCompilerResult<$symbol_id> {
+                let symbol_reference = ident.clone().map(|id| self.resolve_string_id(id));
+                self.get_symbol_and_ident(ident)
+                    .ok_or_else(|| generate_undefined_ident_error(symbol_reference.clone()))
+                    .and_then(|(symbol, id)| match symbol {
+                        $variant => Ok(*$id),
+                        _ => {
+                            let defined_symbol = self
+                                .symbol_strings
+                                .get(&id)
+                                .expect("If the symbol exists, there must be a string associated with it.")
+                                .span()
+                                .clone();
+                            Err(generate_invalid_symbol_type_error(
+                                defined_symbol,
+                                symbol_reference,
+                                stringify!($symbol_id),
+                                *symbol,
+                            ))?
+                        }
+                    })
             }
         }
     };
 }
+
+// macro_rules! impl_get_symbol_id {
+//     ($func_name:ident, $symbol:ty, $variant:pat => $id:expr) => {
+//         impl ProcessorSpecificationBuilder {
+//             pub(crate) fn $func_name(
+//                 &self,
+//                 ident: &Spanned<StringId>,
+//             ) -> SleighCompilerResult<$symbol> {
+//                 let symbol = self.get_symbol(ident)?;
+//                 match symbol {
+//                     $variant => Ok(*$id),
+//                     _ => Err(ProcessorSpecificationError::MissingDefaultSpace)?, // TODO proper report for wrong symbol type
+//                 }
+//             }
+//         }
+//     };
+// }
 
 impl_get_symbol_struct! { macro_by_ident, macro_by_ident_mut, macros, MOIRMacro, MOIRSymbolId::Macro(id) => id}
 impl_get_symbol_struct! { space_by_ident, space_by_ident_mut, spaces, MOIRSpace, MOIRSymbolId::Space(id) => id}
@@ -898,3 +932,4 @@ impl_get_symbol_struct! { bitrange_register_by_ident, bitrange_register_by_ident
 
 impl_get_symbol_id! { field_id_by_ident, FieldId, MOIRSymbolId::Field(id) => id}
 impl_get_symbol_id! { custom_op_id_by_ident, CustomOpId, MOIRSymbolId::CustomOp(id) => id}
+impl_get_symbol_id! { table_id_by_ident, TableId, MOIRSymbolId::Table(id) => id}

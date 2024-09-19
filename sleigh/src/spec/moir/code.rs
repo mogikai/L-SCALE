@@ -26,6 +26,7 @@ impl Display for MOIRInstruction {
             writeln!(f, "<{label}>")?;
         }
         match &self.operation {
+            MOIROperation::Build(table) => write!(f, "build {table}"),
             MOIROperation::PopCount
             | MOIROperation::LZCount
             | MOIROperation::ZeroExtend
@@ -161,6 +162,9 @@ impl Display for MOIRInstruction {
 macro_rules! moir_instruction {
     (nop) => {
         MOIRInstruction::nop()
+    };
+    (build $table:tt) => {
+        MOIRInstruction::build($table)
     };
     ($target:ident = *[$space:ident]$addr:ident) => {
         MOIRInstruction::load($target, $addr, $space)
@@ -300,6 +304,7 @@ use crate::spec::moir::scope::{
     LabelId,
     MOIRLocalId,
 };
+use crate::spec::moir::table::TableId;
 pub(crate) use moir_instruction;
 
 impl MOIRInstruction {
@@ -309,6 +314,16 @@ impl MOIRInstruction {
             input_a: None,
             input_b: None,
             operation: MOIROperation::Nop,
+            label: None,
+        }
+    }
+
+    pub fn build(table: TableId) -> Self {
+        MOIRInstruction {
+            output: None,
+            input_a: None,
+            input_b: None,
+            operation: MOIROperation::Build(table),
             label: None,
         }
     }
@@ -501,6 +516,8 @@ impl MOIRInstruction {
 
 #[derive(Debug, Clone)]
 pub enum MOIROperation {
+    /// Special build operation
+    Build(TableId),
     Copy,
     CustomOp {
         op_id: CustomOpId,
@@ -628,6 +645,7 @@ impl Display for MOIROperation {
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
+            MOIROperation::Build(table) => write!(f, "build {table}"),
             MOIROperation::Copy => write!(f, ""),
             MOIROperation::CustomOp { .. } => write!(f, "custom"),
             MOIROperation::AddressOf => write!(f, "&"),
@@ -708,7 +726,8 @@ impl MOIROperation {
             | IntGreater | IntLessEqual | IntGreaterEqual | FloatLess | FloatGreater | FloatLessEqual
             | FloatGreaterEqual | FloatEquals | FloatNotEquals | IntEquals | IntNotEquals => MOIROpCategory::Comparison,
             IntLeft | IntRight | IntSRight => MOIROpCategory::Shift,
-            CustomOp { .. }
+            Build(_)
+            | CustomOp { .. }
             | PopCount
             | LZCount
             | ZeroExtend

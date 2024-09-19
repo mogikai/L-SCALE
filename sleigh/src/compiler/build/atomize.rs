@@ -33,6 +33,7 @@ use crate::spec::moir::varnode::MOIRLocal;
 use tracing::debug;
 
 use crate::compiler::build::trace_build;
+use crate::compiler::error::SleighCompilerError;
 use std::fmt::Write;
 
 impl SleighCompiler {
@@ -45,7 +46,6 @@ impl SleighCompiler {
         // TODO: Create table of locals? Lookup global identifiers?
         let (pcode, _) = pcode.into_tuple();
         let export = self.atomize_statements(scope, instructions, pcode.statements)?;
-        debug_instructions(scope, instructions);
         self.infer_sizes(scope, instructions)?;
         Ok(export.map(|export| match export.into_value() {
             MOIRLocal::Local(local) => MOIRExport::Slice(*scope.resolve_local(local).expect("TODO")),
@@ -83,7 +83,7 @@ impl SleighCompiler {
                     // TODO: Maybe it makes sense to update the pcodeop definition here to "no output"?
                     self.atomize_invocation(scope, instructions, None, invocation)?;
                 }
-                SASTPCodeStatement::Build(_) => instructions.push(moir_instruction!(nop)),
+                SASTPCodeStatement::Build(table) => self.atomize_build(scope, instructions, table.transmute())?,
                 SASTPCodeStatement::Export(expression) => {
                     let span = expression.span().clone();
                     export = Some(Spanned::new(self.atomize_export(scope, instructions, expression)?, span));
@@ -130,6 +130,17 @@ impl SleighCompiler {
         // TODO: Handling dynamic references (e.g. export *:4 tmp) will require keeping track of the
         //       dynamic references somewhere. We need to decide how to do this.
         self.atomize_expression(scope, instructions, None, expression)
+    }
+
+    fn atomize_build(
+        &mut self,
+        scope: &mut MOIRScope,
+        instructions: &mut Vec<MOIRInstruction>,
+        table: Spanned<StringId>,
+    ) -> SleighCompilerResult {
+        let table = self.spec_builder.table_id_by_ident(&table)?;
+        instructions.push(moir_instruction!(build table));
+        Ok(())
     }
 
     fn atomize_declaration(
@@ -212,18 +223,4 @@ impl SleighCompiler {
         };
         Ok(())
     }
-}
-
-fn debug_instructions(
-    scope: &MOIRScope,
-    instructions: &[MOIRInstruction],
-) {
-    let mut instructions_str = String::new();
-    writeln!(&mut instructions_str, "The constructor pcode was atomized to the following instructions:").expect("");
-    writeln!(&mut instructions_str, "Scope:\n{scope}").expect("");
-    writeln!(&mut instructions_str, "Instructions:").expect("");
-    for instruction in instructions {
-        writeln!(&mut instructions_str, "{}", instruction).expect("");
-    }
-    debug!("{instructions_str}");
 }

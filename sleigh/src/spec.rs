@@ -53,7 +53,7 @@ pub enum JIRSymbolId {
 }
 
 #[derive(Debug, Default)]
-struct SymbolTables {
+struct JIRSymbolTables {
     // macros: TypedIndexTable<MOIRMacroId, MOIRMacro>,
     spaces: TypedIndexTable<SpaceId, JIRSpace>,
     // tables: TypedIndexTable<MOIRTableId, MOIRTable>,
@@ -78,7 +78,7 @@ pub struct ProcessorSpecification {
     symbol_strings: HashMap<Ident, StringId>,
     /// Contains a table for each symbol type. A [Ident] maps to a [JIRSymbolId], which in turn maps to the
     /// corresponding [MOIRSymbolTable] with a table-specific id type.
-    symbol_tables: SymbolTables,
+    symbol_tables: JIRSymbolTables,
 
     /// Maps a string identifier to the corresponding internal [Ident].
     /// This is useful for the compiler, when an identifier string references another symbol.

@@ -17,7 +17,10 @@ use crate::spec::moir::varnode::{
 use crate::spec::reporting::generate_identifier_exists_report;
 use crate::spec::typed_index_table::TypedIndexTable;
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{
+    HashMap,
+    HashSet,
+};
 use std::fmt::{
     Display,
     Formatter,
@@ -45,6 +48,11 @@ pub struct MOIRScope {
     /// Otherwise, the semantic section first needs to be parsed in order to find the right
     /// size constraint. The resulting size constraint for a field will then be
     field_sizes: HashMap<FieldId, MOIRMaybeSize>,
+
+    /// A helper set to keep track of which local variable is actually used.
+    /// Unused variables can be removed from this set.
+    /// The set is used to determine how many actual temporary varnodes need to be allocated later on.
+    used_locals: HashSet<MOIRLocalId>,
 }
 
 new_typed_index_table_id! { pub struct MOIRLocalId; "L"; }
@@ -183,6 +191,21 @@ impl MOIRScope {
         self.locals = locals;
         self.labels_definitions = label_definitions;
         result
+    }
+
+    pub fn mark_local_as_used(
+        &mut self,
+        local: MOIRLocal,
+    ) -> SleighCompilerResult {
+        match local {
+            MOIRLocal::Local(id) => {
+                self.used_locals.insert(id);
+            }
+            MOIRLocal::Const(_) => {
+                // For constants, we don't need to track anything
+            }
+        }
+        Ok(())
     }
 
     /// Declares a name for an existing local. If the name already exists, an error is returned.
@@ -490,7 +513,9 @@ impl Display for MOIRScope {
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
         for (id, slice) in self.slices.iter() {
-            writeln!(f, "{: <4} {}", format!("{}:", id), slice)?;
+            if self.used_locals.contains(&id) {
+                writeln!(f, "{: <4} {}", format!("{}:", id), slice)?;
+            }
         }
         Ok(())
     }

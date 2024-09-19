@@ -187,6 +187,10 @@ fn infer_special(
 ) -> SleighCompilerResult<()> {
     let (output_size, input_a_size, input_b_size) = get_sizes(scope, instruction);
     match instruction.operation {
+        MOIROperation::Build(_) => {
+            // Build operations have no size constraints since they do not contain any inputs or outputs,
+            // since they are a special operation used only during constructing the final instruction sequence.
+        }
         MOIROperation::Load(_) => {
             // For load we only need to make sure the address is the correct size.
             // TODO: Where do we get the correct address size from?

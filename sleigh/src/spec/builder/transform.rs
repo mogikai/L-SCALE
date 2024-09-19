@@ -23,7 +23,7 @@ use crate::spec::typed_index_table::TypedIndexTable;
 use crate::spec::{
     Ident,
     JIRSymbolId,
-    SymbolTables,
+    JIRSymbolTables,
 };
 use std::collections::HashMap;
 
@@ -37,7 +37,7 @@ pub(super) struct MOIRToJIRTransformer {
 pub struct JIRData {
     pub symbol_ids: TypedIndexTable<Ident, JIRSymbolId>,
     pub symbol_strings: HashMap<Ident, StringId>,
-    pub symbol_tables: SymbolTables,
+    pub symbol_tables: JIRSymbolTables,
     pub string_to_ident_mapping: HashMap<StringId, Ident>,
 }
 
@@ -97,7 +97,7 @@ impl MOIRToJIRTransformer {
             .into_iter()
             .map(|(k, v)| (k, v.into_value()))
             .collect();
-        self.jir.symbol_tables = SymbolTables {
+        self.jir.symbol_tables = JIRSymbolTables {
             spaces: transform_spaces(self.moir.symbol_tables.spaces)?,
             varnodes: transform_varnodes(self.moir.symbol_tables.varnodes)?,
         };

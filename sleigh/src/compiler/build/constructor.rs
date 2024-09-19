@@ -24,6 +24,10 @@ use crate::spec::builder::{
     MOIRSymbolId,
     StringId,
 };
+use crate::spec::moir::code::{
+    MOIRInstruction,
+    MOIROperation,
+};
 use crate::spec::moir::constructor::MOIRConstructor;
 use crate::spec::moir::field::FieldId;
 use crate::spec::moir::scope::{
@@ -32,6 +36,7 @@ use crate::spec::moir::scope::{
 };
 use crate::spec::moir::table::MOIRExport;
 use crate::spec::moir::varnode::{
+    MOIRLocal,
     MOIRReference,
     MOIRSlice,
 };
@@ -79,9 +84,35 @@ impl SleighCompiler {
             &mut moir_constructor.instructions,
             constructor.semantic_section.into_value().0,
         )?;
+        self.pc_mark_used_locals(&mut moir_constructor.local_scope, &moir_constructor.instructions)?;
+        debug_instructions(&moir_constructor.local_scope, &moir_constructor.instructions);
         self.pc_handle_export(constructor.table.transpose(), export)?;
         let _id = self.spec_builder.define_constructor(moir_constructor)?;
         // TODO: Insert the constructor id into the corresponding matcher and/or the table.
+        Ok(())
+    }
+
+    fn pc_mark_used_locals(
+        &mut self,
+        scope: &mut MOIRScope,
+        instructions: &[MOIRInstruction],
+    ) -> SleighCompilerResult {
+        for instruction in instructions {
+            if let Some(output) = instruction.output {
+                scope.mark_local_as_used(MOIRLocal::from(output))?;
+            }
+            if let Some(input_a) = instruction.input_a {
+                scope.mark_local_as_used(input_a)?;
+            }
+            if let Some(input_b) = instruction.input_b {
+                scope.mark_local_as_used(input_b)?;
+            }
+            if let MOIROperation::CustomOp { extra_args, .. } = &instruction.operation {
+                for arg in extra_args {
+                    scope.mark_local_as_used(*arg)?;
+                }
+            }
+        }
         Ok(())
     }
 
@@ -431,4 +462,19 @@ impl SleighCompiler {
             .reduce(|acc, expr| Box::new(MatcherExpression::Or(acc, expr)))
             .expect("There should be at least one possible value for which the matcher accepts.")
     }
+}
+
+fn debug_instructions(
+    scope: &MOIRScope,
+    instructions: &[MOIRInstruction],
+) {
+    use std::fmt::Write;
+    let mut instructions_str = String::new();
+    writeln!(&mut instructions_str, "The constructor pcode was atomized to the following instructions:").expect("");
+    writeln!(&mut instructions_str, "Scope:\n{scope}").expect("");
+    writeln!(&mut instructions_str, "Instructions:").expect("");
+    for instruction in instructions {
+        writeln!(&mut instructions_str, "{}", instruction).expect("");
+    }
+    debug!("{instructions_str}");
 }
