@@ -904,23 +904,6 @@ macro_rules! impl_get_symbol_id {
     };
 }
 
-// macro_rules! impl_get_symbol_id {
-//     ($func_name:ident, $symbol:ty, $variant:pat => $id:expr) => {
-//         impl ProcessorSpecificationBuilder {
-//             pub(crate) fn $func_name(
-//                 &self,
-//                 ident: &Spanned<StringId>,
-//             ) -> SleighCompilerResult<$symbol> {
-//                 let symbol = self.get_symbol(ident)?;
-//                 match symbol {
-//                     $variant => Ok(*$id),
-//                     _ => Err(ProcessorSpecificationError::MissingDefaultSpace)?, // TODO proper report for wrong symbol type
-//                 }
-//             }
-//         }
-//     };
-// }
-
 impl_get_symbol_struct! { macro_by_ident, macro_by_ident_mut, macros, MOIRMacro, MOIRSymbolId::Macro(id) => id}
 impl_get_symbol_struct! { space_by_ident, space_by_ident_mut, spaces, MOIRSpace, MOIRSymbolId::Space(id) => id}
 impl_get_symbol_struct! { table_by_ident, table_by_ident_mut, tables, MOIRTable, MOIRSymbolId::Table(id) => id}
