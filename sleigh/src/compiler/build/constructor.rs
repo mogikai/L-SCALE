@@ -64,7 +64,10 @@ impl SleighCompiler {
         trace_build!("Defining constructor in table {:?}", table_name);
 
         // TODO: Need to parse the disassembly section here as well and add that information to the matcher
-        let matchers = self.create_matchers(constructor.bit_pattern_section.into_value().constraint)?;
+        let mut matchers = self.create_matchers(constructor.bit_pattern_section.into_value().constraint)?;
+
+        // TODO remove trailing Undetermined (or not, idk yet)
+
         let mut references = HashSet::new();
         matchers.iter().for_each(|matcher| {
             references.extend(matcher.references.clone());
@@ -73,14 +76,12 @@ impl SleighCompiler {
         // println!("-------------------------------------- created {} matchers for input {:?}", matchers.len(), span);
         // eprintln!("matchers = {:#?}", matchers);
 
-        self.register_matchers(constructor.table.clone().transpose(), matchers)?;
-
-        let scope = self.pc_create_scope(constructor.display_section.into_value().identifiers, &references)?;
+        let scope = self.pc_create_scope(constructor.display_section.value().identifiers.clone(), &references)?;
 
         let mut moir_constructor = MOIRConstructor {
             local_scope: scope,
             instructions: vec![],
-            display: display_section.display_str.into_value(),
+            display_string: constructor.display_section.display_str.value().clone(),
         };
         trace_build!("{}", moir_constructor.debug_scope());
 
@@ -92,36 +93,34 @@ impl SleighCompiler {
             &mut moir_constructor.instructions,
             constructor.semantic_section.into_value().0,
         )?;
-        self.pc_mark_used_locals(&mut moir_constructor.local_scope, &moir_constructor.instructions)?;
-        trace_build!("{}", moir_constructor.jcode_debug_string());
-        self.pc_handle_export(constructor.table.transpose(), export)?;
-        let _id = self.spec_builder.define_constructor(moir_constructor)?;
-        // TODO: Insert the constructor id into the corresponding matcher and/or the table.
+        self.pc_handle_export(constructor.table.clone().transpose(), export)?;
+        let constructor_id = self.spec_builder.define_constructor(moir_constructor)?;
+
+        // insert the constructor id into the corresponding matchers
+        matchers.iter_mut().for_each(|matcher| {
+            matcher.constructor = Some(constructor_id);
+        });
+
+        self.register_matchers(constructor.table.clone().transpose(), matchers)?;
         Ok(())
     }
 
     fn register_matchers(
         &mut self,
         table: Option<Spanned<StringId>>,
-        matchers: BTreeSet<Matcher>,
+        matchers: Vec<Matcher>,
     ) -> SleighCompilerResult {
         let table = match table {
             None => self.spec_builder.root_table_mut()?,
             Some(id) => self.spec_builder.table_mut(id)?,
         };
 
-        // append
+        // only add new matchers if there are no duplicates
         matchers.into_iter().for_each(|matcher| {
-            table.matchers.insert(matcher);
+            if !table.matchers.values().contains(&matcher) {
+                table.matchers.insert(matcher);
+            }
         });
-
-        // sort
-        let mut map = std::mem::take(&mut table.matchers);
-        let mut table_matchers = map.into_iter().collect_vec();
-        table_matchers.sort_by(|(_, m1), (_, m2)| {
-            m1.cmp(m2)
-        });
-        table.matchers = TypedIndexTable::from_iter(table_matchers);
 
         Ok(())
     }

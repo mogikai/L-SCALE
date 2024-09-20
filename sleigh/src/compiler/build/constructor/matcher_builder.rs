@@ -24,6 +24,7 @@ use crate::compiler::{
     SleighCompilerResult,
 };
 use crate::spec::builder::MOIRSymbolId;
+use crate::spec::moir::constructor::ConstructorId;
 use crate::spec::moir::field::{
     FieldId,
     MOIRField,
@@ -44,15 +45,8 @@ impl SleighCompiler {
     pub(super) fn create_matchers(
         &self,
         constraint: Spanned<SASTBitPatternConstraint>,
-    ) -> SleighCompilerResult<BTreeSet<Matcher>> {
-        let new_matchers = self.create_matchers_recursive(constraint)?;
-
-        // TODO remove trailing Undetermined (or not, idk yet)
-
-        let mut matchers = BTreeSet::with_capacity(new_matchers.len());
-        new_matchers.into_iter().for_each(|matcher| {
-            matchers.insert(matcher);
-        });
+    ) -> SleighCompilerResult<Vec<Matcher>> {
+        let matchers = self.create_matchers_recursive(constraint)?;
 
         Ok(matchers)
     }
