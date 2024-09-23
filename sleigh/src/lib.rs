@@ -4,6 +4,8 @@
 #![deny(clippy::unwrap_used)]
 #![allow(dead_code)]
 #![allow(unused_braces)]
+extern crate core;
+
 pub mod compiler;
 pub mod preprocessor;
 pub mod spec;

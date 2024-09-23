@@ -1,6 +1,6 @@
 use crate::spec::jir::common::JIRSize;
 use crate::spec::moir::address_space::SpaceId;
-use crate::spec::moir::varnode::VarNodeId;
+pub use crate::spec::moir::varnode::VarNodeId;
 
 #[derive(Debug)]
 pub struct JIRVarNode {

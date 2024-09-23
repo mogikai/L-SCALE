@@ -45,6 +45,15 @@ macro_rules! addr_impl {
                 // TODO: Make backing type of the address generic
                 std::mem::size_of::<u64>() * 8
             }
+
+            pub fn checked_sub(
+                &self,
+                other: &Self,
+            ) -> Option<usize> {
+                self.0
+                    .checked_sub(other.0)
+                    .map(|v| usize::try_from(v).expect("usize must be equal length to u64"))
+            }
         }
 
         impl<T> From<u16> for $name<T> {

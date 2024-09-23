@@ -99,6 +99,8 @@ impl MOIRToJIRTransformer {
             .collect();
         self.jir.symbol_tables = JIRSymbolTables {
             spaces: transform_spaces(self.moir.symbol_tables.spaces)?,
+            tables: self.moir.symbol_tables.tables,
+            constructors: self.moir.symbol_tables.constructors,
             varnodes: transform_varnodes(self.moir.symbol_tables.varnodes)?,
         };
         self.jir.string_to_ident_mapping = self.moir.string_to_ident_mapping;

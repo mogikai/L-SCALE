@@ -7,11 +7,18 @@ use crate::spec::jir::space::JIRSpace;
 use crate::spec::jir::values::JIRVarNode;
 use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::bitrange_register::BitrangeRegisterId;
+use crate::spec::moir::constructor::{
+    ConstructorId,
+    MOIRConstructor,
+};
 use crate::spec::moir::custom_op::CustomOpId;
 use crate::spec::moir::endianness::MOIREndianness;
 use crate::spec::moir::field::FieldId;
 use crate::spec::moir::r#macro::MacroId;
-use crate::spec::moir::table::TableId;
+use crate::spec::moir::table::{
+    MOIRTable,
+    TableId,
+};
 use crate::spec::moir::token::TokenId;
 use crate::spec::moir::varnode::VarNodeId;
 use crate::spec::typed_index_table::TypedIndexTable;
@@ -56,7 +63,8 @@ pub enum JIRSymbolId {
 struct JIRSymbolTables {
     // macros: TypedIndexTable<MOIRMacroId, MOIRMacro>,
     spaces: TypedIndexTable<SpaceId, JIRSpace>,
-    // tables: TypedIndexTable<MOIRTableId, MOIRTable>,
+    tables: TypedIndexTable<TableId, MOIRTable>,
+    constructors: TypedIndexTable<ConstructorId, MOIRConstructor>,
     varnodes: TypedIndexTable<VarNodeId, JIRVarNode>,
     // tokens: TypedIndexTable<MOIRTokenId, MOIRToken>,
     // fields: TypedIndexTable<MOIRFieldId, MOIRField>,
@@ -86,7 +94,7 @@ pub struct ProcessorSpecification {
     /// use the internal identifiers, instead of the strings.
     string_to_ident_mapping: HashMap<StringId, Ident>,
 
-    root_table: StringId,
+    root_table: TableId,
 
     default_space: Ident,
 

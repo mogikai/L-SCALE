@@ -1,22 +1,27 @@
-use crate::spec::jir::code::JIRInstruction;
+use crate::spec::jir::instruction::TargetInstruction;
+use crate::spec::jir::source::TargetInstructionSource;
+use mogi_utilities::addresses::EVAddr;
 use thiserror::Error;
 
 pub type JIRLifterResult<T = ()> = Result<T, JIRLifterError>;
 
 pub trait JIRLifter {
-    /// Lift a single instruction if possible.
-    /// Returns the number of bytes that were consumed, and the lifted instructions
+    /// Lift a single instruction if possible, by fetching the bytes for the instruction from
+    /// `source`. Returns the address of the next instruction, and the lifted instruction
     /// One target instruction corresponds to multiple lifted instructions most of the time.
+    /// See [TargetInstruction] for more detail.
     fn lift(
         &self,
-        data: &[u8],
-    ) -> JIRLifterResult<(usize, Vec<JIRInstruction>)>;
+        addr: EVAddr,
+        source: impl TargetInstructionSource,
+    ) -> JIRLifterResult<(EVAddr, TargetInstruction)>;
 
-    /// Does the same as [lift], but tries to lift as many instructions as possible
-    fn lift_many(
+    /// Does the same as [lift](Self::lift), but tries to lift an entire TargetBasicBlock
+    fn lift_block(
         &self,
-        data: &[u8],
-    ) -> JIRLifterResult<(usize, ())>;
+        addr: EVAddr,
+        source: impl TargetInstructionSource,
+    ) -> JIRLifterResult<(EVAddr, Vec<TargetInstruction>)>;
 
     fn disasm(
         &self,

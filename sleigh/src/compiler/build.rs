@@ -117,7 +117,6 @@ impl SleighCompiler {
         &mut self,
         define: Spanned<SASTDefine>,
     ) -> SleighCompilerResult {
-        trace!("Processing define statement");
         match define.into_value() {
             SASTDefine::Endianness(endianness) => self.process_define_endianness(endianness),
             SASTDefine::Alignment(alignment) => self.process_define_alignment(alignment),

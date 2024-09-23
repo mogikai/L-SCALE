@@ -59,17 +59,18 @@ impl SleighCompiler {
             .flatten()
             .unwrap_or("instruction");
         trace_build!("Defining constructor in table {:?}", table_name);
-        debug!("Instruction: {}", constructor.display_section.display_str.value());
 
         // TODO: Need to parse the disassembly section here as well and add that information to the matcher
         let matcher = self.create_matcher(constructor.bit_pattern_section.into_value().constraint)?;
 
+        let display_section = constructor.display_section.into_value();
         let scope =
-            self.pc_create_scope(constructor.display_section.into_value().identifiers, &matcher.symbols_used)?;
+            self.pc_create_scope(display_section.identifiers, &matcher.symbols_used)?;
 
         let mut moir_constructor = MOIRConstructor {
             local_scope: scope,
             instructions: vec![],
+            display: display_section.display_str.into_value(),
         };
 
         // TODO: we need to walk the constraint and find out the tokens that are used.
@@ -85,7 +86,6 @@ impl SleighCompiler {
             constructor.semantic_section.into_value().0,
         )?;
         self.pc_mark_used_locals(&mut moir_constructor.local_scope, &moir_constructor.instructions)?;
-        debug_instructions(&moir_constructor.local_scope, &moir_constructor.instructions);
         self.pc_handle_export(constructor.table.transpose(), export)?;
         let _id = self.spec_builder.define_constructor(moir_constructor)?;
         // TODO: Insert the constructor id into the corresponding matcher and/or the table.
@@ -462,19 +462,4 @@ impl SleighCompiler {
             .reduce(|acc, expr| Box::new(MatcherExpression::Or(acc, expr)))
             .expect("There should be at least one possible value for which the matcher accepts.")
     }
-}
-
-fn debug_instructions(
-    scope: &MOIRScope,
-    instructions: &[MOIRInstruction],
-) {
-    use std::fmt::Write;
-    let mut instructions_str = String::new();
-    writeln!(&mut instructions_str, "The constructor pcode was atomized to the following instructions:").expect("");
-    writeln!(&mut instructions_str, "Scope:\n{scope}").expect("");
-    writeln!(&mut instructions_str, "Instructions:").expect("");
-    for instruction in instructions {
-        writeln!(&mut instructions_str, "{}", instruction).expect("");
-    }
-    debug!("{instructions_str}");
 }
