@@ -22,7 +22,7 @@ impl JIRLifter for ProcessorSpecification {
             .constructors
             .get(ConstructorId::from(1143))
             .unwrap();
-        constructor.debug_instructions();
+        debug!("{}", constructor.jcode_debug_string());
         // TODO: Get root table and start matching.
         // TODO: It probably makes sense to do this in a
         // TODO: separate function in order to recursively call the matching?

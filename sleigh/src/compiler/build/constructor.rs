@@ -72,6 +72,7 @@ impl SleighCompiler {
             instructions: vec![],
             display: display_section.display_str.into_value(),
         };
+        trace_build!("{}", moir_constructor.debug_scope());
 
         // TODO: we need to walk the constraint and find out the tokens that are used.
         //       we also need to make sure that there is only one token per section
@@ -86,6 +87,7 @@ impl SleighCompiler {
             constructor.semantic_section.into_value().0,
         )?;
         self.pc_mark_used_locals(&mut moir_constructor.local_scope, &moir_constructor.instructions)?;
+        trace_build!("{}", moir_constructor.jcode_debug_string());
         self.pc_handle_export(constructor.table.transpose(), export)?;
         let _id = self.spec_builder.define_constructor(moir_constructor)?;
         // TODO: Insert the constructor id into the corresponding matcher and/or the table.

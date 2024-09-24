@@ -22,12 +22,13 @@ use std::collections::{
     HashSet,
 };
 use std::fmt::{
+    Debug,
     Display,
     Formatter,
 };
 
 /// A scope for locals and labels used in constructors and macros
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct MOIRScope {
     /// A hashmap to keep track of label ids and the location of their first definition in the span.
     labels_definitions: HashMap<StringId, Spanned<LabelId>>,
@@ -516,6 +517,18 @@ impl Display for MOIRScope {
             if self.used_locals.contains(&id) {
                 writeln!(f, "{: <4} {}", format!("{}:", id), slice)?;
             }
+        }
+        Ok(())
+    }
+}
+
+impl Debug for MOIRScope {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        for (id, slice) in self.slices.iter() {
+            writeln!(f, "{: <4} {}", format!("{}:", id), slice)?;
         }
         Ok(())
     }

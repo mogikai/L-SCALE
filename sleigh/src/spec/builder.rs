@@ -17,6 +17,7 @@ use crate::compiler::build::matcher::{
     Matcher,
     MatcherId,
 };
+use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::report::{
@@ -46,6 +47,7 @@ use crate::spec::moir::endianness::MOIREndianness;
 use crate::spec::moir::field::{
     FieldId,
     MOIRField,
+    MOIRFieldParent,
 };
 use crate::spec::moir::r#macro::MOIRMacro;
 use crate::spec::moir::table::MOIRTable;
@@ -73,18 +75,18 @@ use crate::spec::{
     TableId,
 };
 use slotmap::SlotMap;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::fmt::{
     Display,
     Formatter,
 };
+use string_interner::StringInterner;
 use string_interner::backend::{
     Backend,
     StringBackend,
 };
 use string_interner::symbol::Symbol;
-use string_interner::StringInterner;
 use strum_macros::Display;
 use tracing::debug;
 
@@ -104,7 +106,7 @@ impl Display for StringId {
     }
 }
 
-#[derive(Debug, Clone, Copy, Display, PartialEq)]
+#[derive(Debug, Clone, Copy, Display, PartialEq, Eq, Hash)]
 pub enum MOIRSymbolId {
     /// The identifier is not defined yet and can be used to define a symbol.
     Undefined,
@@ -485,6 +487,7 @@ impl ProcessorSpecificationBuilder {
         &self,
         ident: &Spanned<StringId>,
     ) -> SleighCompilerResult<&MOIRSymbolId> {
+        trace_build!("Resolving symbol {}", self.resolve_string_id(*ident.value()));
         self.string_to_ident_mapping
             .get(ident)
             .map(|ident| {
@@ -736,14 +739,11 @@ impl Default for ProcessorSpecificationBuilder {
             MOIRSpaceIsDefault::NotDefault,
         )
         .expect("This may not error at this point");
-        slf.define_varnode(
-            Spanned::new(epsilon, InputSpan::default()),
-            MOIRVarNode {
-                space: SpaceId::from(0),
-                offset: 0,
-                size: 0,
-            },
-        )
+        slf.define_varnode(Spanned::new(epsilon, InputSpan::default()), MOIRVarNode {
+            space: SpaceId::from(0),
+            offset: 0,
+            size: 0,
+        })
         .expect("This may not error at this point");
         slf
     }

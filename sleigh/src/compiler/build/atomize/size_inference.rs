@@ -53,6 +53,7 @@ fn backward_pass(
     for instruction in instructions.iter_mut().rev() {
         infer_size(scope, instruction)?;
         let (output_size, input_a_size, input_b_size) = get_sizes(scope, instruction);
+        trace_build!("Sizes are O:{output_size} A:{input_a_size} B:{input_b_size}");
         if instruction.output.is_some() && output_size.is_undetermined() {
             todo!("Generate error report: Unable to infer size of output")
         }
@@ -70,6 +71,7 @@ fn infer_size(
     scope: &mut MOIRScope,
     instruction: &mut MOIRInstruction,
 ) -> SleighCompilerResult<()> {
+    trace_build!("Inferring size of instruction {}", instruction);
     match instruction.operation.op_category() {
         MOIROpCategory::Comparison => {
             infer_comparison(scope, instruction)?;
