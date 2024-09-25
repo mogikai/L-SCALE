@@ -1,0 +1,89 @@
+use crate::spec::ProcessorSpecResult;
+use crate::spec::builder::StringId;
+use crate::spec::jir::values::{
+    JIRSlice,
+    JIRValue,
+};
+use crate::spec::moir::scope::{
+    MOIRLocalId,
+    MOIRScope,
+};
+use crate::spec::moir::varnode::{
+    MOIRLocal,
+    MOIRReference,
+};
+use std::collections::HashMap;
+
+#[derive(Debug, Default)]
+pub struct JIRLocalResolver {
+    values: HashMap<MOIRLocalId, JIRValue>,
+}
+
+impl JIRLocalResolver {
+    pub fn define_ident(
+        &mut self,
+        scope: &MOIRScope,
+        ident: StringId,
+        value: JIRValue,
+    ) -> ProcessorSpecResult {
+        let local = scope.local(ident).ok_or_else(|| todo!("Generate Error"))?;
+        if local.refers_to_varnode() {
+            todo!("Generate error: Overriding varnodes is disallowed during local resolving")
+        }
+        // TODO: Write code that checks the size constraints of the value against the defined slice
+        let local_id = scope
+            .local_id(ident)
+            .ok_or_else(|| todo!("Generate error"))?;
+        self.values.insert(local_id, value);
+        Ok(())
+    }
+
+    pub fn resolve_local(
+        &self,
+        scope: &MOIRScope,
+        local: MOIRLocal,
+    ) -> ProcessorSpecResult<JIRValue> {
+        match local {
+            MOIRLocal::Local(id) => self.resolve_local_id(scope, id),
+            MOIRLocal::Const(value) => {
+                todo!()
+            }
+        }
+    }
+
+    pub fn resolve_local_id(
+        &self,
+        scope: &MOIRScope,
+        local: MOIRLocalId,
+    ) -> ProcessorSpecResult<JIRValue> {
+        let value = scope
+            .resolve_local(local)
+            .map_err(|_| todo!("Map error correctly"))?;
+        let start = value.start;
+        let end = value
+            .end
+            .ok_or_else(|| todo!("Generate error for undefined size"))?;
+        Ok(match value.reference {
+            MOIRReference::VarNode(varnode_id) => {
+                if self.values.contains_key(&local) {
+                    todo!("Generate error for overridden varnode.")
+                }
+                JIRSlice::new(varnode_id, start, end).into()
+            }
+            MOIRReference::Temporary(_) => match self.values.get(&local) {
+                None => todo!("Generate error for unresolved temporary."),
+                Some(value) => *value,
+            },
+            MOIRReference::Field(_)
+            | MOIRReference::SubTable(_)
+            | MOIRReference::InstStart
+            | MOIRReference::InstNext
+            | MOIRReference::InstNext2 => {
+                let Some(value) = self.values.get(&local).copied() else {
+                    todo!("Generate error for a local that cannot be resolved because it was not defined")
+                };
+                value
+            }
+        })
+    }
+}

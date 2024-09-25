@@ -1,6 +1,7 @@
-use crate::compiler::error::SleighCompilerError;
 use crate::compiler::SleighCompilerResult;
+use crate::compiler::error::SleighCompilerError;
 use crate::new_typed_index_table_id;
+use crate::spec::moir::MOIR_ADDRESS_SIZE;
 use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::field::FieldId;
@@ -11,7 +12,6 @@ use crate::spec::moir::scope::{
     MOIRTemporaryId,
 };
 use crate::spec::moir::table::TableId;
-use crate::spec::moir::MOIR_ADDRESS_SIZE;
 use std::fmt::{
     Display,
     Formatter,
@@ -57,6 +57,13 @@ impl MOIRSlice {
             reference: MOIRReference::VarNode(varnode),
             start,
             end: MOIRMaybeSize::Determined(end),
+        }
+    }
+
+    pub fn refers_to_varnode(&self) -> bool {
+        match self.reference {
+            MOIRReference::VarNode(_) => true,
+            _ => false,
         }
     }
 

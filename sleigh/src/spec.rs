@@ -1,6 +1,6 @@
+use crate::compiler::CompilerContext;
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::InputSpan;
-use crate::compiler::CompilerContext;
 use crate::new_typed_index_table_id;
 use crate::spec::builder::StringId;
 use crate::spec::jir::space::JIRSpace;
@@ -25,8 +25,8 @@ use crate::spec::typed_index_table::TypedIndexTable;
 use ariadne::Report;
 use builder::MOIRSymbolId;
 use std::collections::HashMap;
-use string_interner::backend::StringBackend;
 use string_interner::StringInterner;
+use string_interner::backend::StringBackend;
 use strum_macros::Display;
 use thiserror::Error;
 
@@ -96,7 +96,8 @@ pub struct ProcessorSpecification {
 
     root_table: TableId,
 
-    default_space: Ident,
+    default_space: SpaceId,
+    temp_space: SpaceId,
 
     endianness: MOIREndianness,
     /// The alignment of instructions. This defaults to 1 if no alignment is specified.

@@ -5,14 +5,14 @@ use super::matcher::{
     MatcherExpression,
     MatcherReference,
 };
+use crate::compiler::ast::Spanned;
+use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::ast::constructor::bit_pattern_section::{
     SASTBinaryOp,
     SASTBitPatternConstraint,
     SASTConstraintOp,
     SASTConstraintPattern,
 };
-use crate::compiler::ast::constructor::SASTConstructor;
-use crate::compiler::ast::Spanned;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::{
@@ -20,6 +20,7 @@ use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
+use crate::spec::ProcessorSpecificationError;
 use crate::spec::builder::{
     MOIRSymbolId,
     StringId,
@@ -40,8 +41,6 @@ use crate::spec::moir::varnode::{
     MOIRReference,
     MOIRSlice,
 };
-use crate::spec::ProcessorSpecificationError;
-use tracing::debug;
 
 impl SleighCompiler {
     /// Process a constructor. This will create the table in which the constructor is anchored, if it does not exist.
@@ -64,8 +63,7 @@ impl SleighCompiler {
         let matcher = self.create_matcher(constructor.bit_pattern_section.into_value().constraint)?;
 
         let display_section = constructor.display_section.into_value();
-        let scope =
-            self.pc_create_scope(display_section.identifiers, &matcher.symbols_used)?;
+        let scope = self.pc_create_scope(display_section.identifiers, &matcher.symbols_used)?;
 
         let mut moir_constructor = MOIRConstructor {
             local_scope: scope,
@@ -87,7 +85,10 @@ impl SleighCompiler {
             constructor.semantic_section.into_value().0,
         )?;
         self.pc_mark_used_locals(&mut moir_constructor.local_scope, &moir_constructor.instructions)?;
-        trace_build!("{}", moir_constructor.jcode_debug_string());
+        moir_constructor
+            .local_scope
+            .realize_temporaries(&mut self.spec_builder)?;
+        trace_build!("{}", moir_constructor.mcode_debug_string());
         self.pc_handle_export(constructor.table.transpose(), export)?;
         let _id = self.spec_builder.define_constructor(moir_constructor)?;
         // TODO: Insert the constructor id into the corresponding matcher and/or the table.
@@ -122,7 +123,7 @@ impl SleighCompiler {
         &mut self,
         table: Option<Spanned<StringId>>,
         export: Option<MOIRExport>,
-    ) -> Result<(), SleighCompilerError> {
+    ) -> SleighCompilerResult {
         let table = match table {
             None => self.spec_builder.modify_root_table()?,
             Some(id) => self.spec_builder.modify_table(id)?,

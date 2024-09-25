@@ -14,6 +14,7 @@ pub trait JIRLifter {
         &self,
         addr: EVAddr,
         source: impl TargetInstructionSource,
+        cid: usize,
     ) -> JIRLifterResult<(EVAddr, TargetInstruction)>;
 
     /// Does the same as [lift](Self::lift), but tries to lift an entire TargetBasicBlock

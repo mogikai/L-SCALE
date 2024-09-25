@@ -1,8 +1,12 @@
 use crate::compiler::ast::Spanned;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::InputSpan;
-use crate::compiler::SleighCompilerResult;
+use crate::compiler::{
+    CompilerContext,
+    SleighCompilerResult,
+};
 use crate::new_typed_index_table_id;
+use crate::spec::ProcessorSpecificationError;
 use crate::spec::builder::{
     ProcessorSpecificationBuilder,
     StringId,
@@ -16,6 +20,7 @@ use crate::spec::moir::varnode::{
 };
 use crate::spec::reporting::generate_identifier_exists_report;
 use crate::spec::typed_index_table::TypedIndexTable;
+use itertools::Itertools;
 use std::collections::hash_map::Entry;
 use std::collections::{
     HashMap,
@@ -25,7 +30,11 @@ use std::fmt::{
     Debug,
     Display,
     Formatter,
+    Write,
 };
+use std::process::id;
+use string_interner::StringInterner;
+use string_interner::backend::StringBackend;
 
 /// A scope for locals and labels used in constructors and macros
 #[derive(Default)]
@@ -65,7 +74,7 @@ pub type InstructionId = usize;
 /// A temporary varnode. These have no backing varnode at this stage yet.
 /// They will be mapped to concrete varnodes once the constructor is called.
 #[derive(Debug)]
-struct MOIRTemporary {
+pub(crate) struct MOIRTemporary {
     pub size: MOIRMaybeSize,
 }
 
@@ -286,8 +295,14 @@ impl MOIRScope {
         &self,
         ident: StringId,
     ) -> Option<&MOIRSlice> {
-        let id = *self.locals.get(&ident)?;
-        self.slices.get(id)
+        self.slices.get(self.local_id(ident)?)
+    }
+
+    pub fn local_id(
+        &self,
+        ident: StringId,
+    ) -> Option<MOIRLocalId> {
+        self.locals.get(&ident).copied()
     }
 
     /// Returns the size of the provided local if it is determined.
@@ -505,6 +520,55 @@ impl MOIRScope {
             .expect("The local id was given out by us so it must exist");
         slice.set_size(size)?;
         Ok(local)
+    }
+
+    /// Replaces used temporary locals with actual varnodes in the temporary space.
+    pub fn realize_temporaries(
+        &mut self,
+        spec_builder: &mut ProcessorSpecificationBuilder,
+    ) -> SleighCompilerResult {
+        let mut offset = 0;
+        let used_locals = &self.used_locals;
+        for local in &self.used_locals {
+            let slice = self.slices.get_mut(*local).expect("This has to exist here");
+            if let MOIRReference::Temporary(temp) = slice.reference {
+                let temp = self.temporaries.get(temp).expect("This has to exist here");
+                let size = temp
+                    .size
+                    .ok_or_else(|| -> SleighCompilerError { todo!("Generate error for missing size") })?;
+                let varnode_id = spec_builder.define_temp_varnode(offset, size)?;
+                slice.reference = MOIRReference::VarNode(varnode_id);
+                offset += u64::from(size);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn detailed_scope_display(
+        &self,
+        interner: &StringInterner<StringBackend>,
+    ) -> String {
+        let mut already_printed = HashMap::new();
+        for (ident, local_id) in self.locals.iter() {
+            let slice = self.slices.get(*local_id).expect("This must exist");
+            if self.used_locals.contains(local_id) {
+                let str = interner.string(*ident).expect("This must exist");
+                let str = format!("{: <18} {}", format!("{: <14}({}):", str, local_id), slice);
+                already_printed.insert(*local_id, str);
+            }
+        }
+        let mut out = String::new();
+        for (id, slice) in self.slices.iter() {
+            if self.used_locals.contains(&id) {
+                if let Some(str) = already_printed.get(&id) {
+                    writeln!(out, "{str}").expect("This should not error");
+                } else {
+                    writeln!(out, "{: <4} {}", format!("{: <14}({}):", "<unnamed>", id), slice)
+                        .expect("This should not error");
+                }
+            }
+        }
+        out
     }
 }
 

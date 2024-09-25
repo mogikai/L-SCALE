@@ -35,6 +35,7 @@ use crate::spec::moir::address_space::{
     MOIRSpaceType,
 };
 use crate::spec::moir::code::MOIROperation;
+use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::{
     ConstructorId,
     MOIRConstructor,
@@ -47,7 +48,6 @@ use crate::spec::moir::endianness::MOIREndianness;
 use crate::spec::moir::field::{
     FieldId,
     MOIRField,
-    MOIRFieldParent,
 };
 use crate::spec::moir::r#macro::MOIRMacro;
 use crate::spec::moir::table::MOIRTable;
@@ -172,7 +172,8 @@ pub struct ProcessorSpecificationBuilder {
     root_table: Spanned<StringId>,
     /// The default space. It has to be set at one point, and only once.
     /// The Ident is spanned with the location of the first definition.
-    default_space: Option<Spanned<Ident>>,
+    default_space: Option<Spanned<SpaceId>>,
+    temp_space: SpaceId,
 
     /// The `_` character has special meaning as a placeholder in e.g. stringlists.
     /// The id of the character is stored here for quick comparison.
@@ -259,7 +260,7 @@ impl ProcessorSpecificationBuilder {
         let space_id = self.symbol_tables.spaces.insert(space);
         self.define_symbol(symbol_id, MOIRSymbolId::Space(space_id))?;
         if matches!(default, MOIRSpaceIsDefault::Default) {
-            self.default_space = Some(Spanned::new(symbol_id, span));
+            self.default_space = Some(Spanned::new(space_id, span));
         }
         Ok(symbol_id)
     }
@@ -273,6 +274,21 @@ impl ProcessorSpecificationBuilder {
         let varnode_id = self.symbol_tables.varnodes.insert(varnode);
         self.define_symbol(symbol_id, MOIRSymbolId::VarNode(varnode_id))?;
         Ok(symbol_id)
+    }
+
+    /// Defines a new temporary varnode. Each instruction has its own temporaries and
+    /// they are only visible in their local scope. This means that for each instruction
+    /// the temporaries will overlap.
+    pub fn define_temp_varnode(
+        &mut self,
+        offset: u64,
+        size: MOIRSize,
+    ) -> SleighCompilerResult<VarNodeId> {
+        Ok(self.symbol_tables.varnodes.insert(MOIRVarNode {
+            space: self.temp_space,
+            offset,
+            size,
+        }))
     }
 
     pub(crate) fn define_bitrange_register(
@@ -640,16 +656,6 @@ impl ProcessorSpecificationBuilder {
         self.symbol_tables.tables.get(id)
     }
 
-    /// Get the spanned default space identifier.
-    pub(crate) fn default_space_ident(&self) -> SleighCompilerResult<Spanned<StringId>> {
-        // TODO: Generate correct errors.
-        self.default_space
-            .as_ref()
-            .and_then(|id| self.symbol_strings.get(id.value()))
-            .ok_or(SleighCompilerError::SymbolUndeclared)
-            .cloned()
-    }
-
     pub(crate) fn is_placeholder_ident(
         &self,
         ident: StringId,
@@ -669,12 +675,20 @@ impl ProcessorSpecificationBuilder {
     pub fn resolve_space(
         &mut self,
         space: Option<Spanned<StringId>>,
-    ) -> Result<SpaceId, SleighCompilerError> {
+    ) -> SleighCompilerResult<SpaceId> {
         let space_id = space
-            .ok_or(|| SleighCompilerError::SymbolUndeclared)
-            .or_else(|_| self.default_space_ident())?;
-        let space = self.space_id_by_ident(space_id)?;
-        Ok(space)
+            .map(|id| self.space_id_by_ident(id))
+            .transpose()?
+            .or_else(|| {
+                if let Some(default) = &self.default_space {
+                    Some(*default.value())
+                } else {
+                    None
+                }
+            })
+            .ok_or_else(|| -> SleighCompilerError { todo!("Generate error for missing default") })?;
+
+        Ok(space_id)
     }
 
     pub fn builtin_op_by_ident(
@@ -692,12 +706,18 @@ impl Default for ProcessorSpecificationBuilder {
         let epsilon = interner.intern("epsilon");
         let const_space = interner.intern("const");
         let root_table = Spanned::new(interner.intern("instruction"), InputSpan::default());
+        let mut symbol_tables = MOIRSymbolTables::default();
+        let temp_space = symbol_tables.spaces.insert(MOIRSpace {
+            r#type: MOIRSpaceType::Register,
+            address_size: 8,
+            wordsize: 1,
+        });
         let mut slf = Self {
             interner,
             builtin_ops: Default::default(),
             symbol_ids: Default::default(),
             symbol_strings: Default::default(),
-            symbol_tables: Default::default(),
+            symbol_tables,
             endianness: None,
             alignment: None,
             context: Default::default(),
@@ -705,6 +725,7 @@ impl Default for ProcessorSpecificationBuilder {
             string_to_ident_mapping: Default::default(),
             root_table,
             default_space: None,
+            temp_space,
             placeholder_ident,
         };
         use MOIROperation::*;
@@ -754,7 +775,7 @@ impl ProcessorSpecificationBuilder {
         Self::default()
     }
 
-    pub fn build(self) -> SleighCompilerResult<ProcessorSpecification> {
+    pub fn build(mut self) -> SleighCompilerResult<ProcessorSpecification> {
         debug!("Finalizing spec:");
         debug!("Found {} symbols", self.symbol_ids.len());
         debug!("Found {} tables", self.symbol_tables.tables.len());
@@ -785,6 +806,7 @@ impl ProcessorSpecificationBuilder {
                 .default_space
                 .ok_or(ProcessorSpecificationError::MissingDefaultSpace)?
                 .into_value(),
+            temp_space: self.temp_space,
             endianness: self
                 .endianness
                 .ok_or(ProcessorSpecificationError::MissingEndiannessDefinition)?

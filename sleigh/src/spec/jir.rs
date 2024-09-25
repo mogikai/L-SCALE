@@ -6,6 +6,7 @@ pub mod common;
 pub mod instruction;
 pub mod jcode;
 pub mod lifter;
+pub mod local_resolver;
 pub mod source;
 pub mod space;
 pub mod values;
