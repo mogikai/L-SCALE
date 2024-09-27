@@ -4,9 +4,9 @@ use mogi_mem::mmu::MogiMMU;
 use mogi_neocpu::cpu::CPU;
 use mogi_neocpu::jit::x86::X86MogiJit;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
+use mogi_sleigh::lifter::source::DirectlyMappedBytes;
+use mogi_sleigh::lifter::JIRLifter;
 use mogi_sleigh::preprocessor::SleighPreprocessorFactory;
-use mogi_sleigh::spec::jir::lifter::JIRLifter;
-use mogi_sleigh::spec::jir::source::DirectlyMappedBytes;
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -46,9 +46,9 @@ fn main() {
     let specification = compiler.compile(spec_path).unwrap();
     // println!("{:?}", specification.list_global_varnode_strings());
     println!("{:?}", specification.space_max_used_offset(3.into()).unwrap());
-    let (remaining, inst) = specification
-        .lift(0u64.into(), DirectlyMappedBytes::from(b"\x83\xc0\x01"), args.constructor_id)
-        .unwrap();
+    let source = DirectlyMappedBytes::from(b"\x83\xc0\x01");
+    let lifter = JIRLifter::new(&specification, &source);
+    let (remaining, inst) = lifter.lift(0u64.into(), args.constructor_id).unwrap();
     // TODO: Disassemble at offset 0x0000000000001060
     let mmu = Rc::new(RefCell::new(MogiMMU::new()));
     let mut cpu = CPU::new(X86MogiJit::new(mmu.clone()), mmu);

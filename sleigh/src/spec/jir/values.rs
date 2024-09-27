@@ -29,11 +29,18 @@ pub enum JIRValue {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub enum JIRConst {
-    Const64(u64),
-    Const32(u32),
-    Const16(u16),
-    Const8(u8),
+pub struct JIRConst {
+    value: u128,
+    size: JIRSize,
+}
+
+impl JIRConst {
+    pub fn new(
+        value: u128,
+        size: JIRSize,
+    ) -> Self {
+        Self { value, size }
+    }
 }
 
 impl JIRSlice {
@@ -49,5 +56,11 @@ impl JIRSlice {
 impl From<JIRSlice> for JIRValue {
     fn from(value: JIRSlice) -> Self {
         JIRValue::Slice(value)
+    }
+}
+
+impl From<JIRConst> for JIRValue {
+    fn from(value: JIRConst) -> Self {
+        JIRValue::Const(value)
     }
 }

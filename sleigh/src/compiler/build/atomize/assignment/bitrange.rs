@@ -1,18 +1,18 @@
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::{
     SASTIdent,
     SASTSize,
 };
 use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
-use crate::compiler::ast::Spanned;
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
 use crate::spec::builder::ProcessorSpecificationBuilder;
 use crate::spec::moir::code::{
-    moir_instruction,
     MOIRInstruction,
+    moir_instruction,
 };
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::scope::{
@@ -141,7 +141,7 @@ fn create_mask(
         //       For now, we just do it in pcode.
         // We have to construct the mask in pcode, since the values are too large
         let mask = scope.allocate_temporary(target_size);
-        instructions.push(moir_instruction!(mask = { MOIRConst::ConstN(1, target_size) }));
+        instructions.push(moir_instruction!(mask = { MOIRConst::Determined(1, target_size) }));
         instructions.push(moir_instruction!(mask = mask << bits));
         instructions.push(moir_instruction!(mask = mask - { MOIRConst::new_with_size(1, target_size)? }));
         instructions.push(moir_instruction!(mask = mask << shift_amount));

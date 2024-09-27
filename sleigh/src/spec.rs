@@ -32,7 +32,6 @@ use thiserror::Error;
 
 pub mod builder;
 pub mod jir;
-pub mod lifter;
 pub(crate) mod moir;
 mod reporting;
 pub mod typed_index_table;
@@ -60,12 +59,12 @@ pub enum JIRSymbolId {
 }
 
 #[derive(Debug, Default)]
-struct JIRSymbolTables {
+pub(crate) struct JIRSymbolTables {
     // macros: TypedIndexTable<MOIRMacroId, MOIRMacro>,
-    spaces: TypedIndexTable<SpaceId, JIRSpace>,
-    tables: TypedIndexTable<TableId, MOIRTable>,
-    constructors: TypedIndexTable<ConstructorId, MOIRConstructor>,
-    varnodes: TypedIndexTable<VarNodeId, JIRVarNode>,
+    pub(crate) spaces: TypedIndexTable<SpaceId, JIRSpace>,
+    pub(crate) tables: TypedIndexTable<TableId, MOIRTable>,
+    pub(crate) constructors: TypedIndexTable<ConstructorId, MOIRConstructor>,
+    pub(crate) varnodes: TypedIndexTable<VarNodeId, JIRVarNode>,
     // tokens: TypedIndexTable<MOIRTokenId, MOIRToken>,
     // fields: TypedIndexTable<MOIRFieldId, MOIRField>,
     // custom_ops: TypedIndexTable<MOIRCustomOpId, MOIRCustomOp>,
@@ -75,33 +74,33 @@ struct JIRSymbolTables {
 
 #[derive(Debug)]
 pub struct ProcessorSpecification {
-    interner: StringInterner<StringBackend>,
+    pub(crate) interner: StringInterner<StringBackend>,
 
     /// The main symbol map of the specification.
     /// Each identifier points to a specific symbol id.
     /// The symbols are saved in separate lists, one for each symbol type.
-    symbol_ids: TypedIndexTable<Ident, JIRSymbolId>,
+    pub(crate) symbol_ids: TypedIndexTable<Ident, JIRSymbolId>,
 
     /// Maps the identifier ids to corresponding strings.
-    symbol_strings: HashMap<Ident, StringId>,
+    pub(crate) symbol_strings: HashMap<Ident, StringId>,
     /// Contains a table for each symbol type. A [Ident] maps to a [JIRSymbolId], which in turn maps to the
     /// corresponding [MOIRSymbolTable] with a table-specific id type.
-    symbol_tables: JIRSymbolTables,
+    pub(crate) symbol_tables: JIRSymbolTables,
 
     /// Maps a string identifier to the corresponding internal [Ident].
     /// This is useful for the compiler, when an identifier string references another symbol.
     /// This will need to be resolved to the correct [Ident], so that the PSB can then
     /// use the internal identifiers, instead of the strings.
-    string_to_ident_mapping: HashMap<StringId, Ident>,
+    pub(crate) string_to_ident_mapping: HashMap<StringId, Ident>,
 
-    root_table: TableId,
+    pub(crate) root_table: TableId,
 
-    default_space: SpaceId,
-    temp_space: SpaceId,
+    pub(crate) default_space: SpaceId,
+    pub(crate) temp_space: SpaceId,
 
-    endianness: MOIREndianness,
+    pub(crate) endianness: MOIREndianness,
     /// The alignment of instructions. This defaults to 1 if no alignment is specified.
-    alignment: u16,
+    pub(crate) alignment: u16,
 }
 
 impl ProcessorSpecification {

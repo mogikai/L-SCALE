@@ -104,28 +104,3 @@ where
         true => 1.into(),
     }
 }
-
-trait Cast<T> {
-    fn cast(self) -> T;
-}
-
-macro_rules! impl_cast {
-    ($from:ty, $to:ty) => {
-        impl Cast<$to> for $from {
-            fn cast(self) -> $to {
-                self as $to
-            }
-        }
-    };
-}
-
-impl_cast!(u8, i8);
-impl_cast!(u16, i16);
-impl_cast!(u32, i32);
-impl_cast!(u64, i64);
-impl_cast!(u128, i128);
-impl_cast!(i8, u8);
-impl_cast!(i16, u16);
-impl_cast!(i32, u32);
-impl_cast!(i64, u64);
-impl_cast!(i128, u128);

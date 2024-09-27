@@ -259,25 +259,25 @@ impl From<MOIRConst> for MOIRLocal {
 }
 
 macro_rules! impl_local_from_const {
-    ($typ:ty, $expr:expr) => {
+    ($typ:ty) => {
         impl From<$typ> for MOIRLocal {
             fn from(value: $typ) -> Self {
-                $expr(value).into()
+                MOIRConst::Determined(u128::from(value), size_of::<$typ>() as MOIRSize).into()
             }
         }
         impl From<$typ> for MOIRConst {
             fn from(value: $typ) -> Self {
-                $expr(value)
+                MOIRConst::Determined(u128::from(value), size_of::<$typ>() as MOIRSize)
             }
         }
     };
 }
 
-impl_local_from_const!(u128, MOIRConst::Const128);
-impl_local_from_const!(u64, MOIRConst::Const64);
-impl_local_from_const!(u32, MOIRConst::Const32);
-impl_local_from_const!(u16, MOIRConst::Const16);
-impl_local_from_const!(u8, MOIRConst::Const8);
+impl_local_from_const!(u128);
+impl_local_from_const!(u64);
+impl_local_from_const!(u32);
+impl_local_from_const!(u16);
+impl_local_from_const!(u8);
 
 impl MOIRLocal {
     pub fn slice(
@@ -327,13 +327,8 @@ impl MOIRLocal {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum MOIRConst {
     Undetermined(u128),
-    Const128(u128),
-    Const64(u64),
-    Const32(u32),
-    Const16(u16),
-    Const8(u8),
     /// A generic const value with the specified size
-    ConstN(u128, MOIRSize),
+    Determined(u128, MOIRSize),
 }
 
 impl Display for MOIRConst {
@@ -343,12 +338,7 @@ impl Display for MOIRConst {
     ) -> std::fmt::Result {
         match self {
             MOIRConst::Undetermined(value) => write!(f, "{:#0x}", value),
-            MOIRConst::Const128(value) => write!(f, "{:#0x}", value),
-            MOIRConst::Const64(value) => write!(f, "{:#0x}", value),
-            MOIRConst::Const32(value) => write!(f, "{:#0x}", value),
-            MOIRConst::Const16(value) => write!(f, "{:#0x}", value),
-            MOIRConst::Const8(value) => write!(f, "{:#0x}", value),
-            MOIRConst::ConstN(value, _) => write!(f, "{:#0x}", value),
+            MOIRConst::Determined(value, _) => write!(f, "{:#0x}", value),
         }
     }
 }
@@ -366,36 +356,14 @@ impl MOIRConst {
         let size = size.into();
         match size {
             Undetermined => Ok(MOIRConst::Undetermined(val)),
-            Determined(16) => Ok(MOIRConst::Const128(val)),
-            Determined(8) => Ok(MOIRConst::Const64(
-                val.try_into()
-                    .map_err(|_| SleighCompilerError::ConstDoesNotFit { val, size: 8 })?,
-            )),
-            Determined(4) => Ok(MOIRConst::Const32(
-                val.try_into()
-                    .map_err(|_| SleighCompilerError::ConstDoesNotFit { val, size: 4 })?,
-            )),
-            Determined(2) => Ok(MOIRConst::Const16(
-                val.try_into()
-                    .map_err(|_| SleighCompilerError::ConstDoesNotFit { val, size: 2 })?,
-            )),
-            Determined(1) => Ok(MOIRConst::Const8(
-                val.try_into()
-                    .map_err(|_| SleighCompilerError::ConstDoesNotFit { val, size: 1 })?,
-            )),
-            Determined(size) => Ok(MOIRConst::ConstN(val, size)),
+            Determined(size) => Ok(MOIRConst::Determined(val, size)),
         }
     }
 
     pub fn size(&self) -> MOIRMaybeSize {
         match self {
-            MOIRConst::Const128(_) => MOIRMaybeSize::Determined(16),
-            MOIRConst::Const64(_) => MOIRMaybeSize::Determined(8),
-            MOIRConst::Const32(_) => MOIRMaybeSize::Determined(4),
-            MOIRConst::Const16(_) => MOIRMaybeSize::Determined(2),
-            MOIRConst::Const8(_) => MOIRMaybeSize::Determined(1),
             MOIRConst::Undetermined(_) => MOIRMaybeSize::Undetermined,
-            MOIRConst::ConstN(_, size) => MOIRMaybeSize::Determined(*size),
+            MOIRConst::Determined(_, size) => MOIRMaybeSize::Determined(*size),
         }
     }
 
@@ -448,61 +416,9 @@ impl MOIRConst {
             })?
         }
         Ok(match self {
-            MOIRConst::Const128(v) => {
-                let v: u128 = v >> start_bit;
-                match new_size {
-                    16 => MOIRConst::Const128(v),
-                    8 => MOIRConst::Const64(v as _),
-                    4 => MOIRConst::Const32(v as _),
-                    2 => MOIRConst::Const16(v as _),
-                    1 => MOIRConst::Const8(v as _),
-                    _ => MOIRConst::ConstN(v, new_size),
-                }
-            }
-            MOIRConst::Const64(v) => {
-                let v: u64 = v >> start_bit;
-                match new_size {
-                    8 => MOIRConst::Const64(v),
-                    4 => MOIRConst::Const32(v as _),
-                    2 => MOIRConst::Const16(v as _),
-                    1 => MOIRConst::Const8(v as _),
-                    _ => {
-                        todo!("Generate error. We do not support const that are not u8, u16, u32, or u64")
-                    }
-                }
-            }
-            MOIRConst::Const32(v) => {
-                let v: u32 = v >> start_bit;
-                match new_size {
-                    4 => MOIRConst::Const32(v as _),
-                    2 => MOIRConst::Const16(v as _),
-                    1 => MOIRConst::Const8(v as _),
-                    _ => {
-                        todo!("Generate error. We do not support const that are not u8, u16, u32, or u64")
-                    }
-                }
-            }
-            MOIRConst::Const16(v) => {
-                let v: u16 = v >> start_bit;
-                match new_size {
-                    2 => MOIRConst::Const16(v as _),
-                    1 => MOIRConst::Const8(v as _),
-                    _ => {
-                        todo!("Generate error. We do not support const that are not u8, u16, u32, or u64")
-                    }
-                }
-            }
-            MOIRConst::Const8(v) => {
-                let v: u8 = v >> start_bit;
-                match new_size {
-                    1 => MOIRConst::Const8(v as _),
-                    _ => {
-                        todo!("Generate error. We do not support const that are not u8, u16, u32, or u64")
-                    }
-                }
-            }
-            MOIRConst::ConstN(..) => {
-                todo!("ConstN slicing currently unsupported")
+            MOIRConst::Determined(value, size) => {
+                let value = value >> start_bit;
+                MOIRConst::Determined(value, new_size)
             }
             MOIRConst::Undetermined(_) => Err(SleighCompilerError::CannotSliceUndetermined)?,
         })
