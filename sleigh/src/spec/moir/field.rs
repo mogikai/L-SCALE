@@ -25,8 +25,14 @@ impl MOIRBitRange {
         self.end - self.start
     }
 
+    /// Generate a mask for the bit range without any shifts.
     pub fn mask(&self) -> u64 {
         (1 << self.size()) - 1
+    }
+
+    /// Generate a mask for the bit range including shifts.
+    pub fn mask_shift(&self) -> u64 {
+        ((1 << self.size()) - 1) << self.start
     }
 
     pub fn extract_from(&self, v: u64) -> u64 {

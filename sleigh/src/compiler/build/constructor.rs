@@ -2,6 +2,7 @@ use std::collections::{
     BTreeSet,
     HashSet,
 };
+use std::fmt::Write;
 
 use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::ast::Spanned;
@@ -73,15 +74,20 @@ impl SleighCompiler {
             references.extend(matcher.references.clone());
         });
         let references = references.into_iter().collect_vec();
-        // println!("-------------------------------------- created {} matchers for input {:?}", matchers.len(), span);
-        // eprintln!("matchers = {:#?}", matchers);
+
+        let mut conjunctions_str = String::new();
+        writeln!(&mut conjunctions_str, "Created {} matcher/s:", matchers.len());
+        for matcher in &matchers {
+            writeln!(&mut conjunctions_str, "conjts: {:?}", matcher.conjunctions);
+            writeln!(&mut conjunctions_str, "tokens: {:?}", matcher.token_list.list);
+        }
+        debug!("{conjunctions_str}");
 
         let scope = self.pc_create_scope(constructor.display_section.value().identifiers.clone(), &references)?;
 
         let mut moir_constructor = MOIRConstructor {
             local_scope: scope,
-            instructions: vec![],
-            display_string: constructor.display_section.display_str.value().clone(),
+            instructions: vec![], // display_string: constructor.display_section.display_str.value().clone(),
         };
         trace_build!("{}", moir_constructor.debug_scope());
 
