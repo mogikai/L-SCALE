@@ -22,7 +22,7 @@ impl MOIRBitRange {
 
     pub fn size(&self) -> u8 {
         // a bit range is inclusive
-        self.end - self.start
+        self.end - self.start + 1
     }
 
     /// Generate a mask for the bit range without any shifts.

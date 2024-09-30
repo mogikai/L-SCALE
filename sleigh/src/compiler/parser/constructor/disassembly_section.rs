@@ -21,7 +21,6 @@ use crate::compiler::parser::{
     whitespace_padded,
     SleighParserExtra,
 };
-use crate::compiler::parser::SleighParserExtra;
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighOperation,

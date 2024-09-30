@@ -56,6 +56,9 @@ impl SleighCompiler {
         constructor: Spanned<SASTConstructor>,
     ) -> SleighCompilerResult {
         let (constructor, span) = constructor.into_tuple();
+        let display_section = constructor.display_section.into_value();
+        trace_build!("Processing constructor for {:?}", display_section.display_str.value());
+
         let table_name = constructor
             .table
             .value()
@@ -67,6 +70,14 @@ impl SleighCompiler {
         // TODO: Need to parse the disassembly section here as well and add that information to the matcher
         let mut matchers = self.create_matchers(constructor.bit_pattern_section.into_value().constraint)?;
 
+        let mut conjunctions_str = String::new();
+        writeln!(&mut conjunctions_str, "Created {} matcher/s:", matchers.len());
+        for matcher in &matchers {
+            writeln!(&mut conjunctions_str, "conjts: {:?}", matcher.conjunctions);
+            writeln!(&mut conjunctions_str, "tokens: {:?}", matcher.token_list.list);
+        }
+        trace_build!("{conjunctions_str}");
+
         // TODO remove trailing Undetermined (or not, idk yet)
 
         let mut references = HashSet::new();
@@ -75,19 +86,12 @@ impl SleighCompiler {
         });
         let references = references.into_iter().collect_vec();
 
-        let mut conjunctions_str = String::new();
-        writeln!(&mut conjunctions_str, "Created {} matcher/s:", matchers.len());
-        for matcher in &matchers {
-            writeln!(&mut conjunctions_str, "conjts: {:?}", matcher.conjunctions);
-            writeln!(&mut conjunctions_str, "tokens: {:?}", matcher.token_list.list);
-        }
-        debug!("{conjunctions_str}");
-
-        let scope = self.pc_create_scope(constructor.display_section.value().identifiers.clone(), &references)?;
+        let scope = self.pc_create_scope(display_section.identifiers, &references)?;
 
         let mut moir_constructor = MOIRConstructor {
             local_scope: scope,
             instructions: vec![], // display_string: constructor.display_section.display_str.value().clone(),
+            display: display_section.display_str.into_value(),
         };
         trace_build!("{}", moir_constructor.debug_scope());
 
@@ -257,7 +261,7 @@ impl SleighCompiler {
                     Some(MOIRSlice {
                         reference: MOIRReference::VarNode(*vnid),
                         start: 0,
-                        end: MOIRMaybeSize::Determined(varnode.size as u8),
+                        end: MOIRMaybeSize::Determined(varnode.size),
                     })
                 }
             };

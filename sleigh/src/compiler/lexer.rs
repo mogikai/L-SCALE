@@ -359,12 +359,6 @@ where
 {
     extra.state().intern(&stringy)
 }
-fn intern_token<'a, O: AsRef<str>>(
-    stringy: O,
-    extra: &mut MapExtra<'a, '_, &'a str, SleighCompilerExtra<'a>>,
-) -> StringId {
-    extra.state().intern(&stringy)
-}
 
 /// Parse a sleigh comment. The comment starts with `#` and ends with a newline character.
 fn sleigh_comment<'src, ContextT>(

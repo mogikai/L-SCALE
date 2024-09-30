@@ -510,7 +510,7 @@ impl SleighCompiler {
         field: &MOIRField,
         value: u64,
     ) -> HashSet<MatcherAtom> {
-        let mask = field.bits.mask();
+        let mask = field.bits.mask_shift();
         let value = value << field.bits.start;
         let atom = MatcherAtom::Field(FieldMatcher::Value { mask, value });
 
