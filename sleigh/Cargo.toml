@@ -16,6 +16,7 @@ num = "0.4.3"
 strum_macros = "0.26.4"
 itertools = "0.13.0"
 mogi_utilities = { path = "../utilities", version = "*" }
+imbl = "3.0.0"
 
 [features]
 trace_build = []

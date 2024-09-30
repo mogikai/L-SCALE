@@ -1,4 +1,5 @@
 use crate::compiler::CompilerContext;
+use crate::lifter::cache::LifterCache;
 use crate::spec::ProcessorSpecification;
 use crate::spec::jir::instruction::TargetInstruction;
 use crate::spec::jir::local_resolver::JIRLocalResolver;
@@ -16,26 +17,35 @@ use tracing::debug;
 pub mod cache;
 pub mod source;
 
-pub type JIRLifterResult<T = ()> = Result<T, JIRLifterError>;
+pub type LifterResult<T = ()> = Result<T, LifterError>;
 
-#[derive(Debug, Error)]
-pub enum JIRLifterError {
+#[derive(Debug, Error, Copy, Clone)]
+pub enum LifterError {
     #[error("An unknown error occurred")]
     Unknown,
+    #[error("The address {0:?} is already associated with a cached instruction")]
+    InstructionAlreadyCached(EVAddr),
+    #[error("The address {0:?} is already associated with a cached block")]
+    BlockAlreadyCached(EVAddr),
+    #[error("The cache has no entry for the requested address {0:?}")]
+    MissingCacheEntry(EVAddr),
 }
 
-pub struct JIRLifter<'a, InstSourceT: TargetInstructionSource> {
+pub struct Lifter<'a, 'cache, InstSourceT: TargetInstructionSource> {
     specification: &'a ProcessorSpecification,
+    cache: &'cache mut LifterCache,
     instruction_source: &'a InstSourceT,
 }
 
-impl<'a, InstSourceT: TargetInstructionSource> JIRLifter<'a, InstSourceT> {
+impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, InstSourceT> {
     pub fn new(
         specification: &'a ProcessorSpecification,
+        cache: &'cache mut LifterCache,
         instruction_source: &'a InstSourceT,
     ) -> Self {
         Self {
             specification,
+            cache,
             instruction_source,
         }
     }
@@ -43,12 +53,26 @@ impl<'a, InstSourceT: TargetInstructionSource> JIRLifter<'a, InstSourceT> {
     /// `source`. Returns the address of the next instruction, and the lifted instruction
     /// One target instruction corresponds to multiple lifted instructions most of the time.
     /// See [TargetInstruction] for more detail.
-    pub fn lift(
-        &self,
+    pub fn lift<'slf>(
+        &mut self,
         addr: EVAddr,
         cid: usize,
-    ) -> JIRLifterResult<(EVAddr, TargetInstruction)> {
+    ) -> LifterResult<(EVAddr, &TargetInstruction)> {
+        // Check the cache. If it contains the instruction we can simply return it.
+        if self.cache.is_instruction_cached(addr) {
+            // TODO: Remove the outer check once the conditional control flow borrow checking lands
+            //       See https://github.com/rust-lang/rfcs/blob/master/text/2094-nll.md#problem-case-3-conditional-control-flow-across-functions
+            match self.cache.fetch_instruction(addr) {
+                Ok(instruction) => {
+                    return Ok((instruction.next(), instruction));
+                }
+                Err(_) => unreachable!(),
+            }
+        }
+        // No cache entry? Fetch data now.
         let data = self.instruction_source.load(addr);
+        // TODO: Perform the matching on the instruction bytes to
+        //       get the correct constructor and resolve context
         let constructor = self
             .specification
             .symbol_tables
@@ -96,18 +120,19 @@ impl<'a, InstSourceT: TargetInstructionSource> JIRLifter<'a, InstSourceT> {
                 }),
             )
             .expect("");
-        constructor.generate_jcode(resolver).expect("");
-        // TODO: Get root table and start matching.
-        // TODO: It probably makes sense to do this in a
-        // TODO: separate function in order to recursively call the matching?
-        Ok((addr, TargetInstruction::default()))
+
+        // Generate the jcode for the instruction.
+        let instruction = constructor.generate_jcode(resolver).expect("");
+        // Now we can cache it for future access.
+        let instruction = self.cache.cache_instruction(addr, instruction)?;
+        Ok((instruction.next(), instruction))
     }
 
     fn lift_block(
         &self,
         addr: EVAddr,
         source: impl TargetInstructionSource,
-    ) -> JIRLifterResult<(EVAddr, Vec<TargetInstruction>)> {
+    ) -> LifterResult<(EVAddr, Vec<TargetInstruction>)> {
         todo!()
     }
 

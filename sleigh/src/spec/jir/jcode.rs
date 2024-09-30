@@ -1,6 +1,5 @@
 mod inline_code;
 
-use crate::new_typed_index_table_id;
 use crate::spec::jir::jir_block::JIRBlockId;
 use crate::spec::jir::values::{
     JIRSlice,
@@ -9,9 +8,9 @@ use crate::spec::jir::values::{
 use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::custom_op::CustomOpId;
 pub use inline_code::*;
-use slotmap::new_key_type;
+use std::rc::Rc;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct JIRInstruction {
     pub output: Option<JIRSlice>,
     pub input_a: Option<JIRValue>,
@@ -66,7 +65,7 @@ impl JIRInstruction {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum JIROperation {
     // -------------------------- GENERIC LOAD/STORE --------------------------
     Copy,
@@ -159,5 +158,5 @@ pub enum JIROperation {
     Ceil,
     Floor,
     Round,
-    CustomOp(CustomOpId),
+    CustomOp(CustomOpId, Rc<Vec<JIRValue>>),
 }

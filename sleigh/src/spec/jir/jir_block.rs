@@ -1,7 +1,8 @@
+use mogi_utilities::new_map_key;
 use slotmap::new_key_type;
 use std::ops::Range;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct JIRBlock {
     /// The range in the instruction stream where this blocks instructions are located.
     pub range: Range<usize>,
@@ -9,4 +10,4 @@ pub struct JIRBlock {
     pub successor: Option<JIRBlockId>,
 }
 
-new_key_type! { pub struct JIRBlockId; }
+new_map_key! { pub struct JIRBlockId; "JIRB"; }

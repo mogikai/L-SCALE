@@ -1,5 +1,8 @@
 use crate::spec::ProcessorSpecResult;
-use crate::spec::jir::instruction::TargetInstruction;
+use crate::spec::jir::instruction::{
+    TargetInstruction,
+    TargetInstructionId,
+};
 use crate::spec::jir::jcode::JIRInstruction;
 use crate::spec::jir::jir_block::JIRBlock;
 use crate::spec::jir::local_resolver::JIRLocalResolver;
@@ -38,7 +41,6 @@ impl MOIRConstructor {
         &self,
         resolver: JIRLocalResolver,
     ) -> ProcessorSpecResult<TargetInstruction> {
-        let instruction = TargetInstruction::default();
         let jir_blocks = Vec::<JIRBlock>::new();
         for block in self.instructions.chunk_by(|inst, next_inst| {
             !matches!(inst.operation.op_category(), MOIROpCategory::Branch) && next_inst.label.is_none()
@@ -55,7 +57,7 @@ impl MOIRConstructor {
             }
             debug!("BLOCK END!");
         }
-        Ok(instruction)
+        Ok(TargetInstruction::new(0u64.into(), 0u64.into()))
     }
 
     fn resolve_output(
