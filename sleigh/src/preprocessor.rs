@@ -17,9 +17,8 @@ use ariadne::{
     Report,
     ReportKind,
 };
-use chumsky::span::Span;
 use chumsky::Parser;
-use tracing::trace;
+use chumsky::span::Span;
 
 use blocks::{
     BinaryOp,
@@ -53,6 +52,19 @@ use crate::spec::builder::{
 mod blocks;
 pub mod error;
 mod parser;
+
+#[cfg(feature = "trace_pp")]
+macro_rules! trace_pp {
+    ($($arg:tt)*) => {
+        tracing::trace!($($arg)*)
+    };
+}
+#[cfg(not(feature = "trace_pp"))]
+macro_rules! trace_pp {
+    ($($arg:tt)*) => {};
+}
+
+pub(crate) use trace_pp;
 
 pub struct SleighPreprocessor {
     /// Associate identifiers with strings. An identifier is simply a string with a specific identifier format.
@@ -151,7 +163,7 @@ impl SleighPreprocessor {
         context: &mut ProcessorSpecificationBuilder,
         ident: &Spanned<StringId>,
     ) -> Result<(), PreprocessorError> {
-        trace!("Expanding macro identifier {ident:?}");
+        trace_pp!("Expanding macro identifier {ident:?}");
         let value = self.lookup_identifier(input_cache, context, ident)?;
         let resolved_value = context
             .string(**value)
@@ -199,12 +211,12 @@ impl SleighPreprocessor {
         if_true: Spanned<Vec<Spanned<PreprocessorBlock>>>,
         if_false: Option<Spanned<Vec<Spanned<PreprocessorBlock>>>>,
     ) -> Result<(), PreprocessorError> {
-        trace!("Evaluating condition {cond:?}");
+        trace_pp!("Evaluating condition {cond:?}");
         if self.evaluate_expression(input_cache, context, cond)? {
-            trace!("Evaluated to true");
+            trace_pp!("Evaluated to true");
             self.prepend_blocks(if_true.into_value());
         } else {
-            trace!("Evaluated to false");
+            trace_pp!("Evaluated to false");
             match if_false {
                 None => {}
                 Some(blocks) => self.prepend_blocks(blocks.into_value()),
@@ -219,15 +231,15 @@ impl SleighPreprocessor {
         if_defined: Option<Spanned<Vec<Spanned<PreprocessorBlock>>>>,
         if_undefined: Option<Spanned<Vec<Spanned<PreprocessorBlock>>>>,
     ) {
-        trace!("Processing ifdef {ident:?}");
+        trace_pp!("Processing ifdef {ident:?}");
         if self.definitions.contains_key(&ident) {
-            trace!("{:?} is defined", *ident);
+            trace_pp!("{:?} is defined", *ident);
             match if_defined {
                 None => {}
                 Some(blocks) => self.prepend_blocks(blocks.into_value()),
             }
         } else {
-            trace!("{ident:?} is undefined");
+            trace_pp!("{ident:?} is undefined");
             match if_undefined {
                 None => {}
                 Some(blocks) => self.prepend_blocks(blocks.into_value()),
@@ -239,7 +251,7 @@ impl SleighPreprocessor {
         &mut self,
         name: &StringId,
     ) {
-        trace!("Removed definition for {name:?}");
+        trace_pp!("Removed definition for {name:?}");
         self.definitions.remove(name);
     }
 
@@ -248,7 +260,7 @@ impl SleighPreprocessor {
         name: Spanned<StringId>,
         value: Spanned<StringId>,
     ) {
-        trace!("Defining {:?} as {:?}", *name, *value);
+        trace_pp!("Defining {:?} as {:?}", *name, *value);
         self.definitions.insert(*name, value);
     }
 
@@ -270,7 +282,7 @@ impl SleighPreprocessor {
     ) -> Result<SleighTokens, PreprocessorError> {
         for token in token_stream.iter_mut() {
             if let SleighToken::IncludedTokens(IncludedTokens::PendingProcessing(input_id)) = token.0 {
-                trace!("Replacing pending tokens for input {input_id:?} with processed tokens");
+                trace_pp!("Replacing pending tokens for input {input_id:?} with processed tokens");
                 let inner_tokens = self
                     .token_streams
                     .remove(&input_id)
@@ -294,7 +306,7 @@ impl SleighPreprocessor {
                 .string(file)
                 .expect("String has to have been interned"),
         );
-        trace!("Including file {file:?}");
+        trace_pp!("Including file {file:?}");
         if file.is_absolute() {
             // TODO: Error reporting
             Err(PreprocessorError::AbsolutePath)?;
@@ -322,7 +334,9 @@ impl SleighPreprocessor {
                     .expect("This should not produce any errors.");
                 PreprocessorError::IncludeError(String::from_utf8(diagnostic).expect("We only handle utf8 text."))
             })?;
-        trace!("Adding token for included data (PendingProcessing). It will be replaced by the loaded tokens later.");
+        trace_pp!(
+            "Adding token for included data (PendingProcessing). It will be replaced by the loaded tokens later."
+        );
         self.token_streams
             .get_mut(&span.context())
             .expect("The input that issued the include must exist.")
