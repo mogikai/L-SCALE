@@ -160,7 +160,7 @@ impl PartialOrd for Matcher {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum MatcherAtom {
-    Field(FieldMatcher),
+    Field { field: FieldId, matcher: FieldMatcher },
     Submatchers { table: TableId, matchers: Vec<MatcherId> },
 }
 
@@ -220,7 +220,7 @@ impl Matcher {
     ) -> SleighCompilerResult<(Option<Vec<u64>>, usize)> {
         // extract tokens (including context) from bytes
         let mut bytes_consumed: usize = 0;
-        let mut token_values = Vec::new();
+        let mut token_values = Vec::with_capacity(self.token_list.list.len());
         for parent in self.token_list.list.iter() {
             match parent {
                 MOIRFieldParent::Token(tid) => {
@@ -266,13 +266,14 @@ impl Matcher {
                         .ok_or_else(|| -> SleighCompilerError {
                             todo!("Generate error report for missing context");
                         })?;
-                    let varnode_value =
-                        varnode_values
-                            .get(&moir_context.varnode)
-                            .ok_or_else(|| -> SleighCompilerError {
-                                todo!("Generate error report for missing varnode value");
-                            })?;
-                    token_values.push(*varnode_value);
+                    // let varnode_value =
+                    //     varnode_values
+                    //         .get(&moir_context.varnode)
+                    //         .ok_or_else(|| -> SleighCompilerError {
+                    //             todo!("Generate error report for missing varnode value");
+                    //         })?;
+                    let varnode_value = 0;
+                    token_values.push(varnode_value);
                 }
             }
         }
@@ -295,8 +296,8 @@ impl Matcher {
         for (i, conjunction) in self.conjunctions.iter().enumerate() {
             for atom in conjunction {
                 match atom {
-                    MatcherAtom::Field(field_matcher) => {
-                        if let FieldMatcher::Value { mask, value } = field_matcher {
+                    MatcherAtom::Field { field, matcher } => {
+                        if let FieldMatcher::Value { mask, value } = matcher {
                             let token_value = extracted_tokens
                                 .get(i)
                                 .expect("Not enough tokens left for matching");

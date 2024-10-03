@@ -150,7 +150,7 @@ impl SleighCompiler {
                     })?;
 
                 let field_matcher = FieldMatcher::Wildcard;
-                let atom = MatcherAtom::Field(field_matcher);
+                let atom = MatcherAtom::Field { field: *fid, matcher: field_matcher };
                 let tokens = TokenList::new(vec![field.parent], false, false);
 
                 vec![Matcher::new(
@@ -404,20 +404,20 @@ impl SleighCompiler {
                 }
 
                 match op {
-                    SASTConstraintOp::Equals => self.matcher_conjunctions_from_field_equals_constraint(field, other),
-                    SASTConstraintOp::NotEquals => self.matcher_conjunctions_from_field_neq_constraint(field, other),
-                    SASTConstraintOp::LessThan => self.matcher_conjunctions_from_field_gt_constraint(field, other),
-                    SASTConstraintOp::GreaterThan => self.matcher_conjunctions_from_field_lt_constraint(field, other),
+                    SASTConstraintOp::Equals => self.matcher_conjunctions_from_field_equals_constraint(field, field_id, other),
+                    SASTConstraintOp::NotEquals => self.matcher_conjunctions_from_field_neq_constraint(field, field_id, other),
+                    SASTConstraintOp::LessThan => self.matcher_conjunctions_from_field_gt_constraint(field, field_id, other),
+                    SASTConstraintOp::GreaterThan => self.matcher_conjunctions_from_field_lt_constraint(field, field_id, other),
                 }
             }
             SASTConstraintPattern::BitPattern(value) => match op {
                 SASTConstraintOp::Equals => {
-                    vec![self.matcher_conjunction_from_equals_constraint(field, value.into_value())]
+                    vec![self.matcher_conjunction_from_equals_constraint(field, field_id, value.into_value())]
                 }
-                SASTConstraintOp::NotEquals => self.matcher_conjunctions_from_neq_constraint(field, value.into_value()),
-                SASTConstraintOp::LessThan => self.matcher_conjunctions_from_lt_constraint(field, value.into_value()),
+                SASTConstraintOp::NotEquals => self.matcher_conjunctions_from_neq_constraint(field, field_id, value.into_value()),
+                SASTConstraintOp::LessThan => self.matcher_conjunctions_from_lt_constraint(field, field_id, value.into_value()),
                 SASTConstraintOp::GreaterThan => {
-                    self.matcher_conjunctions_from_gt_constraint(field, value.into_value())
+                    self.matcher_conjunctions_from_gt_constraint(field, field_id, value.into_value())
                 }
             },
         };
@@ -434,6 +434,7 @@ impl SleighCompiler {
     fn matcher_conjunctions_from_field_equals_constraint(
         &self,
         field: &MOIRField,
+        field_id: FieldId,
         other: &MOIRField,
     ) -> Vec<HashSet<MatcherAtom>> {
         let mut conjunctions = Vec::with_capacity(2.pow(field.bits.size() as u32));
@@ -442,7 +443,8 @@ impl SleighCompiler {
             .for_each(|(v0, v1)| {
                 let mask = field.bits.mask_shift() | other.bits.mask_shift();
                 let value = (v0 << field.bits.start) | (v1 << other.bits.start);
-                let atom = MatcherAtom::Field(FieldMatcher::Value { mask, value });
+                let field_matcher = FieldMatcher::Value { mask, value };
+                let atom = MatcherAtom::Field { field: field_id, matcher: field_matcher };
                 conjunctions.push(HashSet::from([atom]));
             });
 
@@ -454,6 +456,7 @@ impl SleighCompiler {
     fn matcher_conjunctions_from_field_neq_constraint(
         &self,
         field: &MOIRField,
+        field_id: FieldId,
         other: &MOIRField,
     ) -> Vec<HashSet<MatcherAtom>> {
         let mut conjunctions = Vec::with_capacity(2.pow((field.bits.size() + other.bits.size()) as u32));
@@ -465,7 +468,8 @@ impl SleighCompiler {
 
                 let mask = field.bits.mask_shift() | other.bits.mask_shift();
                 let value = (v0 << field.bits.start) | (v1 << other.bits.start);
-                let atom = MatcherAtom::Field(FieldMatcher::Value { mask, value });
+                let field_matcher = FieldMatcher::Value { mask, value };
+                let atom = MatcherAtom::Field { field: field_id, matcher: field_matcher };
                 conjunctions.push(HashSet::from([atom]));
             }
         }
@@ -478,6 +482,7 @@ impl SleighCompiler {
     fn matcher_conjunctions_from_field_lt_constraint(
         &self,
         field: &MOIRField,
+        field_id: FieldId,
         other: &MOIRField,
     ) -> Vec<HashSet<MatcherAtom>> {
         let mut conjunctions = Vec::with_capacity(2.pow((field.bits.size() + other.bits.size()) as u32));
@@ -485,7 +490,8 @@ impl SleighCompiler {
             for v1 in v0..2u64.pow(other.bits.size() as u32) {
                 let mask = field.bits.mask_shift() | other.bits.mask_shift();
                 let value = (v0 << field.bits.start) | (v1 << other.bits.start);
-                let atom = MatcherAtom::Field(FieldMatcher::Value { mask, value });
+                let field_matcher = FieldMatcher::Value { mask, value };
+                let atom = MatcherAtom::Field { field: field_id, matcher: field_matcher };
                 conjunctions.push(HashSet::from([atom]));
             }
         }
@@ -498,9 +504,10 @@ impl SleighCompiler {
     fn matcher_conjunctions_from_field_gt_constraint(
         &self,
         field: &MOIRField,
+        field_id: FieldId,
         other: &MOIRField,
     ) -> Vec<HashSet<MatcherAtom>> {
-        self.matcher_conjunctions_from_field_lt_constraint(other, field)
+        self.matcher_conjunctions_from_field_lt_constraint(other, field_id, field)
     }
 
     /// Generate multiple matcher conjunctions by enumerating all possible cases where the fields
@@ -508,11 +515,13 @@ impl SleighCompiler {
     fn matcher_conjunction_from_equals_constraint(
         &self,
         field: &MOIRField,
+        field_id: FieldId,
         value: u64,
     ) -> HashSet<MatcherAtom> {
         let mask = field.bits.mask_shift();
         let value = value << field.bits.start;
-        let atom = MatcherAtom::Field(FieldMatcher::Value { mask, value });
+        let field_matcher = FieldMatcher::Value { mask, value };
+        let atom = MatcherAtom::Field { field: field_id, matcher: field_matcher };
 
         HashSet::from([atom])
     }
@@ -522,12 +531,13 @@ impl SleighCompiler {
     fn matcher_conjunctions_from_neq_constraint(
         &self,
         field: &MOIRField,
+        field_id: FieldId,
         value: u64,
     ) -> Vec<HashSet<MatcherAtom>> {
         (0u64..2u64.pow(field.bits.size() as u32))
             .filter_map(|v| {
                 if v != value {
-                    Some(self.matcher_conjunction_from_equals_constraint(field, v))
+                    Some(self.matcher_conjunction_from_equals_constraint(field, field_id, v))
                 } else {
                     None
                 }
@@ -540,12 +550,13 @@ impl SleighCompiler {
     fn matcher_conjunctions_from_lt_constraint(
         &self,
         field: &MOIRField,
+        field_id: FieldId,
         value: u64,
     ) -> Vec<HashSet<MatcherAtom>> {
         (0u64..2u64.pow(field.bits.size() as u32))
             .filter_map(|v| {
                 if v < value {
-                    Some(self.matcher_conjunction_from_equals_constraint(field, v))
+                    Some(self.matcher_conjunction_from_equals_constraint(field, field_id, v))
                 } else {
                     None
                 }
@@ -558,12 +569,13 @@ impl SleighCompiler {
     fn matcher_conjunctions_from_gt_constraint(
         &self,
         field: &MOIRField,
+        field_id: FieldId,
         value: u64,
     ) -> Vec<HashSet<MatcherAtom>> {
         (0u64..2u64.pow(field.bits.size() as u32))
             .filter_map(|v| {
                 if v > value {
-                    Some(self.matcher_conjunction_from_equals_constraint(field, v))
+                    Some(self.matcher_conjunction_from_equals_constraint(field, field_id, v))
                 } else {
                     None
                 }
