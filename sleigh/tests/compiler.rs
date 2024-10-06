@@ -1,6 +1,7 @@
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
 use mogi_sleigh::preprocessor::SleighPreprocessorFactory;
 use std::path::Path;
+use mogi_sleigh::compiler::error::SleighCompilerError;
 
 #[test]
 fn compiler_test() {
@@ -21,5 +22,9 @@ fn duplicate_space_type() {
     let compiler = SleighCompilerBuilder::new()
         .preprocessor_factory(factory)
         .build();
-    compiler.compile(spec_path).unwrap();
+    let err = compiler.compile(spec_path).expect_err("expected error");
+    assert!(matches!(err, SleighCompilerError::SemanticError(_)));
+    if let SleighCompilerError::SemanticError(string) = err {
+        assert!(string.contains("Space attribute 'type' defined two times."))
+    }
 }
