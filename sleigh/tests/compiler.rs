@@ -12,3 +12,14 @@ fn compiler_test() {
         .build();
     compiler.compile(spec_path).unwrap();
 }
+
+#[test]
+fn duplicate_space_type() {
+    let spec_path = Path::new("./tests/assets/duplicate_space_type.sinc");
+    let spec_dir = spec_path.parent().unwrap();
+    let factory = SleighPreprocessorFactory::new().working_dir(spec_dir.to_path_buf());
+    let compiler = SleighCompilerBuilder::new()
+        .preprocessor_factory(factory)
+        .build();
+    compiler.compile(spec_path).unwrap();
+}
