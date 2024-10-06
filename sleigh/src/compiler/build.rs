@@ -201,13 +201,13 @@ impl SleighCompiler {
         let mut address_size = None;
         let mut word_size = None;
         let mut default = MOIRSpaceIsDefault::NotDefault;
-        for (attribute, _) in space.attributes.into_iter().map(Spanned::into_tuple) {
+        for (attribute, input) in space.attributes.into_iter().map(Spanned::into_tuple) {
             match attribute {
                 SASTAddressSpaceAttribute::Type(ty) => {
-                    if r#type.is_some() {
-                        todo!("Generate error report for duplicate space type attribute.")
+                    if let Some((_, prev_input)) = r#type {
+                        return Err(generate_duplicate_space_attr_error("type", prev_input, input));
                     } else {
-                        r#type = Some(ty.into());
+                        r#type = Some((ty.into(), input));
                     }
                 }
                 SASTAddressSpaceAttribute::Size(size) => {
@@ -237,7 +237,7 @@ impl SleighCompiler {
             todo!("Generate error report for missing size attribute.");
         };
         let moir_space = MOIRSpace {
-            r#type: r#type.unwrap_or(MOIRSpaceType::Ram),
+            r#type: r#type.map(|t| t.0).unwrap_or(MOIRSpaceType::Ram),
             address_size,
             wordsize: word_size.unwrap_or(1),
         };
@@ -360,3 +360,5 @@ macro_rules! trace_build {
 }
 
 pub(crate) use trace_build;
+use crate::compiler::lexer::InputSpan;
+use crate::compiler::report::generate_duplicate_space_attr_error;

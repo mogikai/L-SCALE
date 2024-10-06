@@ -112,3 +112,19 @@ pub fn generate_undefined_ident_error(symbol_reference: Spanned<&str>) -> Sleigh
         .finish();
     SleighCompilerError::ErrorReport(Box::new(report))
 }
+
+pub fn generate_duplicate_space_attr_error(kind: &str, first: InputSpan, second: InputSpan) -> SleighCompilerError {
+    let mut colors = ColorGenerator::new();
+    let color_a = colors.next();
+    let color_b = colors.next();
+    let report = Report::build(ReportKind::Error, first.context(), second.start())
+        .with_message(format!("Space attribute '{kind}' defined two times."))
+        .with_label(Label::new(first)
+            .with_message("First definition")
+            .with_color(color_a))
+        .with_label(Label::new(second)
+            .with_message("Second definition")
+            .with_color(color_b))
+        .finish();
+    SleighCompilerError::ErrorReport(Box::new(report))
+}
