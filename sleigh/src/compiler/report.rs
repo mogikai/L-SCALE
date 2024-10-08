@@ -129,10 +129,3 @@ pub fn generate_duplicate_space_attr_error(attr: SASTAddressSpaceAttribute, firs
         .finish();
     SleighCompilerError::ErrorReport(Box::new(report))
 }
-
-pub fn generate_space_missing_size_error(input: InputSpan) -> SleighCompilerError {
-    let report = Report::build(ReportKind::Error, input.context(), input.start())
-        .with_message("Space is missing 'size' attribute.")
-        .finish();
-    SleighCompilerError::ErrorReport(Box::new(report))
-}

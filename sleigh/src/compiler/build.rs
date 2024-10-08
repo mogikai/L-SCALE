@@ -233,12 +233,9 @@ impl SleighCompiler {
                 }
             }
         }
-        let Some(address_size) = address_size else {
-            return Err(generate_space_missing_size_error(space_input));
-        };
         let moir_space = MOIRSpace {
             r#type: r#type.map(|t| t.0).unwrap_or(MOIRSpaceType::Ram),
-            address_size: address_size.0,
+            address_size: address_size.map(|t| t.0).unwrap(),
             wordsize: word_size.map(|t| t.0).unwrap_or(1),
         };
         self.spec_builder
@@ -361,4 +358,4 @@ macro_rules! trace_build {
 
 pub(crate) use trace_build;
 use crate::compiler::lexer::InputSpan;
-use crate::compiler::report::{generate_duplicate_space_attr_error, generate_space_missing_size_error};
+use crate::compiler::report::{generate_duplicate_space_attr_error};
