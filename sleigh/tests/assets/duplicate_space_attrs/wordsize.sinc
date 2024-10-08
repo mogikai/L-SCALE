@@ -1,0 +1,2 @@
+define endian = little;
+define space cool_space wordsize=20 type=rom_space size=3  wordsize=10 default;

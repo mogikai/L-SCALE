@@ -1,0 +1,2 @@
+define endian = little;
+define space ram size=1 type=rom_space size=20  default;

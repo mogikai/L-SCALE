@@ -14,9 +14,9 @@ fn compiler_test() {
     compiler.compile(spec_path).unwrap();
 }
 
-#[test]
-fn duplicate_space_type() {
-    let spec_path = Path::new("./tests/assets/duplicate_space_type.sinc");
+fn duplicate_space_attr(attr: &str) {
+    let path = format!("./tests/assets/duplicate_space_attrs/{attr}.sinc");
+    let spec_path = Path::new(&path);
     let spec_dir = spec_path.parent().unwrap();
     let factory = SleighPreprocessorFactory::new().working_dir(spec_dir.to_path_buf());
     let compiler = SleighCompilerBuilder::new()
@@ -25,6 +25,26 @@ fn duplicate_space_type() {
     let err = compiler.compile(spec_path).expect_err("expected error");
     assert!(matches!(err, SleighCompilerError::SemanticError(_)));
     if let SleighCompilerError::SemanticError(string) = err {
-        assert!(string.contains("Space attribute 'type' defined two times."))
+        assert!(string.contains(&format!("Space attribute '{attr}' defined two times.")))
     }
+}
+
+#[test]
+fn duplicate_space_type() {
+    duplicate_space_attr("type");
+}
+
+#[test]
+fn duplicate_space_size() {
+    duplicate_space_attr("size");
+}
+
+#[test]
+fn duplicate_space_wordsize() {
+    duplicate_space_attr("wordsize");
+}
+
+#[test]
+fn duplicate_space_default() {
+    duplicate_space_attr("default");
 }
