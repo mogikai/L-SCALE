@@ -196,53 +196,53 @@ impl SleighCompiler {
         &mut self,
         space: Spanned<SASTAddressSpace>,
     ) -> SleighCompilerResult {
-        let (space, _) = space.into_tuple();
+        let (space, space_input) = space.into_tuple();
         let mut r#type = None;
         let mut address_size = None;
         let mut word_size = None;
-        let mut default = MOIRSpaceIsDefault::NotDefault;
+        let mut default = (MOIRSpaceIsDefault::NotDefault, None);
         for (attribute, input) in space.attributes.into_iter().map(Spanned::into_tuple) {
             match attribute {
                 SASTAddressSpaceAttribute::Type(ty) => {
                     if let Some((_, prev_input)) = r#type {
-                        return Err(generate_duplicate_space_attr_error("type", prev_input, input));
+                        return Err(generate_duplicate_space_attr_error(attribute, prev_input, input));
                     } else {
                         r#type = Some((ty.into(), input));
                     }
                 }
                 SASTAddressSpaceAttribute::Size(size) => {
-                    if address_size.is_some() {
-                        todo!("Generate error report for duplicate size attribute.")
+                    if let Some((_, prev_input)) = address_size {
+                        return Err(generate_duplicate_space_attr_error(attribute, prev_input, input));
                     } else {
-                        address_size = Some(size);
+                        address_size = Some((size, input));
                     }
                 }
                 SASTAddressSpaceAttribute::Wordsize(size) => {
-                    if word_size.is_some() {
-                        todo!("Generate error report for duplicate word size attribute.")
+                    if let Some((_, prev_input)) = word_size {
+                        return Err(generate_duplicate_space_attr_error(attribute, prev_input, input));
                     } else {
-                        word_size = Some(size);
+                        word_size = Some((size, input));
                     }
                 }
                 SASTAddressSpaceAttribute::IsDefault => {
-                    if matches!(default, MOIRSpaceIsDefault::Default) {
-                        todo!("Generate error report for duplicate default attribute.")
+                    if let (_, Some(prev_input)) = default {
+                        return Err(generate_duplicate_space_attr_error(attribute, prev_input, input));
                     } else {
-                        default = MOIRSpaceIsDefault::Default;
+                        default = (MOIRSpaceIsDefault::Default, Some(input));
                     }
                 }
             }
         }
         let Some(address_size) = address_size else {
-            todo!("Generate error report for missing size attribute.");
+            return Err(generate_space_missing_size_error(space_input));
         };
         let moir_space = MOIRSpace {
             r#type: r#type.map(|t| t.0).unwrap_or(MOIRSpaceType::Ram),
-            address_size,
-            wordsize: word_size.unwrap_or(1),
+            address_size: address_size.0,
+            wordsize: word_size.map(|t| t.0).unwrap_or(1),
         };
         self.spec_builder
-            .define_space(space.name.transmute(), moir_space, default)?;
+            .define_space(space.name.transmute(), moir_space, default.0)?;
         Ok(())
     }
 
@@ -361,4 +361,4 @@ macro_rules! trace_build {
 
 pub(crate) use trace_build;
 use crate::compiler::lexer::InputSpan;
-use crate::compiler::report::generate_duplicate_space_attr_error;
+use crate::compiler::report::{generate_duplicate_space_attr_error, generate_space_missing_size_error};
