@@ -1,6 +1,10 @@
 use crate::spec::jir::common::JIRSize;
 use crate::spec::moir::address_space::SpaceId;
 pub use crate::spec::moir::varnode::VarNodeId;
+use std::fmt::{
+    Display,
+    Formatter,
+};
 
 #[derive(Debug)]
 pub struct JIRVarNode {
@@ -59,8 +63,50 @@ impl From<JIRSlice> for JIRValue {
     }
 }
 
+impl From<&JIRSlice> for JIRValue {
+    fn from(value: &JIRSlice) -> Self {
+        JIRValue::Slice(*value)
+    }
+}
+
 impl From<JIRConst> for JIRValue {
     fn from(value: JIRConst) -> Self {
         JIRValue::Const(value)
+    }
+}
+
+impl From<&JIRConst> for JIRValue {
+    fn from(value: &JIRConst) -> Self {
+        JIRValue::Const(*value)
+    }
+}
+
+impl Display for JIRValue {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        match self {
+            JIRValue::Slice(slice) => write!(f, "{slice}"),
+            JIRValue::Const(value) => write!(f, "{value}"),
+        }
+    }
+}
+
+impl Display for JIRSlice {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "{}", self.varnode_id)
+    }
+}
+
+impl Display for JIRConst {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "{:#0x}", self.value)
     }
 }

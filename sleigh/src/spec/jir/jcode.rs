@@ -1,3 +1,4 @@
+pub mod display;
 mod inline_code;
 
 use crate::spec::jir::jir_block::JIRBlockId;
@@ -19,12 +20,16 @@ pub struct JIRInstruction {
 }
 
 impl JIRInstruction {
-    pub fn new_binary_op(
-        output: impl Into<JIRSlice>,
-        input_a: impl Into<JIRValue>,
-        input_b: impl Into<JIRValue>,
+    pub fn new_binary_op<O, I>(
+        output: O,
+        input_a: I,
+        input_b: I,
         operation: JIROperation,
-    ) -> Self {
+    ) -> Self
+    where
+        O: Into<JIRSlice>,
+        I: Into<JIRValue>,
+    {
         Self {
             output: Some(output.into()),
             input_a: Some(input_a.into()),
@@ -33,11 +38,15 @@ impl JIRInstruction {
         }
     }
 
-    pub fn new_unary_op(
-        output: impl Into<JIRSlice>,
-        input_a: impl Into<JIRValue>,
+    pub fn new_unary_op<O, I>(
+        output: O,
+        input_a: I,
         operation: JIROperation,
-    ) -> Self {
+    ) -> Self
+    where
+        O: Into<JIRSlice>,
+        I: Into<JIRValue>,
+    {
         Self {
             output: Some(output.into()),
             input_a: Some(input_a.into()),
@@ -46,27 +55,115 @@ impl JIRInstruction {
         }
     }
 
+    pub fn new_branch<I>(
+        target: I,
+        operation: JIROperation,
+    ) -> Self
+    where
+        I: Into<JIRValue>,
+    {
+        Self {
+            output: None,
+            input_a: Some(target.into()),
+            input_b: None,
+            operation,
+        }
+    }
+
+    pub fn new_conditional_branch<I>(
+        target: I,
+        cond: I,
+        operation: JIROperation,
+    ) -> Self
+    where
+        I: Into<JIRValue>,
+    {
+        Self {
+            output: None,
+            input_a: Some(target.into()),
+            input_b: Some(cond.into()),
+            operation,
+        }
+    }
+
+    pub fn new_jcode_branch<I>(
+        cond: Option<I>,
+        operation: JIROperation,
+    ) -> Self
+    where
+        I: Into<JIRValue>,
+    {
+        Self {
+            output: None,
+            input_a: None,
+            input_b: cond.map(I::into),
+            operation,
+        }
+    }
+
+    pub fn new_custom_call(
+        output: Option<impl Into<JIRSlice>>,
+        op_id: CustomOpId,
+        args: Vec<JIRValue>,
+    ) -> Self {
+        Self {
+            output: output.map(Into::into),
+            input_a: args.get(0).copied(),
+            input_b: args.get(1).copied(),
+            operation: JIROperation::CustomOp {
+                op_id,
+                extra_args: Rc::new(args.into_iter().skip(2).collect()),
+            },
+        }
+    }
+
+    /// Loads the value pointed to by the address at input_a to the varnode output.
+    pub fn load(
+        output: impl Into<JIRSlice>,
+        addr: impl Into<JIRValue>,
+        space: SpaceId,
+    ) -> Self {
+        Self {
+            output: Some(output.into()),
+            input_a: Some(addr.into()),
+            input_b: None,
+            operation: JIROperation::Load(space),
+        }
+    }
+
+    /// Storing a value does not have any output varnode, since the memory referenced by addr is changed.
+    /// The address is provided in input_a whereas the value is provided in input_b
+    pub fn store(
+        addr: impl Into<JIRValue>,
+        space: SpaceId,
+        value: impl Into<JIRValue>,
+    ) -> Self {
+        Self {
+            output: None,
+            input_a: Some(addr.into()),
+            input_b: Some(value.into()),
+            operation: JIROperation::Store(space),
+        }
+    }
+
     pub fn is_unconditional_branch(&self) -> bool {
         use JIROperation::*;
-        match self.operation {
-            CallDirect | CallIndirect | ReturnDirect | ReturnIndirect | GotoDirect | GotoIndirect | JCodeGoto(_) => {
-                true
-            }
-            _ => false,
-        }
+        matches!(
+            self.operation,
+            CallDirect | CallIndirect | ReturnDirect | ReturnIndirect | GotoDirect | GotoIndirect | JCodeGoto(_)
+        )
     }
 
     pub fn ist_conditional_branch(&self) -> bool {
         use JIROperation::*;
-        match self.operation {
-            GotoDirectIf | GotoIndirectIf | JCodeGotoIf(_) => true,
-            _ => false,
-        }
+        matches!(self.operation, GotoDirectIf | GotoIndirectIf | JCodeGotoIf(_))
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum JIROperation {
+    // TODO: Remove this dummy op
+    Unimpl,
     // -------------------------- GENERIC LOAD/STORE --------------------------
     Copy,
     Load(SpaceId),
@@ -158,5 +255,8 @@ pub enum JIROperation {
     Ceil,
     Floor,
     Round,
-    CustomOp(CustomOpId, Rc<Vec<JIRValue>>),
+    CustomOp {
+        op_id: CustomOpId,
+        extra_args: Rc<Vec<JIRValue>>,
+    },
 }

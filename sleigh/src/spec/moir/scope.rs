@@ -21,6 +21,8 @@ use crate::spec::moir::varnode::{
 use crate::spec::reporting::generate_identifier_exists_report;
 use crate::spec::typed_index_table::TypedIndexTable;
 use itertools::Itertools;
+use mogi_utilities::index_map::PrimaryMap;
+use mogi_utilities::new_map_key;
 use std::collections::hash_map::Entry;
 use std::collections::{
     HashMap,
@@ -48,7 +50,7 @@ pub struct MOIRScope {
     /// Labels can be used ahead of their definition. Their usage declares them, and they can
     /// be defined later on. If no definition was found after processing the entire semantic
     /// section, this will produce an error.
-    labels: TypedIndexTable<LabelId, Option<InstructionId>>,
+    labels: PrimaryMap<LabelId, Option<InstructionId>>,
     /// Keeps track of the sizes of temporaries assigned as part of the semantic section.
     temporaries: TypedIndexTable<MOIRTemporaryId, MOIRTemporary>,
     /// Contains the actual local variables.
@@ -66,7 +68,7 @@ pub struct MOIRScope {
 }
 
 new_typed_index_table_id! { pub struct MOIRLocalId; "L"; }
-new_typed_index_table_id! { pub struct LabelId; "LBL"; }
+new_map_key! { pub struct LabelId; "LBL"; }
 
 /// InstructionId is simply an index into the instruction list.
 pub type InstructionId = usize;
@@ -450,10 +452,7 @@ impl MOIRScope {
         id: InstructionId,
     ) -> SleighCompilerResult<(LabelId, InstructionId)> {
         let label_id = self.resolve_label(label)?;
-        let instruction_id = self
-            .labels
-            .get_mut(label_id)
-            .expect("If this does not exist we have an internal bookkeeping error");
+        let instruction_id = &mut self.labels[label_id];
         if instruction_id.is_some() {
             todo!("Generate error for duplicate label definition")
         } else {

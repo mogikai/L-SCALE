@@ -115,4 +115,12 @@ impl JIRLocalResolver {
             }
         })
     }
+
+    pub fn inst_start(&self) -> EVAddr {
+        self.inst_start
+    }
+
+    pub fn inst_next(&self) -> EVAddr {
+        self.inst_next
+    }
 }

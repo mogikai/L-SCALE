@@ -3,6 +3,7 @@ use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::InputSpan;
 use crate::new_typed_index_table_id;
 use crate::spec::builder::StringId;
+use crate::spec::jir::jir_block::JIRBlockId;
 use crate::spec::jir::space::JIRSpace;
 use crate::spec::jir::values::JIRVarNode;
 use crate::spec::moir::address_space::SpaceId;
@@ -206,4 +207,10 @@ pub enum ProcessorSpecificationError {
     MissingDefaultSpace,
     #[error("The specification does not specify any varnodes.")]
     NoVarNodes,
+    #[error("The instruction is missing an output varnode")]
+    MissingOutput,
+    #[error("The instruction is missing an input varnode or constant")]
+    MissingInput,
+    #[error("The block with id {0} is not defined yet")]
+    UndefinedBlock(JIRBlockId),
 }
