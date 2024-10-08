@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::Display;
 use super::common::{
     SASTIdent,
     SASTSize,
@@ -26,18 +26,6 @@ pub enum SASTAddressSpaceAttribute {
     Size(SASTSize), // mandatory
     Wordsize(SASTSize),
     IsDefault,
-}
-
-impl Display for SASTAddressSpaceAttribute {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            SASTAddressSpaceAttribute::Type(_) => "type",
-            SASTAddressSpaceAttribute::Size(_) => "size",
-            SASTAddressSpaceAttribute::Wordsize(_) => "wordsize",
-            SASTAddressSpaceAttribute::IsDefault => "default",
-        })?;
-        Ok(())
-    }
 }
 
 #[derive(Debug)]

@@ -119,7 +119,7 @@ pub fn generate_duplicate_space_attr_error(attr: SASTAddressSpaceAttribute, firs
     let color_a = colors.next();
     let color_b = colors.next();
     let report = Report::build(ReportKind::Error, first.context(), second.start())
-        .with_message(format!("Space attribute '{attr}' defined two times."))
+        .with_message(format!("Space attribute '{attr:?}' is already defined."))
         .with_label(Label::new(first)
             .with_message("First definition")
             .with_color(color_a))

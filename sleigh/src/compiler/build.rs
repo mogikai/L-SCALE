@@ -28,6 +28,8 @@ use crate::compiler::ast::{
     TransmuteIntoVec,
 };
 use crate::compiler::error::SleighCompilerError;
+use crate::compiler::lexer::InputSpan;
+use crate::compiler::report::{generate_duplicate_space_attr_error};
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
@@ -196,7 +198,7 @@ impl SleighCompiler {
         &mut self,
         space: Spanned<SASTAddressSpace>,
     ) -> SleighCompilerResult {
-        let (space, space_input) = space.into_tuple();
+        let (space, _) = space.into_tuple();
         let mut r#type = None;
         let mut address_size = None;
         let mut word_size = None;
@@ -357,5 +359,3 @@ macro_rules! trace_build {
 }
 
 pub(crate) use trace_build;
-use crate::compiler::lexer::InputSpan;
-use crate::compiler::report::{generate_duplicate_space_attr_error};
