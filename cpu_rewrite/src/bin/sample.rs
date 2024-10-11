@@ -50,7 +50,7 @@ fn main() {
     let source = DirectlyMappedBytes::from(b"\x83\xc0\x01");
     let mut cache = LifterCache::default();
     let mut lifter = Lifter::new(&specification, &mut cache, &source);
-    let (remaining, inst) = lifter.lift(0u64.into(), args.constructor_id).unwrap();
+    let (next, inst) = lifter.lift(0u64.into(), args.constructor_id).unwrap();
     // TODO: Disassemble at offset 0x0000000000001060
     let mmu = Rc::new(RefCell::new(MogiMMU::new()));
     let mut cpu = CPU::new(X86MogiJit::new(mmu.clone()), mmu);

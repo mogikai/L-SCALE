@@ -47,6 +47,11 @@ pub struct MOIRConstructor {
 new_typed_index_table_id! { pub struct ConstructorId; "C"; }
 
 impl MOIRConstructor {
+    /// Transform the MOIR code template in the constructor into actual JCode.
+    /// This effectively resolves all local variables to either a concrete varnode,
+    /// or a constant value. The constructor needs a [JIRLocalResolver] in order
+    /// to resolve locals that refer to e.g. fields.
+    /// The [JIRLocalResolver] is usually populated by the matcher during matching.
     pub fn generate_jcode(
         &self,
         resolver: JIRLocalResolver,
