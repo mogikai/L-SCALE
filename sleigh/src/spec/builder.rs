@@ -543,7 +543,7 @@ impl ProcessorSpecificationBuilder {
                     .get(*ident)
                     .expect("If the ident is mapped, then there has to exist a symbol")
             })
-            .ok_or(generate_undefined_ident_error(Spanned::new(
+            .ok_or_else(|| generate_undefined_ident_error(Spanned::new(
                 self.resolve_string_id(ident.value().clone()),
                 ident.span().clone(),
             )))
