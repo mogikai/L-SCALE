@@ -70,7 +70,7 @@ impl MOIRConstructor {
             debug!("BLOCK END!");
         }
         debug!("{target_inst}");
-        Ok(TargetInstruction::new(0u64.into(), 0u64.into()))
+        Ok(target_inst)
     }
 
     fn generate_instruction(
