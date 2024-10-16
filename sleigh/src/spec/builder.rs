@@ -13,10 +13,7 @@ use super::moir::context::{
     MOIRContextId,
 };
 use crate::compiler::ast::Spanned;
-use crate::compiler::build::matcher::{
-    Matcher,
-    MatcherId,
-};
+use crate::compiler::build::constructor::matcher::MatcherId;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::InputSpan;
@@ -502,14 +499,6 @@ impl ProcessorSpecificationBuilder {
             .expect("We either just inserted the new table, or fetched an existing one."))
     }
 
-    pub(crate) fn register_matchers(
-        &mut self,
-        table: TableId,
-        matchers: Vec<Matcher>,
-    ) -> MatcherId {
-        todo!("Implement matcher insertion");
-    }
-
     pub(crate) fn get_symbol_and_ident(
         &self,
         ident: &Spanned<StringId>,
@@ -794,7 +783,7 @@ impl Default for ProcessorSpecificationBuilder {
 
         // define epsilon as field belonging to a zero-sized token
         let zero_token = slf.define_unnamed_token(MOIRToken {
-            bits: 0,
+            bytes: 0,
             endianness_override: None,
         }).expect("This may not error at this point");
         slf.zero_token = Some(zero_token);
@@ -818,36 +807,25 @@ impl ProcessorSpecificationBuilder {
     }
 
     pub fn build(self) -> SleighCompilerResult<ProcessorSpecification> {
-        let root_table = self.root_table()?;
-        let bytes = [0x04, 0x69];
-        for root_matcher in root_table.matchers.values() {
-            let matching = root_matcher.matches(
-                &bytes,
-                MOIREndianness::Big,
-                &self.symbol_tables.fields,
-                &self.symbol_tables.tokens,
-                &self.context,
-                &HashMap::new(),
-                &self.symbol_tables.tables,
-            );
-            eprintln!("matching = {:#?}", matching);
-        }
-
         debug!("Finalizing spec:");
         debug!("Found {} symbols", self.symbol_ids.len());
         debug!("Found {} tables", self.symbol_tables.tables.len());
         debug!("Found {} macros", self.symbol_tables.macros.len());
         debug!("Found {} tokens", self.symbol_tables.tokens.len());
+        debug!("Found {} context varnodes", self.context.len());
         debug!("Found {} fields", self.symbol_tables.fields.len());
         debug!("Found {} spaces", self.symbol_tables.spaces.len());
         debug!("Found {} global varnodes", self.symbol_tables.varnodes.len());
         debug!("Found {} custom operations", self.symbol_tables.custom_ops.len());
+
         let root_table = self.table_id_by_ident(&self.root_table)?;
         let context = MOIRToJIRTransformer::new(
             self.symbol_ids,
             self.symbol_strings,
             self.symbol_tables,
             self.string_to_ident_mapping,
+            self.context,
+            root_table,
         );
         let jir = context.transform()?;
         // TODO: Generate more helpful error reports during final build step

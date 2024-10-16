@@ -6,6 +6,7 @@ use std::fmt::Write;
 
 use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::ast::Spanned;
+use crate::compiler::build::constructor::matcher::MatcherReference;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::{
@@ -41,12 +42,10 @@ use tracing::{
     trace,
 };
 
-use super::matcher::{
-    Matcher,
-    MatcherReference,
-};
+use self::matcher::Matcher;
 
 mod matcher_builder;
+pub(crate) mod matcher;
 
 impl SleighCompiler {
     /// Process a constructor. This will create the table in which the constructor is anchored, if it does not exist.
@@ -77,8 +76,6 @@ impl SleighCompiler {
             writeln!(&mut conjunctions_str, "tokens: {:?}", matcher.token_list.list);
         }
         trace_build!("{conjunctions_str}");
-
-        // TODO remove trailing Undetermined (or not, idk yet)
 
         let mut references = HashSet::new();
         matchers.iter().for_each(|matcher| {

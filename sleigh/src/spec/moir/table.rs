@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use crate::compiler::build::matcher::{Matcher, MatcherId};
+use crate::compiler::build::constructor::matcher::{Matcher, MatcherId};
 use crate::new_typed_index_table_id;
 use crate::spec::moir::scope::MOIRMaybeSize;
 use crate::spec::moir::varnode::{
@@ -11,14 +11,6 @@ use crate::spec::typed_index_table::TypedIndexTable;
 
 #[derive(Debug, Default)]
 pub struct MOIRTable {
-    // TODO: how to actually implement this?
-    // Ideally, each constructor inserts its bit pattern into a jump table
-    // The first pattern in the op points to the second pattern and so on until
-    // we reach the disassembly actions matchers. This can be a list, if multiple constructors
-    // match. We then have to match each of these sections, and use the one with the most
-    // constraints to finally lift the instruction.
-    bit_matching_table: Vec<Vec<()>>,
-    constructors: Vec<()>,
     pub(crate) matchers: TypedIndexTable<MatcherId, Matcher>,
     /// TODO: improve documentation
     /// 7.7.2.3. Exports

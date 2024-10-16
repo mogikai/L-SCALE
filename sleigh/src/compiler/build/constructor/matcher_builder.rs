@@ -18,7 +18,7 @@ use crate::compiler::ast::constructor::bit_pattern_section::{
     SASTUnaryOp,
 };
 use crate::compiler::ast::Spanned;
-use crate::compiler::build::matcher::{
+use crate::compiler::build::constructor::matcher::{
     FieldMatcher,
     Matcher,
     MatcherAtom,
@@ -47,8 +47,7 @@ impl SleighCompiler {
     ///
     /// - Each matcher contains a fixed-length, known list of tokens
     ///     - Each token list has unique context tokens at the beginning
-    /// - Each matcher consists only of And statement which are either trivial (only fields being
-    /// matched against bit patterns) or nontrivial (including equality of fields)
+    /// - Each matcher consists only of And statement which are trivial (mask-value)
     pub(super) fn create_matchers(
         &self,
         constraint: Spanned<SASTBitPatternConstraint>,

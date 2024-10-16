@@ -30,6 +30,8 @@ use string_interner::StringInterner;
 use strum_macros::Display;
 use thiserror::Error;
 
+use self::jir::table::JIRTable;
+
 pub mod builder;
 pub mod jir;
 pub mod lifter;
@@ -63,7 +65,7 @@ pub enum JIRSymbolId {
 struct JIRSymbolTables {
     // macros: TypedIndexTable<MOIRMacroId, MOIRMacro>,
     spaces: TypedIndexTable<SpaceId, JIRSpace>,
-    tables: TypedIndexTable<TableId, MOIRTable>,
+    tables: TypedIndexTable<TableId, JIRTable>,
     constructors: TypedIndexTable<ConstructorId, MOIRConstructor>,
     varnodes: TypedIndexTable<VarNodeId, JIRVarNode>,
     // tokens: TypedIndexTable<MOIRTokenId, MOIRToken>,
@@ -206,4 +208,6 @@ pub enum ProcessorSpecificationError {
     MissingDefaultSpace,
     #[error("The specification does not specify any varnodes.")]
     NoVarNodes,
+    #[error("The token size is not a multiple of 8 bit")]
+    TokenSizeNotAMultipleOfEightBit,
 }

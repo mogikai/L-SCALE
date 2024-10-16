@@ -79,12 +79,20 @@ where
         self.0.iter()
     }
 
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
+        self.0.iter_mut()
+    }
+
     pub fn into_values(self) -> impl Iterator<Item = V> {
         self.0.into_iter()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (K, &V)> {
         self.0.iter().enumerate().map(|(i, v)| (K::from(i), v))
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (K, &mut V)> {
+        self.0.iter_mut().enumerate().map(|(i, v)| (K::from(i), v))
     }
 
     pub fn into_iter(self) -> impl Iterator<Item = (K, V)> {

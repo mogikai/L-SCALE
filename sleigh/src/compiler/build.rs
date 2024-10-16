@@ -3,9 +3,8 @@
 //! syntax tree and processing each item.
 
 pub mod atomize;
-mod constructor;
+pub(crate) mod constructor;
 mod r#macro;
-pub mod matcher;
 
 use crate::compiler::ast::attach::SASTAttach;
 use crate::compiler::ast::define::{
@@ -37,6 +36,7 @@ use crate::spec::moir::address_space::{
     MOIRSpaceIsDefault,
     MOIRSpaceType,
 };
+use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::field::{
     MOIRBitRange,
     MOIRField,
@@ -44,6 +44,7 @@ use crate::spec::moir::field::{
 };
 use crate::spec::moir::token::MOIRToken;
 use crate::spec::moir::varnode::MOIRVarNode;
+use crate::spec::ProcessorSpecificationError;
 use std::ops::Range;
 use tracing::{
     debug,
@@ -59,6 +60,7 @@ impl SleighCompiler {
     ) -> SleighCompilerResult {
         debug!("The AST has {} toplevel items", ast.items.len());
         self.process_items(ast.items)
+        // TODO add pass after all items have been processed to deal with recursive tables
     }
 
     fn process_items(
@@ -254,10 +256,13 @@ impl SleighCompiler {
         // We first define the token and then we can define its fields, since they need to refer to the token.
         let (token, _) = token.into_tuple();
         let bits = token.bits.into_value();
+        if bits % 8 != 0 {
+            Err(ProcessorSpecificationError::TokenSizeNotAMultipleOfEightBit)?;
+        }
         let result = self.spec_builder.define_token(
             token.name.transmute(),
             MOIRToken {
-                bits,
+                bytes: MOIRSize::try_from(bits).map_err(|_| SleighCompilerError::TODO)? / 8,
                 endianness_override: token.endian_override.map(|e| e.into_value().into()),
             },
         );
