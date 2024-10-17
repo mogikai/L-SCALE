@@ -113,6 +113,23 @@ impl Jumplist {
         })
     }
 
+    pub(crate) fn for_entries_mut<F>(&mut self, f: &mut F)
+        where F: FnMut(&mut JumplistEntry)
+        {
+            match &mut self.container {
+                JumplistContainer::Small(array) => for entries in array.iter_mut().filter_map(|entry| entry.as_mut()) {
+                    for entry in entries.iter_mut() {
+                        f(entry);
+                    }
+                }
+                JumplistContainer::Large(map) => for entries in map.values_mut() {
+                    for entry in entries.iter_mut() {
+                        f(entry);
+                    }
+                }
+            }
+        }
+
     pub(crate) fn entries(&self) -> impl Iterator<Item = (u64, &Vec<JumplistEntry>)> {
         // TODO do this without collecting into vector
         match &self.container {
@@ -123,7 +140,7 @@ impl Jumplist {
                     Some(entry) => Some((value as u64, entry)),
                     None => None,
                 })
-                .collect_vec()
+            .collect_vec()
                 .into_iter(),
             JumplistContainer::Large(map) => map
                 .iter()
