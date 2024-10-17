@@ -92,6 +92,15 @@ impl SleighCompiler {
 
         let symbol = self.spec_builder.get_symbol(&ident.clone().transmute())?;
 
+        // we don't want empty token lists so we'll use the zero token whenever there isn't an
+        // actual underlying token
+        let zero_token = self
+            .spec_builder
+            .zero_token()
+            .ok_or_else(|| -> SleighCompilerError {
+                todo!("The zero token has to be defined at this point.");
+            })?;
+
         let matchers = match symbol {
             MOIRSymbolId::Table(tid) => {
                 // expansion strategy: create one matcher per unique token list of matchers
@@ -110,13 +119,6 @@ impl SleighCompiler {
                         partition.insert(matcher.token_list.list.clone(), vec![id]);
                     }
                 });
-
-                let zero_token = self
-                    .spec_builder
-                    .zero_token()
-                    .ok_or_else(|| -> SleighCompilerError {
-                        todo!("The zero token has to be defined at this point.");
-                    })?;
 
                 // create a new matcher for each bin
                 partition
@@ -160,8 +162,8 @@ impl SleighCompiler {
             }
             MOIRSymbolId::VarNode(vnid) => {
                 // include in references
-                let conjunctions = vec![];
-                let token_list = TokenList::default();
+                let conjunctions = vec![HashSet::new()];
+                let token_list = TokenList::new(vec![MOIRFieldParent::Token(zero_token)], false, false);
                 let references = HashSet::from([MatcherReference::Varnode(*vnid)]);
 
                 vec![Matcher::new(conjunctions, token_list, references)]
@@ -594,10 +596,11 @@ impl SleighCompiler {
         lhs: &'a TokenList,
         rhs: &'a TokenList,
     ) -> SleighCompilerResult<&'a [MOIRFieldParent]> {
-        // special case: one of the lists is empty
-        if lhs.list.len() == 0 {
+        // lists can only be empty temporarily when their context is extracted, otherwise
+        // they always have at least the zero token
+        if lhs.list.is_empty()  || rhs.list.is_empty(){
             return Ok(&rhs.list);
-        } else if rhs.list.len() == 0 {
+        } else if rhs.list.is_empty() {
             return Ok(&lhs.list);
         }
 

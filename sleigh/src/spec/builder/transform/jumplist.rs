@@ -297,8 +297,8 @@ impl<'a> TableTransformer<'a> {
                 Ok(false)
             }
         } else {
-            // lhs is none and rhs is none
-            Ok(rhs.token_list.list.get(token_index + 1).is_none())
+            // lhs is none and rhs is none and matchers have same constructor
+            Ok(rhs.token_list.list.get(token_index + 1).is_none() && lhs.constructor == rhs.constructor)
         }
     }
 
