@@ -22,3 +22,7 @@ imbl = "3.0.0"
 trace_build = []
 trace_pp = []
 trace_jir = []
+
+[dev-dependencies]
+mogi_sleigh = { path = ".", features = ["trace_build"] }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
