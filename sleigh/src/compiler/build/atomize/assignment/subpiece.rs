@@ -9,8 +9,7 @@ use crate::compiler::ast::pcode::subpiece::{
     SASTPCodeSubpieceTarget,
 };
 use crate::compiler::ast::Spanned;
-use crate::compiler::error::SleighCompilerError;
-use crate::compiler::report::generate_cannot_slice_error;
+use crate::compiler::error::{CannotSliceLhs, SleighCompilerError};
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
@@ -125,10 +124,15 @@ fn truncate_lhs(
         // If we defined a new local, then there is no need to truncate.
         Ok(lhs)
     } else {
-        scope.truncate_local(lhs, size).map_err(|_| {
+        scope.truncate_local(lhs, size).map_err(|e| {
             let (ident, ident_span) = ident.into_tuple();
             let str = spec_builder.resolve_string_id(ident.into());
-            generate_cannot_slice_error(str, ident_span, size)
+            SleighCompilerError::CannotSliceLhs(CannotSliceLhs {
+                err: Box::new(e),
+                ident_str: str.to_string(),
+                ident: ident_span,
+                expected_size: size,
+            })
         })
     }
 }

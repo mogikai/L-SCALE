@@ -1,7 +1,6 @@
 use crate::compiler::ast::Spanned;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
-use crate::compiler::report::generate_invalid_sizes_error;
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
@@ -26,29 +25,10 @@ impl SleighCompiler {
         match size_constraint {
             MOIRMaybeSize::Determined(size) => {
                 // The size constraint is determined. Update the size in the scope.
+                // TODO map error here to add new information? See generate functions before this commit
                 scope
                     .resolve_ident_sized(&self.spec_builder, ident.clone(), size)
                     .map(MOIRLocal::from)
-                    .map_err(|e| match e {
-                        // TODO: Refactor into error helper function and generate better reports
-                        SleighCompilerError::InvalidSliceSize { new, current } => {
-                            generate_invalid_sizes_error(ident.into_span(), current, new)
-                        }
-                        SleighCompilerError::InvalidSliceRange {
-                            current_start,
-                            current_end,
-                            new_start,
-                            new_end,
-                        } => generate_invalid_sizes_error(
-                            ident.into_span(),
-                            current_end - current_start,
-                            new_end - new_start,
-                        ),
-                        SleighCompilerError::CannotSliceUndetermined => {
-                            generate_invalid_sizes_error(ident.into_span(), 0, size)
-                        }
-                        e => e,
-                    })
             }
             MOIRMaybeSize::Undetermined => {
                 // Size constraint is undetermined. We can just return the resolved value.

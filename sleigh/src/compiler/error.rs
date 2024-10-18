@@ -2,7 +2,7 @@ use crate::compiler::ast::Spanned;
 use crate::compiler::inputcache::InputCacheError;
 use crate::compiler::lexer::InputSpan;
 use crate::preprocessor::error::PreprocessorError;
-use crate::spec::builder::StringId;
+use crate::spec::builder::{MOIRSymbolId, StringId};
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::ProcessorSpecificationError;
 use ariadne::Report;
@@ -12,6 +12,8 @@ use std::fmt::{
     Formatter,
 };
 use thiserror::Error;
+use crate::compiler::ast::define::SASTAddressSpaceAttribute;
+use crate::spec::moir::endianness::MOIREndianness;
 
 #[derive(Error)]
 pub enum SleighCompilerError {
@@ -34,7 +36,7 @@ pub enum SleighCompilerError {
     #[error("The compiler encountered an error during the semantic analysis phase.")]
     SemanticError(String),
     #[error("The value cannot be converted into a boolean value")]
-    CannotConverToBool,
+    CannotConvertToBool,
     #[error("The operation encountered an overflow during constant folding")]
     ConstEvalOverflow,
     #[error("A detailed error report referencing the inputs.")]
@@ -64,7 +66,114 @@ pub enum SleighCompilerError {
     DuplicateDefinition,
     #[error("The builtin operation was called with an incorrect number of arguments")]
     InvalidArgumentCount,
+    #[error("Generic const eval error")]
+    ConstEvalError(ConstEvalError),
+    #[error("Cannot slice left hand side")]
+    CannotSliceLhs(CannotSliceLhs),
+    #[error("Identifier already exists: {0}")]
+    IdentifierExists(IdentifierExists),
+    #[error("Endianness already exists: {0}")]
+    EndiannessExists(EndiannessExists),
+    #[error("Alignment already specified: {0}")]
+    AlignmentSpecified(AlignmentSpecified),
+    #[error("Undefined symbol: {0}")]
+    UndefinedSymbol(UndefinedSymbol),
+    #[error("Invalid symbol type: {0}")]
+    InvalidSymbolType(InvalidSymbolType),
+    #[error("Undefined identifier: {0}")]
+    UndefinedIdentifier(UndefinedIdentifier),
+    #[error("Space attribute is already defined: {0}")]
+    DuplicateSpaceAttribute(DuplicateSpaceAttribute),
+    #[error("Atomize statement failed: {0}")]
+    AtomizeStatementFailed(AtomizeStatementFailed),
+    #[error("Process item failed: {0}")]
+    ProcessItemFailed(ProcessItemFailed),
+    #[error("The error should have been handled earlier")]
+    UnhandledError(Box<SleighCompilerError>),
 }
+
+#[derive(Error, Debug)]
+#[error("Cannot slice left hand side")]
+pub struct ConstEvalError {
+    pub err: Box<SleighCompilerError>,
+    pub lhs: InputSpan,
+    pub rhs: InputSpan,
+}
+
+#[derive(Error, Debug)]
+#[error("Cannot slice left hand side")]
+pub struct CannotSliceLhs {
+    pub err: Box<SleighCompilerError>,
+    pub ident_str: String,
+    pub ident: InputSpan,
+    pub expected_size: MOIRSize,
+}
+
+#[derive(Error, Debug)]
+#[error("Identifier exists")]
+pub struct IdentifierExists {
+    pub name: String,
+    pub old: InputSpan,
+    pub new: InputSpan,
+}
+
+#[derive(Error, Debug)]
+#[error("Endianness exists")]
+pub struct EndiannessExists {
+    pub old: Spanned<MOIREndianness>,
+    pub new: InputSpan,
+}
+
+#[derive(Error, Debug)]
+#[error("Alignment specified")]
+pub struct AlignmentSpecified {
+    pub old: Spanned<u16>,
+    pub new: InputSpan
+}
+
+#[derive(Error, Debug)]
+#[error("Undefined symbol")]
+pub struct UndefinedSymbol {
+    pub symbol: Spanned<String>,
+}
+
+#[derive(Error, Debug)]
+#[error("Invalid symbol type")]
+pub struct InvalidSymbolType {
+    pub defined_symbol: InputSpan,
+    pub symbol_reference: Spanned<String>,
+    pub expected: String,
+    pub found: MOIRSymbolId,
+}
+
+#[derive(Error, Debug)]
+#[error("Undefined identifier")]
+pub struct UndefinedIdentifier {
+    pub identifier: Spanned<String>,
+}
+
+#[derive(Error, Debug)]
+#[error("Duplicate space attribute")]
+pub struct DuplicateSpaceAttribute {
+    pub attribute: SASTAddressSpaceAttribute,
+    pub prev_input: InputSpan,
+    pub input: InputSpan,
+}
+
+#[derive(Error, Debug)]
+#[error("{err:?}")]
+pub struct AtomizeStatementFailed {
+    pub err: Box<SleighCompilerError>,
+    pub span: InputSpan,
+}
+
+#[derive(Error, Debug)]
+#[error("{err:?}")]
+pub struct ProcessItemFailed {
+    pub err: Box<SleighCompilerError>,
+    pub span: InputSpan,
+}
+
 
 impl Debug for SleighCompilerError {
     fn fmt(

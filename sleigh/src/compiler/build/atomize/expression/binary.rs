@@ -9,8 +9,7 @@ use crate::compiler::build::atomize::expression::{
     into_bool,
 };
 use crate::compiler::build::trace_build;
-use crate::compiler::error::SleighCompilerError;
-use crate::compiler::report::generate_const_eval_error;
+use crate::compiler::error::{ConstEvalError, SleighCompilerError};
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
@@ -99,9 +98,14 @@ impl SleighCompiler {
             if let MOIRLocal::Const(rhs) = rhs {
                 trace_build!("Performing const optimization since lhs and rhs are const");
                 // Constant folding. We can calculate this at compile time.
+                // TODO better error variant for const eval
                 return const_eval_binary_op(lhs, op.into_value(), rhs)
                     .map(MOIRLocal::Const)
-                    .map_err(|e| generate_const_eval_error(e.to_string().as_str(), lhs_span, rhs_span));
+                    .map_err(|e| SleighCompilerError::ConstEvalError(ConstEvalError {
+                        err: Box::new(e),
+                        lhs: lhs_span,
+                        rhs: rhs_span,
+                    }));
             }
         }
 

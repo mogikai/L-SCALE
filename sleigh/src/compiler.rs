@@ -210,7 +210,7 @@ impl SleighCompiler {
             input_cache: Default::default(),
             spec_builder: Default::default(),
             errors: vec![],
-            stop_on_first_error: true,
+            stop_on_first_error: false,
         }
     }
 }

@@ -27,9 +27,8 @@ use crate::compiler::ast::{
     Spanned,
     TransmuteIntoVec,
 };
-use crate::compiler::error::SleighCompilerError;
+use crate::compiler::error::{DuplicateSpaceAttribute, ProcessItemFailed, SleighCompilerError};
 use crate::compiler::lexer::InputSpan;
-use crate::compiler::report::{generate_duplicate_space_attr_error};
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
@@ -67,6 +66,8 @@ impl SleighCompiler {
         items: Vec<SASTItem>,
     ) -> SleighCompilerResult {
         for item in items {
+            // TODO prevent clone? but process_* eats value
+            let span = item.span().clone();
             let result = match item {
                 SASTItem::Attach(attach) => self.process_attach(attach),
                 SASTItem::Constructor(constructor) => self.process_constructor(constructor),
@@ -76,7 +77,13 @@ impl SleighCompiler {
                 SASTItem::Error(_) => {
                     panic!()
                 }
-            };
+            }.map_err(|err|
+                match err {
+                    err => SleighCompilerError::ProcessItemFailed(ProcessItemFailed {
+                        err: Box::new(err),
+                        span,
+                    }),
+                });
             self.report_error_or_unwrap(result)?;
         }
         Ok(())
@@ -207,28 +214,44 @@ impl SleighCompiler {
             match attribute {
                 SASTAddressSpaceAttribute::Type(ty) => {
                     if let Some((_, prev_input)) = r#type {
-                        return Err(generate_duplicate_space_attr_error(attribute, prev_input, input));
+                        return Err(SleighCompilerError::DuplicateSpaceAttribute(DuplicateSpaceAttribute {
+                            attribute,
+                            prev_input,
+                            input,
+                        }));
                     } else {
                         r#type = Some((ty.into(), input));
                     }
                 }
                 SASTAddressSpaceAttribute::Size(size) => {
                     if let Some((_, prev_input)) = address_size {
-                        return Err(generate_duplicate_space_attr_error(attribute, prev_input, input));
+                        return Err(SleighCompilerError::DuplicateSpaceAttribute(DuplicateSpaceAttribute {
+                            attribute,
+                            prev_input,
+                            input,
+                        }));
                     } else {
                         address_size = Some((size, input));
                     }
                 }
                 SASTAddressSpaceAttribute::Wordsize(size) => {
                     if let Some((_, prev_input)) = word_size {
-                        return Err(generate_duplicate_space_attr_error(attribute, prev_input, input));
+                        return Err(SleighCompilerError::DuplicateSpaceAttribute(DuplicateSpaceAttribute {
+                            attribute,
+                            prev_input,
+                            input,
+                        }));
                     } else {
                         word_size = Some((size, input));
                     }
                 }
                 SASTAddressSpaceAttribute::IsDefault => {
                     if let (_, Some(prev_input)) = default {
-                        return Err(generate_duplicate_space_attr_error(attribute, prev_input, input));
+                        return Err(SleighCompilerError::DuplicateSpaceAttribute(DuplicateSpaceAttribute {
+                            attribute,
+                            prev_input,
+                            input,
+                        }));
                     } else {
                         default = (MOIRSpaceIsDefault::Default, Some(input));
                     }

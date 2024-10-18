@@ -15,3 +15,16 @@ pub enum SASTItem {
     With(Spanned<SASTWith>),
     Error(InputSpan),
 }
+
+impl SASTItem {
+    pub fn span(&self) -> &InputSpan {
+        match self {
+            SASTItem::Attach(attach) => attach.span(),
+            SASTItem::Constructor(constructor) => constructor.span(),
+            SASTItem::Define(define) => define.span(),
+            SASTItem::Macro(pcode) => pcode.span(),
+            SASTItem::With(with) => with.span(),
+            SASTItem::Error(span) => span,
+        }
+    }
+}

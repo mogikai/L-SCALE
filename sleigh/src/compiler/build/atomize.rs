@@ -34,7 +34,7 @@ use crate::spec::moir::varnode::MOIRReference;
 
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::build::trace_build;
-use crate::compiler::error::SleighCompilerError;
+use crate::compiler::error::{AtomizeStatementFailed, SleighCompilerError};
 use crate::spec::moir::MOIR_ADDRESS_SIZE;
 use crate::spec::moir::address_space::MOIRSpaceType;
 use std::fmt::Write;
@@ -72,47 +72,55 @@ impl SleighCompiler {
             if export.is_some() {
                 todo!("Generate error report for instruction after export statement")
             }
-            let (statement, _) = statement.into_tuple();
+            let (statement, stmt_span) = statement.into_tuple();
             match statement {
                 SASTPCodeStatement::Assignment {
                     local,
                     target,
                     expression,
-                } => self.atomize_assignment(scope, instructions, local, target, expression)?,
+                } => self
+                    .atomize_assignment(scope, instructions, local, target, expression),
                 SASTPCodeStatement::Invocation(invocation) => {
                     // We ignore the output, since top level invocations do not output anything.
                     // TODO: Maybe it makes sense to update the pcodeop definition here to "no output"?
-                    self.atomize_invocation(scope, instructions, None, invocation)?;
+                    self
+                        .atomize_invocation(scope, instructions, None, invocation)
+                        .map(|option| ())
                 }
-                SASTPCodeStatement::Build(table) => self.atomize_build(scope, instructions, table.transmute())?,
+                SASTPCodeStatement::Build(table) =>
+                    self.atomize_build(scope, instructions, table.transmute()),
                 SASTPCodeStatement::Export(expression) => {
                     let span = expression.span().clone();
-                    export = Some(Spanned::new(self.atomize_export(scope, instructions, expression)?, span));
+                    self.atomize_export(scope, instructions, expression)
+                        .map(|local| export = Some(Spanned::new(local, span)))
                 }
                 SASTPCodeStatement::Delayslot(_) => {
                     todo!()
                 }
-                SASTPCodeStatement::Declaration(ident, size) => {
-                    self.atomize_declaration(scope, ident.transmute(), size.map(Spanned::transmute))?
-                }
-                SASTPCodeStatement::Branch(branch) => {
-                    self.atomize_branch(scope, instructions, MOIRGotoType::Regular, branch)?
-                }
+                SASTPCodeStatement::Declaration(ident, size) =>
+                    self.atomize_declaration(scope, ident.transmute(), size.map(Spanned::transmute)),
+                SASTPCodeStatement::Branch(branch) =>
+                    self.atomize_branch(scope, instructions, MOIRGotoType::Regular, branch),
                 SASTPCodeStatement::ConditionalBranch {
                     condition_expression,
                     target,
-                } => self.atomize_conditional_branch(scope, instructions, condition_expression, target)?,
-                SASTPCodeStatement::BranchCall(target) => {
-                    self.atomize_branch(scope, instructions, MOIRGotoType::Call, target)?
-                }
-                SASTPCodeStatement::BranchReturn(target) => {
-                    self.atomize_branch(scope, instructions, MOIRGotoType::Return, target)?
-                }
-                SASTPCodeStatement::NOP => instructions.push(moir_instruction!(nop)),
+                } => self
+                    .atomize_conditional_branch(scope, instructions, condition_expression, target),
+                SASTPCodeStatement::BranchCall(target) =>
+                    self.atomize_branch(scope, instructions, MOIRGotoType::Call, target),
+                SASTPCodeStatement::BranchReturn(target) =>
+                    self.atomize_branch(scope, instructions, MOIRGotoType::Return, target),
+                SASTPCodeStatement::NOP => {
+                    instructions.push(moir_instruction!(nop));
+                    Ok(())
+                },
                 SASTPCodeStatement::Error(_) => {
                     panic!("If there is an error in the AST, then this function should never have been invoked");
                 }
-            }
+            }.map_err(|err| SleighCompilerError::AtomizeStatementFailed(AtomizeStatementFailed {
+                err: Box::new(err),
+                span: stmt_span,
+            }))?;
 
             if let Some((label, label_id)) = label {
                 // If we defined a label for the first instruction, we want to add this information to the first instruction now.

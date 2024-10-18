@@ -1,5 +1,5 @@
 use crate::compiler::ast::Spanned;
-use crate::compiler::error::SleighCompilerError;
+use crate::compiler::error::{IdentifierExists, SleighCompilerError};
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::{
     CompilerContext,
@@ -24,7 +24,6 @@ use crate::spec::moir::varnode::{
     MOIRReference,
     MOIRSlice,
 };
-use crate::spec::reporting::generate_identifier_exists_report;
 use crate::spec::typed_index_table::TypedIndexTable;
 use crate::spec::{
     ProcessorSpecResult,
@@ -375,14 +374,14 @@ impl MOIRScope {
         let (ident, ident_span) = ident.into_tuple();
         let id = self.temporaries.insert(MOIRTemporary { size });
         match self.locals.entry(ident) {
-            Entry::Occupied(_) => Err(generate_identifier_exists_report(
-                "",
-                self.local_spans
+            Entry::Occupied(_) => Err(SleighCompilerError::IdentifierExists(IdentifierExists {
+                name: "".to_string(),
+                old: self.local_spans
                     .get(&ident)
                     .expect("This must exist, since the locals entry is occupied")
                     .clone(),
-                ident_span,
-            )),
+                new: ident_span,
+            })),
             Entry::Vacant(entry) => {
                 self.local_spans.insert(ident, ident_span);
                 let id = self.slices.insert(MOIRSlice::temporary(id, 0, size.into()));

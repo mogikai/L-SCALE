@@ -21,17 +21,20 @@ use crate::compiler::build::matcher::{
     MatcherId,
 };
 use crate::compiler::build::trace_build;
-use crate::compiler::error::SleighCompilerError;
+use crate::compiler::error::{
+    AlignmentSpecified,
+    EndiannessExists,
+    IdentifierExists,
+    InvalidSymbolType,
+    SleighCompilerError,
+    UndefinedIdentifier,
+    UndefinedSymbol
+};
 use crate::compiler::lexer::{
     InputSpan,
     ParserInput,
     SleighLexerInput,
 };
-use crate::compiler::report::{
-    generate_invalid_symbol_type_error,
-    generate_undefined_ident_error,
-};
-use crate::compiler::tokens::SleighToken;
 use crate::compiler::{
     CompilerContext,
     SleighCompilerResult,
@@ -67,11 +70,6 @@ use crate::spec::moir::varnode::{
     MOIRSlice,
     MOIRVarNode,
     VarNodeId,
-};
-use crate::spec::reporting::{
-    generate_alignment_already_specified_report,
-    generate_endianness_already_specified_report,
-    generate_identifier_exists_report,
 };
 use crate::spec::typed_index_table::TypedIndexTable;
 use crate::spec::{
@@ -205,7 +203,10 @@ impl ProcessorSpecificationBuilder {
         endianness: Spanned<MOIREndianness>,
     ) -> Result<(), SleighCompilerError> {
         if let Some(old_endianness) = &self.endianness {
-            Err(generate_endianness_already_specified_report(old_endianness, endianness.into_span()))
+            Err(SleighCompilerError::EndiannessExists(EndiannessExists {
+                old: old_endianness.clone(),
+                new: endianness.into_span(),
+            }))
         } else {
             self.endianness = Some(endianness.transmute());
             Ok(())
@@ -218,7 +219,10 @@ impl ProcessorSpecificationBuilder {
         alignment: Spanned<u16>,
     ) -> SleighCompilerResult {
         if let Some(old_alignment) = &self.alignment {
-            Err(generate_alignment_already_specified_report(old_alignment, alignment.into_span()))
+            Err(SleighCompilerError::AlignmentSpecified(AlignmentSpecified {
+                old: old_alignment.clone(),
+                new: alignment.into_span(),
+            }))
         } else {
             self.alignment = Some(alignment.transmute());
             Ok(())
@@ -543,10 +547,12 @@ impl ProcessorSpecificationBuilder {
                     .get(*ident)
                     .expect("If the ident is mapped, then there has to exist a symbol")
             })
-            .ok_or_else(|| generate_undefined_ident_error(Spanned::new(
-                self.resolve_string_id(ident.value().clone()),
-                ident.span().clone(),
-            )))
+            .ok_or_else(|| SleighCompilerError::UndefinedIdentifier(UndefinedIdentifier {
+                identifier: Spanned::new(
+                    self.resolve_string_id(ident.value().clone()).to_string(),
+                    ident.span().clone(),
+                ),
+            }))
     }
 
     /// Attempts to declare a symbol with the provided identifier.
@@ -564,7 +570,11 @@ impl ProcessorSpecificationBuilder {
                     .get(entry.get())
                     .expect("The symbol string must exist");
                 let name_str = self.resolve_string_id(**name);
-                Err(generate_identifier_exists_report(name_str, name.span().clone(), ident.into_span()))
+                Err(SleighCompilerError::IdentifierExists(IdentifierExists {
+                    name: name_str.to_string(),
+                    new: name.span().clone(),
+                    old: ident.into_span(),
+                }))
             }
             Entry::Vacant(entry) => {
                 // No symbol has been declared yet. We can now insert an empty declaration.
@@ -627,7 +637,7 @@ impl ProcessorSpecificationBuilder {
     ) -> SleighCompilerResult<VarNodeId> {
         let symbol_reference = ident.clone().map(|id| self.resolve_string_id(id));
         self.get_symbol_and_ident(ident)
-            .ok_or_else(|| generate_undefined_ident_error(symbol_reference.clone()))
+            .ok_or_else(|| SleighCompilerError::UndefinedSymbol(UndefinedSymbol { symbol: symbol_reference.clone().map(|s| s.to_string()) } ))
             .and_then(|(symbol, id)| match symbol {
                 MOIRSymbolId::VarNode(vnid) => Ok(*vnid),
                 _ => {
@@ -637,7 +647,13 @@ impl ProcessorSpecificationBuilder {
                         .expect("If the symbol exists, there must be a string associated with it.")
                         .span()
                         .clone();
-                    Err(generate_invalid_symbol_type_error(defined_symbol, symbol_reference, "VarNode", *symbol))?
+                    Err(
+                        SleighCompilerError::InvalidSymbolType(InvalidSymbolType {
+                            defined_symbol,
+                            symbol_reference: symbol_reference.map(|s| s.to_string()),
+                            expected: "VarNode".to_string(),
+                            found: *symbol,
+                        }))?
                 }
             })
     }
@@ -872,6 +888,7 @@ pub trait CustomInterner {
         string_id: StringId,
     ) -> Option<&str>;
 }
+
 impl CustomInterner for StringInterner<StringBackend> {
     fn intern<T: AsRef<str>>(
         &mut self,
@@ -982,7 +999,9 @@ macro_rules! impl_get_symbol_id {
             ) -> SleighCompilerResult<$symbol_id> {
                 let symbol_reference = ident.clone().map(|id| self.resolve_string_id(id));
                 self.get_symbol_and_ident(ident)
-                    .ok_or_else(|| generate_undefined_ident_error(symbol_reference.clone()))
+                    .ok_or_else(|| SleighCompilerError::UndefinedIdentifier(UndefinedIdentifier {
+                        identifier: symbol_reference.clone().map(|s| s.to_string())
+                }))
                     .and_then(|(symbol, id)| match symbol {
                         $variant => Ok(*$id),
                         _ => {
@@ -992,12 +1011,12 @@ macro_rules! impl_get_symbol_id {
                                 .expect("If the symbol exists, there must be a string associated with it.")
                                 .span()
                                 .clone();
-                            Err(generate_invalid_symbol_type_error(
-                                defined_symbol,
-                                symbol_reference,
-                                stringify!($symbol_id),
-                                *symbol,
-                            ))?
+                            Err(SleighCompilerError::InvalidSymbolType(InvalidSymbolType {
+                                defined_symbol: defined_symbol,
+                                symbol_reference: symbol_reference.map(|s| s.to_string()),
+                                expected: stringify!($symbol_id).to_string(),
+                                found: *symbol,
+                            }))?
                         }
                     })
             }
