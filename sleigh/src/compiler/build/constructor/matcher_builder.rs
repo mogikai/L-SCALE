@@ -92,15 +92,6 @@ impl SleighCompiler {
 
         let symbol = self.spec_builder.get_symbol(&ident.clone().transmute())?;
 
-        // we don't want empty token lists so we'll use the zero token whenever there isn't an
-        // actual underlying token
-        let zero_token = self
-            .spec_builder
-            .zero_token()
-            .ok_or_else(|| -> SleighCompilerError {
-                todo!("The zero token has to be defined at this point.");
-            })?;
-
         let matchers = match symbol {
             MOIRSymbolId::Table(tid) => {
                 // expansion strategy: create one matcher per unique token list of matchers
@@ -125,15 +116,18 @@ impl SleighCompiler {
                     .into_iter()
                     .map(|(token_list, matchers)| {
                         // associate all matchers with equal token_list with a new matcher
-                        let token_list = if token_list.is_empty() {
-                            vec![MOIRFieldParent::Token(zero_token)]
-                        } else {
-                            token_list
-                        };
 
+                        // Token_list can be empty if there is no conjunction (i.e. only references
+                        // or an epsilon matcher). We will create a matcher with an
+                        // empty conjunction in this case.
                         let atom = MatcherAtom::Submatchers { table: *tid, matchers };
-                        let mut conjunctions = vec![HashSet::from([atom])];
-                        conjunctions.append(&mut vec![HashSet::new(); token_list.len() - 1]);
+                        let conjunctions = if token_list.is_empty() {
+                            Vec::new()
+                        } else {
+                            let mut conjunctions = vec![HashSet::from([atom])];
+                            conjunctions.append(&mut vec![HashSet::new(); token_list.len() - 1]);
+                            conjunctions
+                        };
                         let token_list = TokenList::new(token_list, false, false);
                         let references = HashSet::from([MatcherReference::Subtable(*tid)]);
 
@@ -162,8 +156,8 @@ impl SleighCompiler {
             }
             MOIRSymbolId::VarNode(vnid) => {
                 // include in references
-                let conjunctions = vec![HashSet::new()];
-                let token_list = TokenList::new(vec![MOIRFieldParent::Token(zero_token)], false, false);
+                let conjunctions = Vec::new();
+                let token_list = TokenList::new(Vec::new(), false, false);
                 let references = HashSet::from([MatcherReference::Varnode(*vnid)]);
 
                 vec![Matcher::new(conjunctions, token_list, references)]
@@ -193,6 +187,12 @@ impl SleighCompiler {
                 // combining them has to be done as a Cartesian product
                 for matcher_lhs in &matchers_lhs {
                     for matcher_rhs in &matchers_rhs {
+                        // Special case: one of the matchers is empty (this can happen
+                        // if the bit pattern contains only `epsilon`). In this case,
+                        // we'll just use the other matcher as-is
+                        // eprintln!("matcher_lhs = {:#?}", matcher_lhs);
+                        // eprintln!("matcher_rhs = {:#?}", matcher_rhs);
+
                         // We first extract everything context-related into an extra matcher that
                         // will be merged at the end. This is necessary since the Sleigh writers
                         // decided to use & and not ; to separate context from regular tokens.
@@ -596,25 +596,10 @@ impl SleighCompiler {
         lhs: &'a TokenList,
         rhs: &'a TokenList,
     ) -> SleighCompilerResult<&'a [MOIRFieldParent]> {
-        // lists can only be empty temporarily when their context is extracted, otherwise
-        // they always have at least the zero token
-        if lhs.list.is_empty()  || rhs.list.is_empty(){
+        // lists can only be empty for empty or epsilon matchers
+        if lhs.list.is_empty() {
             return Ok(&rhs.list);
         } else if rhs.list.is_empty() {
-            return Ok(&lhs.list);
-        }
-
-        // special case: one of the lists consists of the empty token (semantically the same as above;
-        // in addition, there can't be a token list of length greater than one containing the empty
-        // token since it is eliminated on merge)
-        let empty_token = MOIRFieldParent::Token(
-            self.spec_builder
-                .zero_token()
-                .ok_or_else(|| -> SleighCompilerError { todo!("The zero token has to be defined at this point") })?,
-        );
-        if lhs.list[0] == empty_token {
-            return Ok(&rhs.list);
-        } else if rhs.list[0] == empty_token {
             return Ok(&lhs.list);
         }
 
