@@ -9,11 +9,12 @@ use crate::compiler::ast::pcode::subpiece::{
     SASTPCodeSubpieceTarget,
 };
 use crate::compiler::ast::Spanned;
-use crate::compiler::error::{CannotSliceLhs, SleighCompilerError};
+use crate::compiler::error::{CannotTruncateLhs, SleighCompilerError};
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
+use crate::span_err;
 use crate::spec::builder::ProcessorSpecificationBuilder;
 use crate::spec::moir::code::{
     moir_instruction,
@@ -124,15 +125,15 @@ fn truncate_lhs(
         // If we defined a new local, then there is no need to truncate.
         Ok(lhs)
     } else {
-        scope.truncate_local(lhs, size).map_err(|e| {
+        scope.truncate_local(lhs, size).map_err(|err| {
             let (ident, ident_span) = ident.into_tuple();
             let str = spec_builder.resolve_string_id(ident.into());
-            SleighCompilerError::CannotSliceLhs(CannotSliceLhs {
-                err: Box::new(e),
+            (CannotTruncateLhs {
+                err,
+                ident_span,
                 ident_str: str.to_string(),
-                ident: ident_span,
                 expected_size: size,
-            })
+            }).into()
         })
     }
 }

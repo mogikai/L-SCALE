@@ -101,11 +101,8 @@ impl SleighCompiler {
                 // TODO better error variant for const eval
                 return const_eval_binary_op(lhs, op.into_value(), rhs)
                     .map(MOIRLocal::Const)
-                    .map_err(|e| SleighCompilerError::ConstEvalError(ConstEvalError {
-                        err: Box::new(e),
-                        lhs: lhs_span,
-                        rhs: rhs_span,
-                    }));
+                    // TODO ues span_err!
+                    .map_err(|e| e.into());
             }
         }
 
@@ -137,7 +134,7 @@ fn const_eval_binary_op(
     lhs: MOIRConst,
     op: SASTPCodeBinaryOp,
     rhs: MOIRConst,
-) -> SleighCompilerResult<MOIRConst> {
+) -> Result<MOIRConst, ConstEvalError> {
     match lhs {
         MOIRConst::Determined(lhs, lhs_size) => {
             let MOIRConst::Determined(rhs, rhs_size) = rhs else {
@@ -158,17 +155,17 @@ fn const_eval_binary_op_generic(
     lhs: u128,
     op: SASTPCodeBinaryOp,
     rhs: u128,
-) -> Result<u128, SleighCompilerError>
+) -> Result<u128, ConstEvalError>
 where
 {
     trace_build!("Const eval for {lhs} {op:?} {rhs}");
     Ok(match op {
         SASTPCodeBinaryOp::IntAdd => lhs
             .checked_add(rhs)
-            .ok_or(SleighCompilerError::ConstEvalOverflow)?,
+            .ok_or(ConstEvalError::Overflow)?,
         SASTPCodeBinaryOp::IntSubtract => lhs
             .checked_sub(rhs)
-            .ok_or(SleighCompilerError::ConstEvalOverflow)?,
+            .ok_or(ConstEvalError::Overflow)?,
         SASTPCodeBinaryOp::IntMul => lhs * rhs,
         SASTPCodeBinaryOp::IntDiv => lhs / rhs,
         SASTPCodeBinaryOp::IntSDiv => todo!(),

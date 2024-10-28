@@ -20,7 +20,7 @@ use tracing::{
 };
 
 use inputcache::CompilerInputCache;
-
+use crate::compiler::ast::Spanned;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::{
     InputSpan,
@@ -87,7 +87,7 @@ pub struct SleighCompiler {
     parser: SleighParser,
     input_cache: CompilerInputCache,
     spec_builder: ProcessorSpecificationBuilder,
-    errors: Vec<Box<Report<'static, InputSpan>>>,
+    errors: Vec<SleighCompilerError>,
     stop_on_first_error: bool,
 }
 
@@ -125,17 +125,20 @@ impl SleighCompiler {
         } else {
             let mut error_description = vec![];
             let error_count = self.errors.len();
-            for report in self.errors {
-                report
-                    .write(&mut self.input_cache, &mut error_description)
-                    .expect("There is no way this may fail.");
+            self.errors = dbg!(self.errors);
+            for error in self.errors {
+                if let Some(report) = error.as_report() {
+                    report
+                        .write(&mut self.input_cache, &mut error_description)
+                        .expect("There is no way this may fail.");
+                }
             }
             error_description.extend(
                 format!(
                     "───────────────────────────────\nFound a total of {} errors.\n───────────────────────────────",
                     error_count
                 )
-                .as_bytes(),
+                    .as_bytes(),
             );
             Err(SleighCompilerError::SemanticError(
                 String::from_utf8(error_description).expect("We only write utf8 strings."),
@@ -186,15 +189,11 @@ impl SleighCompiler {
         match result {
             Ok(value) => Ok(Some(value)),
             Err(err) => {
-                if let SleighCompilerError::ErrorReport(report) = err {
-                    self.errors.push(report);
-                    if self.stop_on_first_error {
-                        Err(SleighCompilerError::StopOnFirstError)
-                    } else {
-                        Ok(None)
-                    }
+                self.errors.push(err);
+                if self.stop_on_first_error {
+                    Err(SleighCompilerError::StopOnFirstError)
                 } else {
-                    Err(err)
+                    Ok(None)
                 }
             }
         }

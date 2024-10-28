@@ -48,6 +48,8 @@ use crate::spec::moir::varnode::{
     MOIRSlice,
 };
 use tracing::debug;
+use crate::span_err;
+use crate::spec::ProcessorSpecificationError::SymbolUndeclared;
 
 impl SleighCompiler {
     /// Process a constructor. This will create the table in which the constructor is anchored, if it does not exist.
@@ -56,7 +58,7 @@ impl SleighCompiler {
         &mut self,
         constructor: Spanned<SASTConstructor>,
     ) -> SleighCompilerResult {
-        let (constructor, _) = constructor.into_tuple();
+        let (constructor, constructor_span) = constructor.into_tuple();
         #[allow(unused_variables)]
         let table_name = constructor
             .table
@@ -72,7 +74,9 @@ impl SleighCompiler {
         let matcher = self.create_matcher(constructor.bit_pattern_section.into_value().constraint)?;
 
         let display_section = constructor.display_section.into_value();
-        let scope = self.pc_create_scope(display_section.identifiers, &matcher.symbols_used)?;
+        let scope =
+            self.pc_create_scope(display_section.identifiers, &matcher.symbols_used)
+                .map_err(|e| span_err!(e, constructor_span))?;
 
         let mut moir_constructor = MOIRConstructor {
             local_scope: scope,
@@ -220,7 +224,7 @@ impl SleighCompiler {
                     let field = self
                         .spec_builder
                         .field_by_symbol_id(*field_id)
-                        .ok_or(SleighCompilerError::SymbolUndeclared)?;
+                        .ok_or(ErrorSymbolUndeclared {})?;
                     let size = if !field.variables.is_empty() {
                         // The field has variables attached. These will be later given to the constructor during
                         // decoding. We can now set the size of the value that is referenced to the size of the
@@ -253,7 +257,7 @@ impl SleighCompiler {
                     let table = self
                         .spec_builder
                         .table_by_symbol_id(*table_id)
-                        .ok_or(SleighCompilerError::SymbolUndeclared)?;
+                        .ok_or(ErrorSymbolUndeclared {})?;
                     let constructor_id = table.constructors.first();
                     let export_size = constructor_id
                         .map(|cid| self.spec_builder.constructor_by_symbol_id(*cid))
@@ -272,7 +276,7 @@ impl SleighCompiler {
                     let varnode = self
                         .spec_builder
                         .varnode_by_symbol_id(*vnid)
-                        .ok_or(SleighCompilerError::SymbolUndeclared)?;
+                        .ok_or(ErrorSymbolUndeclared {})?;
                     Some(MOIRSlice {
                         reference: MOIRReference::VarNode(*vnid),
                         start: 0,
@@ -286,7 +290,7 @@ impl SleighCompiler {
             let ident = self
                 .spec_builder
                 .ident_by_symbol(symbol)
-                .ok_or(SleighCompilerError::SymbolUndeclared)?;
+                .ok_or(ErrorSymbolUndeclared {})?;
             if let Some(value) = value {
                 scope.declare_local(ident.clone().into_value(), value);
             }
@@ -299,7 +303,7 @@ impl SleighCompiler {
         &mut self,
         constraint: Spanned<SASTBitPatternConstraint>,
     ) -> SleighCompilerResult<Matcher> {
-        let (constraint, _) = constraint.into_tuple();
+        let (constraint, constraint_span) = constraint.into_tuple();
         match constraint {
             SASTBitPatternConstraint::Ident(ident) => {
                 let symbol = self.spec_builder.get_symbol(&ident.clone().transmute())?;
@@ -348,6 +352,7 @@ impl SleighCompiler {
                 let expression = match lhs_symbol {
                     MOIRSymbolId::Field(field_id) => {
                         self.matcher_from_advanced_constraint(*field_id, op.into_value(), pattern.into_value())
+                            .map_err(|e| span_err!(e, constraint_span))
                     }
                     MOIRSymbolId::Table(_) => todo!("Integrate subtable into matcher"),
                     _ => Err(ProcessorSpecificationError::InvalidSymbolType(*lhs_symbol))?,
@@ -374,7 +379,7 @@ impl SleighCompiler {
         let field = self
             .spec_builder
             .field_by_symbol_id(field_id)
-            .ok_or(SleighCompilerError::SymbolUndeclared)?;
+            .ok_or(ErrorSymbolUndeclared {})?;
 
         match op {
             SASTConstraintOp::Equals => self.matcher_from_equals_constraint(field_id, pattern),

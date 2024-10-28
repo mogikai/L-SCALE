@@ -1,5 +1,5 @@
 use crate::compiler::ast::Spanned;
-use crate::compiler::error::{IdentifierExists, SleighCompilerError};
+use crate::compiler::error::{IdentifierExists, SleighCompilerError, SliceError, SymbolAlreadyDefined, SymbolUndeclared};
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::{
     CompilerContext,
@@ -277,10 +277,10 @@ impl MOIRScope {
         &mut self,
         ident: Spanned<StringId>,
         local: MOIRLocalId,
-    ) -> SleighCompilerResult {
+    ) -> Result<(), SymbolAlreadyDefined> {
         let (ident, span) = ident.into_tuple();
         match self.locals.entry(ident) {
-            Entry::Occupied(_) => Err(SleighCompilerError::DuplicateDefinition)?,
+            Entry::Occupied(_) => Err(SymbolAlreadyDefined {})?,
             Entry::Vacant(entry) => entry.insert(local),
         };
         self.local_spans.insert(ident, span);
@@ -421,7 +421,7 @@ impl MOIRScope {
         local: MOIRLocalId,
         start: MOIRSize,
         end: MOIRSize,
-    ) -> SleighCompilerResult<MOIRLocalId> {
+    ) -> Result<MOIRLocalId, SliceError> {
         let slice = self
             .slices
             .get(local)
@@ -438,7 +438,7 @@ impl MOIRScope {
         &mut self,
         local: MOIRLocalId,
         size: MOIRSize,
-    ) -> SleighCompilerResult<MOIRLocalId> {
+    ) -> Result<MOIRLocalId, SliceError> {
         let slice = self
             .slices
             .get_mut(local)
@@ -539,7 +539,7 @@ impl MOIRScope {
     ) -> SleighCompilerResult<&MOIRSlice> {
         self.slices
             .get(local)
-            .ok_or(SleighCompilerError::SymbolUndeclared)
+            .ok_or((SymbolUndeclared {}).into())
     }
 
     /// Defines the label to point to a specific instruction.

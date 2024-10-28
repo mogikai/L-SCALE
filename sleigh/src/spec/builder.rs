@@ -22,11 +22,14 @@ use crate::compiler::build::matcher::{
 };
 use crate::compiler::build::trace_build;
 use crate::compiler::error::{
-    AlignmentSpecified,
-    EndiannessExists,
+    DuplicateDefine,
+    DuplicateDefineType,
     IdentifierExists,
+    IdentifierNotMapped,
     InvalidSymbolType,
     SleighCompilerError,
+    SpannedError,
+    SymbolUndeclared,
     UndefinedIdentifier,
     UndefinedSymbol
 };
@@ -101,6 +104,7 @@ use string_interner::backend::{
 use string_interner::symbol::Symbol;
 use strum_macros::Display;
 use tracing::debug;
+use crate::span_err;
 
 mod transform;
 
@@ -203,8 +207,9 @@ impl ProcessorSpecificationBuilder {
         endianness: Spanned<MOIREndianness>,
     ) -> Result<(), SleighCompilerError> {
         if let Some(old_endianness) = &self.endianness {
-            Err(SleighCompilerError::EndiannessExists(EndiannessExists {
-                old: old_endianness.clone(),
+            Err(SleighCompilerError::DuplicateDefine( DuplicateDefine {
+                dupe_type: DuplicateDefineType::Endianness,
+                old: old_endianness.span().clone(),
                 new: endianness.into_span(),
             }))
         } else {
@@ -219,8 +224,9 @@ impl ProcessorSpecificationBuilder {
         alignment: Spanned<u16>,
     ) -> SleighCompilerResult {
         if let Some(old_alignment) = &self.alignment {
-            Err(SleighCompilerError::AlignmentSpecified(AlignmentSpecified {
-                old: old_alignment.clone(),
+            Err(SleighCompilerError::DuplicateDefine(DuplicateDefine {
+                dupe_type: DuplicateDefineType::Endianness,
+                old: old_alignment.span().clone(),
                 new: alignment.into_span(),
             }))
         } else {
@@ -421,11 +427,14 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         fields: Vec<Spanned<StringId>>,
         values: Vec<Spanned<u64>>,
-    ) -> Result<(), SleighCompilerError> {
+    ) -> SleighCompilerResult {
         for field in fields.into_iter() {
             let (symbol, _) = self
                 .get_symbol_and_ident(&field)
-                .ok_or(SleighCompilerError::IdentifierNotMapped(field))?;
+                .ok_or_else(|| {
+                    let (field, span) = field.into_tuple();
+                    span_err!(IdentifierNotMapped { field }, span)
+                })?;
             if let MOIRSymbolId::Field(id) = symbol {
                 self.field_by_symbol_id_mut(*id)
                     .expect("If the symbol is mapped there has to be an entry in the symbol table")
@@ -595,7 +604,7 @@ impl ProcessorSpecificationBuilder {
         *self
             .symbol_ids
             .get_mut(symbol_id)
-            .ok_or(SleighCompilerError::SymbolUndeclared)? = symbol;
+            .ok_or(SymbolUndeclared {})? = symbol;
         Ok(())
     }
 
@@ -611,8 +620,7 @@ impl ProcessorSpecificationBuilder {
                     _ => None,
                 })
             })
-            // TODO: Produce error report instead
-            .ok_or(SleighCompilerError::SymbolUndeclared)
+            .ok_or_else(|| span_err!(SymbolUndeclared {}, ident.span().clone()))
     }
 
     pub fn space_by_symbol_id(
@@ -637,7 +645,7 @@ impl ProcessorSpecificationBuilder {
     ) -> SleighCompilerResult<VarNodeId> {
         let symbol_reference = ident.clone().map(|id| self.resolve_string_id(id));
         self.get_symbol_and_ident(ident)
-            .ok_or_else(|| SleighCompilerError::UndefinedSymbol(UndefinedSymbol { symbol: symbol_reference.clone().map(|s| s.to_string()) } ))
+            .ok_or_else(|| SleighCompilerError::UndefinedSymbol(UndefinedSymbol { symbol: symbol_reference.clone().map(|s| s.to_string()) }))
             .and_then(|(symbol, id)| match symbol {
                 MOIRSymbolId::VarNode(vnid) => Ok(*vnid),
                 _ => {
@@ -741,7 +749,7 @@ impl ProcessorSpecificationBuilder {
                     None
                 }
             })
-            .ok_or_else(|| -> SleighCompilerError { todo!("Generate error for missing default") })?;
+            .ok_or_else(|| -> SleighCompilerError::SymbolUndeclared)?;
 
         Ok(space_id)
     }

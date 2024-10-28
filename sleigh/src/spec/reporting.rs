@@ -16,7 +16,7 @@ use chumsky::span::Span;
 //       Also use SleighCompilerError instead of ProcessorSpecificationError
 //       The ProcessorSpecificationError should be reserved for the final spec.
 /// Generates an error report for IdentAlreadyExists errors.
-pub fn generate_identifier_exists_report(
+fn generate_identifier_exists_report(
     name: &str,
     old: InputSpan,
     new: InputSpan,
@@ -36,10 +36,10 @@ pub fn generate_identifier_exists_report(
                 .with_color(color_a),
         )
         .finish();
-    SleighCompilerError::ErrorReport(Box::new(report))
+    todo!()
 }
 
-pub fn generate_endianness_already_specified_report(
+fn generate_endianness_already_specified_report(
     old: &Spanned<MOIREndianness>,
     new: InputSpan,
 ) -> SleighCompilerError {
@@ -58,10 +58,10 @@ pub fn generate_endianness_already_specified_report(
                 .with_color(color_a),
         )
         .finish();
-    SleighCompilerError::ErrorReport(Box::new(report))
+    todo!()
 }
 
-pub fn generate_alignment_already_specified_report(
+fn generate_alignment_already_specified_report(
     old: &Spanned<u16>,
     new: InputSpan,
 ) -> SleighCompilerError {
@@ -80,5 +80,5 @@ pub fn generate_alignment_already_specified_report(
                 .with_color(color_a),
         )
         .finish();
-    SleighCompilerError::ErrorReport(Box::new(report))
+    todo!()
 }

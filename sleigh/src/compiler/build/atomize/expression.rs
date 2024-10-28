@@ -9,14 +9,15 @@ mod load;
 mod subpiece;
 mod unary;
 
+use crate::compiler::SleighCompilerError;
 use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::SASTLiteral;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
-use crate::compiler::build::trace_build;
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
+use crate::span_err;
 use crate::spec::moir::code::MOIRInstruction;
 use crate::spec::moir::scope::{
     MOIRLocalId,
@@ -45,13 +46,13 @@ impl SleighCompiler {
         out: Option<MOIRLocalId>,
         expression: Spanned<SASTPCodeExpression>,
     ) -> SleighCompilerResult<MOIRLocal> {
-        let (expression, _) = expression.into_tuple();
+        let (expression, expr_span) = expression.into_tuple();
         let out_size = out
             .map(|id| scope.size_of_local(id))
             .unwrap_or(MOIRMaybeSize::Undetermined);
 
         use SASTPCodeExpression::*;
-        match expression {
+        (match expression {
             Invocation(invocation) => self
                 .atomize_invocation(scope, instructions, out, invocation)?
                 .ok_or_else(|| todo!("Generate error report for invocation without output")),
@@ -66,7 +67,7 @@ impl SleighCompiler {
             Error(_) => {
                 panic!("An error in the AST should have lead to the compiler quitting earlier on.")
             }
-        }
+        }).map_err( |e| span_err!(e, expr_span))
     }
 
     /// Atomizing a literal always returns a local since we don't want to simply copy this into an out local.

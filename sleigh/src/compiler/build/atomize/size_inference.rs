@@ -223,7 +223,7 @@ fn infer_special(
                 todo!("Generate error for missing lhs")
             };
             let Some(rhs) = &mut instruction.input_b else {
-                todo!("Generate error for missing lhs")
+                todo!("Generate error for missing rhs")
             };
             // Sizes of a and b must be equal, and out must be size 1
             scope.constrain_local_size(&mut MOIRLocal::from(output), 1)?;

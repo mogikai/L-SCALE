@@ -34,7 +34,10 @@ use crate::spec::moir::varnode::MOIRReference;
 
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::build::trace_build;
-use crate::compiler::error::{AtomizeStatementFailed, SleighCompilerError};
+use crate::compiler::error::{
+    InstructionAfterExport,
+    SleighCompilerError,
+};
 use crate::spec::moir::MOIR_ADDRESS_SIZE;
 use crate::spec::moir::address_space::MOIRSpaceType;
 use std::fmt::Write;
@@ -60,7 +63,7 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
         statements: Vec<Spanned<SASTPCodeLabelledStatement>>,
     ) -> SleighCompilerResult<Option<Spanned<MOIRExport>>> {
-        let mut export = None;
+        let mut export: Option<Spanned<MOIRExport>> = None;
         for ((label, statement), _) in statements.into_iter().map(Spanned::into_tuple) {
             let label = if let Some(label) = label {
                 // If we have a label, we define it to point to the first instruction of the atomized statement.
@@ -69,8 +72,11 @@ impl SleighCompiler {
             } else {
                 None
             };
-            if export.is_some() {
-                todo!("Generate error report for instruction after export statement")
+            if let Some(export) = export {
+                return Err(SleighCompilerError::InstructionAfterExport(InstructionAfterExport {
+                    export: export.span().clone(),
+                    statement: statement.into_span(),
+                }));
             }
             let (statement, stmt_span) = statement.into_tuple();
             match statement {
@@ -117,10 +123,7 @@ impl SleighCompiler {
                 SASTPCodeStatement::Error(_) => {
                     panic!("If there is an error in the AST, then this function should never have been invoked");
                 }
-            }.map_err(|err| SleighCompilerError::AtomizeStatementFailed(AtomizeStatementFailed {
-                err: Box::new(err),
-                span: stmt_span,
-            }))?;
+            }?;
 
             if let Some((label, label_id)) = label {
                 // If we defined a label for the first instruction, we want to add this information to the first instruction now.

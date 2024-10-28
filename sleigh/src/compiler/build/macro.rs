@@ -23,6 +23,7 @@ impl SleighCompiler {
         let result = self
             .spec_builder
             .define_macro(pcode_macro.ident.transmute(), moir_macro);
+        // TODO replace report_error_or_unwrap
         self.report_error_or_unwrap(result)?;
         Ok(())
     }

@@ -27,7 +27,7 @@ use crate::compiler::ast::{
     Spanned,
     TransmuteIntoVec,
 };
-use crate::compiler::error::{DuplicateSpaceAttribute, ProcessItemFailed, SleighCompilerError};
+use crate::compiler::error::{DuplicateSpaceAttribute, InvalidFieldRange, SleighCompilerError, SpannedError};
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::{
     SleighCompiler,
@@ -42,9 +42,10 @@ use crate::spec::moir::field::{
     MOIRField,
     MOIRFieldParent,
 };
-use crate::spec::moir::token::MOIRToken;
+use crate::spec::moir::token::{MOIRToken, TokenId};
 use crate::spec::moir::varnode::MOIRVarNode;
 use std::ops::Range;
+use chumsky::container::Container;
 use tracing::{
     debug,
     trace,
@@ -77,13 +78,7 @@ impl SleighCompiler {
                 SASTItem::Error(_) => {
                     panic!()
                 }
-            }.map_err(|err|
-                match err {
-                    err => SleighCompilerError::ProcessItemFailed(ProcessItemFailed {
-                        err: Box::new(err),
-                        span,
-                    }),
-                });
+            };
             self.report_error_or_unwrap(result)?;
         }
         Ok(())
@@ -99,24 +94,21 @@ impl SleighCompiler {
                 let fields = variable.fields.transmute_into_vec();
                 let varnodes = variable.varnodes.transmute_into_vec();
 
-                let result = self.spec_builder.attach_variables(fields, varnodes);
-                self.report_error_or_unwrap(result)?;
+                self.spec_builder.attach_variables(fields, varnodes)?;
             }
             SASTAttach::SASTValue(value) => {
                 let value = value.into_value();
                 let fields = value.fields.transmute_into_vec();
                 let values = value.values.transmute_into_vec();
 
-                let result = self.spec_builder.attach_values(fields, values);
-                self.report_error_or_unwrap(result)?;
+                self.spec_builder.attach_values(fields, values)?;
             }
             SASTAttach::SASTName(name) => {
                 let name = name.into_value();
                 let fields = name.fields.transmute_into_vec();
                 let strings = name.strings.transmute_into_vec();
 
-                let result = self.spec_builder.attach_names(fields, strings);
-                self.report_error_or_unwrap(result)?;
+                self.spec_builder.attach_names(fields, strings)?;
             }
         }
         Ok(())
@@ -148,8 +140,7 @@ impl SleighCompiler {
         let (pcode_op, _) = pcode_op.into_tuple();
         let result = self
             .spec_builder
-            .declare_custom_op(pcode_op.name.transmute());
-        self.report_error_or_unwrap(result)?;
+            .declare_custom_op(pcode_op.name.transmute())?;
         Ok(())
     }
 
@@ -158,14 +149,16 @@ impl SleighCompiler {
         varnodes: Spanned<SASTVarnode>,
     ) -> SleighCompilerResult {
         let (varnodes, _) = varnodes.into_tuple();
-        let result = self
+        // TODO is the question mark here correct?
+        let space = self
             .spec_builder
-            .space_id_by_ident(varnodes.spacename.transmute());
+            .space_id_by_ident(varnodes.spacename.transmute())?;
 
-        let Some(space) = self.report_error_or_unwrap(result)? else {
+        /*if let Err(e) = result {
             // We reported an error already. Quit here for this define and try to continue.
+            self.errors.push(e);
             return Ok(());
-        };
+        };*/
 
         for (i, name) in varnodes.names.into_iter().enumerate() {
             if self.spec_builder.is_placeholder_ident((*name).into())? {
@@ -177,8 +170,7 @@ impl SleighCompiler {
                 offset: varnodes.offset.value() + (i as u64 * u64::from(*varnodes.size)),
                 size: *varnodes.size,
             };
-            let result = self.spec_builder.define_varnode(name.transmute(), varnode);
-            self.report_error_or_unwrap(result)?;
+            self.spec_builder.define_varnode(name.transmute(), varnode)?;
         }
         Ok(())
     }
@@ -189,13 +181,12 @@ impl SleighCompiler {
     ) -> SleighCompilerResult {
         for bitrange_register in bitrange_registers {
             let bitrange_register = bitrange_register.into_value();
-            let result = self.spec_builder.define_bitrange_register(
+            self.spec_builder.define_bitrange_register(
                 bitrange_register.name.transmute(),
                 bitrange_register.source_varnode.transmute(),
                 bitrange_register.offset,
                 bitrange_register.size,
-            );
-            self.report_error_or_unwrap(result)?;
+            )?;
         }
 
         Ok(())
@@ -282,15 +273,18 @@ impl SleighCompiler {
                 endianness_override: token.endian_override.map(|e| e.into_value().into()),
             },
         );
-        if let Some(token_id) = self.report_error_or_unwrap(result)? {
-            for field in token.fields.into_iter() {
-                let name = field.name.clone().transmute();
-                let range = field.start.clone().into_value()..field.end.clone().into_value() + 1;
-                if let Some(field) = self.make_field(MOIRFieldParent::Token(token_id), bits, range)? {
-                    let result = self.spec_builder.define_field(name, field);
-                    self.report_error_or_unwrap(result)?;
+        match result {
+            Ok(token_id) => {
+                for field in token.fields.into_iter() {
+                    let name = field.name.clone().transmute();
+                    let range = field.start.clone().into_value()..field.end.clone().into_value() + 1;
+                    if let Some(field) = self.make_field(MOIRFieldParent::Token(token_id), bits, range)
+                        .map_err(|e| span_err!(e, field.span().clone()))? {
+                        self.spec_builder.define_field(name, field)?;
+                    }
                 }
-            }
+            },
+            Err(e) => self.errors.push(e),
         }
         Ok(())
     }
@@ -305,10 +299,9 @@ impl SleighCompiler {
         for field in &context.fields {
             let range = field.start.clone().into_value()..field.end.clone().into_value() + 1;
             if let Some(moir_field) = self.make_field(MOIRFieldParent::Context(context_id), bits, range)? {
-                let result = self
+                self
                     .spec_builder
-                    .define_field(field.name.clone().transmute(), moir_field);
-                self.report_error_or_unwrap(result)?;
+                    .define_field(field.name.clone().transmute(), moir_field)?;
             }
         }
 
@@ -324,11 +317,11 @@ impl SleighCompiler {
         parent: MOIRFieldParent,
         bits: u64,
         field_range: Range<u64>,
-    ) -> Result<Option<MOIRField>, SleighCompilerError> {
+    ) -> Result<Option<MOIRField>, InvalidFieldRange> {
         if field_range.start > field_range.end {
-            todo!("Generate correct error report and return Ok(None)")
+            Err(InvalidFieldRange::EndBeforeStart(field_range))
         } else if field_range.end - field_range.start > bits {
-            todo!("Generate correct error report and return Ok(None)")
+            Err(InvalidFieldRange::RangeTooLarge(bits, field_range))
         } else {
             // The variables, values, and strings fields are later attached with attach statements.
             let field = MOIRField {
@@ -346,8 +339,7 @@ impl SleighCompiler {
         &mut self,
         endianness: Spanned<SASTEndianness>,
     ) -> SleighCompilerResult {
-        let result = self.spec_builder.define_endianness(endianness.transmute());
-        self.report_error_or_unwrap(result)?;
+        self.spec_builder.define_endianness(endianness.transmute())?;
         Ok(())
     }
 
@@ -355,8 +347,7 @@ impl SleighCompiler {
         &mut self,
         alignment: Spanned<SASTAlignment>,
     ) -> SleighCompilerResult {
-        let result = self.spec_builder.define_alignment(alignment.transmute());
-        self.report_error_or_unwrap(result)?;
+        self.spec_builder.define_alignment(alignment.transmute())?;
         Ok(())
     }
 
@@ -382,3 +373,4 @@ macro_rules! trace_build {
 }
 
 pub(crate) use trace_build;
+use crate::span_err;
