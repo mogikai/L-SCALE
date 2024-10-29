@@ -125,7 +125,7 @@ pub struct UndefinedIdentifier {
 }
 
 #[derive(Error, Debug)]
-#[error("Space attribute is duplicated")]
+#[error("Space attribute '{attribute:?}' is duplicated")]
 pub struct DuplicateSpaceAttribute {
     pub attribute: SASTAddressSpaceAttribute,
 }
