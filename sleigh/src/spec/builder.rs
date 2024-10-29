@@ -462,7 +462,7 @@ impl ProcessorSpecificationBuilder {
             }
         } else {
             // Symbol needs to be defined first.
-            let symbol_id = self.declare_symbol(ident)?;
+            let symbol_id = self.declare_symbol(ident.clone())?;
             let table_id = self.symbol_tables.tables.insert(MOIRTable::default());
             self.define_symbol(symbol_id, MOIRSymbolId::Table(table_id))?;
             table_id
@@ -786,6 +786,7 @@ impl Default for ProcessorSpecificationBuilder {
             bytes: 0,
             endianness_override: None,
         }).expect("This may not error at this point");
+        eprintln!("zero_token = {:#?}", zero_token);
         slf.zero_token = Some(zero_token);
         slf.define_field(
             Spanned::new(epsilon, InputSpan::default()),

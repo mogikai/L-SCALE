@@ -4,7 +4,7 @@ use std::ops::Index;
 use std::rc::Rc;
 
 use chumsky::container::Container;
-use itertools::Itertools;
+use itertools::{Either, Itertools};
 use num::traits::Pow;
 use num::PrimInt;
 
@@ -23,18 +23,18 @@ pub(crate) enum NextJumplistEntry {
 
 #[derive(Debug, Clone)]
 pub(crate) struct JumplistEntry {
-    pub(crate) same_token_jumplist: Vec<JumplistId>,
+    pub(crate) same_token_jumplists: Vec<JumplistId>,
     pub(crate) next_entry: NextJumplistEntry,
 }
 
 impl JumplistEntry {
     pub(crate) fn new(
         // all jumplists have to match successfully
-        same_token_jumplist: Vec<JumplistId>,
+        same_token_jumplists: Vec<JumplistId>,
         next_entry: NextJumplistEntry,
     ) -> Self {
         Self {
-            same_token_jumplist,
+            same_token_jumplists,
             next_entry,
         }
     }
@@ -50,8 +50,8 @@ pub(crate) enum JumplistContainer {
 #[derive(Debug)]
 pub(crate) struct Jumplist {
     container: JumplistContainer,
-    mask: u64, // usually only a few bits are actually relevant for indexing into the list
-    bytes: MOIRSize,
+    pub(crate) mask: u64, // usually only a few bits are actually relevant for indexing into the list
+    pub(crate) bytes: MOIRSize,
 }
 
 impl Jumplist {
@@ -74,7 +74,6 @@ impl Jumplist {
         value: u64,
         entry: JumplistEntry,
     ) -> SleighCompilerResult {
-        eprintln!("value = {:#?}", value);
         if value > 0 && value.ilog2() >= (self.bytes * 8) as u32 {
             todo!("Generate error report for out of bounds access");
         }
@@ -113,49 +112,22 @@ impl Jumplist {
         })
     }
 
-    pub(crate) fn for_entries_mut<F>(&mut self, f: &mut F)
-        where F: FnMut(&mut JumplistEntry)
-        {
-            match &mut self.container {
-                JumplistContainer::Small(array) => for entries in array.iter_mut().filter_map(|entry| entry.as_mut()) {
-                    for entry in entries.iter_mut() {
-                        f(entry);
-                    }
-                }
-                JumplistContainer::Large(map) => for entries in map.values_mut() {
-                    for entry in entries.iter_mut() {
-                        f(entry);
-                    }
-                }
-            }
-        }
-
-    pub(crate) fn entries(&self) -> impl Iterator<Item = (u64, &Vec<JumplistEntry>)> {
+    pub(crate) fn entries(&self) -> Vec<(u64, &Vec<JumplistEntry>)> {
         // TODO do this without collecting into vector
         match &self.container {
             JumplistContainer::Small(array) => array
                 .iter()
                 .enumerate()
-                .filter_map(|(value, entry)| match entry {
-                    Some(entry) => Some((value as u64, entry)),
+                .filter_map(|(value, entries)| match entries {
+                    Some(entry) => Some((value as u64, entry.as_ref())),
                     None => None,
                 })
-            .collect_vec()
-                .into_iter(),
+            .collect_vec(),
             JumplistContainer::Large(map) => map
                 .iter()
-                .map(|(value, entry)| (*value, entry))
+                .map(|(value, entries)| (*value, entries))
                 .collect_vec()
-                .into_iter(),
         }
-    }
-
-    pub(crate) fn mask(&self) -> u64 {
-        self.mask
-    }
-
-    pub(crate) fn bytes(&self) -> MOIRSize {
-        self.bytes
     }
 }
 

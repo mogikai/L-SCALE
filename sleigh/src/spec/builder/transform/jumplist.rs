@@ -1,6 +1,7 @@
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
-use chumsky::container::Container;
+use chumsky::container::{Container, Seq};
 use itertools::Itertools;
 
 use crate::compiler::build::constructor::matcher::{FieldMatcher, Matcher, MatcherAtom};
@@ -19,7 +20,7 @@ use crate::spec::moir::context::{
     MOIRContext,
     MOIRContextId,
 };
-use crate::spec::moir::field::MOIRFieldParent;
+use crate::spec::moir::field::{MOIRBitRange, MOIRFieldParent};
 use crate::spec::moir::table::{
     MOIRTable,
     TableId,
@@ -38,12 +39,25 @@ use crate::spec::typed_index_table::TypedIndexTable;
 /// related data structures.
 pub(super) struct TableTransformer<'a> {
     jumplist_cache: TypedIndexTable<JumplistId, Jumplist>,
-    sublist_cache: HashMap<(TableId, MOIRSize), JumplistId>,
+    sublist_cache: HashMap<TableId, JumplistId>,
     tables: &'a TypedIndexTable<TableId, MOIRTable>,
     tokens: &'a TypedIndexTable<TokenId, MOIRToken>,
     context: &'a TypedIndexTable<MOIRContextId, MOIRContext>,
     varnodes: &'a TypedIndexTable<VarNodeId, MOIRVarNode>,
     constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
+}
+
+// Temporary data used for processing tokens and bytes
+struct Row<'a> {
+    pub matcher: &'a Matcher,
+    pub mask: u64,
+    pub value: u64,
+    pub token_size: MOIRSize,
+    pub sublists: Vec<JumplistId>,
+}
+
+impl<'a> Row<'a> {
+    fn new(matcher: &'a Matcher, mask: u64, value: u64, token_size: MOIRSize, sublists: Vec<JumplistId>) -> Self { Self { matcher, mask, value, token_size, sublists } }
 }
 
 impl<'a> TableTransformer<'a> {
@@ -74,29 +88,20 @@ impl<'a> TableTransformer<'a> {
                 todo!("Generate error report for missing root table");
             })?;
         let root_matchers = root_table.matchers.values().collect_vec();
-        let partition_sizes = root_matchers.into_iter().map(|matcher| {
-            let parent = matcher.token_list.list.get(0).expect("A matcher has to have at least one token");
-            self.get_token_size(parent)
-        }).collect::<SleighCompilerResult<HashSet<MOIRSize>>>()?;
-
-        let jumplists = partition_sizes.into_iter().map(|size| {
-            self.process_table(root_table_id, size)
-        }).collect::<SleighCompilerResult<Vec<JumplistId>>>()?;
+        let root_jumplist_id = self.process_table(root_table_id)?;
 
         trace_build!(
-            "Created {} root jumplists ({} in total, {} cached sublists)",
-            jumplists.len(),
+            "Created root jumplist ({} in total, {} cached sublists)",
             self.jumplist_cache.len(),
-            self.sublist_cache.len()
+            self.sublist_cache.len(),
         );
 
-        self.jumplist_cache.iter().for_each(|jumplist| {
+        self.jumplist_cache.iter().filter(|(id, _)| *id != root_jumplist_id).for_each(|jumplist| {
             eprintln!("jumplist = {:#?}", jumplist);
         });
-        jumplists.iter().for_each(|jumplist_id| {
-            let jumplist = self.jumplist_cache.get(*jumplist_id).unwrap();
-            eprintln!("merged_jumplist[{:#?}] = {:#?}", jumplist_id, jumplist);
-        });
+
+        let root_jumplist = self.jumplist_cache.get(root_jumplist_id).expect("We just created this");
+        eprintln!("root_jumplist = {:#?}", (root_jumplist_id, root_jumplist));
 
         let result = TypedIndexTable::default();
         Ok(result)
@@ -104,202 +109,155 @@ impl<'a> TableTransformer<'a> {
 
     /// Process a table by creating and merging corresponding jumplists for each matcher of size
     /// `token_size` in case the result hasn't been cached before.
+    /// # Preconditions:
+    /// - there must be at least one matcher associated with `table` with a corresponding first token size of `token_size`
     fn process_table(
         &mut self,
         table: TableId,
-        token_size: MOIRSize,
     ) -> SleighCompilerResult<JumplistId> {
-        trace_build!("Processing table {:?} with size {:?}", table, token_size);
-        match self.sublist_cache.get(&(table, token_size)) {
+        match self.sublist_cache.get(&table) {
             Some(jumplist) => {
-                // table with corresponding token_size was already processed => link to previous result
+                // table with was already processed => link to previous result
                 Ok(*jumplist)
             }
             None => {
                 // no cached result exists => create jumplist for matchers with corresponding token size and store in sublist cache (we don't use the submatchers
                 // field because tokens can be different as long as their sizes match)
+                trace_build!("Processing table {:?}", table);
+
                 let subtable = self.tables.get(table).ok_or_else(|| -> SleighCompilerError {
                     todo!("Generate error report for missing table");
                 })?;
 
-                // get all correctly sized matchers
-                let mut partition = Vec::new();
-                for matcher in subtable.matchers.values() {
-                    let parent = matcher.token_list.list.first().expect("A token list must have at least a single token");
-                    let size = self.get_token_size(parent)?;
-                    if size == token_size {
-                        partition.push(matcher);
-                    }
-                }
+                let matchers = subtable.matchers.values().collect_vec();
 
-                // create single jumplist out of them
-                let jumplist = self.create_jumplist(0, &partition)?;
+                // create single jumplist out of all matchers
+                let jumplist = self.create_jumplist(0, &matchers)?;
 
                 // cache and return
-                self.sublist_cache.insert((table, token_size), jumplist);
+                self.sublist_cache.insert(table, jumplist);
                 Ok(jumplist)
             }
         }
     }
 
-    /// Creates a single jumplist for multiple matchers with a common size.
+    /// Create a single jumplist for multiple matchers.
+    ///
+    /// # Preconditions:
+    /// - `matchers` must not be empty
+    /// - each matcher must have a token list of length at least `token_index` + 1
     fn create_jumplist(
         &mut self,
         token_index: usize,
         matchers: &[&Matcher],
     ) -> SleighCompilerResult<JumplistId> {
-        // each partition will be reduced to one entry which will then be merged into the final
-        // jumplist
-        let entry_partitions = self.partition_matchers_by_subtables_and_next(token_index, matchers)?;
-        let entries = entry_partitions.into_iter().map(|partition| {
-            let first = partition.first().expect("A partition must have a matcher");
-            let size = self.get_token_size(first.token_list.list.get(token_index).expect("There must be a token"))?;
+        // 1. extract everything necessary for token processing
+        let rows = matchers.iter().map(|matcher| {
+            let conjunction = matcher.conjunctions.get(token_index).expect("There must be a conjunction at token_index");
+            let (mask, value, subtables) = extract_from_conjunction(&conjunction);
+            let parent = matcher.token_list.list.get(token_index).expect("There must be a token at token_index");
+            let token_size = self.get_token_size(parent)?;
 
-            let next_entry = if token_index + 1 < first.token_list.list.len() {
-                // there are tokens left => process into jumplist and create entry
-                let jumplist = self.create_jumplist(token_index + 1, &partition)?;
-                NextJumplistEntry::Jumplist(jumplist)
-            } else {
-                // no tokens left => create entry
-                let display = self.constructors.get(partition.first().unwrap().constructor.unwrap()).unwrap().display.clone();
-                NextJumplistEntry::Matcher(display)
-            };
-
-            // collect subtables and mask/value
-            let mut mask = 0u64;
-            let mut value = 0u64;
-            let mut sublists = Vec::new();
-            for atom in first.conjunctions.get(token_index).expect("There must be a conjunction").iter() {
-                match atom {
-                    MatcherAtom::Field { field: _, matcher } => {
-                        if let FieldMatcher::Value { mask: fmask, value: fvalue } = matcher {
-                            mask |= *fmask;
-                            value |= *fvalue;
-                        }
-                    }
-                    MatcherAtom::Submatchers { table, matchers: _ } => {
-                        let sublist = self.process_table(*table, size)?;
-                        sublists.push(sublist);
+            let sublists = subtables.into_iter().map(|subtable| {
+                let cached = self.sublist_cache.get(&subtable);
+                match cached {
+                    Some(sublist) => Ok(*sublist),
+                    None => {
+                        let sublist = self.process_table(subtable)?;
+                        Ok(sublist)
                     }
                 }
-            }
+            }).collect::<SleighCompilerResult<Vec<_>>>()?;
 
-            // create entry and return; the entry will be inserted at value in the new list
-            let entry = JumplistEntry::new(sublists, next_entry);
-            Ok((mask, value, entry))
+            Ok(Row::new(matcher, mask, value, token_size, sublists))
         }).collect::<SleighCompilerResult<Vec<_>>>()?;
 
-        // collect mask and create list
-        let mut mask = 0u64;
-        for (entry_mask, _, _) in entries.iter() {
-            mask |= entry_mask
-        }
-
-        let size = self.get_token_size(matchers.get(0).expect("There has to be at least one matcher").token_list.list.get(token_index).expect("There has to be a token list"))?;
-        let mut new_jumplist = Jumplist::new(mask, size);
-        for (_, value, entry) in entries.into_iter() {
-            new_jumplist.insert(value, entry);
-        }
-
-        // insert jumplist and return
-        let new_jumplist_id = self.jumplist_cache.insert(new_jumplist);
-        Ok(new_jumplist_id)
+        // 2. pass to recursive function
+        self.create_jumplist_bytes(token_index, rows, 0)
     }
 
-    /// Partition matchers at `token_index in such a way that each partition can be combined into
-    /// a single jumplist. This is the case if the matchers share a common token size since
-    /// the jumplist needs to consume the same number of bytes. The endianness might be
-    /// different though since this can be handled by adjusting the values themselves.
-    fn partition_matchers_by_size(
-        &self,
-        token_index: usize,
-        matchers: &[&'a Matcher],
-    ) -> SleighCompilerResult<Vec<(MOIRSize, Vec<&'a Matcher>)>> {
-        // partition root matchers based on size of first token
-        let mut partitions: Vec<(MOIRSize, Vec<&'a Matcher>)> = Vec::new();
-        for matcher in matchers.iter() {
-            let matcher_size = if let Some(parent) = matcher.token_list.list.get(token_index) {
-                self.get_token_size(parent)?
-            } else {
-                continue;
+    /// Recursion used for processing tokens of different length into a single
+    /// jumplist by splitting larger tokens into the least common size and then
+    /// building jumplists on top of that.
+    ///
+    /// # Preconditions
+    /// - `rows` must not be empty`
+    /// # Return on success
+    ///  - the new jumplist id
+    fn create_jumplist_bytes(&mut self, token_index: usize, rows: Vec<Row>, bytes_consumed: MOIRSize) -> SleighCompilerResult<JumplistId> {
+        assert_ne!(rows.len(), 0, "There must be rows");
+
+        // new size is equal to size of smallest row
+        let size_delta = rows.iter().map(|row| row.token_size).min().expect("We checked for this") - bytes_consumed;
+        let size_bits = MOIRBitRange::new(u8::try_from(bytes_consumed * 8).expect("This should be 64 at most"), u8::try_from((bytes_consumed + size_delta) * 8).expect("This should be 64 at most") - 1);
+
+        // TODO mask splitting; for now just | everything together, but this won't work in the
+        // future
+        let mask = size_bits.extract_from(rows.iter().fold(0x0u64, |acc, row| acc | row.mask));
+        let mut jumplist_new = Jumplist::new(mask, size_delta);
+
+        // partition by value
+        let mut partitions: HashMap<u64, Vec<Row>> = HashMap::new();
+        for row in rows.into_iter() {
+            partitions.entry(size_bits.extract_from(row.value)).or_default().push(row);
+        }
+
+        // for each partition: create next byte jumplist if not all bytes have been consumed;
+        // otherwise continue with next token or insert entry and finish (only in the first and
+        // second case does indices contain more than one element)
+        for (value, part_rows) in partitions.into_iter() {
+            // partition into rows with trailing bytes and rows that terminate
+            let (next_byte_rows, terminal_rows): (Vec<_>, Vec<_>) = part_rows.into_iter().partition(|row| row.token_size < bytes_consumed + size_delta);
+
+            // create jumplist for all rows with trailing bytes and create entries for jumplist
+            if !next_byte_rows.is_empty() {
+                // create multiple entries for different sublists if at beginning
+                let sublists = if bytes_consumed == 0 {
+                    next_byte_rows.iter().map(|row| row.sublists.clone()).collect::<HashSet<Vec<_>>>().into_iter().collect_vec()
+                } else {
+                    vec![Vec::new()]
+                };
+
+                let next_entry_trailing = NextJumplistEntry::Jumplist(self.create_jumplist_bytes(token_index, next_byte_rows, bytes_consumed + size_delta)?);
+
+                for sublist in sublists.into_iter() {
+                    let entry = JumplistEntry::new(sublist, next_entry_trailing.clone());
+                    jumplist_new.insert(value, entry);
+                }
             };
 
-            let mut partition_found = false;
-            for (partition_size, partition) in partitions.iter_mut() {
-                if *partition_size == matcher_size {
-                    partition.push(matcher);
-                    partition_found = true;
-                    break;
-                }
-            }
-
-            if !partition_found {
-                partitions.push((matcher_size, vec![matcher]));
-            }
-        }
-
-        Ok(partitions)
-    }
-
-    /// Partition matchers at `token_index in such a way that all entries of each partition can be combined into
-    /// a single entry. This is the case if
-    /// 1. The matchers share common subtables, and
-    /// 2. The matchers either
-    ///     2.1 both terminate and share a common constructor, or
-    ///     2.2 both have a next token with equal size
-    fn partition_matchers_by_subtables_and_next(
-        &self,
-        token_index: usize,
-        matchers: &[&'a Matcher],
-    ) -> SleighCompilerResult<Vec<Vec<&'a Matcher>>> {
-        // partition root matchers based on size of first token
-        let mut partitions: Vec<Vec<&'a Matcher>> = Vec::new();
-        for matcher in matchers.iter() {
-            let mut partition_found = false;
-            for partition in partitions.iter_mut() {
-                let first = partition.first().expect("If there is a partition it must contain an element");
-                if self.matchers_compatible(token_index, first, matcher)? {
-                    partition.push(matcher);
-                    partition_found = true;
-                    break;
-                }
-            }
-
-            if !partition_found {
-                partitions.push(vec![matcher]);
-            }
-        }
-
-        Ok(partitions)
-    }
-
-    /// Checks the condition for [partition_matchers_by_subtables_and_next]
-    fn matchers_compatible(&self, token_index: usize, lhs: &Matcher, rhs: &Matcher) -> SleighCompilerResult<bool> {
-        // check for same subtables
-        let clhs = lhs.conjunctions.get(token_index).expect("There needs to be a conjunction at token_index");
-        let crhs = rhs.conjunctions.get(token_index).expect("There needs to be a conjunction at token_index");
-        for atom in clhs {
-            if let MatcherAtom::Submatchers { table: table_lhs, matchers: _ } = atom {
-                if crhs.iter().find(|atom| if let MatcherAtom::Submatchers { table: table_rhs, matchers: _ } = atom { table_lhs == table_rhs } else { false }).is_none() {
-                    return Ok(false);
-                }
-            }
-        }
-
-        if let Some(lhs_parent) = lhs.token_list.list.get(token_index + 1) {
-            if let Some(rhs_parent) = rhs.token_list.list.get(token_index + 1) {
-                // both have next tokens => compatible?
-                let lhs_size = self.get_token_size(lhs_parent)?;
-                let rhs_size = self.get_token_size(rhs_parent)?;
-                Ok(lhs_size == rhs_size)
+            // create entries for all terminal rows (either a constructor if no tokens remain or a
+            // jumplist for the next token); all matchers with a common prefix are contained in
+            // this vector since they also must have the same value and therefore the same length
+            let next_entry_terminal = if token_index + 1 < terminal_rows.first().expect("This can't be empty").matcher.token_list.list.len() {
+                // tokens left => create jumplist for terminal matchers
+                let matchers = terminal_rows.iter().map(|row| row.matcher).collect_vec();
+                let jumplist = self.create_jumplist(token_index + 1, &matchers)?;
+                NextJumplistEntry::Jumplist(jumplist)
             } else {
-                // lhs is some but rhs is none
-                Ok(false)
+                // no tokens left => entry is row matcher itself
+                assert_eq!(terminal_rows.len(), 1, "There must be exactly one row if no tokens follow");
+
+                let matcher = terminal_rows.get(0).expect("There must be an element").matcher;
+                let constructor = self.constructors.get(matcher.constructor.expect("The constructor must be set at this point")).ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing constructor") })?;
+                NextJumplistEntry::Matcher(constructor.display.clone())
+            };
+
+            // same as above: create multiple entries for different sublists if at beginning
+            let sublists = if bytes_consumed == 0 {
+                terminal_rows.iter().map(|row| row.sublists.clone()).collect::<HashSet<Vec<_>>>().into_iter().collect_vec()
+            } else {
+                vec![Vec::new()]
+            };
+
+            for sublist in sublists.into_iter() {
+                let entry = JumplistEntry::new(sublist, next_entry_terminal.clone());
+                jumplist_new.insert(value, entry);
             }
-        } else {
-            // lhs is none and rhs is none and matchers have same constructor
-            Ok(rhs.token_list.list.get(token_index + 1).is_none() && lhs.constructor == rhs.constructor)
         }
+
+        let jumplist_new_id = self.jumplist_cache.insert(jumplist_new);
+        Ok(jumplist_new_id)
     }
 
     fn get_token_size(
@@ -327,4 +285,57 @@ impl<'a> TableTransformer<'a> {
             }
         }
     }
+}
+
+/// Enumerates all values `v` s.t.:
+/// - `v & mask_small == value`, and
+/// - `v & mask_large = v`
+///
+/// This is necessary for creating jumplist indices for a jumplist with a single mask out of values
+/// with potentially different, smaller masks. Returns [Option::None] in case the number of values
+/// produced would exceed `threshold`.
+fn expand_mask(value: u64, mask_small: u64, mask_large: u64, threshold: u64) -> Option<Vec<u64>> {
+    trace_build!("value      ={:#064b}", value);
+    trace_build!("mask_small ={:#064b}", mask_small);
+    trace_build!("mask_large ={:#064b}", mask_large);
+
+    if mask_small == mask_large {
+        return Some(vec![value]);
+    }
+
+    let mask_delta = mask_large ^ mask_small;
+    let shift = mask_delta.trailing_zeros();
+    if (mask_delta >> shift) + 1 > threshold {
+        return None;
+    }
+
+    // this could be done more efficiently but since we're dealing only with small values it should
+    // be fine
+    let values = (0..=(mask_delta >> shift)).map(|value| {
+        (value << shift) & mask_delta
+    }).collect::<HashSet<_>>();
+
+    Some(values.into_iter().collect_vec())
+}
+
+/// Extracts a mask/value pair as well as subtables from a matcher conjunction.
+fn extract_from_conjunction(conjunction: &HashSet<MatcherAtom>) -> (u64, u64, Vec<TableId>) {
+    let mut mask = 0u64;
+    let mut value = 0u64;
+    let mut subtables = Vec::new();
+    for atom in conjunction {
+        match atom {
+            MatcherAtom::Field { field, matcher } => {
+                if let FieldMatcher::Value { mask: fmask, value: fvalue } = matcher {
+                    mask |= *fmask;
+                    value |= *fvalue;
+                }
+            },
+            MatcherAtom::Submatchers { table, matchers: _ } => {
+                subtables.push(*table);
+            }
+        }
+    }
+
+    (mask, value, subtables)
 }
