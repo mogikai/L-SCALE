@@ -9,4 +9,4 @@ pub mod lifter;
 pub mod source;
 pub mod space;
 pub mod values;
-pub mod table;
+pub mod jumplist;

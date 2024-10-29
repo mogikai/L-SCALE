@@ -20,8 +20,7 @@ use crate::spec::jir::space::{
     JIRSpace,
     JIRSpaceType,
 };
-use crate::spec::jir::table::{
-    JIRTable,
+use crate::spec::jir::jumplist::{
     Jumplist,
     JumplistContainer,
     JumplistEntry,
@@ -70,15 +69,15 @@ use std::collections::{
     HashSet,
 };
 
-use self::jumplist::TableTransformer;
+use self::jumplist::JumplistBuilder;
+
+mod jumplist;
 
 #[derive(Debug)]
 pub(super) struct MOIRToJIRTransformer {
     moir: MOIRData,
     jir: JIRData,
 }
-
-mod jumplist;
 
 #[derive(Debug)]
 pub struct JIRData {
@@ -157,42 +156,39 @@ impl MOIRToJIRTransformer {
                 };
                 (ident, symbol_id)
             })
-        .collect();
+            .collect();
         self.jir.symbol_strings = self
             .moir
             .symbol_strings
             .into_iter()
             .map(|(k, v)| (k, v.into_value()))
             .collect();
+
+        // TODO integrate everything
+        let (root_jumplist_id, jumplist_cache) = JumplistBuilder::new(
+            &self.moir.symbol_tables.tables,
+            &self.moir.symbol_tables.tokens,
+            &self.moir.context,
+            &self.moir.symbol_tables.varnodes,
+            &self.moir.symbol_tables.constructors,
+        )
+        .transform(self.moir.root_table_id)?;
+
+        // TODO remove
+        let root_jumplist = jumplist_cache.get(root_jumplist_id).unwrap();
+        let bytes = [0x19, 0x5];
+        let matching = root_jumplist.r#match(&bytes, &jumplist_cache);
+        eprintln!("matching = {:#?}", matching);
+
         self.jir.symbol_tables = JIRSymbolTables {
             spaces: transform_spaces(self.moir.symbol_tables.spaces)?,
-            tables: transform_tables(
-                self.moir.symbol_tables.tables,
-                self.moir.root_table_id,
-                &self.moir.symbol_tables.tokens,
-                &self.moir.context,
-                &self.moir.symbol_tables.varnodes,
-                &self.moir.symbol_tables.constructors,
-            )?,
+            tables: self.moir.symbol_tables.tables,
             constructors: self.moir.symbol_tables.constructors,
             varnodes: transform_varnodes(self.moir.symbol_tables.varnodes)?,
         };
         self.jir.string_to_ident_mapping = self.moir.string_to_ident_mapping;
         Ok(self.jir)
     }
-}
-
-/// Transform tables by combining every root [Matcher] into multiple jumplists.
-fn transform_tables(
-    tables: TypedIndexTable<TableId, MOIRTable>,
-    root_table_id: TableId,
-    tokens: &TypedIndexTable<TokenId, MOIRToken>,
-    context: &TypedIndexTable<MOIRContextId, MOIRContext>,
-    varnodes: &TypedIndexTable<VarNodeId, MOIRVarNode>,
-    constructors: &TypedIndexTable<ConstructorId, MOIRConstructor>,
-) -> SleighCompilerResult<TypedIndexTable<TableId, JIRTable>> {
-    let mut transformer = TableTransformer::new(&tables, tokens, context, varnodes, constructors);
-    transformer.transform(root_table_id)
 }
 
 fn transform_spaces(
@@ -232,38 +228,3 @@ fn transform_varnodes(
         })
         .collect())
 }
-
-// /// Remove all jumplists in `jumplist` from `jumplist_cache` as well as `sublist_cache` and
-// /// rewrite data structures to fix dangling references. Deleted entries will be replaced
-// /// by `replace_id`.
-// fn remove_jumplists(
-//     jumplists: &[JumplistId],
-//     replace_id: JumplistId,
-//     jumplist_cache: &mut TypedIndexTable<JumplistId, Jumplist>,
-//     sublist_cache: &mut HashMap<(TableId, MOIRSize), JumplistId>,
-// ) {
-//     trace_build!("Removing jumplists {:?}", jumplists);
-//     let predicate = |jumplist_id: JumplistId, jumplist: &Jumplist| jumplists.contains(&jumplist_id);
-//     let mut rewrite_rule = |jumplist: &mut Jumplist, permutation: &Vec<Option<JumplistId>>| {
-//         let permuted_replace = permutation[usize::try_from(replace_id).unwrap()].expect("The replacement id must not be removed");
-//         eprintln!("permutation = {:?}", permutation);
-//         jumplist.for_entries_mut(&mut |entry| {
-//             entry.same_token_jumplist.iter_mut().for_each(|id| {
-//                 match permutation[usize::try_from(*id).unwrap()] {
-//                     Some(new_id) => *id = new_id,
-//                     None => *id = permuted_replace,
-//                 }
-//             });
-//             if let NextJumplistEntry::Jumplist(id) = &mut entry.next_entry {
-//                 match permutation[usize::try_from(*id).unwrap()] {
-//                     Some(new_id) => *id = new_id,
-//                     None => *id = permuted_replace,
-//                 }
-//             }
-//         });
-
-//         sublist_cache.values_mut().for_each(|id| *id = permutation[usize::try_from(*id).unwrap()].expect(""));
-//     };
-
-//     jumplist_cache.remove_and_rewrite(predicate, &mut rewrite_rule);
-// }

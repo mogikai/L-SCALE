@@ -30,8 +30,6 @@ use string_interner::StringInterner;
 use strum_macros::Display;
 use thiserror::Error;
 
-use self::jir::table::JIRTable;
-
 pub mod builder;
 pub mod jir;
 pub mod lifter;
@@ -65,7 +63,7 @@ pub enum JIRSymbolId {
 struct JIRSymbolTables {
     // macros: TypedIndexTable<MOIRMacroId, MOIRMacro>,
     spaces: TypedIndexTable<SpaceId, JIRSpace>,
-    tables: TypedIndexTable<TableId, JIRTable>,
+    tables: TypedIndexTable<TableId, MOIRTable>,
     constructors: TypedIndexTable<ConstructorId, MOIRConstructor>,
     varnodes: TypedIndexTable<VarNodeId, JIRVarNode>,
     // tokens: TypedIndexTable<MOIRTokenId, MOIRToken>,
