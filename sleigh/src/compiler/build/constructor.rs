@@ -224,7 +224,7 @@ impl SleighCompiler {
                     let field = self
                         .spec_builder
                         .field_by_symbol_id(*field_id)
-                        .ok_or(ErrorSymbolUndeclared {})?;
+                        .ok_or(SleighCompilerError::SymbolUndeclared)?;
                     let size = if !field.variables.is_empty() {
                         // The field has variables attached. These will be later given to the constructor during
                         // decoding. We can now set the size of the value that is referenced to the size of the
@@ -257,7 +257,7 @@ impl SleighCompiler {
                     let table = self
                         .spec_builder
                         .table_by_symbol_id(*table_id)
-                        .ok_or(ErrorSymbolUndeclared {})?;
+                        .ok_or(SleighCompilerError::SymbolUndeclared)?;
                     let constructor_id = table.constructors.first();
                     let export_size = constructor_id
                         .map(|cid| self.spec_builder.constructor_by_symbol_id(*cid))
@@ -276,7 +276,7 @@ impl SleighCompiler {
                     let varnode = self
                         .spec_builder
                         .varnode_by_symbol_id(*vnid)
-                        .ok_or(ErrorSymbolUndeclared {})?;
+                        .ok_or(SleighCompilerError::SymbolUndeclared)?;
                     Some(MOIRSlice {
                         reference: MOIRReference::VarNode(*vnid),
                         start: 0,
@@ -290,7 +290,7 @@ impl SleighCompiler {
             let ident = self
                 .spec_builder
                 .ident_by_symbol(symbol)
-                .ok_or(ErrorSymbolUndeclared {})?;
+                .ok_or(SleighCompilerError::SymbolUndeclared)?;
             if let Some(value) = value {
                 scope.declare_local(ident.clone().into_value(), value);
             }
@@ -379,7 +379,7 @@ impl SleighCompiler {
         let field = self
             .spec_builder
             .field_by_symbol_id(field_id)
-            .ok_or(ErrorSymbolUndeclared {})?;
+            .ok_or(SleighCompilerError::SymbolUndeclared)?;
 
         match op {
             SASTConstraintOp::Equals => self.matcher_from_equals_constraint(field_id, pattern),

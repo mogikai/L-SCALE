@@ -74,10 +74,6 @@ pub struct IdentifierNotMapped {
     pub field: StringId
 }
 
-#[derive(Debug, Error)]
-#[error("The symbol was not declared before being defined")]
-pub struct SymbolUndeclared {}
-
 #[derive(Error, Debug)]
 #[error("Cannot slice left hand side")]
 pub struct CannotTruncateLhs {
@@ -172,8 +168,8 @@ pub enum SleighCompilerError {
     CannotTruncateLhs(#[from] CannotTruncateLhs),
     #[error("Instruction after export")]
     InstructionAfterExport,
-    #[error("Symbol undeclared: {0}")]
-    SymbolUndeclared(#[from] SymbolUndeclared),
+    #[error("The symbol was not declared before being defined")]
+    SymbolUndeclared,
     #[error("Identifier exists: {0}")]
     IdentifierExists(#[from] IdentifierExists),
     #[error("Duplicate space attribute: {0}")]
@@ -248,7 +244,7 @@ impl SleighCompilerError {
                     _ => todo!("add more slice error reports")
                 }
             }
-            SleighCompilerError::SymbolUndeclared(_) => {
+            SleighCompilerError::SymbolUndeclared => {
                 report.with_label(Label::new(spans[0].clone()).with_message("symbol is undeclared")).finish()
             }
             _ => todo!("unhandled error in spanned_report")

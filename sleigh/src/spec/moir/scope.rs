@@ -1,5 +1,5 @@
 use crate::compiler::ast::Spanned;
-use crate::compiler::error::{IdentifierExists, SleighCompilerError, SliceError, SymbolAlreadyDefined, SymbolUndeclared};
+use crate::compiler::error::{IdentifierExists, SleighCompilerError, SliceError, SymbolAlreadyDefined};
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::{
     CompilerContext,
@@ -544,7 +544,7 @@ impl MOIRScope {
     ) -> SleighCompilerResult<&MOIRSlice> {
         self.slices
             .get(local)
-            .ok_or((SymbolUndeclared {}).into())
+            .ok_or(SleighCompilerError::SymbolUndeclared)
     }
 
     /// Defines the label to point to a specific instruction.

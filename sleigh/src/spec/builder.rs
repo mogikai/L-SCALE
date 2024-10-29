@@ -21,19 +21,7 @@ use crate::compiler::build::matcher::{
     MatcherId,
 };
 use crate::compiler::build::trace_build;
-use crate::compiler::error::{
-    DuplicateDefine,
-    DuplicateDefineType,
-    IdentifierExists,
-    IdentifierNotMapped,
-    InvalidSymbolType,
-    SleighCompilerError,
-    SpannedError,
-    SymbolUndeclared,
-    UndefinedIdentifier,
-    UndefinedSymbol
-};
-use crate::compiler::lexer::{
+use crate::compiler::error::{DuplicateDefine, DuplicateDefineType, IdentifierExists, IdentifierNotMapped, InvalidSymbolType, SleighCompilerError, SpannedError, UndefinedIdentifier, UndefinedSymbol};use crate::compiler::lexer::{
     InputSpan,
     ParserInput,
     SleighLexerInput,
@@ -600,7 +588,7 @@ impl ProcessorSpecificationBuilder {
         *self
             .symbol_ids
             .get_mut(symbol_id)
-            .ok_or(SymbolUndeclared {})? = symbol;
+            .ok_or(SleighCompilerError::SymbolUndeclared)? = symbol;
         Ok(())
     }
 
@@ -616,7 +604,7 @@ impl ProcessorSpecificationBuilder {
                     _ => None,
                 })
             })
-            .ok_or_else(|| span_err!(SymbolUndeclared {}, ident.span().clone()))
+            .ok_or_else(|| span_err!(SleighCompilerError::SymbolUndeclared, ident.span().clone()))
     }
 
     pub fn space_by_symbol_id(
