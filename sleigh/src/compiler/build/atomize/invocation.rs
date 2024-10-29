@@ -3,7 +3,7 @@ use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::Spanned;
 use crate::compiler::build::trace_build;
-use crate::compiler::error::{InvalidArgumentCount, SleighCompilerError, SymbolAlreadyDefined};
+use crate::compiler::error::SleighCompilerError;
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
@@ -217,13 +217,13 @@ impl SleighCompiler {
     }
 }
 
-fn unpack_args<T>(args: Vec<MOIRLocal>) -> Result<T, InvalidArgumentCount>
+fn unpack_args<T>(args: Vec<MOIRLocal>) -> SleighCompilerResult<T>
 where
     T: HomogeneousTuple<Item = MOIRLocal>,
 {
     args.into_iter()
         .collect_tuple()
-        .ok_or(InvalidArgumentCount {})
+        .ok_or(SleighCompilerError::InvalidArgumentCount)
 }
 
 /// Resolves the provided args to the argument names in the macro definition.

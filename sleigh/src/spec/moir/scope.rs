@@ -1,5 +1,5 @@
 use crate::compiler::ast::Spanned;
-use crate::compiler::error::{IdentifierExists, SleighCompilerError, SliceError, SymbolAlreadyDefined};
+use crate::compiler::error::{IdentifierExists, SleighCompilerError, SliceError};
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::{
     CompilerContext,
@@ -281,10 +281,10 @@ impl MOIRScope {
         &mut self,
         ident: Spanned<StringId>,
         local: MOIRLocalId,
-    ) -> Result<(), SymbolAlreadyDefined> {
+    ) -> SleighCompilerResult {
         let (ident, span) = ident.into_tuple();
         match self.locals.entry(ident) {
-            Entry::Occupied(_) => Err(SymbolAlreadyDefined {})?,
+            Entry::Occupied(_) => Err(span_err!(SleighCompilerError::SymbolAlreadyDefined, span.clone()))?,
             Entry::Vacant(entry) => entry.insert(local),
         };
         self.local_spans.insert(ident, span);

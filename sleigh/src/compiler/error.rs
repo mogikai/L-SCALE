@@ -61,14 +61,6 @@ pub enum MaskError {
 }
 
 #[derive(Debug, Error)]
-#[error("The symbol is already defined")]
-pub struct SymbolAlreadyDefined {}
-
-#[derive(Debug, Error)]
-#[error("The argument count is not what it should be")]
-pub struct InvalidArgumentCount {}
-
-#[derive(Debug, Error)]
 #[error("The identifier is not mapped")]
 pub struct IdentifierNotMapped {
     pub field: StringId
@@ -158,10 +150,10 @@ pub enum SleighCompilerError {
     InvalidFieldRange(#[from] InvalidFieldRange),
     #[error("Const does not fit: {0}")]
     ConstDoesNotFit(#[from] ConstDoesNotFit),
-    #[error("Symbol is already defined {0}")]
-    SymbolAlreadyDefined(#[from] SymbolAlreadyDefined),
-    #[error("The builtin operation was called with an incorrect number of arguments: {0}")]
-    InvalidArgumentCount(#[from] InvalidArgumentCount),
+    #[error("The symbol is already defined")]
+    SymbolAlreadyDefined,
+    #[error("The builtin operation was called with an incorrect number of arguments")]
+    InvalidArgumentCount,
     #[error("Identifier not mapped: {0}")]
     IdentifierNotMapped(#[from] IdentifierNotMapped),
     #[error("Cannot truncate LHS: {0}")]
