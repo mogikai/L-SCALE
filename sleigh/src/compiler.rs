@@ -126,11 +126,9 @@ impl SleighCompiler {
             let error_count = self.errors.len();
             self.errors = dbg!(self.errors);
             for error in self.errors {
-                if let Some(report) = error.as_report() {
-                    report
+                error.as_report()
                         .write(&mut self.input_cache, &mut error_description)
                         .expect("There is no way this may fail.");
-                }
             }
             error_description.extend(
                 format!(

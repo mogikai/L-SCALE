@@ -198,33 +198,33 @@ pub struct SpannedError {
 }
 
 impl SleighCompilerError {
-    pub fn as_report(&self) -> Option<Report<'static, InputSpan>> {
+    pub fn as_report(&self) -> Report<'static, InputSpan> {
         match self {
             SleighCompilerError::SpannedError(spanned_error) => {
                 SleighCompilerError::spanned_report(&spanned_error.spans, &spanned_error.error)
             }
-            _e => None, // TODO panic here
+            e => panic!("This error should be contained in SpannedError: {:?}", e)
         }
     }
 
-    fn spanned_report(spans: &Vec<InputSpan>, e: &SleighCompilerError) -> Option<Report<'static, InputSpan>> {
+    fn spanned_report(spans: &Vec<InputSpan>, e: &SleighCompilerError) -> Report<'static, InputSpan> {
         let report = Report::build(ReportKind::Error, spans[0].context(), spans[0].start())
             .with_message(format!("{}", e));
         match e {
             SleighCompilerError::DuplicateDefine(_) | SleighCompilerError::DuplicateSpaceAttribute(_) => {
-                Some(report
+                report
                     .with_label(Label::new(spans[0].clone()).with_message("first definition"))
                     .with_label(Label::new(spans[1].clone()).with_message("second definition"))
-                    .finish())
+                    .finish()
             }
             SleighCompilerError::InstructionAfterExport => {
-                Some(report
+                report
                     .with_label(Label::new(spans[0].clone()).with_message("export is here"))
                     .with_label(Label::new(spans[1].clone()).with_message("instruction should be before export"))
-                    .finish())
+                    .finish()
             }
             SleighCompilerError::InvalidFieldRange(invalid) => {
-                Some(match invalid {
+                match invalid {
                     InvalidFieldRange::EndBeforeStart(range) => {
                         report.with_label(Label::new(spans[0].clone())
                             .with_message(format!("range ends at {} but starts at {}", range.end, range.start)))
@@ -236,23 +236,22 @@ impl SleighCompilerError {
                                                  range.end - range.start, bits)))
                             .finish()
                     }
-                })
+                }
             }
             SleighCompilerError::SliceError(slice) => {
-                Some(match slice {
+                match slice {
                     SliceError::CannotSliceUndeterminedSize => {
                         report
                             .with_label(Label::new(spans[0].clone()).with_message("size is undetermined"))
                             .finish()
                     }
                     _ => todo!("add more slice error reports")
-                })
+                }
             }
             SleighCompilerError::SymbolUndeclared(_) => {
-                Some(report.with_label(Label::new(spans[0].clone()).with_message("symbol is undeclared")).finish())
-
+                report.with_label(Label::new(spans[0].clone()).with_message("symbol is undeclared")).finish()
             }
-            _ => None
+            _ => todo!("unhandled error in spanned_report")
         }
     }
 }
