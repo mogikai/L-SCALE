@@ -43,7 +43,6 @@ pub mod error;
 pub mod inputcache;
 pub mod lexer;
 pub mod parser;
-pub mod report;
 pub mod tokens;
 
 new_key_type! { pub struct InputId; }
