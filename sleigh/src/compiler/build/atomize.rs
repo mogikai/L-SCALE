@@ -35,7 +35,6 @@ use crate::spec::moir::varnode::MOIRReference;
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::{
-    InstructionAfterExport,
     SleighCompilerError,
 };
 use crate::spec::moir::MOIR_ADDRESS_SIZE;
@@ -73,12 +72,9 @@ impl SleighCompiler {
                 None
             };
             if let Some(export) = export {
-                return Err(SleighCompilerError::InstructionAfterExport(InstructionAfterExport {
-                    export: export.span().clone(),
-                    statement: statement.into_span(),
-                }));
+                return Err(span_err!(SleighCompilerError::InstructionAfterExport, export.span().clone(), statement.into_span()));
             }
-            let (statement, stmt_span) = statement.into_tuple();
+            let (statement, _) = statement.into_tuple();
             match statement {
                 SASTPCodeStatement::Assignment {
                     local,

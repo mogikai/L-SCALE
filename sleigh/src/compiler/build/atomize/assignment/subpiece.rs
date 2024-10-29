@@ -128,12 +128,11 @@ fn truncate_lhs(
         scope.truncate_local(lhs, size).map_err(|err| {
             let (ident, ident_span) = ident.into_tuple();
             let str = spec_builder.resolve_string_id(ident.into());
-            (CannotTruncateLhs {
+            span_err!(CannotTruncateLhs {
                 err,
-                ident_span,
                 ident_str: str.to_string(),
                 expected_size: size,
-            }).into()
+            }, ident_span)
         })
     }
 }

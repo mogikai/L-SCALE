@@ -1,4 +1,3 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::inputcache::InputCacheError;
 use crate::compiler::lexer::InputSpan;
 use crate::preprocessor::error::PreprocessorError;
@@ -14,10 +13,7 @@ use std::ops::Range;
 use ariadne::{Label, Report, ReportKind};
 use chumsky::span::Span;
 use thiserror::Error;
-use tracing::span;
 use crate::compiler::ast::define::SASTAddressSpaceAttribute;
-use crate::compiler::ast::pcode::statement::SASTPCodeStatement;
-use crate::spec::moir::varnode::MOIRLocal;
 
 #[derive(Debug, Error)]
 pub enum SliceError {
@@ -82,6 +78,58 @@ pub struct IdentifierNotMapped {
 #[error("The symbol was not declared before being defined")]
 pub struct SymbolUndeclared {}
 
+#[derive(Error, Debug)]
+#[error("Cannot slice left hand side")]
+pub struct CannotTruncateLhs {
+    pub err: SliceError,
+    pub ident_str: String,
+    pub expected_size: MOIRSize,
+}
+
+#[derive(Error, Debug)]
+#[error("Identifier already exists")]
+pub struct IdentifierExists {
+    pub name: String,
+}
+
+#[derive(Error, Debug)]
+#[error("Definition of {dupe_type:?} already exists")]
+pub struct DuplicateDefine {
+    pub dupe_type: DuplicateDefineType,
+}
+
+#[derive(Debug)]
+pub enum DuplicateDefineType {
+    Endianness,
+    Alignment,
+}
+
+#[derive(Error, Debug)]
+#[error("Undefined symbol")]
+pub struct UndefinedSymbol {
+    pub symbol: String,
+}
+
+#[derive(Error, Debug)]
+#[error("Invalid symbol type")]
+pub struct InvalidSymbolType {
+    pub symbol_reference: String,
+    pub expected: String,
+    pub found: MOIRSymbolId,
+}
+
+#[derive(Error, Debug)]
+#[error("Undefined identifier: ")]
+pub struct UndefinedIdentifier {
+    pub identifier: String,
+}
+
+#[derive(Error, Debug)]
+#[error("Space attribute is duplicated")]
+pub struct DuplicateSpaceAttribute {
+    pub attribute: SASTAddressSpaceAttribute,
+}
+
 #[derive(Error)]
 pub enum SleighCompilerError {
     #[error("The preprocessor encountered an error.")]
@@ -122,8 +170,8 @@ pub enum SleighCompilerError {
     IdentifierNotMapped(#[from] IdentifierNotMapped),
     #[error("Cannot truncate LHS: {0}")]
     CannotTruncateLhs(#[from] CannotTruncateLhs),
-    #[error("Instruction after export: {0}")]
-    InstructionAfterExport(#[from] InstructionAfterExport),
+    #[error("Instruction after export")]
+    InstructionAfterExport,
     #[error("Symbol undeclared: {0}")]
     SymbolUndeclared(#[from] SymbolUndeclared),
     #[error("Identifier exists: {0}")]
@@ -135,9 +183,9 @@ pub enum SleighCompilerError {
     #[error("Undefined identifier: {0}")]
     UndefinedIdentifier(#[from] UndefinedIdentifier),
     #[error("Undefined symbol: {0}")]
-    UndefinedSymbol(UndefinedSymbol),
+    UndefinedSymbol(#[from] UndefinedSymbol),
     #[error("Invalid symbol type: {0}")]
-    InvalidSymbolType(InvalidSymbolType),
+    InvalidSymbolType(#[from] InvalidSymbolType),
     #[error("Spanned error: {0}")]
     SpannedError(SpannedError),
 }
@@ -153,51 +201,27 @@ impl SleighCompilerError {
     pub fn as_report(&self) -> Option<Report<'static, InputSpan>> {
         match self {
             SleighCompilerError::SpannedError(spanned_error) => {
-                self.as_spanned_report(spanned_error.spans.clone())
+                SleighCompilerError::spanned_report(&spanned_error.spans, &spanned_error.error)
             }
-            SleighCompilerError::InstructionAfterExport(instr) => {
-                let span = instr.statement.clone();
-                Some(Report::build(ReportKind::Error, span.context(), span.start())
-                    .with_message(format!("{}", instr))
-                    .with_label(Label::new(instr.export.clone()).with_message("export is here"))
-                    .with_label(Label::new(span.clone()).with_message("instruction should be before export"))
-                    .finish())
-            }
-            SleighCompilerError::DuplicateDefine(dupe_def) => {
-                Some(Report::build(ReportKind::Error, dupe_def.new.context(), dupe_def.new.start())
-                    .with_message(format!("{}", dupe_def))
-                    .with_label(Label::new(dupe_def.old.clone()).with_message("first definition"))
-                    .with_label(Label::new(dupe_def.new.clone()).with_message("second definition"))
-                    .finish())
-            }
-            SleighCompilerError::DuplicateSpaceAttribute(dupe_attr) => {
-                Some(Report::build(ReportKind::Error, dupe_attr.input.context(), dupe_attr.input.start())
-                    .with_message(format!("{}", dupe_attr))
-                    .with_label(Label::new(dupe_attr.prev_input.clone()).with_message("first definition"))
-                    .with_label(Label::new(dupe_attr.input.clone()).with_message("second definition"))
-                    .finish())
-            }
-            e => None,
+            _e => None, // TODO panic here
         }
     }
 
-    pub fn as_spanned_report(&self, spans: Vec<InputSpan>) -> Option<Report<'static, InputSpan>> {
+    fn spanned_report(spans: &Vec<InputSpan>, e: &SleighCompilerError) -> Option<Report<'static, InputSpan>> {
         let report = Report::build(ReportKind::Error, spans[0].context(), spans[0].start())
-            .with_message(format!("{}", self));
-        match self {
-            SleighCompilerError::SymbolUndeclared(_) => {
-                Some(report.with_label(Label::new(spans[0].clone()).with_message("symbol is undeclared")).finish())
-
+            .with_message(format!("{}", e));
+        match e {
+            SleighCompilerError::DuplicateDefine(_) | SleighCompilerError::DuplicateSpaceAttribute(_) => {
+                Some(report
+                    .with_label(Label::new(spans[0].clone()).with_message("first definition"))
+                    .with_label(Label::new(spans[1].clone()).with_message("second definition"))
+                    .finish())
             }
-            SleighCompilerError::SliceError(slice) => {
-                Some(match slice {
-                    SliceError::CannotSliceUndeterminedSize => {
-                        report
-                            .with_label(Label::new(spans[0].clone()).with_message("size is undetermined"))
-                            .finish()
-                    }
-                    _ => todo!("add more slice error reports")
-                })
+            SleighCompilerError::InstructionAfterExport => {
+                Some(report
+                    .with_label(Label::new(spans[0].clone()).with_message("export is here"))
+                    .with_label(Label::new(spans[1].clone()).with_message("instruction should be before export"))
+                    .finish())
             }
             SleighCompilerError::InvalidFieldRange(invalid) => {
                 Some(match invalid {
@@ -214,83 +238,23 @@ impl SleighCompilerError {
                     }
                 })
             }
+            SleighCompilerError::SliceError(slice) => {
+                Some(match slice {
+                    SliceError::CannotSliceUndeterminedSize => {
+                        report
+                            .with_label(Label::new(spans[0].clone()).with_message("size is undetermined"))
+                            .finish()
+                    }
+                    _ => todo!("add more slice error reports")
+                })
+            }
+            SleighCompilerError::SymbolUndeclared(_) => {
+                Some(report.with_label(Label::new(spans[0].clone()).with_message("symbol is undeclared")).finish())
+
+            }
             _ => None
         }
     }
-}
-
-#[derive(Error, Debug)]
-#[error("Instruction after export")]
-pub struct InstructionAfterExport {
-    pub export: InputSpan,
-    pub statement: InputSpan,
-}
-
-#[derive(Error, Debug)]
-#[error("Cannot slice left hand side")]
-pub struct CannotTruncateLhs {
-    pub err: SliceError,
-    pub ident_span: InputSpan,
-    pub ident_str: String,
-    pub expected_size: MOIRSize,
-}
-
-#[derive(Error, Debug)]
-#[error("Identifier already exists")]
-pub struct IdentifierExists {
-    pub name: String,
-    pub old: InputSpan,
-    pub new: InputSpan,
-}
-
-#[derive(Error, Debug)]
-#[error("Endianness exists")]
-pub struct EndiannessExists {
-    pub old: InputSpan,
-    pub new: InputSpan,
-}
-
-#[derive(Error, Debug)]
-#[error("Definition already exists")]
-pub struct DuplicateDefine {
-    pub dupe_type: DuplicateDefineType,
-    pub old: InputSpan,
-    pub new: InputSpan,
-}
-
-#[derive(Debug)]
-pub enum DuplicateDefineType {
-    Endianness,
-    Alignment,
-}
-
-#[derive(Error, Debug)]
-#[error("Undefined symbol")]
-pub struct UndefinedSymbol {
-    pub symbol: Spanned<String>,
-}
-
-#[derive(Error, Debug)]
-#[error("Invalid symbol type")]
-pub struct InvalidSymbolType {
-    pub defined_symbol: InputSpan,
-    pub symbol_reference: Spanned<String>,
-    pub expected: String,
-    pub found: MOIRSymbolId,
-}
-
-#[derive(Error, Debug)]
-#[error("Undefined identifier")]
-pub struct UndefinedIdentifier {
-    pub identifier: Spanned<String>,
-}
-
-#[derive(Error, Debug)]
-#[error("Space attribute is duplicated")]
-pub struct DuplicateSpaceAttribute {
-    pub attribute: SASTAddressSpaceAttribute,
-    pub prev_input: InputSpan,
-    pub input: InputSpan,
 }
 
 impl Debug for SleighCompilerError {
