@@ -120,7 +120,7 @@ impl MOIRSlice {
         end: MOIRSize,
     ) -> Result<Self, SliceError> {
         let MOIRMaybeSize::Determined(current_end) = self.end else {
-            Err(SliceError::CannotSliceUndeterminedSize)?
+            Err(SliceError::UndeterminedSize)?
         };
         if end > current_end || start < self.start {
             Err(SliceError::InvalidSliceRange {
@@ -293,7 +293,7 @@ impl MOIRLocal {
         let new_size = end.saturating_sub(start);
         let current_size = self
             .size(scope)
-            .ok_or(SliceError::CannotSliceUndeterminedSize)?;
+            .ok_or(SliceError::UndeterminedSize)?;
         if new_size == 0 || new_size > current_size || start > end {
             Err(SliceError::InvalidSliceSize {
                 new: new_size,
@@ -411,7 +411,7 @@ impl MOIRConst {
         let start_bit = start * 8;
         // We can only slice if the underlying value has a size already.
         let MOIRMaybeSize::Determined(size) = self.size() else {
-            Err(SliceError::CannotSliceUndeterminedSize)?
+            Err(SliceError::UndeterminedSize)?
         };
         if new_size > size {
             Err(SliceError::InvalidSliceSize {
@@ -424,7 +424,7 @@ impl MOIRConst {
                 let value = value >> start_bit;
                 MOIRConst::Determined(value, new_size)
             }
-            MOIRConst::Undetermined(_) => Err(SliceError::CannotSliceUndeterminedSize)?,
+            MOIRConst::Undetermined(_) => Err(SliceError::UndeterminedSize)?,
         })
     }
 }

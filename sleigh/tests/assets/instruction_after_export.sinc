@@ -1,0 +1,4 @@
+define endian = big;
+define space ram type=ram_space size=1024 default;
+
+n2: one is epsilon { export 1; local a = 2; }

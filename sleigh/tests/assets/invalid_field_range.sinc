@@ -1,0 +1,5 @@
+define endian = big;
+define space ram type=ram_space size=1024 default;
+
+define token cooltoken1 (0) op0=(2,15);
+define token cooltoken2 (0) op0=(20,0);

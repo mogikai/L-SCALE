@@ -28,7 +28,7 @@ pub enum SliceError {
         new_end: MOIRSize,
     },
     #[error("value cannot be sliced as the size is undetermined")]
-    CannotSliceUndeterminedSize,
+    UndeterminedSize,
 }
 
 #[derive(Debug, Error)]
@@ -219,7 +219,7 @@ impl SleighCompilerError {
             }
             SleighCompilerError::SliceError(slice) => {
                 match slice {
-                    SliceError::CannotSliceUndeterminedSize => {
+                    SliceError::UndeterminedSize => {
                         report
                             .with_label(Label::new(spans[0].clone()).with_message("size is undetermined"))
                             .finish()
