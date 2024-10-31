@@ -26,7 +26,6 @@ use crate::spec::moir::varnode::{
     MOIRLocal,
 };
 use std::cmp::Ordering;
-use crate::compiler::error::{MaskError};
 use crate::span_err;
 
 impl SleighCompiler {
@@ -135,7 +134,7 @@ fn create_mask(
     shift_amount: SASTSize,
     bits: SASTSize,
     target_size: MOIRSize,
-) -> Result<MOIRLocal, MaskError> {
+) -> SleighCompilerResult<MOIRLocal> {
     // We can only create a mask constant, if it is smaller than 128 bits, i.e. 16 bytes.
     if target_size < 16 {
         // create `bits` amount of ones and shift them left to the correct position.

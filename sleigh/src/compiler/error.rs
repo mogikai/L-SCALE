@@ -54,13 +54,6 @@ pub struct ConstDoesNotFit {
 }
 
 #[derive(Debug, Error)]
-#[error("mask error")]
-pub enum MaskError {
-    ConstDoesNotFit(#[from] ConstDoesNotFit),
-    SliceError(#[from] SliceError),
-}
-
-#[derive(Debug, Error)]
 #[error("The identifier is not mapped")]
 pub struct IdentifierNotMapped {
     pub field: StringId
@@ -142,8 +135,6 @@ pub enum SleighCompilerError {
     SemanticError(String),
     #[error("Cannot slice: {0}")]
     SliceError(#[from] SliceError),
-    #[error("cannot create mask: {0}")]
-    MaskError(#[from] MaskError),
     #[error("Cannot evaluate constants: {0}")]
     ConstEvalError(#[from] ConstEvalError),
     #[error("The field range is not valid: {0}")]
