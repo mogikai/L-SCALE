@@ -21,13 +21,22 @@ use crate::compiler::build::matcher::{
     MatcherId,
 };
 use crate::compiler::build::trace_build;
-use crate::compiler::error::{DuplicateDefine, DuplicateDefineType, IdentifierExists, IdentifierNotMapped, InvalidSymbolType, SleighCompilerError, SpannedError, UndefinedIdentifier, UndefinedSymbol};
+use crate::compiler::error::{
+    DuplicatedDefine,
+    DuplicateDefineType,
+    DuplicatedIdentifier,
+    UnmappedIdentifier,
+    InvalidSymbolType,
+    SleighCompilerError,
+    SleighCompilerErrorType,
+    UndefinedIdentifier,
+    UndefinedSymbol
+};
 use crate::compiler::lexer::{
     InputSpan,
     ParserInput,
     SleighLexerInput,
-};
-use crate::compiler::{
+};use crate::compiler::{
     CompilerContext,
     SleighCompilerResult,
 };
@@ -195,7 +204,7 @@ impl ProcessorSpecificationBuilder {
         endianness: Spanned<MOIREndianness>,
     ) -> Result<(), SleighCompilerError> {
         if let Some(old_endianness) = &self.endianness {
-            let e = DuplicateDefine {
+            let e = DuplicatedDefine {
                 dupe_type: DuplicateDefineType::Endianness
             };
             let mut spans = HashMap::new();
@@ -214,7 +223,7 @@ impl ProcessorSpecificationBuilder {
         alignment: Spanned<u16>,
     ) -> SleighCompilerResult {
         if let Some(old_alignment) = &self.alignment {
-            let e = DuplicateDefine {
+            let e = DuplicatedDefine {
                 dupe_type: DuplicateDefineType::Alignment
             };
             let mut spans = HashMap::new();
@@ -425,7 +434,7 @@ impl ProcessorSpecificationBuilder {
                 .get_symbol_and_ident(&field)
                 .ok_or_else(|| {
                     let (field, span) = field.into_tuple();
-                    SleighCompilerError::with_span((IdentifierNotMapped { field }).into(), "span", span)
+                    SleighCompilerError::with_span((UnmappedIdentifier { field }).into(), "span", span)
                 })?;
             if let MOIRSymbolId::Field(id) = symbol {
                 self.field_by_symbol_id_mut(*id)
@@ -574,7 +583,7 @@ impl ProcessorSpecificationBuilder {
                 let mut spans = HashMap::new();
                 spans.insert("first", name.span().clone());
                 spans.insert("second", ident.into_span());
-                Err(SleighCompilerError::with_spans((IdentifierExists { name: name_str.to_string() }).into(),
+                Err(SleighCompilerError::with_spans((DuplicatedIdentifier { name: name_str.to_string() }).into(),
                                                     spans))
             }
             Entry::Vacant(entry) => {
@@ -596,7 +605,7 @@ impl ProcessorSpecificationBuilder {
         *self
             .symbol_ids
             .get_mut(symbol_id)
-            .ok_or(SleighCompilerErrorType::SymbolUndeclared)? = symbol;
+            .ok_or(SleighCompilerErrorType::UndeclaredSymbol)? = symbol;
         Ok(())
     }
 
@@ -612,7 +621,7 @@ impl ProcessorSpecificationBuilder {
                     _ => None,
                 })
             })
-            .ok_or_else(|| SleighCompilerError::with_span(SleighCompilerErrorType::SymbolUndeclared.into(),
+            .ok_or_else(|| SleighCompilerError::with_span(SleighCompilerErrorType::UndeclaredSymbol.into(),
                                                           "ident",
                                                           ident.span().clone()))
     }

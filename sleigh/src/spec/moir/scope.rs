@@ -1,5 +1,5 @@
 use crate::compiler::ast::Spanned;
-use crate::compiler::error::{IdentifierExists, SleighCompilerError, SleighCompilerErrorType};
+use crate::compiler::error::{DuplicatedIdentifier, SleighCompilerError, SleighCompilerErrorType};
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::{
     CompilerContext,
@@ -281,7 +281,7 @@ impl MOIRScope {
     ) -> SleighCompilerResult {
         let (ident, span) = ident.into_tuple();
         match self.locals.entry(ident) {
-            Entry::Occupied(_) => Err(SleighCompilerError::with_span(SleighCompilerErrorType::SymbolAlreadyDefined, "dupe", span.clone()))?,
+            Entry::Occupied(_) => Err(SleighCompilerError::with_span(SleighCompilerErrorType::RedefinedSymbol, "dupe", span.clone()))?,
             Entry::Vacant(entry) => entry.insert(local),
         };
         self.local_spans.insert(ident, span);
@@ -382,7 +382,7 @@ impl MOIRScope {
                     .expect("This must exist, since the locals entry is occupied")
                     .clone());
                 spans.insert("second", ident_span);
-                Err(SleighCompilerError::with_spans((IdentifierExists { name: "".to_string() }).into(),
+                Err(SleighCompilerError::with_spans((DuplicatedIdentifier { name: "".to_string() }).into(),
                                                     spans))
             }
             Entry::Vacant(entry) => {
@@ -542,7 +542,7 @@ impl MOIRScope {
     ) -> SleighCompilerResult<&MOIRSlice> {
         self.slices
             .get(local)
-            .ok_or(SleighCompilerErrorType::SymbolUndeclared.into())
+            .ok_or(SleighCompilerErrorType::UndeclaredSymbol.into())
     }
 
     /// Defines the label to point to a specific instruction.

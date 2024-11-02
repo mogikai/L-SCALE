@@ -227,7 +227,7 @@ impl SleighCompiler {
                     let field = self
                         .spec_builder
                         .field_by_symbol_id(*field_id)
-                        .ok_or(SleighCompilerErrorType::SymbolUndeclared)?;
+                        .ok_or(SleighCompilerErrorType::UndeclaredSymbol)?;
                     let size = if !field.variables.is_empty() {
                         // The field has variables attached. These will be later given to the constructor during
                         // decoding. We can now set the size of the value that is referenced to the size of the
@@ -279,7 +279,7 @@ impl SleighCompiler {
                     let varnode = self
                         .spec_builder
                         .varnode_by_symbol_id(*vnid)
-                        .ok_or(SleighCompilerErrorType::SymbolUndeclared)?;
+                        .ok_or(SleighCompilerErrorType::UndeclaredSymbol)?;
                     Some(MOIRSlice {
                         reference: MOIRReference::VarNode(*vnid),
                         start: 0,
@@ -293,7 +293,7 @@ impl SleighCompiler {
             let ident = self
                 .spec_builder
                 .ident_by_symbol(symbol)
-                .ok_or(SleighCompilerErrorType::SymbolUndeclared)?;
+                .ok_or(SleighCompilerErrorType::UndeclaredSymbol)?;
             if let Some(value) = value {
                 scope.declare_local(ident.clone().into_value(), value);
             }
@@ -382,7 +382,7 @@ impl SleighCompiler {
         let field = self
             .spec_builder
             .field_by_symbol_id(field_id)
-            .ok_or(SleighCompilerErrorType::SymbolUndeclared)?;
+            .ok_or(SleighCompilerErrorType::UndeclaredSymbol)?;
 
         match op {
             SASTConstraintOp::Equals => self.matcher_from_equals_constraint(field_id, pattern),

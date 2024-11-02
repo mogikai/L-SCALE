@@ -27,7 +27,7 @@ use crate::compiler::ast::{
     Spanned,
     TransmuteIntoVec,
 };
-use crate::compiler::error::{DuplicateSpaceAttribute, InvalidFieldRange, SleighCompilerError, SleighCompilerErrorType};
+use crate::compiler::error::{DuplicatedSpaceAttribute, InvalidFieldRange, SleighCompilerError, SleighCompilerErrorType};
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::{
     SleighCompiler,
@@ -203,7 +203,7 @@ impl SleighCompiler {
             match attribute {
                 SASTAddressSpaceAttribute::Type(ty) => {
                     if let Some((_, prev_input)) = r#type {
-                        return Err(SleighCompilerError::from_error((DuplicateSpaceAttribute {
+                        return Err(SleighCompilerError::from_error((DuplicatedSpaceAttribute {
                             attribute,
                         }).into())
                             .span("first", prev_input)
@@ -214,7 +214,7 @@ impl SleighCompiler {
                 }
                 SASTAddressSpaceAttribute::Size(size) => {
                     if let Some((_, prev_input)) = address_size {
-                        return Err(SleighCompilerError::from_error((DuplicateSpaceAttribute {
+                        return Err(SleighCompilerError::from_error((DuplicatedSpaceAttribute {
                             attribute,
                         }).into())
                             .span("first", prev_input)
@@ -225,7 +225,7 @@ impl SleighCompiler {
                 }
                 SASTAddressSpaceAttribute::Wordsize(size) => {
                     if let Some((_, prev_input)) = word_size {
-                        return Err(SleighCompilerError::from_error((DuplicateSpaceAttribute {
+                        return Err(SleighCompilerError::from_error((DuplicatedSpaceAttribute {
                             attribute,
                         }).into())
                             .span("first", prev_input)
@@ -236,7 +236,7 @@ impl SleighCompiler {
                 }
                 SASTAddressSpaceAttribute::IsDefault => {
                     if let (_, Some(prev_input)) = default {
-                        return Err(SleighCompilerError::from_error((DuplicateSpaceAttribute {
+                        return Err(SleighCompilerError::from_error((DuplicatedSpaceAttribute {
                             attribute,
                         }).into())
                             .span("first", prev_input)
@@ -320,7 +320,7 @@ impl SleighCompiler {
         if field_range.start > field_range.end {
             Err(InvalidFieldRange::EndBeforeStart(field_range))
         } else if field_range.end - field_range.start > bits {
-            Err(InvalidFieldRange::RangeTooLarge(bits, field_range))
+            Err(InvalidFieldRange::TooLargeRange(bits, field_range))
         } else {
             // The variables, values, and strings fields are later attached with attach statements.
             let field = MOIRField {

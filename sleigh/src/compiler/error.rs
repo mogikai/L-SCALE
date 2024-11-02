@@ -42,20 +42,20 @@ pub enum InvalidFieldRange {
     #[error("field range ends before its starting")]
     EndBeforeStart(Range<u64>),
     #[error("field range is too large")]
-    RangeTooLarge(u64, Range<u64>),
+    TooLargeRange(u64, Range<u64>),
 }
 
 #[derive(Debug, Error)]
 #[error("The constant value being constructed does not fit into the requested size. Value: {val:?}, Requested size: {size:?}"
 )]
-pub struct ConstDoesNotFit {
+pub struct WrongConstSize {
     pub val: u128,
     pub size: MOIRSize,
 }
 
 #[derive(Debug, Error)]
 #[error("The identifier is not mapped")]
-pub struct IdentifierNotMapped {
+pub struct UnmappedIdentifier {
     pub field: StringId
 }
 
@@ -68,13 +68,13 @@ pub struct CannotTruncateLhs {
 
 #[derive(Error, Debug)]
 #[error("Identifier already exists")]
-pub struct IdentifierExists {
+pub struct DuplicatedIdentifier {
     pub name: String,
 }
 
 #[derive(Error, Debug)]
 #[error("Definition of {dupe_type:?} already exists")]
-pub struct DuplicateDefine {
+pub struct DuplicatedDefine {
     pub dupe_type: DuplicateDefineType,
 }
 
@@ -106,7 +106,7 @@ pub struct UndefinedIdentifier {
 
 #[derive(Error, Debug)]
 #[error("Space attribute '{attribute:?}' is duplicated")]
-pub struct DuplicateSpaceAttribute {
+pub struct DuplicatedSpaceAttribute {
     pub attribute: SASTAddressSpaceAttribute,
 }
 
@@ -139,25 +139,25 @@ pub enum SleighCompilerErrorType {
     #[error("The field range is not valid: {0}")]
     InvalidFieldRange(#[from] InvalidFieldRange),
     #[error("Const does not fit: {0}")]
-    ConstDoesNotFit(#[from] ConstDoesNotFit),
+    WrongConstSize(#[from] WrongConstSize),
     #[error("The symbol is already defined")]
-    SymbolAlreadyDefined,
+    RedefinedSymbol,
     #[error("The builtin operation was called with an incorrect number of arguments")]
     InvalidArgumentCount,
     #[error("Identifier not mapped: {0}")]
-    IdentifierNotMapped(#[from] IdentifierNotMapped),
+    UnmappedIdentifier(#[from] UnmappedIdentifier),
     #[error("Cannot truncate LHS: {0}")]
     CannotTruncateLhs(#[from] CannotTruncateLhs),
     #[error("Instruction after export")]
     InstructionAfterExport,
     #[error("The symbol was not declared before being defined")]
-    SymbolUndeclared,
+    UndeclaredSymbol,
     #[error("Identifier exists: {0}")]
-    IdentifierExists(#[from] IdentifierExists),
+    DuplicatedIdentifier(#[from] DuplicatedIdentifier),
     #[error("Duplicate space attribute: {0}")]
-    DuplicateSpaceAttribute(#[from] DuplicateSpaceAttribute),
+    DuplicatedSpaceAttribute(#[from] DuplicatedSpaceAttribute),
     #[error("Duplicate define: {0}")]
-    DuplicateDefine(#[from] DuplicateDefine),
+    DuplicatedDefine(#[from] DuplicatedDefine),
     #[error("Undefined identifier: {0}")]
     UndefinedIdentifier(#[from] UndefinedIdentifier),
     #[error("Undefined symbol: {0}")]
@@ -203,8 +203,8 @@ impl From<PreprocessorError> for SleighCompilerError {
     }
 }
 
-impl From<ConstDoesNotFit> for SleighCompilerError {
-    fn from(value: ConstDoesNotFit) -> Self {
+impl From<WrongConstSize> for SleighCompilerError {
+    fn from(value: WrongConstSize) -> Self {
         SleighCompilerError::from_error(value.into())
     }
 }
@@ -257,7 +257,7 @@ impl SleighCompilerError {
 impl SleighCompilerError {
     pub fn as_report(&self) -> Report<'static, InputSpan> {
         (match &self.error {
-            SleighCompilerErrorType::DuplicateDefine(_) | SleighCompilerErrorType::DuplicateSpaceAttribute(_) => {
+            SleighCompilerErrorType::DuplicatedDefine(_) | SleighCompilerErrorType::DuplicatedSpaceAttribute(_) => {
                 Report::build(ReportKind::Error,
                               self.get_span("first").context(),
                               self.get_span("first").start())
@@ -284,7 +284,7 @@ impl SleighCompilerError {
                             .with_label(Label::new(self.get_span("field").clone())
                             .with_message(format!("range ends at {} but starts at {}", range.end, range.start)))
                     }
-                    InvalidFieldRange::RangeTooLarge(bits, range) => {
+                    InvalidFieldRange::TooLargeRange(bits, range) => {
                         Report::build(ReportKind::Error,
                                       self.get_span("field").context(),
                                       self.get_span("field").start())
@@ -306,7 +306,7 @@ impl SleighCompilerError {
                     _ => todo!("add more slice error reports")
                 }
             }
-            SleighCompilerErrorType::SymbolUndeclared => {
+            SleighCompilerErrorType::UndeclaredSymbol => {
                 Report::build(ReportKind::Error,
                               self.get_span("ident").context(),
                               self.get_span("ident").start())
