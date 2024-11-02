@@ -26,7 +26,6 @@ use crate::spec::moir::varnode::{
     MOIRLocal,
 };
 use std::cmp::Ordering;
-use crate::span_err;
 
 impl SleighCompiler {
     /// Atomize a bitrange assignment statement
@@ -57,7 +56,7 @@ impl SleighCompiler {
         let value = self
             .aab_resolve_value(scope, instructions, minimum_value_size, target_size, expression)?;
         let mask = create_mask(scope, instructions, shift_amount, bits, target_size)
-            .map_err( |e| span_err!(e, expr_span))?;
+            .map_err( |e| e.span("expr", expr_span))?;
 
         // We need to shift the value to the correct position before assigning.
         instructions.push(moir_instruction!(value = value << shift_amount));
@@ -140,7 +139,7 @@ fn create_mask(
         // create `bits` amount of ones and shift them left to the correct position.
         let mask = MOIRLocal::from(!(((1u128 << bits) - 1) << shift_amount));
         // Reduce the mask size to the size of target.
-        mask.truncate(scope, target_size).map_err(|e| e.into())
+        mask.truncate(scope, target_size)
     } else {
         // TODO: Maybe we can construct the mask piecewise and use a byte vec const and copy that over?
         //       For now, we just do it in pcode.

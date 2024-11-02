@@ -3,7 +3,7 @@ use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::Spanned;
 use crate::compiler::build::trace_build;
-use crate::compiler::error::SleighCompilerError;
+use crate::compiler::error::{SleighCompilerError, SleighCompilerErrorType};
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
@@ -223,7 +223,7 @@ where
 {
     args.into_iter()
         .collect_tuple()
-        .ok_or(SleighCompilerError::InvalidArgumentCount)
+        .ok_or(SleighCompilerError::from_error(SleighCompilerErrorType::InvalidArgumentCount))
 }
 
 /// Resolves the provided args to the argument names in the macro definition.

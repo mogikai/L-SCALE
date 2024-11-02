@@ -21,7 +21,7 @@ use tracing::{
 
 use inputcache::CompilerInputCache;
 use crate::compiler::ast::Spanned;
-use crate::compiler::error::SleighCompilerError;
+use crate::compiler::error::{SleighCompilerError, SleighCompilerErrorType};
 use crate::compiler::lexer::{
     InputSpan,
     SleighLexer,
@@ -113,12 +113,13 @@ impl SleighCompiler {
             .parser
             .parse(&mut self.input_cache, &mut self.spec_builder, tokens)?;
         info!("Building the specification from the AST.");
-        let result = self.build(ast);
+        self.build(ast)?;
+        // TODO fix/remove as this makes no sense anymore
         // Continue if StopOnFirstError or if everything was ok.
-        match result {
-            Err(SleighCompilerError::StopOnFirstError) | Ok(_) => {}
+        /*match result {
+            Err(SleighCompilerErrorType::StopOnFirstError) | Ok(_) => {}
             Err(e) => Err(e)?,
-        }
+        }*/
         if self.errors.is_empty() {
             Ok(self.spec_builder.build()?)
         } else {
@@ -137,9 +138,9 @@ impl SleighCompiler {
                 )
                     .as_bytes(),
             );
-            Err(SleighCompilerError::SemanticError(
+            Err(SleighCompilerErrorType::SemanticError(
                 String::from_utf8(error_description).expect("We only write utf8 strings."),
-            ))
+            ).into())
         }
     }
 
@@ -170,7 +171,7 @@ impl SleighCompiler {
             match preprocessor.preprocess(&mut self.input_cache, &mut self.spec_builder) {
                 Ok(tokens) => break tokens,
                 Err(PreprocessorError::LoadingRequired(id)) => input_id = id,
-                Err(e) => Err(SleighCompilerError::from(e))?,
+                Err(e) => Err(SleighCompilerErrorType::from(e))?,
             }
         };
         Ok(tokens)
@@ -188,7 +189,7 @@ impl SleighCompiler {
             Err(err) => {
                 self.errors.push(err);
                 if self.stop_on_first_error {
-                    Err(SleighCompilerError::StopOnFirstError)
+                    todo!("Err(SleighCompilerErrorType::StopOnFirstError)")
                 } else {
                     Ok(None)
                 }

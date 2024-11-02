@@ -1,4 +1,4 @@
-use mogi_sleigh::compiler::error::SleighCompilerError;
+use mogi_sleigh::compiler::error::SleighCompilerErrorType;
 use crate::common::build;
 
 mod common;
@@ -10,9 +10,9 @@ const SPACE_ATTRS_PATH: &str = "./tests/assets/duplicate_space_attrs/";
 fn duplicate_space_type() {
     common::setup_test();
     let path = SPACE_ATTRS_PATH.to_string() + "type.sinc";
-    let err = build(path).expect_err("expected error");
-    assert!(matches!(err, SleighCompilerError::SemanticError(_)));
-    if let SleighCompilerError::SemanticError(string) = err {
+    let err = build(path).expect_err("expected error").error;
+    assert!(matches!(err, SleighCompilerErrorType::SemanticError(_)));
+    if let SleighCompilerErrorType::SemanticError(string) = err {
         assert!(string.contains("Space attribute 'Type(RamSpace)' is duplicated"))
     }
 }
@@ -21,9 +21,9 @@ fn duplicate_space_type() {
 fn duplicate_space_size() {
     common::setup_test();
     let path = SPACE_ATTRS_PATH.to_string() + "size.sinc";
-    let err = build(path).expect_err("expected error");
-    assert!(matches!(err, SleighCompilerError::SemanticError(_)));
-    if let SleighCompilerError::SemanticError(string) = err {
+    let err = build(path).expect_err("expected error").error;
+    assert!(matches!(err, SleighCompilerErrorType::SemanticError(_)));
+    if let SleighCompilerErrorType::SemanticError(string) = err {
         assert!(string.contains("Space attribute 'Size(20)' is duplicated"))
     }
 }
@@ -32,9 +32,9 @@ fn duplicate_space_size() {
 fn duplicate_space_wordsize() {
     common::setup_test();
     let path = SPACE_ATTRS_PATH.to_string() + "wordsize.sinc";
-    let err = build(path).expect_err("expected error");
-    assert!(matches!(err, SleighCompilerError::SemanticError(_)));
-    if let SleighCompilerError::SemanticError(string) = err {
+    let err = build(path).expect_err("expected error").error;
+    assert!(matches!(err, SleighCompilerErrorType::SemanticError(_)));
+    if let SleighCompilerErrorType::SemanticError(string) = err {
         assert!(string.contains("Space attribute 'Wordsize(10)' is duplicated"))
     }
 }
@@ -43,9 +43,9 @@ fn duplicate_space_wordsize() {
 fn duplicate_space_default() {
     common::setup_test();
     let path = SPACE_ATTRS_PATH.to_string() + "default.sinc";
-    let err = build(path).expect_err("expected error");
-    assert!(matches!(err, SleighCompilerError::SemanticError(_)));
-    if let SleighCompilerError::SemanticError(string) = err {
+    let err = build(path).expect_err("expected error").error;
+    assert!(matches!(err, SleighCompilerErrorType::SemanticError(_)));
+    if let SleighCompilerErrorType::SemanticError(string) = err {
         assert!(string.contains("Space attribute 'IsDefault' is duplicated"))
     }
 }
@@ -54,9 +54,9 @@ fn duplicate_space_default() {
 fn duplicate_define() {
     common::setup_test();
     let path = ASSETS_PATH.to_string() + "duplicate_define.sinc";
-    let err = build(path).expect_err("expected error");
-    assert!(matches!(err, SleighCompilerError::SemanticError(_)));
-    if let SleighCompilerError::SemanticError(string) = err {
+    let err = build(path).expect_err("expected error").error;
+    assert!(matches!(err, SleighCompilerErrorType::SemanticError(_)));
+    if let SleighCompilerErrorType::SemanticError(string) = err {
         assert!(string.contains("Definition of Endianness already exists"))
     }
 }
@@ -65,9 +65,9 @@ fn duplicate_define() {
 fn symbol_undeclared() {
     common::setup_test();
     let path = ASSETS_PATH.to_string() + "symbol_undeclared.sinc";
-    let err = build(path).expect_err("expected error");
-    assert!(matches!(err, SleighCompilerError::SemanticError(_)));
-    if let SleighCompilerError::SemanticError(string) = err {
+    let err = build(path).expect_err("expected error").error;
+    assert!(matches!(err, SleighCompilerErrorType::SemanticError(_)));
+    if let SleighCompilerErrorType::SemanticError(string) = err {
         assert!(string.contains("The symbol was not declared before being defined"))
     }
 }
@@ -76,9 +76,9 @@ fn symbol_undeclared() {
 fn invalid_field_range() {
     common::setup_test();
     let path = ASSETS_PATH.to_string() + "invalid_field_range.sinc";
-    let err = build(path).expect_err("expected error");
-    assert!(matches!(err, SleighCompilerError::SemanticError(_)));
-    if let SleighCompilerError::SemanticError(string) = err {
+    let err = build(path).expect_err("expected error").error;
+    assert!(matches!(err, SleighCompilerErrorType::SemanticError(_)));
+    if let SleighCompilerErrorType::SemanticError(string) = err {
         assert!(string.contains("field range is too large"));
         assert!(string.contains("field range ends before its starting"));
     }
@@ -88,9 +88,9 @@ fn invalid_field_range() {
 fn slice_error() {
     common::setup_test();
     let path = ASSETS_PATH.to_string() + "slice_error.sinc";
-    let err = build(path).expect_err("expected error");
-    assert!(matches!(err, SleighCompilerError::SemanticError(_)));
-    if let SleighCompilerError::SemanticError(string) = err {
+    let err = build(path).expect_err("expected error").error;
+    assert!(matches!(err, SleighCompilerErrorType::SemanticError(_)));
+    if let SleighCompilerErrorType::SemanticError(string) = err {
         assert!(string.contains("value cannot be sliced as the size is undetermined"));
         // TODO implement and test other slice errors
     }
@@ -100,9 +100,9 @@ fn slice_error() {
 fn instruction_after_export() {
     common::setup_test();
     let path = ASSETS_PATH.to_string() + "instruction_after_export.sinc";
-    let err = build(path).expect_err("expected error");
-    assert!(matches!(err, SleighCompilerError::SemanticError(_)));
-    if let SleighCompilerError::SemanticError(string) = err {
+    let err = build(path).expect_err("expected error").error;
+    assert!(matches!(err, SleighCompilerErrorType::SemanticError(_)));
+    if let SleighCompilerErrorType::SemanticError(string) = err {
         assert!(string.contains("Instruction after export"));
         // TODO implement and test other slice errorsy
     }

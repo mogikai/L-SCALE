@@ -14,7 +14,6 @@ use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
-use crate::span_err;
 use crate::spec::builder::ProcessorSpecificationBuilder;
 use crate::spec::moir::code::{
     moir_instruction,
@@ -120,7 +119,7 @@ fn truncate_lhs(
     ident: Spanned<SASTIdent>,
     lhs: MOIRLocalId,
     size: SASTSize,
-) -> Result<MOIRLocalId, SleighCompilerError> {
+) -> SleighCompilerResult<MOIRLocalId> {
     if *local {
         // If we defined a new local, then there is no need to truncate.
         Ok(lhs)
@@ -128,11 +127,12 @@ fn truncate_lhs(
         scope.truncate_local(lhs, size).map_err(|err| {
             let (ident, ident_span) = ident.into_tuple();
             let str = spec_builder.resolve_string_id(ident.into());
-            span_err!(CannotTruncateLhs {
-                err,
+            let lhs_err = CannotTruncateLhs {
                 ident_str: str.to_string(),
                 expected_size: size,
-            }, ident_span)
+            };
+            SleighCompilerError::with_span(lhs_err.into(), "ident", ident_span)
+                .cause(err)
         })
     }
 }

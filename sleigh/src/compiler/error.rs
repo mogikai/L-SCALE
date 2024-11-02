@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::compiler::inputcache::InputCacheError;
 use crate::compiler::lexer::InputSpan;
 use crate::preprocessor::error::PreprocessorError;
@@ -7,7 +8,6 @@ use crate::spec::ProcessorSpecificationError;
 use std::fmt::{
     Debug,
     Display,
-    Formatter,
 };
 use std::ops::Range;
 use ariadne::{Label, Report, ReportKind};
@@ -62,7 +62,6 @@ pub struct IdentifierNotMapped {
 #[derive(Error, Debug)]
 #[error("Cannot slice left hand side")]
 pub struct CannotTruncateLhs {
-    pub err: SliceError,
     pub ident_str: String,
     pub expected_size: MOIRSize,
 }
@@ -111,17 +110,17 @@ pub struct DuplicateSpaceAttribute {
     pub attribute: SASTAddressSpaceAttribute,
 }
 
-#[derive(Error)]
-pub enum SleighCompilerError {
-    #[error("The preprocessor encountered an error.")]
+#[derive(Debug, Error)]
+pub enum SleighCompilerErrorType {
+    #[error("The preprocessor encountered an error: {0}")]
     PreprocessorError(#[from] PreprocessorError),
-    #[error("The input cache encountered an error.")]
+    #[error("The input cache encountered an error: {0}")]
     InputCacheError(#[from] InputCacheError),
-    #[error("The processor specification encountered an error")]
+    #[error("The processor specification encountered an error: {0}")]
     ProcessorSpecificationError(#[from] ProcessorSpecificationError),
-    #[error("An error occurred during lexical analysis.")]
+    #[error("An error occurred during lexical analysis: {0}")]
     LexerError(String),
-    #[error("An error  occurred during parsing")]
+    #[error("An error  occurred during parsing: {0}")]
     ParserError(String),
     #[error("The requested source was not found.")]
     MissingSource,
@@ -165,126 +164,159 @@ pub enum SleighCompilerError {
     UndefinedSymbol(#[from] UndefinedSymbol),
     #[error("Invalid symbol type: {0}")]
     InvalidSymbolType(#[from] InvalidSymbolType),
-    #[error("Spanned error: {0}")]
-    SpannedError(SpannedError),
 }
 
 #[derive(Debug, Error)]
 #[error("{spans:?} {error:?}")]
-pub struct SpannedError {
-    pub spans: Vec<InputSpan>,
-    pub error: Box<SleighCompilerError>
+pub struct SleighCompilerError {
+    pub spans: HashMap<&'static str, InputSpan>,
+    pub error: SleighCompilerErrorType,
+    pub cause: Option<Box<SleighCompilerError>>,
+}
+
+impl From<SleighCompilerErrorType> for SleighCompilerError {
+    fn from(value: SleighCompilerErrorType) -> Self {
+        SleighCompilerError {
+            spans: HashMap::new(),
+            error: value,
+            cause: None,
+        }
+    }
+}
+
+impl From<ProcessorSpecificationError> for SleighCompilerError {
+    fn from(value: ProcessorSpecificationError) -> Self {
+        let e: SleighCompilerErrorType = value.into();
+        e.into()
+    }
+}
+
+impl From<InputCacheError> for SleighCompilerError {
+    fn from(value: InputCacheError) -> Self {
+        SleighCompilerError::from_error(value.into())
+    }
+}
+
+impl From<PreprocessorError> for SleighCompilerError {
+    fn from(value: PreprocessorError) -> Self {
+        SleighCompilerError::from_error(value.into())
+    }
+}
+
+impl From<ConstDoesNotFit> for SleighCompilerError {
+    fn from(value: ConstDoesNotFit) -> Self {
+        SleighCompilerError::from_error(value.into())
+    }
+}
+
+impl SleighCompilerError {
+    pub fn from_error(error: SleighCompilerErrorType) -> Self {
+        SleighCompilerError {
+            spans: HashMap::new(),
+            error: error.into(),
+            cause: None,
+        }
+    }
+
+    pub fn with_span(error: SleighCompilerErrorType, key: &'static str, span: InputSpan) -> Self {
+        let mut spans = HashMap::new();
+        spans.insert(key, span);
+        SleighCompilerError {
+            spans,
+            error: error.into(),
+            cause: None,
+        }
+    }
+
+    pub fn with_spans(error: SleighCompilerErrorType, spans: HashMap<&'static str, InputSpan>) -> Self {
+        SleighCompilerError {
+            spans,
+            error: error.into(),
+            cause: None,
+        }
+    }
+
+    pub fn span(mut self, key: &'static str, span: InputSpan) -> Self {
+        self.spans.insert(key, span);
+        self
+    }
+
+    pub fn cause(mut self, cause: SleighCompilerError) -> Self {
+        match self.cause {
+            None => self.cause = Some(Box::new(cause)),
+            Some(_) => todo!(),
+        }
+        self
+    }
+
+    fn get_span(&self, key: &'static str) -> InputSpan {
+        self.spans.get(key).expect(format!("key '{key}' should exist in error spans").as_str()).clone()
+    }
 }
 
 impl SleighCompilerError {
     pub fn as_report(&self) -> Report<'static, InputSpan> {
-        match self {
-            SleighCompilerError::SpannedError(spanned_error) => {
-                SleighCompilerError::spanned_report(&spanned_error.spans, &spanned_error.error)
+        (match &self.error {
+            SleighCompilerErrorType::DuplicateDefine(_) | SleighCompilerErrorType::DuplicateSpaceAttribute(_) => {
+                Report::build(ReportKind::Error,
+                              self.get_span("first").context(),
+                              self.get_span("first").start())
+                    .with_label(Label::new(self.get_span("first"))
+                        .with_message("first definition"))
+                    .with_label(Label::new(self.get_span("second"))
+                        .with_message("second definition"))
             }
-            e => panic!("This error should be contained in SpannedError: {:?}", e)
-        }
-    }
-
-    fn spanned_report(spans: &Vec<InputSpan>, e: &SleighCompilerError) -> Report<'static, InputSpan> {
-        let report = Report::build(ReportKind::Error, spans[0].context(), spans[0].start())
-            .with_message(format!("{}", e));
-        match e {
-            SleighCompilerError::DuplicateDefine(_) | SleighCompilerError::DuplicateSpaceAttribute(_) => {
-                report
-                    .with_label(Label::new(spans[0].clone()).with_message("first definition"))
-                    .with_label(Label::new(spans[1].clone()).with_message("second definition"))
-                    .finish()
+            SleighCompilerErrorType::InstructionAfterExport => {
+                Report::build(ReportKind::Error,
+                              self.get_span("instr").context(),
+                              self.get_span("instr").start())
+                    .with_label(Label::new(self.get_span("export"))
+                        .with_message("export is here"))
+                    .with_label(Label::new(self.get_span("instr"))
+                        .with_message("instruction should be before export"))
             }
-            SleighCompilerError::InstructionAfterExport => {
-                report
-                    .with_label(Label::new(spans[0].clone()).with_message("export is here"))
-                    .with_label(Label::new(spans[1].clone()).with_message("instruction should be before export"))
-                    .finish()
-            }
-            SleighCompilerError::InvalidFieldRange(invalid) => {
+            SleighCompilerErrorType::InvalidFieldRange(invalid) => {
                 match invalid {
                     InvalidFieldRange::EndBeforeStart(range) => {
-                        report.with_label(Label::new(spans[0].clone())
+                        Report::build(ReportKind::Error,
+                                      self.get_span("field").context(),
+                                      self.get_span("field").start())
+                            .with_label(Label::new(self.get_span("field").clone())
                             .with_message(format!("range ends at {} but starts at {}", range.end, range.start)))
-                            .finish()
                     }
                     InvalidFieldRange::RangeTooLarge(bits, range) => {
-                        report.with_label(Label::new(spans[0].clone()).
+                        Report::build(ReportKind::Error,
+                                      self.get_span("field").context(),
+                                      self.get_span("field").start())
+                            .with_label(Label::new(self.get_span("field").clone()).
                             with_message(format!("range fits {} bits, but there are only {} bits",
                                                  range.end - range.start, bits)))
-                            .finish()
                     }
                 }
             }
-            SleighCompilerError::SliceError(slice) => {
+            SleighCompilerErrorType::SliceError(slice) => {
                 match slice {
                     SliceError::UndeterminedSize => {
-                        report
-                            .with_label(Label::new(spans[0].clone()).with_message("size is undetermined"))
-                            .finish()
+                        Report::build(ReportKind::Error,
+                                      self.get_span("expr").context(),
+                                      self.get_span("expr").start())
+                            .with_label(Label::new(self.get_span("expr").clone())
+                                .with_message("size is undetermined"))
                     }
                     _ => todo!("add more slice error reports")
                 }
             }
-            SleighCompilerError::SymbolUndeclared => {
-                report.with_label(Label::new(spans[0].clone()).with_message("symbol is undeclared")).finish()
+            SleighCompilerErrorType::SymbolUndeclared => {
+                Report::build(ReportKind::Error,
+                              self.get_span("ident").context(),
+                              self.get_span("ident").start())
+                    .with_label(Label::new(self.get_span("ident").clone())
+                    .with_message("symbol is undeclared"))
             }
             _ => todo!("unhandled error in spanned_report")
-        }
+        })
+            .with_message(self.error.to_string())
+            // TODO include cause
+            .finish()
     }
-}
-
-impl Debug for SleighCompilerError {
-    fn fmt(
-        &self,
-        f: &mut Formatter<'_>,
-    ) -> std::fmt::Result {
-        match self {
-            SleighCompilerError::PreprocessorError(e) => Debug::fmt(e, f),
-            SleighCompilerError::ProcessorSpecificationError(e) => Debug::fmt(e, f),
-            SleighCompilerError::LexerError(e) => Display::fmt(e, f),
-            SleighCompilerError::InputCacheError(e) => Debug::fmt(e, f),
-            _ => Display::fmt(self, f),
-        }
-    }
-}
-
-#[macro_export]
-macro_rules! span_err {
-    ($e:expr,$span:expr) => {
-        {
-            use crate::compiler::error::SleighCompilerError;
-            use crate::compiler::error::SpannedError;
-            let e: SleighCompilerError = $e.into();
-            SleighCompilerError::SpannedError(
-                if let SleighCompilerError::SpannedError(mut spanned_error) = e {
-                    spanned_error.spans.push($span);
-                    spanned_error
-                } else {
-                    SpannedError {
-                        spans: vec![$span], error: Box::new(e)
-                    }
-                }
-            )
-        }
-    };
-    ($e:expr, $($span:expr),+ $(,)?) => {
-        {
-            use crate::compiler::error::SleighCompilerError;
-            use crate::compiler::error::SpannedError;
-            let e: SleighCompilerError = $e.into();
-            SleighCompilerError::SpannedError(
-                if let SleighCompilerError::SpannedError(mut spanned_error) = e {
-                    let mut vec = vec![$($span),+];
-                    spanned_error.spans.append(&mut vec);
-                    spanned_error
-                } else {
-                    SpannedError {
-                        spans: vec![$($span),+], error: Box::new(e)
-                    }
-                }
-            )
-        }
-    };
 }

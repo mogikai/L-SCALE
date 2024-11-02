@@ -43,8 +43,6 @@ impl SleighCompiler {
         op: Spanned<SASTPCodeBinaryOp>,
         ast_rhs: Spanned<SASTPCodeExpression>,
     ) -> SleighCompilerResult<MOIRLocal> {
-        let lhs_span = ast_lhs.span().clone();
-        let rhs_span = ast_rhs.span().clone();
         let mut independent_rhs_size = false;
         let (out, lhs) = match op.value().op_category() {
             SASTPcodeOpCategory::Comparison => {
@@ -102,7 +100,7 @@ impl SleighCompiler {
                 return const_eval_binary_op(lhs, op.into_value(), rhs)
                     .map(MOIRLocal::Const)
                     // TODO ues span_err!
-                    .map_err(|e| e.into());
+                    .map_err(|e| SleighCompilerError::from_error(e.into()));
             }
         }
 

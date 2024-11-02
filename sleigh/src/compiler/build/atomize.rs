@@ -36,6 +36,7 @@ use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::{
     SleighCompilerError,
+    SleighCompilerErrorType,
 };
 use crate::spec::moir::MOIR_ADDRESS_SIZE;
 use crate::spec::moir::address_space::MOIRSpaceType;
@@ -72,7 +73,12 @@ impl SleighCompiler {
                 None
             };
             if let Some(export) = export {
-                return Err(span_err!(SleighCompilerError::InstructionAfterExport, export.span().clone(), statement.into_span()));
+                let e = SleighCompilerErrorType::InstructionAfterExport;
+                return Err(
+                    Into::<SleighCompilerError>::into(e)
+                        .span("export", export.span().clone())
+                        .span("instr", statement.into_span())
+                );
             }
             let (statement, _) = statement.into_tuple();
             match statement {

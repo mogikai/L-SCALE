@@ -2,7 +2,6 @@ use std::fmt::Debug;
 use std::ops::Range;
 
 use crate::compiler::ast::SpannedToken;
-use crate::compiler::error::SleighCompilerError;
 use crate::compiler::inputcache::CompilerInputCache;
 use crate::compiler::tokens::{
     SleighControlCharacter,
@@ -54,7 +53,18 @@ use chumsky::{
     IterParser,
     ParseResult,
     Parser,
-    extra,
+    extra.
+};
+use crate::compiler::error::{
+    SleighCompilerError,
+    SleighCompilerErrorType
+};
+use crate::compiler::inputcache::CompilerInputCache;
+use crate::compiler::tokens::{
+    SleighControlCharacter,
+    SleighKeyword,
+    SleighOperation,
+    SleighToken,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
@@ -202,7 +212,9 @@ impl SleighLexer {
         input_id: InputId,
     ) -> Result<SleighTokens, SleighCompilerError> {
         // TODO: Return parsed tokens, and all encountered errors, instead of simply erroring out.
-        let source_data = input_cache.input_source(input_id)?;
+        let source_data = input_cache
+            .input_source(input_id)
+        map_err(|e| SleighCompilerError::from_error(e.into()))?;
         let parsed = SleighLexer::tokenize_string(
             source_data
                 .text()
@@ -228,7 +240,7 @@ impl SleighLexer {
                     .write(&mut *input_cache, &mut diagnostic)
                     .expect("There is no case in which this may fail.");
             }
-            Err(SleighCompilerError::LexerError(String::from_utf8(diagnostic).expect("We only write utf8 strings")))
+            Err(SleighCompilerErrorType::LexerError(String::from_utf8(diagnostic).expect("We only write utf8 strings")).into())
         }
     }
 

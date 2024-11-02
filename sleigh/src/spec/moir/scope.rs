@@ -1,14 +1,11 @@
 use crate::compiler::ast::Spanned;
-use crate::compiler::error::{IdentifierExists, SleighCompilerError, SliceError};
+use crate::compiler::error::{IdentifierExists, SleighCompilerError, SleighCompilerErrorType};
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::{
     CompilerContext,
     SleighCompilerResult,
 };
-use crate::{
-    new_typed_index_table_id,
-    span_err
-};
+use crate::new_typed_index_table_id;
 use crate::spec::ProcessorSpecificationError;
 use crate::spec::builder::{
     CustomInterner,
@@ -284,7 +281,7 @@ impl MOIRScope {
     ) -> SleighCompilerResult {
         let (ident, span) = ident.into_tuple();
         match self.locals.entry(ident) {
-            Entry::Occupied(_) => Err(span_err!(SleighCompilerError::SymbolAlreadyDefined, span.clone()))?,
+            Entry::Occupied(_) => Err(SleighCompilerError::with_span(SleighCompilerErrorType::SymbolAlreadyDefined, "dupe", span.clone()))?,
             Entry::Vacant(entry) => entry.insert(local),
         };
         self.local_spans.insert(ident, span);
@@ -378,15 +375,16 @@ impl MOIRScope {
         let (ident, ident_span) = ident.into_tuple();
         let id = self.temporaries.insert(MOIRTemporary { size });
         match self.locals.entry(ident) {
-            Entry::Occupied(_) => Err(span_err!(
-                IdentifierExists {
-                    name: "".to_string(),
-                },
-                self.local_spans
+            Entry::Occupied(_) => {
+                let mut spans = HashMap::new();
+                spans.insert("first", self.local_spans
                     .get(&ident)
                     .expect("This must exist, since the locals entry is occupied")
-                    .clone(),
-                ident_span)),
+                    .clone());
+                spans.insert("second", ident_span);
+                Err(SleighCompilerError::with_spans((IdentifierExists { name: "".to_string() }).into(),
+                                                    spans))
+            }
             Entry::Vacant(entry) => {
                 self.local_spans.insert(ident, ident_span);
                 let id = self.slices.insert(MOIRSlice::temporary(id, 0, size.into()));
@@ -426,7 +424,7 @@ impl MOIRScope {
         local: MOIRLocalId,
         start: MOIRSize,
         end: MOIRSize,
-    ) -> Result<MOIRLocalId, SliceError> {
+    ) -> SleighCompilerResult<MOIRLocalId> {
         let slice = self
             .slices
             .get(local)
@@ -443,7 +441,7 @@ impl MOIRScope {
         &mut self,
         local: MOIRLocalId,
         size: MOIRSize,
-    ) -> Result<MOIRLocalId, SliceError> {
+    ) -> SleighCompilerResult<MOIRLocalId> {
         let slice = self
             .slices
             .get_mut(local)
@@ -544,7 +542,7 @@ impl MOIRScope {
     ) -> SleighCompilerResult<&MOIRSlice> {
         self.slices
             .get(local)
-            .ok_or(SleighCompilerError::SymbolUndeclared)
+            .ok_or(SleighCompilerErrorType::SymbolUndeclared.into())
     }
 
     /// Defines the label to point to a specific instruction.

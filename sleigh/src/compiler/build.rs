@@ -27,7 +27,7 @@ use crate::compiler::ast::{
     Spanned,
     TransmuteIntoVec,
 };
-use crate::compiler::error::{DuplicateSpaceAttribute, InvalidFieldRange, SleighCompilerError, SpannedError};
+use crate::compiler::error::{DuplicateSpaceAttribute, InvalidFieldRange, SleighCompilerError, SleighCompilerErrorType};
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::{
     SleighCompiler,
@@ -203,36 +203,44 @@ impl SleighCompiler {
             match attribute {
                 SASTAddressSpaceAttribute::Type(ty) => {
                     if let Some((_, prev_input)) = r#type {
-                        return Err(span_err!(DuplicateSpaceAttribute {
+                        return Err(SleighCompilerError::from_error((DuplicateSpaceAttribute {
                             attribute,
-                        }, prev_input, input));
+                        }).into())
+                            .span("first", prev_input)
+                            .span("second", input));
                     } else {
                         r#type = Some((ty.into(), input));
                     }
                 }
                 SASTAddressSpaceAttribute::Size(size) => {
                     if let Some((_, prev_input)) = address_size {
-                        return Err(span_err!(DuplicateSpaceAttribute {
+                        return Err(SleighCompilerError::from_error((DuplicateSpaceAttribute {
                             attribute,
-                        }, prev_input, input));
+                        }).into())
+                            .span("first", prev_input)
+                            .span("second", input));
                     } else {
                         address_size = Some((size, input));
                     }
                 }
                 SASTAddressSpaceAttribute::Wordsize(size) => {
                     if let Some((_, prev_input)) = word_size {
-                        return Err(span_err!(DuplicateSpaceAttribute {
+                        return Err(SleighCompilerError::from_error((DuplicateSpaceAttribute {
                             attribute,
-                        }, prev_input, input));
+                        }).into())
+                            .span("first", prev_input)
+                            .span("second", input));
                     } else {
                         word_size = Some((size, input));
                     }
                 }
                 SASTAddressSpaceAttribute::IsDefault => {
                     if let (_, Some(prev_input)) = default {
-                        return Err(span_err!(DuplicateSpaceAttribute {
+                        return Err(SleighCompilerError::from_error((DuplicateSpaceAttribute {
                             attribute,
-                        }, prev_input, input));
+                        }).into())
+                            .span("first", prev_input)
+                            .span("second", input));
                     } else {
                         default = (MOIRSpaceIsDefault::Default, Some(input));
                     }
@@ -269,7 +277,7 @@ impl SleighCompiler {
                     let name = field.name.clone().transmute();
                     let range = field.start.clone().into_value()..field.end.clone().into_value() + 1;
                     if let Some(field) = self.make_field(MOIRFieldParent::Token(token_id), bits, range)
-                        .map_err(|e| span_err!(e, field.span().clone()))? {
+                        .map_err(|e| SleighCompilerError::with_span(e.into(),"field", field.span().clone()))? {
                         self.spec_builder.define_field(name, field)?;
                     }
                 }
@@ -288,7 +296,8 @@ impl SleighCompiler {
             .define_context(context.varnode.clone().transmute())?;
         for field in &context.fields {
             let range = field.start.clone().into_value()..field.end.clone().into_value() + 1;
-            if let Some(moir_field) = self.make_field(MOIRFieldParent::Context(context_id), bits, range)? {
+            if let Some(moir_field) = self.make_field(MOIRFieldParent::Context(context_id), bits, range)
+                .map_err(|e| SleighCompilerError::from_error(e.into()))? {
                 self
                     .spec_builder
                     .define_field(field.name.clone().transmute(), moir_field)?;
@@ -363,4 +372,4 @@ macro_rules! trace_build {
 }
 
 pub(crate) use trace_build;
-use crate::span_err;
+
