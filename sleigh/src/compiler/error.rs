@@ -56,7 +56,7 @@ pub struct WrongConstSize {
 #[derive(Debug, Error)]
 #[error("The identifier is not mapped")]
 pub struct UnmappedIdentifier {
-    pub field: StringId
+    pub field: StringId,
 }
 
 #[derive(Error, Debug)]
@@ -258,60 +258,65 @@ impl SleighCompilerError {
     pub fn as_report(&self) -> Report<'static, InputSpan> {
         (match &self.error {
             SleighCompilerErrorType::DuplicatedDefine(_) | SleighCompilerErrorType::DuplicatedSpaceAttribute(_) => {
+                let first = self.get_span("first");
                 Report::build(ReportKind::Error,
-                              self.get_span("first").context(),
-                              self.get_span("first").start())
-                    .with_label(Label::new(self.get_span("first"))
+                              first.context(),
+                              first.start())
+                    .with_label(Label::new(first)
                         .with_message("first definition"))
                     .with_label(Label::new(self.get_span("second"))
                         .with_message("second definition"))
             }
             SleighCompilerErrorType::InstructionAfterExport => {
+                let instr = self.get_span("instr");
                 Report::build(ReportKind::Error,
-                              self.get_span("instr").context(),
-                              self.get_span("instr").start())
+                              instr.context(),
+                              instr.start())
                     .with_label(Label::new(self.get_span("export"))
                         .with_message("export is here"))
-                    .with_label(Label::new(self.get_span("instr"))
+                    .with_label(Label::new(instr)
                         .with_message("instruction should be before export"))
             }
             SleighCompilerErrorType::InvalidFieldRange(invalid) => {
+                let field = self.get_span("field");
                 match invalid {
                     InvalidFieldRange::EndBeforeStart(range) => {
                         Report::build(ReportKind::Error,
-                                      self.get_span("field").context(),
-                                      self.get_span("field").start())
-                            .with_label(Label::new(self.get_span("field").clone())
-                            .with_message(format!("range ends at {} but starts at {}", range.end, range.start)))
+                                      field.context(),
+                                      field.start())
+                            .with_label(Label::new(field.clone())
+                                .with_message(format!("range ends at {} but starts at {}", range.end, range.start)))
                     }
                     InvalidFieldRange::TooLargeRange(bits, range) => {
                         Report::build(ReportKind::Error,
-                                      self.get_span("field").context(),
-                                      self.get_span("field").start())
-                            .with_label(Label::new(self.get_span("field").clone()).
-                            with_message(format!("range fits {} bits, but there are only {} bits",
-                                                 range.end - range.start, bits)))
+                                      field.context(),
+                                      field.start())
+                            .with_label(Label::new(field.clone()).
+                                with_message(format!("range fits {} bits, but there are only {} bits",
+                                                     range.end - range.start, bits)))
                     }
                 }
             }
             SleighCompilerErrorType::SliceError(slice) => {
+                let expr = self.get_span("expr");
                 match slice {
                     SliceError::UndeterminedSize => {
                         Report::build(ReportKind::Error,
-                                      self.get_span("expr").context(),
-                                      self.get_span("expr").start())
-                            .with_label(Label::new(self.get_span("expr").clone())
+                                      expr.context(),
+                                      expr.start())
+                            .with_label(Label::new(expr.clone())
                                 .with_message("size is undetermined"))
                     }
                     _ => todo!("add more slice error reports")
                 }
             }
             SleighCompilerErrorType::UndeclaredSymbol => {
+                let ident = self.get_span("ident");
                 Report::build(ReportKind::Error,
-                              self.get_span("ident").context(),
-                              self.get_span("ident").start())
-                    .with_label(Label::new(self.get_span("ident").clone())
-                    .with_message("symbol is undeclared"))
+                              ident.context(),
+                              ident.start())
+                    .with_label(Label::new(ident.clone())
+                        .with_message("symbol is undeclared"))
             }
             _ => todo!("unhandled error in spanned_report")
         })
