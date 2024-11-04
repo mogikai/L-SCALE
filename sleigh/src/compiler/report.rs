@@ -19,7 +19,7 @@ pub fn generate_invalid_sizes_error(
 ) -> SleighCompilerError {
     let mut colors = ColorGenerator::new();
     let color_a = colors.next();
-    let report = Report::build(ReportKind::Error, ident.context(), ident.start())
+    let report = Report::build(ReportKind::Error, ident.clone())
         .with_message(format!("Invalid sizes"))
         .with_label(
             Label::new(ident)
@@ -37,7 +37,7 @@ pub fn generate_cannot_slice_error(
 ) -> SleighCompilerError {
     let mut colors = ColorGenerator::new();
     let color_a = colors.next();
-    let report = Report::build(ReportKind::Error, ident.context(), ident.start())
+    let report = Report::build(ReportKind::Error, ident.clone())
         .with_message(format!("Failed to slice {ident_str} to {expected_size}"))
         .with_label(
             Label::new(ident)
@@ -56,7 +56,7 @@ pub fn generate_const_eval_error(
     let span = lhs.union(rhs);
     let mut colors = ColorGenerator::new();
     let color_a = colors.next();
-    let report = Report::build(ReportKind::Error, span.context(), span.start())
+    let report = Report::build(ReportKind::Error, span.clone())
         .with_message(format!("Constant evaluation error: {error}"))
         .with_label(
             Label::new(span)
@@ -77,7 +77,7 @@ pub fn generate_invalid_symbol_type_error(
     let color_a = colors.next();
     let color_b = colors.next();
     let (sym_ref, sym_ref_span) = symbol_reference.into_tuple();
-    let report = Report::build(ReportKind::Error, sym_ref_span.context(), sym_ref_span.start())
+    let report = Report::build(ReportKind::Error, sym_ref_span.clone())
         .with_message("Invalid symbol type.")
         .with_label(
             Label::new(defined_symbol)
@@ -102,7 +102,7 @@ pub fn generate_undefined_ident_error(symbol_reference: Spanned<&str>) -> Sleigh
     let mut colors = ColorGenerator::new();
     let color_a = colors.next();
     let (sym_ref, sym_ref_span) = symbol_reference.into_tuple();
-    let report = Report::build(ReportKind::Error, sym_ref_span.context(), sym_ref_span.start())
+    let report = Report::build(ReportKind::Error, sym_ref_span.clone())
         .with_message("Undefined symbol.")
         .with_label(
             Label::new(sym_ref_span)

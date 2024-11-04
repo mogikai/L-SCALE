@@ -18,6 +18,7 @@ use ariadne::{
     ReportKind,
 };
 use chumsky::Parser;
+use chumsky::input::Input;
 use chumsky::span::Span;
 
 use blocks::{
@@ -170,11 +171,13 @@ impl SleighPreprocessor {
             .expect("The string must have been interned.")
             .to_string();
         // The offset is start + 1, since the first character of a string is ", which is ignored.
+        let span_context = value.span().context();
+        let offset = value.span().start() + 1;
         let result = SleighLexer::tokenize_string(
-            resolved_value.as_str(),
+            resolved_value
+                .as_str()
+                .map_span(Box::new(move |span| InputSpan::new(span_context, span.start + offset..span.end + offset))),
             context,
-            value.span().context(),
-            value.span().start() + 1,
         );
         let tokens = result
             .into_result()
@@ -320,7 +323,7 @@ impl SleighPreprocessor {
         let input_id = input_cache
             .load_input_from_file(resolved_file.as_path())
             .map_err(|e| {
-                let report = Report::build(ReportKind::Error, span.context(), span.start())
+                let report = Report::build(ReportKind::Error, span.clone())
                     .with_message("Preprocessor Error")
                     .with_label(Label::new(span.clone()).with_message(format!(
                         "Failed to load '{:?}': {e} -> {:?}",
@@ -415,7 +418,7 @@ impl SleighPreprocessor {
                 .collect::<Vec<_>>();
             for err in errors {
                 let error_span = err.span();
-                let report = Report::build(ReportKind::Error, error_span.context(), error_span.start())
+                let report = Report::build(ReportKind::Error, error_span.clone())
                     .with_message("Preprocessor Error")
                     .with_label(Label::new(error_span.clone()).with_message(err.reason().to_string()))
                     .finish();
@@ -439,7 +442,7 @@ impl SleighPreprocessor {
                 .string(**identifier)
                 .expect("The string must have been interned.")
                 .to_string();
-            let report = Report::build(ReportKind::Error, identifier.span().context(), identifier.span().start())
+            let report = Report::build(ReportKind::Error, identifier.span().clone())
                 .with_message("Preprocessor Error")
                 .with_label(
                     Label::new(identifier.span().clone())

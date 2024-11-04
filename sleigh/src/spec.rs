@@ -2,7 +2,10 @@ use crate::compiler::CompilerContext;
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::InputSpan;
 use crate::new_typed_index_table_id;
-use crate::spec::builder::StringId;
+use crate::spec::builder::{
+    CustomInterner,
+    StringId,
+};
 use crate::spec::jir::jir_block::JIRBlockId;
 use crate::spec::jir::space::JIRSpace;
 use crate::spec::jir::values::JIRVarNode;

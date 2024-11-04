@@ -1,6 +1,7 @@
 use crate::compiler::CompilerContext;
 use crate::lifter::cache::LifterCache;
 use crate::spec::ProcessorSpecification;
+use crate::spec::builder::CustomInterner;
 use crate::spec::jir::instruction::TargetInstruction;
 use crate::spec::jir::local_resolver::JIRLocalResolver;
 use crate::spec::jir::values::{

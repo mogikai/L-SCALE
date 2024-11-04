@@ -12,18 +12,26 @@ use super::moir::context::{
     MOIRContext,
     MOIRContextId,
 };
-use crate::compiler::ast::Spanned;
+use crate::compiler::ast::{
+    Spanned,
+    SpannedToken,
+};
 use crate::compiler::build::matcher::{
     Matcher,
     MatcherId,
 };
 use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
-use crate::compiler::lexer::InputSpan;
+use crate::compiler::lexer::{
+    InputSpan,
+    ParserInput,
+    SleighLexerInput,
+};
 use crate::compiler::report::{
     generate_invalid_symbol_type_error,
     generate_undefined_ident_error,
 };
+use crate::compiler::tokens::SleighToken;
 use crate::compiler::{
     CompilerContext,
     SleighCompilerResult,
@@ -74,6 +82,12 @@ use crate::spec::{
     SpaceId,
     TableId,
 };
+use chumsky::input::{
+    Checkpoint,
+    Cursor,
+    Input,
+};
+use chumsky::inspector::Inspector;
 use slotmap::SlotMap;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
@@ -817,8 +831,23 @@ impl ProcessorSpecificationBuilder {
         Ok(spec)
     }
 }
+pub trait CustomInterner {
+    fn intern<T: AsRef<str>>(
+        &mut self,
+        string: T,
+    ) -> StringId;
+    fn lookup<T: AsRef<str>>(
+        &self,
+        string: T,
+    ) -> Option<StringId>;
 
-impl CompilerContext for StringInterner<StringBackend> {
+    /// Resolve a string id to the corresponding interned string.
+    fn string(
+        &self,
+        string_id: StringId,
+    ) -> Option<&str>;
+}
+impl CustomInterner for StringInterner<StringBackend> {
     fn intern<T: AsRef<str>>(
         &mut self,
         string: T,
@@ -833,6 +862,7 @@ impl CompilerContext for StringInterner<StringBackend> {
         self.get(string).map(|id| StringId(id.to_usize()))
     }
 
+    /// Resolve a string id to the corresponding interned string.
     fn string(
         &self,
         string_id: StringId,
@@ -862,6 +892,29 @@ impl CompilerContext for ProcessorSpecificationBuilder {
         string_id: StringId,
     ) -> Option<&str> {
         self.interner.string(string_id)
+    }
+}
+
+impl<'src, I: Input<'src>> Inspector<'src, I> for ProcessorSpecificationBuilder {
+    type Checkpoint = ();
+
+    fn on_token(
+        &mut self,
+        token: &I::Token,
+    ) {
+    }
+
+    fn on_save<'parse>(
+        &self,
+        cursor: &Cursor<'src, 'parse, I>,
+    ) -> Self::Checkpoint {
+        ()
+    }
+
+    fn on_rewind<'parse>(
+        &mut self,
+        marker: &Checkpoint<'src, 'parse, I, Self::Checkpoint>,
+    ) {
     }
 }
 

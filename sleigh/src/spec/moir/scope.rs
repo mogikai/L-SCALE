@@ -8,6 +8,7 @@ use crate::compiler::{
 use crate::new_typed_index_table_id;
 use crate::spec::ProcessorSpecificationError;
 use crate::spec::builder::{
+    CustomInterner,
     ProcessorSpecificationBuilder,
     StringId,
 };
