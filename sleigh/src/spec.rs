@@ -216,4 +216,6 @@ pub enum ProcessorSpecificationError {
     MissingInput,
     #[error("The block with id {0} is not defined yet")]
     UndefinedBlock(JIRBlockId),
+    #[error("The subtable could not be resolved to a constructor")]
+    UnresolvedSubtable,
 }

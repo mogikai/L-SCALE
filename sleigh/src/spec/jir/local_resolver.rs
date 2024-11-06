@@ -1,18 +1,26 @@
-use crate::spec::ProcessorSpecResult;
 use crate::spec::builder::StringId;
 use crate::spec::jir::values::{
     JIRConst,
     JIRSlice,
     JIRValue,
 };
+use crate::spec::moir::constructor::{
+    ConstructorId,
+    MOIRConstructor,
+};
 use crate::spec::moir::scope::{
     MOIRLocalId,
     MOIRScope,
 };
+use crate::spec::moir::table::TableId;
 use crate::spec::moir::varnode::{
     MOIRConst,
     MOIRLocal,
     MOIRReference,
+};
+use crate::spec::{
+    ProcessorSpecResult,
+    ProcessorSpecificationError,
 };
 use mogi_utilities::addresses::EVAddr;
 use std::collections::HashMap;
@@ -20,6 +28,7 @@ use std::collections::HashMap;
 #[derive(Debug)]
 pub struct JIRLocalResolver {
     values: HashMap<MOIRLocalId, JIRValue>,
+    constructors: HashMap<TableId, ConstructorId>,
     inst_start: EVAddr,
     inst_next: EVAddr,
     /// Since inst_next2 is rarely needed it can be set to None
@@ -34,6 +43,7 @@ impl JIRLocalResolver {
     ) -> Self {
         Self {
             values: Default::default(),
+            constructors: Default::default(),
             inst_start,
             inst_next,
             inst_next2,
@@ -58,6 +68,25 @@ impl JIRLocalResolver {
             .ok_or_else(|| todo!("Generate error"))?;
         self.values.insert(local_id, value);
         Ok(())
+    }
+
+    pub fn define_subtable(
+        &mut self,
+        subtable: TableId,
+        constructor: ConstructorId,
+    ) -> ProcessorSpecResult {
+        self.constructors.insert(subtable, constructor);
+        Ok(())
+    }
+
+    pub fn resolve_subtable(
+        &self,
+        subtable: TableId,
+    ) -> ProcessorSpecResult<ConstructorId> {
+        self.constructors
+            .get(&subtable)
+            .ok_or(ProcessorSpecificationError::UnresolvedSubtable)
+            .copied()
     }
 
     pub fn resolve_local(

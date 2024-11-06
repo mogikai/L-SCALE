@@ -30,6 +30,13 @@ use std::rc::Rc;
 #[derive(Debug, Clone)]
 pub struct TargetInstruction(Rc<TargetInstructionInner>);
 
+pub struct TargetInstructionBuilder {
+    instruction: TargetInstructionInner,
+    current_block_id: Option<JIRBlockId>,
+    previous_block_id: Option<JIRBlockId>,
+    block_labels: SecondaryMap<LabelId, Option<JIRBlockId>>,
+}
+
 #[derive(Debug, Clone)]
 struct TargetInstructionInner {
     /// The jir instructions for each JIRBlock are stored in a single vec. Instructions for a block
@@ -43,8 +50,6 @@ struct TargetInstructionInner {
     /// Instructions always start execution with the first block.
     jir_blocks: PrimaryMap<JIRBlockId, Option<JIRBlock>>,
 
-    block_labels: SecondaryMap<LabelId, Option<JIRBlockId>>,
-
     /// The [EVAddr] where the instruction starts
     start: EVAddr,
     /// The [EVAddr] that points to the bytes after this instruction, i.e. the next instruction.
@@ -53,126 +58,107 @@ struct TargetInstructionInner {
 
 new_map_key! { pub struct TargetInstructionId; "TINST"; }
 
-pub struct JIRBlockBuilder<'a> {
-    /// The offset in `jir_instructions` where this block starts.
-    start_offset: usize,
-    instruction: &'a mut TargetInstruction,
-    /// Tracks if the block was finalized. If not, then all written instructions are discarded.
-    finalized: bool,
-    block_id: JIRBlockId,
-}
-
-impl JIRBlockBuilder<'_> {
-    pub fn resolve_label_to_block(
-        &mut self,
-        label: LabelId,
-    ) -> JIRBlockId {
-        self.instruction.resolve_label_to_block(label)
-    }
-
-    /// Adds a jir instruction to this block.
-    /// This operation may perform a clone if the target instruction was lazily cloned beforehand.
-    pub fn push_jir_instruction(
-        &mut self,
-        jir_instruction: JIRInstruction,
-    ) {
-        Rc::make_mut(&mut self.instruction.0)
-            .jir_instructions
-            .push(jir_instruction);
-    }
-
-    /// Commits this block to the target instruction, returning its block id.
-    /// The provided previous_block will be modified to point to block being finalized.
-    pub fn finalize(
-        mut self,
-        previous_block: Option<JIRBlockId>,
-    ) -> JIRBlockId {
-        self.finalized = true;
-        let instruction = Rc::make_mut(&mut self.instruction.0);
-        instruction.jir_blocks[self.block_id] = Some(JIRBlock {
-            range: self.start_offset..instruction.jir_instructions.len(),
-            fallthrough: JIRBlockFallthrough::NextInst,
-        });
-        if let Some(previous_block) = previous_block.and_then(|block| {
-            instruction
-                .jir_blocks
-                .get_mut(block)
-                .and_then(Option::as_mut)
-        }) {
-            previous_block.fallthrough = JIRBlockFallthrough::Block(self.block_id);
-        }
-        self.block_id
-    }
-}
-
-impl Drop for JIRBlockBuilder<'_> {
-    fn drop(&mut self) {
-        if !self.finalized {
-            Rc::make_mut(&mut self.instruction.0)
-                .jir_instructions
-                .truncate(self.start_offset);
-        }
-    }
-}
-
-impl TargetInstruction {
-    /// Creates a new instruction that initially only contains one block.
+impl TargetInstructionBuilder {
     pub fn new(
         start: EVAddr,
         next: EVAddr,
     ) -> Self {
-        Self(Rc::new(TargetInstructionInner {
-            jir_instructions: vec![],
-            jir_blocks: Default::default(),
+        Self {
+            instruction: TargetInstructionInner {
+                jir_instructions: vec![],
+                jir_blocks: Default::default(),
+                start,
+                next,
+            },
+            current_block_id: None,
+            previous_block_id: None,
             block_labels: Default::default(),
-            start,
-            next,
-        }))
-    }
-
-    /// Get a block builder that enables adding instructions the current block.
-    /// Once the builder is dropped, the block is finalized.
-    pub fn next_block_builder(&mut self) -> JIRBlockBuilder {
-        let inst = Rc::make_mut(&mut self.0);
-        // We insert a None block to reserve this id. This is mainly relevant for when
-        // we encounter jumps to blocks that have not been defined yet. These will receive
-        // an id allocation, but will be constructed later on.
-        let block_id = inst.jir_blocks.insert(None);
-        JIRBlockBuilder {
-            start_offset: self.0.jir_instructions.len(),
-            instruction: self,
-            finalized: false,
-            block_id,
         }
     }
 
-    /// Get a block builder for a labeled block. This either creates a new entry in the label mapping
-    /// or pulls the already assigned block id from the label mapping, such that jumps refer to the
-    /// correct block id
-    pub fn block_builder_for_label(
+    pub fn push_jir_instruction(
+        &mut self,
+        instruction: JIRInstruction,
+    ) -> ProcessorSpecResult {
+        if self.current_block_id.is_none() {
+            todo!("Pushing instructions requires an active block")
+        }
+        self.instruction.jir_instructions.push(instruction);
+        Ok(())
+    }
+
+    pub fn start_block(&mut self) -> ProcessorSpecResult<JIRBlockId> {
+        if self.current_block_id.is_some() {
+            todo!("Error for 'Cannot start a new block without finalizing the existing block'")
+        }
+        let block_id = self.instruction.jir_blocks.insert(Some(JIRBlock {
+            range: self.instruction.jir_instructions.len()..self.instruction.jir_instructions.len(),
+            fallthrough: JIRBlockFallthrough::NextInst,
+        }));
+        // Link the previous blocks fallthrough to the new block
+        if let Some(previous_block) = self.previous_block_id {
+            self.instruction.jir_blocks[previous_block]
+                .as_mut()
+                .expect("If a previous block exists, it must have been finalized")
+                .fallthrough = JIRBlockFallthrough::Block(block_id);
+        }
+        self.current_block_id = Some(block_id);
+        Ok(block_id)
+    }
+
+    pub fn start_labeled_block(
         &mut self,
         label: LabelId,
-    ) -> JIRBlockBuilder {
-        let inst = Rc::make_mut(&mut self.0);
-        let block_id = &mut inst.block_labels[label];
-        let block_id = *block_id.get_or_insert_with(|| inst.jir_blocks.insert(None));
-        JIRBlockBuilder {
-            start_offset: self.0.jir_instructions.len(),
-            instruction: self,
-            finalized: false,
-            block_id,
+    ) -> ProcessorSpecResult<JIRBlockId> {
+        if self.current_block_id.is_some() {
+            todo!("Error for 'Cannot start a new block without finalizing the existing block'")
         }
+        // Get the pre-allocated block or insert a new one.
+        let block_id = *self.block_labels[label].get_or_insert_with(|| self.instruction.jir_blocks.insert(None));
+        self.instruction.jir_blocks[block_id] = Some(JIRBlock {
+            range: self.instruction.jir_instructions.len()..self.instruction.jir_instructions.len(),
+            fallthrough: JIRBlockFallthrough::NextInst,
+        });
+        // Link the previous blocks fallthrough to the new block
+        if let Some(previous_block) = self.previous_block_id {
+            self.instruction.jir_blocks[previous_block]
+                .as_mut()
+                .expect("If a previous block exists, it must have been finalized")
+                .fallthrough = JIRBlockFallthrough::Block(block_id);
+        }
+        self.current_block_id = Some(block_id);
+        Ok(block_id)
+    }
+
+    pub fn finish_block(&mut self) -> ProcessorSpecResult<JIRBlockId> {
+        let Some(block_id) = self.current_block_id else {
+            todo!("Error for 'Finished block without having started a block'")
+        };
+        // Update the end of the range to the current instructions vec end.
+        self.instruction.jir_blocks[block_id]
+            .as_mut()
+            .expect("If there is an active current block, it must be initialized")
+            .range
+            .end = self.instruction.jir_instructions.len();
+        self.previous_block_id = Some(block_id);
+        self.current_block_id = None;
+        Ok(block_id)
     }
 
     pub fn resolve_label_to_block(
         &mut self,
         label: LabelId,
     ) -> JIRBlockId {
-        let inst = Rc::make_mut(&mut self.0);
         // if no block exists yet, we insert a None entry that will later be replaced by the labeled block.
-        *inst.block_labels[label].get_or_insert_with(|| inst.jir_blocks.insert(None))
+        *self.block_labels[label].get_or_insert_with(|| self.instruction.jir_blocks.insert(None))
     }
 
+    pub fn finish(self) -> TargetInstruction {
+        TargetInstruction(Rc::new(self.instruction))
+    }
+}
+
+impl TargetInstruction {
     pub fn next(&self) -> EVAddr {
         self.0.next
     }

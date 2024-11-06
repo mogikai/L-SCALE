@@ -1,6 +1,6 @@
 use crate::spec::jir::instruction::{
-    JIRBlockBuilder,
     TargetInstruction,
+    TargetInstructionBuilder,
     TargetInstructionId,
 };
 use crate::spec::jir::jcode::JIRInstruction;
@@ -20,6 +20,7 @@ use crate::spec::moir::code::{
     MOIROperation,
 };
 use crate::spec::moir::scope::{
+    LabelId,
     MOIRLocalId,
     MOIRScope,
 };
@@ -32,6 +33,7 @@ use crate::{
     jinst,
     new_typed_index_table_id,
 };
+use itertools::Itertools;
 use std::iter::once;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
@@ -56,24 +58,22 @@ impl MOIRConstructor {
         &self,
         resolver: JIRLocalResolver,
     ) -> ProcessorSpecResult<TargetInstruction> {
-        let mut target_inst = TargetInstruction::new(resolver.inst_start(), resolver.inst_next());
-        let mut previous_block = None;
+        let mut target_inst = TargetInstructionBuilder::new(resolver.inst_start(), resolver.inst_next());
         for block in self.instructions.chunk_by(|inst, next_inst| {
             !matches!(inst.operation.op_category(), MOIROpCategory::Branch) && next_inst.label.is_none()
         }) {
-            let mut jir_block_builder = if let Some(label) = block.first().expect("Blocks must not be empty").label {
-                target_inst.block_builder_for_label(label)
+            if let Some(label) = block.first().expect("Blocks must not be empty").label {
+                target_inst.start_labeled_block(label)?
             } else {
-                target_inst.next_block_builder()
+                target_inst.start_block()?
             };
             for inst in block {
-                self.generate_instruction(&resolver, &mut jir_block_builder, inst)?;
+                self.generate_instruction(&resolver, &mut target_inst, inst)?;
             }
-            let block_id = jir_block_builder.finalize(previous_block);
-            // Save the block id of the previous block, so we can attach the next block as successor.
-            previous_block = Some(block_id);
+            target_inst.finish_block()?;
             debug!("BLOCK END!");
         }
+        let target_inst = target_inst.finish();
         debug!("{target_inst}");
         Ok(target_inst)
     }
@@ -81,7 +81,7 @@ impl MOIRConstructor {
     fn generate_instruction(
         &self,
         resolver: &JIRLocalResolver,
-        jir_block_builder: &mut JIRBlockBuilder,
+        target_inst: &mut TargetInstructionBuilder,
         inst: &MOIRInstruction,
     ) -> ProcessorSpecResult {
         let output = self
@@ -95,7 +95,10 @@ impl MOIRConstructor {
             .ok_or(ProcessorSpecificationError::MissingInput);
         debug!("{inst}\n");
         let inst = match &inst.operation {
-            MOIROperation::Build(_) => jinst!(unimpl),
+            MOIROperation::Build(_) => {
+                // TODO: Generate new block for sub
+                jinst!(unimpl)
+            }
             MOIROperation::Copy => jinst!({ output? } = { input_a? }),
             MOIROperation::CustomOp { op_id, extra_args } => {
                 let args = self.resolve_custom_op_args(resolver, input_a, input_b, extra_args)?;
@@ -139,12 +142,12 @@ impl MOIRConstructor {
             MOIROperation::GotoLabel(ty, label) => match ty {
                 MOIRGotoType::Call => todo!("JCode internal call currently unsupported"),
                 MOIRGotoType::Return => todo!("JCode internal return currently unsupported"),
-                MOIRGotoType::Regular => jinst!(goto<{ jir_block_builder.resolve_label_to_block(*label) }>),
+                MOIRGotoType::Regular => jinst!(goto<{ target_inst.resolve_label_to_block(*label) }>),
             },
             MOIROperation::GotoDirectIf => jinst!(if {input_b?} goto {input_a?}),
             MOIROperation::GotoIndirectIf => jinst!(if {input_b?} goto [{input_a?}]),
             MOIROperation::GotoLabelIf(label) => {
-                jinst!(if {input_b?} goto <{ jir_block_builder.resolve_label_to_block(*label) }>)
+                jinst!(if {input_b?} goto <{ target_inst.resolve_label_to_block(*label) }>)
             }
             MOIROperation::IntAdd => jinst!({ output? } = { input_a? } + { input_b? }),
             MOIROperation::IntSubtract => jinst!({ output? } = { input_a? } - { input_b? }),
@@ -187,8 +190,7 @@ impl MOIRConstructor {
             MOIROperation::IntNegate => jinst!({ output? } = -{ input_a? }),
             MOIROperation::FloatNegate => jinst!({ output? } =  fneg{ input_a? }),
         };
-        jir_block_builder.push_jir_instruction(inst);
-        Ok(())
+        target_inst.push_jir_instruction(inst)
     }
 
     fn resolve_custom_op_args(
