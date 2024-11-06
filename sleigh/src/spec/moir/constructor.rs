@@ -106,7 +106,7 @@ impl MOIRConstructor {
                     jinst!((*{ *op_id })(*args))
                 }
             }
-            MOIROperation::Nop => todo!(),
+            MOIROperation::Nop => return Ok(()),
             MOIROperation::AddressOf => todo!(),
             MOIROperation::PopCount => jinst!({ output? } = popcount({ input_a? })),
             MOIROperation::LZCount => jinst!({ output? } = lzcount({ input_a? })),

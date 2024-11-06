@@ -12,8 +12,13 @@ use crate::spec::builder::{
     ProcessorSpecificationBuilder,
     StringId,
 };
+use crate::spec::moir::code::{
+    MOIRInstruction,
+    moir_instruction,
+};
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::field::FieldId;
+use crate::spec::moir::table::TableId;
 use crate::spec::moir::varnode::{
     MOIRLocal,
     MOIRReference,
@@ -66,6 +71,12 @@ pub struct MOIRScope {
     /// Unused variables can be removed from this set.
     /// The set is used to determine how many actual temporary varnodes need to be allocated later on.
     used_locals: HashSet<MOIRLocalId>,
+    /// This map keeps track of where the subtable build instruction is
+    /// By default, subtables are built implicitly at the beginning of the
+    /// instruction list. If an explicit build instruction occurs later,
+    /// the implicit build is replaced by a `nop` and the subtable is marked
+    /// as explicitly built. A second explicit build is not allowed.
+    subtable_builds: HashMap<TableId, SubTableBuild>,
 }
 
 new_typed_index_table_id! { pub struct MOIRLocalId; "L"; }
@@ -73,6 +84,12 @@ new_map_key! { pub struct LabelId; "LBL"; }
 
 /// InstructionId is simply an index into the instruction list.
 pub type InstructionId = usize;
+
+/// A small enum to keep track of whether the subtable is implicitly or explicitly built.
+enum SubTableBuild {
+    Implicit(InstructionId),
+    Explicit,
+}
 
 /// A temporary varnode. These have no backing varnode at this stage yet.
 /// They will be mapped to concrete varnodes once the constructor is called.
@@ -253,6 +270,54 @@ impl MOIRScope {
         }
         let id = self.slices.insert(value);
         self.locals.insert(ident, id);
+    }
+
+    /// Marks subtables as implicitly built and stores the instruction ids where the builds are performed.
+    pub fn make_implicit_builds(
+        &mut self,
+        instructions: &mut Vec<MOIRInstruction>,
+    ) -> SleighCompilerResult {
+        for subtable in self
+            .slices
+            .iter()
+            .filter_map(|(_, slice)| match slice.reference {
+                MOIRReference::SubTable(id) => Some(id),
+                _ => None,
+            })
+        {
+            // We insert an implicit build instruction for each subtable at the beginning.
+            // This results in a recursive depth first build of subtables.
+            // The order is not determined.
+            // Explicit build instructions later on should remove the implicit build instruction.
+            // The instruction is simply replaced with a `nop` instruction which is omitted when
+            // transforming to JIR.
+            let index = instructions.len();
+            instructions.push(moir_instruction!(build subtable));
+            // Save the index of the build instruction
+            match self.subtable_builds.entry(subtable) {
+                Entry::Occupied(_) => todo!("Generate error: Cannot implicitly build the same table twice"),
+                Entry::Vacant(e) => e.insert(SubTableBuild::Implicit(index)),
+            };
+        }
+        Ok(())
+    }
+
+    pub fn mark_explicit_build(
+        &mut self,
+        table_id: TableId,
+        instructions: &mut Vec<MOIRInstruction>,
+    ) -> SleighCompilerResult {
+        match self.subtable_builds.entry(table_id) {
+            Entry::Occupied(mut e) => {
+                match e.get() {
+                    SubTableBuild::Implicit(inst) => instructions[*inst] = moir_instruction!(nop),
+                    SubTableBuild::Explicit => todo!("Generate error for duplicate explicit build instructions"),
+                };
+                e.insert(SubTableBuild::Explicit);
+            }
+            Entry::Vacant(_) => panic!("Logic error. All subtables need to have been marked as implicitly built"),
+        }
+        Ok(())
     }
 
     /// Temporaries can be named or unnamed. Named temporaries are created for example by using

@@ -3,6 +3,7 @@ mod expression;
 mod invocation;
 mod size_inference;
 
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::pcode::statement::{
     SASTPCodeBranchTarget,
@@ -12,16 +13,16 @@ use crate::compiler::ast::pcode::{
     SASTPCode,
     SASTPCodeLabelledStatement,
 };
-use crate::compiler::ast::Spanned;
 use crate::compiler::{
+    CompilerContext,
     SleighCompiler,
     SleighCompilerResult,
 };
 use crate::spec::builder::StringId;
 use crate::spec::moir::code::{
-    moir_instruction,
     MOIRGotoType,
     MOIRInstruction,
+    moir_instruction,
 };
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::scope::{
@@ -29,12 +30,16 @@ use crate::spec::moir::scope::{
     MOIRScope,
 };
 use crate::spec::moir::table::MOIRExport;
-use crate::spec::moir::varnode::MOIRLocal;
-use tracing::debug;
+use crate::spec::moir::varnode::{
+    MOIRLocal,
+    MOIRReference,
+};
+use std::collections::HashMap;
 
 use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
 use std::fmt::Write;
+use tracing::debug;
 
 impl SleighCompiler {
     pub fn atomize_pcode(
@@ -45,6 +50,7 @@ impl SleighCompiler {
     ) -> SleighCompilerResult<Option<MOIRExport>> {
         // TODO: Create table of locals? Lookup global identifiers?
         let (pcode, _) = pcode.into_tuple();
+        scope.make_implicit_builds(instructions)?;
         let export = self.atomize_statements(scope, instructions, pcode.statements)?;
         self.infer_sizes(scope, instructions)?;
         Ok(export.map(|export| match export.into_value() {
@@ -138,7 +144,14 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
         table: Spanned<StringId>,
     ) -> SleighCompilerResult {
-        let table = self.spec_builder.table_id_by_ident(&table)?;
+        let table = scope
+            .local(*table.value())
+            .ok_or_else(|| -> SleighCompilerError { todo!("Generate error for missing symbol") })?;
+        let table = match table.reference {
+            MOIRReference::SubTable(table) => table,
+            _ => todo!("Generate error for invalid symbol type"),
+        };
+        scope.mark_explicit_build(table, instructions)?;
         instructions.push(moir_instruction!(build table));
         Ok(())
     }

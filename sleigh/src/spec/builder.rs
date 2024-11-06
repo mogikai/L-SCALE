@@ -195,6 +195,10 @@ pub struct ProcessorSpecificationBuilder {
 }
 
 impl ProcessorSpecificationBuilder {
+    pub(crate) fn interner(&self) -> &StringInterner<StringBackend> {
+        &self.interner
+    }
+
     /// Define the endianness. If the endianness was previously defined, an error report is generated.
     pub(crate) fn define_endianness(
         &mut self,

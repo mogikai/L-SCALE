@@ -88,7 +88,7 @@ impl SleighCompiler {
         moir_constructor
             .local_scope
             .realize_temporaries(&mut self.spec_builder)?;
-        trace_build!("{}", moir_constructor.mcode_debug_string());
+        trace_build!("{}", moir_constructor.mcode_debug_string(self.spec_builder.interner()));
         self.pc_handle_export(constructor.table.transpose(), export)?;
         let _id = self.spec_builder.define_constructor(moir_constructor)?;
         // TODO: Insert the constructor id into the corresponding matcher and/or the table.
@@ -190,6 +190,7 @@ impl SleighCompiler {
     ) -> SleighCompilerResult {
         trace_build!("Resolving {} symbols to a local scope", symbols.len());
         for symbol in symbols {
+            trace_build!("Resolving symbol {symbol:?}");
             let value = match symbol {
                 MOIRSymbolId::Field(field_id) => {
                     let field = self
@@ -230,15 +231,13 @@ impl SleighCompiler {
                         .table_by_symbol_id(*table_id)
                         .ok_or(SleighCompilerError::SymbolUndeclared)?;
                     let export = table.exports.first();
-                    if let Some(export) = export {
-                        Some(MOIRSlice {
-                            reference: MOIRReference::SubTable(*table_id),
-                            start: 0,
-                            end: export.size(),
-                        })
-                    } else {
-                        None
-                    }
+                    Some(MOIRSlice {
+                        reference: MOIRReference::SubTable(*table_id),
+                        start: 0,
+                        end: export
+                            .map(|e| e.size())
+                            .unwrap_or(MOIRMaybeSize::Determined(0)),
+                    })
                 }
 
                 MOIRSymbolId::VarNode(vnid) => {

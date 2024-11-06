@@ -97,8 +97,7 @@ impl JIRBlockBuilder<'_> {
             instruction
                 .jir_blocks
                 .get_mut(block)
-                .map(Option::as_mut)
-                .flatten()
+                .and_then(Option::as_mut)
         }) {
             previous_block.fallthrough = JIRBlockFallthrough::Block(self.block_id);
         }
@@ -158,7 +157,7 @@ impl TargetInstruction {
         let block_id = &mut inst.block_labels[label];
         let block_id = *block_id.get_or_insert_with(|| inst.jir_blocks.insert(None));
         JIRBlockBuilder {
-            start_offset: 0,
+            start_offset: self.0.jir_instructions.len(),
             instruction: self,
             finalized: false,
             block_id,
