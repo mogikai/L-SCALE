@@ -757,7 +757,7 @@ impl ProcessorSpecificationBuilder {
                     None
                 }
             })
-            .ok_or_else(|| -> SleighCompilerErrorType::SymbolUndeclared)?;
+            .ok_or(SleighCompilerErrorType::UndeclaredSymbol)?;
 
         Ok(space_id)
     }

@@ -53,18 +53,11 @@ use chumsky::{
     IterParser,
     ParseResult,
     Parser,
-    extra.
+    extra,
 };
 use crate::compiler::error::{
     SleighCompilerError,
     SleighCompilerErrorType
-};
-use crate::compiler::inputcache::CompilerInputCache;
-use crate::compiler::tokens::{
-    SleighControlCharacter,
-    SleighKeyword,
-    SleighOperation,
-    SleighToken,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
@@ -214,7 +207,7 @@ impl SleighLexer {
         // TODO: Return parsed tokens, and all encountered errors, instead of simply erroring out.
         let source_data = input_cache
             .input_source(input_id)
-        map_err(|e| SleighCompilerError::from_error(e.into()))?;
+            .map_err(|e| SleighCompilerError::from_error(e.into()))?;
         let parsed = SleighLexer::tokenize_string(
             source_data
                 .text()

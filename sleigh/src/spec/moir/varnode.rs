@@ -1,7 +1,5 @@
-use crate::compiler::error::{WrongConstSize, SleighCompilerError, SliceError};
 use crate::compiler::SleighCompilerResult;
 use crate::compiler::error::{
-    ConstDoesNotFit,
     SliceError,
     SleighCompilerError
 };

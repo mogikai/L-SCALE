@@ -259,8 +259,7 @@ impl SleighCompilerError {
             SleighCompilerErrorType::DuplicatedDefine(_) | SleighCompilerErrorType::DuplicatedSpaceAttribute(_) => {
                 let first = self.get_span("first");
                 Report::build(ReportKind::Error,
-                              first.context(),
-                              first.start())
+                              first.clone())
                     .with_label(Label::new(first)
                         .with_message("first definition"))
                     .with_label(Label::new(self.get_span("second"))
@@ -269,8 +268,7 @@ impl SleighCompilerError {
             SleighCompilerErrorType::InstructionAfterExport => {
                 let instr = self.get_span("instr");
                 Report::build(ReportKind::Error,
-                              instr.context(),
-                              instr.start())
+                              instr.clone())
                     .with_label(Label::new(self.get_span("export"))
                         .with_message("export is here"))
                     .with_label(Label::new(instr)
@@ -281,15 +279,13 @@ impl SleighCompilerError {
                 match invalid {
                     InvalidFieldRange::EndBeforeStart(range) => {
                         Report::build(ReportKind::Error,
-                                      field.context(),
-                                      field.start())
+                                      field.clone())
                             .with_label(Label::new(field.clone())
                                 .with_message(format!("range ends at {} but starts at {}", range.end, range.start)))
                     }
                     InvalidFieldRange::TooLargeRange(bits, range) => {
                         Report::build(ReportKind::Error,
-                                      field.context(),
-                                      field.start())
+                                      field.clone())
                             .with_label(Label::new(field.clone()).
                                 with_message(format!("range fits {} bits, but there are only {} bits",
                                                      range.end - range.start, bits)))
@@ -301,8 +297,7 @@ impl SleighCompilerError {
                 match slice {
                     SliceError::UndeterminedSize => {
                         Report::build(ReportKind::Error,
-                                      expr.context(),
-                                      expr.start())
+                                      expr.clone())
                             .with_label(Label::new(expr.clone())
                                 .with_message("size is undetermined"))
                     }
@@ -312,8 +307,7 @@ impl SleighCompilerError {
             SleighCompilerErrorType::UndeclaredSymbol => {
                 let ident = self.get_span("ident");
                 Report::build(ReportKind::Error,
-                              ident.context(),
-                              ident.start())
+                              ident.clone())
                     .with_label(Label::new(ident.clone())
                         .with_message("symbol is undeclared"))
             }
