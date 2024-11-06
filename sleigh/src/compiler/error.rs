@@ -186,8 +186,7 @@ impl From<SleighCompilerErrorType> for SleighCompilerError {
 
 impl From<ProcessorSpecificationError> for SleighCompilerError {
     fn from(value: ProcessorSpecificationError) -> Self {
-        let e: SleighCompilerErrorType = value.into();
-        e.into()
+        SleighCompilerError::from_error(value.into())
     }
 }
 
@@ -244,7 +243,7 @@ impl SleighCompilerError {
     pub fn cause(mut self, cause: SleighCompilerError) -> Self {
         match self.cause {
             None => self.cause = Some(Box::new(cause)),
-            Some(_) => todo!(),
+            Some(_) => panic!("This error already has a cause"),
         }
         self
     }
