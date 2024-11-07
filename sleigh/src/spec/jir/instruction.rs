@@ -19,6 +19,7 @@ use mogi_utilities::index_map::{
 };
 use mogi_utilities::new_map_key;
 use std::rc::Rc;
+use tracing::debug;
 
 /// A lifted target instruction. It contains information like its address, and the address of the next instruction,
 /// and also the JIR instructions that represent its semantic meaning.
@@ -142,6 +143,7 @@ impl TargetInstructionBuilder {
             .end = self.instruction.jir_instructions.len();
         self.previous_block_id = Some(block_id);
         self.current_block_id = None;
+        debug!("Finished block {block_id}");
         Ok(block_id)
     }
 

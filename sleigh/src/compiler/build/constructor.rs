@@ -56,7 +56,8 @@ impl SleighCompiler {
             .value()
             .map(|sid| self.spec_builder.string(sid))
             .flatten()
-            .unwrap_or("instruction");
+            .unwrap_or("instruction")
+            .to_string();
         trace_build!("Defining constructor in table {:?}", table_name);
 
         // TODO: Need to parse the disassembly section here as well and add that information to the matcher
@@ -90,8 +91,9 @@ impl SleighCompiler {
             .realize_temporaries(&mut self.spec_builder)?;
         trace_build!("{}", moir_constructor.mcode_debug_string(self.spec_builder.interner()));
         self.pc_handle_export(constructor.table.transpose(), export)?;
-        let _id = self.spec_builder.define_constructor(moir_constructor)?;
+        let id = self.spec_builder.define_constructor(moir_constructor)?;
         // TODO: Insert the constructor id into the corresponding matcher and/or the table.
+        trace_build!("Construtor with id {:?} added to table {:?}", id, table_name);
         Ok(())
     }
 

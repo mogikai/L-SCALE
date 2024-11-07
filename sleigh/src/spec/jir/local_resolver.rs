@@ -1,17 +1,12 @@
 use crate::spec::builder::StringId;
+use crate::spec::jir::instruction::TargetInstruction;
 use crate::spec::jir::values::{
     JIRConst,
     JIRSlice,
     JIRValue,
 };
-use crate::spec::moir::constructor::{
-    ConstructorId,
-    MOIRConstructor,
-};
-use crate::spec::moir::scope::{
-    MOIRLocalId,
-    MOIRScope,
-};
+use crate::spec::moir::constructor::MOIRConstructor;
+use crate::spec::moir::scope::MOIRLocalId;
 use crate::spec::moir::table::TableId;
 use crate::spec::moir::varnode::{
     MOIRConst,
@@ -24,78 +19,88 @@ use crate::spec::{
 };
 use mogi_utilities::addresses::EVAddr;
 use std::collections::HashMap;
+use tracing::debug;
 
 #[derive(Debug)]
-pub struct JIRLocalResolver {
+pub struct JIRResolver<'a> {
+    constructor: &'a MOIRConstructor,
     values: HashMap<MOIRLocalId, JIRValue>,
-    constructors: HashMap<TableId, ConstructorId>,
+    subtables: HashMap<TableId, JIRResolver<'a>>,
     inst_start: EVAddr,
     inst_next: EVAddr,
     /// Since inst_next2 is rarely needed it can be set to None
     inst_next2: Option<EVAddr>,
 }
 
-impl JIRLocalResolver {
+impl<'a> JIRResolver<'a> {
     pub fn new(
+        constructor: &'a MOIRConstructor,
         inst_start: EVAddr,
         inst_next: EVAddr,
         inst_next2: Option<EVAddr>,
     ) -> Self {
         Self {
+            constructor,
             values: Default::default(),
-            constructors: Default::default(),
+            subtables: Default::default(),
             inst_start,
             inst_next,
             inst_next2,
         }
     }
-}
 
-impl JIRLocalResolver {
+    pub fn constructor(&self) -> &MOIRConstructor {
+        self.constructor
+    }
+
     pub fn define_ident(
         &mut self,
-        scope: &MOIRScope,
         ident: StringId,
         value: JIRValue,
     ) -> ProcessorSpecResult {
-        let local = scope.local(ident).ok_or_else(|| todo!("Generate Error"))?;
+        let local = self
+            .constructor
+            .local_scope
+            .local(ident)
+            .ok_or_else(|| todo!("Generate Error"))?;
         if local.refers_to_varnode() {
             todo!("Generate error: Overriding varnodes is disallowed during local resolving")
         }
         // TODO: Write code that checks the size constraints of the value against the defined slice
-        let local_id = scope
+        let local_id = self
+            .constructor
+            .local_scope
             .local_id(ident)
             .ok_or_else(|| todo!("Generate error"))?;
-        self.values.insert(local_id, value);
+        let previous = self.values.insert(local_id, value);
+        assert!(previous.is_none());
         Ok(())
     }
 
-    pub fn define_subtable(
+    pub fn define_subtable_resolver(
         &mut self,
         subtable: TableId,
-        constructor: ConstructorId,
+        resolver: JIRResolver<'a>,
     ) -> ProcessorSpecResult {
-        self.constructors.insert(subtable, constructor);
+        self.subtables.insert(subtable, resolver);
         Ok(())
     }
 
-    pub fn resolve_subtable(
+    pub fn subtable_resolver(
         &self,
         subtable: TableId,
-    ) -> ProcessorSpecResult<ConstructorId> {
-        self.constructors
+    ) -> ProcessorSpecResult<&JIRResolver<'a>> {
+        self.subtables
             .get(&subtable)
             .ok_or(ProcessorSpecificationError::UnresolvedSubtable)
-            .copied()
     }
 
     pub fn resolve_local(
         &self,
-        scope: &MOIRScope,
         local: MOIRLocal,
     ) -> ProcessorSpecResult<JIRValue> {
         match local {
-            MOIRLocal::Local(id) => self.resolve_local_id(scope, id),
+            MOIRLocal::Local(id) => self.resolve_local_id(id),
             MOIRLocal::Const(value) => {
                 let MOIRConst::Determined(value, size) = value else {
                     todo!("Generate error for undetermined size")
@@ -107,10 +112,11 @@ impl JIRLocalResolver {
 
     pub fn resolve_local_id(
         &self,
-        scope: &MOIRScope,
         local: MOIRLocalId,
     ) -> ProcessorSpecResult<JIRValue> {
-        let value = scope
+        let value = self
+            .constructor
+            .local_scope
             .resolve_local(local)
             .map_err(|_| todo!("Map error correctly"))?;
         let start = value.start;
@@ -130,6 +136,9 @@ impl JIRLocalResolver {
             },
             MOIRReference::Field(_) | MOIRReference::SubTable(_) => {
                 let Some(value) = self.values.get(&local).copied() else {
+                    debug!("Constructor: {:?}", self.constructor);
+                    debug!("Scope is {}", self.constructor.local_scope);
+                    debug!("Local id is {local}");
                     todo!("Generate error for a local that cannot be resolved because it was not defined")
                 };
                 value
