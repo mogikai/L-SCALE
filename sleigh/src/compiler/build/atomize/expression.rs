@@ -57,7 +57,6 @@ impl SleighCompiler {
                 .ok_or_else(|| todo!("Generate error report for invocation without output")),
             BinaryOperation { lhs, op, rhs } => self.atomize_binary_operation(scope, instructions, out, *lhs, op, *rhs),
             UnaryOperation { op, operand } => self.atomize_unary_operation(scope, instructions, out, op, *operand),
-            Dereference { .. } => self.atomize_dereference(instructions),
             Subpiece(subpiece) => self.atomize_subpiece(scope, out_size, subpiece),
             Bitrange(bitrange) => self.atomize_bitrange(scope, instructions, out, bitrange),
             Identifier(ident) => self.atomize_identifier(scope, out_size, ident.transmute()),
@@ -68,13 +67,6 @@ impl SleighCompiler {
                 panic!("An error in the AST should have lead to the compiler quitting earlier on.")
             }
         }
-    }
-
-    pub fn atomize_dereference(
-        &mut self,
-        _instructions: &mut Vec<MOIRInstruction>,
-    ) -> SleighCompilerResult<MOIRLocal> {
-        todo!()
     }
 
     /// Atomizing a literal always returns a local since we don't want to simply copy this into an out local.
