@@ -107,3 +107,17 @@ fn instruction_after_export() {
         // TODO implement and test other slice errorsy
     }
 }
+
+// TODO un-ignore after proper configuration for SleighCompiler has been implemented
+#[test]
+#[ignore]
+fn stop_on_first_error() {
+    common::setup_test();
+    let path = ASSETS_PATH.to_string() + "invalid_field_range.sinc";
+    let err = build(path).expect_err("expected error").error;
+    assert!(matches!(err, SleighCompilerErrorType::SemanticError(_)));
+    if let SleighCompilerErrorType::SemanticError(string) = err {
+        assert!(string.contains("field range is too large"));
+        assert!(!string.contains("field range ends before its starting"));
+    }
+}

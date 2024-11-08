@@ -113,23 +113,23 @@ impl SleighCompiler {
             .parser
             .parse(&mut self.input_cache, &mut self.spec_builder, tokens)?;
         info!("Building the specification from the AST.");
-        self.build(ast)?;
-        // TODO fix/remove as this makes no sense anymore
-        // Continue if StopOnFirstError or if everything was ok.
-        /*match result {
-            Err(SleighCompilerErrorType::StopOnFirstError) | Ok(_) => {}
-            Err(e) => Err(e)?,
-        }*/
+        let result = self.build(ast);
+        // result should not be an error except StopOnFirstError, if result is an error
+        // we failed to handle this error properly.
+        if let Err(e) = result {
+            if !matches!(e.error, SleighCompilerErrorType::StopOnFirstError) {
+                return Err(e);
+            }
+        }
         if self.errors.is_empty() {
             Ok(self.spec_builder.build()?)
         } else {
             let mut error_description = vec![];
             let error_count = self.errors.len();
-            self.errors = dbg!(self.errors);
             for error in self.errors {
                 error.as_report()
-                        .write(&mut self.input_cache, &mut error_description)
-                        .expect("There is no way this may fail.");
+                    .write(&mut self.input_cache, &mut error_description)
+                    .expect("There is no way this may fail.");
             }
             error_description.extend(
                 format!(
@@ -189,7 +189,7 @@ impl SleighCompiler {
             Err(err) => {
                 self.errors.push(err);
                 if self.stop_on_first_error {
-                    todo!("Err(SleighCompilerErrorType::StopOnFirstError)")
+                    Err(SleighCompilerErrorType::StopOnFirstError.into())
                 } else {
                     Ok(None)
                 }
