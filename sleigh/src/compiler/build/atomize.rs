@@ -32,6 +32,7 @@ use crate::spec::moir::scope::{
 use crate::spec::moir::table::MOIRExport;
 use crate::spec::moir::varnode::MOIRReference;
 
+use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
 use crate::spec::moir::MOIR_ADDRESS_SIZE;
@@ -144,38 +145,38 @@ impl SleighCompiler {
         // be easy.
         let (expression, span) = expression.into_tuple();
         match expression {
-            SASTPCodeExpression::Load(deref) => {
-                let deref = deref.into_value();
-                let space = self
-                    .spec_builder
-                    .resolve_space(deref.space.map(Spanned::transmute))?;
-                let mut address = self.atomize_expression(scope, instructions, None, *deref.expression)?;
-                let spc = self
-                    .spec_builder
-                    .space_by_symbol_id(space)
-                    .ok_or_else(|| -> SleighCompilerError { todo!("Generate appropriate error report") })?;
-                if matches!(spc.r#type, MOIRSpaceType::Const) {
-                    // TODO: This is kind of ugly atm. Is there a smarter way to determine the required size for
-                    //       addresses into the const space?
-                    if address.size(scope).is_undetermined() {
-                        scope.constrain_local_size(&mut address, MOIR_ADDRESS_SIZE)?;
-                    }
-                } else {
-                    trace_build!("Constraining addr size to {}", spc.address_size);
-                    scope.constrain_local_size(&mut address, spc.address_size)?;
-                };
-                let size = deref.size.map(|s| s.into_value()).into();
-                trace_build!("Exporting dynamic reference with size {size}");
-                Ok(MOIRExport::MemReference { address, space, size })
-            }
+            SASTPCodeExpression::Load(deref) => self.atomize_export_dynamic(scope, instructions, deref),
             SASTPCodeExpression::AddressOf(_) => {
                 todo!()
             }
-            _ => {
-                let local = self.atomize_expression(scope, instructions, None, Spanned::new(expression, span))?;
-                Ok(MOIRExport::Local(local))
-            }
+            _ => self
+                .atomize_expression(scope, instructions, None, Spanned::new(expression, span))
+                .map(MOIRExport::Local),
         }
+    }
+
+    fn atomize_export_dynamic(
+        &mut self,
+        scope: &mut MOIRScope,
+        instructions: &mut Vec<MOIRInstruction>,
+        deref: Spanned<SASTPCodeDeref>,
+    ) -> SleighCompilerResult<MOIRExport> {
+        let deref = deref.into_value();
+        let space = self
+            .spec_builder
+            .resolve_space(deref.space.map(Spanned::transmute))?;
+        let mut address = self.atomize_expression(scope, instructions, None, *deref.expression)?;
+        let spc = self
+            .spec_builder
+            .space_by_symbol_id(space)
+            .ok_or_else(|| -> SleighCompilerError { todo!("Generate appropriate error report") })?;
+
+        trace_build!("Constraining addr size to {}", spc.address_size);
+        scope.constrain_local_size(&mut address, spc.address_size)?;
+
+        let size = deref.size.map(|s| s.into_value()).into();
+        trace_build!("Exporting dynamic reference with size {size}");
+        Ok(MOIRExport::MemReference { address, space, size })
     }
 
     fn atomize_build(

@@ -793,7 +793,7 @@ impl Default for ProcessorSpecificationBuilder {
             Spanned::new(const_space, InputSpan::default()),
             MOIRSpace {
                 r#type: MOIRSpaceType::Const,
-                address_size: 0,
+                address_size: 8,
                 wordsize: 0,
             },
             MOIRSpaceIsDefault::NotDefault,

@@ -254,11 +254,12 @@ impl SleighCompiler {
                         .spec_builder
                         .table_by_symbol_id(*table_id)
                         .ok_or(SleighCompilerError::SymbolUndeclared)?;
-                    let export = table.constructors.first();
-                    let export_size = export
+                    let constructor_id = table.constructors.first();
+                    let export_size = constructor_id
                         .map(|cid| self.spec_builder.constructor_by_symbol_id(*cid))
                         .flatten()
-                        .and_then(|c| c.export.as_ref().map(|e| e.size(&c.local_scope)))
+                        .map(|c| c.export_size())
+                        // If the constructor was not found, we set the export to zero size.
                         .unwrap_or(MOIRMaybeSize::Determined(0));
                     Some(MOIRSlice {
                         reference: MOIRReference::SubTable(*table_id),
