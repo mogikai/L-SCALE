@@ -135,6 +135,19 @@ impl SleighCompiler {
     ) -> SleighCompilerResult<MOIRLocal> {
         // TODO: Handling dynamic references (e.g. export *:4 tmp) will require keeping track of the
         //       dynamic references somewhere. We need to decide how to do this.
+        // Most likely, we will need to atomize the expression, or the expression inside a load expression
+        // such that we have a single varnode at the end that represents either the varnode itself, or the
+        // address of the desired location.
+        // This will then have to be put into some kind of export structure which can be saved as the exported
+        // value for a specific constructor. The symbols referring to subtables will remain as-is.
+        // Once these values need to be resolved, then we can check the resolve context.
+        // Either this will return a normal JIRValue, or we will get an exported value.
+        // The exported value will be an enum, with the variants Value and Reference.
+        // A Value export will then simply be translated to the varnode.
+        // A Reference export will be translated to a load or store instruction. This might encompass
+        // allocating a new temporary variable during translation.
+        // However, since we need to move the temp allocation to the moir->jir phase anyways, this should
+        // be easy.
         self.atomize_expression(scope, instructions, None, expression)
     }
 
