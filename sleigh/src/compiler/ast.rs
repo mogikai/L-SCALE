@@ -27,6 +27,8 @@ pub struct Spanned<T> {
     span: InputSpan,
 }
 
+impl<T: Copy> Copy for Spanned<T> {}
+
 impl<T> Spanned<T> {
     pub fn new(
         value: T,

@@ -57,9 +57,10 @@ use chumsky::{
     extra,
 };
 
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
 pub struct InputSpan {
-    range: Range<usize>,
+    start: usize,
+    end: usize,
     input_id: InputId,
 }
 
@@ -72,7 +73,8 @@ impl Span for InputSpan {
         range: Range<Self::Offset>,
     ) -> Self {
         Self {
-            range,
+            start: range.start,
+            end: range.end,
             input_id: context,
         }
     }
@@ -82,11 +84,11 @@ impl Span for InputSpan {
     }
 
     fn start(&self) -> Self::Offset {
-        self.range.start
+        self.start
     }
 
     fn end(&self) -> Self::Offset {
-        self.range.end
+        self.end
     }
 }
 
@@ -98,11 +100,11 @@ impl ariadne::Span for InputSpan {
     }
 
     fn start(&self) -> usize {
-        self.range.start
+        self.start
     }
 
     fn end(&self) -> usize {
-        self.range.end
+        self.end
     }
 }
 

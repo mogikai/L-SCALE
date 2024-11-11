@@ -29,18 +29,25 @@ use crate::spec::moir::code::{
     MOIRInstruction,
     MOIROperation,
 };
-use crate::spec::moir::constructor::MOIRConstructor;
+use crate::spec::moir::constructor::{
+    ConstructorId,
+    MOIRConstructor,
+};
 use crate::spec::moir::field::FieldId;
 use crate::spec::moir::scope::{
     MOIRMaybeSize,
     MOIRScope,
 };
-use crate::spec::moir::table::MOIRExport;
+use crate::spec::moir::table::{
+    MOIRExport,
+    MOIRTable,
+};
 use crate::spec::moir::varnode::{
     MOIRLocal,
     MOIRReference,
     MOIRSlice,
 };
+use tracing::debug;
 
 impl SleighCompiler {
     /// Process a constructor. This will create the table in which the constructor is anchored, if it does not exist.
@@ -58,6 +65,7 @@ impl SleighCompiler {
             .flatten()
             .unwrap_or("instruction")
             .to_string();
+        trace_build!("=======================================");
         trace_build!("Defining constructor in table {:?}", table_name);
 
         // TODO: Need to parse the disassembly section here as well and add that information to the matcher
@@ -70,6 +78,7 @@ impl SleighCompiler {
             local_scope: scope,
             instructions: vec![],
             display: display_section.display_str.into_value(),
+            export: None,
         };
         trace_build!("{}", moir_constructor.debug_scope());
 
@@ -80,80 +89,93 @@ impl SleighCompiler {
         // The semantic section contains pcode which has to be converted into an atomic form.
         // Pcode can contain complex statements (e.g. x = (a+b) * c)) which have to be translated
         // into a form that consists only of atomic expressions (e.g. tmp = a + b; x = tmp * c;)
-        let export = self.atomize_pcode(
+        moir_constructor.export = self.atomize_pcode(
             &mut moir_constructor.local_scope,
             &mut moir_constructor.instructions,
             constructor.semantic_section.into_value().0,
         )?;
-        self.pc_mark_used_locals(&mut moir_constructor.local_scope, &moir_constructor.instructions)?;
-        moir_constructor
-            .local_scope
-            .realize_temporaries(&mut self.spec_builder)?;
+        debug!("Constructor is exporting {:?}", moir_constructor.export);
+        moir_constructor.mark_used_locals()?;
+        // TODO: This needs to be moved to the moir->jir stage
+        // moir_constructor
+        //     .local_scope
+        //     .realize_temporaries(&mut self.spec_builder)?;
         trace_build!("{}", moir_constructor.mcode_debug_string(self.spec_builder.interner()));
-        self.pc_handle_export(constructor.table.transpose(), export)?;
+
+        // Define the constructor and insert it into the corresponding table.
         let id = self.spec_builder.define_constructor(moir_constructor)?;
-        // TODO: Insert the constructor id into the corresponding matcher and/or the table.
+        let table_id = constructor.table.transpose();
+        let table = self.spec_builder.create_or_modify_table(table_id)?;
+        table.constructors.push(id);
         trace_build!("Construtor with id {:?} added to table {:?}", id, table_name);
+
+        // Catch any errors with exports
+        let table = self
+            .spec_builder
+            .table_by_ident(table_id)
+            .expect("We just inserted this table");
+        self.pc_validate_exports(table)?;
         Ok(())
     }
 
-    fn pc_mark_used_locals(
-        &mut self,
-        scope: &mut MOIRScope,
-        instructions: &[MOIRInstruction],
+    /// Validates the constructors in the table.
+    /// If the newly added constructor does not agree with the previous constructors, an error is reported.
+    fn pc_validate_exports(
+        &self,
+        table: &MOIRTable,
     ) -> SleighCompilerResult {
-        for instruction in instructions {
-            if let Some(output) = instruction.output {
-                scope.mark_local_as_used(MOIRLocal::from(output))?;
+        // TODO: If we save some more span information in the MOIR structs, then we can move this validation
+        //       step to the final build phase. This would allow us to report all conflicting constructors.
+        //       It would also make the runtime more efficient, since we only have to validate once.
+        match table.constructors.first() {
+            None => {
+                // If there are no previous constructor definitions, we can simply return
+                Ok(())
             }
-            if let Some(input_a) = instruction.input_a {
-                scope.mark_local_as_used(input_a)?;
-            }
-            if let Some(input_b) = instruction.input_b {
-                scope.mark_local_as_used(input_b)?;
-            }
-            if let MOIROperation::CustomOp { extra_args, .. } = &instruction.operation {
-                for arg in extra_args {
-                    scope.mark_local_as_used(*arg)?;
+            Some(existing_constructor) => {
+                let existing_constructor = self
+                    .spec_builder
+                    .constructor_by_symbol_id(*existing_constructor)
+                    .expect("The constructor should exist since we have an id for it");
+                let new_constructor = table
+                    .constructors
+                    .last()
+                    .expect("If there is a first element, there has to be a last element");
+                let new_constructor = self
+                    .spec_builder
+                    .constructor_by_symbol_id(*new_constructor)
+                    .expect("The constructor should exist since we have an id for it");
+                match existing_constructor.export.as_ref() {
+                    None => {
+                        if new_constructor.export.is_some() {
+                            todo!(
+                                "Generate error: 'Defining a new constructor with an export statement is disallowed when the previous definitions do not export'"
+                            )
+                        }
+                        Ok(())
+                    }
+                    Some(existing_export) => {
+                        // If the table already contains a constructor that exports, we have to make sure that the sizes of all
+                        // exports match. Also, it is not allowed, that a constructor has no export statement, if
+                        // another constructor has an export statement. If one constructor exports, all of them have to.
+                        let Some(export) = new_constructor.export.as_ref() else {
+                            todo!(
+                                "Generate error: 'Defining a new constructor without an export statement is disallowed when the previous definitions already export'"
+                            )
+                        };
+                        let export_size = export.size(&new_constructor.local_scope);
+                        let existing_export_size = existing_export.size(&existing_constructor.local_scope);
+                        if export_size != existing_export_size {
+                            debug!(
+                                "Existing export size {existing_export_size} does not match new export size {export_size}"
+                            );
+                            todo!("Generate error report for inconsistent sizes of exports")
+                        }
+                        Ok(())
+                    }
                 }
             }
         }
-        Ok(())
-    }
-
-    fn pc_handle_export(
-        &mut self,
-        table: Option<Spanned<StringId>>,
-        export: Option<MOIRExport>,
-    ) -> SleighCompilerResult {
-        let table = match table {
-            None => self.spec_builder.modify_root_table()?,
-            Some(id) => self.spec_builder.modify_table(id)?,
-        };
-        if table.exports.is_empty() {
-            // If the exports table is empty, we can just insert the export if we have one.
-            if let Some(export) = export {
-                table.exports.push(export);
-            }
-        } else {
-            // If the exports table already contains exports, we have to make sure that the sizes of all
-            // exports match. Also, it is not allowed, that a constructor has no export statement, if
-            // another constructor has an export statement. If one constructor exports, all of them have to.
-            let Some(export) = export else {
-                todo!("Generate error report for constructor missing an export statement")
-            };
-            let existing_export = table
-                .exports
-                .first()
-                .expect("We just made sure that at least one element exists");
-            if export.size() != existing_export.size() {
-                todo!("Generate error report for inconsistent sizes of exports")
-            } else {
-                // All is well, we can now just insert the export for later type lookup.
-                table.exports.push(export);
-            }
-        }
-        Ok(())
     }
 
     fn pc_create_scope(
@@ -232,13 +254,16 @@ impl SleighCompiler {
                         .spec_builder
                         .table_by_symbol_id(*table_id)
                         .ok_or(SleighCompilerError::SymbolUndeclared)?;
-                    let export = table.exports.first();
+                    let export = table.constructors.first();
+                    let export_size = export
+                        .map(|cid| self.spec_builder.constructor_by_symbol_id(*cid))
+                        .flatten()
+                        .and_then(|c| c.export.as_ref().map(|e| e.size(&c.local_scope)))
+                        .unwrap_or(MOIRMaybeSize::Determined(0));
                     Some(MOIRSlice {
                         reference: MOIRReference::SubTable(*table_id),
                         start: 0,
-                        end: export
-                            .map(|e| e.size())
-                            .unwrap_or(MOIRMaybeSize::Determined(0)),
+                        end: export_size,
                     })
                 }
 

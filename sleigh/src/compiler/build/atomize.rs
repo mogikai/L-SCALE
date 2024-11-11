@@ -30,16 +30,13 @@ use crate::spec::moir::scope::{
     MOIRScope,
 };
 use crate::spec::moir::table::MOIRExport;
-use crate::spec::moir::varnode::{
-    MOIRLocal,
-    MOIRReference,
-};
-use std::collections::HashMap;
+use crate::spec::moir::varnode::MOIRReference;
 
 use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
+use crate::spec::moir::MOIR_ADDRESS_SIZE;
+use crate::spec::moir::address_space::MOIRSpaceType;
 use std::fmt::Write;
-use tracing::debug;
 
 impl SleighCompiler {
     pub fn atomize_pcode(
@@ -53,10 +50,7 @@ impl SleighCompiler {
         scope.make_implicit_builds(instructions)?;
         let export = self.atomize_statements(scope, instructions, pcode.statements)?;
         self.infer_sizes(scope, instructions)?;
-        Ok(export.map(|export| match export.into_value() {
-            MOIRLocal::Local(local) => MOIRExport::Slice(*scope.resolve_local(local).expect("TODO")),
-            MOIRLocal::Const(val) => MOIRExport::Const(val),
-        }))
+        Ok(export.map(Spanned::into_value))
     }
 
     pub fn atomize_statements(
@@ -64,7 +58,7 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         statements: Vec<Spanned<SASTPCodeLabelledStatement>>,
-    ) -> SleighCompilerResult<Option<Spanned<MOIRLocal>>> {
+    ) -> SleighCompilerResult<Option<Spanned<MOIRExport>>> {
         let mut export = None;
         for ((label, statement), _) in statements.into_iter().map(Spanned::into_tuple) {
             let label = if let Some(label) = label {
@@ -132,7 +126,7 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         expression: Spanned<SASTPCodeExpression>,
-    ) -> SleighCompilerResult<MOIRLocal> {
+    ) -> SleighCompilerResult<MOIRExport> {
         // TODO: Handling dynamic references (e.g. export *:4 tmp) will require keeping track of the
         //       dynamic references somewhere. We need to decide how to do this.
         // Most likely, we will need to atomize the expression, or the expression inside a load expression
@@ -148,7 +142,40 @@ impl SleighCompiler {
         // allocating a new temporary variable during translation.
         // However, since we need to move the temp allocation to the moir->jir phase anyways, this should
         // be easy.
-        self.atomize_expression(scope, instructions, None, expression)
+        let (expression, span) = expression.into_tuple();
+        match expression {
+            SASTPCodeExpression::Load(deref) => {
+                let deref = deref.into_value();
+                let space = self
+                    .spec_builder
+                    .resolve_space(deref.space.map(Spanned::transmute))?;
+                let mut address = self.atomize_expression(scope, instructions, None, *deref.expression)?;
+                let spc = self
+                    .spec_builder
+                    .space_by_symbol_id(space)
+                    .ok_or_else(|| -> SleighCompilerError { todo!("Generate appropriate error report") })?;
+                if matches!(spc.r#type, MOIRSpaceType::Const) {
+                    // TODO: This is kind of ugly atm. Is there a smarter way to determine the required size for
+                    //       addresses into the const space?
+                    if address.size(scope).is_undetermined() {
+                        scope.constrain_local_size(&mut address, MOIR_ADDRESS_SIZE)?;
+                    }
+                } else {
+                    trace_build!("Constraining addr size to {}", spc.address_size);
+                    scope.constrain_local_size(&mut address, spc.address_size)?;
+                };
+                let size = deref.size.map(|s| s.into_value()).into();
+                trace_build!("Exporting dynamic reference with size {size}");
+                Ok(MOIRExport::MemReference { address, space, size })
+            }
+            SASTPCodeExpression::AddressOf(_) => {
+                todo!()
+            }
+            _ => {
+                let local = self.atomize_expression(scope, instructions, None, Spanned::new(expression, span))?;
+                Ok(MOIRExport::Local(local))
+            }
+        }
     }
 
     fn atomize_build(

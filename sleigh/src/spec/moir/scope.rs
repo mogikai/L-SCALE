@@ -200,6 +200,15 @@ impl From<MOIRSize> for MOIRMaybeSize {
     }
 }
 
+impl From<Option<MOIRSize>> for MOIRMaybeSize {
+    fn from(value: Option<MOIRSize>) -> Self {
+        match value {
+            None => MOIRMaybeSize::Undetermined,
+            Some(size) => MOIRMaybeSize::Determined(size),
+        }
+    }
+}
+
 new_typed_index_table_id! { pub struct MOIRTemporaryId; "T"; }
 
 impl MOIRScope {

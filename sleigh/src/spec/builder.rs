@@ -473,14 +473,12 @@ impl ProcessorSpecificationBuilder {
         Ok((context_id, varnode_bits as u64))
     }
 
-    pub(crate) fn modify_root_table(&mut self) -> SleighCompilerResult<&mut MOIRTable> {
-        self.modify_table(self.root_table.clone())
-    }
-
-    pub(crate) fn modify_table(
+    /// Modify the provided table. If None is provided, the root table is used.
+    pub(crate) fn create_or_modify_table(
         &mut self,
-        ident: Spanned<StringId>,
+        ident: Option<Spanned<StringId>>,
     ) -> SleighCompilerResult<&mut MOIRTable> {
+        let ident = ident.unwrap_or(self.root_table.clone());
         let table_id = if let Some((symbol, _)) = self.get_symbol_and_ident(&ident) {
             // Symbol is defined. Do stuff with it.
             if let MOIRSymbolId::Table(table_id) = symbol {
@@ -500,6 +498,22 @@ impl ProcessorSpecificationBuilder {
             .tables
             .get_mut(table_id)
             .expect("We either just inserted the new table, or fetched an existing one."))
+    }
+
+    pub fn table_by_ident(
+        &self,
+        ident: Option<Spanned<StringId>>,
+    ) -> Option<&MOIRTable> {
+        let ident = ident.unwrap_or(self.root_table.clone());
+        self.non_root_table_by_ident(&ident)
+    }
+
+    pub fn table_by_ident_mut(
+        &mut self,
+        ident: Option<Spanned<StringId>>,
+    ) -> Option<&mut MOIRTable> {
+        let ident = ident.unwrap_or(self.root_table.clone());
+        self.non_root_table_by_ident_mut(&ident)
     }
 
     pub(crate) fn get_symbol_and_ident(
@@ -596,6 +610,13 @@ impl ProcessorSpecificationBuilder {
         symbol_id: SpaceId,
     ) -> Option<&MOIRSpace> {
         self.symbol_tables.spaces.get(symbol_id)
+    }
+
+    pub fn constructor_by_symbol_id(
+        &self,
+        symbol_id: ConstructorId,
+    ) -> Option<&MOIRConstructor> {
+        self.symbol_tables.constructors.get(symbol_id)
     }
 
     /// Get the varnode id referred to by `ident`. If `ident` refers to an identifier that is not a varnode,
@@ -765,7 +786,7 @@ impl Default for ProcessorSpecificationBuilder {
         builtins.insert(slf.interner.intern("floor"), Floor);
         builtins.insert(slf.interner.intern("round"), Round);
         // Call modify once to create the table.
-        slf.modify_root_table()
+        slf.create_or_modify_table(None)
             .expect("This may not error at this point");
         // TODO: Define the special varnodes in a special address space.
         slf.define_space(
@@ -986,7 +1007,7 @@ macro_rules! impl_get_symbol_id {
 
 impl_get_symbol_struct! { macro_by_ident, macro_by_ident_mut, macros, MOIRMacro, MOIRSymbolId::Macro(id) => id}
 impl_get_symbol_struct! { space_by_ident, space_by_ident_mut, spaces, MOIRSpace, MOIRSymbolId::Space(id) => id}
-impl_get_symbol_struct! { table_by_ident, table_by_ident_mut, tables, MOIRTable, MOIRSymbolId::Table(id) => id}
+impl_get_symbol_struct! { non_root_table_by_ident, non_root_table_by_ident_mut, tables, MOIRTable, MOIRSymbolId::Table(id) => id}
 impl_get_symbol_struct! { varnode_by_ident, varnode_by_ident_mut, varnodes, MOIRVarNode, MOIRSymbolId::VarNode(id) => id}
 impl_get_symbol_struct! { token_by_ident, token_by_ident_mut, tokens, MOIRToken, MOIRSymbolId::Token(id) => id}
 impl_get_symbol_struct! { field_by_ident, field_by_ident_mut, fields, MOIRField, MOIRSymbolId::Field(id) => id}
