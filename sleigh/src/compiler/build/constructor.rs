@@ -3,6 +3,7 @@ use std::collections::{
     HashSet,
 };
 use std::fmt::Write;
+use std::process::exit;
 
 use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::ast::Spanned;
@@ -22,7 +23,7 @@ use crate::spec::moir::code::{
     MOIRInstruction,
     MOIROperation,
 };
-use crate::spec::moir::constructor::MOIRConstructor;
+use crate::spec::moir::constructor::{ConstructorId, MOIRConstructor};
 use crate::spec::moir::field::FieldId;
 use crate::spec::moir::scope::{
     MOIRMaybeSize,
@@ -101,11 +102,13 @@ impl SleighCompiler {
             constructor.semantic_section.into_value().0,
         )?;
         self.pc_handle_export(constructor.table.clone().transpose(), export)?;
+        let display = moir_constructor.display.clone(); // TODO remove
         let constructor_id = self.spec_builder.define_constructor(moir_constructor)?;
 
         // insert the constructor id into the corresponding matchers
         matchers.iter_mut().for_each(|matcher| {
             matcher.constructor = Some(constructor_id);
+            matcher.display = Some(display.clone()); // TODO remove
         });
 
         self.register_matchers(constructor.table.clone().transpose(), matchers)?;

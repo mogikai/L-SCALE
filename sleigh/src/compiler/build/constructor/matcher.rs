@@ -129,6 +129,7 @@ pub struct Matcher {
     pub(crate) references: HashSet<MatcherReference>,
 
     pub(crate) constructor: Option<ConstructorId>,
+    pub(crate) display: Option<String>, // TODO remove
 }
 
 // ordering w.r.t. specificity
@@ -158,10 +159,22 @@ impl PartialOrd for Matcher {
     }
 }
 
+/// Since not all matchers are compatible with each other, we don't just specify subtables
+/// but also a list of corresponding compatible matchers.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub(crate) struct Submatchers {
+    pub(crate) table: TableId,
+    pub(crate) matchers: Vec<MatcherId>,
+}
+
+impl Submatchers {
+    pub(crate) fn new(table: TableId, matchers: Vec<MatcherId>) -> Self { Self { table, matchers } }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum MatcherAtom {
+pub(crate) enum MatcherAtom {
     Field { field: FieldId, matcher: FieldMatcher },
-    Submatchers { table: TableId, matchers: Vec<MatcherId> },
+    Submatchers(Submatchers),
 }
 
 impl Matcher {
@@ -175,6 +188,7 @@ impl Matcher {
             token_list,
             references,
             constructor: None, // this will be set later
+            display: None,
         }
     }
 
@@ -306,14 +320,14 @@ impl Matcher {
                             }
                         }
                     }
-                    MatcherAtom::Submatchers { table, matchers } => {
+                    MatcherAtom::Submatchers(submatchers) => {
                         let subtable = moir_tables
-                            .get(*table)
+                            .get(submatchers.table)
                             .ok_or_else(|| -> SleighCompilerError {
                                 todo!("Generate error report for missing table");
                             })?;
                         let mut has_match = false;
-                        for matcher_id in matchers {
+                        for matcher_id in &submatchers.matchers {
                             let matcher =
                                 subtable
                                     .matchers

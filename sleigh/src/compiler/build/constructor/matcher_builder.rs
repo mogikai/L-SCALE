@@ -40,6 +40,8 @@ use crate::spec::moir::field::{
 use crate::spec::moir::token::TokenId;
 use crate::spec::ProcessorSpecificationError;
 
+use super::matcher::Submatchers;
+
 impl SleighCompiler {
     /// Create a [Matcher] from a [SASTBitPatternConstraint]. Multiple matchers might be created
     /// due to the splitting of Or operations and the integration of subtables. After the creation,
@@ -56,8 +58,6 @@ impl SleighCompiler {
 
         Ok(matchers)
     }
-
-    // private helper functions
 
     /// Recursive entry called through [Self::create_matchers]
     fn create_matchers_recursive(
@@ -120,7 +120,7 @@ impl SleighCompiler {
                         // Token_list can be empty if there is no conjunction (i.e. only references
                         // or an epsilon matcher). We will create a matcher with an
                         // empty conjunction in this case.
-                        let atom = MatcherAtom::Submatchers { table: *tid, matchers };
+                        let atom = MatcherAtom::Submatchers(Submatchers::new(*tid, matchers));
                         let conjunctions = if token_list.is_empty() {
                             Vec::new()
                         } else {
@@ -190,8 +190,6 @@ impl SleighCompiler {
                         // Special case: one of the matchers is empty (this can happen
                         // if the bit pattern contains only `epsilon`). In this case,
                         // we'll just use the other matcher as-is
-                        // eprintln!("matcher_lhs = {:#?}", matcher_lhs);
-                        // eprintln!("matcher_rhs = {:#?}", matcher_rhs);
 
                         // We first extract everything context-related into an extra matcher that
                         // will be merged at the end. This is necessary since the Sleigh writers

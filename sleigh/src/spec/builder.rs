@@ -786,7 +786,6 @@ impl Default for ProcessorSpecificationBuilder {
             bytes: 0,
             endianness_override: None,
         }).expect("This may not error at this point");
-        eprintln!("zero_token = {:#?}", zero_token);
         slf.zero_token = Some(zero_token);
         slf.define_field(
             Spanned::new(epsilon, InputSpan::default()),

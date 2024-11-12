@@ -1,5 +1,8 @@
 use std::marker::PhantomData;
 
+use chumsky::container::Container;
+use itertools::Itertools;
+
 /// Creates a new symbol table identifier that can be used to index a [TypedIndexTable].
 #[macro_export(local_inner_macros)]
 macro_rules! new_typed_index_table_id {
@@ -78,7 +81,6 @@ where
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.0.iter()
     }
-
     pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
         self.0.iter_mut()
     }

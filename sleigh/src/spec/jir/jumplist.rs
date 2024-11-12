@@ -140,6 +140,7 @@ impl Jumplist {
                     // match next entry while skipping already consumed bytes
                     match &entry.next_entry {
                         NextJumplistEntry::Jumplist(jlid) => {
+                            // eprintln!("jlid = {:#?}", jlid);
                             let jumplist = jumplist_cache.get(*jlid).ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing jumplist") })?;
                             if let Some(list_matching) = jumplist.r#match(&bytes[self.bytes as usize..], jumplist_cache)? {
                                 matching.merge(list_matching);
@@ -155,6 +156,7 @@ impl Jumplist {
             }
         }
 
+        // not enough bytes left
         Ok(None)
     }
 
