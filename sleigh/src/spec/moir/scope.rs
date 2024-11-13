@@ -6,12 +6,12 @@ use crate::compiler::{
     SleighCompilerResult,
 };
 use crate::new_typed_index_table_id;
-use crate::spec::ProcessorSpecificationError;
 use crate::spec::builder::{
     CustomInterner,
     ProcessorSpecificationBuilder,
     StringId,
 };
+use crate::spec::jir::instruction::TargetInstructionBuilder;
 use crate::spec::moir::code::{
     MOIRInstruction,
     moir_instruction,
@@ -26,6 +26,10 @@ use crate::spec::moir::varnode::{
 };
 use crate::spec::reporting::generate_identifier_exists_report;
 use crate::spec::typed_index_table::TypedIndexTable;
+use crate::spec::{
+    ProcessorSpecResult,
+    ProcessorSpecificationError,
+};
 use itertools::Itertools;
 use mogi_utilities::index_map::PrimaryMap;
 use mogi_utilities::new_map_key;
@@ -93,7 +97,7 @@ enum SubTableBuild {
 
 /// A temporary varnode. These have no backing varnode at this stage yet.
 /// They will be mapped to concrete varnodes once the constructor is called.
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub(crate) struct MOIRTemporary {
     pub size: MOIRMaybeSize,
 }
@@ -230,6 +234,26 @@ impl MOIRScope {
         self.locals = locals;
         self.labels_definitions = label_definitions;
         result
+    }
+
+    pub fn iter_used_temps(&self) -> impl Iterator<Item = (MOIRLocalId, MOIRTemporary)> {
+        self.used_locals.iter().copied().filter_map(|local_id| {
+            match self
+                .slices
+                .get(local_id)
+                .expect("The local must exist. Otherwise we have a logic error in the Scope struct.")
+                .reference
+            {
+                MOIRReference::Temporary(temp_id) => Some((
+                    local_id,
+                    self.temporaries
+                        .get(temp_id)
+                        .copied()
+                        .expect("This must exist. Otherwise we have a logic error in the Scope struct"),
+                )),
+                _ => None,
+            }
+        })
     }
 
     pub fn mark_local_as_used(
@@ -594,28 +618,6 @@ impl MOIRScope {
             .expect("The local id was given out by us so it must exist");
         slice.set_size(size)?;
         Ok(local)
-    }
-
-    /// Replaces used temporary locals with actual varnodes in the temporary space.
-    pub fn realize_temporaries(
-        &mut self,
-        spec_builder: &mut ProcessorSpecificationBuilder,
-    ) -> SleighCompilerResult {
-        let mut offset = 0;
-        let used_locals = &self.used_locals;
-        for local in &self.used_locals {
-            let slice = self.slices.get_mut(*local).expect("This has to exist here");
-            if let MOIRReference::Temporary(temp) = slice.reference {
-                let temp = self.temporaries.get(temp).expect("This has to exist here");
-                let size = temp
-                    .size
-                    .ok_or_else(|| -> SleighCompilerError { todo!("Generate error for missing size") })?;
-                let varnode_id = spec_builder.define_temp_varnode(offset, size)?;
-                slice.reference = MOIRReference::VarNode(varnode_id);
-                offset += u64::from(size);
-            }
-        }
-        Ok(())
     }
 
     pub fn detailed_scope_display(

@@ -9,3 +9,16 @@ pub mod jir_block;
 pub mod local_resolver;
 pub mod space;
 pub mod values;
+
+#[cfg(feature = "trace_jir")]
+macro_rules! trace_jir {
+    ($($arg:tt)*) => {
+        tracing::trace!($($arg)*)
+    };
+}
+#[cfg(not(feature = "trace_jir"))]
+macro_rules! trace_jir {
+    ($($arg:tt)*) => {};
+}
+
+pub(crate) use trace_jir;

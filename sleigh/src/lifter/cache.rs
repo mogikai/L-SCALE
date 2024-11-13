@@ -51,6 +51,14 @@ impl LifterCache {
         }
     }
 
+    pub fn flush_instruction(
+        &mut self,
+        addr: EVAddr,
+    ) -> LifterResult {
+        self.target_instructions.remove(&addr);
+        Ok(())
+    }
+
     pub fn fetch_block(
         &self,
         addr: EVAddr,

@@ -9,7 +9,11 @@ use crate::spec::jir::jir_block::{
     JIRBlock,
     JIRBlockId,
 };
-use crate::spec::jir::local_resolver::JIRResolver;
+use crate::spec::jir::local_resolver::{
+    JIRResolvedValue,
+    JIRResolver,
+};
+use crate::spec::jir::trace_jir;
 use crate::spec::jir::values::{
     JIRSlice,
     JIRValue,
@@ -96,9 +100,11 @@ impl MOIRConstructor {
     /// The [JIRResolver] is usually populated by the matcher during matching.
     pub fn generate_jcode(
         &self,
-        resolver: JIRResolver,
+        mut resolver: JIRResolver,
     ) -> ProcessorSpecResult<TargetInstruction> {
-        let mut target_inst = TargetInstructionBuilder::new(resolver.inst_start(), resolver.inst_next());
+        let mut target_inst =
+            TargetInstructionBuilder::new(resolver.temp_space(), resolver.inst_start(), resolver.inst_next());
+        resolver.realize_temporaries(&mut target_inst)?;
         for block in self.instructions.chunk_by(|inst, next_inst| {
             !matches!(inst.operation.op_category(), MOIROpCategory::Branch) && next_inst.label.is_none()
         }) {
@@ -108,7 +114,7 @@ impl MOIRConstructor {
                 target_inst.start_block()?
             };
             for inst in block {
-                self.generate_instruction(&resolver, &mut target_inst, inst)?;
+                self.generate_instruction(&mut resolver, &mut target_inst, inst)?;
             }
             target_inst.finish_block()?;
         }
@@ -123,9 +129,11 @@ impl MOIRConstructor {
     /// will pick off where we left.
     pub(crate) fn generate_jcode_subtable(
         &self,
-        resolver: &JIRResolver,
+        resolver: &mut JIRResolver,
         inst_builder: &mut TargetInstructionBuilder,
     ) -> ProcessorSpecResult {
+        trace_jir!("Generating subtable instructions");
+        resolver.realize_temporaries(inst_builder)?;
         for (i, block) in self
             .instructions
             .chunk_by(|inst, next_inst| {
@@ -144,7 +152,7 @@ impl MOIRConstructor {
                 inst_builder.start_block()?;
             };
             for inst in block {
-                self.generate_instruction(&resolver, inst_builder, inst)?;
+                self.generate_instruction(resolver, inst_builder, inst)?;
             }
             // We only finish blocks when starting new blocks. The last block will remain unfinished, since
             // the parent constructor will pick up generating instructions for that block.
@@ -154,31 +162,27 @@ impl MOIRConstructor {
 
     fn generate_instruction(
         &self,
-        resolver: &JIRResolver,
+        resolver: &mut JIRResolver,
         target_inst: &mut TargetInstructionBuilder,
         inst: &MOIRInstruction,
     ) -> ProcessorSpecResult {
-        let output = self
-            .resolve_output(resolver, &inst.output)?
-            .ok_or(ProcessorSpecificationError::MissingOutput);
+        let (output, output_store) = match self.resolve_output(target_inst, resolver, &inst.output)? {
+            None => (Err(ProcessorSpecificationError::MissingOutput), None),
+            Some((output, output_store)) => (Ok(output), output_store),
+        };
         let input_a = self
-            .resolve_input(resolver, &inst.input_a)?
+            .resolve_input(target_inst, resolver, &inst.input_a)?
             .ok_or(ProcessorSpecificationError::MissingInput);
         let input_b = self
-            .resolve_input(resolver, &inst.input_b)?
+            .resolve_input(target_inst, resolver, &inst.input_b)?
             .ok_or(ProcessorSpecificationError::MissingInput);
-        debug!("{inst}\n");
+        trace_jir!("Generating instruction {inst}\n");
+        trace_jir!("Resolved inputs: {input_a:?} {input_b:?}");
         let inst = match &inst.operation {
-            MOIROperation::Build(table) => {
-                let resolver = resolver.subtable_resolver(*table)?;
-                resolver
-                    .constructor()
-                    .generate_jcode_subtable(resolver, target_inst)?;
-                return Ok(());
-            }
+            MOIROperation::Build(table) => return resolver.build_subtable(target_inst, *table),
             MOIROperation::Copy => jinst!({ output? } = { input_a? }),
             MOIROperation::CustomOp { op_id, extra_args } => {
-                let args = self.resolve_custom_op_args(resolver, input_a, input_b, extra_args)?;
+                let args = self.resolve_custom_op_args(target_inst, resolver, input_a, input_b, extra_args)?;
 
                 if let Ok(output) = output {
                     jinst!(output = (*{ *op_id })(*args))
@@ -204,7 +208,17 @@ impl MOIRConstructor {
             MOIROperation::Ceil => jinst!({ output? } = ceil({ input_a? })),
             MOIROperation::Floor => jinst!({ output? } = floor({ input_a? })),
             MOIROperation::Round => jinst!({ output? } = round({ input_a? })),
-            MOIROperation::Load(space) => jinst!({ output? } = *[{*space}]{ input_a? }),
+            MOIROperation::Load(space) => {
+                let output = output?;
+                let address = input_a?;
+                if let Some(optimized) = resolver.optimize_const_load(address, *space, output.size())? {
+                    // If the load was optimized to a constant we can simply assign it here.
+                    jinst!(output = optimized)
+                } else {
+                    // Otherwise we generate a normal load instruction.
+                    jinst!(output = *[{*space}]address)
+                }
+            }
             MOIROperation::Store(space) => jinst!(*[{*space}]{ input_a? } = { input_b? }),
             MOIROperation::GotoDirect(ty) => match ty {
                 MOIRGotoType::Call => jinst!(call {input_a?}),
@@ -267,11 +281,15 @@ impl MOIRConstructor {
             MOIROperation::IntNegate => jinst!({ output? } = -{ input_a? }),
             MOIROperation::FloatNegate => jinst!({ output? } =  fneg{ input_a? }),
         };
+        if let Some(output_store) = output_store {
+            target_inst.push_jir_instruction(output_store)?;
+        }
         target_inst.push_jir_instruction(inst)
     }
 
     fn resolve_custom_op_args(
         &self,
+        instruction_builder: &mut TargetInstructionBuilder,
         resolver: &JIRResolver,
         input_a: ProcessorSpecResult<JIRValue>,
         input_b: ProcessorSpecResult<JIRValue>,
@@ -290,37 +308,71 @@ impl MOIRConstructor {
         if input_a.is_ok() && input_b.is_ok() && !args.is_empty() {
             return once(input_a)
                 .chain(once(input_b))
-                .chain(
-                    args.iter()
-                        .copied()
-                        .map(|input| resolver.resolve_local(input)),
-                )
+                .chain(args.iter().copied().map(|input| {
+                    resolver
+                        .resolve_local(instruction_builder, input)
+                        .and_then(|resolved| match resolved {
+                            // If we have a value, we can simply return that.
+                            JIRResolvedValue::Value(value) => Ok(value),
+                            JIRResolvedValue::Reference { address, space, size } => {
+                                // In case of references we need to load the value into a temporary varnode
+                                instruction_builder
+                                    .load_temp(address, space, size)
+                                    .map(JIRValue::from)
+                            }
+                        })
+                }))
                 .collect::<Result<Vec<_>, _>>();
         }
         todo!("Generate error for invalid inputs to custom op")
     }
 
+    /// Resolve the output. If there is an output, this will always be a writeable slice.
+    /// However, it might be necessary, to subsequently store this slice to a memory location.
+    /// In this case, the second return argument is the store instruction that needs to be inserted
+    /// after the operation that writes to the out temporary.
     fn resolve_output(
         &self,
+        instruction_builder: &mut TargetInstructionBuilder,
         resolver: &JIRResolver,
         output: &Option<MOIRLocalId>,
-    ) -> ProcessorSpecResult<Option<JIRSlice>> {
+    ) -> ProcessorSpecResult<Option<(JIRSlice, Option<JIRInstruction>)>> {
         output
             .map(|out| {
-                resolver.resolve_local_id(out).and_then(|o| match o {
-                    JIRValue::Slice(slice) => Ok(slice),
-                    JIRValue::Const(_) => todo!("Generate error for const not allowed in output position"),
-                })
+                resolver
+                    .resolve_local_id(instruction_builder, out)
+                    .and_then(|o| match o {
+                        JIRResolvedValue::Value(value) => match value {
+                            JIRValue::Slice(slice) => Ok((slice, None)),
+                            JIRValue::Const(_) => todo!("Generate error for const not allowed in output position"),
+                        },
+                        JIRResolvedValue::Reference { address, space, size } => {
+                            let tmp = JIRSlice::new_temp(instruction_builder.alloc_temporary(size)?, 0, size);
+                            Ok((tmp, Some(jinst!(*[space]address = tmp))))
+                        }
+                    })
             })
             .transpose()
     }
 
     fn resolve_input(
         &self,
+        instruction_builder: &mut TargetInstructionBuilder,
         resolver: &JIRResolver,
         input: &Option<MOIRLocal>,
     ) -> ProcessorSpecResult<Option<JIRValue>> {
-        input.map(|input| resolver.resolve_local(input)).transpose()
+        input
+            .map(|input| {
+                resolver
+                    .resolve_local(instruction_builder, input)
+                    .and_then(|resolved| match resolved {
+                        JIRResolvedValue::Value(value) => Ok(value),
+                        JIRResolvedValue::Reference { address, space, size } => instruction_builder
+                            .load_temp(address, space, size)
+                            .map(JIRValue::from),
+                    })
+            })
+            .transpose()
     }
 
     pub fn mcode_debug_string(

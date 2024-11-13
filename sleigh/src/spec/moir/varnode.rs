@@ -62,7 +62,7 @@ impl MOIRSlice {
 
     pub fn refers_to_varnode(&self) -> bool {
         match self.reference {
-            MOIRReference::VarNode(_) => true,
+            MOIRReference::VarNode(_) | MOIRReference::Temporary(_) => true,
             _ => false,
         }
     }

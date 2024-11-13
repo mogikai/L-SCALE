@@ -1,15 +1,14 @@
-use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::ast::Spanned;
+use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
-use crate::spec::moir::address_space::MOIRSpaceType;
 use crate::spec::moir::code::{
-    moir_instruction,
     MOIRInstruction,
+    moir_instruction,
 };
 use crate::spec::moir::scope::{
     MOIRLocalId,
@@ -17,7 +16,6 @@ use crate::spec::moir::scope::{
     MOIRScope,
 };
 use crate::spec::moir::varnode::MOIRLocal;
-use crate::spec::moir::MOIR_ADDRESS_SIZE;
 use std::cmp::Ordering;
 
 impl SleighCompiler {
@@ -28,16 +26,20 @@ impl SleighCompiler {
         out: Option<MOIRLocalId>,
         deref: Spanned<SASTPCodeDeref>,
     ) -> SleighCompilerResult<MOIRLocal> {
-        trace_build!("Atomizing load expression");
+        trace_build!("Atomizing load expression {deref:?}");
         let (deref, _) = deref.into_tuple();
+
         let value_size = deref
             .size
             .map(Spanned::into_value)
             .map(MOIRMaybeSize::Determined)
             .unwrap_or(MOIRMaybeSize::Undetermined);
+        trace_build!("Load size is {value_size:?}");
+
         let out_size = out
             .map(|id| scope.size_of_local(id))
             .unwrap_or(MOIRMaybeSize::Undetermined);
+        trace_build!("Out size is {out_size:?}");
 
         // If out is not specified we allocate our own out variable to store the result in.
         let out = out.unwrap_or_else(|| scope.allocate_temporary(out_size.or(value_size)));
@@ -61,38 +63,32 @@ impl SleighCompiler {
             .spec_builder
             .space_by_symbol_id(space)
             .ok_or_else(|| -> SleighCompilerError { todo!("Generate appropriate error report") })?;
-        if matches!(spc.r#type, MOIRSpaceType::Const) {
-            // TODO: This is kind of ugly atm. Is there a smarter way to determine the required size for
-            //       addresses into the const space?
-            if addr.size(scope).is_undetermined() {
-                scope.constrain_local_size(&mut addr, MOIR_ADDRESS_SIZE)?;
-            }
-        } else {
-            trace_build!("Constraining addr size to {}", spc.address_size);
-            scope.constrain_local_size(&mut addr, spc.address_size)?;
-        };
 
-        if let MOIRMaybeSize::Determined(value_size) = value_size {
-            match out_size.cmp(&value_size) {
-                Ordering::Less => {
-                    todo!("Generate error for out too small for loaded value")
-                }
-                Ordering::Equal => {
-                    // If the size of out is equal to the size of the load, we can just perform the load.
-                    instructions.push(moir_instruction!(out = *[space]addr));
-                }
-                Ordering::Greater => {
-                    // TODO: The spec is underdefined in this regard, or the default compiler is wrong.
-                    //       The output size should be the same as the one specified here.
-                    //       This implicit zero extend is kind of stupid imho.
-                    // If the size of out is larger than the loaded value, we perform a zero extend.
-                    // Insert the operation here. The jit might optimize the zero extend + load into one op.
-                    // Allocate tmp for loading the value into a correctly sized varnode.
-                    let tmp = scope.allocate_temporary(value_size);
-                    // Load the value
-                    instructions.push(moir_instruction!(tmp = *[space]addr));
-                    instructions.push(moir_instruction!(out = zext(tmp)));
-                }
+        trace_build!("Constraining addr size to {}", spc.address_size);
+        scope.constrain_local_size(&mut addr, spc.address_size)?;
+
+        let MOIRMaybeSize::Determined(value_size) = value_size.or(out_size.into()) else {
+            todo!("This should not happen. What does it mean when both sizes are not set?")
+        };
+        match out_size.cmp(&value_size) {
+            Ordering::Less => {
+                todo!("Generate error for out too small for loaded value")
+            }
+            Ordering::Equal => {
+                // If the size of out is equal to the size of the load, we can just perform the load.
+                instructions.push(moir_instruction!(out = *[space]addr));
+            }
+            Ordering::Greater => {
+                // TODO: The spec is underdefined in this regard, or the default compiler is wrong.
+                //       The output size should be the same as the one specified here.
+                //       This implicit zero extend is kind of stupid imho.
+                // If the size of out is larger than the loaded value, we perform a zero extend.
+                // Insert the operation here. The jit might optimize the zero extend + load into one op.
+                // Allocate tmp for loading the value into a correctly sized varnode.
+                let tmp = scope.allocate_temporary(value_size);
+                // Load the value
+                instructions.push(moir_instruction!(tmp = *[space]addr));
+                instructions.push(moir_instruction!(out = zext(tmp)));
             }
         }
         Ok(out.into())

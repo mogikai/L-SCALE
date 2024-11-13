@@ -90,6 +90,14 @@ impl<K: MapKey, V> PrimaryMap<K, V> {
         self.data.get_mut(key.to_index())
     }
 
+    pub fn first(&self) -> Option<&V> {
+        self.data.first()
+    }
+
+    pub fn last(&self) -> Option<&V> {
+        self.data.last()
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &V> {
         self.data.iter()
     }

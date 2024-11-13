@@ -5,6 +5,7 @@ use crate::spec::builder::CustomInterner;
 use crate::spec::jir::instruction::TargetInstruction;
 use crate::spec::jir::local_resolver::JIRResolver;
 use crate::spec::jir::values::{
+    JIRConst,
     JIRSlice,
     JIRValue,
     VarNodeId,
@@ -60,6 +61,7 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
         addr: EVAddr,
         cid: usize,
     ) -> LifterResult<(EVAddr, &TargetInstruction)> {
+        self.cache.flush_instruction(addr)?;
         // Check the cache. If it contains the instruction we can simply return it.
         if self.cache.is_instruction_cached(addr) {
             // TODO: Remove the outer check once the conditional control flow borrow checking lands
@@ -88,35 +90,17 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
         //       also only calculate inst_next2 if we actually need it in the body.
         //       For now we just set it to None
         let inst_next = addr + 8;
-        let mut resolver = JIRResolver::new(constructor, addr, inst_next, None);
-        resolver
-            .define_ident(
-                self.specification.interner.lookup("Reg32").unwrap(),
-                JIRValue::Slice(JIRSlice {
-                    varnode_id: VarNodeId::from(0),
-                    start: 0,
-                    end: 4,
-                }),
-            )
-            .expect("");
+        let mut resolver = JIRResolver::new(&self.specification, constructor, addr, inst_next, None);
         resolver
             .define_ident(
                 self.specification.interner.lookup("vexVVVV_r32").unwrap(),
-                JIRValue::Slice(JIRSlice {
-                    varnode_id: VarNodeId::from(0),
-                    start: 0,
-                    end: 4,
-                }),
+                JIRValue::Slice(JIRSlice::new(VarNodeId::from(0), 0, 4)),
             )
             .expect("");
         resolver
             .define_ident(
                 self.specification.interner.lookup("rm32").unwrap(),
-                JIRValue::Slice(JIRSlice {
-                    varnode_id: VarNodeId::from(0),
-                    start: 0,
-                    end: 4,
-                }),
+                JIRValue::Slice(JIRSlice::new(VarNodeId::from(0), 0, 4)),
             )
             .expect("");
 
@@ -126,18 +110,24 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
             .constructors
             .get(ConstructorId::from(5))
             .expect("");
-        let resolver3 = JIRResolver::new(constructor3, addr, inst_next, None);
+        let mut resolver3 = JIRResolver::new(&self.specification, constructor3, addr, inst_next, None);
+        resolver3
+            .define_ident(
+                self.specification.interner.lookup("reg32").unwrap(),
+                JIRValue::Slice(JIRSlice::new(VarNodeId::from(5), 0, 4)),
+            )
+            .expect("");
         resolver
             .define_subtable_resolver(TableId::from(3), resolver3)
             .expect("");
 
-        let constructor39 = self
+        let constructor43 = self
             .specification
             .symbol_tables
             .constructors
             .get(ConstructorId::from(172))
             .expect("");
-        let mut resolver39 = JIRResolver::new(constructor39, addr, inst_next, None);
+        let mut resolver43 = JIRResolver::new(&self.specification, constructor43, addr, inst_next, None);
 
         let constructor9 = self
             .specification
@@ -145,16 +135,22 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
             .constructors
             .get(ConstructorId::from(20))
             .expect("");
-        let mut resolver9 = JIRResolver::new(constructor9, addr, inst_next, None);
+        let mut resolver9 = JIRResolver::new(&self.specification, constructor9, addr, inst_next, None);
+        resolver9
+            .define_ident(
+                self.specification.interner.lookup("r32").unwrap(),
+                JIRValue::Slice(JIRSlice::new(VarNodeId::from(5), 0, 4)),
+            )
+            .expect("");
 
-        let constructor43 = self
+        let constructor39 = self
             .specification
             .symbol_tables
             .constructors
             .get(ConstructorId::from(130))
             .expect("");
-        let mut resolver43 = JIRResolver::new(constructor43, addr, inst_next, None);
-        resolver43
+        let mut resolver39 = JIRResolver::new(&self.specification, constructor39, addr, inst_next, None);
+        resolver39
             .define_subtable_resolver(TableId::from(9), resolver9)
             .expect("");
 
@@ -164,17 +160,7 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
             .constructors
             .get(ConstructorId::from(200))
             .expect("");
-        let mut resolver46 = JIRResolver::new(constructor46, addr, inst_next, None);
-        resolver46
-            .define_ident(
-                self.specification.interner.lookup("addr32").unwrap(),
-                JIRValue::Slice(JIRSlice {
-                    varnode_id: VarNodeId::from(1),
-                    start: 0,
-                    end: 4,
-                }),
-            )
-            .expect("");
+        let mut resolver46 = JIRResolver::new(&self.specification, constructor46, addr, inst_next, None);
         resolver46
             .define_subtable_resolver(TableId::from(43), resolver43)
             .expect("");
@@ -188,7 +174,7 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
             .constructors
             .get(ConstructorId::from(358))
             .expect("");
-        let mut resolver118 = JIRResolver::new(constructor118, addr, inst_next, None);
+        let mut resolver118 = JIRResolver::new(&self.specification, constructor118, addr, inst_next, None);
         resolver118
             .define_subtable_resolver(TableId::from(46), resolver46)
             .expect("");
@@ -202,25 +188,17 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
             .constructors
             .get(ConstructorId::from(366))
             .expect("");
-        let mut sub_resolver = JIRResolver::new(sub_constructor, addr, inst_next, None);
+        let mut sub_resolver = JIRResolver::new(&self.specification, sub_constructor, addr, inst_next, None);
         sub_resolver
             .define_ident(
                 self.specification.interner.lookup("reg32").unwrap(),
-                JIRValue::Slice(JIRSlice {
-                    varnode_id: VarNodeId::from(0),
-                    start: 0,
-                    end: 4,
-                }),
+                JIRValue::Slice(JIRSlice::new(VarNodeId::from(0), 0, 4)),
             )
             .expect("");
         sub_resolver
             .define_ident(
                 self.specification.interner.lookup("reg64").unwrap(),
-                JIRValue::Slice(JIRSlice {
-                    varnode_id: VarNodeId::from(0),
-                    start: 0,
-                    end: 8,
-                }),
+                JIRValue::Slice(JIRSlice::new(VarNodeId::from(0), 0, 8)),
             )
             .expect("");
         resolver

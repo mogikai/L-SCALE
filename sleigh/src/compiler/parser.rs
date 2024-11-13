@@ -189,6 +189,13 @@ where
     one_sleigh_whitespace().repeated()
 }
 
+fn at_least_one_sleigh_whitespace<'tokens, E>() -> impl Parser<'tokens, ParserInput<'tokens>, (), E> + Clone
+where
+    E: ParserExtra<'tokens, ParserInput<'tokens>>,
+{
+    one_sleigh_whitespace().repeated().at_least(1)
+}
+
 /// Parse an ident token and return the contained string reference
 fn sleigh_ident<'tokens, 'src: 'tokens>()
 -> impl Parser<'tokens, ParserInput<'tokens>, StringId, SleighParserExtra<'tokens>> + Clone {
