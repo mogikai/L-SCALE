@@ -115,6 +115,7 @@ impl Jumplist {
 
     // TODO correct return type
     pub(crate) fn r#match(&self, bytes: &[u8], jumplist_cache: &TypedIndexTable<JumplistId, Jumplist>) -> SleighCompilerResult<Option<JumplistMatching>> {
+        // eprintln!("self = {:#?}", self);
         let value_bytes = bytes.get(0..(self.bytes as usize));
         if let Some(value_bytes) = value_bytes {
             let mut value_byte_arr = [0u8; 8];
@@ -124,17 +125,23 @@ impl Jumplist {
 
             let value = u64::from_le_bytes(value_byte_arr) & self.mask;
             if let Some(entries) = self.get(value)? {
-                'next_entry: for entry in entries {
+                for entry in entries {
                     let mut matching = JumplistMatching::new();
 
                     // match all sublists
+                    let mut sublists_match = true;
                     for sublist_id in &entry.same_token_jumplists {
                         let sublist = jumplist_cache.get(*sublist_id).ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing jumplist") })?;
                         if let Some(list_matching) = sublist.r#match(bytes, jumplist_cache)? {
                             matching.merge(list_matching)
                         } else {
-                            continue 'next_entry;
+                            sublists_match = false;
+                            break;
                         }
+                    }
+
+                    if !sublists_match {
+                        continue;
                     }
 
                     // match next entry while skipping already consumed bytes
