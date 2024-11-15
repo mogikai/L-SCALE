@@ -101,7 +101,6 @@ mod test {
 
     #[test]
     fn load_const_space_literal_to_local_parses() -> Result<(), SleighCompilerError> {
-        // test_statement("*:10 (Mem + 78) = ST5;")
         let result = test_statement_output("local x = *[const]:4 1;")?;
         let stmt = result.into_value();
         match stmt {
@@ -135,7 +134,6 @@ mod test {
 
     #[test]
     fn load_ram_space_ident_parses() -> Result<(), SleighCompilerError> {
-        // test_statement("*:10 (Mem + 78) = ST5;")
         let result = test_statement_output("x = *[ram]:4 y;")?;
         let stmt = result.into_value();
         match stmt {
@@ -169,7 +167,6 @@ mod test {
 
     #[test]
     fn load_ram_space_ident_no_size_parses() -> Result<(), SleighCompilerError> {
-        // test_statement("*:10 (Mem + 78) = ST5;")
         let result = test_statement_output("x = *[ram] y;")?;
         let stmt = result.into_value();
         match stmt {
