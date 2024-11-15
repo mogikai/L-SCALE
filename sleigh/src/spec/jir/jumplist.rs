@@ -4,7 +4,10 @@ use std::ops::Index;
 use std::rc::Rc;
 
 use chumsky::container::Container;
-use itertools::{Either, Itertools};
+use itertools::{
+    Either,
+    Itertools,
+};
 use num::traits::Pow;
 use num::PrimInt;
 
@@ -19,6 +22,9 @@ use crate::spec::typed_index_table::TypedIndexTable;
 pub(crate) enum NextJumplistEntry {
     Jumplist(JumplistId),
     Matcher(String),
+    // we need a stub in case of entries that only link to another list without
+    // consuming and without any next entries (e.g. for submasks)
+    Stub,
 }
 
 #[derive(Debug, Clone)]
@@ -61,13 +67,21 @@ pub(crate) struct JumplistMatching {
 }
 
 impl JumplistMatching {
-    pub(crate) fn new() -> Self { Self { tables: Vec::new() } }
+    pub(crate) fn new() -> Self {
+        Self { tables: Vec::new() }
+    }
 
-    pub fn merge(&mut self, mut other: JumplistMatching) {
+    pub fn merge(
+        &mut self,
+        mut other: JumplistMatching,
+    ) {
         self.tables.append(&mut other.tables);
     }
 
-    pub fn push(&mut self, table: String) {
+    pub fn push(
+        &mut self,
+        table: String,
+    ) {
         self.tables.push(table)
     }
 }
@@ -91,6 +105,7 @@ impl Jumplist {
         &mut self,
         value: u64,
         entry: JumplistEntry,
+        prepend: bool,
     ) -> SleighCompilerResult {
         if value > 0 && value.ilog2() >= (self.bytes * 8) as u32 {
             todo!("Generate error report for out of bounds access");
@@ -102,19 +117,34 @@ impl Jumplist {
                     .get_mut(value as usize)
                     .expect("This has been checked before");
                 if let Some(vec) = array_entry {
-                    vec.push(entry);
+                    if prepend {
+                        vec.insert(0, entry);
+                    } else {
+                        vec.push(entry);
+                    }
                 } else {
                     *array_entry = Some(vec![entry]);
                 }
             }
-            JumplistContainer::Large(map) => map.entry(value).or_insert(Vec::new()).push(entry),
+            JumplistContainer::Large(map) => {
+                let vec = map.entry(value).or_insert(Vec::new());
+                if prepend {
+                    vec.insert(0, entry);
+                } else {
+                    vec.push(entry);
+                }
+            }
         }
 
         Ok(())
     }
 
     // TODO correct return type
-    pub(crate) fn r#match(&self, bytes: &[u8], jumplist_cache: &TypedIndexTable<JumplistId, Jumplist>) -> SleighCompilerResult<Option<JumplistMatching>> {
+    pub(crate) fn r#match(
+        &self,
+        bytes: &[u8],
+        jumplist_cache: &TypedIndexTable<JumplistId, Jumplist>,
+    ) -> SleighCompilerResult<Option<JumplistMatching>> {
         // eprintln!("self = {:#?}", self);
         let value_bytes = bytes.get(0..(self.bytes as usize));
         if let Some(value_bytes) = value_bytes {
@@ -131,7 +161,11 @@ impl Jumplist {
                     // match all sublists
                     let mut sublists_match = true;
                     for sublist_id in &entry.same_token_jumplists {
-                        let sublist = jumplist_cache.get(*sublist_id).ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing jumplist") })?;
+                        let sublist = jumplist_cache
+                            .get(*sublist_id)
+                            .ok_or_else(|| -> SleighCompilerError {
+                                todo!("Generate error report for missing jumplist")
+                            })?;
                         if let Some(list_matching) = sublist.r#match(bytes, jumplist_cache)? {
                             matching.merge(list_matching)
                         } else {
@@ -148,8 +182,14 @@ impl Jumplist {
                     match &entry.next_entry {
                         NextJumplistEntry::Jumplist(jlid) => {
                             // eprintln!("jlid = {:#?}", jlid);
-                            let jumplist = jumplist_cache.get(*jlid).ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing jumplist") })?;
-                            if let Some(list_matching) = jumplist.r#match(&bytes[self.bytes as usize..], jumplist_cache)? {
+                            let jumplist = jumplist_cache
+                                .get(*jlid)
+                                .ok_or_else(|| -> SleighCompilerError {
+                                    todo!("Generate error report for missing jumplist")
+                                })?;
+                            if let Some(list_matching) =
+                                jumplist.r#match(&bytes[self.bytes as usize..], jumplist_cache)?
+                            {
                                 matching.merge(list_matching);
                                 return Ok(Some(matching));
                             }
@@ -158,6 +198,7 @@ impl Jumplist {
                             matching.push(display.clone());
                             return Ok(Some(matching));
                         }
+                        NextJumplistEntry::Stub => return Ok(Some(matching)),
                     }
                 }
             }
@@ -167,7 +208,7 @@ impl Jumplist {
         Ok(None)
     }
 
-    fn get(
+    pub(crate) fn get(
         &self,
         value: u64,
     ) -> SleighCompilerResult<Option<&Vec<JumplistEntry>>> {
@@ -182,6 +223,28 @@ impl Jumplist {
                 .as_ref(),
             JumplistContainer::Large(map) => map.get(&value),
         })
+    }
+
+    pub(crate) fn values<'a>(&'a self) -> Box<dyn Iterator<Item = u64> + 'a> {
+        match &self.container {
+            JumplistContainer::Small(array) => Box::new(
+                (0..array.len())
+                    .filter(|index| array.get(*index).expect("We checked for this").is_some())
+                    .map(|index| u64::try_from(index).unwrap()),
+            ),
+            JumplistContainer::Large(map) => Box::new(map.keys().copied()),
+        }
+    }
+
+    pub(crate) fn entries_mut<'a>(&'a mut self) -> Box<dyn Iterator<Item = (u64, &'a mut Vec<JumplistEntry>)> + 'a> {
+        match &mut self.container {
+            JumplistContainer::Small(array) => Box::new(array.iter_mut().enumerate().filter_map(|(value, option)| {
+                option
+                    .as_mut()
+                    .map(|entries| (u64::try_from(value).unwrap(), entries))
+            })),
+            JumplistContainer::Large(map) => Box::new(map.iter_mut().map(|(value, entries)| (*value, entries))),
+        }
     }
 }
 

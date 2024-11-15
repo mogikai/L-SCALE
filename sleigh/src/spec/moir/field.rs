@@ -3,6 +3,7 @@ use crate::spec::builder::StringId;
 use crate::spec::moir::token::TokenId;
 use std::ops::Range;
 
+use super::common::MOIRSize;
 use super::context::MOIRContextId;
 use super::varnode::VarNodeId;
 
@@ -20,23 +21,32 @@ impl MOIRBitRange {
         Self { start, end }
     }
 
-    pub fn size(&self) -> u8 {
-        self.end - self.start
+    pub fn bits(&self) -> MOIRSize {
+        MOIRSize::try_from(self.end - self.start).unwrap()
+    }
+
+    pub fn bytes(&self) -> Option<MOIRSize> {
+        let bits = self.bits();
+        if bits % 8 == 0 {
+            Some(bits / 8)
+        } else {
+            None
+        }
     }
 
     /// Generate a mask for the bit range without any shifts.
     pub fn mask(&self) -> u64 {
-        if self.size() as u32 == u64::BITS {
+        if self.bits() as u32 == u64::BITS {
             // prevent overflow
             u64::MAX
         } else {
-            (1 << self.size()) - 1
+            (1 << self.bits()) - 1
         }
     }
 
     /// Generate a mask for the bit range including shifts.
     pub fn mask_shift(&self) -> u64 {
-        ((1 << self.size()) - 1) << self.start
+        ((1 << self.bits()) - 1) << self.start
     }
 
     pub fn extract_from(&self, v: u64) -> u64 {

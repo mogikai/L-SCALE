@@ -313,7 +313,7 @@ impl SleighCompiler {
     ) -> Result<Option<MOIRField>, SleighCompilerError> {
         if field_range.start > field_range.end {
             todo!("Generate correct error report and return Ok(None)")
-        } else if field_range.size() > bits as u8 {
+        } else if field_range.bits() > MOIRSize::try_from(bits).unwrap() {
             todo!("Generate correct error report and return Ok(None)")
         } else {
             // The variables, values, and strings fields are later attached with attach statements.
