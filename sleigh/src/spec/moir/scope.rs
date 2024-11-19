@@ -6,7 +6,6 @@ use crate::compiler::{
     SleighCompilerResult,
 };
 use crate::new_typed_index_table_id;
-use crate::spec::ProcessorSpecificationError;
 use crate::spec::builder::{
     CustomInterner,
     ProcessorSpecificationBuilder,
@@ -26,10 +25,6 @@ use crate::spec::moir::varnode::{
     MOIRSlice,
 };
 use crate::spec::typed_index_table::TypedIndexTable;
-use crate::spec::{
-    ProcessorSpecResult,
-    ProcessorSpecificationError,
-};
 use itertools::Itertools;
 use mogi_utilities::index_map::PrimaryMap;
 use mogi_utilities::new_map_key;

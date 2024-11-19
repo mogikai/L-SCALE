@@ -260,7 +260,7 @@ impl SleighCompiler {
                     let table = self
                         .spec_builder
                         .table_by_symbol_id(*table_id)
-                        .ok_or(SleighCompilerErrorType::SymbolUndeclared)?;
+                        .ok_or(SleighCompilerErrorType::UndeclaredSymbol)?;
                     let constructor_id = table.constructors.first();
                     let export_size = constructor_id
                         .map(|cid| self.spec_builder.constructor_by_symbol_id(*cid))
