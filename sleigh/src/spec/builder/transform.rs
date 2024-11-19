@@ -177,7 +177,7 @@ impl MOIRToJIRTransformer {
         // TODO remove
         let root_jumplist = jumplist_cache.get(root_jumplist_id).unwrap();
         let bytes = [
-            0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x1D, 0x12, 0x09, 0x00, 0x00,
+            0x13, 0xff, 0x34, 0x12, 0x00, 0x00,
         ];
         let matching = root_jumplist.r#match(&bytes, &jumplist_cache);
         eprintln!("matching = {:#?}", matching);

@@ -16,6 +16,7 @@ use crate::compiler::error::SleighCompilerError;
 use crate::compiler::SleighCompilerResult;
 use crate::new_typed_index_table_id;
 use crate::spec::moir::common::MOIRSize;
+use crate::spec::moir::context::MOIRContextId;
 use crate::spec::typed_index_table::TypedIndexTable;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,11 +54,20 @@ pub(crate) enum JumplistContainer {
     Large(HashMap<u64, Vec<JumplistEntry>>),
 }
 
+// Data can come from either the byte stream or an external context provider.
+// This needs to be accounted for when creating the lists.
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub(crate) enum DataProvider {
+    ByteStream,
+    Context(MOIRContextId)
+}
+
 #[derive(Debug)]
 pub(crate) struct Jumplist {
     container: JumplistContainer,
     pub(crate) mask: u64, // usually only a few bits are actually relevant for indexing into the list
     pub(crate) bytes: MOIRSize,
+    pub(crate) data_provider: DataProvider,
 }
 
 // TODO put necessary information here
@@ -90,6 +100,7 @@ impl Jumplist {
     pub(crate) fn new(
         mask: u64,
         bytes: MOIRSize,
+        data_provider: DataProvider,
     ) -> Self {
         let container = if bytes <= 1 {
             // JumplistContainer::Small([const { Option::None }; 256])
@@ -98,7 +109,7 @@ impl Jumplist {
             JumplistContainer::Large(HashMap::new())
         };
 
-        Self { container, mask, bytes }
+        Self { container, mask, bytes, data_provider }
     }
 
     pub(crate) fn insert(
@@ -139,67 +150,94 @@ impl Jumplist {
         Ok(())
     }
 
+    fn decode_value<'a>(
+        &'a self,
+        bytes: &'a [u8],
+        // TODO insert context providers
+    ) -> Option<(u64, &'a [u8])> { // TODO return value
+        match self.data_provider {
+            DataProvider::ByteStream => {
+                let value_bytes = bytes.get(0..usize::try_from(self.bytes).unwrap());
+                match value_bytes {
+                    Some(value_bytes) => {
+                        let mut value_byte_arr = [0u8; 8];
+                        for (bytei, byte) in value_bytes.into_iter().enumerate() {
+                            value_byte_arr[bytei] = *byte;
+                        }
+
+                        let value = u64::from_le_bytes(value_byte_arr) & self.mask;
+                        Some((value, &bytes[usize::try_from(self.bytes).unwrap()..]))
+                    },
+                    None => None // no bytes left
+                }
+            }
+            DataProvider::Context(cid) => {
+                // todo!("Provide context values")
+                Some((0x00_00_00_00_00_00_00_51u64 & self.mask, bytes))
+            }
+        }
+
+    }
+
     // TODO correct return type
     pub(crate) fn r#match(
         &self,
         bytes: &[u8],
         jumplist_cache: &TypedIndexTable<JumplistId, Jumplist>,
+        // TODO insert context providers
     ) -> SleighCompilerResult<Option<JumplistMatching>> {
+        // eprintln!("matching self = {:#?}", self);
+
         // eprintln!("self = {:#?}", self);
-        let value_bytes = bytes.get(0..(self.bytes as usize));
-        if let Some(value_bytes) = value_bytes {
-            let mut value_byte_arr = [0u8; 8];
-            for (bytei, byte) in value_bytes.into_iter().enumerate() {
-                value_byte_arr[bytei] = *byte;
-            }
+        // TODO handle
+        let (value, remaining_bytes) = self.decode_value(bytes).expect("Couldn't decode value");
 
-            let value = u64::from_le_bytes(value_byte_arr) & self.mask;
-            if let Some(entries) = self.get(value)? {
-                for entry in entries {
-                    let mut matching = JumplistMatching::new();
+        if let Some(entries) = self.get(value)? {
+            for entry in entries {
+                let mut matching = JumplistMatching::new();
 
-                    // match all sublists
-                    let mut sublists_match = true;
-                    for sublist_id in &entry.same_token_jumplists {
-                        let sublist = jumplist_cache
-                            .get(*sublist_id)
+                // match all sublists
+                let mut sublists_match = true;
+                for sublist_id in &entry.same_token_jumplists {
+                    eprintln!("sublist  = {:#?}", sublist_id);
+                    let sublist = jumplist_cache
+                        .get(*sublist_id)
+                        .ok_or_else(|| -> SleighCompilerError {
+                            todo!("Generate error report for missing jumplist")
+                        })?;
+                    if let Some(list_matching) = sublist.r#match(bytes, jumplist_cache)? {
+                        matching.merge(list_matching)
+                    } else {
+                        sublists_match = false;
+                        break;
+                    }
+                }
+
+                if !sublists_match {
+                    continue;
+                }
+
+                // match next entry while skipping already consumed bytes
+                match &entry.next_entry {
+                    NextJumplistEntry::Jumplist(jlid) => {
+                        eprintln!("nextlist = {:#?}", jlid);
+                        let jumplist = jumplist_cache
+                            .get(*jlid)
                             .ok_or_else(|| -> SleighCompilerError {
                                 todo!("Generate error report for missing jumplist")
                             })?;
-                        if let Some(list_matching) = sublist.r#match(bytes, jumplist_cache)? {
-                            matching.merge(list_matching)
-                        } else {
-                            sublists_match = false;
-                            break;
-                        }
-                    }
-
-                    if !sublists_match {
-                        continue;
-                    }
-
-                    // match next entry while skipping already consumed bytes
-                    match &entry.next_entry {
-                        NextJumplistEntry::Jumplist(jlid) => {
-                            // eprintln!("jlid = {:#?}", jlid);
-                            let jumplist = jumplist_cache
-                                .get(*jlid)
-                                .ok_or_else(|| -> SleighCompilerError {
-                                    todo!("Generate error report for missing jumplist")
-                                })?;
-                            if let Some(list_matching) =
-                                jumplist.r#match(&bytes[self.bytes as usize..], jumplist_cache)?
-                            {
-                                matching.merge(list_matching);
-                                return Ok(Some(matching));
-                            }
-                        }
-                        NextJumplistEntry::Matcher(display) => {
-                            matching.push(display.clone());
+                        if let Some(list_matching) =
+                            jumplist.r#match(remaining_bytes, jumplist_cache)?
+                        {
+                            matching.merge(list_matching);
                             return Ok(Some(matching));
                         }
-                        NextJumplistEntry::Stub => return Ok(Some(matching)),
                     }
+                    NextJumplistEntry::Matcher(display) => {
+                        matching.push(display.clone());
+                        return Ok(Some(matching));
+                    }
+                    NextJumplistEntry::Stub => return Ok(Some(matching)),
                 }
             }
         }
@@ -229,8 +267,8 @@ impl Jumplist {
         match &self.container {
             JumplistContainer::Small(array) => Box::new(
                 (0..array.len())
-                    .filter(|index| array.get(*index).expect("We checked for this").is_some())
-                    .map(|index| u64::try_from(index).unwrap()),
+                .filter(|index| array.get(*index).expect("We checked for this").is_some())
+                .map(|index| u64::try_from(index).unwrap()),
             ),
             JumplistContainer::Large(map) => Box::new(map.keys().copied()),
         }

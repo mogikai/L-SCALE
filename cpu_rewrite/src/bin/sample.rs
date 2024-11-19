@@ -29,6 +29,7 @@ fn main() {
         .init();
     // let test_exe = include_bytes!("./../../../emulator/systems/ubuntu2304/home/user/main");
     let spec_path = Path::new("./cpu/Ghidra/Ghidra/Processors/x86/data/languages/x86-64.slaspec");
+    // let spec_path = Path::new("./cpu/Ghidra/Ghidra/Processors/x86/data/languages/x86.slaspec");
     // let spec_path = Path::new("./sleigh/ia.sinc");
     let spec_dir = spec_path.parent().unwrap();
     let factory = SleighPreprocessorFactory::new().working_dir(spec_dir.to_path_buf());
