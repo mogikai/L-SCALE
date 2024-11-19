@@ -1,12 +1,12 @@
-use std::collections::{
-    BTreeSet,
-    HashSet,
-};
-use std::fmt::Write;
-use std::process::exit;
-
-use crate::compiler::ast::constructor::SASTConstructor;
+use self::matcher::Matcher;
 use crate::compiler::ast::Spanned;
+use crate::compiler::ast::constructor::SASTConstructor;
+use crate::compiler::ast::constructor::bit_pattern_section::{
+    SASTBinaryOp,
+    SASTBitPatternConstraint,
+    SASTConstraintOp,
+    SASTConstraintPattern,
+};
 use crate::compiler::build::constructor::matcher::MatcherReference;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
@@ -15,6 +15,7 @@ use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
+use crate::spec::ProcessorSpecificationError;
 use crate::spec::builder::{
     MOIRSymbolId,
     StringId,
@@ -23,30 +24,38 @@ use crate::spec::moir::code::{
     MOIRInstruction,
     MOIROperation,
 };
-use crate::spec::moir::constructor::{ConstructorId, MOIRConstructor};
+use crate::spec::moir::constructor::{
+    ConstructorId,
+    MOIRConstructor,
+};
 use crate::spec::moir::field::FieldId;
 use crate::spec::moir::scope::{
     MOIRMaybeSize,
     MOIRScope,
 };
-use crate::spec::moir::table::MOIRExport;
+use crate::spec::moir::table::{
+    MOIRExport,
+    MOIRTable,
+};
 use crate::spec::moir::varnode::{
     MOIRLocal,
     MOIRReference,
     MOIRSlice,
 };
 use crate::spec::typed_index_table::TypedIndexTable;
-use crate::spec::ProcessorSpecificationError;
 use itertools::Itertools;
+use std::collections::{
+    BTreeSet,
+    HashSet,
+};
+use std::fmt::Write;
 use tracing::{
     debug,
     trace,
 };
 
-use self::matcher::Matcher;
-
-mod matcher_builder;
 pub(crate) mod matcher;
+mod matcher_builder;
 
 impl SleighCompiler {
     /// Process a constructor. This will create the table in which the constructor is anchored, if it does not exist.
@@ -55,19 +64,21 @@ impl SleighCompiler {
         &mut self,
         constructor: Spanned<SASTConstructor>,
     ) -> SleighCompilerResult {
-        let (constructor, span) = constructor.into_tuple();
-        let display_section = constructor.display_section.into_value();
-        trace_build!("Processing constructor for {:?}", display_section.display_str.value());
-
+        let (constructor, _) = constructor.into_tuple();
+        #[allow(unused_variables)]
         let table_name = constructor
             .table
             .value()
             .map(|sid| self.spec_builder.string(sid))
             .flatten()
-            .unwrap_or("instruction");
+            .unwrap_or("instruction")
+            .to_string();
+        trace_build!("=======================================");
         trace_build!("Defining constructor in table {:?}", table_name);
 
         // TODO: Need to parse the disassembly section here as well and add that information to the matcher
+
+        let display_section = constructor.display_section.into_value();
         let mut matchers = self.create_matchers(constructor.bit_pattern_section.into_value().constraint)?;
 
         let mut conjunctions_str = String::new();
@@ -85,34 +96,115 @@ impl SleighCompiler {
         let references = references.into_iter().collect_vec();
 
         let scope = self.pc_create_scope(display_section.identifiers, &references)?;
-
         let mut moir_constructor = MOIRConstructor {
             local_scope: scope,
-            instructions: vec![], // display_string: constructor.display_section.display_str.value().clone(),
+            instructions: vec![],
             display: display_section.display_str.into_value(),
+            export: None,
         };
         trace_build!("{}", moir_constructor.debug_scope());
 
         // The semantic section contains pcode which has to be converted into an atomic form.
         // Pcode can contain complex statements (e.g. x = (a+b) * c)) which have to be translated
         // into a form that consists only of atomic expressions (e.g. tmp = a + b; x = tmp * c;)
-        let export = self.atomize_pcode(
+        moir_constructor.export = self.atomize_pcode(
             &mut moir_constructor.local_scope,
             &mut moir_constructor.instructions,
             constructor.semantic_section.into_value().0,
         )?;
-        self.pc_handle_export(constructor.table.clone().transpose(), export)?;
+        debug!("Constructor is exporting {:?}", moir_constructor.export);
+        moir_constructor.mark_used_locals()?;
+        // TODO: This needs to be moved to the moir->jir stage
+        // moir_constructor
+        //     .local_scope
+        //     .realize_temporaries(&mut self.spec_builder)?;
+        trace_build!("{}", moir_constructor.mcode_debug_string(self.spec_builder.interner()));
+
         let display = moir_constructor.display.clone(); // TODO remove
-        let constructor_id = self.spec_builder.define_constructor(moir_constructor)?;
+
+        // Define the constructor and insert it into the corresponding table.
+        let id = self.spec_builder.define_constructor(moir_constructor)?;
 
         // insert the constructor id into the corresponding matchers
         matchers.iter_mut().for_each(|matcher| {
-            matcher.constructor = Some(constructor_id);
+            matcher.constructor = Some(id);
             matcher.display = Some(display.clone()); // TODO remove
         });
 
         self.register_matchers(constructor.table.clone().transpose(), matchers)?;
+
+        let table_id = constructor.table.transpose();
+        let table = self.spec_builder.create_or_modify_table(table_id)?;
+        table.constructors.push(id);
+        trace_build!("Construtor with id {:?} added to table {:?}", id, table_name);
+
+        // Catch any errors with exports
+        let table = self
+            .spec_builder
+            .table_by_ident(table_id)
+            .expect("We just inserted this table");
+        self.pc_validate_exports(table)?;
         Ok(())
+    }
+
+    /// Validates the constructors in the table.
+    /// If the newly added constructor does not agree with the previous constructors, an error is reported.
+    fn pc_validate_exports(
+        &self,
+        table: &MOIRTable,
+    ) -> SleighCompilerResult {
+        // TODO: If we save some more span information in the MOIR structs, then we can move this validation
+        //       step to the final build phase. This would allow us to report all conflicting constructors.
+        //       It would also make the runtime more efficient, since we only have to validate once.
+        match table.constructors.first() {
+            None => {
+                // If there are no previous constructor definitions, we can simply return
+                Ok(())
+            }
+            Some(existing_constructor) => {
+                let existing_constructor = self
+                    .spec_builder
+                    .constructor_by_symbol_id(*existing_constructor)
+                    .expect("The constructor should exist since we have an id for it");
+                let new_constructor = table
+                    .constructors
+                    .last()
+                    .expect("If there is a first element, there has to be a last element");
+                let new_constructor = self
+                    .spec_builder
+                    .constructor_by_symbol_id(*new_constructor)
+                    .expect("The constructor should exist since we have an id for it");
+                match existing_constructor.export.as_ref() {
+                    None => {
+                        if new_constructor.export.is_some() {
+                            todo!(
+                                "Generate error: 'Defining a new constructor with an export statement is disallowed when the previous definitions do not export'"
+                            )
+                        }
+                        Ok(())
+                    }
+                    Some(existing_export) => {
+                        // If the table already contains a constructor that exports, we have to make sure that the sizes of all
+                        // exports match. Also, it is not allowed, that a constructor has no export statement, if
+                        // another constructor has an export statement. If one constructor exports, all of them have to.
+                        let Some(export) = new_constructor.export.as_ref() else {
+                            todo!(
+                                "Generate error: 'Defining a new constructor without an export statement is disallowed when the previous definitions already export'"
+                            )
+                        };
+                        let export_size = export.size(&new_constructor.local_scope);
+                        let existing_export_size = existing_export.size(&existing_constructor.local_scope);
+                        if export_size != existing_export_size {
+                            debug!(
+                                "Existing export size {existing_export_size} does not match new export size {export_size}"
+                            );
+                            todo!("Generate error report for inconsistent sizes of exports")
+                        }
+                        Ok(())
+                    }
+                }
+            }
+        }
     }
 
     fn register_matchers(
@@ -120,10 +212,7 @@ impl SleighCompiler {
         table: Option<Spanned<StringId>>,
         matchers: Vec<Matcher>,
     ) -> SleighCompilerResult {
-        let table = match table {
-            None => self.spec_builder.root_table_mut()?,
-            Some(id) => self.spec_builder.table_mut(id)?,
-        };
+        let table = self.spec_builder.create_or_modify_table(table)?;
 
         // only add new matchers if there are no duplicates
         matchers.into_iter().for_each(|matcher| {
@@ -132,42 +221,6 @@ impl SleighCompiler {
             }
         });
 
-        Ok(())
-    }
-
-    fn pc_handle_export(
-        &mut self,
-        table: Option<Spanned<StringId>>,
-        export: Option<MOIRExport>,
-    ) -> Result<(), SleighCompilerError> {
-        let table = match table {
-            None => self.spec_builder.root_table_mut()?,
-            Some(id) => self.spec_builder.table_mut(id)?,
-        };
-
-        if table.exports.is_empty() {
-            // If the exports table is empty, we can just insert the export if we have one.
-            if let Some(export) = export {
-                table.exports.push(export);
-            }
-        } else {
-            // If the exports table already contains exports, we have to make sure that the sizes of all
-            // exports match. Also, it is not allowed, that a constructor has no export statement, if
-            // another constructor has an export statement. If one constructor exports, all of them have to.
-            let Some(export) = export else {
-                todo!("Generate error report for constructor missing an export statement")
-            };
-            let existing_export = table
-                .exports
-                .first()
-                .expect("We just made sure that at least one element exists");
-            if export.size() != existing_export.size() {
-                todo!("Generate error report for inconsistent sizes of exports")
-            } else {
-                // All is well, we can now just insert the export for later type lookup.
-                table.exports.push(export);
-            }
-        }
         Ok(())
     }
 
@@ -207,6 +260,7 @@ impl SleighCompiler {
     ) -> SleighCompilerResult {
         trace!("Resolving {} symbols to a local scope", references.len());
         for reference in references {
+            trace_build!("Resolving symbol {symbol:?}");
             let value = match reference {
                 MatcherReference::Field(field_id) => {
                     let field = self
@@ -228,6 +282,9 @@ impl SleighCompiler {
                             .into()
                     } else {
                         // TODO: Check if values are attached and infer the maximum size from them.
+                        // TODO: We cannot pass a size here since then the sleigh spec breaks
+                        //       because they cannot decide whether to explicitly enforce sizes
+                        //       or to just implicitly extend sizes because reasons.......
                         // (((field.bits.clone().count() + 7) / 8) as MOIRSize).into()
                         MOIRMaybeSize::Undetermined
                     };
@@ -242,16 +299,18 @@ impl SleighCompiler {
                         .spec_builder
                         .table_by_symbol_id(*stid)
                         .ok_or(SleighCompilerError::SymbolUndeclared)?;
-                    let export = table.exports.first();
-                    if let Some(export) = export {
-                        Some(MOIRSlice {
-                            reference: MOIRReference::SubTable(*stid),
-                            start: 0,
-                            end: export.size(),
-                        })
-                    } else {
-                        None
-                    }
+                    let constructor_id = table.constructors.first();
+                    let export_size = constructor_id
+                        .map(|cid| self.spec_builder.constructor_by_symbol_id(*cid))
+                        .flatten()
+                        .map(|c| c.export_size())
+                        // If the constructor was not found, we set the export to zero size.
+                        .unwrap_or(MOIRMaybeSize::Determined(0));
+                    Some(MOIRSlice {
+                        reference: MOIRReference::SubTable(*stid),
+                        start: 0,
+                        end: export_size,
+                    })
                 }
                 MatcherReference::Varnode(vnid) => {
                     let varnode = self

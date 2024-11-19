@@ -3,6 +3,7 @@ mod expression;
 mod invocation;
 mod size_inference;
 
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::pcode::statement::{
     SASTPCodeBranchTarget,
@@ -12,16 +13,16 @@ use crate::compiler::ast::pcode::{
     SASTPCode,
     SASTPCodeLabelledStatement,
 };
-use crate::compiler::ast::Spanned;
 use crate::compiler::{
+    CompilerContext,
     SleighCompiler,
     SleighCompilerResult,
 };
 use crate::spec::builder::StringId;
 use crate::spec::moir::code::{
-    moir_instruction,
     MOIRGotoType,
     MOIRInstruction,
+    moir_instruction,
 };
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::scope::{
@@ -29,11 +30,13 @@ use crate::spec::moir::scope::{
     MOIRScope,
 };
 use crate::spec::moir::table::MOIRExport;
-use crate::spec::moir::varnode::MOIRLocal;
-use tracing::debug;
+use crate::spec::moir::varnode::MOIRReference;
 
+use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
+use crate::spec::moir::MOIR_ADDRESS_SIZE;
+use crate::spec::moir::address_space::MOIRSpaceType;
 use std::fmt::Write;
 
 impl SleighCompiler {
@@ -45,12 +48,10 @@ impl SleighCompiler {
     ) -> SleighCompilerResult<Option<MOIRExport>> {
         // TODO: Create table of locals? Lookup global identifiers?
         let (pcode, _) = pcode.into_tuple();
+        scope.make_implicit_builds(instructions)?;
         let export = self.atomize_statements(scope, instructions, pcode.statements)?;
         self.infer_sizes(scope, instructions)?;
-        Ok(export.map(|export| match export.into_value() {
-            MOIRLocal::Local(local) => MOIRExport::Slice(*scope.resolve_local(local).expect("TODO")),
-            MOIRLocal::Const(val) => MOIRExport::Const(val),
-        }))
+        Ok(export.map(Spanned::into_value))
     }
 
     pub fn atomize_statements(
@@ -58,7 +59,7 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         statements: Vec<Spanned<SASTPCodeLabelledStatement>>,
-    ) -> SleighCompilerResult<Option<Spanned<MOIRLocal>>> {
+    ) -> SleighCompilerResult<Option<Spanned<MOIRExport>>> {
         let mut export = None;
         for ((label, statement), _) in statements.into_iter().map(Spanned::into_tuple) {
             let label = if let Some(label) = label {
@@ -126,10 +127,56 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         expression: Spanned<SASTPCodeExpression>,
-    ) -> SleighCompilerResult<MOIRLocal> {
+    ) -> SleighCompilerResult<MOIRExport> {
         // TODO: Handling dynamic references (e.g. export *:4 tmp) will require keeping track of the
         //       dynamic references somewhere. We need to decide how to do this.
-        self.atomize_expression(scope, instructions, None, expression)
+        // Most likely, we will need to atomize the expression, or the expression inside a load expression
+        // such that we have a single varnode at the end that represents either the varnode itself, or the
+        // address of the desired location.
+        // This will then have to be put into some kind of export structure which can be saved as the exported
+        // value for a specific constructor. The symbols referring to subtables will remain as-is.
+        // Once these values need to be resolved, then we can check the resolve context.
+        // Either this will return a normal JIRValue, or we will get an exported value.
+        // The exported value will be an enum, with the variants Value and Reference.
+        // A Value export will then simply be translated to the varnode.
+        // A Reference export will be translated to a load or store instruction. This might encompass
+        // allocating a new temporary variable during translation.
+        // However, since we need to move the temp allocation to the moir->jir phase anyways, this should
+        // be easy.
+        let (expression, span) = expression.into_tuple();
+        match expression {
+            SASTPCodeExpression::Load(deref) => self.atomize_export_dynamic(scope, instructions, deref),
+            SASTPCodeExpression::AddressOf(_) => {
+                todo!()
+            }
+            _ => self
+                .atomize_expression(scope, instructions, None, Spanned::new(expression, span))
+                .map(MOIRExport::Local),
+        }
+    }
+
+    fn atomize_export_dynamic(
+        &mut self,
+        scope: &mut MOIRScope,
+        instructions: &mut Vec<MOIRInstruction>,
+        deref: Spanned<SASTPCodeDeref>,
+    ) -> SleighCompilerResult<MOIRExport> {
+        let deref = deref.into_value();
+        let space = self
+            .spec_builder
+            .resolve_space(deref.space.map(Spanned::transmute))?;
+        let mut address = self.atomize_expression(scope, instructions, None, *deref.expression)?;
+        let spc = self
+            .spec_builder
+            .space_by_symbol_id(space)
+            .ok_or_else(|| -> SleighCompilerError { todo!("Generate appropriate error report") })?;
+
+        trace_build!("Constraining addr size to {}", spc.address_size);
+        scope.constrain_local_size(&mut address, spc.address_size)?;
+
+        let size = deref.size.map(|s| s.into_value()).into();
+        trace_build!("Exporting dynamic reference with size {size}");
+        Ok(MOIRExport::MemReference { address, space, size })
     }
 
     fn atomize_build(
@@ -138,7 +185,14 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
         table: Spanned<StringId>,
     ) -> SleighCompilerResult {
-        let table = self.spec_builder.table_id_by_ident(&table)?;
+        let table = scope
+            .local(*table.value())
+            .ok_or_else(|| -> SleighCompilerError { todo!("Generate error for missing symbol") })?;
+        let table = match table.reference {
+            MOIRReference::SubTable(table) => table,
+            _ => todo!("Generate error for invalid symbol type"),
+        };
+        scope.mark_explicit_build(table, instructions)?;
         instructions.push(moir_instruction!(build table));
         Ok(())
     }

@@ -1,0 +1,246 @@
+use std::hash::Hash;
+use std::marker::PhantomData;
+use std::num::NonZero;
+use std::ops::{
+    Index,
+    IndexMut,
+};
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum IndexMapError {
+    #[error("Trying to create an index from an invalid value ({0}).")]
+    InvalidIndex(usize),
+}
+
+/// Marker trait for keys that can be used with a [PrimaryMap].
+/// New keys may be created with the [new_map_key] macro.
+/// It is highly discouraged to manually implement this trait.
+#[allow(private_bounds)]
+pub trait MapKey: Copy + PartialEq + Eq + Hash {
+    /// Tries to create a new key from the provided index. If Index is the maximum value, this will result
+    /// in an error.
+    fn try_from_index(index: usize) -> Result<Self, IndexMapError>;
+    fn to_index(&self) -> usize;
+}
+
+#[macro_export(local_inner_macros)]
+/// Creates a new key type for indexing [PrimaryMap] and [SecondaryMap].
+/// The keys are guaranteed to be non-zero, facilitating optimizations when using e.g. [Option]
+macro_rules! new_map_key {
+    ( $(#[$outer:meta])* $vis:vis struct $name:ident; $display_prefix:literal;) => {
+        $(#[$outer])*
+        #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
+        #[repr(transparent)]
+        $vis struct $name(std::num::NonZero<usize>);
+
+        impl std::fmt::Display for $name {
+            fn fmt(
+                &self,
+                f: &mut std::fmt::Formatter<'_>,
+            ) -> std::fmt::Result {
+                std::write!(f, "{}{}", $display_prefix, self.0)
+            }
+        }
+
+        impl $crate::index_map::MapKey for $name {
+            fn try_from_index(index: usize) -> Result<Self, $crate::index_map::IndexMapError> {
+                std::num::NonZero::new(index + 1).ok_or($crate::index_map::IndexMapError::InvalidIndex(index)).map(Self)
+            }
+            fn to_index(&self) -> usize {
+                // This is safe, since self.0 is never zero
+                unsafe { self.0.get().unchecked_sub(1) }
+            }
+        }
+    };
+}
+
+#[derive(Debug)]
+pub struct PrimaryMap<K: MapKey, V> {
+    data: Vec<V>,
+    phantom_data: PhantomData<K>,
+}
+
+impl<K: MapKey, V> PrimaryMap<K, V> {
+    /// Gets the next key that will be used when inserting a value.
+    pub fn next_key(&self) -> K {
+        K::try_from_index(self.data.len()).expect("Index out of range")
+    }
+
+    pub fn insert(
+        &mut self,
+        value: V,
+    ) -> K {
+        let key = self.next_key();
+        self.data.push(value);
+        key
+    }
+
+    pub fn get(
+        &self,
+        key: K,
+    ) -> Option<&V> {
+        self.data.get(key.to_index())
+    }
+
+    pub fn get_mut(
+        &mut self,
+        key: K,
+    ) -> Option<&mut V> {
+        self.data.get_mut(key.to_index())
+    }
+
+    pub fn first(&self) -> Option<&V> {
+        self.data.first()
+    }
+
+    pub fn last(&self) -> Option<&V> {
+        self.data.last()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &V> {
+        self.data.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut V> {
+        self.data.iter_mut()
+    }
+
+    pub fn iter_kv(&self) -> impl Iterator<Item = (K, &V)> {
+        self.data
+            .iter()
+            .enumerate()
+            .map(|(k, v)| (MapKey::try_from_index(k).expect("Enumarating must produce a valid index"), v))
+    }
+}
+
+impl<'a, K, V> IntoIterator for &'a PrimaryMap<K, V>
+where
+    K: MapKey,
+{
+    type Item = &'a V;
+    type IntoIter = std::slice::Iter<'a, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.iter()
+    }
+}
+
+impl<'a, K, V> IntoIterator for &'a mut PrimaryMap<K, V>
+where
+    K: MapKey,
+{
+    type Item = &'a mut V;
+    type IntoIter = std::slice::IterMut<'a, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.iter_mut()
+    }
+}
+
+impl<K: MapKey, V> Default for PrimaryMap<K, V> {
+    fn default() -> Self {
+        Self {
+            data: Default::default(),
+            phantom_data: Default::default(),
+        }
+    }
+}
+
+impl<K: MapKey, V: Clone> Clone for PrimaryMap<K, V> {
+    fn clone(&self) -> Self {
+        Self {
+            data: self.data.clone(),
+            phantom_data: Default::default(),
+        }
+    }
+}
+
+impl<K: MapKey, V> Index<K> for PrimaryMap<K, V> {
+    type Output = V;
+
+    fn index(
+        &self,
+        key: K,
+    ) -> &Self::Output {
+        // index - 1 is fine, since index is guaranteed to be non-zero
+        &self.data[key.to_index()]
+    }
+}
+
+impl<K: MapKey, V> IndexMut<K> for PrimaryMap<K, V> {
+    fn index_mut(
+        &mut self,
+        key: K,
+    ) -> &mut Self::Output {
+        &mut self.data[key.to_index()]
+    }
+}
+
+#[derive(Debug)]
+pub struct SecondaryMap<K: MapKey, V> {
+    data: Vec<V>,
+    default: V,
+    phantom_data: PhantomData<K>,
+}
+
+impl<K, V> Clone for SecondaryMap<K, V>
+where
+    K: MapKey,
+    V: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            data: self.data.clone(),
+            default: self.default.clone(),
+            phantom_data: Default::default(),
+        }
+    }
+}
+
+impl<K, V> Default for SecondaryMap<K, V>
+where
+    K: MapKey,
+    V: Default,
+{
+    fn default() -> Self {
+        Self {
+            data: Default::default(),
+            default: V::default(),
+            phantom_data: Default::default(),
+        }
+    }
+}
+
+impl<K, V> Index<K> for SecondaryMap<K, V>
+where
+    K: MapKey,
+{
+    type Output = V;
+
+    fn index(
+        &self,
+        index: K,
+    ) -> &Self::Output {
+        self.data.get(index.to_index()).unwrap_or(&self.default)
+    }
+}
+
+impl<K, V> IndexMut<K> for SecondaryMap<K, V>
+where
+    K: MapKey,
+    V: Default,
+{
+    /// Access to the secondary map causes the underlying vector to reallocate to fit the provided index.
+    /// The secondary map will be at most as large as the original map, if only valid keys are used.
+    fn index_mut(
+        &mut self,
+        index: K,
+    ) -> &mut Self::Output {
+        let index = index.to_index();
+        if index >= self.data.len() {
+            self.data.resize_with(index + 1, Default::default);
+        }
+        &mut self.data[index]
+    }
+}

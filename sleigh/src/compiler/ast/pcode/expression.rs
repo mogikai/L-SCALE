@@ -1,3 +1,4 @@
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::{
     SASTIdent,
     SASTLiteral,
@@ -7,7 +8,6 @@ use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::pcode::subpiece::SASTPCodeSubpiece;
-use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::InputSpan;
 use std::fmt::{
     Display,
@@ -26,10 +26,6 @@ pub enum SASTPCodeExpression {
     UnaryOperation {
         op: Spanned<SASTPCodeUnaryOp>,
         operand: Box<Spanned<Self>>,
-    },
-    Dereference {
-        space: Spanned<SASTIdent>,
-        size: Spanned<u16>,
     },
     Subpiece(Spanned<SASTPCodeSubpiece>),
     Bitrange(Spanned<SASTPCodeBitRange>),
@@ -51,7 +47,6 @@ impl Display for SASTPCodeExpression {
                 write!(f, "({} {} {})", lhs.value(), op.value(), rhs.value())
             }
             SASTPCodeExpression::UnaryOperation { op, operand } => write!(f, "{} {}", op.value(), operand.value()),
-            SASTPCodeExpression::Dereference { space, size } => write!(f, "*{}:{}", space.value(), size.value()),
             SASTPCodeExpression::Subpiece(_) => write!(f, "subpiece"),
             SASTPCodeExpression::Bitrange(_) => write!(f, "bitrange"),
             SASTPCodeExpression::Identifier(ident) => write!(f, "{}", ident.value()),

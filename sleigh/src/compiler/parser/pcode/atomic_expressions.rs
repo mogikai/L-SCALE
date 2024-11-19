@@ -17,6 +17,7 @@ use SleighOperation::{
     LessThan,
 };
 
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::{
     SASTIdent,
     SASTSize,
@@ -31,10 +32,12 @@ use crate::compiler::ast::pcode::subpiece::{
     SASTPCodeSubpieceSelector,
     SASTPCodeSubpieceTarget,
 };
-use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
+    SleighParserExtra,
+    at_least_one_sleigh_whitespace,
+    one_sleigh_whitespace,
     parenthesized,
     sast_ident,
     sast_ident_spanned,
@@ -43,7 +46,6 @@ use crate::compiler::parser::{
     sleigh_operation,
     sleigh_whitespace,
     whitespace_padded,
-    SleighParserExtra,
 };
 use crate::compiler::tokens::SleighControlCharacter::{
     CloseBracket,
@@ -63,14 +65,14 @@ use crate::compiler::tokens::{
     SleighToken,
 };
 
-pub fn pcode_ident<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTIdent>, SleighParserExtra<'tokens>> + Clone {
+pub fn pcode_ident<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTIdent>, SleighParserExtra<'tokens>> + Clone {
     whitespace_padded(sast_ident_spanned())
 }
 
 /// Parse a number literal and convert it into T. Surrounding whitespace will be consumed.
-pub fn pcode_number_literal<'tokens, T>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<T>, SleighParserExtra<'tokens>> + Clone
+pub fn pcode_number_literal_whitespace_padded<'tokens, T>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<T>, SleighParserExtra<'tokens>> + Clone
 where
     T: TryFrom<u64> + Debug,
     <T as TryFrom<u64>>::Error: Display,
@@ -78,13 +80,22 @@ where
     whitespace_padded(sleigh_number().map_with(spanned))
 }
 
-pub fn pcode_subpiece<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeSubpiece>, SleighParserExtra<'tokens>> + Clone {
-    let size = pcode_number_literal::<SASTSize>();
+pub fn pcode_number_literal<'tokens, T>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<T>, SleighParserExtra<'tokens>> + Clone
+where
+    T: TryFrom<u64> + Debug,
+    <T as TryFrom<u64>>::Error: Display,
+{
+    sleigh_number().map_with(spanned)
+}
+
+pub fn pcode_subpiece<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeSubpiece>, SleighParserExtra<'tokens>> + Clone {
+    let size = pcode_number_literal_whitespace_padded::<SASTSize>();
 
     let target = pcode_ident()
         .map(SASTPCodeSubpieceTarget::Ident)
-        .or(pcode_number_literal().map(SASTPCodeSubpieceTarget::Literal))
+        .or(pcode_number_literal_whitespace_padded().map(SASTPCodeSubpieceTarget::Literal))
         .map_with(spanned);
 
     // Colon means to take the specified number of bytes starting from lsb, and discarding the rest.
@@ -108,10 +119,10 @@ pub fn pcode_subpiece<'tokens>(
     colon_subpiece.or(paren_subpiece).map_with(spanned).boxed()
 }
 
-pub fn pcode_bitrange<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeBitRange>, SleighParserExtra<'tokens>> + Clone {
-    let lsb = pcode_number_literal();
-    let bits = pcode_number_literal();
+pub fn pcode_bitrange<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeBitRange>, SleighParserExtra<'tokens>> + Clone {
+    let lsb = pcode_number_literal_whitespace_padded();
+    let bits = pcode_number_literal_whitespace_padded();
     pcode_ident()
         .then(
             lsb.then_ignore(sleigh_control(Comma))
@@ -124,8 +135,8 @@ pub fn pcode_bitrange<'tokens>(
 }
 
 /// Parse a pcode label identified by `<some_label>`.
-pub fn pcode_label<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTIdent>, SleighParserExtra<'tokens>> + Clone {
+pub fn pcode_label<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTIdent>, SleighParserExtra<'tokens>> + Clone {
     sleigh_operation(LessThan)
         .ignore_then(sast_ident())
         .then_ignore(sleigh_operation(GreaterThan))
@@ -152,7 +163,10 @@ where
         .delimited_by(sleigh_control(OpenBracket), sleigh_control(CloseBracket)),
     );
 
-    let size = whitespace_padded(sleigh_control(Colon)).ignore_then(pcode_number_literal());
+    let size = whitespace_padded(sleigh_control(Colon))
+        .ignore_then(pcode_number_literal())
+        // There has to be at least one whitespace between the number literal and the following expression
+        .then_ignore(at_least_one_sleigh_whitespace());
 
     sleigh_operation(Star)
         .ignore_then(space.or_not().map(Option::flatten))
@@ -173,7 +187,7 @@ pub fn pcode_address_of<'tokens, P>(
 where
     P: Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeExpression>, SleighParserExtra<'tokens>> + Clone,
 {
-    let size = whitespace_padded(sleigh_control(Colon)).ignore_then(pcode_number_literal());
+    let size = whitespace_padded(sleigh_control(Colon)).ignore_then(pcode_number_literal_whitespace_padded());
     sleigh_operation(And)
         .ignore_then(size.or_not())
         .then(whitespace_padded(expression_parser.map(Box::new)))

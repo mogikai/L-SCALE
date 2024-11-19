@@ -12,15 +12,23 @@ use super::moir::context::{
     MOIRContext,
     MOIRContextId,
 };
-use crate::compiler::ast::Spanned;
+use crate::compiler::ast::{
+    Spanned,
+    SpannedToken,
+};
 use crate::compiler::build::constructor::matcher::MatcherId;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
-use crate::compiler::lexer::InputSpan;
+use crate::compiler::lexer::{
+    InputSpan,
+    ParserInput,
+    SleighLexerInput,
+};
 use crate::compiler::report::{
     generate_invalid_symbol_type_error,
     generate_undefined_ident_error,
 };
+use crate::compiler::tokens::SleighToken;
 use crate::compiler::{
     CompilerContext,
     SleighCompilerResult,
@@ -32,6 +40,7 @@ use crate::spec::moir::address_space::{
     MOIRSpaceType,
 };
 use crate::spec::moir::code::MOIROperation;
+use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::{
     ConstructorId,
     MOIRConstructor,
@@ -41,9 +50,7 @@ use crate::spec::moir::custom_op::{
     MOIRCustomOp,
 };
 use crate::spec::moir::endianness::MOIREndianness;
-use crate::spec::moir::field::{
-    FieldId, MOIRBitRange, MOIRField, MOIRFieldParent
-};
+use crate::spec::moir::field::{FieldId, MOIRBitRange, MOIRField, MOIRFieldParent};
 use crate::spec::moir::r#macro::MOIRMacro;
 use crate::spec::moir::table::MOIRTable;
 use crate::spec::moir::token::{
@@ -69,6 +76,12 @@ use crate::spec::{
     SpaceId,
     TableId,
 };
+use chumsky::input::{
+    Checkpoint,
+    Cursor,
+    Input,
+};
+use chumsky::inspector::Inspector;
 use slotmap::SlotMap;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
@@ -166,7 +179,8 @@ pub struct ProcessorSpecificationBuilder {
     root_table: Spanned<StringId>,
     /// The default space. It has to be set at one point, and only once.
     /// The Ident is spanned with the location of the first definition.
-    default_space: Option<Spanned<Ident>>,
+    default_space: Option<Spanned<SpaceId>>,
+    temp_space: SpaceId,
 
     /// The `_` character has special meaning as a placeholder in e.g. stringlists.
     /// The id of the character is stored here for quick comparison.
@@ -174,6 +188,10 @@ pub struct ProcessorSpecificationBuilder {
 }
 
 impl ProcessorSpecificationBuilder {
+    pub(crate) fn interner(&self) -> &StringInterner<StringBackend> {
+        &self.interner
+    }
+
     /// Define the endianness. If the endianness was previously defined, an error report is generated.
     pub(crate) fn define_endianness(
         &mut self,
@@ -253,7 +271,7 @@ impl ProcessorSpecificationBuilder {
         let space_id = self.symbol_tables.spaces.insert(space);
         self.define_symbol(symbol_id, MOIRSymbolId::Space(space_id))?;
         if matches!(default, MOIRSpaceIsDefault::Default) {
-            self.default_space = Some(Spanned::new(symbol_id, span));
+            self.default_space = Some(Spanned::new(space_id, span));
         }
         Ok(symbol_id)
     }
@@ -267,6 +285,21 @@ impl ProcessorSpecificationBuilder {
         let varnode_id = self.symbol_tables.varnodes.insert(varnode);
         self.define_symbol(symbol_id, MOIRSymbolId::VarNode(varnode_id))?;
         Ok(symbol_id)
+    }
+
+    /// Defines a new temporary varnode. Each instruction has its own temporaries and
+    /// they are only visible in their local scope. This means that for each instruction
+    /// the temporaries will overlap.
+    pub fn define_temp_varnode(
+        &mut self,
+        offset: u64,
+        size: MOIRSize,
+    ) -> SleighCompilerResult<VarNodeId> {
+        Ok(self.symbol_tables.varnodes.insert(MOIRVarNode {
+            space: self.temp_space,
+            offset,
+            size,
+        }))
     }
 
     pub(crate) fn define_bitrange_register(
@@ -441,18 +474,12 @@ impl ProcessorSpecificationBuilder {
         Ok((context_id, varnode_bits as u64))
     }
 
-    pub(crate) fn root_table_mut(&mut self) -> SleighCompilerResult<&mut MOIRTable> {
-        self.table_mut(self.root_table.clone())
-    }
-
-    pub(crate) fn root_table(&self) -> SleighCompilerResult<&MOIRTable> {
-        self.table(self.root_table.clone())
-    }
-
-    pub(crate) fn table_mut(
+    /// Modify the provided table. If None is provided, the root table is used.
+    pub(crate) fn create_or_modify_table(
         &mut self,
-        ident: Spanned<StringId>,
+        ident: Option<Spanned<StringId>>,
     ) -> SleighCompilerResult<&mut MOIRTable> {
+        let ident = ident.unwrap_or(self.root_table.clone());
         let table_id = if let Some((symbol, _)) = self.get_symbol_and_ident(&ident) {
             // Symbol is defined. Do stuff with it.
             if let MOIRSymbolId::Table(table_id) = symbol {
@@ -474,29 +501,20 @@ impl ProcessorSpecificationBuilder {
             .expect("We either just inserted the new table, or fetched an existing one."))
     }
 
-    pub(crate) fn table(
+    pub fn table_by_ident(
         &self,
-        ident: Spanned<StringId>,
-    ) -> SleighCompilerResult<&MOIRTable> {
-        let table_id = self
-            .get_symbol_and_ident(&ident)
-            .and_then(|(symbol, _)| {
-                // Symbol is defined. Do stuff with it.
-                if let MOIRSymbolId::Table(table_id) = symbol {
-                    Some(*table_id)
-                } else {
-                    todo!("Generate error report")
-                }
-            })
-            .ok_or_else(|| -> SleighCompilerError {
-                todo!("Generate error report for missing symbol");
-            })?;
+        ident: Option<Spanned<StringId>>,
+    ) -> Option<&MOIRTable> {
+        let ident = ident.unwrap_or(self.root_table.clone());
+        self.non_root_table_by_ident(&ident)
+    }
 
-        Ok(self
-            .symbol_tables
-            .tables
-            .get(table_id)
-            .expect("We either just inserted the new table, or fetched an existing one."))
+    pub fn table_by_ident_mut(
+        &mut self,
+        ident: Option<Spanned<StringId>>,
+    ) -> Option<&mut MOIRTable> {
+        let ident = ident.unwrap_or(self.root_table.clone());
+        self.non_root_table_by_ident_mut(&ident)
     }
 
     pub(crate) fn get_symbol_and_ident(
@@ -595,6 +613,13 @@ impl ProcessorSpecificationBuilder {
         self.symbol_tables.spaces.get(symbol_id)
     }
 
+    pub fn constructor_by_symbol_id(
+        &self,
+        symbol_id: ConstructorId,
+    ) -> Option<&MOIRConstructor> {
+        self.symbol_tables.constructors.get(symbol_id)
+    }
+
     /// Get the varnode id referred to by `ident`. If `ident` refers to an identifier that is not a varnode,
     /// or if the identifier is undefined, an error report is generated.
     pub(crate) fn varnode_id_by_ident(
@@ -671,16 +696,6 @@ impl ProcessorSpecificationBuilder {
         self.symbol_tables.tables.get(id)
     }
 
-    /// Get the spanned default space identifier.
-    pub(crate) fn default_space_ident(&self) -> SleighCompilerResult<Spanned<StringId>> {
-        // TODO: Generate correct errors.
-        self.default_space
-            .as_ref()
-            .and_then(|id| self.symbol_strings.get(id.value()))
-            .ok_or(SleighCompilerError::SymbolUndeclared)
-            .cloned()
-    }
-
     pub(crate) fn is_placeholder_ident(
         &self,
         ident: StringId,
@@ -700,12 +715,20 @@ impl ProcessorSpecificationBuilder {
     pub fn resolve_space(
         &mut self,
         space: Option<Spanned<StringId>>,
-    ) -> Result<SpaceId, SleighCompilerError> {
+    ) -> SleighCompilerResult<SpaceId> {
         let space_id = space
-            .ok_or(|| SleighCompilerError::SymbolUndeclared)
-            .or_else(|_| self.default_space_ident())?;
-        let space = self.space_id_by_ident(space_id)?;
-        Ok(space)
+            .map(|id| self.space_id_by_ident(id))
+            .transpose()?
+            .or_else(|| {
+                if let Some(default) = &self.default_space {
+                    Some(*default.value())
+                } else {
+                    None
+                }
+            })
+            .ok_or_else(|| -> SleighCompilerError { todo!("Generate error for missing default") })?;
+
+        Ok(space_id)
     }
 
     pub fn builtin_op_by_ident(
@@ -727,12 +750,18 @@ impl Default for ProcessorSpecificationBuilder {
         let epsilon = interner.intern("epsilon");
         let const_space = interner.intern("const");
         let root_table = Spanned::new(interner.intern("instruction"), InputSpan::default());
+        let mut symbol_tables = MOIRSymbolTables::default();
+        let temp_space = symbol_tables.spaces.insert(MOIRSpace {
+            r#type: MOIRSpaceType::Register,
+            address_size: 8,
+            wordsize: 1,
+        });
         let mut slf = Self {
             interner,
             builtin_ops: Default::default(),
             symbol_ids: Default::default(),
             symbol_strings: Default::default(),
-            symbol_tables: Default::default(),
+            symbol_tables,
             endianness: None,
             alignment: None,
             context: Default::default(),
@@ -740,6 +769,7 @@ impl Default for ProcessorSpecificationBuilder {
             string_to_ident_mapping: Default::default(),
             root_table,
             default_space: None,
+            temp_space,
             placeholder_ident,
         };
         use MOIROperation::*;
@@ -761,14 +791,14 @@ impl Default for ProcessorSpecificationBuilder {
         builtins.insert(slf.interner.intern("floor"), Floor);
         builtins.insert(slf.interner.intern("round"), Round);
         // Call modify once to create the table.
-        slf.root_table_mut()
+        slf.create_or_modify_table(None)
             .expect("This may not error at this point");
         // TODO: Define the special varnodes in a special address space.
         slf.define_space(
             Spanned::new(const_space, InputSpan::default()),
             MOIRSpace {
                 r#type: MOIRSpaceType::Const,
-                address_size: 0,
+                address_size: 8,
                 wordsize: 0,
             },
             MOIRSpaceIsDefault::NotDefault,
@@ -806,7 +836,7 @@ impl ProcessorSpecificationBuilder {
         Self::default()
     }
 
-    pub fn build(self) -> SleighCompilerResult<ProcessorSpecification> {
+    pub fn build(mut self) -> SleighCompilerResult<ProcessorSpecification> {
         debug!("Finalizing spec:");
         debug!("Found {} symbols", self.symbol_ids.len());
         debug!("Found {} tables", self.symbol_tables.tables.len());
@@ -841,6 +871,7 @@ impl ProcessorSpecificationBuilder {
                 .default_space
                 .ok_or(ProcessorSpecificationError::MissingDefaultSpace)?
                 .into_value(),
+            temp_space: self.temp_space,
             endianness: self
                 .endianness
                 .ok_or(ProcessorSpecificationError::MissingEndiannessDefinition)?
@@ -851,8 +882,23 @@ impl ProcessorSpecificationBuilder {
         Ok(spec)
     }
 }
+pub trait CustomInterner {
+    fn intern<T: AsRef<str>>(
+        &mut self,
+        string: T,
+    ) -> StringId;
+    fn lookup<T: AsRef<str>>(
+        &self,
+        string: T,
+    ) -> Option<StringId>;
 
-impl CompilerContext for StringInterner<StringBackend> {
+    /// Resolve a string id to the corresponding interned string.
+    fn string(
+        &self,
+        string_id: StringId,
+    ) -> Option<&str>;
+}
+impl CustomInterner for StringInterner<StringBackend> {
     fn intern<T: AsRef<str>>(
         &mut self,
         string: T,
@@ -867,6 +913,7 @@ impl CompilerContext for StringInterner<StringBackend> {
         self.get(string).map(|id| StringId(id.to_usize()))
     }
 
+    /// Resolve a string id to the corresponding interned string.
     fn string(
         &self,
         string_id: StringId,
@@ -896,6 +943,29 @@ impl CompilerContext for ProcessorSpecificationBuilder {
         string_id: StringId,
     ) -> Option<&str> {
         self.interner.string(string_id)
+    }
+}
+
+impl<'src, I: Input<'src>> Inspector<'src, I> for ProcessorSpecificationBuilder {
+    type Checkpoint = ();
+
+    fn on_token(
+        &mut self,
+        token: &I::Token,
+    ) {
+    }
+
+    fn on_save<'parse>(
+        &self,
+        cursor: &Cursor<'src, 'parse, I>,
+    ) -> Self::Checkpoint {
+        ()
+    }
+
+    fn on_rewind<'parse>(
+        &mut self,
+        marker: &Checkpoint<'src, 'parse, I, Self::Checkpoint>,
+    ) {
     }
 }
 
@@ -963,7 +1033,7 @@ macro_rules! impl_get_symbol_id {
 
 impl_get_symbol_struct! { macro_by_ident, macro_by_ident_mut, macros, MOIRMacro, MOIRSymbolId::Macro(id) => id}
 impl_get_symbol_struct! { space_by_ident, space_by_ident_mut, spaces, MOIRSpace, MOIRSymbolId::Space(id) => id}
-impl_get_symbol_struct! { table_by_ident, table_by_ident_mut, tables, MOIRTable, MOIRSymbolId::Table(id) => id}
+impl_get_symbol_struct! { non_root_table_by_ident, non_root_table_by_ident_mut, tables, MOIRTable, MOIRSymbolId::Table(id) => id}
 impl_get_symbol_struct! { varnode_by_ident, varnode_by_ident_mut, varnodes, MOIRVarNode, MOIRSymbolId::VarNode(id) => id}
 impl_get_symbol_struct! { token_by_ident, token_by_ident_mut, tokens, MOIRToken, MOIRSymbolId::Token(id) => id}
 impl_get_symbol_struct! { field_by_ident, field_by_ident_mut, fields, MOIRField, MOIRSymbolId::Field(id) => id}

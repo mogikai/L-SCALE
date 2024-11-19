@@ -1,14 +1,24 @@
 use crate::compiler::ast::Spanned;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::lexer::InputSpan;
-use crate::compiler::SleighCompilerResult;
+use crate::compiler::{
+    CompilerContext,
+    SleighCompilerResult,
+};
 use crate::new_typed_index_table_id;
 use crate::spec::builder::{
+    CustomInterner,
     ProcessorSpecificationBuilder,
     StringId,
 };
+use crate::spec::jir::instruction::TargetInstructionBuilder;
+use crate::spec::moir::code::{
+    MOIRInstruction,
+    moir_instruction,
+};
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::field::FieldId;
+use crate::spec::moir::table::TableId;
 use crate::spec::moir::varnode::{
     MOIRLocal,
     MOIRReference,
@@ -16,6 +26,13 @@ use crate::spec::moir::varnode::{
 };
 use crate::spec::reporting::generate_identifier_exists_report;
 use crate::spec::typed_index_table::TypedIndexTable;
+use crate::spec::{
+    ProcessorSpecResult,
+    ProcessorSpecificationError,
+};
+use itertools::Itertools;
+use mogi_utilities::index_map::PrimaryMap;
+use mogi_utilities::new_map_key;
 use std::collections::hash_map::Entry;
 use std::collections::{
     HashMap,
@@ -25,7 +42,11 @@ use std::fmt::{
     Debug,
     Display,
     Formatter,
+    Write,
 };
+use std::process::id;
+use string_interner::StringInterner;
+use string_interner::backend::StringBackend;
 
 /// A scope for locals and labels used in constructors and macros
 #[derive(Default)]
@@ -39,7 +60,7 @@ pub struct MOIRScope {
     /// Labels can be used ahead of their definition. Their usage declares them, and they can
     /// be defined later on. If no definition was found after processing the entire semantic
     /// section, this will produce an error.
-    labels: TypedIndexTable<LabelId, Option<InstructionId>>,
+    labels: PrimaryMap<LabelId, Option<InstructionId>>,
     /// Keeps track of the sizes of temporaries assigned as part of the semantic section.
     temporaries: TypedIndexTable<MOIRTemporaryId, MOIRTemporary>,
     /// Contains the actual local variables.
@@ -54,18 +75,30 @@ pub struct MOIRScope {
     /// Unused variables can be removed from this set.
     /// The set is used to determine how many actual temporary varnodes need to be allocated later on.
     used_locals: HashSet<MOIRLocalId>,
+    /// This map keeps track of where the subtable build instruction is
+    /// By default, subtables are built implicitly at the beginning of the
+    /// instruction list. If an explicit build instruction occurs later,
+    /// the implicit build is replaced by a `nop` and the subtable is marked
+    /// as explicitly built. A second explicit build is not allowed.
+    subtable_builds: HashMap<TableId, SubTableBuild>,
 }
 
 new_typed_index_table_id! { pub struct MOIRLocalId; "L"; }
-new_typed_index_table_id! { pub struct LabelId; "LBL"; }
+new_map_key! { pub struct LabelId; "LBL"; }
 
 /// InstructionId is simply an index into the instruction list.
 pub type InstructionId = usize;
 
+/// A small enum to keep track of whether the subtable is implicitly or explicitly built.
+enum SubTableBuild {
+    Implicit(InstructionId),
+    Explicit,
+}
+
 /// A temporary varnode. These have no backing varnode at this stage yet.
 /// They will be mapped to concrete varnodes once the constructor is called.
-#[derive(Debug)]
-struct MOIRTemporary {
+#[derive(Debug, Copy, Clone)]
+pub(crate) struct MOIRTemporary {
     pub size: MOIRMaybeSize,
 }
 
@@ -171,6 +204,15 @@ impl From<MOIRSize> for MOIRMaybeSize {
     }
 }
 
+impl From<Option<MOIRSize>> for MOIRMaybeSize {
+    fn from(value: Option<MOIRSize>) -> Self {
+        match value {
+            None => MOIRMaybeSize::Undetermined,
+            Some(size) => MOIRMaybeSize::Determined(size),
+        }
+    }
+}
+
 new_typed_index_table_id! { pub struct MOIRTemporaryId; "T"; }
 
 impl MOIRScope {
@@ -192,6 +234,26 @@ impl MOIRScope {
         self.locals = locals;
         self.labels_definitions = label_definitions;
         result
+    }
+
+    pub fn iter_used_temps(&self) -> impl Iterator<Item = (MOIRLocalId, MOIRTemporary)> {
+        self.used_locals.iter().copied().filter_map(|local_id| {
+            match self
+                .slices
+                .get(local_id)
+                .expect("The local must exist. Otherwise we have a logic error in the Scope struct.")
+                .reference
+            {
+                MOIRReference::Temporary(temp_id) => Some((
+                    local_id,
+                    self.temporaries
+                        .get(temp_id)
+                        .copied()
+                        .expect("This must exist. Otherwise we have a logic error in the Scope struct"),
+                )),
+                _ => None,
+            }
+        })
     }
 
     pub fn mark_local_as_used(
@@ -243,6 +305,54 @@ impl MOIRScope {
         self.locals.insert(ident, id);
     }
 
+    /// Marks subtables as implicitly built and stores the instruction ids where the builds are performed.
+    pub fn make_implicit_builds(
+        &mut self,
+        instructions: &mut Vec<MOIRInstruction>,
+    ) -> SleighCompilerResult {
+        for subtable in self
+            .slices
+            .iter()
+            .filter_map(|(_, slice)| match slice.reference {
+                MOIRReference::SubTable(id) => Some(id),
+                _ => None,
+            })
+        {
+            // We insert an implicit build instruction for each subtable at the beginning.
+            // This results in a recursive depth first build of subtables.
+            // The order is not determined.
+            // Explicit build instructions later on should remove the implicit build instruction.
+            // The instruction is simply replaced with a `nop` instruction which is omitted when
+            // transforming to JIR.
+            let index = instructions.len();
+            instructions.push(moir_instruction!(build subtable));
+            // Save the index of the build instruction
+            match self.subtable_builds.entry(subtable) {
+                Entry::Occupied(_) => todo!("Generate error: Cannot implicitly build the same table twice"),
+                Entry::Vacant(e) => e.insert(SubTableBuild::Implicit(index)),
+            };
+        }
+        Ok(())
+    }
+
+    pub fn mark_explicit_build(
+        &mut self,
+        table_id: TableId,
+        instructions: &mut Vec<MOIRInstruction>,
+    ) -> SleighCompilerResult {
+        match self.subtable_builds.entry(table_id) {
+            Entry::Occupied(mut e) => {
+                match e.get() {
+                    SubTableBuild::Implicit(inst) => instructions[*inst] = moir_instruction!(nop),
+                    SubTableBuild::Explicit => todo!("Generate error for duplicate explicit build instructions"),
+                };
+                e.insert(SubTableBuild::Explicit);
+            }
+            Entry::Vacant(_) => panic!("Logic error. All subtables need to have been marked as implicitly built"),
+        }
+        Ok(())
+    }
+
     /// Temporaries can be named or unnamed. Named temporaries are created for example by using
     /// the `local` keyword in pcode statements. Unnamed temporaries are created by the compiler
     /// for storing intermediate values when atomizing expressions.
@@ -286,8 +396,14 @@ impl MOIRScope {
         &self,
         ident: StringId,
     ) -> Option<&MOIRSlice> {
-        let id = *self.locals.get(&ident)?;
-        self.slices.get(id)
+        self.slices.get(self.local_id(ident)?)
+    }
+
+    pub fn local_id(
+        &self,
+        ident: StringId,
+    ) -> Option<MOIRLocalId> {
+        self.locals.get(&ident).copied()
     }
 
     /// Returns the size of the provided local if it is determined.
@@ -435,10 +551,7 @@ impl MOIRScope {
         id: InstructionId,
     ) -> SleighCompilerResult<(LabelId, InstructionId)> {
         let label_id = self.resolve_label(label)?;
-        let instruction_id = self
-            .labels
-            .get_mut(label_id)
-            .expect("If this does not exist we have an internal bookkeeping error");
+        let instruction_id = &mut self.labels[label_id];
         if instruction_id.is_some() {
             todo!("Generate error for duplicate label definition")
         } else {
@@ -505,6 +618,33 @@ impl MOIRScope {
             .expect("The local id was given out by us so it must exist");
         slice.set_size(size)?;
         Ok(local)
+    }
+
+    pub fn detailed_scope_display(
+        &self,
+        interner: &StringInterner<StringBackend>,
+    ) -> String {
+        let mut already_printed = HashMap::new();
+        for (ident, local_id) in self.locals.iter() {
+            let slice = self.slices.get(*local_id).expect("This must exist");
+            if self.used_locals.contains(local_id) {
+                let str = interner.string(*ident).expect("This must exist");
+                let str = format!("{: <18} {}", format!("{: <14}({}):", str, local_id), slice);
+                already_printed.insert(*local_id, str);
+            }
+        }
+        let mut out = String::new();
+        for (id, slice) in self.slices.iter() {
+            if self.used_locals.contains(&id) {
+                if let Some(str) = already_printed.get(&id) {
+                    writeln!(out, "{str}").expect("This should not error");
+                } else {
+                    writeln!(out, "{: <4} {}", format!("{: <14}({}):", "<unnamed>", id), slice)
+                        .expect("This should not error");
+                }
+            }
+        }
+        out
     }
 }
 

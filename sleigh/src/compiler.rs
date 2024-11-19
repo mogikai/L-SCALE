@@ -2,6 +2,8 @@ use ariadne::{
     Report,
     Source,
 };
+use chumsky::inspector::Inspector;
+use chumsky::prelude::Input;
 use slotmap::new_key_type;
 use std::fmt::{
     Debug,
@@ -26,14 +28,12 @@ use crate::compiler::lexer::{
     SleighTokens,
 };
 use crate::compiler::parser::SleighParser;
-use crate::preprocessor::error::PreprocessorError;
 use crate::preprocessor::SleighPreprocessorFactory;
+use crate::preprocessor::error::PreprocessorError;
+use crate::spec::ProcessorSpecification;
 use crate::spec::builder::{
     ProcessorSpecificationBuilder,
     StringId,
-};
-use crate::spec::{
-    ProcessorSpecification,
 };
 
 pub mod ast;
@@ -83,7 +83,7 @@ pub type SleighCompilerResult<T = ()> = Result<T, SleighCompilerError>;
 #[derive(Debug)]
 pub struct SleighCompiler {
     preprocessor_factory: SleighPreprocessorFactory,
-    lexer: SleighLexer<ProcessorSpecificationBuilder>,
+    lexer: SleighLexer,
     parser: SleighParser,
     input_cache: CompilerInputCache,
     spec_builder: ProcessorSpecificationBuilder,

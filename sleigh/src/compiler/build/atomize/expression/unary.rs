@@ -1,12 +1,11 @@
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::expression::{
     SASTPCodeExpression,
     SASTPCodeUnaryOp,
 };
-use crate::compiler::ast::Spanned;
 use crate::compiler::build::atomize::expression::{
     from_bool,
     into_bool,
-    Cast,
 };
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::{
@@ -14,9 +13,9 @@ use crate::compiler::{
     SleighCompilerResult,
 };
 use crate::spec::moir::code::{
-    moir_instruction,
     MOIRInstruction,
     MOIROperation,
+    moir_instruction,
 };
 use crate::spec::moir::scope::{
     MOIRLocalId,
@@ -27,10 +26,6 @@ use crate::spec::moir::varnode::{
     MOIRLocal,
 };
 use std::fmt::Display;
-use std::ops::{
-    Neg,
-    Not,
-};
 
 impl SleighCompiler {
     pub fn atomize_unary_operation(
@@ -51,14 +46,9 @@ impl SleighCompiler {
             MOIRLocal::Const(operand) => {
                 // We can do constant folding.
                 Ok(match operand {
-                    MOIRConst::ConstN(..) => {
-                        todo!("Constant folding for ConstN currently unsupported")
+                    MOIRConst::Determined(operand, size) => {
+                        MOIRConst::Determined(const_eval_unary_op(op.into_value(), operand)?, size).into()
                     }
-                    MOIRConst::Const128(operand) => const_eval_unary_op::<u128, i128>(op.into_value(), operand)?.into(),
-                    MOIRConst::Const64(operand) => const_eval_unary_op::<u64, i64>(op.into_value(), operand)?.into(),
-                    MOIRConst::Const32(operand) => const_eval_unary_op::<u32, i32>(op.into_value(), operand)?.into(),
-                    MOIRConst::Const16(operand) => const_eval_unary_op::<u16, i16>(op.into_value(), operand)?.into(),
-                    MOIRConst::Const8(operand) => const_eval_unary_op::<u8, i8>(op.into_value(), operand)?.into(),
                     MOIRConst::Undetermined(_) => {
                         todo!("Implement unary const folding with undetermined values or generate error?")
                     }
@@ -68,23 +58,16 @@ impl SleighCompiler {
     }
 }
 
-fn const_eval_unary_op<T, S>(
+fn const_eval_unary_op(
     op: SASTPCodeUnaryOp,
-    operand: T,
-) -> Result<T, SleighCompilerError>
+    operand: u128,
+) -> Result<u128, SleighCompilerError>
 where
-    T: Cast<S>,
-    T: Not<Output = T>,
-    T: Into<u128>,
-    T: From<u8>,
-    T: Display,
-    S: Neg<Output = S>,
-    S: Cast<T>,
 {
     Ok(match op {
         SASTPCodeUnaryOp::BoolNegate => from_bool(!into_bool(operand)),
         SASTPCodeUnaryOp::BitNegate => !operand,
-        SASTPCodeUnaryOp::IntNegate => (-operand.cast()).cast(),
+        SASTPCodeUnaryOp::IntNegate => (-(operand as i128)) as u128,
         SASTPCodeUnaryOp::FloatNegate => todo!(),
     })
 }

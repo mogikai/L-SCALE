@@ -9,13 +9,16 @@ edition = "2024"
 tracing = { version = "0.1.40", features = ["release_max_level_trace"] }
 slotmap = "1.0.*"
 thiserror = "1.0.*"
-ariadne = "0.4.1"
-chumsky = { features = ["label", "pratt"], git = "https://github.com/mlgiraud/chumsky.git" }
+ariadne = "0.5.0"
+chumsky = { features = ["label", "pratt"], git = "https://github.com/zesterer/chumsky.git" }
 string-interner = "0.17.0"
 num = "0.4.3"
 strum_macros = "0.26.4"
 itertools = "0.13.0"
 mogi_utilities = { path = "../utilities", version = "*" }
+imbl = "3.0.0"
 
 [features]
 trace_build = []
+trace_pp = []
+trace_jir = []

@@ -74,6 +74,12 @@ macro_rules! addr_impl {
             }
         }
 
+        impl<T> From<$name<T>> for u128 {
+            fn from(value: $name<T>) -> Self {
+                value.0.into()
+            }
+        }
+
         impl<T> From<$name<T>> for usize {
             fn from(value: $name<T>) -> Self {
                 value.0 as usize

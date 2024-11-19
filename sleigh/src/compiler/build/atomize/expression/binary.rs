@@ -1,9 +1,9 @@
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::expression::{
     SASTPCodeBinaryOp,
     SASTPCodeExpression,
     SASTPcodeOpCategory,
 };
-use crate::compiler::ast::Spanned;
 use crate::compiler::build::atomize::expression::{
     from_bool,
     into_bool,
@@ -16,8 +16,8 @@ use crate::compiler::{
     SleighCompilerResult,
 };
 use crate::spec::moir::code::{
-    moir_instruction,
     MOIRInstruction,
+    moir_instruction,
 };
 use crate::spec::moir::scope::{
     MOIRLocalId,
@@ -33,15 +33,6 @@ use num::{
     CheckedSub,
 };
 use std::fmt::Display;
-use std::ops::{
-    BitAnd,
-    BitOr,
-    BitXor,
-    Div,
-    Mul,
-    Shl,
-    Shr,
-};
 
 impl SleighCompiler {
     pub fn atomize_binary_operation(
@@ -144,38 +135,14 @@ fn const_eval_binary_op(
     rhs: MOIRConst,
 ) -> SleighCompilerResult<MOIRConst> {
     match lhs {
-        MOIRConst::ConstN(..) => {
-            todo!("Const eval on ConstN currently unsupported")
-        }
-        MOIRConst::Const128(lhs) => {
-            let MOIRConst::Const128(rhs) = rhs else {
-                todo!("Generate error report for incorrect sizes")
+        MOIRConst::Determined(lhs, lhs_size) => {
+            let MOIRConst::Determined(rhs, rhs_size) = rhs else {
+                todo!("Generate error report for undetermined size")
             };
-            Ok(MOIRConst::Const128(const_eval_binary_op_generic(lhs, op, rhs)?))
-        }
-        MOIRConst::Const64(lhs) => {
-            let MOIRConst::Const64(rhs) = rhs else {
+            if lhs_size != rhs_size {
                 todo!("Generate error report for incorrect sizes")
-            };
-            Ok(MOIRConst::Const64(const_eval_binary_op_generic(lhs, op, rhs)?))
-        }
-        MOIRConst::Const32(lhs) => {
-            let MOIRConst::Const32(rhs) = rhs else {
-                todo!("Generate error report for incorrect sizes")
-            };
-            Ok(MOIRConst::Const32(const_eval_binary_op_generic(lhs, op, rhs)?))
-        }
-        MOIRConst::Const16(lhs) => {
-            let MOIRConst::Const16(rhs) = rhs else {
-                todo!("Generate error report for incorrect sizes")
-            };
-            Ok(MOIRConst::Const16(const_eval_binary_op_generic(lhs, op, rhs)?))
-        }
-        MOIRConst::Const8(lhs) => {
-            let MOIRConst::Const8(rhs) = rhs else {
-                todo!("Generate error report for incorrect sizes")
-            };
-            Ok(MOIRConst::Const8(const_eval_binary_op_generic(lhs, op, rhs)?))
+            }
+            Ok(MOIRConst::Determined(const_eval_binary_op_generic(lhs, op, rhs)?, lhs_size))
         }
         MOIRConst::Undetermined(_) => {
             todo!("Cannot const evaluate undetermined size constants")
@@ -183,33 +150,20 @@ fn const_eval_binary_op(
     }
 }
 
-fn const_eval_binary_op_generic<T>(
-    lhs: T,
+fn const_eval_binary_op_generic(
+    lhs: u128,
     op: SASTPCodeBinaryOp,
-    rhs: T,
-) -> Result<T, SleighCompilerError>
+    rhs: u128,
+) -> Result<u128, SleighCompilerError>
 where
-    T: CheckedAdd<Output = T>,
-    T: CheckedSub<Output = T>,
-    T: Mul<Output = T>,
-    T: Div<Output = T>,
-    T: Shr<Output = T>,
-    T: Shl<Output = T>,
-    T: BitAnd<Output = T>,
-    T: BitOr<Output = T>,
-    T: BitXor<Output = T>,
-    T: PartialEq<T>,
-    T: Into<u128>,
-    T: From<u8>,
-    T: Display,
 {
     trace_build!("Const eval for {lhs} {op:?} {rhs}");
     Ok(match op {
         SASTPCodeBinaryOp::IntAdd => lhs
-            .checked_add(&rhs)
+            .checked_add(rhs)
             .ok_or(SleighCompilerError::ConstEvalOverflow)?,
         SASTPCodeBinaryOp::IntSubtract => lhs
-            .checked_sub(&rhs)
+            .checked_sub(rhs)
             .ok_or(SleighCompilerError::ConstEvalOverflow)?,
         SASTPCodeBinaryOp::IntMul => lhs * rhs,
         SASTPCodeBinaryOp::IntDiv => lhs / rhs,

@@ -57,7 +57,6 @@ impl SleighCompiler {
                 .ok_or_else(|| todo!("Generate error report for invocation without output")),
             BinaryOperation { lhs, op, rhs } => self.atomize_binary_operation(scope, instructions, out, *lhs, op, *rhs),
             UnaryOperation { op, operand } => self.atomize_unary_operation(scope, instructions, out, op, *operand),
-            Dereference { .. } => self.atomize_dereference(instructions),
             Subpiece(subpiece) => self.atomize_subpiece(scope, out_size, subpiece),
             Bitrange(bitrange) => self.atomize_bitrange(scope, instructions, out, bitrange),
             Identifier(ident) => self.atomize_identifier(scope, out_size, ident.transmute()),
@@ -68,13 +67,6 @@ impl SleighCompiler {
                 panic!("An error in the AST should have lead to the compiler quitting earlier on.")
             }
         }
-    }
-
-    pub fn atomize_dereference(
-        &mut self,
-        _instructions: &mut Vec<MOIRInstruction>,
-    ) -> SleighCompilerResult<MOIRLocal> {
-        todo!()
     }
 
     /// Atomizing a literal always returns a local since we don't want to simply copy this into an out local.
@@ -104,28 +96,3 @@ where
         true => 1.into(),
     }
 }
-
-trait Cast<T> {
-    fn cast(self) -> T;
-}
-
-macro_rules! impl_cast {
-    ($from:ty, $to:ty) => {
-        impl Cast<$to> for $from {
-            fn cast(self) -> $to {
-                self as $to
-            }
-        }
-    };
-}
-
-impl_cast!(u8, i8);
-impl_cast!(u16, i16);
-impl_cast!(u32, i32);
-impl_cast!(u64, i64);
-impl_cast!(u128, i128);
-impl_cast!(i8, u8);
-impl_cast!(i16, u16);
-impl_cast!(i32, u32);
-impl_cast!(i64, u64);
-impl_cast!(i128, u128);

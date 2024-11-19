@@ -1,3 +1,4 @@
+use crate::compiler::CompilerContext;
 use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::item::SASTItem;
 use crate::compiler::ast::{
@@ -24,7 +25,6 @@ use crate::compiler::tokens::{
     SleighOperation,
     SleighToken,
 };
-use crate::compiler::CompilerContext;
 use crate::spec::builder::{
     ProcessorSpecificationBuilder,
     StringId,
@@ -43,11 +43,11 @@ use chumsky::extra::ParserExtra;
 use chumsky::input::MapExtra;
 use chumsky::label::LabelError;
 use chumsky::prelude::{
+    Recursive,
     any,
     end,
     skip_then_retry_until,
     via_parser,
-    Recursive,
 };
 use chumsky::primitive::{
     choice,
@@ -55,11 +55,11 @@ use chumsky::primitive::{
 };
 use chumsky::span::Span;
 use chumsky::{
-    extra,
-    select,
     IterParser,
     ParseResult,
     Parser,
+    extra,
+    select,
 };
 use std::fmt::Display;
 
@@ -96,7 +96,7 @@ pub fn report_errors<T>(
     let mut diagnostic = vec![];
     parsed.errors().for_each(|err| {
         let error_span = err.span();
-        let report = Report::build(ReportKind::Error, error_span.context(), error_span.start())
+        let report = Report::build(ReportKind::Error, error_span.clone())
             .with_message("Parser Error")
             .with_label(Label::new(error_span.clone()).with_message(err.reason().to_string()))
             .finish();
@@ -126,8 +126,8 @@ fn parser<'tokens, 'src: 'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>
     items_parser().map(|items| SleighAST { items })
 }
 
-fn items_parser<'tokens, 'src: 'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Vec<SASTItem>, SleighParserExtra<'tokens>> + Clone {
+fn items_parser<'tokens, 'src: 'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Vec<SASTItem>, SleighParserExtra<'tokens>> + Clone {
     let mut items = Recursive::declare();
 
     let attach = attach().map(SASTItem::Attach);
@@ -189,9 +189,16 @@ where
     one_sleigh_whitespace().repeated()
 }
 
+fn at_least_one_sleigh_whitespace<'tokens, E>() -> impl Parser<'tokens, ParserInput<'tokens>, (), E> + Clone
+where
+    E: ParserExtra<'tokens, ParserInput<'tokens>>,
+{
+    one_sleigh_whitespace().repeated().at_least(1)
+}
+
 /// Parse an ident token and return the contained string reference
-fn sleigh_ident<'tokens, 'src: 'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, StringId, SleighParserExtra<'tokens>> + Clone {
+fn sleigh_ident<'tokens, 'src: 'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, StringId, SleighParserExtra<'tokens>> + Clone {
     let ident = select! { SleighToken::Ident(ident) => ident };
     ident.map_err(|mut e: SleighParserError| {
         <SleighParserError as LabelError<'_, ParserInput<'_>, _>>::label_with(&mut e, "Identifier");
@@ -204,8 +211,8 @@ fn sast_ident<'tokens>() -> impl Parser<'tokens, ParserInput<'tokens>, SASTIdent
     sleigh_ident().map(SASTIdent)
 }
 
-fn sast_ident_spanned<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTIdent>, SleighParserExtra<'tokens>> + Clone {
+fn sast_ident_spanned<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTIdent>, SleighParserExtra<'tokens>> + Clone {
     sleigh_ident()
         .map(SASTIdent)
         .map_with(spanned)
