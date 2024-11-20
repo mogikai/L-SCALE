@@ -1,8 +1,8 @@
-use chumsky::primitive::choice;
 use chumsky::Parser;
+use chumsky::primitive::choice;
 
-use crate::compiler::ast::attach::SASTAttach;
 use crate::compiler::ast::Spanned;
+use crate::compiler::ast::attach::SASTAttach;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::tokens::{
@@ -15,18 +15,18 @@ use self::value::value;
 use self::variable::variable;
 
 use super::{
+    SleighParserExtra,
     sleigh_control,
     sleigh_keyword,
     sleigh_whitespace,
-    SleighParserExtra,
 };
 
 mod name;
 mod value;
 mod variable;
 
-pub(super) fn attach<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTAttach>, SleighParserExtra<'tokens>> {
+pub(super) fn attach<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTAttach>, SleighParserExtra<'tokens>> {
     let variable = variable().map(SASTAttach::SASTVariable);
     let value = value().map(SASTAttach::SASTValue);
     let name = name().map(SASTAttach::SASTName);
@@ -47,8 +47,8 @@ mod test {
 
     use crate::compiler::parser::report_errors;
     use crate::compiler::parser::test::{
-        test_parser,
         TestResult,
+        test_parser,
     };
 
     use super::attach;

@@ -1,3 +1,4 @@
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::{
     SASTIdent,
     SASTSize,
@@ -8,16 +9,18 @@ use crate::compiler::ast::pcode::subpiece::{
     SASTPCodeSubpieceSelector,
     SASTPCodeSubpieceTarget,
 };
-use crate::compiler::ast::Spanned;
-use crate::compiler::error::{CannotTruncateLhs, SleighCompilerError};
+use crate::compiler::error::{
+    CannotTruncateLhs,
+    SleighCompilerError,
+};
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
 use crate::spec::builder::ProcessorSpecificationBuilder;
 use crate::spec::moir::code::{
-    moir_instruction,
     MOIRInstruction,
+    moir_instruction,
 };
 use crate::spec::moir::scope::{
     MOIRLocalId,
@@ -131,8 +134,7 @@ fn truncate_lhs(
                 ident_str: str.to_string(),
                 expected_size: size,
             };
-            SleighCompilerError::with_span(lhs_err.into(), "ident", ident_span)
-                .cause(err)
+            SleighCompilerError::with_span(lhs_err.into(), "ident", ident_span).cause(err)
         })
     }
 }

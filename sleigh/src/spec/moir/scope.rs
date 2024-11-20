@@ -1,5 +1,9 @@
 use crate::compiler::ast::Spanned;
-use crate::compiler::error::{DuplicatedIdentifier, SleighCompilerError, SleighCompilerErrorType};
+use crate::compiler::error::{
+    DuplicatedIdentifier,
+    SleighCompilerError,
+    SleighCompilerErrorType,
+};
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::{
     CompilerContext,
@@ -276,7 +280,9 @@ impl MOIRScope {
     ) -> SleighCompilerResult {
         let (ident, span) = ident.into_tuple();
         match self.locals.entry(ident) {
-            Entry::Occupied(_) => Err(SleighCompilerError::with_span(SleighCompilerErrorType::RedefinedSymbol, "dupe", span.clone()))?,
+            Entry::Occupied(_) => {
+                Err(SleighCompilerError::with_span(SleighCompilerErrorType::RedefinedSymbol, "dupe", span.clone()))?
+            }
             Entry::Vacant(entry) => entry.insert(local),
         };
         self.local_spans.insert(ident, span);
@@ -372,13 +378,15 @@ impl MOIRScope {
         match self.locals.entry(ident) {
             Entry::Occupied(_) => {
                 let mut spans = HashMap::new();
-                spans.insert("first", self.local_spans
-                    .get(&ident)
-                    .expect("This must exist, since the locals entry is occupied")
-                    .clone());
+                spans.insert(
+                    "first",
+                    self.local_spans
+                        .get(&ident)
+                        .expect("This must exist, since the locals entry is occupied")
+                        .clone(),
+                );
                 spans.insert("second", ident_span);
-                Err(SleighCompilerError::with_spans((DuplicatedIdentifier { name: "".to_string() }).into(),
-                                                    spans))
+                Err(SleighCompilerError::with_spans((DuplicatedIdentifier { name: "".to_string() }).into(), spans))
             }
             Entry::Vacant(entry) => {
                 self.local_spans.insert(ident, ident_span);

@@ -1,9 +1,9 @@
-use std::fmt::Display;
+use super::Spanned;
 use super::common::{
     SASTIdent,
     SASTSize,
 };
-use super::Spanned;
+use std::fmt::Display;
 
 // basic definitions
 

@@ -27,7 +27,12 @@ use crate::compiler::ast::{
     Spanned,
     TransmuteIntoVec,
 };
-use crate::compiler::error::{DuplicatedSpaceAttribute, InvalidFieldRange, SleighCompilerError, SleighCompilerErrorType};
+use crate::compiler::error::{
+    DuplicatedSpaceAttribute,
+    InvalidFieldRange,
+    SleighCompilerError,
+    SleighCompilerErrorType,
+};
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::{
     SleighCompiler,
@@ -42,10 +47,13 @@ use crate::spec::moir::field::{
     MOIRField,
     MOIRFieldParent,
 };
-use crate::spec::moir::token::{MOIRToken, TokenId};
+use crate::spec::moir::token::{
+    MOIRToken,
+    TokenId,
+};
 use crate::spec::moir::varnode::MOIRVarNode;
-use std::ops::Range;
 use chumsky::container::Container;
+use std::ops::Range;
 use tracing::{
     debug,
     trace,
@@ -136,8 +144,7 @@ impl SleighCompiler {
         pcode_op: Spanned<SASTUserPcodeOp>,
     ) -> SleighCompilerResult {
         let (pcode_op, _) = pcode_op.into_tuple();
-        self
-            .spec_builder
+        self.spec_builder
             .declare_custom_op(pcode_op.name.transmute())?;
         Ok(())
     }
@@ -168,7 +175,8 @@ impl SleighCompiler {
                 offset: varnodes.offset.value() + (i as u64 * u64::from(*varnodes.size)),
                 size: *varnodes.size,
             };
-            self.spec_builder.define_varnode(name.transmute(), varnode)?;
+            self.spec_builder
+                .define_varnode(name.transmute(), varnode)?;
         }
         Ok(())
     }
@@ -203,9 +211,7 @@ impl SleighCompiler {
             match attribute {
                 SASTAddressSpaceAttribute::Type(ty) => {
                     if let Some((_, prev_input)) = r#type {
-                        return Err(SleighCompilerError::from_error((DuplicatedSpaceAttribute {
-                            attribute,
-                        }).into())
+                        return Err(SleighCompilerError::from_error((DuplicatedSpaceAttribute { attribute }).into())
                             .span("first", prev_input)
                             .span("second", input));
                     } else {
@@ -214,9 +220,7 @@ impl SleighCompiler {
                 }
                 SASTAddressSpaceAttribute::Size(size) => {
                     if let Some((_, prev_input)) = address_size {
-                        return Err(SleighCompilerError::from_error((DuplicatedSpaceAttribute {
-                            attribute,
-                        }).into())
+                        return Err(SleighCompilerError::from_error((DuplicatedSpaceAttribute { attribute }).into())
                             .span("first", prev_input)
                             .span("second", input));
                     } else {
@@ -225,9 +229,7 @@ impl SleighCompiler {
                 }
                 SASTAddressSpaceAttribute::Wordsize(size) => {
                     if let Some((_, prev_input)) = word_size {
-                        return Err(SleighCompilerError::from_error((DuplicatedSpaceAttribute {
-                            attribute,
-                        }).into())
+                        return Err(SleighCompilerError::from_error((DuplicatedSpaceAttribute { attribute }).into())
                             .span("first", prev_input)
                             .span("second", input));
                     } else {
@@ -236,9 +238,7 @@ impl SleighCompiler {
                 }
                 SASTAddressSpaceAttribute::IsDefault => {
                     if let (_, Some(prev_input)) = default {
-                        return Err(SleighCompilerError::from_error((DuplicatedSpaceAttribute {
-                            attribute,
-                        }).into())
+                        return Err(SleighCompilerError::from_error((DuplicatedSpaceAttribute { attribute }).into())
                             .span("first", prev_input)
                             .span("second", input));
                     } else {
@@ -264,20 +264,21 @@ impl SleighCompiler {
         // We first define the token and then we can define its fields, since they need to refer to the token.
         let (token, _) = token.into_tuple();
         let bits = token.bits.into_value();
-        let result = self.spec_builder.define_token(
-            token.name.transmute(),
-            MOIRToken {
+        let result = self
+            .spec_builder
+            .define_token(token.name.transmute(), MOIRToken {
                 bits,
                 endianness_override: token.endian_override.map(|e| e.into_value().into()),
-            },
-        );
+            });
         match result {
             Ok(token_id) => {
                 for field in token.fields.into_iter() {
                     let name = field.name.clone().transmute();
                     let range = field.start.clone().into_value()..field.end.clone().into_value() + 1;
-                    if let Some(field) = self.make_field(MOIRFieldParent::Token(token_id), bits, range)
-                        .map_err(|e| SleighCompilerError::with_span(e.into(),"field", field.span().clone()))? {
+                    if let Some(field) = self
+                        .make_field(MOIRFieldParent::Token(token_id), bits, range)
+                        .map_err(|e| SleighCompilerError::with_span(e.into(), "field", field.span().clone()))?
+                    {
                         self.spec_builder.define_field(name, field)?;
                     }
                 }
@@ -296,10 +297,11 @@ impl SleighCompiler {
             .define_context(context.varnode.clone().transmute())?;
         for field in &context.fields {
             let range = field.start.clone().into_value()..field.end.clone().into_value() + 1;
-            if let Some(moir_field) = self.make_field(MOIRFieldParent::Context(context_id), bits, range)
-                .map_err(|e| SleighCompilerError::from_error(e.into()))? {
-                self
-                    .spec_builder
+            if let Some(moir_field) = self
+                .make_field(MOIRFieldParent::Context(context_id), bits, range)
+                .map_err(|e| SleighCompilerError::from_error(e.into()))?
+            {
+                self.spec_builder
                     .define_field(field.name.clone().transmute(), moir_field)?;
             }
         }
@@ -338,7 +340,8 @@ impl SleighCompiler {
         &mut self,
         endianness: Spanned<SASTEndianness>,
     ) -> SleighCompilerResult {
-        self.spec_builder.define_endianness(endianness.transmute())?;
+        self.spec_builder
+            .define_endianness(endianness.transmute())?;
         Ok(())
     }
 
@@ -372,4 +375,3 @@ macro_rules! trace_build {
 }
 
 pub(crate) use trace_build;
-

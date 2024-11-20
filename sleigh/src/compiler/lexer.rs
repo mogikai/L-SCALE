@@ -2,6 +2,10 @@ use std::fmt::Debug;
 use std::ops::Range;
 
 use crate::compiler::ast::SpannedToken;
+use crate::compiler::error::{
+    SleighCompilerError,
+    SleighCompilerErrorType,
+};
 use crate::compiler::inputcache::CompilerInputCache;
 use crate::compiler::tokens::{
     SleighControlCharacter,
@@ -54,10 +58,6 @@ use chumsky::{
     ParseResult,
     Parser,
     extra,
-};
-use crate::compiler::error::{
-    SleighCompilerError,
-    SleighCompilerErrorType
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
@@ -233,7 +233,10 @@ impl SleighLexer {
                     .write(&mut *input_cache, &mut diagnostic)
                     .expect("There is no case in which this may fail.");
             }
-            Err(SleighCompilerErrorType::LexerError(String::from_utf8(diagnostic).expect("We only write utf8 strings")).into())
+            Err(
+                SleighCompilerErrorType::LexerError(String::from_utf8(diagnostic).expect("We only write utf8 strings"))
+                    .into(),
+            )
         }
     }
 

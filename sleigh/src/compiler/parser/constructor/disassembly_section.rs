@@ -4,30 +4,30 @@ use chumsky::{
     Parser,
 };
 
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::constructor::disassembly_section::{
     SASTAction,
     SASTDisassemblySection,
     SASTPatternExpression,
 };
-use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
+    SleighParserExtra,
     sast_ident,
     sast_ident_spanned,
     sleigh_control,
     sleigh_number,
     sleigh_operation,
     whitespace_padded,
-    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighOperation,
 };
 
-pub fn disassembly_section<'tokens, 'src: 'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTDisassemblySection>, SleighParserExtra<'tokens>> {
+pub fn disassembly_section<'tokens, 'src: 'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTDisassemblySection>, SleighParserExtra<'tokens>> {
     // TODO: This needs some cleanup.
     let expression = recursive(|expr| {
         let terminal = sast_ident()
@@ -161,8 +161,8 @@ mod test {
 
     use crate::compiler::parser::report_errors;
     use crate::compiler::parser::test::{
-        test_parser,
         TestResult,
+        test_parser,
     };
 
     use super::disassembly_section;

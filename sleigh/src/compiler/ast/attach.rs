@@ -1,5 +1,5 @@
-use super::common::SASTIdent;
 use super::Spanned;
+use super::common::SASTIdent;
 
 #[derive(Debug)]
 pub struct SASTVariable {

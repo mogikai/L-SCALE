@@ -3,24 +3,24 @@ use chumsky::{
     Parser,
 };
 
-use crate::compiler::ast::attach::SASTName;
 use crate::compiler::ast::Spanned;
+use crate::compiler::ast::attach::SASTName;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
+    SleighParserExtra,
     sast_ident_spanned,
     sleigh_control,
     sleigh_keyword,
     sleigh_whitespace,
-    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighKeyword,
 };
 
-pub(super) fn name<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTName>, SleighParserExtra<'tokens>> {
+pub(super) fn name<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTName>, SleighParserExtra<'tokens>> {
     let stringlist = sast_ident_spanned()
         .map(|ident| vec![ident])
         .or(sast_ident_spanned()

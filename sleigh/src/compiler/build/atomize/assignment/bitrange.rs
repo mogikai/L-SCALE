@@ -53,10 +53,9 @@ impl SleighCompiler {
             .determined_or(minimum_value_size);
 
         let expr_span = expression.span().clone();
-        let value = self
-            .aab_resolve_value(scope, instructions, minimum_value_size, target_size, expression)?;
-        let mask = create_mask(scope, instructions, shift_amount, bits, target_size)
-            .map_err( |e| e.span("expr", expr_span))?;
+        let value = self.aab_resolve_value(scope, instructions, minimum_value_size, target_size, expression)?;
+        let mask =
+            create_mask(scope, instructions, shift_amount, bits, target_size).map_err(|e| e.span("expr", expr_span))?;
 
         // We need to shift the value to the correct position before assigning.
         instructions.push(moir_instruction!(value = value << shift_amount));

@@ -3,26 +3,26 @@ use chumsky::{
     Parser,
 };
 
-use crate::compiler::ast::pcode_macro::SASTPCodeMacro;
 use crate::compiler::ast::Spanned;
+use crate::compiler::ast::pcode_macro::SASTPCodeMacro;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::pcode;
 use crate::compiler::parser::{
+    SleighParserExtra,
     inline_whitespace_padded,
     parenthesized,
     sast_ident_spanned,
     sleigh_control,
     sleigh_keyword,
-    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighControlCharacter,
     SleighKeyword,
 };
 
-pub(super) fn pcode_macro<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeMacro>, SleighParserExtra<'tokens>> {
+pub(super) fn pcode_macro<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeMacro>, SleighParserExtra<'tokens>> {
     let ident = inline_whitespace_padded(sast_ident_spanned());
 
     let argument = inline_whitespace_padded(sast_ident_spanned());

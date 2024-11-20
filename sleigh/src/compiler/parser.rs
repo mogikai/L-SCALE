@@ -5,7 +5,10 @@ use crate::compiler::ast::{
     SleighAST,
     Spanned,
 };
-use crate::compiler::error::{SleighCompilerError, SleighCompilerErrorType};
+use crate::compiler::error::{
+    SleighCompilerError,
+    SleighCompilerErrorType,
+};
 use crate::compiler::inputcache::CompilerInputCache;
 use crate::compiler::lexer::{
     InputSpan,
@@ -114,7 +117,10 @@ pub fn report_errors<T>(
             )
             .as_bytes(),
         );
-        Err(SleighCompilerErrorType::LexerError(String::from_utf8(diagnostic).expect("We only write utf8 strings.")).into())
+        Err(
+            SleighCompilerErrorType::LexerError(String::from_utf8(diagnostic).expect("We only write utf8 strings."))
+                .into(),
+        )
     }
 }
 

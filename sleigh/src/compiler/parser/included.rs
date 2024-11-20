@@ -1,8 +1,8 @@
 use crate::compiler::ast::item::SASTItem;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::{
-    whitespace_padded,
     SleighParserExtra,
+    whitespace_padded,
 };
 use crate::compiler::tokens::{
     IncludedTokens,
@@ -10,9 +10,9 @@ use crate::compiler::tokens::{
 };
 use chumsky::prelude::via_parser;
 use chumsky::{
+    Parser,
     select,
     select_ref,
-    Parser,
 };
 
 pub fn included_tokens<'tokens, P>(

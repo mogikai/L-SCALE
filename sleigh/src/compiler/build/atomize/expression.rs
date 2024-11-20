@@ -65,7 +65,8 @@ impl SleighCompiler {
             Error(_) => {
                 panic!("An error in the AST should have lead to the compiler quitting earlier on.")
             }
-        }).map_err( |e| e.span("expr", expr_span))
+        })
+        .map_err(|e| e.span("expr", expr_span))
     }
 
     /// Atomizing a literal always returns a local since we don't want to simply copy this into an out local.

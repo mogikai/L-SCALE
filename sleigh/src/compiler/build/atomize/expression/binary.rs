@@ -9,7 +9,10 @@ use crate::compiler::build::atomize::expression::{
     into_bool,
 };
 use crate::compiler::build::trace_build;
-use crate::compiler::error::{ConstEvalError, SleighCompilerError};
+use crate::compiler::error::{
+    ConstEvalError,
+    SleighCompilerError,
+};
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
@@ -158,12 +161,8 @@ where
 {
     trace_build!("Const eval for {lhs} {op:?} {rhs}");
     Ok(match op {
-        SASTPCodeBinaryOp::IntAdd => lhs
-            .checked_add(rhs)
-            .ok_or(ConstEvalError::Overflow)?,
-        SASTPCodeBinaryOp::IntSubtract => lhs
-            .checked_sub(rhs)
-            .ok_or(ConstEvalError::Overflow)?,
+        SASTPCodeBinaryOp::IntAdd => lhs.checked_add(rhs).ok_or(ConstEvalError::Overflow)?,
+        SASTPCodeBinaryOp::IntSubtract => lhs.checked_sub(rhs).ok_or(ConstEvalError::Overflow)?,
         SASTPCodeBinaryOp::IntMul => lhs * rhs,
         SASTPCodeBinaryOp::IntDiv => lhs / rhs,
         SASTPCodeBinaryOp::IntSDiv => todo!(),

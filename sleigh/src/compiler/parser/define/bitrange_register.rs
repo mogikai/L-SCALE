@@ -3,18 +3,18 @@ use chumsky::{
     Parser,
 };
 
-use crate::compiler::ast::define::SASTBitrangeRegister;
 use crate::compiler::ast::Spanned;
+use crate::compiler::ast::define::SASTBitrangeRegister;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
+    SleighParserExtra,
     sast_ident_spanned,
     sleigh_control,
     sleigh_keyword,
     sleigh_number,
     sleigh_operation,
     whitespace_padded,
-    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighControlCharacter,
@@ -22,8 +22,8 @@ use crate::compiler::tokens::{
     SleighOperation,
 };
 
-pub(super) fn bitrange_register<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Vec<Spanned<SASTBitrangeRegister>>, SleighParserExtra<'tokens>> {
+pub(super) fn bitrange_register<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Vec<Spanned<SASTBitrangeRegister>>, SleighParserExtra<'tokens>> {
     let number_pair = sleigh_control(SleighControlCharacter::OpenBracket)
         .ignore_then(sleigh_number())
         .then_ignore(sleigh_control(SleighControlCharacter::Comma))

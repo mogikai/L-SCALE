@@ -1,5 +1,5 @@
-use mogi_sleigh::compiler::error::SleighCompilerErrorType;
 use crate::common::build;
+use mogi_sleigh::compiler::error::SleighCompilerErrorType;
 
 mod common;
 

@@ -77,9 +77,9 @@ impl SleighCompiler {
         let matcher = self.create_matcher(constructor.bit_pattern_section.into_value().constraint)?;
 
         let display_section = constructor.display_section.into_value();
-        let scope =
-            self.pc_create_scope(display_section.identifiers, &matcher.symbols_used)
-                .map_err(|e| e.span("constructor", constructor_span))?;
+        let scope = self
+            .pc_create_scope(display_section.identifiers, &matcher.symbols_used)
+            .map_err(|e| e.span("constructor", constructor_span))?;
 
         let mut moir_constructor = MOIRConstructor {
             local_scope: scope,
@@ -353,10 +353,9 @@ impl SleighCompiler {
                 let lhs_symbol = self.spec_builder.get_symbol(&lhs.clone().transmute())?;
 
                 let expression = match lhs_symbol {
-                    MOIRSymbolId::Field(field_id) => {
-                        self.matcher_from_advanced_constraint(*field_id, op.into_value(), pattern.into_value())
-                            .map_err(|e| e.span("constraint", constraint_span))
-                    }
+                    MOIRSymbolId::Field(field_id) => self
+                        .matcher_from_advanced_constraint(*field_id, op.into_value(), pattern.into_value())
+                        .map_err(|e| e.span("constraint", constraint_span)),
                     MOIRSymbolId::Table(_) => todo!("Integrate subtable into matcher"),
                     _ => Err(ProcessorSpecificationError::InvalidSymbolType(*lhs_symbol))?,
                 }?;

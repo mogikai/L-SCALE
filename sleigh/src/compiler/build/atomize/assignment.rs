@@ -3,10 +3,13 @@ mod store;
 mod subpiece;
 mod variable;
 
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::pcode::target_expression::SASTPCodeTargetExpression;
-use crate::compiler::ast::Spanned;
-use crate::compiler::{SleighCompiler, SleighCompilerResult};
+use crate::compiler::{
+    SleighCompiler,
+    SleighCompilerResult,
+};
 use crate::spec::moir::code::MOIRInstruction;
 use crate::spec::moir::scope::MOIRScope;
 

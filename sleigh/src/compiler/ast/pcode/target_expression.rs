@@ -1,8 +1,8 @@
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::ast::pcode::subpiece::SASTPCodeSubpiece;
-use crate::compiler::ast::Spanned;
 
 #[derive(Debug, Clone)]
 pub enum SASTPCodeTargetExpression {

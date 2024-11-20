@@ -1,13 +1,13 @@
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
-use crate::compiler::ast::Spanned;
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
 use crate::spec::moir::code::{
-    moir_instruction,
     MOIRInstruction,
+    moir_instruction,
 };
 use crate::spec::moir::scope::{
     MOIRMaybeSize,

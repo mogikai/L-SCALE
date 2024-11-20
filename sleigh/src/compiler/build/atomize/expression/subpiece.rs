@@ -1,11 +1,14 @@
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::subpiece::{
     SASTPCodeSubpiece,
     SASTPCodeSubpieceSelector,
     SASTPCodeSubpieceTarget,
 };
-use crate::compiler::ast::Spanned;
 use crate::compiler::error::SleighCompilerError;
-use crate::compiler::{SleighCompiler, SleighCompilerResult};
+use crate::compiler::{
+    SleighCompiler,
+    SleighCompilerResult,
+};
 use crate::spec::moir::scope::{
     MOIRMaybeSize,
     MOIRScope,
@@ -59,6 +62,8 @@ impl SleighCompiler {
         }
         // We can now slice the value to the desired size.
         // TODO: Generate error when slice fails because of too large sizes.
-        value.slice(scope, offset, offset + size).map_err(|e| e.into())
+        value
+            .slice(scope, offset, offset + size)
+            .map_err(|e| e.into())
     }
 }

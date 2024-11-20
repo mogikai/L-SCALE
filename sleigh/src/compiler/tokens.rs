@@ -1,5 +1,5 @@
-use crate::compiler::lexer::SleighTokens;
 use crate::compiler::InputId;
+use crate::compiler::lexer::SleighTokens;
 use crate::spec::builder::StringId;
 use std::fmt;
 use std::fmt::{

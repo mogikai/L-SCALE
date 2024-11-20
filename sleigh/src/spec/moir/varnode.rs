@@ -1,7 +1,7 @@
 use crate::compiler::SleighCompilerResult;
 use crate::compiler::error::{
+    SleighCompilerError,
     SliceError,
-    SleighCompilerError
 };
 use crate::new_typed_index_table_id;
 use crate::spec::moir::MOIR_ADDRESS_SIZE;
@@ -128,7 +128,8 @@ impl MOIRSlice {
                     current_end,
                     new_start: start,
                     new_end: end,
-                }.into()
+                }
+                .into(),
             ))
         } else {
             Ok(MOIRSlice {
@@ -163,7 +164,9 @@ impl MOIRSlice {
                         (SliceError::InvalidSliceSize {
                             new: size,
                             current: end.saturating_sub(self.start),
-                        }).into()))
+                        })
+                        .into(),
+                    ))
                 } else {
                     Ok(())
                 }
@@ -297,10 +300,13 @@ impl MOIRLocal {
             .size(scope)
             .ok_or(SleighCompilerError::from_error(SliceError::UndeterminedSize.into()))?;
         if new_size == 0 || new_size > current_size || start > end {
-            Err(SleighCompilerError::from_error(SliceError::InvalidSliceSize {
-                new: new_size,
-                current: current_size,
-            }.into()))?
+            Err(SleighCompilerError::from_error(
+                SliceError::InvalidSliceSize {
+                    new: new_size,
+                    current: current_size,
+                }
+                .into(),
+            ))?
         }
         Ok(match self {
             MOIRLocal::Local(local) => MOIRLocal::Local(scope.slice_local(local, start, end)?),
@@ -397,7 +403,8 @@ impl MOIRConst {
                         SliceError::InvalidSliceSize {
                             new: size,
                             current: v.size().determined_or(0),
-                        }.into()
+                        }
+                        .into(),
                     ))?;
                 }
             }

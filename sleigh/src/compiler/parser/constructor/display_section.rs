@@ -1,13 +1,13 @@
-use crate::compiler::ast::constructor::display_section::SASTDisplaySection;
 use crate::compiler::ast::Spanned;
+use crate::compiler::ast::constructor::display_section::SASTDisplaySection;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
+    SleighParserExtra,
     sleigh_control,
     sleigh_ident,
     sleigh_keyword,
     sleigh_operation,
-    SleighParserExtra,
 };
 use crate::compiler::tokens::SleighKeyword::Is;
 use crate::compiler::tokens::{
@@ -23,13 +23,13 @@ use chumsky::prelude::{
 };
 use chumsky::primitive::none_of;
 use chumsky::{
-    select,
     IterParser,
     Parser,
+    select,
 };
 
-pub fn display_section<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTDisplaySection>, SleighParserExtra<'tokens>> {
+pub fn display_section<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTDisplaySection>, SleighParserExtra<'tokens>> {
     let start_of_display_section = sleigh_control(SleighControlCharacter::Colon);
     let end_of_display_section = sleigh_keyword(Is);
 

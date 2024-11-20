@@ -19,9 +19,11 @@ use tracing::{
     info,
 };
 
-use inputcache::CompilerInputCache;
 use crate::compiler::ast::Spanned;
-use crate::compiler::error::{SleighCompilerError, SleighCompilerErrorType};
+use crate::compiler::error::{
+    SleighCompilerError,
+    SleighCompilerErrorType,
+};
 use crate::compiler::lexer::{
     InputSpan,
     SleighLexer,
@@ -35,6 +37,7 @@ use crate::spec::builder::{
     ProcessorSpecificationBuilder,
     StringId,
 };
+use inputcache::CompilerInputCache;
 
 pub mod ast;
 pub mod build;
@@ -127,7 +130,8 @@ impl SleighCompiler {
             let mut error_description = vec![];
             let error_count = self.errors.len();
             for error in self.errors {
-                error.as_report()
+                error
+                    .as_report()
                     .write(&mut self.input_cache, &mut error_description)
                     .expect("There is no way this may fail.");
             }
@@ -136,11 +140,12 @@ impl SleighCompiler {
                     "───────────────────────────────\nFound a total of {} errors.\n───────────────────────────────",
                     error_count
                 )
-                    .as_bytes(),
+                .as_bytes(),
             );
             Err(SleighCompilerErrorType::SemanticError(
                 String::from_utf8(error_description).expect("We only write utf8 strings."),
-            ).into())
+            )
+            .into())
         }
     }
 

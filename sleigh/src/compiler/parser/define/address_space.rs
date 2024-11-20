@@ -4,26 +4,26 @@ use chumsky::primitive::{
     just,
 };
 use chumsky::{
-    select,
     IterParser,
     Parser,
+    select,
 };
 
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::define::{
     SASTAddressSpace,
     SASTAddressSpaceAttribute,
     SASTAddressSpaceType,
 };
-use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
+    SleighParserExtra,
     sast_ident_spanned,
     sleigh_keyword,
     sleigh_number,
     sleigh_operation,
     sleigh_whitespace,
-    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighKeyword,
@@ -31,8 +31,8 @@ use crate::compiler::tokens::{
     SleighToken,
 };
 
-pub(super) fn address_space<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTAddressSpace>, SleighParserExtra<'tokens>> {
+pub(super) fn address_space<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTAddressSpace>, SleighParserExtra<'tokens>> {
     let space_type = select! {
         SleighToken::Keyword(SleighKeyword::RamSpace) => SASTAddressSpaceType::RamSpace,
         SleighToken::Keyword(SleighKeyword::RomSpace) => SASTAddressSpaceType::RomSpace,
@@ -73,7 +73,7 @@ pub(super) fn address_space<'tokens>(
         .ignore_then(sleigh_whitespace())
         .then(sast_ident_spanned())
         .then(sleigh_whitespace())
-        .map(|a| a.0 .1) // remove () (is there a better way?)
+        .map(|a| a.0.1) // remove () (is there a better way?)
         .then(attrs)
         .validate(|(name, attributes), _, emitter| {
             // check if mandatory size attribute exists

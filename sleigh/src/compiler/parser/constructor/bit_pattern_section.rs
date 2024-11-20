@@ -1,3 +1,4 @@
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::constructor::bit_pattern_section::{
     SASTBinaryOp,
     SASTBitPatternConstraint,
@@ -6,10 +7,10 @@ use crate::compiler::ast::constructor::bit_pattern_section::{
     SASTConstraintPattern,
     SASTUnaryOp,
 };
-use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
+    SleighParserExtra,
     maybe_parenthesized,
     parenthesized,
     sast_ident,
@@ -18,7 +19,6 @@ use crate::compiler::parser::{
     sleigh_number,
     sleigh_operation,
     whitespace_padded,
-    SleighParserExtra,
 };
 use crate::compiler::tokens::SleighControlCharacter::{
     OpenBrace,
@@ -37,20 +37,20 @@ use chumsky::pratt::{
     prefix,
 };
 use chumsky::prelude::{
-    none_of,
     Recursive,
+    none_of,
 };
 use chumsky::primitive::choice;
 use chumsky::recovery::via_parser;
 use chumsky::{
-    select,
     Parser,
+    select,
 };
 
 /// Parses the bit pattern section of a SLEIGH constructor.
 /// See section 7.4 of the SLEIGH specification
-pub fn bit_pattern_section<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTBitPatternSection>, SleighParserExtra<'tokens>> {
+pub fn bit_pattern_section<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTBitPatternSection>, SleighParserExtra<'tokens>> {
     let mut constraint = Recursive::declare();
 
     let ident = whitespace_padded(sast_ident()).map_with(spanned);
@@ -85,12 +85,14 @@ pub fn bit_pattern_section<'tokens>(
 
     // An atom that can be unambiguously parsed. In this case either an identifier,
     // or a parenthesized constraint.
-    let atom = whitespace_padded(maybe_parenthesized(advanced_constraint)
-        .or(maybe_parenthesized(ident)
-            .map(SASTBitPatternConstraint::Ident)
-            .map_with(spanned))
-        .or(parenthesized(constraint.clone())))
-        .boxed();
+    let atom = whitespace_padded(
+        maybe_parenthesized(advanced_constraint)
+            .or(maybe_parenthesized(ident)
+                .map(SASTBitPatternConstraint::Ident)
+                .map_with(spanned))
+            .or(parenthesized(constraint.clone())),
+    )
+    .boxed();
 
     let operation = atom.clone().pratt((
         prefix(16, unary_operator(), fold_unary_prefix),
@@ -115,8 +117,8 @@ pub fn bit_pattern_section<'tokens>(
         .map_with(spanned)
 }
 
-fn unary_operator<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SleighControlCharacter>, SleighParserExtra<'tokens>> + Clone {
+fn unary_operator<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SleighControlCharacter>, SleighParserExtra<'tokens>> + Clone {
     whitespace_padded(
         sleigh_control(SleighControlCharacter::Ellipsis)
             .to(SleighControlCharacter::Ellipsis)

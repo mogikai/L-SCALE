@@ -5,17 +5,17 @@ use chumsky::{
     Parser,
 };
 
-use crate::compiler::ast::pcode::statement::SASTPCodeStatement;
-use crate::compiler::ast::pcode::SASTPCode;
 use crate::compiler::ast::Spanned;
+use crate::compiler::ast::pcode::SASTPCode;
+use crate::compiler::ast::pcode::statement::SASTPCodeStatement;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::atomic_expressions::pcode_label;
 use crate::compiler::parser::pcode::statements::pcode_statement;
 use crate::compiler::parser::{
+    SleighParserExtra,
     sleigh_control,
     whitespace_padded,
-    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighControlCharacter,
@@ -28,8 +28,8 @@ mod operators;
 mod statements;
 mod target_expression;
 
-pub(super) fn pcode<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCode>, SleighParserExtra<'tokens>> + Clone {
+pub(super) fn pcode<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCode>, SleighParserExtra<'tokens>> + Clone {
     let recovery = none_of([
         SleighToken::Control(SleighControlCharacter::SemiColon),
         SleighToken::Control(SleighControlCharacter::CloseBrace),

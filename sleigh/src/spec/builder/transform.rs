@@ -1,5 +1,5 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::SleighCompilerResult;
+use crate::compiler::ast::Spanned;
 use crate::spec::builder::{
     MOIRSymbolId,
     MOIRSymbolTables,

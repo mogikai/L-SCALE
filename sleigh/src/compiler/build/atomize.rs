@@ -74,11 +74,9 @@ impl SleighCompiler {
             };
             if let Some(export) = export {
                 let e = SleighCompilerErrorType::InstructionAfterExport;
-                return Err(
-                    Into::<SleighCompilerError>::into(e)
-                        .span("export", export.span().clone())
-                        .span("instr", statement.into_span())
-                );
+                return Err(Into::<SleighCompilerError>::into(e)
+                    .span("export", export.span().clone())
+                    .span("instr", statement.into_span()));
             }
             let (statement, _) = statement.into_tuple();
             match statement {
@@ -86,17 +84,14 @@ impl SleighCompiler {
                     local,
                     target,
                     expression,
-                } => self
-                    .atomize_assignment(scope, instructions, local, target, expression),
+                } => self.atomize_assignment(scope, instructions, local, target, expression),
                 SASTPCodeStatement::Invocation(invocation) => {
                     // We ignore the output, since top level invocations do not output anything.
                     // TODO: Maybe it makes sense to update the pcodeop definition here to "no output"?
-                    self
-                        .atomize_invocation(scope, instructions, None, invocation)
+                    self.atomize_invocation(scope, instructions, None, invocation)
                         .map(|option| ())
                 }
-                SASTPCodeStatement::Build(table) =>
-                    self.atomize_build(scope, instructions, table.transmute()),
+                SASTPCodeStatement::Build(table) => self.atomize_build(scope, instructions, table.transmute()),
                 SASTPCodeStatement::Export(expression) => {
                     let span = expression.span().clone();
                     self.atomize_export(scope, instructions, expression)
@@ -105,23 +100,26 @@ impl SleighCompiler {
                 SASTPCodeStatement::Delayslot(_) => {
                     todo!()
                 }
-                SASTPCodeStatement::Declaration(ident, size) =>
-                    self.atomize_declaration(scope, ident.transmute(), size.map(Spanned::transmute)),
-                SASTPCodeStatement::Branch(branch) =>
-                    self.atomize_branch(scope, instructions, MOIRGotoType::Regular, branch),
+                SASTPCodeStatement::Declaration(ident, size) => {
+                    self.atomize_declaration(scope, ident.transmute(), size.map(Spanned::transmute))
+                }
+                SASTPCodeStatement::Branch(branch) => {
+                    self.atomize_branch(scope, instructions, MOIRGotoType::Regular, branch)
+                }
                 SASTPCodeStatement::ConditionalBranch {
                     condition_expression,
                     target,
-                } => self
-                    .atomize_conditional_branch(scope, instructions, condition_expression, target),
-                SASTPCodeStatement::BranchCall(target) =>
-                    self.atomize_branch(scope, instructions, MOIRGotoType::Call, target),
-                SASTPCodeStatement::BranchReturn(target) =>
-                    self.atomize_branch(scope, instructions, MOIRGotoType::Return, target),
+                } => self.atomize_conditional_branch(scope, instructions, condition_expression, target),
+                SASTPCodeStatement::BranchCall(target) => {
+                    self.atomize_branch(scope, instructions, MOIRGotoType::Call, target)
+                }
+                SASTPCodeStatement::BranchReturn(target) => {
+                    self.atomize_branch(scope, instructions, MOIRGotoType::Return, target)
+                }
                 SASTPCodeStatement::NOP => {
                     instructions.push(moir_instruction!(nop));
                     Ok(())
-                },
+                }
                 SASTPCodeStatement::Error(_) => {
                     panic!("If there is an error in the AST, then this function should never have been invoked");
                 }

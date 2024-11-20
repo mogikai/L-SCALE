@@ -1,5 +1,5 @@
-use crate::compiler::inputcache::InputCacheError;
 use crate::compiler::InputId;
+use crate::compiler::inputcache::InputCacheError;
 use std::fmt::{
     Debug,
     Display,

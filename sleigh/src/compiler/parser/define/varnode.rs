@@ -3,18 +3,18 @@ use chumsky::{
     Parser,
 };
 
-use crate::compiler::ast::define::SASTVarnode;
 use crate::compiler::ast::Spanned;
+use crate::compiler::ast::define::SASTVarnode;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
+    SleighParserExtra,
     sast_ident_spanned,
     sleigh_control,
     sleigh_keyword,
     sleigh_number,
     sleigh_operation,
     whitespace_padded,
-    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighControlCharacter,
@@ -22,8 +22,8 @@ use crate::compiler::tokens::{
     SleighOperation,
 };
 
-pub(super) fn varnodes<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTVarnode>, SleighParserExtra<'tokens>> {
+pub(super) fn varnodes<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTVarnode>, SleighParserExtra<'tokens>> {
     let stringlist = sleigh_control(SleighControlCharacter::OpenBracket)
         .ignore_then(
             whitespace_padded(sast_ident_spanned())

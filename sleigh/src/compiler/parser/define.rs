@@ -1,5 +1,5 @@
-use crate::compiler::ast::define::SASTDefine;
 use crate::compiler::ast::Spanned;
+use crate::compiler::ast::define::SASTDefine;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::define::endianness::endianness;
 use crate::compiler::parser::helpers::spanned;
@@ -8,16 +8,16 @@ use crate::compiler::tokens::{
     SleighKeyword,
     SleighToken,
 };
+use chumsky::Parser;
 use chumsky::prelude::none_of;
 use chumsky::primitive::choice;
 use chumsky::recovery::via_parser;
-use chumsky::Parser;
 
 use super::{
+    SleighParserExtra,
     sleigh_control,
     sleigh_keyword,
     whitespace_padded,
-    SleighParserExtra,
 };
 
 use self::address_space::address_space;
@@ -37,8 +37,8 @@ mod token;
 mod user_pcode_op;
 mod varnode;
 
-pub(super) fn define<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTDefine>, SleighParserExtra<'tokens>> {
+pub(super) fn define<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTDefine>, SleighParserExtra<'tokens>> {
     // basic definitions
     let endian = endianness().map(SASTDefine::Endianness);
     let alignment = alignment().map(SASTDefine::Alignment);
@@ -76,8 +76,8 @@ mod test {
 
     use crate::compiler::parser::report_errors;
     use crate::compiler::parser::test::{
-        test_parser,
         TestResult,
+        test_parser,
     };
 
     use super::define;
@@ -128,7 +128,9 @@ mod test {
 
     #[test]
     fn define_token_parses() -> TestResult {
-        test_define("define token opbyte (8) endian=little byte=(0,7) high4=(4,7) signed hex high5=(3,7) hex low5=(0,4) dec byte_4=(4,4) byte_0=(0,0);")?;
+        test_define(
+            "define token opbyte (8) endian=little byte=(0,7) high4=(4,7) signed hex high5=(3,7) hex low5=(0,4) dec byte_4=(4,4) byte_0=(0,0);",
+        )?;
         test_define("define token I32 (32) imm32=(0,31) simm32=(0,31) signed hex;")
     }
 
@@ -136,6 +138,8 @@ mod test {
     fn define_context_parses() -> TestResult {
         // TODO: the actual specification (x86/ia.sinc) uses "contextreg" as a name
         // although it contains a reserved keyword. What do to?
-        test_define("define context contexxreg longMode=(0,0) hex reserved=(1,3) dec signed addrsize=(4,5) repprefx=(13,13) noflow prefix_66=(14,14) mandover=(12,14);")
+        test_define(
+            "define context contexxreg longMode=(0,0) hex reserved=(1,3) dec signed addrsize=(4,5) repprefx=(13,13) noflow prefix_66=(14,14) mandover=(12,14);",
+        )
     }
 }

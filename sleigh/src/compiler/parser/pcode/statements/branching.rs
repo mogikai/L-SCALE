@@ -1,13 +1,14 @@
+use chumsky::Parser;
 use chumsky::prelude::{
     choice,
     none_of,
     via_parser,
 };
-use chumsky::Parser;
 
 use SASTPCodeStatement::Branch;
 use SleighKeyword::Call;
 
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::statement::SASTPCodeStatement::{
     BranchCall,
     BranchReturn,
@@ -16,16 +17,15 @@ use crate::compiler::ast::pcode::statement::{
     SASTPCodeBranchTarget,
     SASTPCodeStatement,
 };
-use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::atomic_expressions::pcode_label;
 use crate::compiler::parser::pcode::expression::pcode_expression;
 use crate::compiler::parser::{
+    SleighParserExtra,
     sleigh_control,
     sleigh_keyword,
     whitespace_padded,
-    SleighParserExtra,
 };
 use crate::compiler::tokens::SleighControlCharacter::{
     CloseBracket,
@@ -42,8 +42,8 @@ use crate::compiler::tokens::{
     SleighToken,
 };
 
-pub fn pcode_conditional_branch_statement<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeStatement>, SleighParserExtra<'tokens>> + Clone {
+pub fn pcode_conditional_branch_statement<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeStatement>, SleighParserExtra<'tokens>> + Clone {
     let target_recovery = none_of(SleighToken::Control(SemiColon))
         .repeated()
         .to_span()
@@ -63,18 +63,18 @@ pub fn pcode_conditional_branch_statement<'tokens>(
         .boxed()
 }
 
-pub fn pcode_goto_branch_statement<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeStatement>, SleighParserExtra<'tokens>> + Clone {
+pub fn pcode_goto_branch_statement<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeStatement>, SleighParserExtra<'tokens>> + Clone {
     branch_stencil(Goto, Branch)
 }
 
-pub fn pcode_call_branch_statement<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeStatement>, SleighParserExtra<'tokens>> + Clone {
+pub fn pcode_call_branch_statement<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeStatement>, SleighParserExtra<'tokens>> + Clone {
     branch_stencil(Call, BranchCall)
 }
 
-pub fn pcode_return_branch_statement<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeStatement>, SleighParserExtra<'tokens>> + Clone {
+pub fn pcode_return_branch_statement<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeStatement>, SleighParserExtra<'tokens>> + Clone {
     branch_stencil(Return, BranchReturn)
 }
 
@@ -93,8 +93,8 @@ where
         .boxed()
 }
 
-pub fn pcode_branch_target<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeBranchTarget>, SleighParserExtra<'tokens>> + Clone {
+pub fn pcode_branch_target<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeBranchTarget>, SleighParserExtra<'tokens>> + Clone {
     choice((
         pcode_label().map(SASTPCodeBranchTarget::Label),
         pcode_expression().map(SASTPCodeBranchTarget::Indirect),

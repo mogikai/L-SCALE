@@ -1,17 +1,17 @@
 use chumsky::{
-    select,
     Parser,
+    select,
 };
 
-use crate::compiler::ast::define::SASTEndianness;
 use crate::compiler::ast::Spanned;
+use crate::compiler::ast::define::SASTEndianness;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
+    SleighParserExtra,
     sleigh_keyword,
     sleigh_operation,
     whitespace_padded,
-    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighKeyword,
@@ -19,8 +19,8 @@ use crate::compiler::tokens::{
     SleighToken,
 };
 
-pub(super) fn endianness<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTEndianness>, SleighParserExtra<'tokens>> {
+pub(super) fn endianness<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTEndianness>, SleighParserExtra<'tokens>> {
     let big_little = select! {
         SleighToken::Keyword(SleighKeyword::Big) => SASTEndianness::Big,
         SleighToken::Keyword(SleighKeyword::Little) => SASTEndianness::Little,

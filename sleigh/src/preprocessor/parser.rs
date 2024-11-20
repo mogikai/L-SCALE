@@ -29,23 +29,23 @@ use crate::spec::builder::{
 use chumsky::error::Rich;
 use chumsky::input::MapExtra;
 use chumsky::prelude::{
+    Recursive,
     any,
     end,
     just,
-    Recursive,
 };
 use chumsky::{
-    extra,
-    select,
     IterParser,
     Parser,
+    extra,
+    select,
 };
 
 type SleighPreprocessorExtra<'tokens> =
     extra::Full<Rich<'tokens, SleighToken, InputSpan>, ProcessorSpecificationBuilder, ()>;
 
-pub fn parser<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Vec<Spanned<PreprocessorBlock>>, SleighPreprocessorExtra<'tokens>> {
+pub fn parser<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Vec<Spanned<PreprocessorBlock>>, SleighPreprocessorExtra<'tokens>> {
     let mut blocks = Recursive::declare();
 
     let ident = ident();

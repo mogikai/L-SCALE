@@ -1,18 +1,21 @@
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
-use crate::compiler::ast::Spanned;
 use crate::compiler::build::trace_build;
-use crate::compiler::error::{SleighCompilerError, SleighCompilerErrorType};
+use crate::compiler::error::{
+    SleighCompilerError,
+    SleighCompilerErrorType,
+};
 use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
 use crate::spec::builder::StringId;
 use crate::spec::moir::code::{
-    moir_instruction,
     MOIRInstruction,
     MOIROperation,
+    moir_instruction,
 };
 use crate::spec::moir::custom_op::MOIRCustomOp;
 use crate::spec::moir::r#macro::MOIRMacro;
@@ -22,8 +25,8 @@ use crate::spec::moir::scope::{
     MOIRScope,
 };
 use crate::spec::moir::varnode::MOIRLocal;
-use itertools::traits::HomogeneousTuple;
 use itertools::Itertools;
+use itertools::traits::HomogeneousTuple;
 
 impl SleighCompiler {
     pub fn atomize_invocation(

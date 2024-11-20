@@ -1,17 +1,17 @@
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::item::SASTItem;
 use crate::compiler::ast::with::SASTWith;
-use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::constructor::bit_pattern_section::bit_pattern_section;
 use crate::compiler::parser::constructor::disassembly_section::disassembly_section;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::included::included_tokens;
 use crate::compiler::parser::{
+    SleighParserExtra,
     sleigh_control,
     sleigh_ident,
     sleigh_keyword,
     whitespace_padded,
-    SleighParserExtra,
 };
 use crate::compiler::tokens::SleighControlCharacter::{
     CloseBrace,
@@ -19,8 +19,8 @@ use crate::compiler::tokens::SleighControlCharacter::{
     OpenBrace,
 };
 use crate::compiler::tokens::SleighKeyword::With;
-use chumsky::primitive::choice;
 use chumsky::Parser;
+use chumsky::primitive::choice;
 
 pub fn with_block<'tokens, P>(
     items: P

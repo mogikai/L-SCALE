@@ -1,9 +1,10 @@
-use chumsky::prelude::choice;
 use chumsky::Parser;
+use chumsky::prelude::choice;
 
-use crate::compiler::ast::pcode::target_expression::SASTPCodeTargetExpression;
 use crate::compiler::ast::Spanned;
+use crate::compiler::ast::pcode::target_expression::SASTPCodeTargetExpression;
 use crate::compiler::lexer::ParserInput;
+use crate::compiler::parser::SleighParserExtra;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::atomic_expressions::{
     pcode_bitrange,
@@ -12,11 +13,9 @@ use crate::compiler::parser::pcode::atomic_expressions::{
     pcode_subpiece,
 };
 use crate::compiler::parser::pcode::expression::pcode_expression;
-use crate::compiler::parser::SleighParserExtra;
 
-pub(super) fn target_expression<'tokens, 'src: 'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeTargetExpression>, SleighParserExtra<'tokens>> + Clone
-{
+pub(super) fn target_expression<'tokens, 'src: 'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeTargetExpression>, SleighParserExtra<'tokens>> + Clone {
     let ident = pcode_ident().map(SASTPCodeTargetExpression::Variable);
     let subpiece = pcode_subpiece().map(SASTPCodeTargetExpression::Subpiece);
     let bitrange = pcode_bitrange().map(SASTPCodeTargetExpression::BitRange);
@@ -31,9 +30,9 @@ pub(super) fn target_expression<'tokens, 'src: 'tokens>(
 mod test {
     use super::*;
     use crate::compiler::parser::test::{
+        TestResult,
         report_errors,
         test_parser,
-        TestResult,
     };
 
     fn test_target_expression(expression: &str) -> TestResult {

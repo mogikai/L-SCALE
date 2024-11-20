@@ -1,18 +1,19 @@
 use chumsky::{
-    select,
     IterParser,
     Parser,
+    select,
 };
 
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::define::{
     SASTContext,
     SASTContextField,
     SASTContextFieldAttribute,
 };
-use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
+    SleighParserExtra,
     sast_ident_spanned,
     sleigh_control,
     sleigh_keyword,
@@ -20,7 +21,6 @@ use crate::compiler::parser::{
     sleigh_operation,
     sleigh_whitespace,
     whitespace_padded,
-    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighControlCharacter,
@@ -29,8 +29,8 @@ use crate::compiler::tokens::{
     SleighToken,
 };
 
-pub(super) fn context<'tokens>(
-) -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTContext>, SleighParserExtra<'tokens>> {
+pub(super) fn context<'tokens>()
+-> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTContext>, SleighParserExtra<'tokens>> {
     let number_pair = sleigh_number()
         .map_with(spanned)
         .then(sleigh_control(SleighControlCharacter::Comma))
