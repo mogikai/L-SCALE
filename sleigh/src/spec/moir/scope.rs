@@ -45,7 +45,7 @@ use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 
 /// A scope for locals and labels used in constructors and macros
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct MOIRScope {
     /// A hashmap to keep track of label ids and the location of their first definition in the span.
     labels_definitions: HashMap<StringId, Spanned<LabelId>>,
@@ -86,6 +86,7 @@ new_map_key! { pub struct LabelId; "LBL"; }
 pub type InstructionId = usize;
 
 /// A small enum to keep track of whether the subtable is implicitly or explicitly built.
+#[derive(Debug, Copy, Clone)]
 enum SubTableBuild {
     Implicit(InstructionId),
     Explicit,

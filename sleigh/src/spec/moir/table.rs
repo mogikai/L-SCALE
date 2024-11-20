@@ -12,7 +12,7 @@ use crate::spec::moir::varnode::{
     MOIRSlice,
 };
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct MOIRTable {
     // TODO: how to actually implement this?
     // Ideally, each constructor inserts its bit pattern into a jump table
@@ -25,7 +25,7 @@ pub struct MOIRTable {
 }
 
 // TODO: This probably needs to look a little different than it does atm
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum MOIRExport {
     /// The location exported is the local varnode
     Local(MOIRLocal),

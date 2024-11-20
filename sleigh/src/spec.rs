@@ -8,7 +8,10 @@ use crate::spec::builder::{
 };
 use crate::spec::jir::jir_block::JIRBlockId;
 use crate::spec::jir::space::JIRSpace;
-use crate::spec::jir::values::JIRVarNode;
+use crate::spec::jir::values::{
+    JIRSlice,
+    JIRVarNode,
+};
 use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::bitrange_register::BitrangeRegisterId;
 use crate::spec::moir::constructor::{
@@ -61,7 +64,7 @@ pub enum JIRSymbolId {
     CustomOp(CustomOpId),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct JIRSymbolTables {
     // macros: TypedIndexTable<MOIRMacroId, MOIRMacro>,
     pub(crate) spaces: TypedIndexTable<SpaceId, JIRSpace>,
@@ -121,6 +124,36 @@ impl ProcessorSpecification {
             return None;
         };
         self.symbol_tables.varnodes.get(*varnode_id)
+    }
+
+    /// Lookup a varnode by its string identifier and return a slice to it.
+    /// This lookup is expensive.
+    pub fn varnode_slice_by_string(
+        &self,
+        name: &str,
+    ) -> Option<JIRSlice> {
+        let name = self.interner.lookup(name)?;
+        let ident = self.string_to_ident_mapping.get(&name)?;
+        let JIRSymbolId::VarNode(varnode_id) = self.symbol_ids.get(*ident).copied()? else {
+            return None;
+        };
+        let varnode = self.symbol_tables.varnodes.get(varnode_id)?;
+        Some(JIRSlice::new(varnode_id, 0, varnode.size))
+    }
+
+    /// Lookup a varnode id by its string identifier.
+    /// This lookup is expensive. Consider using the
+    /// id in subsequent lookups if performance is critical.
+    pub fn varnode_id_by_string(
+        &self,
+        name: &str,
+    ) -> Option<VarNodeId> {
+        let name = self.interner.lookup(name)?;
+        let ident = self.string_to_ident_mapping.get(&name)?;
+        let JIRSymbolId::VarNode(varnode_id) = self.symbol_ids.get(*ident)? else {
+            return None;
+        };
+        Some(*varnode_id)
     }
 
     pub fn varnode_by_id(

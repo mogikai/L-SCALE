@@ -20,15 +20,16 @@ pub struct JIRInstruction {
 }
 
 impl JIRInstruction {
-    pub fn new_binary_op<O, I>(
+    pub fn new_binary_op<O, I1, I2>(
         output: O,
-        input_a: I,
-        input_b: I,
+        input_a: I1,
+        input_b: I2,
         operation: JIROperation,
     ) -> Self
     where
         O: Into<JIRSlice>,
-        I: Into<JIRValue>,
+        I1: Into<JIRValue>,
+        I2: Into<JIRValue>,
     {
         Self {
             output: Some(output.into()),

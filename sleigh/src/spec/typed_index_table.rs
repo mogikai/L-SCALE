@@ -30,7 +30,7 @@ macro_rules! new_typed_index_table_id {
     };
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypedIndexTable<K, V>(Vec<V>, PhantomData<K>);
 impl<K, V> Default for TypedIndexTable<K, V> {
     fn default() -> Self {

@@ -5,7 +5,7 @@ use std::fmt::{
 };
 use std::ops::Deref;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MOIRInstruction {
     /// The output of the instruction. The output must always be a varnode, since it is written to.
     /// Some operations may have no output at all.

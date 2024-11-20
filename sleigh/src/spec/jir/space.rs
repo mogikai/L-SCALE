@@ -1,6 +1,6 @@
 use crate::spec::jir::common::JIRSize;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct JIRSpace {
     pub r#type: JIRSpaceType,
     /// The number of bytes an address in the space takes up
@@ -9,7 +9,7 @@ pub struct JIRSpace {
     pub wordsize: JIRSize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum JIRSpaceType {
     /// A RAM space represents random access memory. This space is usually backed by some kind of
     /// memory implementation. Access to this space is handled by the JIT by generating memory loads

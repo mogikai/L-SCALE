@@ -51,11 +51,14 @@ where
         }
     }
 
+    /// Insert the provided block and return it's [EVAddr].
     pub fn populate(
         &mut self,
         block: BlockT,
-    ) {
-        self.cache.insert(block.ev_address(), block);
+    ) -> EVAddr {
+        let addr = block.ev_address();
+        self.cache.insert(addr, block);
+        addr
     }
 
     pub fn take(

@@ -47,7 +47,7 @@ use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 use tracing::debug;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MOIRConstructor {
     pub local_scope: MOIRScope,
     pub instructions: Vec<MOIRInstruction>,

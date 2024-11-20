@@ -55,6 +55,7 @@ fn main() {
     let (next, inst) = lifter.lift(0u64.into(), args.constructor_id).unwrap();
     // TODO: Disassemble at offset 0x0000000000001060
     let mmu = Rc::new(RefCell::new(MogiMMU::new()));
-    let mut cpu = CPU::new(X86MogiJit::new(mmu.clone()), mmu);
-    // cpu.run().unwrap();
+    let specification = Rc::new(RefCell::new(specification));
+    let mut cpu = CPU::new(X86MogiJit::new(specification.clone(), mmu.clone()), specification, mmu);
+    cpu.run().unwrap();
 }

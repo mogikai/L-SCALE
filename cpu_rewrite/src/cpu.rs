@@ -10,13 +10,17 @@ use std::rc::Rc;
 use thiserror::Error;
 
 use mogi_mem::mmu::MogiMMU;
+use mogi_sleigh::jinst;
+use mogi_sleigh::spec::jir::values::JIRSlice;
+use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_utilities::addresses::EVAddr;
 
 use crate::jit::api::{
-    JitContext,
+    JITRuntimeContext,
     JitError,
     MogiJit,
 };
+use crate::jit::cache::JitCode;
 
 #[derive(Error, Debug)]
 pub enum StopReason {
@@ -47,11 +51,12 @@ where
     ///                 that can be hot-swapped on switching to a different task? This would require putting a
     ///                 reference to the cpu inside the context, such that it can be accessed in callbacks.
     ///                 Alternatively, the cpu can be omitted and each callback has to have its own context pointer.
-    context: Box<JitT::Context>,
+    runtime_context: Box<JitT::RuntimeContext>,
     /// The jit is behind a refcell, so we can guarantee that the cpu can be mutably accessed by the jited code,
     /// but the jit itself may not be modified during the codes runtime.
     jit: RefCell<JitT>,
     mmu: Rc<RefCell<MogiMMU>>,
+    processor_specification: Rc<RefCell<ProcessorSpecification>>,
     mir_cache: (),
 }
 
@@ -61,12 +66,14 @@ where
 {
     pub fn new(
         jit: JitT,
+        processor_specification: Rc<RefCell<ProcessorSpecification>>,
         mmu: Rc<RefCell<MogiMMU>>,
     ) -> Self {
         Self {
-            context: Box::new(jit.new_context()),
+            runtime_context: Box::new(jit.new_runtime_context()),
             jit: RefCell::new(jit),
             mmu,
+            processor_specification,
             mir_cache: (),
         }
     }
@@ -80,9 +87,9 @@ where
             self.translate_blocks()?;
             match self.must_interpret() {
                 MustInterpret::No => {
-                    let context = &mut *self.context as *mut _ as *mut c_void;
+                    let context = &mut *self.runtime_context as *mut _ as *mut c_void;
                     let jit = self.jit.borrow();
-                    let block = jit.fetch_block(self.context.pc())?;
+                    let block = jit.fetch_block(self.runtime_context.pc())?;
                     jit.prelude()?(context, block);
                 }
                 MustInterpret::Yes => {
@@ -107,6 +114,7 @@ where
         MustInterpret::No
     }
 
+    /// Translate the next block or blocks.
     fn translate_blocks(&mut self) -> Result<(), StopReason> {
         // // TODO: Return translate error instead of stop reason?
         // // Load target instructions into mir cache
@@ -117,11 +125,24 @@ where
         {
             // TODO: Remove demo block
             let mut jit = self.jit.borrow_mut();
-            let block = jit.new_block(EVAddr::null())?;
-            jit.activate_block(block)?;
-            jit.emit_jmp_epilogue()?;
-            jit.finalize_block(block)?;
-            jit.chain_blocks(EVAddr::null(), EVAddr::null())?;
+            if jit.fetch_block(self.runtime_context.pc()).is_ok() {
+                // The block is already translated. Return
+                return Ok(());
+            }
+            jit.new_block(EVAddr::null())?;
+            // TODO: Insert instructions into block.
+            let counter = self
+                .processor_specification
+                .borrow()
+                .varnode_slice_by_string("AX")
+                .unwrap();
+
+            let inst = jinst!(counter = 0u16);
+            let inst2 = jinst!(counter = counter + 1u16);
+            jit.emit_jinst(&inst)?;
+            jit.emit_jinst(&inst2)?;
+            jit.finalize_block()?;
+            // jit.chain_blocks(EVAddr::null(), EVAddr::null())?;
             Ok(())
         }
     }

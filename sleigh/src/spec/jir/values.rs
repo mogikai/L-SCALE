@@ -1,3 +1,4 @@
+use crate::spec::ProcessorSpecResult;
 use crate::spec::jir::common::JIRSize;
 use crate::spec::jir::instruction::JIRTempId;
 use crate::spec::moir::address_space::SpaceId;
@@ -20,7 +21,7 @@ impl JIRVarNode {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct JIRSlice {
     /// Slices referring to the same varnode may be mapped to the same host register for optimization purposes
     /// I.e., it might make sense to only load the RAX varnode into a 64 bit register and then mark any
@@ -30,7 +31,7 @@ pub struct JIRSlice {
     pub end: JIRSize,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum JIRVarNodeId {
     VarNode(VarNodeId),
     Temp(JIRTempId),
@@ -54,6 +55,15 @@ pub enum JIRValue {
     Const(JIRConst),
 }
 
+impl JIRValue {
+    pub fn size(&self) -> JIRSize {
+        match self {
+            JIRValue::Slice(slice) => slice.size(),
+            JIRValue::Const(value) => value.size(),
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub struct JIRConst {
     value: u128,
@@ -70,6 +80,10 @@ impl JIRConst {
 
     pub fn value(&self) -> u128 {
         self.value
+    }
+
+    pub fn size(&self) -> JIRSize {
+        self.size
     }
 }
 
@@ -124,6 +138,30 @@ impl From<JIRConst> for JIRValue {
 impl From<&JIRConst> for JIRValue {
     fn from(value: &JIRConst) -> Self {
         JIRValue::Const(*value)
+    }
+}
+
+impl From<u64> for JIRValue {
+    fn from(value: u64) -> Self {
+        JIRConst::new(value as u128, 8).into()
+    }
+}
+
+impl From<u32> for JIRValue {
+    fn from(value: u32) -> Self {
+        JIRConst::new(value as u128, 4).into()
+    }
+}
+
+impl From<u16> for JIRValue {
+    fn from(value: u16) -> Self {
+        JIRConst::new(value as u128, 2).into()
+    }
+}
+
+impl From<u8> for JIRValue {
+    fn from(value: u8) -> Self {
+        JIRConst::new(value as u128, 1).into()
     }
 }
 
