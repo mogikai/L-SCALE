@@ -20,8 +20,9 @@ impl SleighCompiler {
             pcode: pcode_macro.pcode.into_value(),
         };
 
-        self.spec_builder
-            .define_macro(pcode_macro.ident.transmute(), moir_macro)?;
+        let result = self.spec_builder
+            .define_macro(pcode_macro.ident.transmute(), moir_macro);
+        self.report_error_or_unwrap(result)?;
         Ok(())
     }
 }

@@ -203,7 +203,7 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn define_endianness(
         &mut self,
         endianness: Spanned<MOIREndianness>,
-    ) -> Result<(), SleighCompilerError> {
+    ) -> SleighCompilerResult {
         if let Some(old_endianness) = &self.endianness {
             let e = DuplicatedDefine {
                 dupe_type: DuplicateDefineType::Endianness,
@@ -299,7 +299,7 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         ident: Spanned<StringId>,
         varnode: MOIRVarNode,
-    ) -> Result<Ident, SleighCompilerError> {
+    ) -> SleighCompilerResult<Ident> {
         let symbol_id = self.declare_symbol(ident)?;
         let varnode_id = self.symbol_tables.varnodes.insert(varnode);
         self.define_symbol(symbol_id, MOIRSymbolId::VarNode(varnode_id))?;
@@ -327,7 +327,7 @@ impl ProcessorSpecificationBuilder {
         source_varnode: Spanned<StringId>,
         offset: u64,
         size: u64,
-    ) -> Result<BitrangeRegisterId, SleighCompilerError> {
+    ) -> SleighCompilerResult<BitrangeRegisterId> {
         // validate that source_varnode is valid
         // TODO: Generate error reports instead of normal errors.
         let source_varnode_id = self
@@ -372,7 +372,7 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         ident: Spanned<StringId>,
         field: MOIRField,
-    ) -> Result<Ident, SleighCompilerError> {
+    ) -> SleighCompilerResult<Ident> {
         let symbol_id = self.declare_symbol(ident)?;
         let field_id = self.symbol_tables.fields.insert(field);
         self.define_symbol(symbol_id, MOIRSymbolId::Field(field_id))?;
@@ -383,7 +383,7 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         fields: Vec<Spanned<StringId>>,
         varnodes: Vec<Spanned<StringId>>,
-    ) -> Result<(), SleighCompilerError> {
+    ) -> SleighCompilerResult {
         let varnode_ids: Result<Vec<_>, _> = varnodes
             .into_iter()
             .filter_map(|vsid| {
@@ -452,7 +452,7 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         fields: Vec<Spanned<StringId>>,
         strings: Vec<Spanned<StringId>>,
-    ) -> Result<(), SleighCompilerError> {
+    ) -> SleighCompilerResult {
         for field in fields.into_iter() {
             let (symbol, _) = self
                 .get_symbol_and_ident(&field)
