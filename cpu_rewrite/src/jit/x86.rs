@@ -26,6 +26,7 @@ use mogi_sleigh::spec::jir::jcode::{
     JIROperation,
 };
 use mogi_sleigh::spec::jir::values::{
+    JIRConst,
     JIRSlice,
     JIRValue,
 };
@@ -43,7 +44,22 @@ use std::cell::RefCell;
 use std::ffi::c_void;
 use std::mem;
 use std::rc::Rc;
-use tracing::debug;
+use tracing::{
+    debug,
+    trace,
+};
+
+macro_rules! assemble {
+    ($asm:expr; $($t:tt)*) => {
+        dynasm!($asm
+            ; .arch x64
+            // The cpu context is stored in RBP for as long as we are inside the jited code.
+            // RBP must never be used in any other way.
+            ; .alias cpu_context, rbp
+            $($t)*
+        )
+    };
+}
 
 #[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
@@ -375,14 +391,17 @@ impl X86MogiJit {
         for (i, entry) in self.register_tracker.gp.iter().enumerate() {
             if let Some(entry) = entry {
                 if *entry == slice {
-                    return GPRegister::try_from(i as u8).unwrap();
+                    let register = GPRegister::try_from(i as u8).unwrap();
+                    trace!("Slice {slice:?} is already loaded in GP register {register:?}");
+                    return register;
                 }
             } else if free_gp.is_none() {
-                free_gp = Some(GPRegister::try_from(i).unwrap());
+                free_gp = Some(GPRegister::try_from(u8::try_from(i).unwrap()).unwrap());
             }
         }
+        trace!("Loading slice {slice:?} into GP register {free_gp:?}");
         // TODO: Load gp. Handle spill case
-        GPRegister::B
+        free_gp.unwrap()
     }
 
     fn emit_copy(
@@ -400,42 +419,16 @@ impl X86MogiJit {
                 let reg = self.load_slice_gp(slice) as u8;
                 let block = self.block_mut()?;
                 dynasm!(block.assembler
-                    ; mov Rd(0), Rd(reg)
+                    ; mov Rq(target_reg), Rq(reg)
                 );
                 todo!()
             }
             JIRValue::Const(value) => {
                 let value = value.value();
                 let block = self.block_mut()?;
-                match size {
-                    1 => {
-                        // 8 bit move
-                        dynasm!(block.assembler
-                            ; mov Rb(target_reg), value as _
-                        );
-                    }
-                    2 => {
-                        // 16 bit move
-                        dynasm!(block.assembler
-                            ; mov Rw(target_reg), value as _
-                        );
-                    }
-                    3..=4 => {
-                        // 32 bit move.
-                        dynasm!(block.assembler
-                            ; mov Rd(target_reg), value as _
-                        );
-                    }
-                    5..=8 => {
-                        // 64 bit move.
-                        dynasm!(block.assembler
-                            ; mov Rq(target_reg), value as _
-                        );
-                    }
-                    _ => {
-                        panic!("Invalid size")
-                    }
-                }
+                dynasm!(block.assembler
+                    ; mov Rq(target_reg), value as _
+                );
             }
         }
         Ok(())
@@ -447,10 +440,38 @@ impl X86MogiJit {
         a: JIRValue,
         b: JIRValue,
     ) -> Result<(), JitError> {
-        let block = self.block_mut()?;
-        dynasm!(block.assembler
-            ; add Rd(0), 1
-        );
+        debug_assert_eq!(output.size(), a.size());
+        debug_assert_eq!(a.size(), b.size());
+        let size = output.size();
+        match (a, b) {
+            (JIRValue::Const(a), JIRValue::Const(b)) => {
+                trace!("Const add optimized to move");
+                let a = a.value();
+                let b = b.value();
+                let size = output.size();
+                self.emit_copy(output, JIRConst::new((a + b) % (size * 8) as u128, size).into())?;
+            }
+            // Addition is commutative, so we can simply swap a and b if one is const and the other is a varnode.
+            (JIRValue::Const(b), JIRValue::Slice(a)) | (JIRValue::Slice(a), JIRValue::Const(b)) => {
+                let b = b.value();
+                let a: u8 = self.load_slice_gp(a).into();
+                let output: u8 = self.load_slice_gp(output).into();
+                let block = self.block_mut()?;
+                // TODO: What should we do about the sizes regarding overflows?
+                assemble!(block.assembler;
+                    ; lea Rq(output), [Rq(a) + b as _]
+                );
+            }
+            (JIRValue::Slice(a), JIRValue::Slice(b)) => {
+                let a: u8 = self.load_slice_gp(a).into();
+                let b: u8 = self.load_slice_gp(b).into();
+                let output: u8 = self.load_slice_gp(output).into();
+                let block = self.block_mut()?;
+                assemble!(block.assembler;
+                    ; lea Rq(output), [Rq(a) + Rq(b)]
+                );
+            }
+        }
         Ok(())
     }
 
@@ -494,6 +515,7 @@ impl MogiJit for X86MogiJit {
         &mut self,
         jinst: &JIRInstruction,
     ) -> Result<(), JitError> {
+        trace!("Emitting {jinst}");
         let output = jinst.output.ok_or(JitError::MissingOutput);
         let input_a = jinst.input_a.ok_or(JitError::MissingInput);
         let input_b = jinst.input_b.ok_or(JitError::MissingInput);
@@ -675,7 +697,7 @@ fn build_prelude() -> Result<ExecutableBuffer, JitError> {
     dynasm!(asm
         // For debugging we break on jumping into the prelude.
         // TODO: Make this configurable.
-        // ; int1
+        ; int1
         // See the System V ABI specification: https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf
         // Push callee saved registers onto stack
         ; push rbp
@@ -685,6 +707,8 @@ fn build_prelude() -> Result<ExecutableBuffer, JitError> {
         ; push r14
         ; push r15
         // Move context to rbp. Function arguments are passed in RDI, RSI, RDX, RCX, R8, R9
+        // TODO: We might need to save RSP somewhere if we want to modify it.
+        //       Otherwise we will break the calling code, if we don't restore RSP correctly.
         ; mov rbp, rdi
         // Jump to provided block
         ; jmp rsi

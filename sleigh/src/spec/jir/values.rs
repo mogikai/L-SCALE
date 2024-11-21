@@ -31,6 +31,18 @@ pub struct JIRSlice {
     pub end: JIRSize,
 }
 
+impl PartialEq<JIRValue> for JIRSlice {
+    fn eq(
+        &self,
+        other: &JIRValue,
+    ) -> bool {
+        match other {
+            JIRValue::Slice(slice) => slice == self,
+            JIRValue::Const(_) => false,
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum JIRVarNodeId {
     VarNode(VarNodeId),
@@ -55,11 +67,35 @@ pub enum JIRValue {
     Const(JIRConst),
 }
 
+/// Compare slice against value. If one is not a slice, then this returns false.
+/// If both refer to the same slice, they are considered equal.
+impl PartialEq<JIRSlice> for JIRValue {
+    fn eq(
+        &self,
+        other: &JIRSlice,
+    ) -> bool {
+        match self {
+            JIRValue::Slice(slice) => slice == other,
+            JIRValue::Const(_) => false,
+        }
+    }
+}
+
 impl JIRValue {
     pub fn size(&self) -> JIRSize {
         match self {
             JIRValue::Slice(slice) => slice.size(),
             JIRValue::Const(value) => value.size(),
+        }
+    }
+
+    /// Unwraps the containing slice. If the [JIRValue] does not contain a slice, this will panic.
+    pub fn unwrap_slice(self) -> JIRSlice {
+        match self {
+            JIRValue::Slice(slice) => slice,
+            JIRValue::Const(_) => {
+                panic!("Trying to unwrap a JIRConst into a slice.")
+            }
         }
     }
 }

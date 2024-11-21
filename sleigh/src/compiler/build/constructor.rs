@@ -101,7 +101,7 @@ impl SleighCompiler {
             &mut moir_constructor.instructions,
             constructor.semantic_section.into_value().0,
         )?;
-        debug!("Constructor is exporting {:?}", moir_constructor.export);
+        trace_build!("Constructor is exporting {:?}", moir_constructor.export);
         moir_constructor.mark_used_locals()?;
         // TODO: This needs to be moved to the moir->jir stage
         // moir_constructor

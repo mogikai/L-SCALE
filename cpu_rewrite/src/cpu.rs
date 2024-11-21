@@ -137,8 +137,8 @@ where
                 .varnode_slice_by_string("AX")
                 .unwrap();
 
-            let inst = jinst!(counter = 0u16);
-            let inst2 = jinst!(counter = counter + 1u16);
+            let inst = jinst!(counter = 6u16);
+            let inst2 = jinst!(counter = counter + counter);
             jit.emit_jinst(&inst)?;
             jit.emit_jinst(&inst2)?;
             jit.finalize_block()?;
