@@ -1,12 +1,6 @@
 use self::matcher::Matcher;
 use crate::compiler::ast::Spanned;
 use crate::compiler::ast::constructor::SASTConstructor;
-use crate::compiler::ast::constructor::bit_pattern_section::{
-    SASTBinaryOp,
-    SASTBitPatternConstraint,
-    SASTConstraintOp,
-    SASTConstraintPattern,
-};
 use crate::compiler::build::constructor::matcher::MatcherReference;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
@@ -15,40 +9,22 @@ use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
-use crate::spec::ProcessorSpecificationError;
 use crate::spec::builder::{
     MOIRSymbolId,
     StringId,
 };
-use crate::spec::moir::code::{
-    MOIRInstruction,
-    MOIROperation,
-};
-use crate::spec::moir::constructor::{
-    ConstructorId,
-    MOIRConstructor,
-};
-use crate::spec::moir::field::FieldId;
+use crate::spec::moir::constructor::MOIRConstructor;
 use crate::spec::moir::scope::{
     MOIRMaybeSize,
     MOIRScope,
 };
-use crate::spec::moir::table::{
-    MOIRExport,
-    MOIRTable,
-};
+use crate::spec::moir::table::MOIRTable;
 use crate::spec::moir::varnode::{
-    MOIRLocal,
     MOIRReference,
     MOIRSlice,
 };
-use crate::spec::typed_index_table::TypedIndexTable;
 use itertools::Itertools;
-use std::collections::{
-    BTreeSet,
-    HashSet,
-};
-use std::fmt::Write;
+use std::collections::HashSet;
 use tracing::{
     debug,
     trace,
@@ -58,13 +34,16 @@ pub(crate) mod matcher;
 mod matcher_builder;
 
 impl SleighCompiler {
-    /// Process a constructor. This will create the table in which the constructor is anchored, if it does not exist.
-    /// Then, the bit pattern section is validated.
+    /// Process a constructor. This will create the table in which the constructor is anchored, if
+    /// it does not exist. Then, the bit pattern section is validated.
+    /// # Return on success
+    /// - None if the constructor was fully processed
+    /// - Some(consructor) if the constructor processing was delayed because of recursion
     pub(super) fn process_constructor(
         &mut self,
-        constructor: Spanned<SASTConstructor>,
-    ) -> SleighCompilerResult {
-        let (constructor, _) = constructor.into_tuple();
+        spanned_constructor: Spanned<SASTConstructor>,
+    ) -> SleighCompilerResult<Option<Spanned<SASTConstructor>>> {
+        let (constructor, span) = spanned_constructor.into_tuple();
         #[allow(unused_variables)]
         let table_name = constructor
             .table
@@ -78,16 +57,18 @@ impl SleighCompiler {
 
         // TODO: Need to parse the disassembly section here as well and add that information to the matcher
 
-        let display_section = constructor.display_section.into_value();
-        let mut matchers = self.create_matchers(constructor.bit_pattern_section.into_value().constraint)?;
+        let table_id = self
+            .spec_builder
+            .get_table_id_or_create(constructor.table.transpose())?;
 
-        let mut conjunctions_str = String::new();
-        writeln!(&mut conjunctions_str, "Created {} matcher/s:", matchers.len());
-        for matcher in &matchers {
-            writeln!(&mut conjunctions_str, "conjts: {:?}", matcher.conjunctions);
-            writeln!(&mut conjunctions_str, "tokens: {:?}", matcher.token_list.list);
-        }
-        trace_build!("{conjunctions_str}");
+        // TODO: Need to parse the disassembly section here as well and add that information to the matcher
+        let mut matchers = match self.create_matchers(&constructor.bit_pattern_section.constraint, table_id)? {
+            matcher_builder::MatcherCreationResult::Matchers(matchers) => matchers,
+            matcher_builder::MatcherCreationResult::Recursion => {
+                trace_build!("Constructor is recursive, skipping...");
+                return Ok(Some(Spanned::new(constructor, span)));
+            }
+        };
 
         let mut references = HashSet::new();
         matchers.iter().for_each(|matcher| {
@@ -95,6 +76,7 @@ impl SleighCompiler {
         });
         let references = references.into_iter().collect_vec();
 
+        let display_section = constructor.display_section.into_value();
         let scope = self.pc_create_scope(display_section.identifiers, &references)?;
         let mut moir_constructor = MOIRConstructor {
             local_scope: scope,
@@ -112,6 +94,7 @@ impl SleighCompiler {
             &mut moir_constructor.instructions,
             constructor.semantic_section.into_value().0,
         )?;
+
         debug!("Constructor is exporting {:?}", moir_constructor.export);
         moir_constructor.mark_used_locals()?;
         // TODO: This needs to be moved to the moir->jir stage
@@ -120,7 +103,7 @@ impl SleighCompiler {
         //     .realize_temporaries(&mut self.spec_builder)?;
         trace_build!("{}", moir_constructor.mcode_debug_string(self.spec_builder.interner()));
 
-        let display = moir_constructor.display.clone(); // TODO remove
+        let display = moir_constructor.display.clone();
 
         // Define the constructor and insert it into the corresponding table.
         let id = self.spec_builder.define_constructor(moir_constructor)?;
@@ -133,18 +116,20 @@ impl SleighCompiler {
 
         self.register_matchers(constructor.table.clone().transpose(), matchers)?;
 
-        let table_id = constructor.table.transpose();
-        let table = self.spec_builder.create_or_modify_table(table_id)?;
+        let table = self
+            .spec_builder
+            .create_or_modify_table(constructor.table.transpose())?;
         table.constructors.push(id);
-        trace_build!("Construtor with id {:?} added to table {:?}", id, table_name);
+        trace_build!("Constructor with id {:?} added to table {:?}", id, table_name);
 
         // Catch any errors with exports
         let table = self
             .spec_builder
-            .table_by_ident(table_id)
+            .table_by_ident(constructor.table.transpose())
             .expect("We just inserted this table");
         self.pc_validate_exports(table)?;
-        Ok(())
+
+        Ok(None)
     }
 
     /// Validates the constructors in the table.
@@ -260,7 +245,7 @@ impl SleighCompiler {
     ) -> SleighCompilerResult {
         trace!("Resolving {} symbols to a local scope", references.len());
         for reference in references {
-            trace_build!("Resolving symbol {symbol:?}");
+            trace_build!("Resolving symbol {reference:?}");
             let value = match reference {
                 MatcherReference::Field(field_id) => {
                     let field = self

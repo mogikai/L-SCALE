@@ -1,5 +1,6 @@
 use core::panic;
 use std::collections::{
+    BTreeMap,
     BTreeSet,
     HashMap,
     HashSet,
@@ -9,6 +10,7 @@ use chumsky::container::Container;
 use itertools::Itertools;
 use num::PrimInt;
 
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::constructor::bit_pattern_section::{
     SASTBinaryOp,
@@ -17,7 +19,6 @@ use crate::compiler::ast::constructor::bit_pattern_section::{
     SASTConstraintPattern,
     SASTUnaryOp,
 };
-use crate::compiler::ast::Spanned;
 use crate::compiler::build::constructor::matcher::{
     FieldMatcher,
     Matcher,
@@ -31,16 +32,22 @@ use crate::compiler::{
     SleighCompilerResult,
 };
 use crate::spec::builder::MOIRSymbolId;
-use crate::spec::moir::constructor::ConstructorId;
 use crate::spec::moir::field::{
     FieldId,
     MOIRField,
     MOIRFieldParent,
 };
-use crate::spec::moir::token::TokenId;
-use crate::spec::ProcessorSpecificationError;
+use crate::spec::moir::table::TableId;
 
 use super::matcher::Submatchers;
+
+/// Constructors can contain recursive calls which we need to intercept and
+/// process only when all non-recursive constructors have been processed.
+#[derive(Debug)]
+pub(super) enum MatcherCreationResult {
+    Matchers(Vec<Matcher>),
+    Recursion,
+}
 
 impl SleighCompiler {
     /// Create a [Matcher] from a [SASTBitPatternConstraint]. Multiple matchers might be created
@@ -52,9 +59,10 @@ impl SleighCompiler {
     /// - Each matcher consists only of And statement which are trivial (mask-value)
     pub(super) fn create_matchers(
         &self,
-        constraint: Spanned<SASTBitPatternConstraint>,
-    ) -> SleighCompilerResult<Vec<Matcher>> {
-        let matchers = self.create_matchers_recursive(constraint)?;
+        constraint: &Spanned<SASTBitPatternConstraint>,
+        table_id: TableId, // used for detecting recursion
+    ) -> SleighCompilerResult<MatcherCreationResult> {
+        let matchers = self.create_matchers_recursive(constraint, table_id)?;
 
         Ok(matchers)
     }
@@ -62,22 +70,23 @@ impl SleighCompiler {
     /// Recursive entry called through [Self::create_matchers]
     fn create_matchers_recursive(
         &self,
-        constraint: Spanned<SASTBitPatternConstraint>,
-    ) -> SleighCompilerResult<Vec<Matcher>> {
-        let (constraint, _span) = constraint.into_tuple();
+        constraint: &Spanned<SASTBitPatternConstraint>,
+        table_id: TableId,
+    ) -> SleighCompilerResult<MatcherCreationResult> {
+        let (constraint, _span) = constraint.as_tuple();
         let new_matchers = match constraint {
-            SASTBitPatternConstraint::Ident(ident) => self.process_ident(ident),
-            SASTBitPatternConstraint::BinaryOp(lhs, op, rhs) => self.process_binary_op(lhs, op, rhs),
-            SASTBitPatternConstraint::UnaryOp(op, operand) => self.process_unary_op(op, operand),
+            SASTBitPatternConstraint::Ident(ident) => self.process_ident(*ident, table_id)?,
+            SASTBitPatternConstraint::BinaryOp(lhs, op, rhs) => self.process_binary_op(lhs, *op, rhs, table_id)?,
+            SASTBitPatternConstraint::UnaryOp(op, operand) => self.process_unary_op(*op, operand, table_id)?,
             SASTBitPatternConstraint::AdvancedConstraint(lhs, op, pattern) => {
-                self.process_advanced_constraint(lhs, op, pattern)
+                MatcherCreationResult::Matchers(self.process_advanced_constraint(*lhs, *op, *pattern)?)
             }
             SASTBitPatternConstraint::Invalid => {
                 todo!("Generate error report for an invalid constraint");
             }
         };
 
-        new_matchers
+        Ok(new_matchers)
     }
 
     /// Process an identifier into potentially multiple matchers by creating
@@ -85,15 +94,21 @@ impl SleighCompiler {
     fn process_ident(
         &self,
         ident: Spanned<SASTIdent>,
-    ) -> SleighCompilerResult<Vec<Matcher>> {
+        table_id: TableId,
+    ) -> SleighCompilerResult<MatcherCreationResult> {
         // Ident case: freestanding fields, varnodes or subtables linking global to local symbols. This
         // is one of the base cases and yields multiple simple [Matcher] with [MatcherAtom::Linkage]
         // and the corresponding symbols, fields and tokens.
 
-        let symbol = self.spec_builder.get_symbol(&ident.clone().transmute())?;
+        let symbol = self.spec_builder.get_symbol(&ident.transmute())?;
 
         let matchers = match symbol {
             MOIRSymbolId::Table(tid) => {
+                if *tid == table_id {
+                    // recursion => abort
+                    return Ok(MatcherCreationResult::Recursion);
+                }
+
                 // expansion strategy: create one matcher per unique token list of matchers
                 // contained in the subtable
                 let table = self
@@ -102,11 +117,17 @@ impl SleighCompiler {
                     .ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing symbol") })?;
 
                 // partition table matchers by token list
-                let mut partition: HashMap<_, Vec<_>> = HashMap::new();
+                let mut partition = BTreeMap::<_, Vec<_>>::new();
                 table.matchers.iter().for_each(|(id, matcher)| {
                     // we don't care about the context of the referenced submatchers
                     // so we completely skip it
-                    let token_list_nc = &matcher.token_list.list[matcher.token_list.list.iter().position(|parent| matches!(parent, MOIRFieldParent::Context(_))).map(|pos| pos + 1).unwrap_or(0)..];
+                    let token_list_nc = &matcher.token_list.list[matcher
+                        .token_list
+                        .list
+                        .iter()
+                        .position(|parent| matches!(parent, MOIRFieldParent::Context(_)))
+                        .map(|pos| pos + 1)
+                        .unwrap_or(0)..];
 
                     if let Some(list) = partition.get_mut(token_list_nc) {
                         list.push(id);
@@ -121,15 +142,15 @@ impl SleighCompiler {
                     .map(|(token_list, matchers)| {
                         // associate all matchers with equal token_list with a new matcher
 
-                        // Token_list can be empty if there is no conjunction (i.e. only references
+                        // token_list can be empty if there is no conjunction (i.e. only references
                         // or an epsilon matcher). We will create a matcher with an
                         // empty conjunction in this case.
                         let atom = MatcherAtom::Submatchers(Submatchers::new(*tid, matchers));
                         let conjunctions = if token_list.is_empty() {
                             Vec::new()
                         } else {
-                            let mut conjunctions = vec![HashSet::from([atom])];
-                            conjunctions.append(&mut vec![HashSet::new(); token_list.len() - 1]);
+                            let mut conjunctions = vec![BTreeSet::from([atom])];
+                            conjunctions.append(&mut vec![BTreeSet::new(); token_list.len() - 1]);
                             conjunctions
                         };
                         let token_list = TokenList::new(token_list, false, false);
@@ -156,7 +177,7 @@ impl SleighCompiler {
                 let tokens = TokenList::new(vec![field.parent], false, false);
 
                 vec![Matcher::new(
-                    vec![HashSet::from([atom])],
+                    vec![BTreeSet::from([atom])],
                     tokens,
                     HashSet::from([MatcherReference::Field(*fid)]),
                 )]
@@ -172,20 +193,28 @@ impl SleighCompiler {
             _ => todo!("Generate error report for invalid symbol type"),
         };
 
-        Ok(matchers)
+        Ok(MatcherCreationResult::Matchers(matchers))
     }
 
     fn process_binary_op(
         &self,
-        lhs: Box<Spanned<SASTBitPatternConstraint>>,
+        lhs: &Spanned<SASTBitPatternConstraint>,
         op: Spanned<SASTBinaryOp>,
-        rhs: Box<Spanned<SASTBitPatternConstraint>>,
-    ) -> SleighCompilerResult<Vec<Matcher>> {
+        rhs: &Spanned<SASTBitPatternConstraint>,
+        table_id: TableId,
+    ) -> SleighCompilerResult<MatcherCreationResult> {
         // Binary op case (mode=1 & op=0x7). Or expressions will be split and Concat
         // expressions verified, replaced by & and local tokens will be assigned.
 
-        let mut matchers_lhs = self.create_matchers_recursive(*lhs)?;
-        let mut matchers_rhs = self.create_matchers_recursive(*rhs)?;
+        let mut matchers_lhs = match self.create_matchers_recursive(lhs, table_id)? {
+            MatcherCreationResult::Matchers(matchers) => matchers,
+            MatcherCreationResult::Recursion => return Ok(MatcherCreationResult::Recursion),
+        };
+
+        let mut matchers_rhs = match self.create_matchers_recursive(rhs, table_id)? {
+            MatcherCreationResult::Matchers(matchers) => matchers,
+            MatcherCreationResult::Recursion => return Ok(MatcherCreationResult::Recursion),
+        };
 
         let new_matchers = match op.into_value() {
             SASTBinaryOp::And => {
@@ -266,7 +295,7 @@ impl SleighCompiler {
                     token_list.list.append(&mut merged_tokens.clone());
                     token_list.remove_padding();
                     for _ in matcher.token_list.list.len()..token_list.list.len() {
-                        matcher.conjunctions.push(HashSet::new());
+                        matcher.conjunctions.push(BTreeSet::new());
                     }
                     matcher.token_list = token_list;
                 });
@@ -276,7 +305,7 @@ impl SleighCompiler {
                     token_list.list.append(&mut merged_tokens);
                     token_list.remove_padding();
                     for _ in matcher.token_list.list.len()..token_list.list.len() {
-                        matcher.conjunctions.push(HashSet::new());
+                        matcher.conjunctions.push(BTreeSet::new());
                     }
                     matcher.token_list = token_list;
                 });
@@ -322,15 +351,20 @@ impl SleighCompiler {
             }
         };
 
-        Ok(new_matchers)
+        Ok(MatcherCreationResult::Matchers(new_matchers))
     }
 
     fn process_unary_op(
         &self,
         op: Spanned<SASTUnaryOp>,
-        operand: Box<Spanned<SASTBitPatternConstraint>>,
-    ) -> SleighCompilerResult<Vec<Matcher>> {
-        let mut matchers = self.create_matchers_recursive(*operand)?;
+        operand: &Spanned<SASTBitPatternConstraint>,
+        table_id: TableId,
+    ) -> SleighCompilerResult<MatcherCreationResult> {
+        let mut matchers = match self.create_matchers_recursive(operand, table_id)? {
+            MatcherCreationResult::Matchers(matchers) => matchers,
+            MatcherCreationResult::Recursion => return Ok(MatcherCreationResult::Recursion),
+        };
+
         // append/prepend undetermined token to each matcher
         match op.into_value() {
             SASTUnaryOp::JustifyLeft => {
@@ -345,7 +379,7 @@ impl SleighCompiler {
             }
         }
 
-        Ok(matchers)
+        Ok(MatcherCreationResult::Matchers(matchers))
     }
 
     fn process_advanced_constraint(
@@ -385,7 +419,7 @@ impl SleighCompiler {
         field_id: FieldId,
         op: SASTConstraintOp,
         pattern: SASTConstraintPattern,
-    ) -> SleighCompilerResult<(Vec<HashSet<MatcherAtom>>, HashSet<MatcherReference>)> {
+    ) -> SleighCompilerResult<(Vec<BTreeSet<MatcherAtom>>, HashSet<MatcherReference>)> {
         let field = self
             .spec_builder
             .field_by_symbol_id(field_id)
@@ -454,7 +488,7 @@ impl SleighCompiler {
         field: &MOIRField,
         field_id: FieldId,
         other: &MOIRField,
-    ) -> Vec<HashSet<MatcherAtom>> {
+    ) -> Vec<BTreeSet<MatcherAtom>> {
         let mut conjunctions = Vec::with_capacity(2.pow(field.bits.bits() as u32));
         (0u64..2u64.pow(field.bits.bits() as u32))
             .zip(0u64..2u64.pow(other.bits.bits() as u32))
@@ -466,7 +500,7 @@ impl SleighCompiler {
                     field: field_id,
                     matcher: field_matcher,
                 };
-                conjunctions.push(HashSet::from([atom]));
+                conjunctions.push(BTreeSet::from([atom]));
             });
 
         conjunctions
@@ -479,7 +513,7 @@ impl SleighCompiler {
         field: &MOIRField,
         field_id: FieldId,
         other: &MOIRField,
-    ) -> Vec<HashSet<MatcherAtom>> {
+    ) -> Vec<BTreeSet<MatcherAtom>> {
         let mut conjunctions = Vec::with_capacity(2.pow((field.bits.bits() + other.bits.bits()) as u32));
         for v0 in 0u64..2u64.pow(field.bits.bits() as u32) {
             for v1 in 0u64..2u64.pow(other.bits.bits() as u32) {
@@ -494,7 +528,7 @@ impl SleighCompiler {
                     field: field_id,
                     matcher: field_matcher,
                 };
-                conjunctions.push(HashSet::from([atom]));
+                conjunctions.push(BTreeSet::from([atom]));
             }
         }
 
@@ -508,7 +542,7 @@ impl SleighCompiler {
         field: &MOIRField,
         field_id: FieldId,
         other: &MOIRField,
-    ) -> Vec<HashSet<MatcherAtom>> {
+    ) -> Vec<BTreeSet<MatcherAtom>> {
         let mut conjunctions = Vec::with_capacity(2.pow((field.bits.bits() + other.bits.bits()) as u32));
         for v0 in 0u64..2u64.pow(field.bits.bits() as u32) {
             for v1 in v0..2u64.pow(other.bits.bits() as u32) {
@@ -519,7 +553,7 @@ impl SleighCompiler {
                     field: field_id,
                     matcher: field_matcher,
                 };
-                conjunctions.push(HashSet::from([atom]));
+                conjunctions.push(BTreeSet::from([atom]));
             }
         }
 
@@ -533,7 +567,7 @@ impl SleighCompiler {
         field: &MOIRField,
         field_id: FieldId,
         other: &MOIRField,
-    ) -> Vec<HashSet<MatcherAtom>> {
+    ) -> Vec<BTreeSet<MatcherAtom>> {
         self.matcher_conjunctions_from_field_lt_constraint(other, field_id, field)
     }
 
@@ -544,7 +578,7 @@ impl SleighCompiler {
         field: &MOIRField,
         field_id: FieldId,
         value: u64,
-    ) -> HashSet<MatcherAtom> {
+    ) -> BTreeSet<MatcherAtom> {
         let mask = field.bits.mask_shift();
         let value = value << field.bits.start;
         let field_matcher = FieldMatcher::Value { mask, value };
@@ -553,7 +587,7 @@ impl SleighCompiler {
             matcher: field_matcher,
         };
 
-        HashSet::from([atom])
+        BTreeSet::from([atom])
     }
 
     /// Generate multiple matcher conjunctions matching on every possible
@@ -563,7 +597,7 @@ impl SleighCompiler {
         field: &MOIRField,
         field_id: FieldId,
         value: u64,
-    ) -> Vec<HashSet<MatcherAtom>> {
+    ) -> Vec<BTreeSet<MatcherAtom>> {
         (0u64..2u64.pow(field.bits.bits() as u32))
             .filter_map(|v| {
                 if v != value {
@@ -582,7 +616,7 @@ impl SleighCompiler {
         field: &MOIRField,
         field_id: FieldId,
         value: u64,
-    ) -> Vec<HashSet<MatcherAtom>> {
+    ) -> Vec<BTreeSet<MatcherAtom>> {
         (0u64..2u64.pow(field.bits.bits() as u32))
             .filter_map(|v| {
                 if v < value {
@@ -601,7 +635,7 @@ impl SleighCompiler {
         field: &MOIRField,
         field_id: FieldId,
         value: u64,
-    ) -> Vec<HashSet<MatcherAtom>> {
+    ) -> Vec<BTreeSet<MatcherAtom>> {
         (0u64..2u64.pow(field.bits.bits() as u32))
             .filter_map(|v| {
                 if v > value {
@@ -776,30 +810,12 @@ fn extract_context(
     context_matcher
 }
 
-/// Merge two symbol lists by combining sets at identical positions through union and extending
-/// the smaller list with elements from the larger one.
-fn merge_symbols_used(
-    lhs: &Vec<HashSet<FieldId>>,
-    rhs: &Vec<HashSet<FieldId>>,
-) -> Vec<HashSet<FieldId>> {
-    let mut symbols_combined = lhs.clone();
-    for (i, symbols_rhs) in rhs.iter().enumerate() {
-        if let Some(symbols) = symbols_combined.get_mut(i) {
-            symbols.extend(symbols_rhs);
-        } else {
-            symbols_combined.push(symbols_rhs.clone());
-        }
-    }
-
-    symbols_combined
-}
-
 /// Merge two conjunction lists by combining conjunctions at identical positions through appending and extending
 /// the smaller list with elements from the larger one.
 fn merge_conjunctions(
-    lhs: &Vec<HashSet<MatcherAtom>>,
-    rhs: &Vec<HashSet<MatcherAtom>>,
-) -> Vec<HashSet<MatcherAtom>> {
+    lhs: &Vec<BTreeSet<MatcherAtom>>,
+    rhs: &Vec<BTreeSet<MatcherAtom>>,
+) -> Vec<BTreeSet<MatcherAtom>> {
     let mut conjunctions_combined = lhs.clone();
 
     for (i, conjunctions_rhs) in rhs.iter().enumerate() {

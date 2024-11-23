@@ -2,14 +2,15 @@
 
 use std::cmp::Ordering;
 use std::collections::{
+    BTreeSet,
     HashMap,
     HashSet,
 };
 
 use itertools::Itertools;
 
-use crate::compiler::error::SleighCompilerError;
 use crate::compiler::SleighCompilerResult;
+use crate::compiler::error::SleighCompilerError;
 use crate::new_typed_index_table_id;
 use crate::spec::builder::MOIRSymbolId;
 use crate::spec::moir::constructor::ConstructorId;
@@ -38,7 +39,7 @@ use crate::spec::typed_index_table::TypedIndexTable;
 // the case probably
 
 /// The simplest kind of matcher. It matches a single field against a value or another field.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialOrd, Ord, Copy, PartialEq, Eq, Hash)]
 pub enum FieldMatcher {
     // matches everything (TODO can this be removed? might be needed somewhere)
     Wildcard,
@@ -119,7 +120,7 @@ impl TokenList {
 pub struct Matcher {
     // Each conjunction belongs to the corresponding MOIRFieldParent defined down below in
     // token_list.
-    pub(crate) conjunctions: Vec<HashSet<MatcherAtom>>,
+    pub(crate) conjunctions: Vec<BTreeSet<MatcherAtom>>,
 
     // ordered list of used tokens and context registers
     pub(crate) token_list: TokenList,
@@ -134,17 +135,22 @@ pub struct Matcher {
 
 /// Since not all matchers are compatible with each other, we don't just specify subtables
 /// but also a list of corresponding compatible matchers.
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialOrd, Ord, Hash, PartialEq, Eq)]
 pub(crate) struct Submatchers {
     pub(crate) table: TableId,
     pub(crate) matchers: Vec<MatcherId>,
 }
 
 impl Submatchers {
-    pub(crate) fn new(table: TableId, matchers: Vec<MatcherId>) -> Self { Self { table, matchers } }
+    pub(crate) fn new(
+        table: TableId,
+        matchers: Vec<MatcherId>,
+    ) -> Self {
+        Self { table, matchers }
+    }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialOrd, Ord, Eq, PartialEq, Hash)]
 pub(crate) enum MatcherAtom {
     Field { field: FieldId, matcher: FieldMatcher },
     Submatchers(Submatchers),
@@ -152,7 +158,7 @@ pub(crate) enum MatcherAtom {
 
 impl Matcher {
     pub fn new(
-        conjunctions: Vec<HashSet<MatcherAtom>>,
+        conjunctions: Vec<BTreeSet<MatcherAtom>>,
         token_list: TokenList,
         references: HashSet<MatcherReference>,
     ) -> Self {

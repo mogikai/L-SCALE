@@ -50,7 +50,12 @@ use crate::spec::moir::custom_op::{
     MOIRCustomOp,
 };
 use crate::spec::moir::endianness::MOIREndianness;
-use crate::spec::moir::field::{FieldId, MOIRBitRange, MOIRField, MOIRFieldParent};
+use crate::spec::moir::field::{
+    FieldId,
+    MOIRBitRange,
+    MOIRField,
+    MOIRFieldParent,
+};
 use crate::spec::moir::r#macro::MOIRMacro;
 use crate::spec::moir::table::MOIRTable;
 use crate::spec::moir::token::{
@@ -474,16 +479,15 @@ impl ProcessorSpecificationBuilder {
         Ok((context_id, varnode_bits as u64))
     }
 
-    /// Modify the provided table. If None is provided, the root table is used.
-    pub(crate) fn create_or_modify_table(
+    pub(crate) fn get_table_id_or_create(
         &mut self,
         ident: Option<Spanned<StringId>>,
-    ) -> SleighCompilerResult<&mut MOIRTable> {
+    ) -> SleighCompilerResult<TableId> {
         let ident = ident.unwrap_or(self.root_table.clone());
-        let table_id = if let Some((symbol, _)) = self.get_symbol_and_ident(&ident) {
+        if let Some((symbol, _)) = self.get_symbol_and_ident(&ident) {
             // Symbol is defined. Do stuff with it.
             if let MOIRSymbolId::Table(table_id) = symbol {
-                *table_id
+                Ok(*table_id)
             } else {
                 todo!("Generate error report")
             }
@@ -492,8 +496,16 @@ impl ProcessorSpecificationBuilder {
             let symbol_id = self.declare_symbol(ident.clone())?;
             let table_id = self.symbol_tables.tables.insert(MOIRTable::default());
             self.define_symbol(symbol_id, MOIRSymbolId::Table(table_id))?;
-            table_id
-        };
+            Ok(table_id)
+        }
+    }
+
+    /// Modify the provided table. If None is provided, the root table is used.
+    pub(crate) fn create_or_modify_table(
+        &mut self,
+        ident: Option<Spanned<StringId>>,
+    ) -> SleighCompilerResult<&mut MOIRTable> {
+        let table_id = self.get_table_id_or_create(ident)?;
         Ok(self
             .symbol_tables
             .tables
@@ -812,21 +824,20 @@ impl Default for ProcessorSpecificationBuilder {
         .expect("This may not error at this point");
 
         // define epsilon as field belonging to a zero-sized token
-        let zero_token = slf.define_unnamed_token(MOIRToken {
-            bytes: 0,
-            endianness_override: None,
-        }).expect("This may not error at this point");
+        let zero_token = slf
+            .define_unnamed_token(MOIRToken {
+                bytes: 0,
+                endianness_override: None,
+            })
+            .expect("This may not error at this point");
         slf.zero_token = Some(zero_token);
-        slf.define_field(
-            Spanned::new(epsilon, InputSpan::default()),
-            MOIRField {
-                parent: MOIRFieldParent::Token(zero_token),
-                bits: MOIRBitRange::new(0, 0),
-                variables: vec![],
-                values: vec![],
-                strings: vec![],
-            },
-        );
+        slf.define_field(Spanned::new(epsilon, InputSpan::default()), MOIRField {
+            parent: MOIRFieldParent::Token(zero_token),
+            bits: MOIRBitRange::new(0, 0),
+            variables: vec![],
+            values: vec![],
+            strings: vec![],
+        });
         slf
     }
 }

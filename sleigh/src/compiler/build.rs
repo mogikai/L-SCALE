@@ -31,6 +31,7 @@ use crate::compiler::{
     SleighCompiler,
     SleighCompilerResult,
 };
+use crate::spec::ProcessorSpecificationError;
 use crate::spec::moir::address_space::{
     MOIRSpace,
     MOIRSpaceIsDefault,
@@ -44,8 +45,7 @@ use crate::spec::moir::field::{
 };
 use crate::spec::moir::token::MOIRToken;
 use crate::spec::moir::varnode::MOIRVarNode;
-use crate::spec::ProcessorSpecificationError;
-use std::ops::Range;
+use chumsky::container::Container;
 use tracing::{
     debug,
     trace,
@@ -67,10 +67,17 @@ impl SleighCompiler {
         &mut self,
         items: Vec<SASTItem>,
     ) -> SleighCompilerResult {
+        let mut delayed_constructors = Vec::new();
+
         for item in items {
             let result = match item {
                 SASTItem::Attach(attach) => self.process_attach(attach),
-                SASTItem::Constructor(constructor) => self.process_constructor(constructor),
+                SASTItem::Constructor(constructor) => {
+                    if let Some(constructor) = self.process_constructor(constructor)? {
+                        delayed_constructors.push(constructor)
+                    }
+                    Ok(())
+                }
                 SASTItem::Define(define) => self.process_define(define),
                 SASTItem::Macro(pcode_macro) => self.process_pcode_macro(pcode_macro),
                 SASTItem::With(with) => self.process_with(with),
@@ -80,6 +87,11 @@ impl SleighCompiler {
             };
             self.report_error_or_unwrap(result)?;
         }
+
+        for delayed_constructor in delayed_constructors {
+            self.process_constructor(delayed_constructor)?;
+        }
+
         Ok(())
     }
 
@@ -259,13 +271,12 @@ impl SleighCompiler {
         if bits % 8 != 0 {
             Err(ProcessorSpecificationError::TokenSizeNotAMultipleOfEightBit)?;
         }
-        let result = self.spec_builder.define_token(
-            token.name.transmute(),
-            MOIRToken {
+        let result = self
+            .spec_builder
+            .define_token(token.name.transmute(), MOIRToken {
                 bytes: MOIRSize::try_from(bits).map_err(|_| SleighCompilerError::TODO)? / 8,
                 endianness_override: token.endian_override.map(|e| e.into_value().into()),
-            },
-        );
+            });
         if let Some(token_id) = self.report_error_or_unwrap(result)? {
             for field in token.fields.into_iter() {
                 let name = field.name.clone().transmute();

@@ -1,5 +1,5 @@
-use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::Spanned;
+use crate::compiler::ast::common::SASTIdent;
 
 #[derive(Debug)]
 pub struct SASTBitPatternSection {
@@ -41,7 +41,7 @@ pub enum SASTUnaryOp {
     JustifyRight,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum SASTConstraintOp {
     Equals,
     NotEquals,
@@ -49,7 +49,7 @@ pub enum SASTConstraintOp {
     GreaterThan,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum SASTConstraintPattern {
     Ident(Spanned<SASTIdent>),
     BitPattern(Spanned<u64>),

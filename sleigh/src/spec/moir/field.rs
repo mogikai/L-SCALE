@@ -27,11 +27,7 @@ impl MOIRBitRange {
 
     pub fn bytes(&self) -> Option<MOIRSize> {
         let bits = self.bits();
-        if bits % 8 == 0 {
-            Some(bits / 8)
-        } else {
-            None
-        }
+        if bits % 8 == 0 { Some(bits / 8) } else { None }
     }
 
     /// Generate a mask for the bit range without any shifts.
@@ -49,14 +45,17 @@ impl MOIRBitRange {
         ((1 << self.bits()) - 1) << self.start
     }
 
-    pub fn extract_from(&self, v: u64) -> u64 {
+    pub fn extract_from(
+        &self,
+        v: u64,
+    ) -> u64 {
         (v >> self.start) & self.mask()
     }
 }
 
 // context and token fields are treated the same due to their similarity and are
 // only discernible by their respective parent (either a token or a context definition)
-#[derive(Debug, Hash, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Hash, PartialOrd, Ord, Clone, Copy, PartialEq, Eq)]
 pub enum MOIRFieldParent {
     Token(TokenId),
     Context(MOIRContextId),

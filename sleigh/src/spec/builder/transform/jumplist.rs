@@ -1,5 +1,7 @@
 use std::collections::hash_map::Entry;
 use std::collections::{
+    BTreeMap,
+    BTreeSet,
     HashMap,
     HashSet,
 };
@@ -12,6 +14,7 @@ use chumsky::container::{
 use itertools::Itertools;
 use num::PrimInt;
 
+use crate::compiler::SleighCompilerResult;
 use crate::compiler::ast::pcode::deref;
 use crate::compiler::build::constructor::matcher::{
     FieldMatcher,
@@ -22,9 +25,12 @@ use crate::compiler::build::constructor::matcher::{
 };
 use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
-use crate::compiler::SleighCompilerResult;
 use crate::spec::jir::jumplist::{
-    DataProvider, Jumplist, JumplistEntry, JumplistId, NextJumplistEntry
+    DataProvider,
+    Jumplist,
+    JumplistEntry,
+    JumplistId,
+    NextJumplistEntry,
 };
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::{
@@ -73,6 +79,7 @@ struct Row<'a> {
     pub value: u64,
     pub data_provider: DataProvider,
     pub token_size: MOIRSize,
+    pub submatchers_list: Vec<&'a Submatchers>,
     pub sublists: Vec<JumplistId>,
 }
 
@@ -83,7 +90,7 @@ impl<'a> Row<'a> {
         value: u64,
         data_provider: DataProvider,
         token_size: MOIRSize,
-        sublists: Vec<JumplistId>,
+        submatchers_list: Vec<&'a Submatchers>,
     ) -> Self {
         Self {
             matcher,
@@ -91,7 +98,8 @@ impl<'a> Row<'a> {
             value,
             data_provider,
             token_size,
-            sublists,
+            submatchers_list,
+            sublists: vec![],
         }
     }
 }
@@ -142,7 +150,7 @@ impl<'a> JumplistBuilder<'a> {
             .iter()
             .filter(|(id, _)| *id != root_jumplist_id)
             .for_each(|jumplist| {
-                eprintln!("jumplist = {:#?}", jumplist);
+                trace_build!("jumplist = {:#x?}", jumplist);
             });
 
         let root_jumplist = self
@@ -150,7 +158,7 @@ impl<'a> JumplistBuilder<'a> {
             .get(root_jumplist_id)
             .expect("We just created this");
 
-        eprintln!("root_jumplist = {:#?}", root_jumplist);
+        trace_build!("root_jumplist = {:#x?}", root_jumplist);
 
         Ok((root_jumplist_id, self.jumplist_cache))
     }
@@ -218,42 +226,75 @@ impl<'a> JumplistBuilder<'a> {
         let rows = matchers
             .iter()
             .map(|matcher| {
-                let (mask, value, data_provider, token_size, sublists) = match matcher
+                let (mask, value, data_provider, token_size, submatchers_list) = match matcher
                     .conjunctions
                     .get(token_index)
                     .zip(matcher.token_list.list.get(token_index))
-                    {
-                        Some((conjunction, parent)) => {
-                            let (mask, value, submatchers_list) = extract_from_conjunction(conjunction);
-                            let token_size = self.get_token_size(parent)?;
-                            let data_provider = match parent {
-                                MOIRFieldParent::Token(tid) => DataProvider::ByteStream,
-                                MOIRFieldParent::Context(cid) => DataProvider::Context(*cid),
-                            };
+                {
+                    Some((conjunction, parent)) => {
+                        let (mask, value, submatchers_list) = extract_from_conjunction(conjunction);
+                        let token_size = self.get_token_size(parent)?;
+                        let data_provider = match parent {
+                            MOIRFieldParent::Token(tid) => DataProvider::ByteStream,
+                            MOIRFieldParent::Context(cid) => DataProvider::Context(*cid),
+                        };
 
-                            let sublists = submatchers_list
-                                .into_iter()
-                                .map(|submatchers| self.process_submatchers(submatchers))
-                                .collect::<SleighCompilerResult<Vec<_>>>()?;
+                        (mask, value, data_provider, token_size, submatchers_list)
+                    }
+                    // This can be the case if subtables with more tokens than
+                    // the matcher are used. The path terminates in this case.
+                    None => (0, 0, DataProvider::ByteStream, 0, vec![]),
+                };
 
-                            (mask, value, data_provider, token_size, sublists)
-                        }
-                        // This can be the case if subtables with more tokens than
-                        // the matcher are used. The path terminates in this case.
-                        None => (0, 0, DataProvider::ByteStream, 0, vec![]),
-                    };
-
-                Ok(Row::new(matcher, mask, value, data_provider, token_size, sublists))
+                Ok(Row::new(matcher, mask, value, data_provider, token_size, submatchers_list))
             })
-        .collect::<SleighCompilerResult<Vec<_>>>()?;
+            .collect::<SleighCompilerResult<Vec<_>>>()?;
 
         // 2. partition rows by data provider
-        let partitioned_rows = partition_by_data_provider(rows);
+        let mut partitioned_rows = partition_by_data_provider(rows);
 
-        // 3. pass to recursive function
-        let jumplists = partitioned_rows.into_iter().map(|(_, rows)| {
-            self.create_jumplist_bytes(rows, token_index, 0)
-        }).collect::<SleighCompilerResult<Vec<_>>>()?;
+        // 3. collect submatchers of all rows, merge matcher ids of equal tables
+        // and create jumplist for it
+        for (_, partition) in partitioned_rows.iter_mut() {
+            // create row groups by table id
+            let mut rows_by_table = BTreeMap::<TableId, Vec<(usize, &Vec<MatcherId>)>>::new();
+            for (partition_rowi, partition_row) in partition.iter().enumerate() {
+                for submatchers in partition_row.submatchers_list.clone() {
+                    rows_by_table
+                        .entry(submatchers.table)
+                        .or_default()
+                        .push((partition_rowi, &submatchers.matchers));
+                }
+            }
+
+            for (table_id, group_rows) in rows_by_table.into_iter() {
+                // create jumplist
+                let matcher_ids = group_rows
+                    .iter()
+                    .map(|group_row| group_row.1)
+                    .flatten()
+                    .copied()
+                    .unique()
+                    .collect_vec();
+                let submatchers = Submatchers::new(table_id, matcher_ids);
+                let jumplist = self.process_submatchers(&submatchers)?;
+
+                // set in each group row
+                for group_row in group_rows {
+                    partition
+                        .get_mut(group_row.0)
+                        .expect("This can't happen")
+                        .sublists
+                        .push(jumplist);
+                }
+            }
+        }
+
+        // 4. pass to recursive function
+        let jumplists = partitioned_rows
+            .into_iter()
+            .map(|(_, rows)| self.create_jumplist_bytes(rows, token_index, 0))
+            .collect::<SleighCompilerResult<Vec<_>>>()?;
 
         if jumplists.len() > 1 {
             // multiple lists => create dummy list
@@ -265,7 +306,9 @@ impl<'a> JumplistBuilder<'a> {
             Ok(jumplist_new_id)
         } else {
             // just one list => use as-is
-            Ok(*jumplists.get(0).expect("There must be at least one jumplist"))
+            Ok(*jumplists
+                .get(0)
+                .expect("There must be at least one jumplist"))
         }
     }
 
@@ -286,7 +329,11 @@ impl<'a> JumplistBuilder<'a> {
     ) -> SleighCompilerResult<JumplistId> {
         debug_assert_ne!(rows.len(), 0, "There must be rows");
         for row in &rows {
-            debug_assert_eq!(row.data_provider, rows.get(0).expect("We just checked this").data_provider, "Data providers must be equal");
+            debug_assert_eq!(
+                row.data_provider,
+                rows.get(0).expect("We just checked this").data_provider,
+                "Data providers must be equal"
+            );
         }
 
         // new size is equal to size of smallest row
@@ -321,7 +368,15 @@ impl<'a> JumplistBuilder<'a> {
         let mask_combined = size_bits.extract_from(rows.iter().fold(0x0u64, |acc, row| acc | row.mask));
 
         let mut leaf_lists = Vec::new();
-        self.create_jumplist_mask(rows, &mut leaf_lists, token_index, bytes_consumed, mask_combined, &size_bits)?;
+        self.create_jumplist_mask(
+            rows,
+            &mut leaf_lists,
+            token_index,
+            bytes_consumed,
+            mask_combined,
+            &size_bits,
+            Vec::new(),
+        )?;
 
         if leaf_lists.len() == 1 {
             // either we end up with just one path which we can use directly...
@@ -361,10 +416,16 @@ impl<'a> JumplistBuilder<'a> {
         bytes_consumed: MOIRSize,
         mask: u64,
         size_bits: &MOIRBitRange,
+        // values are propagated down the first path only
+        mut propagated_values: Vec<u64>,
     ) -> SleighCompilerResult<Option<JumplistId>> {
         debug_assert_ne!(rows.len(), 0, "There must be rows");
         for row in &rows {
-            debug_assert_eq!(row.data_provider, rows.get(0).expect("We just checked this").data_provider, "Data providers must be equal");
+            debug_assert_eq!(
+                row.data_provider,
+                rows.get(0).expect("We just checked this").data_provider,
+                "Data providers must be equal"
+            );
         }
 
         // split parent set from rows as well as all child sets
@@ -395,10 +456,17 @@ impl<'a> JumplistBuilder<'a> {
         // no references will be set since there's nothing to reference to
         let parent = if !parent_set.is_empty() {
             let size_delta = size_bits.bytes().expect("This must be a multiple of 8");
-            let mut jumplist_parent = Jumplist::new(mask, size_delta, parent_set.get(0).expect("We just checked this").data_provider);
+            let mut jumplist_parent = Jumplist::new(
+                mask,
+                size_delta,
+                parent_set
+                    .get(0)
+                    .expect("We just checked this")
+                    .data_provider,
+            );
 
             // partition by value and sublists
-            let mut partitions: HashMap<(u64, Vec<JumplistId>), Vec<Row>> = HashMap::new();
+            let mut partitions: BTreeMap<(u64, Vec<JumplistId>), Vec<Row>> = BTreeMap::new();
             for row in parent_set.into_iter() {
                 let sublists = if bytes_consumed == 0 {
                     // first iteration: take sublists into account
@@ -411,34 +479,34 @@ impl<'a> JumplistBuilder<'a> {
                     .entry((size_bits.extract_from(row.value), sublists))
                     .or_default()
                     .push(row);
-                }
+            }
 
             // for each partition: create next byte jumplist if not all bytes have been consumed;
             // otherwise continue with next token or matcher
             for ((value, sublists), part_rows) in partitions.into_iter() {
                 // partition into rows with trailing bytes and rows that terminate
                 let (next_byte_rows, terminal_rows): (Vec<_>, Vec<_>) = part_rows
-                                                      .into_iter()
-                                                      .partition(|row| row.token_size > bytes_consumed + size_delta);
+                    .into_iter()
+                    .partition(|row| row.token_size > bytes_consumed + size_delta);
 
                 // partition rows that terminate into rows that terminate in a matcher or in more
                 // tokens (the row might end despite remaining tokens since these might belong to a
                 // subtable => if an empty conjunction is encountered this is also treated as an end)
                 let (terminal_token_rows, terminal_matcher_rows): (Vec<_>, Vec<_>) =
-                                                                   terminal_rows.into_iter().partition(|row| {
-                                                                       row.matcher
-                                                                           .conjunctions
-                                                                           .get(token_index + 1)
-                                                                           .map(|conjunction| !conjunction.is_empty())
-                                                                           .unwrap_or(false)
-                                                                   });
+                    terminal_rows.into_iter().partition(|row| {
+                        row.matcher
+                            .conjunctions
+                            .get(token_index + 1)
+                            .map(|conjunction| !conjunction.is_empty())
+                            .unwrap_or(false)
+                    });
 
                 // create entries for jumplist of trailing bytes
                 if !next_byte_rows.is_empty() {
                     let next_entry_trailing = NextJumplistEntry::Jumplist(self.create_jumplist_bytes(
-                            next_byte_rows,
-                            token_index,
-                            bytes_consumed + size_delta,
+                        next_byte_rows,
+                        token_index,
+                        bytes_consumed + size_delta,
                     )?);
 
                     let entry = JumplistEntry::new(sublists.clone(), next_entry_trailing);
@@ -459,22 +527,26 @@ impl<'a> JumplistBuilder<'a> {
 
                 // create entries for terminal row that ends in a matcher
                 if let Some(terminal_matcher_row) = terminal_matcher_rows.first() {
-                    assert!(terminal_matcher_rows.len() < 2, "There can't be more than one matcher in the same path");
+                    // this assertion does not have to hold true since two matchers can have the
+                    // same primary matching path but different subtables (TODO should we check
+                    // this?)
+                    // assert!(terminal_matcher_rows.len() < 2, "There can't be more than one matcher in the same path");
 
                     let next_entry_matcher = NextJumplistEntry::Matcher(
                         terminal_matcher_row
-                        .matcher
-                        .display
-                        .as_ref()
-                        .expect("This must be set at this point")
-                        .clone(),
+                            .matcher
+                            .display
+                            .as_ref()
+                            .expect("This must be set at this point")
+                            .clone(),
                     );
                     let entry = JumplistEntry::new(sublists, next_entry_matcher);
                     jumplist_parent.insert(value, entry.clone(), false)?;
                 }
             }
 
-            let parent_values = jumplist_parent.values().collect_vec();
+            // extend propagated values by parent values
+            propagated_values.extend(jumplist_parent.values());
             let jumplist_parent_id = self.jumplist_cache.insert(jumplist_parent);
 
             if child_sets.is_empty() {
@@ -482,38 +554,46 @@ impl<'a> JumplistBuilder<'a> {
                 leaf_lists.push(jumplist_parent_id);
             }
 
-            Some((parent_values, jumplist_parent_id))
+            Some(jumplist_parent_id)
         } else {
             None
         };
 
         // Now create jumplists for each child and add necessary references to the
-        // previously created parent jumplist at the corresponding position in the
-        // children. We insert the reference at the beginning for higher precedence.
+        // previously created parent jumplist to the first child at the beginning
+        // for higher precedence. A single path is enough since all leaf nodes
+        // will be linearly searched.
 
-        for (child_set_mask, child_set) in child_sets.into_iter() {
-            let child_jumplist_id = self.create_jumplist_mask(
-                child_set,
-                leaf_lists,
-                token_index,
-                bytes_consumed,
-                child_set_mask,
-                size_bits,
-            )?.expect("This must produce a parent");
+        // first set for path propagation
+        if let Some((child_set_mask, child_set)) = child_sets.first() {
+            let values = propagated_values.clone();
+
+            let child_jumplist_id = self
+                .create_jumplist_mask(
+                    child_set.clone(),
+                    leaf_lists,
+                    token_index,
+                    bytes_consumed,
+                    *child_set_mask,
+                    size_bits,
+                    propagated_values,
+                )?
+                .expect("This must produce a parent");
 
             let child_jumplist = self
                 .jumplist_cache
                 .get_mut(child_jumplist_id)
-                .expect("We just created this");
+                .expect("If we inserted it it must exist");
 
-            if let Some((parent_values, jumplist_parent_id)) = &parent {
-                let masked_parent_values = parent_values
-                    .iter()
-                    .map(|parent_value| parent_value & child_set_mask)
+            if let Some(jumplist_parent_id) = &parent {
+                let masked_propagated_values = values
+                    .into_iter()
+                    .map(|propagated_value| propagated_value & child_set_mask)
                     .unique();
-                for masked_parent_value in masked_parent_values {
+
+                for masked_propagated_value in masked_propagated_values {
                     child_jumplist.insert(
-                        masked_parent_value,
+                        masked_propagated_value,
                         JumplistEntry::new(vec![*jumplist_parent_id], NextJumplistEntry::Stub),
                         true,
                     )?;
@@ -521,7 +601,21 @@ impl<'a> JumplistBuilder<'a> {
             }
         }
 
-        Ok(parent.map(|(_, jumplist_parent_id)| jumplist_parent_id))
+        // create jumplists for remaining child sets
+        for (child_set_mask, child_set) in child_sets.into_iter().skip(1) {
+            self.create_jumplist_mask(
+                child_set,
+                leaf_lists,
+                token_index,
+                bytes_consumed,
+                child_set_mask,
+                size_bits,
+                Vec::new(),
+            )?
+            .expect("This must produce a parent");
+        }
+
+        Ok(parent)
     }
 
     fn get_token_size(
@@ -535,7 +629,7 @@ impl<'a> JumplistBuilder<'a> {
                 .ok_or_else(|| -> SleighCompilerError {
                     todo!("Generate error report for missing token");
                 })
-            .map(|token| token.bytes),
+                .map(|token| token.bytes),
             MOIRFieldParent::Context(cid) => {
                 let vnid = self
                     .context
@@ -543,7 +637,7 @@ impl<'a> JumplistBuilder<'a> {
                     .ok_or_else(|| -> SleighCompilerError {
                         todo!("Generate error report for missing context");
                     })?
-                .varnode;
+                    .varnode;
                 let varnode = self
                     .varnodes
                     .get(vnid)
@@ -596,6 +690,7 @@ fn expand_mask(
         .filter(|&position| (mask_delta >> position) & 1 == 1)
         .map(|position| (position, 0))
         .collect_vec();
+
     for _ in 0..num_values {
         // add new value to values depending on the current delta_positions
         let mut new_value = value;
@@ -619,7 +714,7 @@ fn expand_mask(
 }
 
 /// Extracts a mask/value pair as well as subtables from a matcher conjunction.
-fn extract_from_conjunction(conjunction: &HashSet<MatcherAtom>) -> (u64, u64, Vec<&Submatchers>) {
+fn extract_from_conjunction(conjunction: &BTreeSet<MatcherAtom>) -> (u64, u64, Vec<&Submatchers>) {
     let mut mask = 0u64;
     let mut value = 0u64;
     let mut subtables = Vec::new();
@@ -656,8 +751,8 @@ fn is_submask(
 
 /// Rows with different data providers can't be merged together so we need to
 /// partition them before passing them to [create_jumplist].
-fn partition_by_data_provider(rows: Vec<Row>) -> HashMap<DataProvider, Vec<Row>> {
-    let mut partitions: HashMap<DataProvider, Vec<Row>> = HashMap::new();
+fn partition_by_data_provider(rows: Vec<Row>) -> BTreeMap<DataProvider, Vec<Row>> {
+    let mut partitions = BTreeMap::<DataProvider, Vec<Row>>::new();
     for row in rows.into_iter() {
         partitions.entry(row.data_provider).or_default().push(row)
     }
