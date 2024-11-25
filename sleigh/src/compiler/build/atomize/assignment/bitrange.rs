@@ -7,8 +7,7 @@ use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::{
     SleighCompiler,
-    SleighCompilerError,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::spec::builder::ProcessorSpecificationBuilder;
 use crate::spec::moir::code::{
@@ -40,7 +39,7 @@ impl SleighCompiler {
         local: Spanned<bool>,
         expression: Spanned<SASTPCodeExpression>,
         bitrange: Spanned<SASTPCodeBitRange>,
-    ) -> SleighCompilerResult<()> {
+    ) -> InternalCompilerResult<()> {
         let (bitrange, _) = bitrange.into_tuple();
 
         let shift_amount = bitrange.lsb.into_value();
@@ -76,7 +75,7 @@ impl SleighCompiler {
         minimum_value_size: MOIRSize,
         target_size: MOIRSize,
         expression: Spanned<SASTPCodeExpression>,
-    ) -> SleighCompilerResult<MOIRLocalId> {
+    ) -> InternalCompilerResult<MOIRLocalId> {
         // Resolve the expression to its own local to allow the size to be whatever it wants to be.
         let value_local = scope.allocate_temporary(MOIRMaybeSize::Undetermined);
         let mut value = self.atomize_expression(scope, instructions, Some(value_local), expression)?;
@@ -118,7 +117,7 @@ fn resolve_target(
     scope: &mut MOIRScope,
     local: Spanned<bool>,
     ident: Spanned<SASTIdent>,
-) -> SleighCompilerResult<MOIRLocalId> {
+) -> InternalCompilerResult<MOIRLocalId> {
     if local.into_value() {
         scope.allocate_named_temporary(ident.clone().transmute(), MOIRMaybeSize::Undetermined)
     } else {
@@ -132,7 +131,7 @@ fn create_mask(
     shift_amount: SASTSize,
     bits: SASTSize,
     target_size: MOIRSize,
-) -> SleighCompilerResult<MOIRLocal> {
+) -> InternalCompilerResult<MOIRLocal> {
     // We can only create a mask constant, if it is smaller than 128 bits, i.e. 16 bytes.
     if target_size < 16 {
         // create `bits` amount of ones and shift them left to the correct position.

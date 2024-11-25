@@ -15,13 +15,13 @@ use crate::compiler::ast::constructor::bit_pattern_section::{
 };
 use crate::compiler::build::trace_build;
 use crate::compiler::error::{
-    SleighCompilerError,
-    SleighCompilerErrorType,
+    InternalError,
+    InternalErrorType,
 };
 use crate::compiler::{
     CompilerContext,
     SleighCompiler,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::spec::ProcessorSpecificationError;
 use crate::spec::builder::{
@@ -60,7 +60,7 @@ impl SleighCompiler {
     pub(super) fn process_constructor(
         &mut self,
         constructor: Spanned<SASTConstructor>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         let (constructor, constructor_span) = constructor.into_tuple();
         #[allow(unused_variables)]
         let table_name = constructor
@@ -130,7 +130,7 @@ impl SleighCompiler {
     fn pc_validate_exports(
         &self,
         table: &MOIRTable,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         // TODO: If we save some more span information in the MOIR structs, then we can move this validation
         //       step to the final build phase. This would allow us to report all conflicting constructors.
         //       It would also make the runtime more efficient, since we only have to validate once.
@@ -189,7 +189,7 @@ impl SleighCompiler {
         &mut self,
         display_identifiers: Vec<Spanned<StringId>>,
         matcher_symbols: &[MOIRSymbolId],
-    ) -> Result<MOIRScope, SleighCompilerError> {
+    ) -> Result<MOIRScope, InternalError> {
         let mut scope = MOIRScope::default();
         // Declare the special identifiers that are filled with constants upon calling the constructor.
         // Their sizes are undetermined and inferred from context.
@@ -218,7 +218,7 @@ impl SleighCompiler {
         &self,
         scope: &mut MOIRScope,
         symbols: &[MOIRSymbolId],
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         trace_build!("Resolving {} symbols to a local scope", symbols.len());
         for symbol in symbols {
             trace_build!("Resolving symbol {symbol:?}");
@@ -227,7 +227,7 @@ impl SleighCompiler {
                     let field = self
                         .spec_builder
                         .field_by_symbol_id(*field_id)
-                        .ok_or(SleighCompilerErrorType::UndeclaredSymbol)?;
+                        .ok_or(InternalErrorType::UndeclaredSymbol)?;
                     let size = if !field.variables.is_empty() {
                         // The field has variables attached. These will be later given to the constructor during
                         // decoding. We can now set the size of the value that is referenced to the size of the
@@ -260,7 +260,7 @@ impl SleighCompiler {
                     let table = self
                         .spec_builder
                         .table_by_symbol_id(*table_id)
-                        .ok_or(SleighCompilerErrorType::UndeclaredSymbol)?;
+                        .ok_or(InternalErrorType::UndeclaredSymbol)?;
                     let constructor_id = table.constructors.first();
                     let export_size = constructor_id
                         .map(|cid| self.spec_builder.constructor_by_symbol_id(*cid))
@@ -279,7 +279,7 @@ impl SleighCompiler {
                     let varnode = self
                         .spec_builder
                         .varnode_by_symbol_id(*vnid)
-                        .ok_or(SleighCompilerErrorType::UndeclaredSymbol)?;
+                        .ok_or(InternalErrorType::UndeclaredSymbol)?;
                     Some(MOIRSlice {
                         reference: MOIRReference::VarNode(*vnid),
                         start: 0,
@@ -293,7 +293,7 @@ impl SleighCompiler {
             let ident = self
                 .spec_builder
                 .ident_by_symbol(symbol)
-                .ok_or(SleighCompilerErrorType::UndeclaredSymbol)?;
+                .ok_or(InternalErrorType::UndeclaredSymbol)?;
             if let Some(value) = value {
                 scope.declare_local(ident.clone().into_value(), value);
             }
@@ -305,7 +305,7 @@ impl SleighCompiler {
     fn create_matcher(
         &mut self,
         constraint: Spanned<SASTBitPatternConstraint>,
-    ) -> SleighCompilerResult<Matcher> {
+    ) -> InternalCompilerResult<Matcher> {
         let (constraint, constraint_span) = constraint.into_tuple();
         match constraint {
             SASTBitPatternConstraint::Ident(ident) => {
@@ -377,11 +377,11 @@ impl SleighCompiler {
         field_id: FieldId,
         op: SASTConstraintOp,
         pattern: SASTConstraintPattern,
-    ) -> SleighCompilerResult<Box<MatcherExpression>> {
+    ) -> InternalCompilerResult<Box<MatcherExpression>> {
         let field = self
             .spec_builder
             .field_by_symbol_id(field_id)
-            .ok_or(SleighCompilerErrorType::UndeclaredSymbol)?;
+            .ok_or(InternalErrorType::UndeclaredSymbol)?;
 
         match op {
             SASTConstraintOp::Equals => self.matcher_from_equals_constraint(field_id, pattern),
@@ -419,7 +419,7 @@ impl SleighCompiler {
         &self,
         field_id: FieldId,
         pattern: SASTConstraintPattern,
-    ) -> SleighCompilerResult<Box<MatcherExpression>> {
+    ) -> InternalCompilerResult<Box<MatcherExpression>> {
         let constraint = match pattern {
             SASTConstraintPattern::Ident(ident) => self
                 .spec_builder

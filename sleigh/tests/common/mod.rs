@@ -1,4 +1,4 @@
-use mogi_sleigh::compiler::SleighCompilerResult;
+use mogi_sleigh::compiler::InternalCompilerResult;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
 use mogi_sleigh::preprocessor::SleighPreprocessorFactory;
 use mogi_sleigh::spec::ProcessorSpecification;
@@ -22,7 +22,7 @@ pub fn setup_test() {
     })
 }
 
-pub fn build(path: String) -> SleighCompilerResult<ProcessorSpecification> {
+pub fn build(path: String) -> InternalCompilerResult<ProcessorSpecification> {
     let spec_path = Path::new(&path);
     let spec_dir = spec_path.parent().unwrap();
     let factory = SleighPreprocessorFactory::new().working_dir(spec_dir.to_path_buf());

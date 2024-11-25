@@ -3,8 +3,8 @@ use std::ops::Range;
 
 use crate::compiler::ast::SpannedToken;
 use crate::compiler::error::{
-    SleighCompilerError,
-    SleighCompilerErrorType,
+    InternalError,
+    InternalErrorType,
 };
 use crate::compiler::inputcache::CompilerInputCache;
 use crate::compiler::tokens::{
@@ -203,11 +203,11 @@ impl SleighLexer {
         input_cache: &mut CompilerInputCache,
         context: &'src mut ProcessorSpecificationBuilder,
         input_id: InputId,
-    ) -> Result<SleighTokens, SleighCompilerError> {
+    ) -> Result<SleighTokens, InternalError> {
         // TODO: Return parsed tokens, and all encountered errors, instead of simply erroring out.
         let source_data = input_cache
             .input_source(input_id)
-            .map_err(|e| SleighCompilerError::from_error(e.into()))?;
+            .map_err(|e| InternalError::from_error(e.into()))?;
         let parsed = SleighLexer::tokenize_string(
             source_data
                 .text()
@@ -234,7 +234,7 @@ impl SleighLexer {
                     .expect("There is no case in which this may fail.");
             }
             Err(
-                SleighCompilerErrorType::LexerError(String::from_utf8(diagnostic).expect("We only write utf8 strings"))
+                InternalErrorType::LexerError(String::from_utf8(diagnostic).expect("We only write utf8 strings"))
                     .into(),
             )
         }

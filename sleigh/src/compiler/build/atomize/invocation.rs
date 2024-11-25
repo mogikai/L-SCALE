@@ -4,12 +4,12 @@ use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::{
-    SleighCompilerError,
-    SleighCompilerErrorType,
+    InternalError,
+    InternalErrorType,
 };
 use crate::compiler::{
     SleighCompiler,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::spec::builder::StringId;
 use crate::spec::moir::code::{
@@ -35,7 +35,7 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
         out: Option<MOIRLocalId>,
         invocation: Spanned<SASTPCodeInvocation>,
-    ) -> SleighCompilerResult<Option<MOIRLocal>> {
+    ) -> InternalCompilerResult<Option<MOIRLocal>> {
         trace_build!("Atomizing invocation with {} arguments.", invocation.value().arguments.len());
         let (invocation, _) = invocation.into_tuple();
 
@@ -58,7 +58,7 @@ impl SleighCompiler {
         out: Option<MOIRLocalId>,
         mut args: Vec<MOIRLocal>,
         name: Spanned<StringId>,
-    ) -> SleighCompilerResult<Option<MOIRLocal>> {
+    ) -> InternalCompilerResult<Option<MOIRLocal>> {
         let Some(custom_op) = self.spec_builder.custom_op_by_ident_mut(&name) else {
             trace_build!("Missing custom op {}", self.spec_builder.resolve_string_id(name.into_value()));
             todo!("Generate error for missing custom op")
@@ -108,7 +108,7 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         arguments: Vec<Spanned<SASTPCodeExpression>>,
-    ) -> SleighCompilerResult<Vec<MOIRLocal>> {
+    ) -> InternalCompilerResult<Vec<MOIRLocal>> {
         arguments
             .into_iter()
             .map(|arg| self.atomize_expression(scope, instructions, None, arg))
@@ -122,7 +122,7 @@ impl SleighCompiler {
         out: Option<MOIRLocalId>,
         args: Vec<MOIRLocal>,
         op: MOIROperation,
-    ) -> SleighCompilerResult<Option<MOIRLocal>> {
+    ) -> InternalCompilerResult<Option<MOIRLocal>> {
         let out = out.unwrap_or_else(|| scope.allocate_temporary(MOIRMaybeSize::Undetermined));
         match op {
             MOIROperation::PopCount => {
@@ -202,7 +202,7 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
         args: Vec<MOIRLocal>,
         moir_macro: MOIRMacro,
-    ) -> SleighCompilerResult<Option<MOIRLocal>> {
+    ) -> InternalCompilerResult<Option<MOIRLocal>> {
         // We need to create a new namespace that is only used for this macro invocation.
         // Effectively, the macro just writes its instructions into the same scope and
         // instruction list as that of the constructor, but uses its own name resolution
@@ -220,13 +220,13 @@ impl SleighCompiler {
     }
 }
 
-fn unpack_args<T>(args: Vec<MOIRLocal>) -> SleighCompilerResult<T>
+fn unpack_args<T>(args: Vec<MOIRLocal>) -> InternalCompilerResult<T>
 where
     T: HomogeneousTuple<Item = MOIRLocal>,
 {
     args.into_iter()
         .collect_tuple()
-        .ok_or(SleighCompilerError::from_error(SleighCompilerErrorType::InvalidArgumentCount))
+        .ok_or(InternalError::from_error(InternalErrorType::InvalidArgumentCount))
 }
 
 /// Resolves the provided args to the argument names in the macro definition.
@@ -247,7 +247,7 @@ fn process_macro_arguments(
     instructions: &mut Vec<MOIRInstruction>,
     args: Vec<MOIRLocal>,
     arg_definitions: Vec<Spanned<SASTIdent>>,
-) -> SleighCompilerResult {
+) -> InternalCompilerResult {
     let args_and_names = args.iter().zip(
         arg_definitions
             .into_iter()

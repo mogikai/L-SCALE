@@ -55,7 +55,7 @@ pub fn pcode_statement<'tokens>() -> impl Parser<
 mod test {
     use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
     use crate::compiler::ast::pcode::target_expression::SASTPCodeTargetExpression;
-    use crate::compiler::error::SleighCompilerError;
+    use crate::compiler::error::InternalError;
     use crate::compiler::parser::report_errors;
     use crate::compiler::parser::test::{
         TestResult,
@@ -64,7 +64,7 @@ mod test {
 
     use super::*;
 
-    fn test_statement(statement: &str) -> Result<(), SleighCompilerError> {
+    fn test_statement(statement: &str) -> Result<(), InternalError> {
         test_parser(statement, |cache, context, tokens| {
             report_errors(cache, pcode_statement().parse_with_state(tokens.spanned(), context))
         })?;
@@ -79,28 +79,28 @@ mod test {
     }
 
     #[test]
-    fn complex_conditional_branch_to_label_parses() -> Result<(), SleighCompilerError> {
+    fn complex_conditional_branch_to_label_parses() -> Result<(), InternalError> {
         test_statement("if !(zext(Mem) > bnd1_ub) goto <done>;")
     }
 
     #[test]
-    fn conditional_branch_to_label_parses() -> Result<(), SleighCompilerError> {
+    fn conditional_branch_to_label_parses() -> Result<(), InternalError> {
         test_statement("if(x) goto <y>;")
     }
 
     #[test]
-    fn conditional_branch_to_varnode_parses() -> Result<(), SleighCompilerError> {
+    fn conditional_branch_to_varnode_parses() -> Result<(), InternalError> {
         test_statement("if (x[0,32] f< y[0,32]) goto z;")
     }
 
     #[test]
-    fn write_to_deref_parses() -> Result<(), SleighCompilerError> {
+    fn write_to_deref_parses() -> Result<(), InternalError> {
         // test_statement("*:10 (Mem + 78) = ST5;")
         test_statement("*x = y;")
     }
 
     #[test]
-    fn load_const_space_literal_to_local_parses() -> Result<(), SleighCompilerError> {
+    fn load_const_space_literal_to_local_parses() -> Result<(), InternalError> {
         let result = test_statement_output("local x = *[const]:4 1;")?;
         let stmt = result.into_value();
         match stmt {
@@ -133,7 +133,7 @@ mod test {
     }
 
     #[test]
-    fn load_ram_space_ident_parses() -> Result<(), SleighCompilerError> {
+    fn load_ram_space_ident_parses() -> Result<(), InternalError> {
         let result = test_statement_output("x = *[ram]:4 y;")?;
         let stmt = result.into_value();
         match stmt {
@@ -166,7 +166,7 @@ mod test {
     }
 
     #[test]
-    fn load_ram_space_ident_no_size_parses() -> Result<(), SleighCompilerError> {
+    fn load_ram_space_ident_no_size_parses() -> Result<(), InternalError> {
         let result = test_statement_output("x = *[ram] y;")?;
         let stmt = result.into_value();
         match stmt {

@@ -16,7 +16,7 @@ use crate::compiler::ast::pcode::{
 use crate::compiler::{
     CompilerContext,
     SleighCompiler,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::spec::builder::StringId;
 use crate::spec::moir::code::{
@@ -35,8 +35,8 @@ use crate::spec::moir::varnode::MOIRReference;
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::{
-    SleighCompilerError,
-    SleighCompilerErrorType,
+    InternalError,
+    InternalErrorType,
 };
 use crate::spec::moir::MOIR_ADDRESS_SIZE;
 use crate::spec::moir::address_space::MOIRSpaceType;
@@ -48,7 +48,7 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         pcode: Spanned<SASTPCode>,
-    ) -> SleighCompilerResult<Option<MOIRExport>> {
+    ) -> InternalCompilerResult<Option<MOIRExport>> {
         // TODO: Create table of locals? Lookup global identifiers?
         let (pcode, _) = pcode.into_tuple();
         scope.make_implicit_builds(instructions)?;
@@ -62,7 +62,7 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         statements: Vec<Spanned<SASTPCodeLabelledStatement>>,
-    ) -> SleighCompilerResult<Option<Spanned<MOIRExport>>> {
+    ) -> InternalCompilerResult<Option<Spanned<MOIRExport>>> {
         let mut export: Option<Spanned<MOIRExport>> = None;
         for ((label, statement), _) in statements.into_iter().map(Spanned::into_tuple) {
             let label = if let Some(label) = label {
@@ -73,8 +73,8 @@ impl SleighCompiler {
                 None
             };
             if let Some(export) = export {
-                let e = SleighCompilerErrorType::InstructionAfterExport;
-                return Err(Into::<SleighCompilerError>::into(e)
+                let e = InternalErrorType::InstructionAfterExport;
+                return Err(Into::<InternalError>::into(e)
                     .span("export", export.span().clone())
                     .span("instr", statement.into_span()));
             }
@@ -138,7 +138,7 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         expression: Spanned<SASTPCodeExpression>,
-    ) -> SleighCompilerResult<MOIRExport> {
+    ) -> InternalCompilerResult<MOIRExport> {
         // TODO: Handling dynamic references (e.g. export *:4 tmp) will require keeping track of the
         //       dynamic references somewhere. We need to decide how to do this.
         // Most likely, we will need to atomize the expression, or the expression inside a load expression
@@ -171,7 +171,7 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         deref: Spanned<SASTPCodeDeref>,
-    ) -> SleighCompilerResult<MOIRExport> {
+    ) -> InternalCompilerResult<MOIRExport> {
         let deref = deref.into_value();
         let space = self
             .spec_builder
@@ -180,7 +180,7 @@ impl SleighCompiler {
         let spc = self
             .spec_builder
             .space_by_symbol_id(space)
-            .ok_or_else(|| -> SleighCompilerError { todo!("Generate appropriate error report") })?;
+            .ok_or_else(|| -> InternalError { todo!("Generate appropriate error report") })?;
 
         trace_build!("Constraining addr size to {}", spc.address_size);
         scope.constrain_local_size(&mut address, spc.address_size)?;
@@ -195,10 +195,10 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         table: Spanned<StringId>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         let table = scope
             .local(*table.value())
-            .ok_or_else(|| -> SleighCompilerError { todo!("Generate error for missing symbol") })?;
+            .ok_or_else(|| -> InternalError { todo!("Generate error for missing symbol") })?;
         let table = match table.reference {
             MOIRReference::SubTable(table) => table,
             _ => todo!("Generate error for invalid symbol type"),
@@ -213,7 +213,7 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         ident: Spanned<StringId>,
         size: Option<Spanned<MOIRSize>>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         trace_build!("Atomizing declaration");
         scope
             .allocate_named_temporary(ident, size.map_or(MOIRMaybeSize::Undetermined, |size| size.into_value().into()))
@@ -226,7 +226,7 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
         condition: Spanned<SASTPCodeExpression>,
         branch: Spanned<SASTPCodeBranchTarget>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         let (branch, _) = branch.into_tuple();
         let cond = self.atomize_expression(scope, instructions, None, condition)?;
         match branch {
@@ -255,7 +255,7 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
         branch_type: MOIRGotoType,
         branch: Spanned<SASTPCodeBranchTarget>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         let (branch, _) = branch.into_tuple();
         match branch {
             SASTPCodeBranchTarget::Label(label) => {

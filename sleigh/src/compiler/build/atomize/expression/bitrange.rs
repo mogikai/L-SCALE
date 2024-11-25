@@ -2,7 +2,7 @@ use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
 use crate::compiler::{
     SleighCompiler,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::spec::moir::code::{
     MOIRInstruction,
@@ -24,7 +24,7 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
         out: Option<MOIRLocalId>,
         bitrange: Spanned<SASTPCodeBitRange>,
-    ) -> SleighCompilerResult<MOIRLocal> {
+    ) -> InternalCompilerResult<MOIRLocal> {
         let (bitrange, _) = bitrange.into_tuple();
         let value = scope.resolve_ident(&self.spec_builder, bitrange.ident.transmute())?;
         let shift_amount = MOIRLocal::from(bitrange.lsb.into_value());

@@ -1,4 +1,4 @@
-use crate::compiler::error::SleighCompilerError;
+use crate::compiler::error::InternalError;
 use crate::compiler::inputcache::CompilerInputCache;
 use crate::compiler::lexer::{
     SleighLexer,
@@ -7,7 +7,7 @@ use crate::compiler::lexer::{
 pub(crate) use crate::compiler::parser::report_errors;
 use crate::spec::builder::ProcessorSpecificationBuilder;
 
-pub type TestResult<T = ()> = Result<T, SleighCompilerError>;
+pub type TestResult<T = ()> = Result<T, InternalError>;
 
 #[cfg(test)]
 pub fn setup_parser_test(

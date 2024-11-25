@@ -3,7 +3,7 @@ use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::{
     SleighCompiler,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::spec::moir::code::{
     MOIRInstruction,
@@ -22,7 +22,7 @@ impl SleighCompiler {
         local: Spanned<bool>,
         expression: Spanned<SASTPCodeExpression>,
         deref: Spanned<SASTPCodeDeref>,
-    ) -> SleighCompilerResult<()> {
+    ) -> InternalCompilerResult<()> {
         if *local {
             todo!("Generate error report for local keyword on store assignment")
         }

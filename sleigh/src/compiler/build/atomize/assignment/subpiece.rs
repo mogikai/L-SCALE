@@ -11,11 +11,11 @@ use crate::compiler::ast::pcode::subpiece::{
 };
 use crate::compiler::error::{
     CannotTruncateLhs,
-    SleighCompilerError,
+    InternalError,
 };
 use crate::compiler::{
     SleighCompiler,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::spec::builder::ProcessorSpecificationBuilder;
 use crate::spec::moir::code::{
@@ -36,7 +36,7 @@ impl SleighCompiler {
         local: Spanned<bool>,
         expression: Spanned<SASTPCodeExpression>,
         subpiece: Spanned<SASTPCodeSubpiece>,
-    ) -> SleighCompilerResult<()> {
+    ) -> InternalCompilerResult<()> {
         // We are dealing with a subpiece assignment. This is similar to a normal assignment.
         // However, we create a new slice and already have the required size, since it is
         // specified in the subpiece operation.
@@ -60,7 +60,7 @@ impl SleighCompiler {
         expression: Spanned<SASTPCodeExpression>,
         selector: Spanned<SASTPCodeSubpieceSelector>,
         ident: Spanned<SASTIdent>,
-    ) -> Result<(), SleighCompilerError> {
+    ) -> Result<(), InternalError> {
         let size = match selector.into_value() {
             SASTPCodeSubpieceSelector::Take(size) => size,
             SASTPCodeSubpieceSelector::Discard(_) => {
@@ -84,13 +84,13 @@ fn ensure_valid_subpiece_size(
     scope: &MOIRScope,
     lhs: MOIRLocalId,
     size: SASTSize,
-) -> SleighCompilerResult<()> {
+) -> InternalCompilerResult<()> {
     // If the subpiece tries to create a slice that is
     // larger than the original, we generate an error.
     if size
         > scope
             .size_of_local(lhs)
-            .ok_or_else(|| -> SleighCompilerError {
+            .ok_or_else(|| -> InternalError {
                 // We cannot slice a value that has an undetermined size
                 todo!("Generate error for undetermined size")
             })?
@@ -106,7 +106,7 @@ fn resolve_lhs(
     local: Spanned<bool>,
     ident: Spanned<SASTIdent>,
     size: SASTSize,
-) -> SleighCompilerResult<MOIRLocalId> {
+) -> InternalCompilerResult<MOIRLocalId> {
     if local.into_value() {
         // We encountered a local definition. Define here and error out if it already exists.
         scope.allocate_named_temporary(ident.transmute(), size.into())
@@ -122,7 +122,7 @@ fn truncate_lhs(
     ident: Spanned<SASTIdent>,
     lhs: MOIRLocalId,
     size: SASTSize,
-) -> SleighCompilerResult<MOIRLocalId> {
+) -> InternalCompilerResult<MOIRLocalId> {
     if *local {
         // If we defined a new local, then there is no need to truncate.
         Ok(lhs)
@@ -134,7 +134,7 @@ fn truncate_lhs(
                 ident_str: str.to_string(),
                 expected_size: size,
             };
-            SleighCompilerError::with_span(lhs_err.into(), "ident", ident_span).cause(err)
+            InternalError::with_span(lhs_err.into(), "ident", ident_span).cause(err)
         })
     }
 }

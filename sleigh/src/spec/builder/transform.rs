@@ -1,4 +1,4 @@
-use crate::compiler::SleighCompilerResult;
+use crate::compiler::InternalCompilerResult;
 use crate::compiler::ast::Spanned;
 use crate::spec::builder::{
     MOIRSymbolId,
@@ -71,7 +71,7 @@ impl MOIRToJIRTransformer {
             },
         }
     }
-    pub fn transform(mut self) -> SleighCompilerResult<JIRData> {
+    pub fn transform(mut self) -> InternalCompilerResult<JIRData> {
         self.jir.symbol_ids = self
             .moir
             .symbol_ids
@@ -110,7 +110,7 @@ impl MOIRToJIRTransformer {
 
 fn transform_spaces(
     spaces: TypedIndexTable<SpaceId, MOIRSpace>
-) -> SleighCompilerResult<TypedIndexTable<SpaceId, JIRSpace>> {
+) -> InternalCompilerResult<TypedIndexTable<SpaceId, JIRSpace>> {
     Ok(spaces
         .into_iter()
         .map(|(ident, space)| {
@@ -132,7 +132,7 @@ fn transform_spaces(
 
 fn transform_varnodes(
     varnodes: TypedIndexTable<VarNodeId, MOIRVarNode>
-) -> SleighCompilerResult<TypedIndexTable<VarNodeId, JIRVarNode>> {
+) -> InternalCompilerResult<TypedIndexTable<VarNodeId, JIRVarNode>> {
     Ok(varnodes
         .into_iter()
         .map(|(ident, varnode)| {

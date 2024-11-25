@@ -1,9 +1,9 @@
 use crate::compiler::ast::Spanned;
 use crate::compiler::build::trace_build;
-use crate::compiler::error::SleighCompilerError;
+use crate::compiler::error::InternalError;
 use crate::compiler::{
     SleighCompiler,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::spec::builder::StringId;
 use crate::spec::moir::scope::{
@@ -20,7 +20,7 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         size_constraint: MOIRMaybeSize,
         ident: Spanned<StringId>,
-    ) -> SleighCompilerResult<MOIRLocal> {
+    ) -> InternalCompilerResult<MOIRLocal> {
         trace_build!("Atomizing identifier with size_constraint {size_constraint:?}");
         match size_constraint {
             MOIRMaybeSize::Determined(size) => {

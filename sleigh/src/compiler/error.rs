@@ -8,17 +8,10 @@ use crate::spec::builder::{
     StringId,
 };
 use crate::spec::moir::common::MOIRSize;
-use ariadne::{
-    Label,
-    Report,
-    ReportKind,
-};
+use ariadne::{ColorGenerator, Fmt, Label, Report, ReportKind};
 use chumsky::span::Span;
 use std::collections::HashMap;
-use std::fmt::{
-    Debug,
-    Display,
-};
+use std::fmt::{Debug, Display, Formatter};
 use std::ops::Range;
 use thiserror::Error;
 
@@ -120,7 +113,7 @@ pub struct DuplicatedSpaceAttribute {
 }
 
 #[derive(Debug, Error)]
-pub enum SleighCompilerErrorType {
+pub enum InternalErrorType {
     #[error("The preprocessor encountered an error: {0}")]
     PreprocessorError(#[from] PreprocessorError),
     #[error("The input cache encountered an error: {0}")]
@@ -131,12 +124,6 @@ pub enum SleighCompilerErrorType {
     LexerError(String),
     #[error("An error  occurred during parsing: {0}")]
     ParserError(String),
-    #[error("The requested source was not found.")]
-    MissingSource,
-    #[error("The input is not yet tokenized.")]
-    NotTokenized,
-    #[error("The input is not yet preprocessed. Parsing requires a preprocessed token stream.")]
-    NotPreprocessed,
     #[error("The compiler was configured to stop on the first error encountered.")]
     StopOnFirstError,
     #[error("The compiler encountered an error during the semantic analysis phase.")]
@@ -177,20 +164,20 @@ pub enum SleighCompilerErrorType {
 
 #[derive(Debug, Error)]
 #[error("{spans:?} {error:?}")]
-pub struct SleighCompilerError {
+pub struct InternalError {
     /// A hashmap to associate spans to identifiers defined by certain error types.
     /// This makes it possible to add the span context at later stages where it might
     /// be available, where it is not available during construction of the error.
     pub spans: HashMap<&'static str, InputSpan>,
     /// The actual type of the error.
-    pub error: SleighCompilerErrorType,
+    pub error: InternalErrorType,
     /// If the error is caused by another error, this other error can be provided here.
-    pub cause: Option<Box<SleighCompilerError>>,
+    pub cause: Option<Box<InternalError>>,
 }
 
-impl From<SleighCompilerErrorType> for SleighCompilerError {
-    fn from(error: SleighCompilerErrorType) -> Self {
-        SleighCompilerError {
+impl From<InternalErrorType> for InternalError {
+    fn from(error: InternalErrorType) -> Self {
+        InternalError {
             spans: HashMap::new(),
             error,
             cause: None,
@@ -198,33 +185,33 @@ impl From<SleighCompilerErrorType> for SleighCompilerError {
     }
 }
 
-impl From<ProcessorSpecificationError> for SleighCompilerError {
+impl From<ProcessorSpecificationError> for InternalError {
     fn from(value: ProcessorSpecificationError) -> Self {
-        SleighCompilerError::from_error(value.into())
+        InternalError::from_error(value.into())
     }
 }
 
-impl From<InputCacheError> for SleighCompilerError {
+impl From<InputCacheError> for InternalError {
     fn from(value: InputCacheError) -> Self {
-        SleighCompilerError::from_error(value.into())
+        InternalError::from_error(value.into())
     }
 }
 
-impl From<PreprocessorError> for SleighCompilerError {
+impl From<PreprocessorError> for InternalError {
     fn from(value: PreprocessorError) -> Self {
-        SleighCompilerError::from_error(value.into())
+        InternalError::from_error(value.into())
     }
 }
 
-impl From<WrongConstSize> for SleighCompilerError {
+impl From<WrongConstSize> for InternalError {
     fn from(value: WrongConstSize) -> Self {
-        SleighCompilerError::from_error(value.into())
+        InternalError::from_error(value.into())
     }
 }
 
-impl SleighCompilerError {
-    pub fn from_error(error: SleighCompilerErrorType) -> Self {
-        SleighCompilerError {
+impl InternalError {
+    pub fn from_error(error: InternalErrorType) -> Self {
+        InternalError {
             spans: HashMap::new(),
             error: error.into(),
             cause: None,
@@ -232,13 +219,13 @@ impl SleighCompilerError {
     }
 
     pub fn with_span(
-        error: SleighCompilerErrorType,
+        error: InternalErrorType,
         key: &'static str,
         span: InputSpan,
     ) -> Self {
         let mut spans = HashMap::new();
         spans.insert(key, span);
-        SleighCompilerError {
+        InternalError {
             spans,
             error: error.into(),
             cause: None,
@@ -246,10 +233,10 @@ impl SleighCompilerError {
     }
 
     pub fn with_spans(
-        error: SleighCompilerErrorType,
+        error: InternalErrorType,
         spans: HashMap<&'static str, InputSpan>,
     ) -> Self {
-        SleighCompilerError {
+        InternalError {
             spans,
             error: error.into(),
             cause: None,
@@ -267,7 +254,7 @@ impl SleighCompilerError {
 
     pub fn cause(
         mut self,
-        cause: SleighCompilerError,
+        cause: InternalError,
     ) -> Self {
         if self.cause.is_some() {
             panic!("This error already has a cause")
@@ -287,22 +274,22 @@ impl SleighCompilerError {
     }
 }
 
-impl SleighCompilerError {
+impl InternalError {
     pub fn as_report(&self) -> Report<'static, InputSpan> {
         (match &self.error {
-            SleighCompilerErrorType::DuplicatedDefine(_) | SleighCompilerErrorType::DuplicatedSpaceAttribute(_) => {
+            InternalErrorType::DuplicatedDefine(_) | InternalErrorType::DuplicatedSpaceAttribute(_) => {
                 let first = self.get_span("first");
                 Report::build(ReportKind::Error, first.clone())
                     .with_label(Label::new(first).with_message("first definition"))
                     .with_label(Label::new(self.get_span("second")).with_message("second definition"))
             }
-            SleighCompilerErrorType::InstructionAfterExport => {
+            InternalErrorType::InstructionAfterExport => {
                 let instr = self.get_span("instr");
                 Report::build(ReportKind::Error, instr.clone())
                     .with_label(Label::new(self.get_span("export")).with_message("export is here"))
                     .with_label(Label::new(instr).with_message("instruction should be before export"))
             }
-            SleighCompilerErrorType::InvalidFieldRange(invalid) => {
+            InternalErrorType::InvalidFieldRange(invalid) => {
                 let field = self.get_span("field");
                 match invalid {
                     InvalidFieldRange::EndBeforeStart(range) => Report::build(ReportKind::Error, field.clone())
@@ -318,19 +305,52 @@ impl SleighCompilerError {
                         ))),
                 }
             }
-            SleighCompilerErrorType::SliceError(slice) => {
+            InternalErrorType::SliceError(slice) => {
                 let expr = self.get_span("expr");
                 match slice {
                     SliceError::UndeterminedSize => Report::build(ReportKind::Error, expr.clone())
                         .with_label(Label::new(expr.clone()).with_message("size is undetermined")),
+                    SliceError::InvalidSliceSize { .. } => {
+                        Report::build(ReportKind::Error, expr.clone())
+                            .with_label(Label::new(expr.clone()).with_message("invalid slice size"))
+                    },
                     _ => todo!("add more slice error reports"),
                 }
             }
-            SleighCompilerErrorType::UndeclaredSymbol => {
+            InternalErrorType::UndeclaredSymbol => {
                 let ident = self.get_span("ident");
                 Report::build(ReportKind::Error, ident.clone())
                     .with_label(Label::new(ident.clone()).with_message("symbol is undeclared"))
             }
+            InternalErrorType::UndefinedSymbol(_) => {
+                let sym = self.get_span("symbol");
+                Report::build(ReportKind::Error, sym.clone())
+                    .with_label(Label::new(sym.clone())).with_message("symbol is undefined")
+            },
+            InternalErrorType::InvalidSymbolType(invalid) => {
+                let mut colors = ColorGenerator::new();
+                let color_a = colors.next();
+                let color_b = colors.next();
+                let ref_span = self.get_span("reference");
+                let def_span = self.get_span("defined");
+                Report::build(ReportKind::Error, ref_span.clone())
+                    .with_message("Invalid symbol type.")
+                    .with_label(
+                        Label::new(def_span)
+                            .with_message(format!("The symbol is defined here as {}", invalid.found.fg(color_a)))
+                            .with_color(color_a),
+                    )
+                    .with_label(
+                        Label::new(ref_span.clone())
+                            .with_message(format!(
+                                "The symbol referenced by {} has type {}, expected {}.",
+                                invalid.symbol_reference.clone().fg(color_a),
+                                invalid.found.fg(color_a),
+                                invalid.expected.clone().fg(color_b)
+                            ))
+                            .with_color(color_a),
+                    )
+            },
             _ => todo!("unhandled error in spanned_report"),
         })
         .with_message(self.error.to_string())

@@ -26,8 +26,8 @@ use crate::compiler::error::{
     DuplicatedDefine,
     DuplicatedIdentifier,
     InvalidSymbolType,
-    SleighCompilerError,
-    SleighCompilerErrorType,
+    InternalError,
+    InternalErrorType,
     UndefinedIdentifier,
     UndefinedSymbol,
     UnmappedIdentifier,
@@ -39,7 +39,7 @@ use crate::compiler::lexer::{
 };
 use crate::compiler::{
     CompilerContext,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::spec::builder::transform::MOIRToJIRTransformer;
 use crate::spec::moir::address_space::{
@@ -203,7 +203,7 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn define_endianness(
         &mut self,
         endianness: Spanned<MOIREndianness>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         if let Some(old_endianness) = &self.endianness {
             let e = DuplicatedDefine {
                 dupe_type: DuplicateDefineType::Endianness,
@@ -211,7 +211,7 @@ impl ProcessorSpecificationBuilder {
             let mut spans = HashMap::new();
             spans.insert("first", old_endianness.span().clone());
             spans.insert("second", endianness.into_span());
-            Err(SleighCompilerError::with_spans(e.into(), spans))
+            Err(InternalError::with_spans(e.into(), spans))
         } else {
             self.endianness = Some(endianness.transmute());
             Ok(())
@@ -222,7 +222,7 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn define_alignment(
         &mut self,
         alignment: Spanned<u16>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         if let Some(old_alignment) = &self.alignment {
             let e = DuplicatedDefine {
                 dupe_type: DuplicateDefineType::Alignment,
@@ -230,7 +230,7 @@ impl ProcessorSpecificationBuilder {
             let mut spans = HashMap::new();
             spans.insert("first", old_alignment.span().clone());
             spans.insert("second", alignment.into_span());
-            Err(SleighCompilerError::with_spans(e.into(), spans))
+            Err(InternalError::with_spans(e.into(), spans))
         } else {
             self.alignment = Some(alignment.transmute());
             Ok(())
@@ -240,7 +240,7 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn declare_custom_op(
         &mut self,
         ident: Spanned<StringId>,
-    ) -> Result<Ident, SleighCompilerError> {
+    ) -> Result<Ident, InternalError> {
         let symbol_id = self.declare_symbol(ident)?;
         let custom_op_id = self.symbol_tables.custom_ops.insert(MOIRCustomOp::Declared);
         self.define_symbol(symbol_id, MOIRSymbolId::CustomOp(custom_op_id))?;
@@ -255,7 +255,7 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         ident: Spanned<StringId>,
         moir_macro: MOIRMacro,
-    ) -> SleighCompilerResult<Ident> {
+    ) -> InternalCompilerResult<Ident> {
         let symbol_id = self.declare_symbol(ident)?;
         let macro_id = self.symbol_tables.macros.insert(moir_macro);
         self.define_symbol(symbol_id, MOIRSymbolId::Macro(macro_id))?;
@@ -270,7 +270,7 @@ impl ProcessorSpecificationBuilder {
     pub fn define_constructor(
         &mut self,
         constructor: MOIRConstructor,
-    ) -> SleighCompilerResult<ConstructorId> {
+    ) -> InternalCompilerResult<ConstructorId> {
         Ok(self.symbol_tables.constructors.insert(constructor))
     }
 
@@ -279,7 +279,7 @@ impl ProcessorSpecificationBuilder {
         ident: Spanned<StringId>,
         space: MOIRSpace,
         default: MOIRSpaceIsDefault,
-    ) -> SleighCompilerResult<Ident> {
+    ) -> InternalCompilerResult<Ident> {
         if matches!(default, MOIRSpaceIsDefault::Default) && self.default_space.is_some() {
             todo!("Generate report that default space is already set")
         }
@@ -299,7 +299,7 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         ident: Spanned<StringId>,
         varnode: MOIRVarNode,
-    ) -> SleighCompilerResult<Ident> {
+    ) -> InternalCompilerResult<Ident> {
         let symbol_id = self.declare_symbol(ident)?;
         let varnode_id = self.symbol_tables.varnodes.insert(varnode);
         self.define_symbol(symbol_id, MOIRSymbolId::VarNode(varnode_id))?;
@@ -313,7 +313,7 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         offset: u64,
         size: MOIRSize,
-    ) -> SleighCompilerResult<VarNodeId> {
+    ) -> InternalCompilerResult<VarNodeId> {
         Ok(self.symbol_tables.varnodes.insert(MOIRVarNode {
             space: self.temp_space,
             offset,
@@ -327,7 +327,7 @@ impl ProcessorSpecificationBuilder {
         source_varnode: Spanned<StringId>,
         offset: u64,
         size: u64,
-    ) -> SleighCompilerResult<BitrangeRegisterId> {
+    ) -> InternalCompilerResult<BitrangeRegisterId> {
         // validate that source_varnode is valid
         // TODO: Generate error reports instead of normal errors.
         let source_varnode_id = self
@@ -361,7 +361,7 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         ident: Spanned<StringId>,
         token: MOIRToken,
-    ) -> Result<TokenId, SleighCompilerError> {
+    ) -> Result<TokenId, InternalError> {
         let symbol_id = self.declare_symbol(ident)?;
         let token_id = self.symbol_tables.tokens.insert(token);
         self.define_symbol(symbol_id, MOIRSymbolId::Token(token_id))?;
@@ -372,7 +372,7 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         ident: Spanned<StringId>,
         field: MOIRField,
-    ) -> SleighCompilerResult<Ident> {
+    ) -> InternalCompilerResult<Ident> {
         let symbol_id = self.declare_symbol(ident)?;
         let field_id = self.symbol_tables.fields.insert(field);
         self.define_symbol(symbol_id, MOIRSymbolId::Field(field_id))?;
@@ -383,7 +383,7 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         fields: Vec<Spanned<StringId>>,
         varnodes: Vec<Spanned<StringId>>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         let varnode_ids: Result<Vec<_>, _> = varnodes
             .into_iter()
             .filter_map(|vsid| {
@@ -429,11 +429,11 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         fields: Vec<Spanned<StringId>>,
         values: Vec<Spanned<u64>>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         for field in fields.into_iter() {
             let (symbol, _) = self.get_symbol_and_ident(&field).ok_or_else(|| {
                 let (field, span) = field.into_tuple();
-                SleighCompilerError::with_span((UnmappedIdentifier { field }).into(), "span", span)
+                InternalError::with_span((UnmappedIdentifier { field }).into(), "span", span)
             })?;
             if let MOIRSymbolId::Field(id) = symbol {
                 self.field_by_symbol_id_mut(*id)
@@ -452,7 +452,7 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         fields: Vec<Spanned<StringId>>,
         strings: Vec<Spanned<StringId>>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         for field in fields.into_iter() {
             let (symbol, _) = self
                 .get_symbol_and_ident(&field)
@@ -473,7 +473,7 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn define_context(
         &mut self,
         varnode_ident: Spanned<StringId>,
-    ) -> SleighCompilerResult<(MOIRContextId, u64)> {
+    ) -> InternalCompilerResult<(MOIRContextId, u64)> {
         let varnode_id = self.varnode_id_by_ident(&varnode_ident)?;
         let moir_context = MOIRContext { varnode: varnode_id };
         let varnode_bits = self
@@ -490,7 +490,7 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn create_or_modify_table(
         &mut self,
         ident: Option<Spanned<StringId>>,
-    ) -> SleighCompilerResult<&mut MOIRTable> {
+    ) -> InternalCompilerResult<&mut MOIRTable> {
         let ident = ident.unwrap_or(self.root_table.clone());
         let table_id = if let Some((symbol, _)) = self.get_symbol_and_ident(&ident) {
             // Symbol is defined. Do stuff with it.
@@ -547,7 +547,7 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn get_symbol(
         &self,
         ident: &Spanned<StringId>,
-    ) -> SleighCompilerResult<&MOIRSymbolId> {
+    ) -> InternalCompilerResult<&MOIRSymbolId> {
         trace_build!("Resolving symbol {}", self.resolve_string_id(*ident.value()));
         self.string_to_ident_mapping
             .get(ident)
@@ -560,7 +560,7 @@ impl ProcessorSpecificationBuilder {
                 let e = UndefinedIdentifier {
                     identifier: self.resolve_string_id(ident.value().clone()).to_string(),
                 };
-                SleighCompilerError::with_span(e.into(), "ident", ident.span().clone())
+                InternalError::with_span(e.into(), "ident", ident.span().clone())
             })
     }
 
@@ -570,7 +570,7 @@ impl ProcessorSpecificationBuilder {
     fn declare_symbol(
         &mut self,
         ident: Spanned<StringId>,
-    ) -> SleighCompilerResult<Ident> {
+    ) -> InternalCompilerResult<Ident> {
         match self.string_to_ident_mapping.entry(*ident) {
             // The identifier is already declared, and we do not allow re-declaring a symbol.
             Entry::Occupied(entry) => {
@@ -582,7 +582,7 @@ impl ProcessorSpecificationBuilder {
                 let mut spans = HashMap::new();
                 spans.insert("first", name.span().clone());
                 spans.insert("second", ident.into_span());
-                Err(SleighCompilerError::with_spans(
+                Err(InternalError::with_spans(
                     (DuplicatedIdentifier {
                         name: name_str.to_string(),
                     })
@@ -605,18 +605,18 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         symbol_id: Ident,
         symbol: MOIRSymbolId,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         *self
             .symbol_ids
             .get_mut(symbol_id)
-            .ok_or(SleighCompilerErrorType::UndeclaredSymbol)? = symbol;
+            .ok_or(InternalErrorType::UndeclaredSymbol)? = symbol;
         Ok(())
     }
 
     pub(crate) fn space_id_by_ident(
         &self,
         ident: Spanned<StringId>,
-    ) -> SleighCompilerResult<SpaceId> {
+    ) -> InternalCompilerResult<SpaceId> {
         self.string_to_ident_mapping
             .get(ident.value())
             .and_then(|id| {
@@ -626,8 +626,8 @@ impl ProcessorSpecificationBuilder {
                 })
             })
             .ok_or_else(|| {
-                SleighCompilerError::with_span(
-                    SleighCompilerErrorType::UndeclaredSymbol.into(),
+                InternalError::with_span(
+                    InternalErrorType::UndeclaredSymbol.into(),
                     "ident",
                     ident.span().clone(),
                 )
@@ -653,14 +653,14 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn varnode_id_by_ident(
         &self,
         ident: &Spanned<StringId>,
-    ) -> SleighCompilerResult<VarNodeId> {
+    ) -> InternalCompilerResult<VarNodeId> {
         let symbol_reference = ident.clone().map(|id| self.resolve_string_id(id));
         self.get_symbol_and_ident(ident)
             .ok_or_else(|| {
                 let e = UndefinedSymbol {
                     symbol: symbol_reference.to_string().clone(),
                 };
-                SleighCompilerError::with_span(e.into(), "symbol", symbol_reference.span().clone())
+                InternalError::with_span(e.into(), "symbol", symbol_reference.span().clone())
             })
             .and_then(|(symbol, id)| match symbol {
                 MOIRSymbolId::VarNode(vnid) => Ok(*vnid),
@@ -679,7 +679,7 @@ impl ProcessorSpecificationBuilder {
                         expected: stringify!($symbol_id).to_string(),
                         found: *symbol,
                     };
-                    Err(SleighCompilerError::with_spans(e.into(), spans))
+                    Err(InternalError::with_spans(e.into(), spans))
                 }
             })
     }
@@ -697,7 +697,7 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn varnode_slice_by_ident(
         &self,
         ident: &Spanned<StringId>,
-    ) -> SleighCompilerResult<MOIRSlice> {
+    ) -> InternalCompilerResult<MOIRSlice> {
         self.varnode_id_by_ident(ident).map(|vnid| {
             let varnode = self
                 .varnode_by_symbol_id(vnid)
@@ -756,7 +756,7 @@ impl ProcessorSpecificationBuilder {
     pub fn resolve_space(
         &mut self,
         space: Option<Spanned<StringId>>,
-    ) -> SleighCompilerResult<SpaceId> {
+    ) -> InternalCompilerResult<SpaceId> {
         let space_id = space
             .map(|id| self.space_id_by_ident(id))
             .transpose()?
@@ -767,7 +767,7 @@ impl ProcessorSpecificationBuilder {
                     None
                 }
             })
-            .ok_or(SleighCompilerErrorType::UndeclaredSymbol)?;
+            .ok_or(InternalErrorType::UndeclaredSymbol)?;
 
         Ok(space_id)
     }
@@ -856,7 +856,7 @@ impl ProcessorSpecificationBuilder {
         Self::default()
     }
 
-    pub fn build(mut self) -> SleighCompilerResult<ProcessorSpecification> {
+    pub fn build(mut self) -> InternalCompilerResult<ProcessorSpecification> {
         debug!("Finalizing spec:");
         debug!("Found {} symbols", self.symbol_ids.len());
         debug!("Found {} tables", self.symbol_tables.tables.len());
@@ -1022,14 +1022,14 @@ macro_rules! impl_get_symbol_id {
             pub fn $func_name(
                 &self,
                 ident: &Spanned<StringId>,
-            ) -> SleighCompilerResult<$symbol_id> {
+            ) -> InternalCompilerResult<$symbol_id> {
                 let symbol_reference = ident.clone().map(|id| self.resolve_string_id(id));
                 self.get_symbol_and_ident(ident)
                     .ok_or_else(|| {
                         let e = UndefinedIdentifier {
                             identifier: self.resolve_string_id(ident.value().clone()).to_string(),
                         };
-                        SleighCompilerError::with_span(e.into(), "ident", ident.span().clone())
+                        InternalError::with_span(e.into(), "ident", ident.span().clone())
                     })
                     .and_then(|(symbol, id)| match symbol {
                         $variant => Ok(*$id),
@@ -1048,7 +1048,7 @@ macro_rules! impl_get_symbol_id {
                                 expected: stringify!($symbol_id).to_string(),
                                 found: *symbol,
                             };
-                            Err(SleighCompilerError::with_spans(e.into(), spans))?
+                            Err(InternalError::with_spans(e.into(), spans))?
                         }
                     })
             }

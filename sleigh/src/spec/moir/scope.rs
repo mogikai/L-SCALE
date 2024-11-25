@@ -1,13 +1,12 @@
 use crate::compiler::ast::Spanned;
 use crate::compiler::error::{
     DuplicatedIdentifier,
-    SleighCompilerError,
-    SleighCompilerErrorType,
+    InternalError,
+    InternalErrorType,
 };
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::{
-    CompilerContext,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::new_typed_index_table_id;
 use crate::spec::builder::{
@@ -15,7 +14,6 @@ use crate::spec::builder::{
     ProcessorSpecificationBuilder,
     StringId,
 };
-use crate::spec::jir::instruction::TargetInstructionBuilder;
 use crate::spec::moir::code::{
     MOIRInstruction,
     moir_instruction,
@@ -43,7 +41,6 @@ use std::fmt::{
     Formatter,
     Write,
 };
-use std::process::id;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 
@@ -221,9 +218,9 @@ impl MOIRScope {
     pub fn with_empty_namespace<F, R>(
         &mut self,
         f: F,
-    ) -> SleighCompilerResult<R>
+    ) -> InternalCompilerResult<R>
     where
-        F: FnOnce(&mut Self) -> SleighCompilerResult<R>,
+        F: FnOnce(&mut Self) -> InternalCompilerResult<R>,
     {
         let label_definitions = std::mem::take(&mut self.labels_definitions);
         let locals = std::mem::take(&mut self.locals);
@@ -258,7 +255,7 @@ impl MOIRScope {
     pub fn mark_local_as_used(
         &mut self,
         local: MOIRLocal,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         match local {
             MOIRLocal::Local(id) => {
                 self.used_locals.insert(id);
@@ -277,11 +274,11 @@ impl MOIRScope {
         &mut self,
         ident: Spanned<StringId>,
         local: MOIRLocalId,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         let (ident, span) = ident.into_tuple();
         match self.locals.entry(ident) {
             Entry::Occupied(_) => {
-                Err(SleighCompilerError::with_span(SleighCompilerErrorType::RedefinedSymbol, "dupe", span.clone()))?
+                Err(InternalError::with_span(InternalErrorType::RedefinedSymbol, "dupe", span.clone()))?
             }
             Entry::Vacant(entry) => entry.insert(local),
         };
@@ -310,7 +307,7 @@ impl MOIRScope {
     pub fn make_implicit_builds(
         &mut self,
         instructions: &mut Vec<MOIRInstruction>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         for subtable in self
             .slices
             .iter()
@@ -340,7 +337,7 @@ impl MOIRScope {
         &mut self,
         table_id: TableId,
         instructions: &mut Vec<MOIRInstruction>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         match self.subtable_builds.entry(table_id) {
             Entry::Occupied(mut e) => {
                 match e.get() {
@@ -372,7 +369,7 @@ impl MOIRScope {
         &mut self,
         ident: Spanned<StringId>,
         size: MOIRMaybeSize,
-    ) -> SleighCompilerResult<MOIRLocalId> {
+    ) -> InternalCompilerResult<MOIRLocalId> {
         let (ident, ident_span) = ident.into_tuple();
         let id = self.temporaries.insert(MOIRTemporary { size });
         match self.locals.entry(ident) {
@@ -386,7 +383,7 @@ impl MOIRScope {
                         .clone(),
                 );
                 spans.insert("second", ident_span);
-                Err(SleighCompilerError::with_spans((DuplicatedIdentifier { name: "".to_string() }).into(), spans))
+                Err(InternalError::with_spans((DuplicatedIdentifier { name: "".to_string() }).into(), spans))
             }
             Entry::Vacant(entry) => {
                 self.local_spans.insert(ident, ident_span);
@@ -427,7 +424,7 @@ impl MOIRScope {
         local: MOIRLocalId,
         start: MOIRSize,
         end: MOIRSize,
-    ) -> SleighCompilerResult<MOIRLocalId> {
+    ) -> InternalCompilerResult<MOIRLocalId> {
         let slice = self
             .slices
             .get(local)
@@ -444,7 +441,7 @@ impl MOIRScope {
         &mut self,
         local: MOIRLocalId,
         size: MOIRSize,
-    ) -> SleighCompilerResult<MOIRLocalId> {
+    ) -> InternalCompilerResult<MOIRLocalId> {
         let slice = self
             .slices
             .get_mut(local)
@@ -476,7 +473,7 @@ impl MOIRScope {
         &mut self,
         local: &mut MOIRLocal,
         size: MOIRSize,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         match local {
             MOIRLocal::Local(local) => {
                 self.constrain_local_id_size(*local, size)?;
@@ -492,11 +489,11 @@ impl MOIRScope {
         &mut self,
         local: MOIRLocalId,
         size: MOIRSize,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         let slice = self
             .slices
             .get_mut(local)
-            .ok_or_else(|| -> SleighCompilerError { todo!() })?;
+            .ok_or_else(|| -> InternalError { todo!() })?;
         match slice.reference {
             MOIRReference::Temporary(temp) => {
                 let temp = self
@@ -542,10 +539,10 @@ impl MOIRScope {
     pub fn resolve_local(
         &self,
         local: MOIRLocalId,
-    ) -> SleighCompilerResult<&MOIRSlice> {
+    ) -> InternalCompilerResult<&MOIRSlice> {
         self.slices
             .get(local)
-            .ok_or(SleighCompilerErrorType::UndeclaredSymbol.into())
+            .ok_or(InternalErrorType::UndeclaredSymbol.into())
     }
 
     /// Defines the label to point to a specific instruction.
@@ -554,7 +551,7 @@ impl MOIRScope {
         &mut self,
         label: Spanned<StringId>,
         id: InstructionId,
-    ) -> SleighCompilerResult<(LabelId, InstructionId)> {
+    ) -> InternalCompilerResult<(LabelId, InstructionId)> {
         let label_id = self.resolve_label(label)?;
         let instruction_id = &mut self.labels[label_id];
         if instruction_id.is_some() {
@@ -571,7 +568,7 @@ impl MOIRScope {
     pub fn resolve_label(
         &mut self,
         label: Spanned<StringId>,
-    ) -> SleighCompilerResult<LabelId> {
+    ) -> InternalCompilerResult<LabelId> {
         match self.labels_definitions.entry(*label.value()) {
             Entry::Occupied(entry) => Ok(*entry.get().value()),
             Entry::Vacant(entry) => {
@@ -590,7 +587,7 @@ impl MOIRScope {
         &mut self,
         global: &ProcessorSpecificationBuilder,
         ident: Spanned<StringId>,
-    ) -> SleighCompilerResult<MOIRLocalId> {
+    ) -> InternalCompilerResult<MOIRLocalId> {
         // TODO: Generate proper error reports
         let id = self.locals.get(ident.value()).copied();
         match id {
@@ -615,7 +612,7 @@ impl MOIRScope {
         global: &ProcessorSpecificationBuilder,
         ident: Spanned<StringId>,
         size: MOIRSize,
-    ) -> SleighCompilerResult<MOIRLocalId> {
+    ) -> InternalCompilerResult<MOIRLocalId> {
         let local = self.resolve_ident(global, ident)?;
         let slice = self
             .slices

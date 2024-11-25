@@ -3,7 +3,7 @@ use crate::compiler::ast::pcode_macro::SASTPCodeMacro;
 use crate::compiler::build::trace_build;
 use crate::compiler::{
     SleighCompiler,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::spec::moir::r#macro::MOIRMacro;
 
@@ -11,7 +11,7 @@ impl SleighCompiler {
     pub fn process_pcode_macro(
         &mut self,
         pcode_macro: Spanned<SASTPCodeMacro>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         trace_build!("Processing pcode macro at {:?}", pcode_macro.span());
         let (pcode_macro, _) = pcode_macro.into_tuple();
 

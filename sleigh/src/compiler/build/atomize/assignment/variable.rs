@@ -3,7 +3,7 @@ use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::{
     SleighCompiler,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::spec::builder::ProcessorSpecificationBuilder;
 use crate::spec::moir::code::{
@@ -25,7 +25,7 @@ impl SleighCompiler {
         local: Spanned<bool>,
         expression: Spanned<SASTPCodeExpression>,
         var: Spanned<SASTIdent>,
-    ) -> SleighCompilerResult<()> {
+    ) -> InternalCompilerResult<()> {
         let lhs = resolve_lhs(&self.spec_builder, scope, local, var)?;
         // We directly pass the out varnode to the atomize functions to avoid a separate copy operation,
         // since the expressions can directly store their result into this out variable.
@@ -51,7 +51,7 @@ fn resolve_lhs(
     scope: &mut MOIRScope,
     local: Spanned<bool>,
     var: Spanned<SASTIdent>,
-) -> SleighCompilerResult<MOIRLocalId> {
+) -> InternalCompilerResult<MOIRLocalId> {
     let lhs = if local.into_value() {
         // The variable is not declared yet. We allocate it now.
         scope.allocate_named_temporary(var.clone().transmute(), MOIRMaybeSize::Undetermined)?

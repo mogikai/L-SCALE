@@ -6,8 +6,8 @@ use crate::compiler::ast::{
     Spanned,
 };
 use crate::compiler::error::{
-    SleighCompilerError,
-    SleighCompilerErrorType,
+    InternalError,
+    InternalErrorType,
 };
 use crate::compiler::inputcache::CompilerInputCache;
 use crate::compiler::lexer::{
@@ -86,7 +86,7 @@ impl SleighParser {
         input_cache: &mut CompilerInputCache,
         context: &mut ProcessorSpecificationBuilder,
         tokens: SleighTokens,
-    ) -> Result<SleighAST, SleighCompilerError> {
+    ) -> Result<SleighAST, InternalError> {
         let parsed = parser().parse_with_state(tokens.spanned(), context);
         report_errors(input_cache, parsed)
     }
@@ -95,7 +95,7 @@ impl SleighParser {
 pub fn report_errors<T>(
     mut input_cache: &mut CompilerInputCache,
     parsed: ParseResult<T, Rich<SleighToken, InputSpan>>,
-) -> Result<T, SleighCompilerError> {
+) -> Result<T, InternalError> {
     let mut diagnostic = vec![];
     parsed.errors().for_each(|err| {
         let error_span = err.span();
@@ -118,7 +118,7 @@ pub fn report_errors<T>(
             .as_bytes(),
         );
         Err(
-            SleighCompilerErrorType::LexerError(String::from_utf8(diagnostic).expect("We only write utf8 strings."))
+            InternalErrorType::ParserError(String::from_utf8(diagnostic).expect("We only write utf8 strings."))
                 .into(),
         )
     }

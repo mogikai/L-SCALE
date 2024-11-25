@@ -2,7 +2,7 @@ use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::addressof::SASTPCodeAddressOf;
 use crate::compiler::{
     SleighCompiler,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::spec::moir::code::{
     MOIRInstruction,
@@ -36,7 +36,7 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
         out: Option<MOIRLocalId>,
         address_of: Spanned<SASTPCodeAddressOf>,
-    ) -> SleighCompilerResult<MOIRLocal> {
+    ) -> InternalCompilerResult<MOIRLocal> {
         let (address_of, _) = address_of.into_tuple();
         let size = address_of
             .size

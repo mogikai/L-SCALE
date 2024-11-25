@@ -11,11 +11,11 @@ use crate::compiler::build::atomize::expression::{
 use crate::compiler::build::trace_build;
 use crate::compiler::error::{
     ConstEvalError,
-    SleighCompilerError,
+    InternalError,
 };
 use crate::compiler::{
     SleighCompiler,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::spec::moir::code::{
     MOIRInstruction,
@@ -45,7 +45,7 @@ impl SleighCompiler {
         ast_lhs: Spanned<SASTPCodeExpression>,
         op: Spanned<SASTPCodeBinaryOp>,
         ast_rhs: Spanned<SASTPCodeExpression>,
-    ) -> SleighCompilerResult<MOIRLocal> {
+    ) -> InternalCompilerResult<MOIRLocal> {
         let mut independent_rhs_size = false;
         let (out, lhs) = match op.value().op_category() {
             SASTPcodeOpCategory::Comparison => {
@@ -103,7 +103,7 @@ impl SleighCompiler {
                 return const_eval_binary_op(lhs, op.into_value(), rhs)
                     .map(MOIRLocal::Const)
                     // TODO ues span_err!
-                    .map_err(|e| SleighCompilerError::from_error(e.into()));
+                    .map_err(|e| InternalError::from_error(e.into()));
             }
         }
 

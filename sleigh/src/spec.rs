@@ -193,16 +193,12 @@ impl ProcessorSpecification {
 
 #[derive(Debug, Error)]
 pub enum ProcessorSpecificationError {
-    #[error("The requested identifier is already used by something else.")]
-    IdentAlreadyExists(InputSpan, InputSpan),
     #[error("The symbol id does not map to a symbol.")]
     SymbolUndeclared(JIRSymbolId),
     #[error("The identifier is not mapped to anything.")]
     IdentifierNotMapped(Spanned<StringId>),
     #[error("The symbol exists but its type does not match.")]
     InvalidSymbolType(MOIRSymbolId),
-    #[error("The processor specification builder produced a detailed error message:")]
-    ErrorReport(Box<Report<'static, InputSpan>>),
     #[error("The processor specification must contain a valid endianness definition.")]
     MissingEndiannessDefinition,
     #[error("The processor specification must contain exactly one default space, but none was defined.")]

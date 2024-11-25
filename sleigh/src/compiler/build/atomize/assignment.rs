@@ -8,7 +8,7 @@ use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::pcode::target_expression::SASTPCodeTargetExpression;
 use crate::compiler::{
     SleighCompiler,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::spec::moir::code::MOIRInstruction;
 use crate::spec::moir::scope::MOIRScope;
@@ -26,7 +26,7 @@ impl SleighCompiler {
         local: Spanned<bool>,
         target: Spanned<SASTPCodeTargetExpression>,
         expression: Spanned<SASTPCodeExpression>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         let (target, _) = target.into_tuple();
         match target {
             SASTPCodeTargetExpression::Variable(var) => {

@@ -14,7 +14,7 @@ use crate::compiler::ast::common::SASTLiteral;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::{
     SleighCompiler,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::spec::moir::code::MOIRInstruction;
 use crate::spec::moir::scope::{
@@ -43,7 +43,7 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
         out: Option<MOIRLocalId>,
         expression: Spanned<SASTPCodeExpression>,
-    ) -> SleighCompilerResult<MOIRLocal> {
+    ) -> InternalCompilerResult<MOIRLocal> {
         let (expression, expr_span) = expression.into_tuple();
         let out_size = out
             .map(|id| scope.size_of_local(id))
@@ -75,7 +75,7 @@ impl SleighCompiler {
         &mut self,
         size_constraint: MOIRMaybeSize,
         literal: Spanned<SASTLiteral>,
-    ) -> SleighCompilerResult<MOIRLocal> {
+    ) -> InternalCompilerResult<MOIRLocal> {
         Ok(MOIRConst::new_with_size(literal.into_value(), size_constraint)?.into())
     }
 }

@@ -1,10 +1,10 @@
 use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::build::trace_build;
-use crate::compiler::error::SleighCompilerError;
+use crate::compiler::error::InternalError;
 use crate::compiler::{
     SleighCompiler,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::spec::moir::code::{
     MOIRInstruction,
@@ -25,7 +25,7 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
         out: Option<MOIRLocalId>,
         deref: Spanned<SASTPCodeDeref>,
-    ) -> SleighCompilerResult<MOIRLocal> {
+    ) -> InternalCompilerResult<MOIRLocal> {
         trace_build!("Atomizing load expression {deref:?}");
         let (deref, _) = deref.into_tuple();
 
@@ -62,7 +62,7 @@ impl SleighCompiler {
         let spc = self
             .spec_builder
             .space_by_symbol_id(space)
-            .ok_or_else(|| -> SleighCompilerError { todo!("Generate appropriate error report") })?;
+            .ok_or_else(|| -> InternalError { todo!("Generate appropriate error report") })?;
 
         trace_build!("Constraining addr size to {}", spc.address_size);
         scope.constrain_local_size(&mut addr, spc.address_size)?;

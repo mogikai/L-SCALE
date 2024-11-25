@@ -1,6 +1,6 @@
-use crate::compiler::SleighCompilerResult;
+use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::{
-    SleighCompilerError,
+    InternalError,
     SliceError,
 };
 use crate::new_typed_index_table_id;
@@ -117,12 +117,12 @@ impl MOIRSlice {
         self,
         start: MOIRSize,
         end: MOIRSize,
-    ) -> SleighCompilerResult<Self> {
+    ) -> InternalCompilerResult<Self> {
         let MOIRMaybeSize::Determined(current_end) = self.end else {
-            Err(SleighCompilerError::from_error(SliceError::UndeterminedSize.into()))?
+            Err(InternalError::from_error(SliceError::UndeterminedSize.into()))?
         };
         if end > current_end || start < self.start {
-            Err(SleighCompilerError::from_error(
+            Err(InternalError::from_error(
                 SliceError::InvalidSliceRange {
                     current_start: self.start,
                     current_end,
@@ -145,7 +145,7 @@ impl MOIRSlice {
     pub fn truncate(
         self,
         size: MOIRSize,
-    ) -> SleighCompilerResult<Self> {
+    ) -> InternalCompilerResult<Self> {
         self.slice(self.start, self.start + size)
     }
 
@@ -154,13 +154,13 @@ impl MOIRSlice {
     pub fn set_size(
         &mut self,
         size: MOIRSize,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         // TODO: Maybe we need to look up the size of the value this slice references?
         let new_end = self.start + size;
         match self.end {
             MOIRMaybeSize::Determined(end) => {
                 if end != new_end {
-                    Err(SleighCompilerError::from_error(
+                    Err(InternalError::from_error(
                         (SliceError::InvalidSliceSize {
                             new: size,
                             current: end.saturating_sub(self.start),
@@ -294,13 +294,13 @@ impl MOIRLocal {
         scope: &mut MOIRScope,
         start: MOIRSize,
         end: MOIRSize,
-    ) -> SleighCompilerResult<Self> {
+    ) -> InternalCompilerResult<Self> {
         let new_size = end.saturating_sub(start);
         let current_size = self
             .size(scope)
-            .ok_or(SleighCompilerError::from_error(SliceError::UndeterminedSize.into()))?;
+            .ok_or(InternalError::from_error(SliceError::UndeterminedSize.into()))?;
         if new_size == 0 || new_size > current_size || start > end {
-            Err(SleighCompilerError::from_error(
+            Err(InternalError::from_error(
                 SliceError::InvalidSliceSize {
                     new: new_size,
                     current: current_size,
@@ -318,7 +318,7 @@ impl MOIRLocal {
         self,
         scope: &mut MOIRScope,
         size: MOIRSize,
-    ) -> SleighCompilerResult<Self> {
+    ) -> InternalCompilerResult<Self> {
         Ok(match self {
             MOIRLocal::Local(local) => MOIRLocal::Local(scope.truncate_local(local, size)?),
             MOIRLocal::Const(value) => MOIRLocal::Const(value.truncate(size)?),
@@ -363,7 +363,7 @@ impl MOIRConst {
     pub fn new_with_size(
         val: u128,
         size: impl Into<MOIRMaybeSize>,
-    ) -> SleighCompilerResult<Self> {
+    ) -> InternalCompilerResult<Self> {
         use MOIRMaybeSize::*;
         let size = size.into();
         match size {
@@ -382,7 +382,7 @@ impl MOIRConst {
     pub fn truncate(
         self,
         size: MOIRSize,
-    ) -> SleighCompilerResult<MOIRConst> {
+    ) -> InternalCompilerResult<MOIRConst> {
         self.slice(0, size)
     }
 
@@ -392,14 +392,14 @@ impl MOIRConst {
     pub fn constrain_size(
         &mut self,
         size: MOIRSize,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         match self {
             MOIRConst::Undetermined(v) => {
                 *self = MOIRConst::new_with_size(*v, size)?;
             }
             v => {
                 if v.size() != MOIRMaybeSize::Determined(size) {
-                    Err(SleighCompilerError::from_error(
+                    Err(InternalError::from_error(
                         SliceError::InvalidSliceSize {
                             new: size,
                             current: v.size().determined_or(0),
@@ -416,27 +416,27 @@ impl MOIRConst {
         self,
         start: MOIRSize,
         end: MOIRSize,
-    ) -> SleighCompilerResult<MOIRConst> {
+    ) -> InternalCompilerResult<MOIRConst> {
         let new_size = end.saturating_sub(start);
         // For each byte we need to shift 8 bit.
         let start_bit = start * 8;
         // We can only slice if the underlying value has a size already.
         let MOIRMaybeSize::Determined(size) = self.size() else {
-            Err(SleighCompilerError::from_error(SliceError::UndeterminedSize.into()))?
+            Err(InternalError::from_error(SliceError::UndeterminedSize.into()))?
         };
         if new_size > size {
             let e = SliceError::InvalidSliceSize {
                 new: new_size,
                 current: size,
             };
-            Err(SleighCompilerError::from_error(e.into()))?
+            Err(InternalError::from_error(e.into()))?
         }
         Ok(match self {
             MOIRConst::Determined(value, size) => {
                 let value = value >> start_bit;
                 MOIRConst::Determined(value, new_size)
             }
-            MOIRConst::Undetermined(_) => Err(SleighCompilerError::from_error(SliceError::UndeterminedSize.into()))?,
+            MOIRConst::Undetermined(_) => Err(InternalError::from_error(SliceError::UndeterminedSize.into()))?,
         })
     }
 }

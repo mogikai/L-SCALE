@@ -30,13 +30,13 @@ use crate::compiler::ast::{
 use crate::compiler::error::{
     DuplicatedSpaceAttribute,
     InvalidFieldRange,
-    SleighCompilerError,
-    SleighCompilerErrorType,
+    InternalError,
+    InternalErrorType,
 };
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::{
     SleighCompiler,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::spec::moir::address_space::{
     MOIRSpace,
@@ -65,7 +65,7 @@ impl SleighCompiler {
     pub(super) fn build(
         &mut self,
         ast: SleighAST,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         debug!("The AST has {} toplevel items", ast.items.len());
         self.process_items(ast.items)
     }
@@ -73,7 +73,7 @@ impl SleighCompiler {
     fn process_items(
         &mut self,
         items: Vec<SASTItem>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         for item in items {
             let result = match item {
                 SASTItem::Attach(attach) => self.process_attach(attach),
@@ -93,7 +93,7 @@ impl SleighCompiler {
     fn process_attach(
         &mut self,
         attach: Spanned<SASTAttach>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         match attach.into_value() {
             SASTAttach::SASTVariable(variable) => {
                 let variable = variable.into_value();
@@ -126,7 +126,7 @@ impl SleighCompiler {
     fn process_define(
         &mut self,
         define: Spanned<SASTDefine>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         match define.into_value() {
             SASTDefine::Endianness(endianness) => self.process_define_endianness(endianness),
             SASTDefine::Alignment(alignment) => self.process_define_alignment(alignment),
@@ -145,7 +145,7 @@ impl SleighCompiler {
     fn process_define_pcode_op(
         &mut self,
         pcode_op: Spanned<SASTUserPcodeOp>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         let (pcode_op, _) = pcode_op.into_tuple();
         let result = self
             .spec_builder
@@ -157,7 +157,7 @@ impl SleighCompiler {
     fn process_define_varnodes(
         &mut self,
         varnodes: Spanned<SASTVarnode>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         let (varnodes, _) = varnodes.into_tuple();
         // TODO is the question mark here correct?
         let result = self
@@ -188,7 +188,7 @@ impl SleighCompiler {
     fn process_define_bitrange_registers(
         &mut self,
         bitrange_registers: Vec<Spanned<SASTBitrangeRegister>>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         for bitrange_register in bitrange_registers {
             let bitrange_register = bitrange_register.into_value();
             let result = self.spec_builder.define_bitrange_register(
@@ -206,7 +206,7 @@ impl SleighCompiler {
     fn process_define_space(
         &mut self,
         space: Spanned<SASTAddressSpace>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         let (space, _) = space.into_tuple();
         let mut r#type = None;
         let mut address_size = None;
@@ -216,7 +216,7 @@ impl SleighCompiler {
             match attribute {
                 SASTAddressSpaceAttribute::Type(ty) => {
                     if let Some((_, prev_input)) = r#type {
-                        return Err(SleighCompilerError::from_error((DuplicatedSpaceAttribute { attribute }).into())
+                        return Err(InternalError::from_error((DuplicatedSpaceAttribute { attribute }).into())
                             .span("first", prev_input)
                             .span("second", input));
                     } else {
@@ -225,7 +225,7 @@ impl SleighCompiler {
                 }
                 SASTAddressSpaceAttribute::Size(size) => {
                     if let Some((_, prev_input)) = address_size {
-                        return Err(SleighCompilerError::from_error((DuplicatedSpaceAttribute { attribute }).into())
+                        return Err(InternalError::from_error((DuplicatedSpaceAttribute { attribute }).into())
                             .span("first", prev_input)
                             .span("second", input));
                     } else {
@@ -234,7 +234,7 @@ impl SleighCompiler {
                 }
                 SASTAddressSpaceAttribute::Wordsize(size) => {
                     if let Some((_, prev_input)) = word_size {
-                        return Err(SleighCompilerError::from_error((DuplicatedSpaceAttribute { attribute }).into())
+                        return Err(InternalError::from_error((DuplicatedSpaceAttribute { attribute }).into())
                             .span("first", prev_input)
                             .span("second", input));
                     } else {
@@ -243,7 +243,7 @@ impl SleighCompiler {
                 }
                 SASTAddressSpaceAttribute::IsDefault => {
                     if let (_, Some(prev_input)) = default {
-                        return Err(SleighCompilerError::from_error((DuplicatedSpaceAttribute { attribute }).into())
+                        return Err(InternalError::from_error((DuplicatedSpaceAttribute { attribute }).into())
                             .span("first", prev_input)
                             .span("second", input));
                     } else {
@@ -265,7 +265,7 @@ impl SleighCompiler {
     fn process_define_token(
         &mut self,
         token: Spanned<SASTToken>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         // We first define the token and then we can define its fields, since they need to refer to the token.
         let (token, _) = token.into_tuple();
         let bits = token.bits.into_value();
@@ -281,7 +281,7 @@ impl SleighCompiler {
                 let range = field.start.clone().into_value()..field.end.clone().into_value() + 1;
                 if let Some(field) = self
                     .make_field(MOIRFieldParent::Token(token_id), bits, range)
-                    .map_err(|e| SleighCompilerError::with_span(e.into(), "field", field.span().clone()))?
+                    .map_err(|e| InternalError::with_span(e.into(), "field", field.span().clone()))?
                 {
                     let result = self.spec_builder.define_field(name, field);
                     self.report_error_or_unwrap(result)?;
@@ -294,7 +294,7 @@ impl SleighCompiler {
     fn process_define_context(
         &mut self,
         context: Spanned<SASTContext>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         let (context_id, bits) = self
             .spec_builder
             .define_context(context.varnode.clone().transmute())?;
@@ -302,7 +302,7 @@ impl SleighCompiler {
             let range = field.start.clone().into_value()..field.end.clone().into_value() + 1;
             if let Some(moir_field) = self
                 .make_field(MOIRFieldParent::Context(context_id), bits, range)
-                .map_err(|e| SleighCompilerError::from_error(e.into()))?
+                .map_err(|e| InternalError::from_error(e.into()))?
             {
                 let result = self.spec_builder
                     .define_field(field.name.clone().transmute(), moir_field);
@@ -343,7 +343,7 @@ impl SleighCompiler {
     fn process_define_endianness(
         &mut self,
         endianness: Spanned<SASTEndianness>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         let result = self.spec_builder.define_endianness(endianness.transmute());
         self.report_error_or_unwrap(result)?;
         Ok(())
@@ -352,7 +352,7 @@ impl SleighCompiler {
     fn process_define_alignment(
         &mut self,
         alignment: Spanned<SASTAlignment>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         let result = self.spec_builder.define_alignment(alignment.transmute());
         self.report_error_or_unwrap(result)?;
         Ok(())
@@ -361,7 +361,7 @@ impl SleighCompiler {
     fn process_with(
         &mut self,
         with: Spanned<SASTWith>,
-    ) -> SleighCompilerResult {
+    ) -> InternalCompilerResult {
         trace!("Processing with statement at {:?}.", with.span());
         self.process_items(with.into_value().items)?;
         Ok(())

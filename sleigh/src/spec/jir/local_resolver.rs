@@ -1,4 +1,4 @@
-use crate::compiler::error::SleighCompilerError;
+use crate::compiler::error::InternalError;
 use crate::jinst;
 use crate::spec::builder::StringId;
 use crate::spec::jir::common::JIRSize;

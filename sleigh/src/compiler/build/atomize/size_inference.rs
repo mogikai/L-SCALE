@@ -1,7 +1,7 @@
 use crate::compiler::build::trace_build;
 use crate::compiler::{
     SleighCompiler,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::spec::moir::code::{
     MOIRInstruction,
@@ -27,7 +27,7 @@ impl SleighCompiler {
         &mut self,
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
-    ) -> SleighCompilerResult<()> {
+    ) -> InternalCompilerResult<()> {
         trace_build!("Doing size inference forward pass");
         forward_pass(scope, instructions)?;
         trace_build!("Doing size inference backward pass");
@@ -39,7 +39,7 @@ impl SleighCompiler {
 fn forward_pass(
     scope: &mut MOIRScope,
     instructions: &mut Vec<MOIRInstruction>,
-) -> SleighCompilerResult<()> {
+) -> InternalCompilerResult<()> {
     for instruction in instructions.iter_mut() {
         infer_size(scope, instruction)?;
     }
@@ -49,7 +49,7 @@ fn forward_pass(
 fn backward_pass(
     scope: &mut MOIRScope,
     instructions: &mut Vec<MOIRInstruction>,
-) -> SleighCompilerResult<()> {
+) -> InternalCompilerResult<()> {
     for instruction in instructions.iter_mut().rev() {
         infer_size(scope, instruction)?;
         let (output_size, input_a_size, input_b_size) = get_sizes(scope, instruction);
@@ -70,7 +70,7 @@ fn backward_pass(
 fn infer_size(
     scope: &mut MOIRScope,
     instruction: &mut MOIRInstruction,
-) -> SleighCompilerResult<()> {
+) -> InternalCompilerResult<()> {
     trace_build!("Inferring size of instruction {}", instruction);
     match instruction.operation.op_category() {
         MOIROpCategory::Comparison => {
@@ -95,7 +95,7 @@ fn infer_size(
 fn infer_comparison(
     scope: &mut MOIRScope,
     instruction: &mut MOIRInstruction,
-) -> SleighCompilerResult {
+) -> InternalCompilerResult {
     trace_build!("Inferring comparison sizes");
     let (_, input_a_size, input_b_size) = get_sizes(scope, instruction);
     // Output of cmp is always 1 byte (true / false)
@@ -135,7 +135,7 @@ fn infer_comparison(
 fn infer_shift(
     scope: &mut MOIRScope,
     instruction: &mut MOIRInstruction,
-) -> SleighCompilerResult {
+) -> InternalCompilerResult {
     let (output_size, input_a_size, _) = get_sizes(scope, instruction);
     match output_size {
         Determined(output_size) => {
@@ -186,7 +186,7 @@ fn infer_shift(
 fn infer_special(
     scope: &mut MOIRScope,
     instruction: &mut MOIRInstruction,
-) -> SleighCompilerResult<()> {
+) -> InternalCompilerResult<()> {
     let (output_size, input_a_size, input_b_size) = get_sizes(scope, instruction);
     match instruction.operation {
         MOIROperation::Build(_) => {
@@ -272,7 +272,7 @@ fn infer_special(
 fn infer_regular(
     scope: &mut MOIRScope,
     instruction: &mut MOIRInstruction,
-) -> SleighCompilerResult<()> {
+) -> InternalCompilerResult<()> {
     let (output_size, input_a_size, input_b_size) = get_sizes(scope, instruction);
     // For regular operations all sizes have to match.
     // Check if any part of the operation has a determined size.

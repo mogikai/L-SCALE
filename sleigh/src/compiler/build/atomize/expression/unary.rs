@@ -7,10 +7,10 @@ use crate::compiler::build::atomize::expression::{
     from_bool,
     into_bool,
 };
-use crate::compiler::error::SleighCompilerError;
+use crate::compiler::error::InternalError;
 use crate::compiler::{
     SleighCompiler,
-    SleighCompilerResult,
+    InternalCompilerResult,
 };
 use crate::spec::moir::code::{
     MOIRInstruction,
@@ -35,7 +35,7 @@ impl SleighCompiler {
         out: Option<MOIRLocalId>,
         op: Spanned<SASTPCodeUnaryOp>,
         operand: Spanned<SASTPCodeExpression>,
-    ) -> SleighCompilerResult<MOIRLocal> {
+    ) -> InternalCompilerResult<MOIRLocal> {
         let out = self.atomize_expression(scope, instructions, out, operand)?;
         match out {
             MOIRLocal::Local(out) => {
@@ -61,7 +61,7 @@ impl SleighCompiler {
 fn const_eval_unary_op(
     op: SASTPCodeUnaryOp,
     operand: u128,
-) -> Result<u128, SleighCompilerError>
+) -> Result<u128, InternalError>
 where
 {
     Ok(match op {

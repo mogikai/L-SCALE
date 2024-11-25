@@ -21,8 +21,8 @@ use tracing::{
 
 use crate::compiler::ast::Spanned;
 use crate::compiler::error::{
-    SleighCompilerError,
-    SleighCompilerErrorType,
+    InternalError,
+    InternalErrorType,
 };
 use crate::compiler::lexer::{
     InputSpan,
@@ -80,7 +80,7 @@ pub(crate) trait CompilerContext {
     ) -> Option<&str>;
 }
 
-pub type SleighCompilerResult<T = ()> = Result<T, SleighCompilerError>;
+pub type InternalCompilerResult<T = ()> = Result<T, InternalError>;
 
 #[derive(Debug)]
 pub struct SleighCompiler {
@@ -89,7 +89,7 @@ pub struct SleighCompiler {
     parser: SleighParser,
     input_cache: CompilerInputCache,
     spec_builder: ProcessorSpecificationBuilder,
-    errors: Vec<SleighCompilerError>,
+    errors: Vec<InternalError>,
     stop_on_first_error: bool,
 }
 
@@ -108,7 +108,7 @@ impl SleighCompiler {
     pub fn compile(
         mut self,
         spec_path: &Path,
-    ) -> SleighCompilerResult<ProcessorSpecification> {
+    ) -> InternalCompilerResult<ProcessorSpecification> {
         info!("Loading and preprocessing {spec_path:?} and the files it includes.");
         let tokens = self.load_and_preprocess(spec_path)?;
         info!("Parsing the abstract syntax tree.");
@@ -120,7 +120,7 @@ impl SleighCompiler {
         // result should not be an error except StopOnFirstError, if result is an error
         // we failed to handle this error properly.
         if let Err(e) = result {
-            if !matches!(e.error, SleighCompilerErrorType::StopOnFirstError) {
+            if !matches!(e.error, InternalErrorType::StopOnFirstError) {
                 return Err(e);
             }
         }
@@ -142,7 +142,7 @@ impl SleighCompiler {
                 )
                 .as_bytes(),
             );
-            Err(SleighCompilerErrorType::SemanticError(
+            Err(InternalErrorType::SemanticError(
                 String::from_utf8(error_description).expect("We only write utf8 strings."),
             )
             .into())
@@ -155,7 +155,7 @@ impl SleighCompiler {
     fn load_and_preprocess(
         &mut self,
         spec_path: &Path,
-    ) -> SleighCompilerResult<SleighTokens> {
+    ) -> InternalCompilerResult<SleighTokens> {
         let mut preprocessor = self.preprocessor_factory.build();
         let file = spec_path.to_path_buf();
         let mut input_id = self.input_cache.load_input_from_file(file.as_path())?;
@@ -176,7 +176,7 @@ impl SleighCompiler {
             match preprocessor.preprocess(&mut self.input_cache, &mut self.spec_builder) {
                 Ok(tokens) => break tokens,
                 Err(PreprocessorError::LoadingRequired(id)) => input_id = id,
-                Err(e) => Err(SleighCompilerErrorType::from(e))?,
+                Err(e) => Err(InternalErrorType::from(e))?,
             }
         };
         Ok(tokens)
@@ -187,14 +187,14 @@ impl SleighCompiler {
     /// Otherwise, this function errors as well.
     fn report_error_or_unwrap<T>(
         &mut self,
-        result: Result<T, SleighCompilerError>,
-    ) -> SleighCompilerResult<Option<T>> {
+        result: Result<T, InternalError>,
+    ) -> InternalCompilerResult<Option<T>> {
         match result {
             Ok(value) => Ok(Some(value)),
             Err(err) => {
                 self.errors.push(err);
                 if self.stop_on_first_error {
-                    Err(SleighCompilerErrorType::StopOnFirstError.into())
+                    Err(InternalErrorType::StopOnFirstError.into())
                 } else {
                     Ok(None)
                 }

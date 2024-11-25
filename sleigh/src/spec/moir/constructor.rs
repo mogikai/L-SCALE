@@ -1,4 +1,4 @@
-use crate::compiler::SleighCompilerResult;
+use crate::compiler::InternalCompilerResult;
 use crate::spec::jir::instruction::{
     TargetInstruction,
     TargetInstructionBuilder,
@@ -402,7 +402,7 @@ impl MOIRConstructor {
             .unwrap_or(MOIRMaybeSize::Determined(0))
     }
 
-    pub(crate) fn mark_used_locals(&mut self) -> SleighCompilerResult {
+    pub(crate) fn mark_used_locals(&mut self) -> InternalCompilerResult {
         for instruction in &self.instructions {
             if let Some(output) = instruction.output {
                 self.local_scope
