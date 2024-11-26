@@ -32,10 +32,12 @@ use crate::spec::typed_index_table::TypedIndexTable;
 use ariadne::Report;
 use builder::MOIRSymbolId;
 use std::collections::HashMap;
+use std::ops::Range;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 use strum_macros::Display;
 use thiserror::Error;
+use tracing::debug;
 
 pub mod builder;
 pub mod jir;
@@ -187,6 +189,27 @@ impl ProcessorSpecification {
             .ok_or(ProcessorSpecificationError::NoVarNodes)
     }
 
+    pub fn debug_space_allocation(
+        &self,
+        space_id: SpaceId,
+    ) -> ProcessorSpecResult<()> {
+        let _ = self
+            .symbol_tables
+            .spaces
+            .get(space_id)
+            .ok_or(ProcessorSpecificationError::SymbolUndeclared(JIRSymbolId::Space(space_id)))?;
+        let merged = merge_ranges(
+            self.space_varnodes_iter(space_id)?
+                .map(|varnode| varnode.offset..varnode.end())
+                .collect::<Vec<_>>(),
+        );
+        debug!("Varnodes occupy the following ranges: {:?}", merged);
+        let total_size: u64 = merged.iter().map(|r| r.end - r.start).sum();
+        debug!("Total size: {}", total_size);
+        debug!("Potential savings: {}", self.space_max_used_offset(space_id)? - total_size);
+        Ok(())
+    }
+
     /// Return an iterator over all varnodes belonging to the provided space id.
     /// Returns an error if the space does not exist.
     pub fn space_varnodes_iter(
@@ -222,6 +245,34 @@ impl ProcessorSpecification {
             })
             .collect()
     }
+}
+
+fn merge_ranges(ranges: Vec<Range<u64>>) -> Vec<Range<u64>> {
+    if ranges.is_empty() {
+        return vec![];
+    }
+
+    // First, sort the ranges by their start value
+    let mut ranges = ranges;
+    ranges.sort_by_key(|r| r.start);
+
+    let mut merged = Vec::new();
+    let mut current_range = ranges[0].clone();
+
+    for range in ranges.into_iter().skip(1) {
+        if range.start <= current_range.end {
+            // Overlapping ranges, merge them
+            current_range.end = current_range.end.max(range.end);
+        } else {
+            // Non-overlapping range, push the current range and start a new one
+            merged.push(current_range);
+            current_range = range;
+        }
+    }
+    // Push the last range
+    merged.push(current_range);
+
+    merged
 }
 
 // TODO rework ProcessorSpecificationError to use reports like compiler error

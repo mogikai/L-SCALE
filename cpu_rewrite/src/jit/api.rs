@@ -1,13 +1,16 @@
-use std::ffi::c_void;
-
-use mogi_sleigh::spec::jir::jcode::JIRInstruction;
-use mogi_utilities::addresses::EVAddr;
-use thiserror::Error;
-
 use crate::jit::cache::{
     JitCacheError,
     JitCode,
 };
+use mogi_sleigh::spec::jir::jcode::JIRInstruction;
+use mogi_sleigh::spec::jir::values::{
+    JIRSlice,
+    VarNodeId,
+};
+use mogi_utilities::addresses::EVAddr;
+use num_traits::FromBytes;
+use std::ffi::c_void;
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum JitError {
@@ -29,7 +32,6 @@ pub enum JitError {
 
 pub trait MogiJit {
     type RuntimeContext: JITRuntimeContext;
-    type Value: JitValue;
 
     /// Creates a new context that is used during the jit runtime.
     /// The context is opaque, but implements the [JITRuntimeContext] trait
@@ -52,6 +54,10 @@ pub trait MogiJit {
         &mut self,
         jinst: &JIRInstruction,
     ) -> Result<(), JitError>;
+
+    /// Flush all varnodes to memory. This clears all host registers and flushes their contents
+    /// to the associated varnodes.
+    fn emit_flush_varnodes(&mut self) -> Result<(), JitError>;
 
     /// Chain the blocks `origin` and `target`, such that the `origin` block no longer jumps out to
     /// the epilogue block, but directly into the next block `target`.
@@ -79,32 +85,47 @@ pub trait MogiJit {
     /// of the jit. The signature of the returned jit prelude function is
     /// specified here: [PreludeSignature]
     fn prelude(&self) -> Result<PreludeSignature, JitError>;
-}
 
-/// The jit trait deals with variables instead of registers.
-/// The variables are mapped to specific registers behind the scenes.
-pub trait JitValue {
-    type Constant;
-    type Variable;
+    /// Read the architecture specific instruction pointer value from the runtime context.
+    /// This looks up the correct varnode according to the specification and returns the current value.
+    /// The value can also be accessed by providing the varnode id of the instruction pointer to
+    /// the [varnode](Self::varnode) function.
+    fn instruction_pointer(
+        &self,
+        context: &Self::RuntimeContext,
+    ) -> Result<EVAddr, JitError>;
+
+    /// Get a reference to the bytes of the underlying varnode from the runtime context.
+    fn varnode<'a>(
+        &self,
+        context: &'a Self::RuntimeContext,
+        varnode: VarNodeId,
+    ) -> Result<&'a [u8], JitError>;
+
+    /// Get a mutable reference to the bytes of the underlying varnode from the runtime context.
+    fn varnode_mut<'a>(
+        &self,
+        context: &'a mut Self::RuntimeContext,
+        varnode: VarNodeId,
+    ) -> Result<&'a mut [u8], JitError>;
+
+    /// Get a reference to the bytes of the provided slice from the runtime context.
+    fn slice<'a>(
+        &self,
+        context: &'a Self::RuntimeContext,
+        slice: JIRSlice,
+    ) -> Result<&'a [u8], JitError>;
+
+    /// Get a mutable reference to the bytes of the provided slice from the runtime context.
+    fn slice_mut<'a>(
+        &self,
+        context: &'a mut Self::RuntimeContext,
+        slice: JIRSlice,
+    ) -> Result<&'a mut [u8], JitError>;
 }
 
 /// The jit context trait defines methods that every jit context implementation must provide.
 /// This facilitates access to the underlying cpu information like registers, exceptions and the PC.
-pub trait JITRuntimeContext {
-    /// Get the current program counter. Since the register is architecture specific, this method
-    /// exists for convenience so we do not have to consider all the different cases.
-    fn pc(&self) -> EVAddr;
-
-    /// TODO: RegisterAccessor type?
-    fn register(
-        &self,
-        register: (),
-    );
-
-    fn register_mut(
-        &mut self,
-        register: (),
-    );
-}
+pub trait JITRuntimeContext {}
 
 pub type PreludeSignature = extern "C" fn(context: *mut c_void, block: JitCode);

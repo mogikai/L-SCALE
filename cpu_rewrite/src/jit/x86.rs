@@ -3,7 +3,6 @@
 use crate::jit::api::{
     JITRuntimeContext,
     JitError,
-    JitValue,
     MogiJit,
     PreludeSignature,
 };
@@ -21,6 +20,7 @@ use dynasmrt::{
     ExecutableBuffer,
 };
 use mogi_mem::mmu::MogiMMU;
+use mogi_sleigh::spec::jir::common::JIRSize;
 use mogi_sleigh::spec::jir::jcode::{
     JIRInstruction,
     JIROperation,
@@ -29,6 +29,9 @@ use mogi_sleigh::spec::jir::values::{
     JIRConst,
     JIRSlice,
     JIRValue,
+    JIRVarNode,
+    JIRVarNodeId,
+    VarNodeId,
 };
 use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_utilities::addresses::{
@@ -40,10 +43,20 @@ use num_enum::{
     IntoPrimitive,
     TryFromPrimitive,
 };
+use num_traits::FromBytes;
 use std::cell::RefCell;
+use std::env::var;
 use std::ffi::c_void;
-use std::mem;
+use std::mem::offset_of;
+use std::ops::{
+    Index,
+    IndexMut,
+};
 use std::rc::Rc;
+use std::{
+    array,
+    mem,
+};
 use tracing::{
     debug,
     trace,
@@ -80,6 +93,12 @@ enum GPRegister {
     R13 = 13,
     R14 = 14,
     R15 = 15,
+}
+
+impl From<GPRegister> for usize {
+    fn from(value: GPRegister) -> Self {
+        usize::from(u8::from(value))
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -168,15 +187,65 @@ enum RegisterInfo {
     Occupied(JIRSlice),
 }
 
+#[derive(Debug, Default)]
+struct GPRegisterAllocations([Option<JIRSlice>; 16]);
+
+impl GPRegisterAllocations {
+    fn iter(&self) -> impl Iterator<Item = (GPRegister, &Option<JIRSlice>)> {
+        self.0.iter().enumerate().map(|(i, entry)| {
+            (GPRegister::try_from(i as u8).expect("We iterate over the GP ids, hence this must not error"), entry)
+        })
+    }
+
+    fn iter_mut(&mut self) -> impl Iterator<Item = (GPRegister, &mut Option<JIRSlice>)> {
+        self.0.iter_mut().enumerate().map(|(i, entry)| {
+            (GPRegister::try_from(i as u8).expect("We iterate over the GP ids, hence this must not error"), entry)
+        })
+    }
+}
+
+impl Index<GPRegister> for GPRegisterAllocations {
+    type Output = Option<JIRSlice>;
+
+    fn index(
+        &self,
+        index: GPRegister,
+    ) -> &Self::Output {
+        &self.0[index as usize]
+    }
+}
+
+impl IndexMut<GPRegister> for GPRegisterAllocations {
+    fn index_mut(
+        &mut self,
+        index: GPRegister,
+    ) -> &mut Self::Output {
+        &mut self.0[index as usize]
+    }
+}
+
 /// This struct is used to keep track of which slice is loaded in what register.
 /// TODO: This most likely needs to be optimized for size.
 #[derive(Debug, Default)]
 struct RegisterTracker {
-    gp: [Option<JIRSlice>; 16],
+    gp: GPRegisterAllocations,
     fp: [Option<JIRSlice>; 8],
     mmx: [Option<JIRSlice>; 8],
     xmm: [Option<JIRSlice>; 16],
     ymm: [Option<JIRSlice>; 16],
+}
+
+impl RegisterTracker {
+    /// Resets all GP register slots to empty and returns the array of slices that were previously associated with
+    /// the registers. This can be used to emit the flush instructions.
+    fn reset_gp(&mut self) -> GPRegisterAllocations {
+        mem::take(&mut self.gp)
+    }
+}
+
+enum RegisterLoadInfo<T> {
+    Unloaded(T),
+    Loaded(T),
 }
 
 #[derive(Debug)]
@@ -235,43 +304,81 @@ impl EVAddress for BasicBlock {
     }
 }
 
-#[repr(C)]
-struct Space {
-    /// The storage vec contains all registers and temporaries in a serialized form.
-    /// Each variable has an index and size.
-    storage: [u8; 0x1000],
-}
+#[repr(transparent)]
+/// The storage vec contains all registers and temporaries in a serialized form.
+/// Each variable has an index and size.
+/// TODO: We might need to compact the spaces in the spec, since they contain a lot of
+///       unused areas. We could then possibly reduce the size to one or two pages.
+struct Space([u8; 0x3000]);
 
 impl Space {
     fn new() -> Self {
-        Self { storage: [0u8; 0x1000] }
+        Self([0; 0x3000])
+    }
+
+    /// Get a reference to the data referred to by the provided slice.
+    pub fn slice(
+        &self,
+        slice: JIRSlice,
+    ) -> &[u8] {
+        match slice.varnode_id {
+            JIRVarNodeId::VarNode(_) => {}
+            JIRVarNodeId::Temp(_) => {}
+        }
+        todo!()
+    }
+
+    /// Get a reference to the varnode data referred to by the provided varnode.
+    pub fn varnode(
+        &self,
+        varnode: &JIRVarNode,
+    ) -> &[u8] {
+        &self.0[varnode.offset as usize..varnode.end() as usize]
+    }
+
+    /// Get a mutable reference to the varnode data referred to by the provided varnode.
+    pub fn varnode_mut(
+        &mut self,
+        varnode: &JIRVarNode,
+    ) -> &mut [u8] {
+        &mut self.0[varnode.offset as usize..varnode.end() as usize]
     }
 }
 
+/// This is the context of the JIT. It is stored in the RBP register, which has the alias `cpu_context`.
+/// This should be kept small, only containing absolutely necessary information like the address spaces
+/// or tlb pointer.
 pub struct X86JITRuntimeContext {
-    spaces: Vec<Space>,
+    spaces: [Space; 4],
     pc: usize,
 }
 
-impl JITRuntimeContext for X86JITRuntimeContext {
-    fn pc(&self) -> EVAddr {
-        EVAddr::null()
+impl X86JITRuntimeContext {
+    pub fn max_spaces() -> usize {
+        4
     }
 
-    fn register(
-        &self,
-        register: (),
-    ) -> () {
-        todo!()
-    }
-
-    fn register_mut(
-        &mut self,
-        register: (),
-    ) -> () {
-        todo!()
+    pub fn varnode_offset(
+        processor_specification: &ProcessorSpecification,
+        slice: JIRSlice,
+    ) -> usize {
+        let varnode = match slice.varnode_id {
+            JIRVarNodeId::VarNode(varnode) => processor_specification.varnode_by_id(varnode).unwrap(),
+            JIRVarNodeId::Temp(_) => todo!("Add temporary support"),
+        };
+        // TODO: We need to either make sure in the spec generation, that space_id is in range, or
+        //       perform some kind of mapping.
+        assert!(usize::from(varnode.space_id) < X86JITRuntimeContext::max_spaces());
+        trace!("Loading slice {slice:?} that refers to varnode {varnode:?} into GP register",);
+        // space = spaces[varnode.space_id]
+        let space_offset =
+            offset_of!(X86JITRuntimeContext, spaces) + usize::from(varnode.space_id) * size_of::<Space>();
+        // space[varnode.offset + slice.start]
+        space_offset + varnode.offset as usize + slice.start as usize
     }
 }
+
+impl JITRuntimeContext for X86JITRuntimeContext {}
 
 pub struct X86MogiJit {
     processor_specification: Rc<RefCell<ProcessorSpecification>>,
@@ -386,22 +493,133 @@ impl X86MogiJit {
         &mut self,
         slice: JIRSlice,
     ) -> GPRegister {
-        let mut free_gp = None;
-        // Search for existing register, and otherwise take the first available GP register.
-        for (i, entry) in self.register_tracker.gp.iter().enumerate() {
-            if let Some(entry) = entry {
-                if *entry == slice {
-                    let register = GPRegister::try_from(i as u8).unwrap();
-                    trace!("Slice {slice:?} is already loaded in GP register {register:?}");
-                    return register;
+        let register = self.allocate_slice_gp(slice);
+        match register {
+            RegisterLoadInfo::Unloaded(register) => {
+                // The register has not been loaded before.
+                // We need to insert an instruction that loads it from context.
+                // For that we first need to calculate the offset in the cpu context.
+                let varnode_offset =
+                    X86JITRuntimeContext::varnode_offset(&*self.processor_specification.borrow(), slice);
+                // Emit the instruction that loads the varnode from the specified space in the context.
+                match slice.size() {
+                    1 => {
+                        assemble!(self.block_mut().unwrap().assembler;
+                            ; movzx Rq(register as u8), BYTE [cpu_context + varnode_offset as _]
+                        );
+                    }
+                    2 => {
+                        assemble!(self.block_mut().unwrap().assembler;
+                            ; movzx Rq(register as u8), WORD [cpu_context + varnode_offset as _]
+                        );
+                    }
+                    4 => {
+                        // Moving to the lower 32 bits of a register zeros the upper 32 bits
+                        assemble!(self.block_mut().unwrap().assembler;
+                            ; mov Rd(register as u8), DWORD [cpu_context + varnode_offset as _]
+                        );
+                    }
+                    8 => {
+                        assemble!(self.block_mut().unwrap().assembler;
+                            ; mov Rq(register as u8), QWORD [cpu_context + varnode_offset as _]
+                        );
+                    }
+                    _ => {
+                        panic!("Unsupported load size")
+                    }
                 }
-            } else if free_gp.is_none() {
-                free_gp = Some(GPRegister::try_from(u8::try_from(i).unwrap()).unwrap());
+                register
+            }
+            RegisterLoadInfo::Loaded(register) => {
+                trace!("Slice {slice:?} is already loaded in GP register {register:?}");
+                register
             }
         }
-        trace!("Loading slice {slice:?} into GP register {free_gp:?}");
-        // TODO: Load gp. Handle spill case
-        free_gp.unwrap()
+    }
+
+    /// Emit code to flush the provided [GPRegister] to the provided slice.
+    fn emit_flush_register_to_slice(
+        &mut self,
+        register: GPRegister,
+        slice: JIRSlice,
+    ) -> Result<(), JitError> {
+        let varnode_offset = X86JITRuntimeContext::varnode_offset(&*self.processor_specification.borrow(), slice);
+        let assembler = &mut self.block_mut()?.assembler;
+        // Emit the instruction that loads the varnode from the specified space in the context.
+        match slice.size() {
+            1 => {
+                assemble!(assembler;
+                    ; mov BYTE [cpu_context + varnode_offset as _], Rb(register as u8)
+                );
+            }
+            2 => {
+                assemble!(assembler;
+                    ; mov WORD [cpu_context + varnode_offset as _], Rw(register as u8)
+                );
+            }
+            4 => {
+                assemble!(assembler;
+                    ; mov DWORD [cpu_context + varnode_offset as _], Rd(register as u8)
+                );
+            }
+            8 => {
+                assemble!(assembler;
+                    ; mov QWORD [cpu_context + varnode_offset as _], Rq(register as u8)
+                );
+            }
+            _ => {
+                panic!("Unsupported store size")
+            }
+        }
+        Ok(())
+    }
+
+    /// Gets the register associated with the provided slice.
+    /// This allocates a register to the slice, if it does not have one yet.
+    /// This may also spill registers into memory, if all registers are occupied.
+    /// Since this operation does not perform a load of the underlying value,
+    /// it should only be used to get registers that are written to, since the value
+    /// is irrelevant for those.
+    fn get_slice_gp(
+        &mut self,
+        slice: JIRSlice,
+    ) -> GPRegister {
+        let register = self.allocate_slice_gp(slice);
+        match register {
+            RegisterLoadInfo::Unloaded(register) => register,
+            RegisterLoadInfo::Loaded(register) => register,
+        }
+    }
+
+    /// Allocate a general purpose register for the slice.
+    /// If the slice is already loaded, the corresponding GPR is returned.
+    /// If the slice has not been loaded previously, a free GPR is returned, but no load is performed.
+    /// The [RegisterLoadInfo] indicates, whether the GPR is loaded or not.
+    /// Unloaded GPRs can be used if the slice appears as output, since we will overwrite the value anyway.
+    fn allocate_slice_gp(
+        &mut self,
+        slice: JIRSlice,
+    ) -> RegisterLoadInfo<GPRegister> {
+        let mut free_gp = None;
+        // Search for existing register, and otherwise take the first available GP register.
+        for (register, entry) in self.register_tracker.gp.iter() {
+            if let Some(entry) = entry {
+                trace!("Comparing existing {entry:?} with new slice {slice:?} for register {register:?}");
+                if *entry == slice {
+                    trace!("Slice {slice:?} is already loaded in GP register {register:?}");
+                    return RegisterLoadInfo::Loaded(register);
+                }
+            } else if free_gp.is_none() {
+                free_gp = Some(register);
+            }
+        }
+        if let Some(free_gp) = free_gp {
+            trace!("Allocating new GP register {free_gp:?} for slice {slice:?}");
+            self.register_tracker.gp[free_gp] = Some(slice);
+            RegisterLoadInfo::Unloaded(free_gp)
+        } else {
+            todo!("Handle register spill")
+        }
     }
 
     fn emit_copy(
@@ -412,8 +630,9 @@ impl X86MogiJit {
         debug_assert_eq!(target.size(), source.size());
 
         let size = target.size();
-        // Load the target slice into a GP register.
-        let target_reg = self.load_slice_gp(target) as u8;
+        // Allocate and associate a GP register with the slice.
+        // No load is needed, since we overwrite the data anyway for a copy.
+        let target_reg = self.get_slice_gp(target) as u8;
         match source {
             JIRValue::Slice(slice) => {
                 let reg = self.load_slice_gp(slice) as u8;
@@ -421,7 +640,6 @@ impl X86MogiJit {
                 dynasm!(block.assembler
                     ; mov Rq(target_reg), Rq(reg)
                 );
-                todo!()
             }
             JIRValue::Const(value) => {
                 let value = value.value();
@@ -482,20 +700,12 @@ impl X86MogiJit {
     }
 }
 
-pub struct X86Var {}
-
-impl JitValue for X86Var {
-    type Constant = ();
-    type Variable = ();
-}
-
 impl MogiJit for X86MogiJit {
     type RuntimeContext = X86JITRuntimeContext;
-    type Value = X86Var;
 
     fn new_runtime_context(&self) -> Self::RuntimeContext {
         X86JITRuntimeContext {
-            spaces: vec![Space::new()],
+            spaces: array::from_fn(|_| Space::new()),
             pc: 0,
         }
     }
@@ -595,6 +805,20 @@ impl MogiJit for X86MogiJit {
         todo!()
     }
 
+    fn emit_flush_varnodes(&mut self) -> Result<(), JitError> {
+        // Iterate over the loaded slices and flush them to memory
+        // TODO: Do not insert flush instructions for dead registers.
+        for (register, slice) in self.register_tracker.reset_gp().iter() {
+            if let Some(slice) = slice {
+                // TODO: The slices need to be reworked, such that we directly have space_id and offset and size
+                //       It will most likely still contain a reference to the original varnode_id or temporary
+                //       for debugging or name resolution.
+                self.emit_flush_register_to_slice(register, *slice)?;
+            }
+        }
+        Ok(())
+    }
+
     // fn emit_load(
     //     &mut self,
     //     ty: (),
@@ -686,6 +910,69 @@ impl MogiJit for X86MogiJit {
     fn prelude(&self) -> Result<PreludeSignature, JitError> {
         let jit_code: PreludeSignature = unsafe { mem::transmute(self.jit_prelude.as_ptr()) };
         Ok(jit_code)
+    }
+
+    fn instruction_pointer(
+        &self,
+        context: &Self::RuntimeContext,
+    ) -> Result<EVAddr, JitError> {
+        Ok(EVAddr::null())
+    }
+
+    fn varnode<'a>(
+        &self,
+        context: &'a Self::RuntimeContext,
+        varnode: VarNodeId,
+    ) -> Result<&'a [u8], JitError> {
+        let spec = self.processor_specification.borrow();
+        let varnode = spec.varnode_by_id(varnode).unwrap();
+        Ok(context.spaces[usize::from(varnode.space_id)].varnode(varnode))
+    }
+
+    fn varnode_mut<'a>(
+        &self,
+        context: &'a mut Self::RuntimeContext,
+        varnode: VarNodeId,
+    ) -> Result<&'a mut [u8], JitError> {
+        let spec = self.processor_specification.borrow();
+        let varnode = spec.varnode_by_id(varnode).unwrap();
+        Ok(context.spaces[usize::from(varnode.space_id)].varnode_mut(varnode))
+    }
+
+    fn slice<'a>(
+        &self,
+        context: &'a Self::RuntimeContext,
+        slice: JIRSlice,
+    ) -> Result<&'a [u8], JitError> {
+        let spec = self.processor_specification.borrow();
+        match slice.varnode_id {
+            JIRVarNodeId::VarNode(varnode) => {
+                let varnode = spec.varnode_by_id(varnode).unwrap();
+                Ok(&context.spaces[usize::from(varnode.space_id)].varnode(varnode)
+                    [slice.start as usize..slice.end as usize])
+            }
+            JIRVarNodeId::Temp(temp) => {
+                todo!("Transform slices such that they directly contain the relevant offset and space id")
+            }
+        }
+    }
+
+    fn slice_mut<'a>(
+        &self,
+        context: &'a mut Self::RuntimeContext,
+        slice: JIRSlice,
+    ) -> Result<&'a mut [u8], JitError> {
+        let spec = self.processor_specification.borrow();
+        match slice.varnode_id {
+            JIRVarNodeId::VarNode(varnode) => {
+                let varnode = spec.varnode_by_id(varnode).unwrap();
+                Ok(&mut context.spaces[usize::from(varnode.space_id)].varnode_mut(varnode)
+                    [slice.start as usize..slice.end as usize])
+            }
+            JIRVarNodeId::Temp(temp) => {
+                todo!("Transform slices such that they directly contain the relevant offset and space id")
+            }
+        }
     }
 }
 

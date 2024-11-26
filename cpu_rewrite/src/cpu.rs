@@ -7,20 +7,17 @@ use std::ffi::c_void;
 use std::fmt::Debug;
 use std::rc::Rc;
 
-use thiserror::Error;
-
 use mogi_mem::mmu::MogiMMU;
 use mogi_sleigh::jinst;
-use mogi_sleigh::spec::jir::values::JIRSlice;
 use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_utilities::addresses::EVAddr;
+use thiserror::Error;
+use tracing::trace;
 
 use crate::jit::api::{
-    JITRuntimeContext,
     JitError,
     MogiJit,
 };
-use crate::jit::cache::JitCode;
 
 #[derive(Error, Debug)]
 pub enum StopReason {
@@ -89,8 +86,15 @@ where
                 MustInterpret::No => {
                     let context = &mut *self.runtime_context as *mut _ as *mut c_void;
                     let jit = self.jit.borrow();
-                    let block = jit.fetch_block(self.runtime_context.pc())?;
+                    let block = jit.fetch_block(jit.instruction_pointer(&self.runtime_context).unwrap())?;
                     jit.prelude()?(context, block);
+                    let cx = self
+                        .processor_specification
+                        .borrow()
+                        .varnode_id_by_string("CX")
+                        .unwrap();
+                    let data = jit.varnode(&self.runtime_context, cx)?;
+                    trace!("CX: {:#04x}", u16::from_le_bytes(data.try_into().unwrap()));
                 }
                 MustInterpret::Yes => {
                     todo!()
@@ -125,7 +129,10 @@ where
         {
             // TODO: Remove demo block
             let mut jit = self.jit.borrow_mut();
-            if jit.fetch_block(self.runtime_context.pc()).is_ok() {
+            if jit
+                .fetch_block(jit.instruction_pointer(&self.runtime_context)?)
+                .is_ok()
+            {
                 // The block is already translated. Return
                 return Ok(());
             }
@@ -134,13 +141,28 @@ where
             let counter = self
                 .processor_specification
                 .borrow()
+                .varnode_slice_by_string("CX")
+                .unwrap();
+            let result = self
+                .processor_specification
+                .borrow()
                 .varnode_slice_by_string("AX")
                 .unwrap();
 
-            let inst = jinst!(counter = 6u16);
-            let inst2 = jinst!(counter = counter + counter);
-            jit.emit_jinst(&inst)?;
-            jit.emit_jinst(&inst2)?;
+            let cx = jit.slice_mut(&mut self.runtime_context, result)?;
+            cx.copy_from_slice(42u16.to_le_bytes().as_slice());
+
+            let instructions = vec![
+                jinst!(counter = result + counter),
+                jinst!(counter = counter + 1u16),
+                jinst!(counter = counter + 1u16),
+                jinst!(counter = counter + 1u16),
+                jinst!(result = counter),
+            ];
+            for instruction in instructions {
+                jit.emit_jinst(&instruction)?;
+            }
+            jit.emit_flush_varnodes()?;
             jit.finalize_block()?;
             // jit.chain_blocks(EVAddr::null(), EVAddr::null())?;
             Ok(())

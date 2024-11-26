@@ -49,6 +49,7 @@ fn main() {
     let specification = compiler.compile(spec_path).unwrap();
     // println!("{:?}", specification.list_global_varnode_strings());
     println!("{:?}", specification.space_max_used_offset(3.into()).unwrap());
+    specification.debug_space_allocation(3.into()).unwrap();
     let source = DirectlyMappedBytes::from(b"\x83\xc0\x01");
     let mut cache = LifterCache::default();
     let mut lifter = Lifter::new(&specification, &mut cache, &source);
