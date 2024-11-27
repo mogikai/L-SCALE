@@ -100,7 +100,7 @@ pub enum DuplicateDefineType {
 }
 
 #[derive(Error, Debug)]
-#[error("Undefined symbol")]
+#[error("Symbol {symbol} is not defined")]
 pub struct UndefinedSymbol {
     pub symbol: String,
 }
@@ -114,7 +114,7 @@ pub struct InvalidSymbolType {
 }
 
 #[derive(Error, Debug)]
-#[error("Undefined identifier: ")]
+#[error("Undefined identifier")]
 pub struct UndefinedIdentifier {
     pub identifier: String,
 }
@@ -344,13 +344,13 @@ impl InternalError {
             InternalErrorType::UndeclaredSymbol => {
                 let ident = self.get_span("ident");
                 Report::build(ReportKind::Error, ident.clone())
-                    .with_label(Label::new(ident.clone()).with_message("symbol is undeclared"))
+                    .with_label(Label::new(ident.clone()).with_message("Symbol is undeclared"))
             }
-            InternalErrorType::UndefinedSymbol(_) => {
+            InternalErrorType::UndefinedSymbol(symbol) => {
                 let sym = self.get_span("symbol");
-                Report::build(ReportKind::Error, sym.clone())
-                    .with_label(Label::new(sym.clone()))
-                    .with_message("symbol is undefined")
+                Report::build(ReportKind::Error, sym.clone()).with_label(
+                    Label::new(sym.clone()).with_message(format!("Symbol {:?} is undefined", symbol.symbol)),
+                )
             }
             InternalErrorType::InvalidSymbolType(invalid) => {
                 let mut colors = ColorGenerator::new();
