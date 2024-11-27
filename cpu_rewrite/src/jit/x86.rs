@@ -20,6 +20,7 @@ use dynasmrt::{
     ExecutableBuffer,
 };
 use mogi_mem::mmu::MogiMMU;
+use mogi_mem::tlb::tlb::TLB;
 use mogi_sleigh::spec::jir::common::JIRSize;
 use mogi_sleigh::spec::jir::jcode::{
     JIRInstruction,
@@ -52,6 +53,7 @@ use std::ops::{
     Index,
     IndexMut,
 };
+use std::ptr::NonNull;
 use std::rc::Rc;
 use std::{
     array,
@@ -62,8 +64,12 @@ use tracing::{
     trace,
 };
 
+mod emit;
+
 macro_rules! assemble {
     ($asm:expr; $($t:tt)*) => {
+        use dynasmrt::DynasmApi;
+        use dynasmrt::dynasm;
         dynasm!($asm
             ; .arch x64
             // The cpu context is stored in RBP for as long as we are inside the jited code.
@@ -73,6 +79,8 @@ macro_rules! assemble {
         )
     };
 }
+
+use assemble;
 
 #[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive)]
 #[repr(u8)]
@@ -187,17 +195,34 @@ enum RegisterInfo {
     Occupied(JIRSlice),
 }
 
-#[derive(Debug, Default)]
-struct GPRegisterAllocations([Option<JIRSlice>; 16]);
+#[derive(Debug)]
+struct GPRegisterAllocations([RegisterAllocation; 16]);
+
+impl Default for GPRegisterAllocations {
+    fn default() -> Self {
+        Self(array::from_fn(|i| {
+            let reg = GPRegister::try_from(i as u8).expect("We expect the GP registers to be 0..16");
+            match reg {
+                // we reserve RAX as temporary since there are some instructions that can only use RAX
+                GPRegister::A => RegisterAllocation::Reserved,
+                // RBP is reserved for the cpu_context
+                GPRegister::B => RegisterAllocation::Reserved,
+                // We don't want to mess with the stack pointer.
+                GPRegister::SP => RegisterAllocation::Reserved,
+                _ => RegisterAllocation::Free,
+            }
+        }))
+    }
+}
 
 impl GPRegisterAllocations {
-    fn iter(&self) -> impl Iterator<Item = (GPRegister, &Option<JIRSlice>)> {
+    fn iter(&self) -> impl Iterator<Item = (GPRegister, &RegisterAllocation)> {
         self.0.iter().enumerate().map(|(i, entry)| {
             (GPRegister::try_from(i as u8).expect("We iterate over the GP ids, hence this must not error"), entry)
         })
     }
 
-    fn iter_mut(&mut self) -> impl Iterator<Item = (GPRegister, &mut Option<JIRSlice>)> {
+    fn iter_mut(&mut self) -> impl Iterator<Item = (GPRegister, &mut RegisterAllocation)> {
         self.0.iter_mut().enumerate().map(|(i, entry)| {
             (GPRegister::try_from(i as u8).expect("We iterate over the GP ids, hence this must not error"), entry)
         })
@@ -205,7 +230,7 @@ impl GPRegisterAllocations {
 }
 
 impl Index<GPRegister> for GPRegisterAllocations {
-    type Output = Option<JIRSlice>;
+    type Output = RegisterAllocation;
 
     fn index(
         &self,
@@ -222,6 +247,13 @@ impl IndexMut<GPRegister> for GPRegisterAllocations {
     ) -> &mut Self::Output {
         &mut self.0[index as usize]
     }
+}
+
+#[derive(Debug)]
+enum RegisterAllocation {
+    Free,
+    Reserved,
+    Occupied(JIRSlice),
 }
 
 /// This struct is used to keep track of which slice is loaded in what register.
@@ -349,7 +381,11 @@ impl Space {
 /// This should be kept small, only containing absolutely necessary information like the address spaces
 /// or tlb pointer.
 pub struct X86JITRuntimeContext {
+    /// The address spaces for the cpu spec.
+    /// TODO: Maybe make the amount of address spaces generic?
     spaces: [Space; 4],
+    /// A Pointer to the tlb for guest memory accesses.
+    tlb: Option<NonNull<TLB>>,
     pc: usize,
 }
 
@@ -601,96 +637,35 @@ impl X86MogiJit {
         slice: JIRSlice,
     ) -> RegisterLoadInfo<GPRegister> {
         let mut free_gp = None;
+        // TODO: We need to check if two slices refer to the same memory.
+        //       This needs to be done because there might be a slice to e.g. EAX loaded, but another
+        //       instruction refers to RAX. The RAX load then needs to be performed from the loaded
+        //       EAX, instead of from the space, or it needs to be flushed first.
         // Search for existing register, and otherwise take the first available GP register.
         for (register, entry) in self.register_tracker.gp.iter() {
-            if let Some(entry) = entry {
-                trace!("Comparing existing {entry:?} with new slice {slice:?} for register {register:?}");
-                if *entry == slice {
-                    trace!("Slice {slice:?} is already loaded in GP register {register:?}");
-                    return RegisterLoadInfo::Loaded(register);
+            match entry {
+                RegisterAllocation::Free => {
+                    if free_gp.is_none() {
+                        free_gp = Some(register);
+                    }
                 }
-            } else if free_gp.is_none() {
-                free_gp = Some(register);
+                RegisterAllocation::Reserved => {}
+                RegisterAllocation::Occupied(entry) => {
+                    trace!("Comparing existing {entry:?} with new slice {slice:?} for register {register:?}");
+                    if *entry == slice {
+                        trace!("Slice {slice:?} is already loaded in GP register {register:?}");
+                        return RegisterLoadInfo::Loaded(register);
+                    }
+                }
             }
         }
         if let Some(free_gp) = free_gp {
             trace!("Allocating new GP register {free_gp:?} for slice {slice:?}");
-            self.register_tracker.gp[free_gp] = Some(slice);
+            self.register_tracker.gp[free_gp] = RegisterAllocation::Occupied(slice);
             RegisterLoadInfo::Unloaded(free_gp)
         } else {
             todo!("Handle register spill")
         }
-    }
-
-    fn emit_copy(
-        &mut self,
-        target: JIRSlice,
-        source: JIRValue,
-    ) -> Result<(), JitError> {
-        debug_assert_eq!(target.size(), source.size());
-
-        let size = target.size();
-        // Allocate and associate a GP register with the slice.
-        // No load is needed, since we overwrite the data anyway for a copy.
-        let target_reg = self.get_slice_gp(target) as u8;
-        match source {
-            JIRValue::Slice(slice) => {
-                let reg = self.load_slice_gp(slice) as u8;
-                let block = self.block_mut()?;
-                dynasm!(block.assembler
-                    ; mov Rq(target_reg), Rq(reg)
-                );
-            }
-            JIRValue::Const(value) => {
-                let value = value.value();
-                let block = self.block_mut()?;
-                dynasm!(block.assembler
-                    ; mov Rq(target_reg), value as _
-                );
-            }
-        }
-        Ok(())
-    }
-
-    fn emit_add(
-        &mut self,
-        output: JIRSlice,
-        a: JIRValue,
-        b: JIRValue,
-    ) -> Result<(), JitError> {
-        debug_assert_eq!(output.size(), a.size());
-        debug_assert_eq!(a.size(), b.size());
-        let size = output.size();
-        match (a, b) {
-            (JIRValue::Const(a), JIRValue::Const(b)) => {
-                trace!("Const add optimized to move");
-                let a = a.value();
-                let b = b.value();
-                let size = output.size();
-                self.emit_copy(output, JIRConst::new((a + b) % (size * 8) as u128, size).into())?;
-            }
-            // Addition is commutative, so we can simply swap a and b if one is const and the other is a varnode.
-            (JIRValue::Const(b), JIRValue::Slice(a)) | (JIRValue::Slice(a), JIRValue::Const(b)) => {
-                let b = b.value();
-                let a: u8 = self.load_slice_gp(a).into();
-                let output: u8 = self.load_slice_gp(output).into();
-                let block = self.block_mut()?;
-                // TODO: What should we do about the sizes regarding overflows?
-                assemble!(block.assembler;
-                    ; lea Rq(output), [Rq(a) + b as _]
-                );
-            }
-            (JIRValue::Slice(a), JIRValue::Slice(b)) => {
-                let a: u8 = self.load_slice_gp(a).into();
-                let b: u8 = self.load_slice_gp(b).into();
-                let output: u8 = self.load_slice_gp(output).into();
-                let block = self.block_mut()?;
-                assemble!(block.assembler;
-                    ; lea Rq(output), [Rq(a) + Rq(b)]
-                );
-            }
-        }
-        Ok(())
     }
 
     fn block_mut(&mut self) -> Result<&mut UnfinishedBasicBlock, JitError> {
@@ -706,6 +681,7 @@ impl MogiJit for X86MogiJit {
     fn new_runtime_context(&self) -> Self::RuntimeContext {
         X86JITRuntimeContext {
             spaces: array::from_fn(|_| Space::new()),
+            tlb: None,
             pc: 0,
         }
     }
@@ -735,7 +711,7 @@ impl MogiJit for X86MogiJit {
             JIROperation::Load(_) => {}
             JIROperation::Store(_) => {}
             JIROperation::IntAdd => return self.emit_add(output?, input_a?, input_b?),
-            JIROperation::IntSubtract => {}
+            JIROperation::IntSubtract => return self.emit_subtract(output?, input_a?, input_b?),
             JIROperation::IntMul => {}
             JIROperation::IntDiv => {}
             JIROperation::IntSDiv => {}
@@ -809,7 +785,7 @@ impl MogiJit for X86MogiJit {
         // Iterate over the loaded slices and flush them to memory
         // TODO: Do not insert flush instructions for dead registers.
         for (register, slice) in self.register_tracker.reset_gp().iter() {
-            if let Some(slice) = slice {
+            if let RegisterAllocation::Occupied(slice) = slice {
                 // TODO: The slices need to be reworked, such that we directly have space_id and offset and size
                 //       It will most likely still contain a reference to the original varnode_id or temporary
                 //       for debugging or name resolution.

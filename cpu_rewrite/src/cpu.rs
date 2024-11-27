@@ -88,13 +88,14 @@ where
                     let jit = self.jit.borrow();
                     let block = jit.fetch_block(jit.instruction_pointer(&self.runtime_context).unwrap())?;
                     jit.prelude()?(context, block);
-                    let cx = self
+                    let ecx = self
                         .processor_specification
                         .borrow()
-                        .varnode_id_by_string("CX")
+                        .varnode_id_by_string("EAX")
                         .unwrap();
-                    let data = jit.varnode(&self.runtime_context, cx)?;
-                    trace!("CX: {:#04x}", u16::from_le_bytes(data.try_into().unwrap()));
+                    let data = jit.varnode(&self.runtime_context, ecx)?;
+                    trace!("EAX: {:#04x}({0})", u32::from_le_bytes(data.try_into().unwrap()));
+                    trace!("EAX(signed): {:#04x}({0})", i32::from_le_bytes(data.try_into().unwrap()));
                 }
                 MustInterpret::Yes => {
                     todo!()
@@ -141,22 +142,20 @@ where
             let counter = self
                 .processor_specification
                 .borrow()
-                .varnode_slice_by_string("CX")
+                .varnode_slice_by_string("ECX")
                 .unwrap();
             let result = self
                 .processor_specification
                 .borrow()
-                .varnode_slice_by_string("AX")
+                .varnode_slice_by_string("EAX")
                 .unwrap();
 
-            let cx = jit.slice_mut(&mut self.runtime_context, result)?;
-            cx.copy_from_slice(42u16.to_le_bytes().as_slice());
+            let rcx = jit.slice_mut(&mut self.runtime_context, result)?;
+            rcx.copy_from_slice(42u32.to_le_bytes().as_slice());
 
             let instructions = vec![
-                jinst!(counter = result + counter),
-                jinst!(counter = counter + 1u16),
-                jinst!(counter = counter + 1u16),
-                jinst!(counter = counter + 1u16),
+                jinst!(counter = 42u32),
+                jinst!(counter = result - 300000000i32),
                 jinst!(result = counter),
             ];
             for instruction in instructions {

@@ -201,6 +201,30 @@ impl From<u8> for JIRValue {
     }
 }
 
+impl From<i64> for JIRValue {
+    fn from(value: i64) -> Self {
+        JIRConst::new(value as u128, 8).into()
+    }
+}
+
+impl From<i32> for JIRValue {
+    fn from(value: i32) -> Self {
+        JIRConst::new(value as u128, 4).into()
+    }
+}
+
+impl From<i16> for JIRValue {
+    fn from(value: i16) -> Self {
+        JIRConst::new(value as u128, 2).into()
+    }
+}
+
+impl From<i8> for JIRValue {
+    fn from(value: i8) -> Self {
+        JIRConst::new(value as u128, 1).into()
+    }
+}
+
 impl Display for JIRValue {
     fn fmt(
         &self,
