@@ -1,5 +1,8 @@
 use crate::compiler::ast::define::SASTAddressSpaceAttribute;
-use crate::compiler::inputcache::InputCacheError;
+use crate::compiler::inputcache::{
+    CompilerInputCache,
+    InputCacheError,
+};
 use crate::compiler::lexer::InputSpan;
 use crate::preprocessor::error::PreprocessorError;
 use crate::spec::ProcessorSpecificationError;
@@ -8,10 +11,20 @@ use crate::spec::builder::{
     StringId,
 };
 use crate::spec::moir::common::MOIRSize;
-use ariadne::{ColorGenerator, Fmt, Label, Report, ReportKind};
+use ariadne::{
+    ColorGenerator,
+    Fmt,
+    Label,
+    Report,
+    ReportKind,
+};
 use chumsky::span::Span;
 use std::collections::HashMap;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::{
+    Debug,
+    Display,
+    Formatter,
+};
 use std::ops::Range;
 use thiserror::Error;
 
@@ -120,14 +133,8 @@ pub enum InternalErrorType {
     InputCacheError(#[from] InputCacheError),
     #[error("The processor specification encountered an error: {0}")]
     ProcessorSpecificationError(#[from] ProcessorSpecificationError),
-    #[error("An error occurred during lexical analysis: {0}")]
-    LexerError(String),
-    #[error("An error  occurred during parsing: {0}")]
-    ParserError(String),
     #[error("The compiler was configured to stop on the first error encountered.")]
     StopOnFirstError,
-    #[error("The compiler encountered an error during the semantic analysis phase.")]
-    SemanticError(String),
     #[error("Cannot slice: {0}")]
     SliceError(#[from] SliceError),
     #[error("Cannot evaluate constants: {0}")]
@@ -275,6 +282,25 @@ impl InternalError {
 }
 
 impl InternalError {
+    // TODO implement proper reports for PreprocessorError, InputCacheError and ProcessorSpecificationError and remove this function
+    pub fn create_string(
+        &self,
+        mut input_cache: &mut CompilerInputCache,
+    ) -> String {
+        let mut str = Vec::new();
+        match &self.error {
+            InternalErrorType::ProcessorSpecificationError(e) => return e.to_string(),
+            InternalErrorType::PreprocessorError(e) => return e.to_string(),
+            InternalErrorType::InputCacheError(e) => return e.to_string(),
+            _ => self
+                .as_report()
+                .write(&mut input_cache, &mut str)
+                .expect("This cannot fail"),
+        }
+        String::from_utf8(str).expect("This cannot fail")
+    }
+
+    // TODO refactor this into separate functions
     pub fn as_report(&self) -> Report<'static, InputSpan> {
         (match &self.error {
             InternalErrorType::DuplicatedDefine(_) | InternalErrorType::DuplicatedSpaceAttribute(_) => {
@@ -310,10 +336,8 @@ impl InternalError {
                 match slice {
                     SliceError::UndeterminedSize => Report::build(ReportKind::Error, expr.clone())
                         .with_label(Label::new(expr.clone()).with_message("size is undetermined")),
-                    SliceError::InvalidSliceSize { .. } => {
-                        Report::build(ReportKind::Error, expr.clone())
-                            .with_label(Label::new(expr.clone()).with_message("invalid slice size"))
-                    },
+                    SliceError::InvalidSliceSize { .. } => Report::build(ReportKind::Error, expr.clone())
+                        .with_label(Label::new(expr.clone()).with_message("invalid slice size")),
                     _ => todo!("add more slice error reports"),
                 }
             }
@@ -325,8 +349,9 @@ impl InternalError {
             InternalErrorType::UndefinedSymbol(_) => {
                 let sym = self.get_span("symbol");
                 Report::build(ReportKind::Error, sym.clone())
-                    .with_label(Label::new(sym.clone())).with_message("symbol is undefined")
-            },
+                    .with_label(Label::new(sym.clone()))
+                    .with_message("symbol is undefined")
+            }
             InternalErrorType::InvalidSymbolType(invalid) => {
                 let mut colors = ColorGenerator::new();
                 let color_a = colors.next();
@@ -350,11 +375,34 @@ impl InternalError {
                             ))
                             .with_color(color_a),
                     )
-            },
+            }
             _ => todo!("unhandled error in spanned_report"),
         })
         .with_message(self.error.to_string())
-        // TODO include cause
+        // TODO include causes recursively
         .finish()
+    }
+}
+
+pub enum SleighCompilerError {
+    SemanticError(String),
+    ParserError(String),
+    LexerError(String),
+    Unknown,
+    ErrorHandlingFailure,
+}
+
+impl Debug for SleighCompilerError {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        match self {
+            SleighCompilerError::SemanticError(s)
+            | SleighCompilerError::ParserError(s)
+            | SleighCompilerError::LexerError(s) => Display::fmt(s, f),
+            SleighCompilerError::ErrorHandlingFailure => panic!("Error handling failed"),
+            SleighCompilerError::Unknown => f.write_str("Unknown error occurred"),
+        }
     }
 }

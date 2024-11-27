@@ -64,7 +64,7 @@ mod test {
 
     use super::*;
 
-    fn test_statement(statement: &str) -> Result<(), InternalError> {
+    fn test_statement(statement: &str) -> TestResult {
         test_parser(statement, |cache, context, tokens| {
             report_errors(cache, pcode_statement().parse_with_state(tokens.spanned(), context))
         })?;
@@ -79,28 +79,28 @@ mod test {
     }
 
     #[test]
-    fn complex_conditional_branch_to_label_parses() -> Result<(), InternalError> {
+    fn complex_conditional_branch_to_label_parses() -> TestResult {
         test_statement("if !(zext(Mem) > bnd1_ub) goto <done>;")
     }
 
     #[test]
-    fn conditional_branch_to_label_parses() -> Result<(), InternalError> {
+    fn conditional_branch_to_label_parses() -> TestResult {
         test_statement("if(x) goto <y>;")
     }
 
     #[test]
-    fn conditional_branch_to_varnode_parses() -> Result<(), InternalError> {
+    fn conditional_branch_to_varnode_parses() -> TestResult {
         test_statement("if (x[0,32] f< y[0,32]) goto z;")
     }
 
     #[test]
-    fn write_to_deref_parses() -> Result<(), InternalError> {
+    fn write_to_deref_parses() -> TestResult {
         // test_statement("*:10 (Mem + 78) = ST5;")
         test_statement("*x = y;")
     }
 
     #[test]
-    fn load_const_space_literal_to_local_parses() -> Result<(), InternalError> {
+    fn load_const_space_literal_to_local_parses() -> TestResult {
         let result = test_statement_output("local x = *[const]:4 1;")?;
         let stmt = result.into_value();
         match stmt {
@@ -133,7 +133,7 @@ mod test {
     }
 
     #[test]
-    fn load_ram_space_ident_parses() -> Result<(), InternalError> {
+    fn load_ram_space_ident_parses() -> TestResult {
         let result = test_statement_output("x = *[ram]:4 y;")?;
         let stmt = result.into_value();
         match stmt {
@@ -166,7 +166,7 @@ mod test {
     }
 
     #[test]
-    fn load_ram_space_ident_no_size_parses() -> Result<(), InternalError> {
+    fn load_ram_space_ident_no_size_parses() -> TestResult {
         let result = test_statement_output("x = *[ram] y;")?;
         let stmt = result.into_value();
         match stmt {

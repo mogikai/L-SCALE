@@ -7,13 +7,14 @@ use std::fmt::{
 };
 use thiserror::Error;
 
+// TODO refactor PreprocessorError to use reports just as compiler errors
 #[derive(Error)]
 pub enum PreprocessorError {
     #[error("Failed to include a file specified by an @include directive.")]
     IncludeError(String),
     #[error("The input cache encountered an error")]
     InputCacheError(#[from] InputCacheError),
-    #[error("Encountered a parsing error")]
+    #[error("Encountered a parsing error: {0}")]
     ParseError(String),
     #[error("The identifier is not defined")]
     UndefinedIdentifier(String),

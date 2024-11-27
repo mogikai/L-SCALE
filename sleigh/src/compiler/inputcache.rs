@@ -122,6 +122,8 @@ impl CompilerInputCache {
     }
 }
 
+// TODO refactor InputCacheError to use reports
+
 #[derive(Debug, Error)]
 pub enum InputCacheError {
     #[error("Could not read the provided sleigh file.")]

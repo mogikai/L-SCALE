@@ -1,4 +1,7 @@
-use crate::compiler::error::InternalError;
+use crate::compiler::error::{
+    InternalError,
+    SleighCompilerError,
+};
 use crate::compiler::inputcache::CompilerInputCache;
 use crate::compiler::lexer::{
     SleighLexer,
@@ -7,7 +10,7 @@ use crate::compiler::lexer::{
 pub(crate) use crate::compiler::parser::report_errors;
 use crate::spec::builder::ProcessorSpecificationBuilder;
 
-pub type TestResult<T = ()> = Result<T, InternalError>;
+pub type TestResult<T = ()> = Result<T, SleighCompilerError>;
 
 #[cfg(test)]
 pub fn setup_parser_test(
@@ -15,7 +18,10 @@ pub fn setup_parser_test(
 ) -> TestResult<(CompilerInputCache, ProcessorSpecificationBuilder, SleighTokens)> {
     let lexer = SleighLexer::default();
     let mut input_cache = CompilerInputCache::default();
-    let id = input_cache.load_input_from_str("test", test_string)?;
+    let id = input_cache
+        .load_input_from_str("test", test_string)
+        // We just want to fix the type, not generate a proper error report
+        .map_err(|e| SleighCompilerError::LexerError(e.to_string()))?;
     let mut context = Default::default();
     let tokens = lexer.tokenize(&mut input_cache, &mut context, id)?;
     Ok((input_cache, context, tokens))

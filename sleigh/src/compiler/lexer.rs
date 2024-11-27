@@ -5,6 +5,7 @@ use crate::compiler::ast::SpannedToken;
 use crate::compiler::error::{
     InternalError,
     InternalErrorType,
+    SleighCompilerError,
 };
 use crate::compiler::inputcache::CompilerInputCache;
 use crate::compiler::tokens::{
@@ -16,6 +17,8 @@ use crate::compiler::tokens::{
 use crate::compiler::{
     CompilerContext,
     InputId,
+    InternalCompilerResult,
+    SleighCompilerResult,
 };
 use crate::spec::builder::{
     ProcessorSpecificationBuilder,
@@ -203,11 +206,14 @@ impl SleighLexer {
         input_cache: &mut CompilerInputCache,
         context: &'src mut ProcessorSpecificationBuilder,
         input_id: InputId,
-    ) -> Result<SleighTokens, InternalError> {
+    ) -> SleighCompilerResult<SleighTokens> {
         // TODO: Return parsed tokens, and all encountered errors, instead of simply erroring out.
-        let source_data = input_cache
-            .input_source(input_id)
-            .map_err(|e| InternalError::from_error(e.into()))?;
+        let source_data = input_cache.input_source(input_id);
+        let Ok(source_data) = source_data else {
+            return Err(SleighCompilerError::LexerError(
+                InternalError::from_error(source_data.err().unwrap().into()).create_string(input_cache),
+            ));
+        };
         let parsed = SleighLexer::tokenize_string(
             source_data
                 .text()
@@ -233,10 +239,8 @@ impl SleighLexer {
                     .write(&mut *input_cache, &mut diagnostic)
                     .expect("There is no case in which this may fail.");
             }
-            Err(
-                InternalErrorType::LexerError(String::from_utf8(diagnostic).expect("We only write utf8 strings"))
-                    .into(),
-            )
+            Err(SleighCompilerError::LexerError(String::from_utf8(diagnostic).expect("We only write utf8 strings"))
+                .into())
         }
     }
 

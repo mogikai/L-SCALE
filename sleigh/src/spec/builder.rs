@@ -25,9 +25,10 @@ use crate::compiler::error::{
     DuplicateDefineType,
     DuplicatedDefine,
     DuplicatedIdentifier,
-    InvalidSymbolType,
     InternalError,
     InternalErrorType,
+    InvalidSymbolType,
+    SleighCompilerError,
     UndefinedIdentifier,
     UndefinedSymbol,
     UnmappedIdentifier,
@@ -40,6 +41,7 @@ use crate::compiler::lexer::{
 use crate::compiler::{
     CompilerContext,
     InternalCompilerResult,
+    SleighCompilerResult,
 };
 use crate::spec::builder::transform::MOIRToJIRTransformer;
 use crate::spec::moir::address_space::{
@@ -626,11 +628,7 @@ impl ProcessorSpecificationBuilder {
                 })
             })
             .ok_or_else(|| {
-                InternalError::with_span(
-                    InternalErrorType::UndeclaredSymbol.into(),
-                    "ident",
-                    ident.span().clone(),
-                )
+                InternalError::with_span(InternalErrorType::UndeclaredSymbol.into(), "ident", ident.span().clone())
             })
     }
 

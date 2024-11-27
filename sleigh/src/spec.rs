@@ -191,6 +191,7 @@ impl ProcessorSpecification {
     }
 }
 
+// TODO rework ProcessorSpecificationError to use reports like compiler error
 #[derive(Debug, Error)]
 pub enum ProcessorSpecificationError {
     #[error("The symbol id does not map to a symbol.")]

@@ -23,6 +23,7 @@ use crate::compiler::ast::Spanned;
 use crate::compiler::error::{
     InternalError,
     InternalErrorType,
+    SleighCompilerError,
 };
 use crate::compiler::lexer::{
     InputSpan,
@@ -82,6 +83,8 @@ pub(crate) trait CompilerContext {
 
 pub type InternalCompilerResult<T = ()> = Result<T, InternalError>;
 
+pub type SleighCompilerResult<T = ()> = Result<T, SleighCompilerError>;
+
 #[derive(Debug)]
 pub struct SleighCompiler {
     preprocessor_factory: SleighPreprocessorFactory,
@@ -108,7 +111,7 @@ impl SleighCompiler {
     pub fn compile(
         mut self,
         spec_path: &Path,
-    ) -> InternalCompilerResult<ProcessorSpecification> {
+    ) -> SleighCompilerResult<ProcessorSpecification> {
         info!("Loading and preprocessing {spec_path:?} and the files it includes.");
         let tokens = self.load_and_preprocess(spec_path)?;
         info!("Parsing the abstract syntax tree.");
@@ -121,31 +124,25 @@ impl SleighCompiler {
         // we failed to handle this error properly.
         if let Err(e) = result {
             if !matches!(e.error, InternalErrorType::StopOnFirstError) {
-                return Err(e);
+                return Err(SleighCompilerError::ErrorHandlingFailure);
             }
         }
         if self.errors.is_empty() {
-            Ok(self.spec_builder.build()?)
+            Ok(self
+                .spec_builder
+                .build()
+                .map_err(|e| SleighCompilerError::SemanticError(e.create_string(&mut self.input_cache)))?)
         } else {
-            let mut error_description = vec![];
+            let mut error_description = String::new();
             let error_count = self.errors.len();
             for error in self.errors {
-                error
-                    .as_report()
-                    .write(&mut self.input_cache, &mut error_description)
-                    .expect("There is no way this may fail.");
+                error_description += &error.create_string(&mut self.input_cache)
             }
-            error_description.extend(
-                format!(
-                    "───────────────────────────────\nFound a total of {} errors.\n───────────────────────────────",
-                    error_count
-                )
-                .as_bytes(),
+            error_description += &format!(
+                "───────────────────────────────\nFound a total of {} errors.\n───────────────────────────────",
+                error_count
             );
-            Err(InternalErrorType::SemanticError(
-                String::from_utf8(error_description).expect("We only write utf8 strings."),
-            )
-            .into())
+            Err(SleighCompilerError::SemanticError(error_description))
         }
     }
 
@@ -155,10 +152,15 @@ impl SleighCompiler {
     fn load_and_preprocess(
         &mut self,
         spec_path: &Path,
-    ) -> InternalCompilerResult<SleighTokens> {
+    ) -> SleighCompilerResult<SleighTokens> {
         let mut preprocessor = self.preprocessor_factory.build();
         let file = spec_path.to_path_buf();
-        let mut input_id = self.input_cache.load_input_from_file(file.as_path())?;
+        let mut input_id = self
+            .input_cache
+            .load_input_from_file(file.as_path())
+            .map_err(|e| {
+                SleighCompilerError::LexerError(InternalError::from(e).create_string(&mut self.input_cache))
+            })?;
         debug!("Loading initial file {file:?} as {input_id:?}");
         let tokens = loop {
             // Check if requested input is already tokenized
@@ -168,15 +170,25 @@ impl SleighCompiler {
                     .lexer
                     .tokenize(&mut self.input_cache, &mut self.spec_builder, input_id)?;
                 debug!("Tokenized input {input_id:?}");
-                self.input_cache.attach_tokens(input_id, tokens)?;
+                self.input_cache
+                    .attach_tokens(input_id, tokens)
+                    .map_err(|e| {
+                        SleighCompilerError::LexerError(InternalError::from(e).create_string(&mut self.input_cache))
+                    })?;
             }
             // Parse the input that was loaded
-            preprocessor.parse_input(&mut self.input_cache, input_id)?;
+            preprocessor
+                .parse_input(&mut self.input_cache, input_id)
+                .map_err(|e| {
+                    SleighCompilerError::LexerError(InternalError::from(e).create_string(&mut self.input_cache))
+                })?;
             // Continue preprocessing
             match preprocessor.preprocess(&mut self.input_cache, &mut self.spec_builder) {
                 Ok(tokens) => break tokens,
                 Err(PreprocessorError::LoadingRequired(id)) => input_id = id,
-                Err(e) => Err(InternalErrorType::from(e))?,
+                Err(e) => {
+                    Err(SleighCompilerError::LexerError(InternalError::from(e).create_string(&mut self.input_cache)))?
+                }
             }
         };
         Ok(tokens)
