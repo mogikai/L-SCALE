@@ -14,7 +14,6 @@ use chumsky::container::{
 use itertools::Itertools;
 use num::PrimInt;
 
-use crate::compiler::SleighCompilerResult;
 use crate::compiler::ast::pcode::deref;
 use crate::compiler::build::constructor::matcher::{
     FieldMatcher,
@@ -25,6 +24,7 @@ use crate::compiler::build::constructor::matcher::{
 };
 use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
+use crate::compiler::SleighCompilerResult;
 use crate::spec::jir::jumplist::{
     DataProvider,
     Jumplist,
@@ -58,6 +58,16 @@ use crate::spec::moir::varnode::{
     VarNodeId,
 };
 use crate::spec::typed_index_table::TypedIndexTable;
+
+// Entries for different masks can be combined vertically by building up a hierarchy layer by layer
+// or horizontally by ORing the mask bits together and filling missing entries by enumerating
+// previously don't-care-bits. This is a tradeoff between path length and entry count.
+// The value is the Hamming distance for which two masks will be joined together.
+//
+// Right now, this threshold only applies to a single value so multiple masks
+// can produce different sets of values that together exceed this threshold.
+// TODO find better way to do this.
+const MASK_EXPAND_THRESHOLD: u32 = 256u32.ilog2();
 
 /// Create a [Jumplist] for the root [MOIRTable]
 pub(super) struct JumplistBuilder<'a> {
@@ -145,20 +155,6 @@ impl<'a> JumplistBuilder<'a> {
             self.jumplist_cache.len(),
             self.sublist_cache.len(),
         );
-
-        self.jumplist_cache
-            .iter()
-            .filter(|(id, _)| *id != root_jumplist_id)
-            .for_each(|jumplist| {
-                trace_build!("jumplist = {:#x?}", jumplist);
-            });
-
-        let root_jumplist = self
-            .jumplist_cache
-            .get(root_jumplist_id)
-            .expect("We just created this");
-
-        trace_build!("root_jumplist = {:#x?}", root_jumplist);
 
         Ok((root_jumplist_id, self.jumplist_cache))
     }
@@ -428,12 +424,14 @@ impl<'a> JumplistBuilder<'a> {
             );
         }
 
-        // split parent set from rows as well as all child sets
+        // split parent set from rows as well as all child sets while expanding
+        // rows whose mask differs in at most MASK_EXPAND_THRESHOLD places
         let mut parent_set: Vec<Row> = Vec::new();
         let mut child_sets: Vec<(u64, Vec<Row>)> = Vec::new();
         'next_row: for row in rows.into_iter() {
             let row_mask = size_bits.extract_from(row.mask);
-            if row_mask == mask {
+            let distance = (row_mask ^ mask).count_ones();
+            if distance <= MASK_EXPAND_THRESHOLD {
                 // full mask => parent set
                 parent_set.push(row);
             } else {
@@ -503,6 +501,11 @@ impl<'a> JumplistBuilder<'a> {
 
                 // create entries for jumplist of trailing bytes
                 if !next_byte_rows.is_empty() {
+                    // Since the masks of different entries may differ, we create entries
+                    // for all necessary values. Precedence of rows with a higher
+                    // mask is ensured by sorting rows.
+                    let expanded_values = expand_rows(&next_byte_rows, mask, value, size_bits);
+
                     let next_entry_trailing = NextJumplistEntry::Jumplist(self.create_jumplist_bytes(
                         next_byte_rows,
                         token_index,
@@ -510,11 +513,19 @@ impl<'a> JumplistBuilder<'a> {
                     )?);
 
                     let entry = JumplistEntry::new(sublists.clone(), next_entry_trailing);
+                    // first entry for non-expanded values...
                     jumplist_parent.insert(value, entry.clone(), false)?;
+
+                    // ...then for expanded values
+                    for expanded_value in expanded_values {
+                        jumplist_parent.insert(expanded_value, entry.clone(), false)?;
+                    }
                 };
 
                 // create entries for terminal rows that still have tokens remaining
                 if !terminal_token_rows.is_empty() {
+                    let expanded_values = expand_rows(&terminal_token_rows, mask, value, size_bits);
+
                     let terminal_token_matchers = terminal_token_rows
                         .into_iter()
                         .map(|row| row.matcher)
@@ -523,6 +534,10 @@ impl<'a> JumplistBuilder<'a> {
                         NextJumplistEntry::Jumplist(self.create_jumplist(token_index + 1, &terminal_token_matchers)?);
                     let entry = JumplistEntry::new(sublists.clone(), next_entry_tokens);
                     jumplist_parent.insert(value, entry.clone(), false)?;
+
+                    for expanded_value in expanded_values {
+                        jumplist_parent.insert(expanded_value, entry.clone(), false)?;
+                    }
                 }
 
                 // create entries for terminal row that ends in a matcher
@@ -531,6 +546,7 @@ impl<'a> JumplistBuilder<'a> {
                     // same primary matching path but different subtables (TODO should we check
                     // this?)
                     // assert!(terminal_matcher_rows.len() < 2, "There can't be more than one matcher in the same path");
+                    let expanded_values = expand_rows(&terminal_matcher_rows, mask, value, size_bits);
 
                     let next_entry_matcher = NextJumplistEntry::Matcher(
                         terminal_matcher_row
@@ -542,6 +558,10 @@ impl<'a> JumplistBuilder<'a> {
                     );
                     let entry = JumplistEntry::new(sublists, next_entry_matcher);
                     jumplist_parent.insert(value, entry.clone(), false)?;
+
+                    for expanded_value in expanded_values {
+                        jumplist_parent.insert(expanded_value, entry.clone(), false)?;
+                    }
                 }
             }
 
@@ -655,16 +675,14 @@ impl<'a> JumplistBuilder<'a> {
 /// - `v & mask_large == v`
 ///
 /// This is necessary for creating jumplist indices for a jumplist with a single mask out of values
-/// with potentially different, smaller masks. Returns [Option::None] in case the number of values
-/// produced would exceed `threshold`.
+/// with potentially different, smaller masks.
 fn expand_mask(
     value: u64,
     mask_small: u64,
     mask_large: u64,
-    threshold: u64,
-) -> Option<Vec<u64>> {
+) -> Vec<u64> {
     if mask_small == mask_large {
-        return Some(vec![value]);
+        return vec![value];
     }
 
     /* value        = 0b0000
@@ -678,10 +696,6 @@ fn expand_mask(
 
     let mask_delta = mask_large ^ mask_small;
     let num_values = 2u64.pow(mask_delta.count_ones());
-    if num_values > threshold {
-        return None;
-    }
-
     let mut new_values = Vec::with_capacity(usize::try_from(num_values).unwrap());
     new_values.push(value);
 
@@ -710,7 +724,20 @@ fn expand_mask(
         }
     }
 
-    Some(new_values)
+    new_values
+}
+
+/// Calculate the largest common mask of all rows and expand values.
+fn expand_rows(
+    rows: &Vec<Row>,
+    mask: u64,
+    value: u64,
+    size_bits: &MOIRBitRange,
+) -> Vec<u64> {
+    let largest_common_mask = rows
+        .iter()
+        .fold(!0u64, |acc, row| acc & size_bits.extract_from(row.mask));
+    expand_mask(value, largest_common_mask, mask)
 }
 
 /// Extracts a mask/value pair as well as subtables from a matcher conjunction.
@@ -720,7 +747,7 @@ fn extract_from_conjunction(conjunction: &BTreeSet<MatcherAtom>) -> (u64, u64, V
     let mut subtables = Vec::new();
     for atom in conjunction {
         match atom {
-            MatcherAtom::Field { field, matcher } => {
+            MatcherAtom::Field { field: _, matcher } => {
                 if let FieldMatcher::Value {
                     mask: fmask,
                     value: fvalue,

@@ -1,20 +1,10 @@
 use std::collections::HashMap;
-use std::fmt::Display;
-use std::ops::Index;
-use std::rc::Rc;
 
 use chumsky::container::Container;
-use itertools::{
-    Either,
-    Itertools,
-};
-use num::PrimInt;
-use num::traits::Pow;
+use itertools::Itertools;
 
-use crate::compiler::SleighCompilerResult;
-use crate::compiler::ast::pcode::deref;
-use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
+use crate::compiler::SleighCompilerResult;
 use crate::new_typed_index_table_id;
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::context::MOIRContextId;
@@ -194,7 +184,6 @@ impl Jumplist {
     ) -> SleighCompilerResult<Option<JumplistMatching>> {
         // TODO handle
         let (value, remaining_bytes) = self.decode_value(bytes).expect("Couldn't decode value");
-        trace_build!("DESCENDING");
 
         if let Some(entries) = self.get(value)? {
             for entry in entries {
