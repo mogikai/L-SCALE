@@ -16,7 +16,7 @@ fn compiler_test() {
 #[test]
 #[ignore]
 fn x86_test() {
-    let spec_path = Path::new("./tests/assets/x86/ia.sinc");
+    let spec_path = Path::new("./tests/assets/x86/x86-64.slaspec");
     let spec_dir = spec_path.parent().unwrap();
     let factory = SleighPreprocessorFactory::new().working_dir(spec_dir.to_path_buf());
     let compiler = SleighCompilerBuilder::new()
