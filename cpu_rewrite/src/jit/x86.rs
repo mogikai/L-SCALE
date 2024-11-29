@@ -82,7 +82,7 @@ macro_rules! assemble {
 
 use assemble;
 
-#[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive)]
+#[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive, PartialEq, Eq)]
 #[repr(u8)]
 enum GPRegister {
     A   = 0,
@@ -616,6 +616,7 @@ impl X86MogiJit {
     /// Since this operation does not perform a load of the underlying value,
     /// it should only be used to get registers that are written to, since the value
     /// is irrelevant for those.
+    #[must_use]
     fn get_slice_gp(
         &mut self,
         slice: JIRSlice,
@@ -666,6 +667,11 @@ impl X86MogiJit {
         } else {
             todo!("Handle register spill")
         }
+    }
+
+    /// Return the temporary [GPRegister].
+    fn get_temp_gp(&self) -> GPRegister {
+        GPRegister::A
     }
 
     fn block_mut(&mut self) -> Result<&mut UnfinishedBasicBlock, JitError> {

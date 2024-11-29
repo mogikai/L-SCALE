@@ -2,6 +2,7 @@ use crate::jit::api::JitError;
 use crate::jit::x86::emit::mov64;
 use crate::jit::x86::{
     assemble,
+    GPRegister,
     X86MogiJit,
 };
 use mogi_sleigh::spec::jir::common::JIRSize;
@@ -118,29 +119,85 @@ impl X86MogiJit {
     pub fn emit_subtract(
         &mut self,
         output: JIRSlice,
-        a: JIRValue,
-        b: JIRValue,
+        input_a: JIRValue,
+        input_b: JIRValue,
     ) -> Result<(), JitError> {
-        debug_assert_eq!(output.size(), a.size());
-        debug_assert_eq!(a.size(), b.size());
+        debug_assert_eq!(output.size(), input_a.size());
+        debug_assert_eq!(input_a.size(), input_b.size());
         let size = output.size();
-        match (a, b) {
-            (JIRValue::Const(a), JIRValue::Const(b)) => {
+        match (input_a, input_b) {
+            (JIRValue::Const(input_a), JIRValue::Const(input_b)) => {
                 trace!("Const subtract optimized to move");
-                let a = a.value();
-                let b = b.value();
                 let size = output.size();
-                self.emit_copy(output, JIRConst::new((a - b) % (size * 8) as u128, size).into())?;
+                self.emit_copy(
+                    output,
+                    JIRConst::new((input_a.value() - input_b.value()) % (size * 8) as u128, size).into(),
+                )?;
             }
-            (JIRValue::Slice(a), JIRValue::Const(b)) => {
-                self.emit_add_sub_reg_const(output, a, b.value(), AddSub::Sub)?;
+            (JIRValue::Slice(input_a), JIRValue::Const(input_b)) => {
+                self.emit_add_sub_reg_const(output, input_a, input_b.value(), AddSub::Sub)?;
             }
-            (JIRValue::Const(a), JIRValue::Slice(b)) => {
-                todo!()
+            (JIRValue::Const(input_a), JIRValue::Slice(input_b)) => {
+                self.emit_sub_const_reg(output, input_a, input_b)?;
             }
-            _ => {
-                todo!()
+            (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
+                if output == input_a {
+                    let output_gp = self.load_slice_gp(output);
+                    let input_a_gp = self.load_slice_gp(input_a);
+                    let input_b_gp = self.load_slice_gp(input_b);
+                    // We can just subtract from output
+                    assemble!(self.block_mut()?.assembler;
+                        ; sub Rq(output_gp as u8), Rq(input_b_gp as u8)
+                    );
+                } else if output == input_b {
+                    let temp_gp = self.get_temp_gp();
+                    // Move output=input_b to a temporary register.
+                    self.emit_load_slice_to_gpr(temp_gp, output)?;
+                    // Move input_a to output (possibly loading the slice if it is still unloaded)
+                    self.emit_copy(output, input_a.into())?;
+                    // Get the output gp register (it is loaded, since we just copied to it).
+                    let output_gp = self.get_slice_gp(output);
+                    // Subtract input_b=output ,which is stored in the temporary register, from the output (output=input_a).
+                    assemble!(self.block_mut()?.assembler;
+                        ; sub Rq(output_gp as u8), Rq(temp_gp as u8)
+                    );
+                }
             }
+        }
+        Ok(())
+    }
+
+    /// Emit instructions to subtract the provided [JIRSlice] `input_b` from the provided [JIRConst] `input_a`.
+    /// The result is stored in the [JIRSlice] `output`.
+    fn emit_sub_const_reg(
+        &mut self,
+        output: JIRSlice,
+        input_a: JIRConst,
+        input_b: JIRSlice,
+    ) -> Result<(), JitError> {
+        if output != input_b {
+            // If the output register does not appear on the rhs, we can use it to load the constant
+            // We use get_slice_gp here, since the value is overwritten anyway. No need to load here.
+            let output_gp = self.get_slice_gp(output);
+            let input_b_gp = self.load_slice_gp(input_b);
+            self.emit_load_const_to_gpr(output_gp, input_a)?;
+            // and then just subtract the operand register from the constant in the output register.
+            assemble!(self.block_mut()?.assembler;
+                ; sub Rq(output_gp as u8), Rq(input_b_gp as u8)
+            );
+        } else {
+            let temp_gp = self.get_temp_gp();
+            // Output appears on rhs (out = const - out)
+            // Move the output into a temporary register
+            self.emit_load_slice_to_gpr(temp_gp, output)?;
+            // Load the constant into the output
+            self.emit_copy(output, input_a.into())?;
+            // Get the output gp register.
+            let output_gp = self.get_slice_gp(output);
+            // Subtract input_b=output ,which is stored in the temporary register, from the output (output=const).
+            assemble!(self.block_mut()?.assembler;
+                ; sub Rq(output_gp as u8), Rq(temp_gp as u8)
+            );
         }
         Ok(())
     }

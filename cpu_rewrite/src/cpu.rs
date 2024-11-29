@@ -91,11 +91,11 @@ where
                     let ecx = self
                         .processor_specification
                         .borrow()
-                        .varnode_id_by_string("EAX")
+                        .varnode_id_by_string("AL")
                         .unwrap();
                     let data = jit.varnode(&self.runtime_context, ecx)?;
-                    trace!("EAX: {:#04x}({0})", u32::from_le_bytes(data.try_into().unwrap()));
-                    trace!("EAX(signed): {:#04x}({0})", i32::from_le_bytes(data.try_into().unwrap()));
+                    trace!("AL: {:#04x}({0})", u8::from_le_bytes(data.try_into().unwrap()));
+                    trace!("AL(signed): {:#04x}({0})", i8::from_le_bytes(data.try_into().unwrap()));
                 }
                 MustInterpret::Yes => {
                     todo!()
@@ -142,20 +142,22 @@ where
             let counter = self
                 .processor_specification
                 .borrow()
-                .varnode_slice_by_string("ECX")
+                .varnode_slice_by_string("CL")
                 .unwrap();
             let result = self
                 .processor_specification
                 .borrow()
-                .varnode_slice_by_string("EAX")
+                .varnode_slice_by_string("AL")
                 .unwrap();
 
-            let rcx = jit.slice_mut(&mut self.runtime_context, result)?;
-            rcx.copy_from_slice(42u32.to_le_bytes().as_slice());
+            let ecx = jit.slice_mut(&mut self.runtime_context, counter)?;
+            ecx.copy_from_slice((5i8).to_le_bytes().as_slice());
 
             let instructions = vec![
-                jinst!(counter = 42u32),
-                jinst!(counter = result - 300000000i32),
+                jinst!(result = 10i8),
+                jinst!(counter = counter - result),
+                jinst!(counter = counter),
+                jinst!(counter = counter),
                 jinst!(result = counter),
             ];
             for instruction in instructions {

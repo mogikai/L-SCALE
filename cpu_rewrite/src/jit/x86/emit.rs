@@ -3,11 +3,13 @@
 use crate::jit::api::JitError;
 use crate::jit::x86::{
     assemble,
+    GPRegister,
     X86MogiJit,
 };
 use dynasmrt::dynasm;
 use mogi_sleigh::spec::jir::common::JIRSize;
 use mogi_sleigh::spec::jir::values::{
+    JIRConst,
     JIRSlice,
     JIRValue,
 };
@@ -30,6 +32,7 @@ macro_rules! mov64 {
 use mov64;
 
 impl X86MogiJit {
+    /// Emit instructions to copy the source [JIRValue] into the target [JIRSlice].
     pub fn emit_copy(
         &mut self,
         target: JIRSlice,
@@ -41,47 +44,77 @@ impl X86MogiJit {
 
         // Allocate and associate a GP register with the slice.
         // No load is needed, since we overwrite the data anyway for a copy.
-        let target_reg = self.get_slice_gp(target) as u8;
+        let target_reg = self.get_slice_gp(target);
         match source {
             JIRValue::Slice(slice) => {
-                if size <= 8 {
-                    let reg = self.load_slice_gp(slice) as u8;
-                    let block = self.block_mut()?;
-                    assemble!(block.assembler;
-                        ; mov Rq(target_reg), Rq(reg)
-                    );
-                } else {
-                    todo!("Support sizes > 8")
-                }
+                self.emit_load_slice_to_gpr(target_reg, slice)?;
             }
             JIRValue::Const(value) => {
-                let value = value.value();
-                let block = self.block_mut()?;
-                match size {
-                    1 => {
-                        assemble!(block.assembler;
-                            ; mov Rb(target_reg), BYTE value as _
-                        );
-                    }
-                    2 => {
-                        assemble!(block.assembler;
-                            ; mov Rw(target_reg), WORD value as _
-                        );
-                    }
-                    3..=4 => {
-                        assemble!(block.assembler;
-                            ; mov Rq(target_reg), DWORD value as _
-                        );
-                    }
-                    5..=8 => {
-                        assemble!(block.assembler;
-                            ; mov Rq(target_reg), QWORD value as _
-                        );
-                    }
-                    size => {
-                        todo!("Unsupported size {size}")
-                    }
-                }
+                self.emit_load_const_to_gpr(target_reg, value)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Load the [JIRSlice] `slice` into the [GPRegister] `target_reg`.
+    /// If the slice is already loaded in `target_reg` this emits nothing.
+    fn emit_load_slice_to_gpr(
+        &mut self,
+        target_reg: GPRegister,
+        slice: JIRSlice,
+    ) -> Result<(), JitError> {
+        let size = slice.size();
+        if size <= 8 {
+            // TODO: It might make sense to be able to hint the gpr to load to for load_slice_gp.
+            //       We could omit a few mov instructions in some cases that way.
+            //       I.e. if the slice is not loaded yet, use the provided hint, and otherwise
+            //       we just return the gpr to which the slice was already loaded.
+            let reg = self.load_slice_gp(slice);
+            let block = self.block_mut()?;
+            // Only emit a copy instruction, if the slice was loaded into a different register.
+            if reg != target_reg {
+                assemble!(block.assembler;
+                    ; mov Rq(target_reg as u8), Rq(reg as u8)
+                );
+            }
+        } else {
+            todo!("Support sizes > 8")
+        }
+        Ok(())
+    }
+
+    /// Emit an instruction that loads the provided constant into the provided target gp register.
+    fn emit_load_const_to_gpr(
+        &mut self,
+        target_reg: GPRegister,
+        value: JIRConst,
+    ) -> Result<(), JitError> {
+        let size = value.size();
+        let value = value.value();
+        let block = self.block_mut()?;
+        match size {
+            1 => {
+                assemble!(block.assembler;
+                    ; mov Rb(target_reg as u8), BYTE value as _
+                );
+            }
+            2 => {
+                assemble!(block.assembler;
+                    ; mov Rw(target_reg as u8), WORD value as _
+                );
+            }
+            3..=4 => {
+                assemble!(block.assembler;
+                    ; mov Rq(target_reg as u8), DWORD value as _
+                );
+            }
+            5..=8 => {
+                assemble!(block.assembler;
+                    ; mov Rq(target_reg as u8), QWORD value as _
+                );
+            }
+            size => {
+                todo!("Unsupported size {size}")
             }
         }
         Ok(())
