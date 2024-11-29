@@ -14,7 +14,6 @@ fn compiler_test() {
 }
 
 #[test]
-#[ignore]
 fn x86_test() {
     let spec_path = Path::new("./tests/assets/x86/x86-64.slaspec");
     let spec_dir = spec_path.parent().unwrap();
