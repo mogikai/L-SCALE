@@ -206,7 +206,7 @@ impl Default for GPRegisterAllocations {
                 // we reserve RAX as temporary since there are some instructions that can only use RAX
                 GPRegister::A => RegisterAllocation::Reserved,
                 // RBP is reserved for the cpu_context
-                GPRegister::B => RegisterAllocation::Reserved,
+                GPRegister::BP => RegisterAllocation::Reserved,
                 // We don't want to mess with the stack pointer.
                 GPRegister::SP => RegisterAllocation::Reserved,
                 _ => RegisterAllocation::Free,

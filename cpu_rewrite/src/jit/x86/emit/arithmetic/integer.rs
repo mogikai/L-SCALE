@@ -141,14 +141,9 @@ impl X86MogiJit {
                 self.emit_sub_const_reg(output, input_a, input_b)?;
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
-                if output == input_a {
-                    let output_gp = self.load_slice_gp(output);
-                    let input_a_gp = self.load_slice_gp(input_a);
-                    let input_b_gp = self.load_slice_gp(input_b);
-                    // We can just subtract from output
-                    assemble!(self.block_mut()?.assembler;
-                        ; sub Rq(output_gp as u8), Rq(input_b_gp as u8)
-                    );
+                if input_a == input_b {
+                    // A-A = 0, so we can just zero out the output.
+                    self.emit_copy(output, JIRConst::new(0, size).into())?;
                 } else if output == input_b {
                     let temp_gp = self.get_temp_gp();
                     // Move output=input_b to a temporary register.
@@ -160,6 +155,17 @@ impl X86MogiJit {
                     // Subtract input_b=output ,which is stored in the temporary register, from the output (output=input_a).
                     assemble!(self.block_mut()?.assembler;
                         ; sub Rq(output_gp as u8), Rq(temp_gp as u8)
+                    );
+                } else {
+                    // Copy input_a into output. If output == input_a we can just load output.
+                    if output != input_a {
+                        self.emit_copy(output, input_b.into())?;
+                    };
+                    let output_gp = self.load_slice_gp(output);
+                    let input_b_gp = self.load_slice_gp(input_b);
+                    // We can just subtract from output
+                    assemble!(self.block_mut()?.assembler;
+                        ; sub Rq(output_gp as u8), Rq(input_b_gp as u8)
                     );
                 }
             }

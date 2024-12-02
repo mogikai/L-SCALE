@@ -93,6 +93,10 @@ impl X86MogiJit {
     ) -> Result<(), JitError> {
         let size = value.size();
         let value = value.value();
+        if value == 0 {
+            // Zeroing out a register can be done more efficiently
+            return self.emit_zero_gpr(target_reg, size);
+        }
         let block = self.block_mut()?;
         match size {
             1 => {
@@ -117,6 +121,30 @@ impl X86MogiJit {
             }
             size => {
                 todo!("Unsupported size {size}")
+            }
+        }
+        Ok(())
+    }
+
+    /// Emit instructions to zero out the target register.
+    /// Uses the size to determine the best instruction encoding.
+    fn emit_zero_gpr(
+        &mut self,
+        target: GPRegister,
+        size: JIRSize,
+    ) -> Result<(), JitError> {
+        match size {
+            1..=8 => {
+                // For now we just zero the entire register.
+                // in the future it might make sense to do more specific stuff here
+                // For now, it is enough to do xor r32, r32.
+                // This also zeros the upper 32 bits for 64 bit registers (see intel sdm)
+                assemble!(self.block_mut()?.assembler;
+                    ; xor Rd(target as u8), Rd(target as u8)
+                );
+            }
+            _ => {
+                panic!("Unsupported size")
             }
         }
         Ok(())

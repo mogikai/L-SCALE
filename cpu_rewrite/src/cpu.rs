@@ -159,9 +159,13 @@ where
             jit.slice_mut(&mut self.runtime_context, r9d)?
                 .copy_from_slice((0b1000i32).to_le_bytes().as_slice());
 
+            // Copy to r8
+            jit.slice_mut(&mut self.runtime_context, r8d)?
+                .copy_from_slice((0b1101i32).to_le_bytes().as_slice());
+
             let instructions = vec![
                 jinst!(result = 0b1001i32),
-                jinst!(r9d = r9d - r8d),
+                jinst!(r9d = r9d & r8d),
                 jinst!(r9d = r9d),
                 jinst!(r9d = r9d),
                 jinst!(result = r9d),
