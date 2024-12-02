@@ -15,6 +15,8 @@ use mogi_sleigh::spec::jir::values::{
 };
 
 mod arithmetic;
+mod bitwise;
+mod logic;
 
 /// Emit a 64 bit mov instruction, but only if the registers differ.
 macro_rules! mov64 {

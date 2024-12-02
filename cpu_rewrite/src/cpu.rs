@@ -91,11 +91,11 @@ where
                     let ecx = self
                         .processor_specification
                         .borrow()
-                        .varnode_id_by_string("AL")
+                        .varnode_id_by_string("EAX")
                         .unwrap();
                     let data = jit.varnode(&self.runtime_context, ecx)?;
-                    trace!("AL: {:#04x}({0})", u8::from_le_bytes(data.try_into().unwrap()));
-                    trace!("AL(signed): {:#04x}({0})", i8::from_le_bytes(data.try_into().unwrap()));
+                    trace!("EAX: {:#04x}({0})", u32::from_le_bytes(data.try_into().unwrap()));
+                    trace!("EAX(signed): {:#04x}({0})", i32::from_le_bytes(data.try_into().unwrap()));
                 }
                 MustInterpret::Yes => {
                     todo!()
@@ -139,26 +139,32 @@ where
             }
             jit.new_block(EVAddr::null())?;
             // TODO: Insert instructions into block.
-            let counter = self
+            let r8d = self
                 .processor_specification
                 .borrow()
-                .varnode_slice_by_string("CL")
+                .varnode_slice_by_string("R8D")
+                .unwrap();
+            let r9d = self
+                .processor_specification
+                .borrow()
+                .varnode_slice_by_string("R9D")
                 .unwrap();
             let result = self
                 .processor_specification
                 .borrow()
-                .varnode_slice_by_string("AL")
+                .varnode_slice_by_string("EAX")
                 .unwrap();
 
-            let ecx = jit.slice_mut(&mut self.runtime_context, counter)?;
-            ecx.copy_from_slice((5i8).to_le_bytes().as_slice());
+            // Copy to r9
+            jit.slice_mut(&mut self.runtime_context, r9d)?
+                .copy_from_slice((0b1000i32).to_le_bytes().as_slice());
 
             let instructions = vec![
-                jinst!(result = 10i8),
-                jinst!(counter = counter - result),
-                jinst!(counter = counter),
-                jinst!(counter = counter),
-                jinst!(result = counter),
+                jinst!(result = 0b1001i32),
+                jinst!(r9d = r9d & result),
+                jinst!(r9d = r9d),
+                jinst!(r9d = r9d),
+                jinst!(result = r9d),
             ];
             for instruction in instructions {
                 jit.emit_jinst(&instruction)?;
