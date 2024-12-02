@@ -727,7 +727,7 @@ impl MogiJit for X86MogiJit {
             JIROperation::IntRight => {}
             JIROperation::IntSRight => {}
             JIROperation::IntOr => {}
-            JIROperation::IntAnd => return self.emit_and(output?, input_a?, input_b?),
+            JIROperation::IntAnd => return self.emit_bitwise_and(output?, input_a?, input_b?),
             JIROperation::IntXor => {}
             JIROperation::IntSLess => {}
             JIROperation::IntSGreater => {}

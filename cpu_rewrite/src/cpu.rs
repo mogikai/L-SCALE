@@ -161,7 +161,7 @@ where
 
             let instructions = vec![
                 jinst!(result = 0b1001i32),
-                jinst!(r9d = r9d & result),
+                jinst!(r9d = r9d - r8d),
                 jinst!(r9d = r9d),
                 jinst!(r9d = r9d),
                 jinst!(result = r9d),
