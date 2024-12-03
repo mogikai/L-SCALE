@@ -31,10 +31,15 @@ impl JIRInstruction {
         I1: Into<JIRValue>,
         I2: Into<JIRValue>,
     {
+        let output = output.into();
+        let input_a = input_a.into();
+        let input_b = input_b.into();
+        assert_eq!(output.size(), input_a.size());
+        assert_eq!(input_a.size(), input_b.size());
         Self {
-            output: Some(output.into()),
-            input_a: Some(input_a.into()),
-            input_b: Some(input_b.into()),
+            output: Some(output),
+            input_a: Some(input_a),
+            input_b: Some(input_b),
             operation,
         }
     }
@@ -48,9 +53,12 @@ impl JIRInstruction {
         O: Into<JIRSlice>,
         I: Into<JIRValue>,
     {
+        let output = output.into();
+        let input_a = input_a.into();
+        assert_eq!(output.size(), input_a.size());
         Self {
-            output: Some(output.into()),
-            input_a: Some(input_a.into()),
+            output: Some(output),
+            input_a: Some(input_a),
             input_b: None,
             operation,
         }

@@ -211,6 +211,10 @@ impl Default for GPRegisterAllocations {
                 // RBP is reserved for the cpu_context
                 GPRegister::BP => RegisterAllocation::Reserved,
                 // We don't want to mess with the stack pointer.
+                // TODO: It may make sense to keep the emulated stack pointer loaded in some register.
+                //       This might even be the host SP register, but we will have to save the value somewhere.
+                //       Maybe it even makes sense to provide an api where one can specify target registers
+                //       that should be loaded into fixed host registers upon entering the jit. (SP?, FLAGS?)
                 GPRegister::SP => RegisterAllocation::Reserved,
                 _ => RegisterAllocation::Free,
             }
