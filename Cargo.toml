@@ -40,3 +40,6 @@ debug = false
 [profile.dev.package.cranelift-native]
 opt-level = 3
 debug = false
+
+[profile.test.package.mogi_sleigh]
+opt-level = 3

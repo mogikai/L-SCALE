@@ -30,8 +30,10 @@ pub enum JitError {
     MissingInput,
 }
 
+pub type JITResult<T = ()> = Result<T, JitError>;
+
 pub trait MogiJit {
-    type RuntimeContext: JITRuntimeContext;
+    type RuntimeContext: JITRuntimeContext + Sized;
 
     /// Creates a new context that is used during the jit runtime.
     /// The context is opaque, but implements the [JITRuntimeContext] trait
@@ -45,7 +47,7 @@ pub trait MogiJit {
     fn new_block(
         &mut self,
         evaddr: EVAddr,
-    ) -> Result<(), JitError>;
+    ) -> JITResult;
 
     /// Emit jited code for the provided [JIRInstruction]. The JIT compiler will allocate
     /// registers for the used varnodes and populate them, if they have not yet been populated.
@@ -53,11 +55,11 @@ pub trait MogiJit {
     fn emit_jinst(
         &mut self,
         jinst: &JIRInstruction,
-    ) -> Result<(), JitError>;
+    ) -> JITResult;
 
     /// Flush all varnodes to memory. This clears all host registers and flushes their contents
     /// to the associated varnodes.
-    fn emit_flush_varnodes(&mut self) -> Result<(), JitError>;
+    fn emit_flush_varnodes(&mut self) -> JITResult;
 
     /// Chain the blocks `origin` and `target`, such that the `origin` block no longer jumps out to
     /// the epilogue block, but directly into the next block `target`.
@@ -65,13 +67,13 @@ pub trait MogiJit {
         &mut self,
         origin_block_address: EVAddr,
         target_block_address: EVAddr,
-    ) -> Result<(), JitError> {
+    ) -> JITResult {
         todo!()
     }
 
     /// Finalize the emitted instructions as a block and add it to the jit cache.
     /// This also resets the JIT such that a new block can be built by emitting instructions.
-    fn finalize_block(&mut self) -> Result<(), JitError>;
+    fn finalize_block(&mut self) -> JITResult;
 
     /// Get the block starting at emulated virtual address `evaddr`.
     /// If no block is registered for this emulated virtual address,

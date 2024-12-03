@@ -4,9 +4,9 @@ use mogi_mem::mmu::MogiMMU;
 use mogi_neocpu::cpu::CPU;
 use mogi_neocpu::jit::x86::X86MogiJit;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
+use mogi_sleigh::lifter::Lifter;
 use mogi_sleigh::lifter::cache::LifterCache;
 use mogi_sleigh::lifter::source::DirectlyMappedBytes;
-use mogi_sleigh::lifter::Lifter;
 use mogi_sleigh::preprocessor::SleighPreprocessorFactory;
 use std::cell::RefCell;
 use std::path::Path;
@@ -17,8 +17,8 @@ use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{
-    fmt,
     EnvFilter,
+    fmt,
 };
 
 #[derive(Parser, Debug)]
@@ -57,6 +57,6 @@ fn main() {
     // TODO: Disassemble at offset 0x0000000000001060
     let mmu = Rc::new(RefCell::new(MogiMMU::new()));
     let specification = Rc::new(RefCell::new(specification));
-    let mut cpu = CPU::new(X86MogiJit::new(specification.clone(), mmu.clone()), specification, mmu);
+    let mut cpu = CPU::new(X86MogiJit::new(specification.clone(), mmu.clone(), true), specification, mmu);
     cpu.run().unwrap();
 }

@@ -1,9 +1,12 @@
-use crate::jit::api::JitError;
+use crate::jit::api::{
+    JITResult,
+    JitError,
+};
 use crate::jit::x86::emit::mov64;
 use crate::jit::x86::{
-    assemble,
     GPRegister,
     X86MogiJit,
+    assemble,
 };
 use mogi_sleigh::spec::jir::common::JIRSize;
 use mogi_sleigh::spec::jir::values::{
@@ -27,7 +30,7 @@ impl X86MogiJit {
         output: JIRSlice,
         a: JIRValue,
         b: JIRValue,
-    ) -> Result<(), JitError> {
+    ) -> JITResult {
         debug_assert_eq!(output.size(), a.size());
         debug_assert_eq!(a.size(), b.size());
         match (a, b) {
@@ -60,7 +63,7 @@ impl X86MogiJit {
         output: JIRSlice,
         a: JIRSlice,
         b: u128,
-    ) -> Result<(), JitError> {
+    ) -> JITResult {
         self.emit_add_sub_reg_const(output, a, b, AddSub::Add)
     }
 
@@ -71,7 +74,7 @@ impl X86MogiJit {
         a: JIRSlice,
         b: u128,
         add_sub: AddSub,
-    ) -> Result<(), JitError> {
+    ) -> JITResult {
         let size = output.size();
         let a: u8 = self.load_slice_gp(a).into();
         let output: u8 = self.load_slice_gp(output).into();
@@ -121,7 +124,7 @@ impl X86MogiJit {
         output: JIRSlice,
         input_a: JIRValue,
         input_b: JIRValue,
-    ) -> Result<(), JitError> {
+    ) -> JITResult {
         debug_assert_eq!(output.size(), input_a.size());
         debug_assert_eq!(input_a.size(), input_b.size());
         let size = output.size();
@@ -180,7 +183,7 @@ impl X86MogiJit {
         output: JIRSlice,
         input_a: JIRConst,
         input_b: JIRSlice,
-    ) -> Result<(), JitError> {
+    ) -> JITResult {
         if output != input_b {
             // If the output register does not appear on the rhs, we can use it to load the constant
             // We use get_slice_gp here, since the value is overwritten anyway. No need to load here.
@@ -206,5 +209,50 @@ impl X86MogiJit {
             );
         }
         Ok(())
+    }
+
+    pub fn emit_multiply(
+        &mut self,
+        output: JIRSlice,
+        input_a: JIRValue,
+        input_b: JIRValue,
+    ) -> JITResult {
+        todo!()
+    }
+
+    pub fn emit_divide(
+        &mut self,
+        output: JIRSlice,
+        input_a: JIRValue,
+        input_b: JIRValue,
+    ) -> JITResult {
+        todo!()
+    }
+
+    pub fn emit_signed_divide(
+        &mut self,
+        output: JIRSlice,
+        input_a: JIRValue,
+        input_b: JIRValue,
+    ) -> JITResult {
+        todo!()
+    }
+
+    pub fn emit_remainder(
+        &mut self,
+        output: JIRSlice,
+        input_a: JIRValue,
+        input_b: JIRValue,
+    ) -> JITResult {
+        todo!()
+    }
+
+    pub fn emit_signed_remainder(
+        &mut self,
+        output: JIRSlice,
+        input_a: JIRValue,
+        input_b: JIRValue,
+    ) -> JITResult {
+        todo!()
     }
 }

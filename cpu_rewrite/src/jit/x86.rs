@@ -1,6 +1,7 @@
 #![allow(unused_variables)]
 //! The x86 JIT implementation can make use of all registers, except RBP, since RBP stores the cpu context.
 use crate::jit::api::{
+    JITResult,
     JITRuntimeContext,
     JitError,
     MogiJit,
@@ -14,13 +15,14 @@ use crate::jit::cache::{
 use bitvec::array::BitArray;
 use dynasmrt::x64::Assembler;
 use dynasmrt::{
-    dynasm,
     AssemblyOffset,
     DynasmApi,
     ExecutableBuffer,
+    dynasm,
 };
 use mogi_mem::mmu::MogiMMU;
 use mogi_mem::tlb::tlb::TLB;
+use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_sleigh::spec::jir::common::JIRSize;
 use mogi_sleigh::spec::jir::jcode::{
     JIRInstruction,
@@ -34,7 +36,6 @@ use mogi_sleigh::spec::jir::values::{
     JIRVarNodeId,
     VarNodeId,
 };
-use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_utilities::addresses::{
     EVAddr,
     EVAddress,
@@ -65,6 +66,8 @@ use tracing::{
 };
 
 mod emit;
+#[cfg(test)]
+mod test;
 
 macro_rules! assemble {
     ($asm:expr; $($t:tt)*) => {
@@ -442,11 +445,12 @@ impl X86MogiJit {
     pub fn new(
         processor_specification: Rc<RefCell<ProcessorSpecification>>,
         mmu: Rc<RefCell<MogiMMU>>,
+        debug: bool,
     ) -> Self {
         Self {
             processor_specification,
             unfinished_block: Default::default(),
-            jit_prelude: build_prelude().unwrap(),
+            jit_prelude: build_prelude(debug).unwrap(),
             jit_epilogue: build_epilogue().unwrap(),
             jit_cache: JitCache::new(),
             register_tracker: Default::default(),
@@ -461,7 +465,7 @@ impl X86MogiJit {
         &mut self,
         origin_block_address: EVAddr,
         target_address: *const u8,
-    ) -> Result<(), JitError> {
+    ) -> JITResult {
         // We need to take the block out of the cache, in order to modify it.
         let mut origin = self.jit_cache.take(origin_block_address)?;
         let Some(epilogue_offset) = origin.jmp_epilogue_offset else {
@@ -513,7 +517,7 @@ impl X86MogiJit {
     // fn emit_load_fast_path(
     //     &mut self,
     //     target_register: u8,
-    // ) -> Result<(), JitError> {
+    // ) -> JITResult {
     //     let block = self.current_block()?;
     //     dynasm!(block.assembler
     //         ; mov Rq(target_register), 0
@@ -578,7 +582,7 @@ impl X86MogiJit {
         &mut self,
         register: GPRegister,
         slice: JIRSlice,
-    ) -> Result<(), JitError> {
+    ) -> JITResult {
         let varnode_offset = X86JITRuntimeContext::varnode_offset(&*self.processor_specification.borrow(), slice);
         let assembler = &mut self.block_mut()?.assembler;
         // Emit the instruction that loads the varnode from the specified space in the context.
@@ -695,7 +699,7 @@ impl MogiJit for X86MogiJit {
     fn new_block(
         &mut self,
         evaddr: EVAddr,
-    ) -> Result<(), JitError> {
+    ) -> JITResult {
         if self.unfinished_block.is_some() {
             todo!("Return error: 'Tried to create new block without finalizing the previous block'")
         }
@@ -706,7 +710,7 @@ impl MogiJit for X86MogiJit {
     fn emit_jinst(
         &mut self,
         jinst: &JIRInstruction,
-    ) -> Result<(), JitError> {
+    ) -> JITResult {
         trace!("Emitting {jinst}");
         let output = jinst.output.ok_or(JitError::MissingOutput);
         let input_a = jinst.input_a.ok_or(JitError::MissingInput);
@@ -718,11 +722,11 @@ impl MogiJit for X86MogiJit {
             JIROperation::Store(_) => {}
             JIROperation::IntAdd => return self.emit_add(output?, input_a?, input_b?),
             JIROperation::IntSubtract => return self.emit_subtract(output?, input_a?, input_b?),
-            JIROperation::IntMul => {}
-            JIROperation::IntDiv => {}
-            JIROperation::IntSDiv => {}
-            JIROperation::IntRemainder => {}
-            JIROperation::IntSRemainder => {}
+            JIROperation::IntMul => return self.emit_multiply(output?, input_a?, input_b?),
+            JIROperation::IntDiv => return self.emit_divide(output?, input_a?, input_b?),
+            JIROperation::IntSDiv => return self.emit_signed_divide(output?, input_a?, input_b?),
+            JIROperation::IntRemainder => return self.emit_remainder(output?, input_a?, input_b?),
+            JIROperation::IntSRemainder => return self.emit_signed_remainder(output?, input_a?, input_b?),
             JIROperation::IntLeft => {}
             JIROperation::IntRight => {}
             JIROperation::IntSRight => {}
@@ -787,7 +791,7 @@ impl MogiJit for X86MogiJit {
         todo!()
     }
 
-    fn emit_flush_varnodes(&mut self) -> Result<(), JitError> {
+    fn emit_flush_varnodes(&mut self) -> JITResult {
         // Iterate over the loaded slices and flush them to memory
         // TODO: Do not insert flush instructions for dead registers.
         for (register, slice) in self.register_tracker.reset_gp().iter() {
@@ -815,11 +819,11 @@ impl MogiJit for X86MogiJit {
     //     address: Self::Value,
     //     offset: <Self::Value as JitValue>::Constant,
     //     value: Self::Value,
-    // ) -> Result<(), JitError> {
+    // ) -> JITResult {
     //     todo!()
     // }
 
-    // fn emit_ret(&mut self) -> Result<(), JitError> {
+    // fn emit_ret(&mut self) -> JITResult {
     //     let block = self.current_block()?;
     //     dynasm!(block.assembler
     //         ; ret
@@ -830,7 +834,7 @@ impl MogiJit for X86MogiJit {
     // fn emit_pop(
     //     &mut self,
     //     var: Self::Value,
-    // ) -> Result<(), JitError> {
+    // ) -> JITResult {
     //     // TODO: Every basic block has "outputs" and "inputs"
     //     //       "outputs" are simply variables that have been written to during the blocks execution.
     //     //       "inputs" are variables that are read from, before they are written to during the blocks execution.
@@ -851,7 +855,7 @@ impl MogiJit for X86MogiJit {
         &mut self,
         origin_block_address: EVAddr,
         target_block_address: EVAddr,
-    ) -> Result<(), JitError> {
+    ) -> JITResult {
         // This is safe, since we only relocate the target block if we need to update the code.
         // This requires unchaining the block, which will remove this address and replace it with
         // the epilogue.
@@ -863,7 +867,7 @@ impl MogiJit for X86MogiJit {
         self.chain_blocks_direct(origin_block_address, target_address)
     }
 
-    fn finalize_block(&mut self) -> Result<(), JitError> {
+    fn finalize_block(&mut self) -> JITResult {
         let Some(mut block) = self.unfinished_block.take() else {
             todo!("Return error: 'Cannot finalize because no block was started'")
         };
@@ -961,12 +965,15 @@ impl MogiJit for X86MogiJit {
 /// This function builds the jit prelude. It is a function that is called in order to enter the jited code.
 /// The prelude is called like a C function, and thus only callee saved registers need to be preserved inside
 /// the call. The Signature of the jit prelude function can be found here: [PreludeSignature]
-fn build_prelude() -> Result<ExecutableBuffer, JitError> {
+fn build_prelude(debug: bool) -> Result<ExecutableBuffer, JitError> {
     let mut asm = Assembler::new()?;
-    dynasm!(asm
-        // For debugging we break on jumping into the prelude.
-        // TODO: Make this configurable.
-        ; int1
+    if debug {
+        assemble!(asm;
+            // For debugging we break on jumping into the prelude.
+            ; int1
+        );
+    }
+    assemble!(asm;
         // See the System V ABI specification: https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf
         // Push callee saved registers onto stack
         ; push rbp

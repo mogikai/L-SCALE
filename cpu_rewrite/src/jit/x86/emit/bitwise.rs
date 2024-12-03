@@ -1,7 +1,10 @@
-use crate::jit::api::JitError;
+use crate::jit::api::{
+    JITResult,
+    JitError,
+};
 use crate::jit::x86::{
-    assemble,
     X86MogiJit,
+    assemble,
 };
 use mogi_sleigh::spec::jir::values::{
     JIRConst,
@@ -15,7 +18,7 @@ impl X86MogiJit {
         output: JIRSlice,
         input_a: JIRValue,
         input_b: JIRValue,
-    ) -> Result<(), JitError> {
+    ) -> JITResult {
         assert_eq!(input_a.size(), input_b.size());
         // TODO: It might make sense to directly put the memory reference into the instruction, instead of loading
         //       to a register first. However, this requires that we know if the value is used in subsequent instructions

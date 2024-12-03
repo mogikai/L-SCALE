@@ -15,3 +15,6 @@ clap = { version = "4.5.18", features = ["derive"] }
 bitvec = "1.0.1"
 num_enum = "0.7.3"
 num-traits = "0.2.19"
+
+[profile.test]
+opt-level = 3

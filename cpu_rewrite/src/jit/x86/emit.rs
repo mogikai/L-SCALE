@@ -1,10 +1,13 @@
 //! This module contains all the functions that are used to emit code for [JIRInstruction]s
 
-use crate::jit::api::JitError;
+use crate::jit::api::{
+    JITResult,
+    JitError,
+};
 use crate::jit::x86::{
-    assemble,
     GPRegister,
     X86MogiJit,
+    assemble,
 };
 use dynasmrt::dynasm;
 use mogi_sleigh::spec::jir::common::JIRSize;
@@ -39,7 +42,7 @@ impl X86MogiJit {
         &mut self,
         target: JIRSlice,
         source: JIRValue,
-    ) -> Result<(), JitError> {
+    ) -> JITResult {
         debug_assert_eq!(target.size(), source.size());
 
         let size = target.size();
@@ -64,7 +67,7 @@ impl X86MogiJit {
         &mut self,
         target_reg: GPRegister,
         slice: JIRSlice,
-    ) -> Result<(), JitError> {
+    ) -> JITResult {
         let size = slice.size();
         if size <= 8 {
             // TODO: It might make sense to be able to hint the gpr to load to for load_slice_gp.
@@ -90,7 +93,7 @@ impl X86MogiJit {
         &mut self,
         target_reg: GPRegister,
         value: JIRConst,
-    ) -> Result<(), JitError> {
+    ) -> JITResult {
         let size = value.size();
         let value = value.value();
         if value == 0 {
@@ -132,7 +135,7 @@ impl X86MogiJit {
         &mut self,
         target: GPRegister,
         size: JIRSize,
-    ) -> Result<(), JitError> {
+    ) -> JITResult {
         match size {
             1..=8 => {
                 // For now we just zero the entire register.
