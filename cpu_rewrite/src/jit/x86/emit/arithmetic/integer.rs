@@ -134,7 +134,7 @@ impl X86MogiJit {
                 let size = output.size();
                 self.emit_copy(
                     output,
-                    JIRConst::new((input_a.value() - input_b.value()) % (size * 8) as u128, size).into(),
+                    JIRConst::new((input_a.value() - input_b.value()) % (1u128 << (size * 8)), size).into(),
                 )?;
             }
             (JIRValue::Slice(input_a), JIRValue::Const(input_b)) => {
