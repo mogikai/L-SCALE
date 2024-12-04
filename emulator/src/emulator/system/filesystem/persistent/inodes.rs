@@ -128,7 +128,7 @@ impl Inodes {
         self.fse_ids.borrow_mut()[self.current_snap].insert(entry_id, Index::Deleted);
         let mut dir = self.most_recent_entry_mut(dir_id)?;
         match &mut dir.content {
-            Some(FSContent::Dir { ref mut entries }) => {
+            &mut Some(FSContent::Dir { ref mut entries }) => {
                 trace!("remove direntry {:?} from {:?}", name, dir_id);
                 entries.remove(&name).ok_or(FSError::Unknown)?;
                 trace!("after remove: content {:?}", self.content);
