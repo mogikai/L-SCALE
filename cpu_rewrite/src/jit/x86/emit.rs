@@ -47,6 +47,12 @@ impl X86MogiJit {
 
         let size = target.size();
 
+        if target == source {
+            // If target==source we just need to make sure the target is loaded.
+            self.load_slice_gp(target);
+            return Ok(());
+        }
+
         // Allocate and associate a GP register with the slice.
         // No load is needed, since we overwrite the data anyway for a copy.
         let target_reg = self.get_slice_gp(target);
