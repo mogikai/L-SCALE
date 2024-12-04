@@ -10,6 +10,7 @@ use crate::spec::jir::values::{
     JIRValue,
     VarNodeId,
 };
+use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::constructor::ConstructorId;
 use crate::spec::moir::table::TableId;
 use mogi_utilities::addresses::EVAddr;
@@ -94,13 +95,13 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
         resolver
             .define_ident(
                 self.specification.interner.lookup("vexVVVV_r32").unwrap(),
-                JIRValue::Slice(JIRSlice::new(VarNodeId::from(0), 0, 4)),
+                JIRValue::Slice(JIRSlice::new(VarNodeId::from(0), SpaceId::from(3), 0, 4)),
             )
             .expect("");
         resolver
             .define_ident(
                 self.specification.interner.lookup("rm32").unwrap(),
-                JIRValue::Slice(JIRSlice::new(VarNodeId::from(0), 0, 4)),
+                JIRValue::Slice(JIRSlice::new(VarNodeId::from(0), SpaceId::from(3), 0, 4)),
             )
             .expect("");
 
@@ -114,7 +115,7 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
         resolver3
             .define_ident(
                 self.specification.interner.lookup("reg32").unwrap(),
-                JIRValue::Slice(JIRSlice::new(VarNodeId::from(5), 0, 4)),
+                JIRValue::Slice(JIRSlice::new(VarNodeId::from(5), SpaceId::from(3), 0, 4)),
             )
             .expect("");
         resolver
@@ -139,7 +140,7 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
         resolver9
             .define_ident(
                 self.specification.interner.lookup("r32").unwrap(),
-                JIRValue::Slice(JIRSlice::new(VarNodeId::from(5), 0, 4)),
+                JIRValue::Slice(JIRSlice::new(VarNodeId::from(5), SpaceId::from(3), 0, 4)),
             )
             .expect("");
 
@@ -192,13 +193,13 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
         sub_resolver
             .define_ident(
                 self.specification.interner.lookup("reg32").unwrap(),
-                JIRValue::Slice(JIRSlice::new(VarNodeId::from(0), 0, 4)),
+                JIRValue::Slice(JIRSlice::new(VarNodeId::from(0), SpaceId::from(3), 0, 4)),
             )
             .expect("");
         sub_resolver
             .define_ident(
                 self.specification.interner.lookup("reg64").unwrap(),
-                JIRValue::Slice(JIRSlice::new(VarNodeId::from(0), 0, 8)),
+                JIRValue::Slice(JIRSlice::new(VarNodeId::from(0), SpaceId::from(3), 0, 8)),
             )
             .expect("");
         resolver

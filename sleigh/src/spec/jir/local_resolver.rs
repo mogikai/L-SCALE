@@ -107,9 +107,8 @@ impl<'a> JIRResolver<'a> {
             let MOIRMaybeSize::Determined(size) = temp.size else {
                 todo!("Generate error for undetermined temporary size")
             };
-            let temp_varnode = instruction_builder.alloc_temporary(size)?;
-            self.values
-                .insert(local, JIRValue::Slice(JIRSlice::new_temp(temp_varnode, 0, size)));
+            let tmp_slice = instruction_builder.alloc_temporary(size)?;
+            self.values.insert(local, tmp_slice.into());
         }
         Ok(())
     }
@@ -207,7 +206,8 @@ impl<'a> JIRResolver<'a> {
                 if self.values.contains_key(&local) {
                     todo!("Generate error for overridden varnode.")
                 }
-                JIRSlice::new(varnode_id, start, end).into()
+                let varnode = self.spec.varnode_slice_by_id(varnode_id)?;
+                JIRSlice::new(varnode_id, varnode.space_id, varnode.offset + start, end).into()
             }
             MOIRReference::Temporary(_) => match self.values.get(&local).copied() {
                 None => todo!("Generate error for unresolved temporary."),
@@ -271,7 +271,7 @@ impl<'a> JIRResolver<'a> {
                         // we need to insert a load instruction to resolve the first indirection to *addr
                         // The final load or store operation needs to be inserted by the instruction resolver,
                         // since only it knows whether we need a load or store instruction.
-                        let tmp = JIRSlice::new_temp(instruction_builder.alloc_temporary(size)?, 0, size);
+                        let tmp = instruction_builder.alloc_temporary(size)?;
                         instruction_builder.push_jir_instruction(jinst!(tmp = *[space]address))?;
                         // Create an rvalue
                         JIRValue::Slice(tmp)
@@ -306,13 +306,8 @@ impl<'a> JIRResolver<'a> {
         };
         match address {
             JIRValue::Slice(slice) => {
-                if let JIRVarNodeId::VarNode(id) = slice.varnode_id {
-                    // Interpret the offset + start as the constant value.
-                    let varnode = self.spec.varnode_by_id(id)?;
-                    Ok(Some(JIRConst::new((varnode.offset + u64::from(slice.start)).into(), size)))
-                } else {
-                    todo!("This should not happen.")
-                }
+                // Interpret the offset + start as the constant value.
+                Ok(Some(JIRConst::new(slice.offset.into(), size)))
             }
             JIRValue::Const(c) => Ok(Some(JIRConst::new(c.value(), size))),
         }

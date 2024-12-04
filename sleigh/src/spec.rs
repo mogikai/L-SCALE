@@ -128,7 +128,7 @@ impl ProcessorSpecification {
         self.symbol_tables.varnodes.get(*varnode_id)
     }
 
-    /// Lookup a varnode by its string identifier and return a slice to it.
+    /// Lookup a varnode by its string identifier and return a [JIRSlice] to it.
     /// This lookup is expensive.
     pub fn varnode_slice_by_string(
         &self,
@@ -140,7 +140,37 @@ impl ProcessorSpecification {
             return None;
         };
         let varnode = self.symbol_tables.varnodes.get(varnode_id)?;
-        Some(JIRSlice::new(varnode_id, 0, varnode.size))
+        Some(JIRSlice::new(
+            varnode_id,
+            varnode.space_id,
+            varnode
+                .offset
+                .try_into()
+                .expect("The address space needs to have been compressed at this point"),
+            varnode.size,
+        ))
+    }
+
+    /// Lookup a varnode by its id and return a slice to it.
+    pub fn varnode_slice_by_id(
+        &self,
+        id: VarNodeId,
+    ) -> ProcessorSpecResult<JIRSlice> {
+        self.symbol_tables
+            .varnodes
+            .get(id)
+            .ok_or(ProcessorSpecificationError::SymbolUndeclared(JIRSymbolId::VarNode(id)))
+            .map(|varnode| {
+                JIRSlice::new(
+                    id,
+                    varnode.space_id,
+                    varnode
+                        .offset
+                        .try_into()
+                        .expect("The address space needs to have been compressed at this point"),
+                    varnode.size,
+                )
+            })
     }
 
     /// Lookup a varnode id by its string identifier.
@@ -298,4 +328,6 @@ pub enum ProcessorSpecificationError {
     UndefinedBlock(JIRBlockId),
     #[error("The subtable could not be resolved to a constructor")]
     UnresolvedSubtable,
+    #[error("The temporary allocator ran out of space.")]
+    OutOfTempSpace,
 }

@@ -347,7 +347,7 @@ impl MOIRConstructor {
                             JIRValue::Const(_) => todo!("Generate error for const not allowed in output position"),
                         },
                         JIRResolvedValue::Reference { address, space, size } => {
-                            let tmp = JIRSlice::new_temp(instruction_builder.alloc_temporary(size)?, 0, size);
+                            let tmp = instruction_builder.alloc_temporary(size)?;
                             Ok((tmp, Some(jinst!(*[space]address = tmp))))
                         }
                     })

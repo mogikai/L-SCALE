@@ -101,20 +101,23 @@ impl TargetInstructionBuilder {
     pub fn alloc_temporary(
         &mut self,
         size: JIRSize,
-    ) -> ProcessorSpecResult<JIRTempId> {
+    ) -> ProcessorSpecResult<JIRSlice> {
         // TODO: Maybe it makes sense padding the varnodes to a specific byte boundary?
         // The offset of the new temporary is either the end of the last, or zero, if no other temps were allocated yet.
-        let offset = self
+        let offset: JIRSize = self
             .instruction
             .temporaries
             .last()
             .map(|v| v.end())
-            .unwrap_or(0);
-        Ok(self.instruction.temporaries.insert(JIRVarNode {
+            .unwrap_or(0)
+            .try_into()
+            .map_err(|e| ProcessorSpecificationError::OutOfTempSpace)?;
+        let id = self.instruction.temporaries.insert(JIRVarNode {
             space_id: self.temp_space,
-            offset,
+            offset: offset.into(),
             size,
-        }))
+        });
+        Ok(JIRSlice::new_temp(id, self.temp_space, offset, size))
     }
 
     /// Allocate a temporary of size `size` and load the contents at `address` in `space` to it.
@@ -126,7 +129,6 @@ impl TargetInstructionBuilder {
         size: JIRSize,
     ) -> ProcessorSpecResult<JIRSlice> {
         self.alloc_temporary(size).and_then(|tmp| {
-            let tmp = JIRSlice::new_temp(tmp, 0, size);
             self.push_jir_instruction(jinst!(tmp = *[space]address))
                 .and(Ok(tmp))
         })

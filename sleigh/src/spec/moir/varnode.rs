@@ -3,7 +3,6 @@ use crate::compiler::error::{
     InternalError,
     SliceError,
 };
-use crate::new_typed_index_table_id;
 use crate::spec::moir::MOIR_ADDRESS_SIZE;
 use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::common::MOIRSize;
@@ -15,6 +14,10 @@ use crate::spec::moir::scope::{
     MOIRTemporaryId,
 };
 use crate::spec::moir::table::TableId;
+use crate::{
+    new_typed_index_table_id,
+    new_typed_index_table_id_16,
+};
 use std::fmt::{
     Display,
     Formatter,
@@ -441,4 +444,4 @@ impl MOIRConst {
     }
 }
 
-new_typed_index_table_id! { pub struct VarNodeId; "V"; }
+new_typed_index_table_id_16! { pub struct VarNodeId; "V"; }

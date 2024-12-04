@@ -23,12 +23,14 @@ impl JIRVarNode {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct JIRSlice {
-    /// Slices referring to the same varnode may be mapped to the same host register for optimization purposes
-    /// I.e., it might make sense to only load the RAX varnode into a 64 bit register and then mark any
-    /// subsequent accesses to e.g. EAX as already loaded. This depends on the host architecture.
+    /// The varnode that is associated with this slice. The slice may refer to only a part of the varnode.
     pub varnode_id: JIRVarNodeId,
-    pub start: JIRSize,
-    pub end: JIRSize,
+    /// The space this slice is located in.
+    pub space_id: SpaceId,
+    /// The offset in the space where this slice is located.
+    pub offset: JIRSize,
+    /// The size of the slice in bytes.
+    pub size: JIRSize,
 }
 
 impl PartialEq<JIRValue> for JIRSlice {
@@ -126,30 +128,38 @@ impl JIRConst {
 impl JIRSlice {
     pub fn new(
         varnode_id: VarNodeId,
-        start: JIRSize,
-        end: JIRSize,
+        space_id: SpaceId,
+        offset: JIRSize,
+        size: JIRSize,
     ) -> Self {
         Self {
             varnode_id: JIRVarNodeId::VarNode(varnode_id),
-            start,
-            end,
+            space_id,
+            offset,
+            size,
         }
     }
 
     pub fn new_temp(
         temp_id: JIRTempId,
-        start: JIRSize,
-        end: JIRSize,
+        space_id: SpaceId,
+        offset: JIRSize,
+        size: JIRSize,
     ) -> Self {
         Self {
             varnode_id: JIRVarNodeId::Temp(temp_id),
-            start,
-            end,
+            space_id,
+            offset,
+            size,
         }
     }
 
     pub fn size(&self) -> JIRSize {
-        self.end - self.start
+        self.size
+    }
+
+    pub fn end(&self) -> JIRSize {
+        self.offset + self.size
     }
 }
 

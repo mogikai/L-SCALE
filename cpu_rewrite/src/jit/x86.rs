@@ -360,11 +360,15 @@ impl Space {
         &self,
         slice: JIRSlice,
     ) -> &[u8] {
-        match slice.varnode_id {
-            JIRVarNodeId::VarNode(_) => {}
-            JIRVarNodeId::Temp(_) => {}
-        }
-        todo!()
+        &self.0[slice.offset as usize..slice.end() as usize]
+    }
+
+    /// Get a mutable reference to the data referred to by the provided slice.
+    pub fn slice_mut(
+        &mut self,
+        slice: JIRSlice,
+    ) -> &mut [u8] {
+        &mut self.0[slice.offset as usize..slice.end() as usize]
     }
 
     /// Get a reference to the varnode data referred to by the provided varnode.
@@ -405,19 +409,14 @@ impl X86JITRuntimeContext {
         processor_specification: &ProcessorSpecification,
         slice: JIRSlice,
     ) -> usize {
-        let varnode = match slice.varnode_id {
-            JIRVarNodeId::VarNode(varnode) => processor_specification.varnode_by_id(varnode).unwrap(),
-            JIRVarNodeId::Temp(_) => todo!("Add temporary support"),
-        };
         // TODO: We need to either make sure in the spec generation, that space_id is in range, or
         //       perform some kind of mapping.
-        assert!(usize::from(varnode.space_id) < X86JITRuntimeContext::max_spaces());
-        trace!("Loading slice {slice:?} that refers to varnode {varnode:?} into GP register",);
+        assert!(usize::from(slice.space_id) < X86JITRuntimeContext::max_spaces());
+        trace!("Loading slice {slice:?} that refers to varnode {:?} into GP register", slice.varnode_id);
         // space = spaces[varnode.space_id]
-        let space_offset =
-            offset_of!(X86JITRuntimeContext, spaces) + usize::from(varnode.space_id) * size_of::<Space>();
-        // space[varnode.offset + slice.start]
-        space_offset + varnode.offset as usize + slice.start as usize
+        let space_offset = offset_of!(X86JITRuntimeContext, spaces) + usize::from(slice.space_id) * size_of::<Space>();
+        // space[slice.offset]
+        space_offset + slice.offset as usize
     }
 }
 
@@ -934,17 +933,7 @@ impl MogiJit for X86MogiJit {
         context: &'a Self::RuntimeContext,
         slice: JIRSlice,
     ) -> Result<&'a [u8], JitError> {
-        let spec = self.processor_specification.borrow();
-        match slice.varnode_id {
-            JIRVarNodeId::VarNode(varnode) => {
-                let varnode = spec.varnode_by_id(varnode).unwrap();
-                Ok(&context.spaces[usize::from(varnode.space_id)].varnode(varnode)
-                    [slice.start as usize..slice.end as usize])
-            }
-            JIRVarNodeId::Temp(temp) => {
-                todo!("Transform slices such that they directly contain the relevant offset and space id")
-            }
-        }
+        Ok(context.spaces[usize::from(slice.space_id)].slice(slice))
     }
 
     fn slice_mut<'a>(
@@ -952,17 +941,7 @@ impl MogiJit for X86MogiJit {
         context: &'a mut Self::RuntimeContext,
         slice: JIRSlice,
     ) -> Result<&'a mut [u8], JitError> {
-        let spec = self.processor_specification.borrow();
-        match slice.varnode_id {
-            JIRVarNodeId::VarNode(varnode) => {
-                let varnode = spec.varnode_by_id(varnode).unwrap();
-                Ok(&mut context.spaces[usize::from(varnode.space_id)].varnode_mut(varnode)
-                    [slice.start as usize..slice.end as usize])
-            }
-            JIRVarNodeId::Temp(temp) => {
-                todo!("Transform slices such that they directly contain the relevant offset and space id")
-            }
-        }
+        Ok(context.spaces[usize::from(slice.space_id)].slice_mut(slice))
     }
 }
 
