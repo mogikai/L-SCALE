@@ -39,7 +39,7 @@ impl X86MogiJit {
                 let a = a.value();
                 let b = b.value();
                 let size = output.size();
-                self.emit_copy(output, JIRConst::new((a + b) % (size * 8) as u128, size).into())?;
+                self.emit_copy(output, JIRConst::new((a + b) % (1u128 << (size * 8)), size).into())?;
             }
             // Addition is commutative, so we can simply swap a and b if one is const and the other is a varnode.
             (JIRValue::Const(b), JIRValue::Slice(a)) | (JIRValue::Slice(a), JIRValue::Const(b)) => {
