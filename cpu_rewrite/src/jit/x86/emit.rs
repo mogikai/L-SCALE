@@ -152,4 +152,26 @@ impl X86MogiJit {
         }
         Ok(())
     }
+
+    /// Emits instructions to load the input values into registers.
+    /// If the output appears on the rhs, then the output register is simply reused.
+    /// If the output does not appear on the rhs, then one of the inputs is copied into
+    /// the output, since most x86 instructions require that one of the operands is also the output.
+    fn load_commutative_inputs(
+        &mut self,
+        output: JIRSlice,
+        input_a: JIRSlice,
+        input_b: JIRSlice,
+    ) -> Result<(GPRegister, GPRegister), JitError> {
+        let (target_gp, operand_gp) = if output == input_a {
+            (self.load_slice_gp(input_a), self.load_slice_gp(input_b))
+        } else if output == input_b {
+            (self.load_slice_gp(input_b), self.load_slice_gp(input_a))
+        } else {
+            // Copy one of the operands to the output and then do the and operation
+            self.emit_copy(output, input_a.into())?;
+            (self.load_slice_gp(output), self.load_slice_gp(input_b))
+        };
+        Ok((target_gp, operand_gp))
+    }
 }

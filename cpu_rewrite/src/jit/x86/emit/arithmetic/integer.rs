@@ -217,7 +217,19 @@ impl X86MogiJit {
         input_a: JIRValue,
         input_b: JIRValue,
     ) -> JITResult {
-        todo!()
+        self.load_slice_gp(output);
+        match (input_a, input_b) {
+            (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
+                let (target_gp, operand_gp) = self.load_commutative_inputs(output, input_a, input_b)?;
+                assemble!(self.block_mut()?.assembler;
+                    ; imul Rq(target_gp as u8), Rq(operand_gp as u8)
+                );
+            }
+            (_, _) => {
+                todo!()
+            }
+        }
+        Ok(())
     }
 
     pub fn emit_divide(

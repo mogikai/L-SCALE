@@ -1,4 +1,5 @@
 mod add;
+mod multiply;
 
 use crate::jit::api::MogiJit;
 use crate::jit::x86::X86MogiJit;
