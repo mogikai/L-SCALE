@@ -1,7 +1,7 @@
 use crate::jit::x86::test::{
     exec_instructions,
     get_reg_slice,
-    get_slice_value,
+    get_slice_value_by_name,
     set_slice,
     setup,
 };
@@ -25,15 +25,15 @@ fn test_multiply_slice_slice() {
         jinst!(result = r8 * r9),
     ];
     exec_instructions(&mut jit, &mut context, &instructions);
-    let eax: u32 = get_slice_value(&jit, &context, &processor_spec, "EAX");
+    let eax: u32 = get_slice_value_by_name(&jit, &context, &processor_spec, "EAX");
 
     // Assert the overflow is correct
     let expected = 5894373u32.wrapping_mul(6427245u32);
     assert_eq!(eax, expected);
 
     // Check that r8 and r9 have not been touched
-    let r8: u32 = get_slice_value(&jit, &context, &processor_spec, "R8D");
-    let r9: u32 = get_slice_value(&jit, &context, &processor_spec, "R9D");
+    let r8: u32 = get_slice_value_by_name(&jit, &context, &processor_spec, "R8D");
+    let r9: u32 = get_slice_value_by_name(&jit, &context, &processor_spec, "R9D");
     assert_eq!(r8, 5894373u32);
     assert_eq!(r9, 6427245u32);
 }
@@ -55,15 +55,15 @@ fn test_multiply_signed_slice_slice() {
         jinst!(result = r8 * r9),
     ];
     exec_instructions(&mut jit, &mut context, &instructions);
-    let eax: i32 = get_slice_value(&jit, &context, &processor_spec, "EAX");
+    let eax: i32 = get_slice_value_by_name(&jit, &context, &processor_spec, "EAX");
 
     // Assert the overflow is correct
     let expected = 58373i32.wrapping_mul(-917245i32);
     assert_eq!(eax, expected);
 
     // Check that r8 and r9 have not been touched
-    let r8: i32 = get_slice_value(&jit, &context, &processor_spec, "R8D");
-    let r9: i32 = get_slice_value(&jit, &context, &processor_spec, "R9D");
+    let r8: i32 = get_slice_value_by_name(&jit, &context, &processor_spec, "R8D");
+    let r9: i32 = get_slice_value_by_name(&jit, &context, &processor_spec, "R9D");
     assert_eq!(r8, 58373i32);
     assert_eq!(r9, -917245i32);
 }
@@ -78,7 +78,7 @@ fn test_multiply_const_const() {
         jinst!(result = 3848432476u32 * 687485432u32),
     ];
     exec_instructions(&mut jit, &mut context, &instructions);
-    let eax: u32 = get_slice_value(&jit, &context, &processor_spec, "EAX");
+    let eax: u32 = get_slice_value_by_name(&jit, &context, &processor_spec, "EAX");
 
     // Assert the overflow is correct
     let expected = 3848432476u32.overflowing_mul(687485432u32).0;
@@ -95,7 +95,7 @@ fn test_multiply_signed_const_const() {
         jinst!(result = { -384876i32 } * { -48535432i32 }),
     ];
     exec_instructions(&mut jit, &mut context, &instructions);
-    let eax: i32 = get_slice_value(&jit, &context, &processor_spec, "EAX");
+    let eax: i32 = get_slice_value_by_name(&jit, &context, &processor_spec, "EAX");
 
     // Assert the overflow is correct
     let expected = -384876i32.wrapping_mul(-48535432i32);

@@ -78,14 +78,13 @@ impl X86MogiJit {
         let size = output.size();
         let a: u8 = self.load_slice_gp(a).into();
         let output: u8 = self.load_slice_gp(output).into();
-        let block = self.block_mut()?;
         if b < i8::MAX as u128 {
             // Use byte sized displacement for operands that fit into one byte.
             let mut b = b as i8;
             if let AddSub::Sub = add_sub {
                 b = -b;
             }
-            assemble!(block.assembler;
+            assemble!(self.block_mut()?.assembler;
                 ; lea Rq(output), [BYTE Rq(a) + b]
             );
         } else if b < i32::MAX as u128 {
@@ -94,24 +93,24 @@ impl X86MogiJit {
             if let AddSub::Sub = add_sub {
                 b = -b;
             }
-            assemble!(block.assembler;
+            assemble!(self.block_mut()?.assembler;
                 ; lea Rq(output), [Rq(a) + b]
             );
         } else if b < u64::MAX as u128 && size <= 8 {
             // If b is > i32::MAX, it is not possible to encode the operand as displacement for
             // a lea instruction, since the displacement can be at most 32 bits.
 
-            // RAX is reserved for temporary use, so we can use it here.
-            // Use mov to load the 64 bit immediate, since it is
+            // Use mov to load the 64 bit immediate into a temp register, since it is
             // the only instruction that supports a 64 bit immediate value.
             let mut b = b as i128;
             if let AddSub::Sub = add_sub {
                 b = -b;
             }
-            assemble!(block.assembler;
-                ;; mov64!(block.assembler; output, a)
-                ; mov rax, QWORD b as _
-                ; add Rq(output), rax
+            let tmp = self.get_temp_gp();
+            assemble!(self.block_mut()?.assembler;
+                ;; mov64!(self.block_mut()?.assembler; output, a)
+                ; mov Rq(tmp as u8), QWORD b as _
+                ; add Rq(output), Rq(tmp as u8)
             );
         } else {
             todo!("Immediates > u64::MAX currently unsupported")

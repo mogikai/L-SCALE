@@ -2,7 +2,7 @@
 use crate::jit::x86::test::{
     exec_instructions,
     get_reg_slice,
-    get_slice_value,
+    get_slice_value_by_name,
     set_slice,
     setup,
 };
@@ -25,8 +25,8 @@ fn test_add_overflow_slice_slice() {
         jinst!(result = r8 + r9),
     ];
     exec_instructions(&mut jit, &mut context, &instructions);
-    let al: u8 = get_slice_value(&jit, &context, &processor_spec, "AL");
-    let eax: u32 = get_slice_value(&jit, &context, &processor_spec, "EAX");
+    let al: u8 = get_slice_value_by_name(&jit, &context, &processor_spec, "AL");
+    let eax: u32 = get_slice_value_by_name(&jit, &context, &processor_spec, "EAX");
 
     // Assert the overflow is correct
     let overflowed = 255u8.overflowing_add(5u8).0;
@@ -37,8 +37,8 @@ fn test_add_overflow_slice_slice() {
     assert_eq!(eax, overflowed_32);
 
     // Check that r8 and r9 have not been touched
-    let r8: u8 = get_slice_value(&jit, &context, &processor_spec, "R8B");
-    let r9: u8 = get_slice_value(&jit, &context, &processor_spec, "R9B");
+    let r8: u8 = get_slice_value_by_name(&jit, &context, &processor_spec, "R8B");
+    let r9: u8 = get_slice_value_by_name(&jit, &context, &processor_spec, "R9B");
     assert_eq!(r8, 255u8);
     assert_eq!(r9, 5u8);
 }
@@ -58,8 +58,8 @@ fn test_add_overflow_slice_const() {
         jinst!(result = r8 + 5u8),
     ];
     exec_instructions(&mut jit, &mut context, &instructions);
-    let al: u8 = get_slice_value(&jit, &context, &processor_spec, "AL");
-    let eax: u32 = get_slice_value(&jit, &context, &processor_spec, "EAX");
+    let al: u8 = get_slice_value_by_name(&jit, &context, &processor_spec, "AL");
+    let eax: u32 = get_slice_value_by_name(&jit, &context, &processor_spec, "EAX");
 
     // Assert the overflow is correct
     let overflowed = 255u8.overflowing_add(5u8).0;
@@ -70,7 +70,7 @@ fn test_add_overflow_slice_const() {
     assert_eq!(eax, overflowed_32);
 
     // Check that r8 has not been touched
-    let r8: u8 = get_slice_value(&jit, &context, &processor_spec, "R8B");
+    let r8: u8 = get_slice_value_by_name(&jit, &context, &processor_spec, "R8B");
     assert_eq!(r8, 255u8);
 }
 
@@ -89,8 +89,8 @@ fn test_add_overflow_const_slice() {
         jinst!(result = 255u8 + r9),
     ];
     exec_instructions(&mut jit, &mut context, &instructions);
-    let al: u8 = get_slice_value(&jit, &context, &processor_spec, "AL");
-    let eax: u32 = get_slice_value(&jit, &context, &processor_spec, "EAX");
+    let al: u8 = get_slice_value_by_name(&jit, &context, &processor_spec, "AL");
+    let eax: u32 = get_slice_value_by_name(&jit, &context, &processor_spec, "EAX");
 
     // Assert the overflow is correct
     let overflowed = 255u8.overflowing_add(5u8).0;
@@ -101,7 +101,7 @@ fn test_add_overflow_const_slice() {
     assert_eq!(eax, overflowed_32);
 
     // Check that r9 has not been touched
-    let r9: u8 = get_slice_value(&jit, &context, &processor_spec, "R9B");
+    let r9: u8 = get_slice_value_by_name(&jit, &context, &processor_spec, "R9B");
     assert_eq!(r9, 5u8);
 }
 
@@ -117,8 +117,8 @@ fn test_add_overflow_const_const() {
         jinst!(result = 255u8 + 5u8),
     ];
     exec_instructions(&mut jit, &mut context, &instructions);
-    let al: u8 = get_slice_value(&jit, &context, &processor_spec, "AL");
-    let eax: u32 = get_slice_value(&jit, &context, &processor_spec, "EAX");
+    let al: u8 = get_slice_value_by_name(&jit, &context, &processor_spec, "AL");
+    let eax: u32 = get_slice_value_by_name(&jit, &context, &processor_spec, "EAX");
 
     // Assert the overflow is correct
     let overflowed = 255u8.overflowing_add(5u8).0;
