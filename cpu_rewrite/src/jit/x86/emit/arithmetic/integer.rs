@@ -219,6 +219,13 @@ impl X86MogiJit {
     ) -> JITResult {
         self.load_slice_gp(output);
         match (input_a, input_b) {
+            (JIRValue::Const(input_a), JIRValue::Const(input_b)) => {
+                let size = output.size();
+                self.emit_copy(
+                    output,
+                    JIRConst::new(input_a.value().wrapping_mul(input_b.value()) % (1u128 << (size * 8)), size).into(),
+                )?;
+            }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
                 let (target_gp, operand_gp) = self.load_commutative_inputs(output, input_a, input_b)?;
                 assemble!(self.block_mut()?.assembler;
