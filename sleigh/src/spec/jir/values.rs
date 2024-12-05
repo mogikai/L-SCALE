@@ -154,10 +154,12 @@ impl JIRSlice {
         }
     }
 
+    #[inline]
     pub fn size(&self) -> JIRSize {
         self.size
     }
 
+    #[inline]
     pub fn end(&self) -> JIRSize {
         self.offset + self.size
     }

@@ -38,6 +38,7 @@ use mov64;
 
 impl X86MogiJit {
     /// Emit instructions to copy the source [JIRValue] into the target [JIRSlice].
+    #[inline]
     pub fn emit_copy(
         &mut self,
         target: JIRSlice,
@@ -70,6 +71,7 @@ impl X86MogiJit {
 
     /// Load the [JIRSlice] `slice` into the [GPRegister] `target_reg`.
     /// If the slice is already loaded in `target_reg` this emits nothing.
+    #[inline]
     fn emit_load_slice_to_gpr(
         &mut self,
         target_reg: GPRegister,
@@ -96,6 +98,7 @@ impl X86MogiJit {
     }
 
     /// Emit an instruction that loads the provided constant into the provided target gp register.
+    #[inline]
     fn emit_load_const_to_gpr(
         &mut self,
         target_reg: GPRegister,
@@ -138,6 +141,7 @@ impl X86MogiJit {
 
     /// Emit instructions to zero out the target register.
     /// Uses the size to determine the best instruction encoding.
+    #[inline]
     fn emit_zero_gpr(
         &mut self,
         target: GPRegister,
@@ -164,6 +168,7 @@ impl X86MogiJit {
     /// If the output appears on the rhs, then the output register is simply reused.
     /// If the output does not appear on the rhs, then one of the inputs is copied into
     /// the output, since most x86 instructions require that one of the operands is also the output.
+    #[inline]
     fn load_commutative_inputs(
         &mut self,
         output: JIRSlice,

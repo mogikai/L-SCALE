@@ -14,6 +14,7 @@ use mogi_sleigh::spec::jir::values::{
 use std::cmp::min;
 
 impl X86MogiJit {
+    #[inline]
     pub fn emit_multiply(
         &mut self,
         output: JIRSlice,
@@ -36,6 +37,7 @@ impl X86MogiJit {
         Ok(())
     }
 
+    #[inline]
     fn emit_multiply_const_const(
         &mut self,
         output: JIRSlice,
@@ -50,6 +52,7 @@ impl X86MogiJit {
         Ok(())
     }
 
+    #[inline]
     fn emit_multiply_slice_const(
         &mut self,
         output: JIRSlice,
@@ -110,6 +113,7 @@ impl X86MogiJit {
         Ok(())
     }
 
+    #[inline]
     fn emit_multiply_slice_slice(
         &mut self,
         output: JIRSlice,

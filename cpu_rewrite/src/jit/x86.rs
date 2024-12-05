@@ -532,6 +532,7 @@ impl X86MogiJit {
     /// If the slice is already loaded, the register is returned.
     /// Otherwise, code is emitted that loads the slice into a free register,
     /// which is then returned.
+    #[inline]
     fn load_slice_gpr(
         &mut self,
         slice: JIRSlice,
@@ -624,6 +625,7 @@ impl X86MogiJit {
     /// it should only be used to get registers that are written to, since the value
     /// is irrelevant for those.
     #[must_use]
+    #[inline]
     fn get_slice_gp(
         &mut self,
         slice: JIRSlice,
@@ -677,10 +679,12 @@ impl X86MogiJit {
     }
 
     /// Return the temporary [GPRegister].
+    #[inline]
     fn get_temp_gpr(&self) -> GPRegister {
         GPRegister::A
     }
 
+    #[inline]
     fn block_mut(&mut self) -> Result<&mut UnfinishedBasicBlock, JitError> {
         self.unfinished_block
             .as_mut()
