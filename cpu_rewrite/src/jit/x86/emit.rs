@@ -41,15 +41,16 @@ impl X86MogiJit {
     pub fn emit_copy(
         &mut self,
         target: JIRSlice,
-        source: JIRValue,
+        source: impl Into<JIRValue>,
     ) -> JITResult {
+        let source = source.into();
         debug_assert_eq!(target.size(), source.size());
 
         let size = target.size();
 
         if target == source {
             // If target==source we just need to make sure the target is loaded.
-            self.load_slice_gp(target);
+            self.load_slice_gpr(target);
             return Ok(());
         }
 
@@ -80,7 +81,7 @@ impl X86MogiJit {
             //       We could omit a few mov instructions in some cases that way.
             //       I.e. if the slice is not loaded yet, use the provided hint, and otherwise
             //       we just return the gpr to which the slice was already loaded.
-            let reg = self.load_slice_gp(slice);
+            let reg = self.load_slice_gpr(slice);
             let block = self.block_mut()?;
             // Only emit a copy instruction, if the slice was loaded into a different register.
             if reg != target_reg {
@@ -170,13 +171,13 @@ impl X86MogiJit {
         input_b: JIRSlice,
     ) -> Result<(GPRegister, GPRegister), JitError> {
         let (target_gp, operand_gp) = if output == input_a {
-            (self.load_slice_gp(input_a), self.load_slice_gp(input_b))
+            (self.load_slice_gpr(input_a), self.load_slice_gpr(input_b))
         } else if output == input_b {
-            (self.load_slice_gp(input_b), self.load_slice_gp(input_a))
+            (self.load_slice_gpr(input_b), self.load_slice_gpr(input_a))
         } else {
             // Copy one of the operands to the output and then do the and operation
-            self.emit_copy(output, input_a.into())?;
-            (self.load_slice_gp(output), self.load_slice_gp(input_b))
+            self.emit_copy(output, input_a)?;
+            (self.load_slice_gpr(output), self.load_slice_gpr(input_b))
         };
         Ok((target_gp, operand_gp))
     }

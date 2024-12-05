@@ -7,7 +7,7 @@ use std::ops::BitAnd;
 
 #[test]
 fn test_bitand_slice_slice() {
-    let (mut jit, processor_spec, mut context) = setup();
+    let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_instruction_generic(
         &processor_spec,
         &mut jit,
@@ -23,7 +23,7 @@ fn test_bitand_slice_slice() {
 
 #[test]
 fn test_bitand_slice_const_byte() {
-    let (mut jit, processor_spec, mut context) = setup();
+    let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_instruction_generic(
         &processor_spec,
         &mut jit,
@@ -61,7 +61,7 @@ fn test_bitand_slice_const_byte() {
 
 #[test]
 fn test_bitand_slice_const_qword() {
-    let (mut jit, processor_spec, mut context) = setup();
+    let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_instruction_generic(
         &processor_spec,
         &mut jit,

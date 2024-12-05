@@ -14,6 +14,7 @@ use mogi_sleigh::spec::jir::values::{
     JIRSlice,
     JIRValue,
 };
+use std::cmp::min;
 use tracing::trace;
 
 enum AddSub {
@@ -39,16 +40,16 @@ impl X86MogiJit {
                 let a = a.value();
                 let b = b.value();
                 let size = output.size();
-                self.emit_copy(output, JIRConst::new((a + b) % (1u128 << (size * 8)), size).into())?;
+                self.emit_copy(output, JIRConst::new((a + b) % (1u128 << (size * 8)), size))?;
             }
             // Addition is commutative, so we can simply swap a and b if one is const and the other is a varnode.
             (JIRValue::Const(b), JIRValue::Slice(a)) | (JIRValue::Slice(a), JIRValue::Const(b)) => {
                 self.emit_add_reg_const(output, a, b.value())?;
             }
             (JIRValue::Slice(a), JIRValue::Slice(b)) => {
-                let a: u8 = self.load_slice_gp(a).into();
-                let b: u8 = self.load_slice_gp(b).into();
-                let output: u8 = self.load_slice_gp(output).into();
+                let a: u8 = self.load_slice_gpr(a).into();
+                let b: u8 = self.load_slice_gpr(b).into();
+                let output: u8 = self.load_slice_gpr(output).into();
                 let block = self.block_mut()?;
                 assemble!(block.assembler;
                     ; lea Rq(output), [Rq(a) + Rq(b)]
@@ -76,8 +77,8 @@ impl X86MogiJit {
         add_sub: AddSub,
     ) -> JITResult {
         let size = output.size();
-        let a: u8 = self.load_slice_gp(a).into();
-        let output: u8 = self.load_slice_gp(output).into();
+        let a: u8 = self.load_slice_gpr(a).into();
+        let output: u8 = self.load_slice_gpr(output).into();
         if b < i8::MAX as u128 {
             // Use byte sized displacement for operands that fit into one byte.
             let mut b = b as i8;
@@ -106,7 +107,7 @@ impl X86MogiJit {
             if let AddSub::Sub = add_sub {
                 b = -b;
             }
-            let tmp = self.get_temp_gp();
+            let tmp = self.get_temp_gpr();
             assemble!(self.block_mut()?.assembler;
                 ;; mov64!(self.block_mut()?.assembler; output, a)
                 ; mov Rq(tmp as u8), QWORD b as _
@@ -133,7 +134,7 @@ impl X86MogiJit {
                 let size = output.size();
                 self.emit_copy(
                     output,
-                    JIRConst::new((input_a.value() - input_b.value()) % (1u128 << (size * 8)), size).into(),
+                    JIRConst::new((input_a.value() - input_b.value()) % (1u128 << (size * 8)), size),
                 )?;
             }
             (JIRValue::Slice(input_a), JIRValue::Const(input_b)) => {
@@ -145,13 +146,13 @@ impl X86MogiJit {
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
                 if input_a == input_b {
                     // A-A = 0, so we can just zero out the output.
-                    self.emit_copy(output, JIRConst::new(0, size).into())?;
+                    self.emit_copy(output, JIRConst::new(0, size))?;
                 } else if output == input_b {
-                    let temp_gp = self.get_temp_gp();
+                    let temp_gp = self.get_temp_gpr();
                     // Move output=input_b to a temporary register.
                     self.emit_load_slice_to_gpr(temp_gp, output)?;
                     // Move input_a to output (possibly loading the slice if it is still unloaded)
-                    self.emit_copy(output, input_a.into())?;
+                    self.emit_copy(output, input_a)?;
                     // Get the output gp register (it is loaded, since we just copied to it).
                     let output_gp = self.get_slice_gp(output);
                     // Subtract input_b=output ,which is stored in the temporary register, from the output (output=input_a).
@@ -161,10 +162,10 @@ impl X86MogiJit {
                 } else {
                     // Copy input_a into output. If output == input_a we can just load output.
                     if output != input_a {
-                        self.emit_copy(output, input_b.into())?;
+                        self.emit_copy(output, input_b)?;
                     };
-                    let output_gp = self.load_slice_gp(output);
-                    let input_b_gp = self.load_slice_gp(input_b);
+                    let output_gp = self.load_slice_gpr(output);
+                    let input_b_gp = self.load_slice_gpr(input_b);
                     // We can just subtract from output
                     assemble!(self.block_mut()?.assembler;
                         ; sub Rq(output_gp as u8), Rq(input_b_gp as u8)
@@ -187,19 +188,19 @@ impl X86MogiJit {
             // If the output register does not appear on the rhs, we can use it to load the constant
             // We use get_slice_gp here, since the value is overwritten anyway. No need to load here.
             let output_gp = self.get_slice_gp(output);
-            let input_b_gp = self.load_slice_gp(input_b);
+            let input_b_gp = self.load_slice_gpr(input_b);
             self.emit_load_const_to_gpr(output_gp, input_a)?;
             // and then just subtract the operand register from the constant in the output register.
             assemble!(self.block_mut()?.assembler;
                 ; sub Rq(output_gp as u8), Rq(input_b_gp as u8)
             );
         } else {
-            let temp_gp = self.get_temp_gp();
+            let temp_gp = self.get_temp_gpr();
             // Output appears on rhs (out = const - out)
             // Move the output into a temporary register
             self.emit_load_slice_to_gpr(temp_gp, output)?;
             // Load the constant into the output
-            self.emit_copy(output, input_a.into())?;
+            self.emit_copy(output, input_a)?;
             // Get the output gp register.
             let output_gp = self.get_slice_gp(output);
             // Subtract input_b=output ,which is stored in the temporary register, from the output (output=const).
@@ -216,25 +217,106 @@ impl X86MogiJit {
         input_a: JIRValue,
         input_b: JIRValue,
     ) -> JITResult {
-        self.load_slice_gp(output);
         match (input_a, input_b) {
             (JIRValue::Const(input_a), JIRValue::Const(input_b)) => {
-                let size = output.size();
-                self.emit_copy(
-                    output,
-                    JIRConst::new(input_a.value().wrapping_mul(input_b.value()) % (1u128 << (size * 8)), size).into(),
-                )?;
+                self.emit_multiply_const_const(output, input_a, input_b)?;
+            }
+            (JIRValue::Slice(input_a), JIRValue::Const(input_b))
+            | (JIRValue::Const(input_b), JIRValue::Slice(input_a)) => {
+                // Since multiplication is commutative, we can just swap the slice and const arguments
+                self.emit_multiply_slice_const(output, input_a, input_b)?;
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
-                let (target_gp, operand_gp) = self.load_commutative_inputs(output, input_a, input_b)?;
-                assemble!(self.block_mut()?.assembler;
-                    ; imul Rq(target_gp as u8), Rq(operand_gp as u8)
-                );
-            }
-            (_, _) => {
-                todo!()
+                self.emit_multiply_slice_slice(output, input_a, input_b)?;
             }
         }
+        Ok(())
+    }
+
+    fn emit_multiply_const_const(
+        &mut self,
+        output: JIRSlice,
+        input_a: JIRConst,
+        input_b: JIRConst,
+    ) -> Result<(), JitError> {
+        let size = output.size();
+        self.emit_copy(
+            output,
+            JIRConst::new(input_a.value().wrapping_mul(input_b.value()) % (1u128 << (size * 8)), size),
+        )?;
+        Ok(())
+    }
+
+    fn emit_multiply_slice_const(
+        &mut self,
+        output: JIRSlice,
+        input_a: JIRSlice,
+        input_b: JIRConst,
+    ) -> Result<(), JitError> {
+        if input_b.value() == 0 {
+            // We can just zero the target, since multiplying by zero always results in zero.
+            self.emit_copy(output, input_b)?;
+            return Ok(());
+        }
+        // The size in bytes needed for the immediate
+        let imm_size = min((u128::BITS - input_b.value().leading_zeros() + 7) / 8, input_b.size().into());
+        match imm_size {
+            1 => {
+                // We can encode the constant as immediate if it fits into at most 4  bytes.
+                let output_gp = self.load_slice_gpr(output);
+                let input_a_gp = self.load_slice_gpr(input_a);
+                let immediate = input_b.value();
+                assemble!(self.block_mut()?.assembler;
+                    ; imul Rq(output_gp as u8), Rq(input_a_gp as u8), BYTE immediate as _
+                );
+            }
+            2 => {
+                // We can encode the constant as immediate if it fits into at most 4  bytes.
+                let output_gp = self.load_slice_gpr(output);
+                let input_a_gp = self.load_slice_gpr(input_a);
+                let immediate = input_b.value();
+                assemble!(self.block_mut()?.assembler;
+                    ; imul Rq(output_gp as u8), Rq(input_a_gp as u8), WORD immediate as _
+                );
+            }
+            3..=4 => {
+                // We can encode the constant as immediate if it fits into at most 4  bytes.
+                let output_gp = self.load_slice_gpr(output);
+                let input_a_gp = self.load_slice_gpr(input_a);
+                let immediate = input_b.value();
+                assemble!(self.block_mut()?.assembler;
+                    ; imul Rq(output_gp as u8), Rq(input_a_gp as u8), DWORD immediate as _
+                );
+            }
+            5..=8 => {
+                // We need to copy the input to the output, since imul reg, reg uses the first argument as
+                // input and output argument.
+                self.emit_copy(output, input_a)?;
+                let output_gpr = self.load_slice_gpr(output);
+                let temp_gpr = self.get_temp_gpr();
+                self.emit_load_const_to_gpr(temp_gpr, input_b)?;
+
+                assemble!(self.block_mut()?.assembler;
+                    ; imul Rq(output_gpr as u8), Rq(temp_gpr as u8)
+                );
+            }
+            _ => {
+                todo!("Currently unsupported size for multiply: {}", input_b.size())
+            }
+        }
+        Ok(())
+    }
+
+    fn emit_multiply_slice_slice(
+        &mut self,
+        output: JIRSlice,
+        input_a: JIRSlice,
+        input_b: JIRSlice,
+    ) -> Result<(), JitError> {
+        let (target_gp, operand_gp) = self.load_commutative_inputs(output, input_a, input_b)?;
+        assemble!(self.block_mut()?.assembler;
+            ; imul Rq(target_gp as u8), Rq(operand_gp as u8)
+        );
         Ok(())
     }
 

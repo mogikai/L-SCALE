@@ -4,13 +4,16 @@ use crate::jit::x86::test::{
     get_slice_value_by_name,
     set_slice,
     setup,
+    test_instruction_generic,
+    test_multiple_instruction_generic,
 };
 use bitvec::macros::internal::funty::Integral;
 use mogi_sleigh::jinst;
+use num_traits::WrappingMul;
 
 #[test]
 fn test_multiply_slice_slice() {
-    let (mut jit, processor_spec, mut context) = setup();
+    let (mut jit, processor_spec, mut context) = setup(false);
     let r8 = get_reg_slice(&processor_spec, "R8D");
     let r9 = get_reg_slice(&processor_spec, "R9D");
     let eax = get_reg_slice(&processor_spec, "EAX");
@@ -39,38 +42,46 @@ fn test_multiply_slice_slice() {
 }
 
 #[test]
-fn test_multiply_signed_slice_slice() {
-    let (mut jit, processor_spec, mut context) = setup();
-    let r8 = get_reg_slice(&processor_spec, "R8D");
-    let r9 = get_reg_slice(&processor_spec, "R9D");
-    let eax = get_reg_slice(&processor_spec, "EAX");
-    set_slice(&jit, &mut context, eax, 0x41414141u32);
-    let result = get_reg_slice(&processor_spec, "EAX");
-
-    set_slice(&jit, &mut context, r8, 58373i32);
-    set_slice(&jit, &mut context, r9, -917245i32);
-
-    let instructions = vec![
-        //
-        jinst!(result = r8 * r9),
-    ];
-    exec_instructions(&mut jit, &mut context, &instructions);
-    let eax: i32 = get_slice_value_by_name(&jit, &context, &processor_spec, "EAX");
-
-    // Assert the overflow is correct
-    let expected = 58373i32.wrapping_mul(-917245i32);
-    assert_eq!(eax, expected);
-
-    // Check that r8 and r9 have not been touched
-    let r8: i32 = get_slice_value_by_name(&jit, &context, &processor_spec, "R8D");
-    let r9: i32 = get_slice_value_by_name(&jit, &context, &processor_spec, "R9D");
-    assert_eq!(r8, 58373i32);
-    assert_eq!(r9, -917245i32);
+fn test_multiply_signed_slice_slice_multiple() {
+    let (mut jit, processor_spec, mut context) = setup(false);
+    test_multiple_instruction_generic(
+        &processor_spec,
+        &mut jit,
+        &mut context,
+        |result, a, b, _, _| (jinst!(result = a * b), result),
+        |a, b| a.wrapping_mul(b),
+        (i32::MIN..i32::MAX).step_by(1 << 26),
+        "EAX",
+        "EBX",
+        "ECX",
+    );
+    test_multiple_instruction_generic(
+        &processor_spec,
+        &mut jit,
+        &mut context,
+        |_, a, b, _, _| (jinst!(a = a * b), a),
+        |a, b| a.wrapping_mul(b),
+        (i32::MIN..i32::MAX).step_by(1 << 26),
+        "EAX",
+        "EBX",
+        "ECX",
+    );
+    test_multiple_instruction_generic(
+        &processor_spec,
+        &mut jit,
+        &mut context,
+        |_, a, b, _, _| (jinst!(b = a * b), b),
+        |a, b| a.wrapping_mul(b),
+        (i32::MIN..i32::MAX).step_by(1 << 26),
+        "EAX",
+        "EBX",
+        "ECX",
+    );
 }
 
 #[test]
 fn test_multiply_const_const() {
-    let (mut jit, processor_spec, mut context) = setup();
+    let (mut jit, processor_spec, mut context) = setup(false);
     let result = get_reg_slice(&processor_spec, "EAX");
 
     let instructions = vec![
@@ -87,17 +98,107 @@ fn test_multiply_const_const() {
 
 #[test]
 fn test_multiply_signed_const_const() {
-    let (mut jit, processor_spec, mut context) = setup();
-    let result = get_reg_slice(&processor_spec, "EAX");
+    let (mut jit, processor_spec, mut context) = setup(false);
+    test_multiple_instruction_generic(
+        &processor_spec,
+        &mut jit,
+        &mut context,
+        |result, _, _, a, b| (jinst!(result = a * b), result),
+        |a, b| a.wrapping_mul(b),
+        (i32::MIN..i32::MAX).step_by(1 << 26),
+        "EAX",
+        "EBX",
+        "ECX",
+    );
+}
 
-    let instructions = vec![
-        //
-        jinst!(result = { -384876i32 } * { -48535432i32 }),
-    ];
-    exec_instructions(&mut jit, &mut context, &instructions);
-    let eax: i32 = get_slice_value_by_name(&jit, &context, &processor_spec, "EAX");
+#[test]
+fn test_multiply_slice_const_8() {
+    let (mut jit, processor_spec, mut context) = setup(false);
+    test_multiple_instruction_generic(
+        &processor_spec,
+        &mut jit,
+        &mut context,
+        |result, a, _, _, b| (jinst!(result = a * b), result),
+        |a, b| a.wrapping_mul(b),
+        u8::MIN..u8::MAX,
+        "AL",
+        "BL",
+        "CL",
+    );
+}
 
-    // Assert the overflow is correct
-    let expected = -384876i32.wrapping_mul(-48535432i32);
-    assert_eq!(eax, expected);
+#[test]
+fn test_multiply_slice_const_16() {
+    let (mut jit, processor_spec, mut context) = setup(false);
+    test_multiple_instruction_generic(
+        &processor_spec,
+        &mut jit,
+        &mut context,
+        |result, a, _, _, b| (jinst!(result = a * b), result),
+        |a, b| a.wrapping_mul(b),
+        (u16::MIN..u16::MAX).step_by(1 << (u16::BITS - 4)),
+        "AX",
+        "BX",
+        "CX",
+    );
+}
+
+#[test]
+fn test_multiply_slice_const_32() {
+    let (mut jit, processor_spec, mut context) = setup(false);
+    test_multiple_instruction_generic(
+        &processor_spec,
+        &mut jit,
+        &mut context,
+        |result, a, _, _, b| (jinst!(result = a * b), result),
+        |a, b| a.wrapping_mul(b),
+        (u32::MIN..u32::MAX).step_by(1 << (u32::BITS - 4)),
+        "EAX",
+        "EBX",
+        "ECX",
+    );
+}
+
+#[test]
+fn test_multiply_slice_const_64() {
+    let (mut jit, processor_spec, mut context) = setup(false);
+    test_multiple_instruction_generic(
+        &processor_spec,
+        &mut jit,
+        &mut context,
+        |result, a, _, _, b| (jinst!(result = a * b), result),
+        |a, b| a.wrapping_mul(b),
+        (u64::MIN..u64::MAX).step_by(1 << (u64::BITS - 4)),
+        "RAX",
+        "RBX",
+        "RCX",
+    );
+}
+
+#[test]
+fn test_multiply_slice_const_input_equal_output() {
+    let (mut jit, processor_spec, mut context) = setup(false);
+    test_multiple_instruction_generic(
+        &processor_spec,
+        &mut jit,
+        &mut context,
+        |_, a, _, _, b| (jinst!(a = a * b), a),
+        |a, b| a.wrapping_mul(b),
+        (u64::MIN..u64::MAX).step_by(1 << (u64::BITS - 4)),
+        "RAX",
+        "RBX",
+        "RCX",
+    );
+    test_multiple_instruction_generic(
+        &processor_spec,
+        &mut jit,
+        &mut context,
+        |_, a, _, _, b| (jinst!(a = b * a), a),
+        |a, b| a.wrapping_mul(b),
+        (u64::MIN..u64::MAX).step_by(1 << (u64::BITS - 4)),
+        "RAX",
+        "RBX",
+        "RCX",
+    );
 }

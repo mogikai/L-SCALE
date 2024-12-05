@@ -10,7 +10,7 @@ use mogi_sleigh::jinst;
 
 #[test]
 fn test_add_overflow_slice_slice() {
-    let (mut jit, processor_spec, mut context) = setup();
+    let (mut jit, processor_spec, mut context) = setup(false);
     let r8 = get_reg_slice(&processor_spec, "R8B");
     let r9 = get_reg_slice(&processor_spec, "R9B");
     let eax = get_reg_slice(&processor_spec, "EAX");
@@ -45,7 +45,7 @@ fn test_add_overflow_slice_slice() {
 
 #[test]
 fn test_add_overflow_slice_const() {
-    let (mut jit, processor_spec, mut context) = setup();
+    let (mut jit, processor_spec, mut context) = setup(false);
     let r8 = get_reg_slice(&processor_spec, "R8B");
     let eax = get_reg_slice(&processor_spec, "EAX");
     set_slice(&jit, &mut context, eax, 0x41414141u32);
@@ -76,7 +76,7 @@ fn test_add_overflow_slice_const() {
 
 #[test]
 fn test_add_overflow_const_slice() {
-    let (mut jit, processor_spec, mut context) = setup();
+    let (mut jit, processor_spec, mut context) = setup(false);
     let r9 = get_reg_slice(&processor_spec, "R9B");
     let eax = get_reg_slice(&processor_spec, "EAX");
     set_slice(&jit, &mut context, eax, 0x41414141u32);
@@ -107,7 +107,7 @@ fn test_add_overflow_const_slice() {
 
 #[test]
 fn test_add_overflow_const_const() {
-    let (mut jit, processor_spec, mut context) = setup();
+    let (mut jit, processor_spec, mut context) = setup(false);
     let eax = get_reg_slice(&processor_spec, "EAX");
     set_slice(&jit, &mut context, eax, 0x41414141u32);
     let result = get_reg_slice(&processor_spec, "AL");

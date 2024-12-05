@@ -532,7 +532,7 @@ impl X86MogiJit {
     /// If the slice is already loaded, the register is returned.
     /// Otherwise, code is emitted that loads the slice into a free register,
     /// which is then returned.
-    fn load_slice_gp(
+    fn load_slice_gpr(
         &mut self,
         slice: JIRSlice,
     ) -> GPRegister {
@@ -677,7 +677,7 @@ impl X86MogiJit {
     }
 
     /// Return the temporary [GPRegister].
-    fn get_temp_gp(&self) -> GPRegister {
+    fn get_temp_gpr(&self) -> GPRegister {
         GPRegister::A
     }
 

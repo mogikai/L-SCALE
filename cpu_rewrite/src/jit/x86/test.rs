@@ -29,7 +29,9 @@ use std::ops::BitAnd;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-fn setup() -> (X86MogiJit, Rc<RefCell<ProcessorSpecification>>, Box<<X86MogiJit as MogiJit>::RuntimeContext>) {
+fn setup(
+    debug: bool
+) -> (X86MogiJit, Rc<RefCell<ProcessorSpecification>>, Box<<X86MogiJit as MogiJit>::RuntimeContext>) {
     let mut spec_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     spec_path.push("resources/test/x86/x86-64.slaspec");
     let spec_dir = spec_path.parent().unwrap();
@@ -39,7 +41,7 @@ fn setup() -> (X86MogiJit, Rc<RefCell<ProcessorSpecification>>, Box<<X86MogiJit 
         .build();
     let specification = Rc::new(RefCell::new(compiler.compile(spec_path.as_path()).unwrap()));
     let mmu = Rc::new(RefCell::new(MogiMMU::new()));
-    let jit = X86MogiJit::new(specification.clone(), mmu.clone(), true);
+    let jit = X86MogiJit::new(specification.clone(), mmu.clone(), debug);
     let context = Box::new(jit.new_runtime_context());
     (jit, specification, context)
 }
