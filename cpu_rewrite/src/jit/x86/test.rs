@@ -151,7 +151,7 @@ fn test_instruction_generic<T, U>(
     let actual: U = get_slice_value(jit, &context, &processor_spec, result);
 
     let expected = verify_op(a, b);
-    assert_eq!(actual, expected, "Got {:#x} but expected {:#x}", actual, expected);
+    assert_eq!(actual, expected, "Got {:#x} but expected {:#x}. Operands: {:#x}, {:#x}", actual, expected, a, b);
 
     // Check that r8 and r9 have not been touched
     let a_value: U = get_slice_value(jit, &context, &processor_spec, slice_a);

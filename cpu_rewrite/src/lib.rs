@@ -1,4 +1,4 @@
-// TODO: Disallow dead code once prototyping is done
+#![feature(let_chains)] // TODO: Disallow dead code once prototyping is done
 #![allow(dead_code)]
 extern crate core;
 

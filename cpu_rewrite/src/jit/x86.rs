@@ -291,6 +291,13 @@ enum RegisterLoadInfo<T> {
     Loaded(T),
 }
 
+enum RegisterAllocationType {
+    /// Allocate a temporary
+    Temp,
+    /// Allocate a slice
+    Slice(JIRSlice),
+}
+
 #[derive(Debug)]
 struct UnfinishedBasicBlock {
     start: EVAddr,
@@ -581,8 +588,19 @@ impl X86MogiJit {
         }
     }
 
+    #[must_use]
+    fn temp_alloc(&mut self) -> GPRegister {
+        let load_info = self.allocate_gp(RegisterAllocationType::Temp);
+        // It doesn't matter if the register is loaded or unloaded, since this is a
+        // temporary, and it has no backing storage
+        match load_info {
+            RegisterLoadInfo::Unloaded(gpr) => gpr,
+            RegisterLoadInfo::Loaded(gpr) => gpr,
+        }
+    }
+
     /// Allocate the provided gp register as temporary and flush its contents to memory if needed.
-    fn temp_alloc(
+    fn reserve_gp_as_temp(
         &mut self,
         gpr: GPRegister,
     ) -> JITResult {
@@ -708,6 +726,48 @@ impl X86MogiJit {
             trace!("Allocating new GP register {free_gp:?} for slice {slice:?}");
             self.register_tracker.gp[free_gp] = RegisterAllocation::Occupied(slice);
             RegisterLoadInfo::Unloaded(free_gp)
+        } else {
+            todo!("Handle register spill")
+        }
+    }
+
+    fn allocate_gp(
+        &mut self,
+        alloc_type: RegisterAllocationType,
+    ) -> RegisterLoadInfo<GPRegister> {
+        let mut free_gp = None;
+        // TODO: We need to check if two slices refer to the same memory.
+        //       This needs to be done because there might be a slice to e.g. EAX loaded, but another
+        //       instruction refers to RAX. The RAX load then needs to be performed from the loaded
+        //       EAX, instead of from the space, or it needs to be flushed first.
+        // Search for existing register, and otherwise take the first available GP register.
+        for (register, entry) in self.register_tracker.gp.iter() {
+            match entry {
+                RegisterAllocation::Free => {
+                    if free_gp.is_none() {
+                        free_gp = Some(register);
+                    }
+                }
+                RegisterAllocation::Reserved | RegisterAllocation::OccupiedTemp => {}
+                RegisterAllocation::Occupied(entry) => {
+                    if let RegisterAllocationType::Slice(slice) = alloc_type
+                        && *entry == slice
+                    {
+                        trace!("Slice {slice:?} is already loaded in GP register {register:?}");
+                        return RegisterLoadInfo::Loaded(register);
+                    }
+                }
+            }
+        }
+        if let Some(free_gp) = free_gp {
+            match alloc_type {
+                RegisterAllocationType::Temp => RegisterLoadInfo::Loaded(free_gp),
+                RegisterAllocationType::Slice(slice) => {
+                    trace!("Allocating new GP register {free_gp:?} for slice {slice:?}");
+                    self.register_tracker.gp[free_gp] = RegisterAllocation::Occupied(slice);
+                    RegisterLoadInfo::Unloaded(free_gp)
+                }
+            }
         } else {
             todo!("Handle register spill")
         }

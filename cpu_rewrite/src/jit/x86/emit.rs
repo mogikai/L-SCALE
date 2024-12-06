@@ -16,6 +16,7 @@ use mogi_sleigh::spec::jir::values::{
     JIRSlice,
     JIRValue,
 };
+use std::cmp::min;
 
 mod arithmetic;
 mod bitwise;
@@ -58,12 +59,24 @@ impl X86MogiJit {
         // Allocate and associate a GP register with the slice.
         // No load is needed, since we overwrite the data anyway for a copy.
         let target_reg = self.get_slice_gp(target);
+        self.emit_load_value_to_gpr(target_reg, source)
+    }
+
+    /// Load the provided value into the target [GPRegister].
+    /// The [GPRegister] needs to have been allocated or loaded first,
+    /// otherwise the behavior is undefined.
+    #[inline]
+    fn emit_load_value_to_gpr(
+        &mut self,
+        target_gpr: GPRegister,
+        source: JIRValue,
+    ) -> JITResult {
         match source {
             JIRValue::Slice(slice) => {
-                self.emit_load_slice_to_gpr(target_reg, slice)?;
+                self.emit_load_slice_to_gpr(target_gpr, slice)?;
             }
             JIRValue::Const(value) => {
-                self.emit_load_const_to_gpr(target_reg, value)?;
+                self.emit_load_const_to_gpr(target_gpr, value)?;
             }
         }
         Ok(())
@@ -103,6 +116,7 @@ impl X86MogiJit {
         target_reg: GPRegister,
         value: JIRConst,
     ) -> JITResult {
+        let imm_size = min((u128::BITS - value.value().leading_zeros() + 7) / 8, value.size().into());
         let size = value.size();
         let value = value.value();
         if value == 0 {
@@ -112,18 +126,21 @@ impl X86MogiJit {
         let block = self.block_mut()?;
         match size {
             1 => {
+                // Move to 32 bit register to zero extend.
                 assemble!(block.assembler;
-                    ; mov Rb(target_reg as u8), BYTE value as _
+                    ; mov Rd(target_reg as u8), BYTE value as _
                 );
             }
             2 => {
+                // Move to 32 bit register to zero extend.
                 assemble!(block.assembler;
-                    ; mov Rw(target_reg as u8), WORD value as _
+                    ; mov Rd(target_reg as u8), WORD value as _
                 );
             }
             3..=4 => {
+                // We need to move to 32 bit register here, since the 64 bit move sign extends?????
                 assemble!(block.assembler;
-                    ; mov Rq(target_reg as u8), DWORD value as _
+                    ; mov Rd(target_reg as u8), DWORD value as _
                 );
             }
             5..=8 => {
