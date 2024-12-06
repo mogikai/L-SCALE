@@ -293,3 +293,34 @@ fn test_divide_const_slice_64() {
         "RCX",
     );
 }
+
+#[test]
+fn test_divide_const_slice_64_input_equal_output() {
+    let (mut jit, processor_spec, mut context) = setup(false);
+    test_multiple_instruction_generic(
+        &processor_spec,
+        &mut jit,
+        &mut context,
+        |_, _, b, a, _| (jinst!(b = a / b), b),
+        |a, b| a.wrapping_div(b),
+        (u64::MIN..u64::MAX)
+            .step_by(1 << (u64::BITS - 4))
+            .filter(|i| i != &0),
+        "RAX",
+        "RBX",
+        "RCX",
+    );
+    test_multiple_instruction_generic(
+        &processor_spec,
+        &mut jit,
+        &mut context,
+        |_, a, _, _, b| (jinst!(a = a / b), a),
+        |a, b| a.wrapping_div(b),
+        (u64::MIN..u64::MAX)
+            .step_by(1 << (u64::BITS - 4))
+            .filter(|i| i != &0),
+        "RAX",
+        "RBX",
+        "RCX",
+    );
+}
