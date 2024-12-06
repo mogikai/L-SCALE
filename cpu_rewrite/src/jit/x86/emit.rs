@@ -84,10 +84,9 @@ impl X86MogiJit {
             //       I.e. if the slice is not loaded yet, use the provided hint, and otherwise
             //       we just return the gpr to which the slice was already loaded.
             let reg = self.load_slice_gpr(slice);
-            let block = self.block_mut()?;
             // Only emit a copy instruction, if the slice was loaded into a different register.
             if reg != target_reg {
-                assemble!(block.assembler;
+                assemble!(self.block_mut()?.assembler;
                     ; mov Rq(target_reg as u8), Rq(reg as u8)
                 );
             }

@@ -28,6 +28,10 @@ pub enum JitError {
     MissingOutput,
     #[error("The instruction is missing an input parameter and cannot be translated.")]
     MissingInput,
+    #[error("The register cannot be freed since it is not a temporary.")]
+    InvalidTempFree,
+    #[error("The register is already allocated and cannot be reused.")]
+    AlreadyAllocated,
 }
 
 pub type JITResult<T = ()> = Result<T, JitError>;
@@ -59,7 +63,7 @@ pub trait MogiJit {
 
     /// Flush all varnodes to memory. This clears all host registers and flushes their contents
     /// to the associated varnodes.
-    fn emit_flush_varnodes(&mut self) -> JITResult;
+    fn emit_flush_slices(&mut self) -> JITResult;
 
     /// Chain the blocks `origin` and `target`, such that the `origin` block no longer jumps out to
     /// the epilogue block, but directly into the next block `target`.

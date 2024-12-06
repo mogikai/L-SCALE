@@ -1,4 +1,5 @@
 mod add;
+mod divide;
 mod multiply;
 mod subtract;
 
@@ -15,15 +16,6 @@ enum AddSub {
 }
 
 impl X86MogiJit {
-    pub fn emit_divide(
-        &mut self,
-        output: JIRSlice,
-        input_a: JIRValue,
-        input_b: JIRValue,
-    ) -> JITResult {
-        todo!()
-    }
-
     pub fn emit_signed_divide(
         &mut self,
         output: JIRSlice,

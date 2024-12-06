@@ -173,7 +173,7 @@ where
             for instruction in instructions {
                 jit.emit_jinst(&instruction)?;
             }
-            jit.emit_flush_varnodes()?;
+            jit.emit_flush_slices()?;
             jit.finalize_block()?;
             // jit.chain_blocks(EVAddr::null(), EVAddr::null())?;
             Ok(())

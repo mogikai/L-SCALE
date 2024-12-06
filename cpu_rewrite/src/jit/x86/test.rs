@@ -1,5 +1,6 @@
 mod add;
 mod bitand;
+mod divide;
 mod multiply;
 
 use crate::jit::api::MogiJit;
@@ -107,7 +108,7 @@ fn exec_instructions<T: MogiJit>(
     for instruction in instructions {
         jit.emit_jinst(&instruction).unwrap();
     }
-    jit.emit_flush_varnodes().unwrap();
+    jit.emit_flush_slices().unwrap();
     jit.finalize_block().unwrap();
 
     let block = jit

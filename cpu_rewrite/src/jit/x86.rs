@@ -46,6 +46,7 @@ use num_enum::{
     TryFromPrimitive,
 };
 use num_traits::FromBytes;
+use std::alloc::alloc;
 use std::cell::RefCell;
 use std::env::var;
 use std::ffi::c_void;
@@ -256,10 +257,13 @@ impl IndexMut<GPRegister> for GPRegisterAllocations {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 enum RegisterAllocation {
     Free,
     Reserved,
+    /// The slot is occupied by a temporary. These can simply be discarded if no longer needed
+    OccupiedTemp,
+    /// The slot is occupied by a slice. The slice needs to be flushed to memory if the slot is cleared.
     Occupied(JIRSlice),
 }
 
@@ -405,16 +409,13 @@ impl X86JITRuntimeContext {
         4
     }
 
-    pub fn varnode_offset(
-        processor_specification: &ProcessorSpecification,
-        slice: JIRSlice,
-    ) -> usize {
+    pub fn varnode_offset(slice: JIRSlice) -> usize {
         // TODO: We need to either make sure in the spec generation, that space_id is in range, or
         //       perform some kind of mapping.
-        assert!(usize::from(slice.space_id) < X86JITRuntimeContext::max_spaces());
+        assert!(usize::from(slice.space_id) < Self::max_spaces());
         trace!("Loading slice {slice:?} that refers to varnode {:?} into GP register", slice.varnode_id);
         // space = spaces[varnode.space_id]
-        let space_offset = offset_of!(X86JITRuntimeContext, spaces) + usize::from(slice.space_id) * size_of::<Space>();
+        let space_offset = offset_of!(Self, spaces) + usize::from(slice.space_id) * size_of::<Space>();
         // space[slice.offset]
         space_offset + slice.offset as usize
     }
@@ -543,8 +544,7 @@ impl X86MogiJit {
                 // The register has not been loaded before.
                 // We need to insert an instruction that loads it from context.
                 // For that we first need to calculate the offset in the cpu context.
-                let varnode_offset =
-                    X86JITRuntimeContext::varnode_offset(&*self.processor_specification.borrow(), slice);
+                let varnode_offset = X86JITRuntimeContext::varnode_offset(slice);
                 // Emit the instruction that loads the varnode from the specified space in the context.
                 match slice.size() {
                     1 => {
@@ -581,13 +581,48 @@ impl X86MogiJit {
         }
     }
 
+    /// Allocate the provided gp register as temporary and flush its contents to memory if needed.
+    fn temp_alloc(
+        &mut self,
+        gpr: GPRegister,
+    ) -> JITResult {
+        let allocation = self.register_tracker.gp[gpr];
+        match allocation {
+            RegisterAllocation::Occupied(slice) => {
+                // If the register is occupied by a slice, we flush it to memory.
+                self.emit_flush_register_to_slice(gpr, slice)?;
+                self.register_tracker.gp[gpr] = RegisterAllocation::OccupiedTemp;
+                Ok(())
+            }
+            RegisterAllocation::Free => {
+                self.register_tracker.gp[gpr] = RegisterAllocation::OccupiedTemp;
+                Ok(())
+            }
+            _ => {
+                // Reserved or already allocated temps cannot be used.
+                Err(JitError::AlreadyAllocated)
+            }
+        }
+    }
+
+    fn temp_free(
+        &mut self,
+        gpr: GPRegister,
+    ) -> JITResult {
+        let RegisterAllocation::OccupiedTemp = self.register_tracker.gp[gpr] else {
+            Err(JitError::InvalidTempFree)?
+        };
+        self.register_tracker.gp[gpr] = RegisterAllocation::Free;
+        Ok(())
+    }
+
     /// Emit code to flush the provided [GPRegister] to the provided slice.
     fn emit_flush_register_to_slice(
         &mut self,
         register: GPRegister,
         slice: JIRSlice,
     ) -> JITResult {
-        let varnode_offset = X86JITRuntimeContext::varnode_offset(&*self.processor_specification.borrow(), slice);
+        let varnode_offset = X86JITRuntimeContext::varnode_offset(slice);
         let assembler = &mut self.block_mut()?.assembler;
         // Emit the instruction that loads the varnode from the specified space in the context.
         match slice.size() {
@@ -659,7 +694,7 @@ impl X86MogiJit {
                         free_gp = Some(register);
                     }
                 }
-                RegisterAllocation::Reserved => {}
+                RegisterAllocation::Reserved | RegisterAllocation::OccupiedTemp => {}
                 RegisterAllocation::Occupied(entry) => {
                     trace!("Comparing existing {entry:?} with new slice {slice:?} for register {register:?}");
                     if *entry == slice {
@@ -719,6 +754,9 @@ impl MogiJit for X86MogiJit {
         jinst: &JIRInstruction,
     ) -> JITResult {
         trace!("Emitting {jinst}");
+        // TODO: Maybe we can "allocate" the registers ahead of time and provide some hints
+        //       or something similar. Allocating the registers when having a complete
+        //       view on all relevant instructions may be more efficient.
         let output = jinst.output.ok_or(JitError::MissingOutput);
         let input_a = jinst.input_a.ok_or(JitError::MissingInput);
         let input_b = jinst.input_b.ok_or(JitError::MissingInput);
@@ -798,14 +836,11 @@ impl MogiJit for X86MogiJit {
         todo!()
     }
 
-    fn emit_flush_varnodes(&mut self) -> JITResult {
+    fn emit_flush_slices(&mut self) -> JITResult {
         // Iterate over the loaded slices and flush them to memory
         // TODO: Do not insert flush instructions for dead registers.
         for (register, slice) in self.register_tracker.reset_gp().iter() {
             if let RegisterAllocation::Occupied(slice) = slice {
-                // TODO: The slices need to be reworked, such that we directly have space_id and offset and size
-                //       It will most likely still contain a reference to the original varnode_id or temporary
-                //       for debugging or name resolution.
                 self.emit_flush_register_to_slice(register, *slice)?;
             }
         }
