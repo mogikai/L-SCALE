@@ -11,6 +11,11 @@ use mogi_sleigh::spec::jir::values::{
     JIRValue,
 };
 
+enum DivisionType {
+    Signed,
+    Unsigned,
+}
+
 impl X86MogiJit {
     /// Unsigned integer division.
     #[inline]
@@ -27,13 +32,14 @@ impl X86MogiJit {
             return self
                 .emit_copy(output, JIRConst::new(dividend.value().wrapping_div(divisor.value()), dividend.size()));
         }
-        self.emit_divide_value_value(output, dividend.into(), divisor)?;
+        self.emit_divide_value_value(DivisionType::Unsigned, output, dividend.into(), divisor)?;
         Ok(())
     }
 
     #[inline]
     fn emit_divide_value_value(
         &mut self,
+        division_type: DivisionType,
         output: JIRSlice,
         dividend: JIRValue,
         divisor: JIRValue,
@@ -45,8 +51,19 @@ impl X86MogiJit {
         self.emit_load_value_to_gpr(dividend_lower_gpr, dividend)?;
         // Make sure we have the D register and potentially flush existing contents to memory.
         self.reserve_gp_as_temp(dividend_upper_gpr)?;
-        // Set the upper part of the dividend to zero, since we are only dealing with 64 bit values here.
-        self.emit_load_const_to_gpr(dividend_upper_gpr, JIRConst::new(0, dividend.size()))?;
+        match division_type {
+            DivisionType::Signed => {
+                // Sign extend rax to rdx:rax
+                // TODO: Use cwd or cdq for other sizes?
+                assemble!(self.block_mut()?.assembler;
+                    ; cqo
+                );
+            }
+            DivisionType::Unsigned => {
+                // Set the upper part of the dividend to zero, since we are only dealing with 64 bit values here.
+                self.emit_load_const_to_gpr(dividend_upper_gpr, JIRConst::new(0, dividend.size()))?;
+            }
+        }
 
         // Fetch the divisor register and load the value.
         let divisor_gpr = match divisor {
@@ -60,9 +77,18 @@ impl X86MogiJit {
 
         // Fetch the output gpr and perform the division.
         let output_gpr = self.get_slice_gp(output);
-        assemble!(self.block_mut()?.assembler;
-            ; div Rq(divisor_gpr as u8)
-        );
+        match division_type {
+            DivisionType::Signed => {
+                assemble!(self.block_mut()?.assembler;
+                    ; idiv Rq(divisor_gpr as u8)
+                );
+            }
+            DivisionType::Unsigned => {
+                assemble!(self.block_mut()?.assembler;
+                    ; div Rq(divisor_gpr as u8)
+                );
+            }
+        }
         // Finally we can copy over the result into the output if they are in different registers.
         if output_gpr != dividend_lower_gpr {
             assemble!(self.block_mut()?.assembler;
@@ -79,17 +105,16 @@ impl X86MogiJit {
     pub fn emit_signed_divide(
         &mut self,
         output: JIRSlice,
-        input_a: JIRValue,
-        input_b: JIRValue,
+        dividend: JIRValue,
+        divisor: JIRValue,
     ) -> JITResult {
-        match (input_a, input_b) {
+        match (dividend, divisor) {
             (JIRValue::Const(dividend), JIRValue::Const(divisor)) => {
                 let result = (dividend.value() as i128).wrapping_div(divisor.value() as i128) as u128;
-                self.emit_copy(output, JIRConst::new(result, dividend.size()))
+                return self.emit_copy(output, JIRConst::new(result, dividend.size()));
             }
-            (_, _) => {
-                todo!()
-            }
+            _ => {}
         }
+        self.emit_divide_value_value(DivisionType::Signed, output, dividend, divisor)
     }
 }
