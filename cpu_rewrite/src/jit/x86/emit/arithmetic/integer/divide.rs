@@ -75,4 +75,13 @@ impl X86MogiJit {
         self.temp_free(dividend_upper_gpr)?;
         Ok(())
     }
+
+    pub fn emit_signed_divide(
+        &mut self,
+        output: JIRSlice,
+        input_a: JIRValue,
+        input_b: JIRValue,
+    ) -> JITResult {
+        todo!()
+    }
 }

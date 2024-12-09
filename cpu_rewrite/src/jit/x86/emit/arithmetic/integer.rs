@@ -16,15 +16,6 @@ enum AddSub {
 }
 
 impl X86MogiJit {
-    pub fn emit_signed_divide(
-        &mut self,
-        output: JIRSlice,
-        input_a: JIRValue,
-        input_b: JIRValue,
-    ) -> JITResult {
-        todo!()
-    }
-
     pub fn emit_remainder(
         &mut self,
         output: JIRSlice,

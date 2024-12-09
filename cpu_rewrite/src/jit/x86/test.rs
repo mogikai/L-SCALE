@@ -1,5 +1,6 @@
 mod add;
 mod bitand;
+mod complex;
 mod divide;
 mod multiply;
 
