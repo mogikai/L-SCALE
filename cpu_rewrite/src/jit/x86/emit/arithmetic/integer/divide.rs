@@ -82,6 +82,14 @@ impl X86MogiJit {
         input_a: JIRValue,
         input_b: JIRValue,
     ) -> JITResult {
-        todo!()
+        match (input_a, input_b) {
+            (JIRValue::Const(dividend), JIRValue::Const(divisor)) => {
+                let result = (dividend.value() as i128).wrapping_div(divisor.value() as i128) as u128;
+                self.emit_copy(output, JIRConst::new(result, dividend.size()))
+            }
+            (_, _) => {
+                todo!()
+            }
+        }
     }
 }
