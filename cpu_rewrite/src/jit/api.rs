@@ -32,6 +32,12 @@ pub enum JitError {
     InvalidTempFree,
     #[error("The register is already allocated and cannot be reused.")]
     AlreadyAllocated,
+    #[error("All registers are allocated already, and the allocator was told not to spill.")]
+    NoRegistersAvailable,
+    #[error("It is only possible to move slices from one register to another.")]
+    CannotMoveNonSlice,
+    #[error("The provided slice is not loaded.")]
+    SliceNotLoaded,
 }
 
 pub type JITResult<T = ()> = Result<T, JitError>;

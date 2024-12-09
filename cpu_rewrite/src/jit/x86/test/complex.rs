@@ -9,7 +9,7 @@ use mogi_sleigh::jinst;
 
 #[test]
 fn test_complex() {
-    let (mut jit, spec, mut context) = setup(false);
+    let (mut jit, spec, mut context) = setup(true);
     let reg_out = "EAX";
     let reg_a = "EBX";
     let reg_b = "ECX";
@@ -23,13 +23,15 @@ fn test_complex() {
 
     let instructions = vec![
         //
-        jinst!(result = a * b),
-        jinst!(result = result / b),
+        jinst!(result = slice_a * slice_b),
+        jinst!(slice_b = slice_a),
+        jinst!(slice_b = slice_b - 43983),
+        jinst!(result = result / slice_b),
         jinst!(result = result + 342),
     ];
     exec_instructions(&mut jit, &mut context, &instructions);
     let actual: u32 = get_slice_value(&jit, &context, &spec, result);
 
-    let expected = (a * b) / b + 342;
+    let expected = (a * b) / (a.wrapping_sub(43983)) + 342;
     assert_eq!(actual, expected, "Got {:#x} but expected {:#x}. Operands: {:#x}, {:#x}", actual, expected, a, b);
 }
