@@ -78,6 +78,10 @@ where
         K::from(self.0.len() - 1)
     }
 
+    pub fn next_key(&self) -> K {
+        K::from(self.0.len() - 1)
+    }
+
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.0.iter()
     }
@@ -118,5 +122,11 @@ where
         key: K,
     ) -> Option<&mut V> {
         self.0.get_mut(usize::from(key))
+    }
+
+    pub fn replace(&mut self, key: K, element: V) -> Option<V> {
+        self.0.get_mut(usize::from(key)).and_then(|prev| {
+            Some(std::mem::replace(prev, element))
+        })
     }
 }

@@ -67,17 +67,10 @@ impl SleighCompiler {
         &mut self,
         items: Vec<SASTItem>,
     ) -> SleighCompilerResult {
-        let mut delayed_constructors = Vec::new();
-
         for item in items {
             let result = match item {
                 SASTItem::Attach(attach) => self.process_attach(attach),
-                SASTItem::Constructor(constructor) => {
-                    if let Some(constructor) = self.process_constructor(constructor)? {
-                        delayed_constructors.push(constructor)
-                    }
-                    Ok(())
-                }
+                SASTItem::Constructor(constructor) => self.process_constructor(constructor),
                 SASTItem::Define(define) => self.process_define(define),
                 SASTItem::Macro(pcode_macro) => self.process_pcode_macro(pcode_macro),
                 SASTItem::With(with) => self.process_with(with),
@@ -86,10 +79,6 @@ impl SleighCompiler {
                 }
             };
             self.report_error_or_unwrap(result)?;
-        }
-
-        for delayed_constructor in delayed_constructors {
-            self.process_constructor(delayed_constructor)?;
         }
 
         Ok(())

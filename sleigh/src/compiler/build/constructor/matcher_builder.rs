@@ -41,14 +41,6 @@ use crate::spec::moir::table::TableId;
 
 use super::matcher::Submatchers;
 
-/// Constructors can contain recursive calls which we need to intercept and
-/// process only when all non-recursive constructors have been processed.
-#[derive(Debug)]
-pub(super) enum MatcherCreationResult {
-    Matchers(Vec<Matcher>),
-    Recursion,
-}
-
 impl SleighCompiler {
     /// Create a [Matcher] from a [SASTBitPatternConstraint]. Multiple matchers might be created
     /// due to the splitting of Or operations and the integration of subtables. After the creation,
@@ -61,7 +53,7 @@ impl SleighCompiler {
         &self,
         constraint: &Spanned<SASTBitPatternConstraint>,
         table_id: TableId, // used for detecting recursion
-    ) -> SleighCompilerResult<MatcherCreationResult> {
+    ) -> SleighCompilerResult<Vec<Matcher>> {
         let matchers = self.create_matchers_recursive(constraint, table_id)?;
 
         Ok(matchers)
@@ -72,14 +64,14 @@ impl SleighCompiler {
         &self,
         constraint: &Spanned<SASTBitPatternConstraint>,
         table_id: TableId,
-    ) -> SleighCompilerResult<MatcherCreationResult> {
+    ) -> SleighCompilerResult<Vec<Matcher>> {
         let (constraint, _span) = constraint.as_tuple();
         let new_matchers = match constraint {
             SASTBitPatternConstraint::Ident(ident) => self.process_ident(*ident, table_id)?,
             SASTBitPatternConstraint::BinaryOp(lhs, op, rhs) => self.process_binary_op(lhs, *op, rhs, table_id)?,
             SASTBitPatternConstraint::UnaryOp(op, operand) => self.process_unary_op(*op, operand, table_id)?,
             SASTBitPatternConstraint::AdvancedConstraint(lhs, op, pattern) => {
-                MatcherCreationResult::Matchers(self.process_advanced_constraint(*lhs, *op, *pattern)?)
+                self.process_advanced_constraint(*lhs, *op, *pattern)?
             }
             SASTBitPatternConstraint::Invalid => {
                 todo!("Generate error report for an invalid constraint");
@@ -95,7 +87,7 @@ impl SleighCompiler {
         &self,
         ident: Spanned<SASTIdent>,
         table_id: TableId,
-    ) -> SleighCompilerResult<MatcherCreationResult> {
+    ) -> SleighCompilerResult<Vec<Matcher>> {
         // Ident case: freestanding fields, varnodes or subtables linking global to local symbols. This
         // is one of the base cases and yields multiple simple [Matcher] with [MatcherAtom::Linkage]
         // and the corresponding symbols, fields and tokens.
@@ -104,61 +96,66 @@ impl SleighCompiler {
 
         let matchers = match symbol {
             MOIRSymbolId::Table(tid) => {
+                // TODO theoretically, we don't need to concretize right away,
+                // but the majority of cases demands it anyway so we might as well
                 if *tid == table_id {
-                    // recursion => abort
-                    return Ok(MatcherCreationResult::Recursion);
-                }
+                    // recursion => shallow reference and token list with None
+                    let atom = MatcherAtom::Submatchers(Submatchers::new(*tid, None));
+                    let conjunctions = vec![BTreeSet::from([atom])];
+                    let references = HashSet::from([MatcherReference::Subtable(*tid)]);
+                    let token_list = TokenList::new(vec![None], false, false);
+                    vec![Matcher::new(conjunctions, token_list, references)]
+                } else {
+                    // no recursion => hoist up
+                    let table = self
+                        .spec_builder
+                        .table_by_symbol_id(*tid)
+                        .ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing symbol") })?;
 
-                // expansion strategy: create one matcher per unique token list of matchers
-                // contained in the subtable
-                let table = self
-                    .spec_builder
-                    .table_by_symbol_id(*tid)
-                    .ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing symbol") })?;
+                    // partition table matchers by token list
+                    let mut partition = BTreeMap::<_, Vec<_>>::new();
+                    table.matchers.iter().for_each(|(id, matcher)| {
+                        // we don't care about the context of the referenced submatchers
+                        // so we completely skip it
+                        let token_list_nc = &matcher.token_list.list[matcher
+                            .token_list
+                            .list
+                            .iter()
+                            .position(|parent| parent.is_some_and(|parent| matches!(parent, MOIRFieldParent::Context(_))))
+                            .map(|pos| pos + 1)
+                            .unwrap_or(0)..];
 
-                // partition table matchers by token list
-                let mut partition = BTreeMap::<_, Vec<_>>::new();
-                table.matchers.iter().for_each(|(id, matcher)| {
-                    // we don't care about the context of the referenced submatchers
-                    // so we completely skip it
-                    let token_list_nc = &matcher.token_list.list[matcher
-                        .token_list
-                        .list
-                        .iter()
-                        .position(|parent| matches!(parent, MOIRFieldParent::Context(_)))
-                        .map(|pos| pos + 1)
-                        .unwrap_or(0)..];
-
-                    if let Some(list) = partition.get_mut(token_list_nc) {
-                        list.push(id);
-                    } else {
-                        partition.insert(token_list_nc.to_owned(), vec![id]);
-                    }
-                });
-
-                // create a new matcher for each bin
-                partition
-                    .into_iter()
-                    .map(|(token_list, matchers)| {
-                        // associate all matchers with equal token_list with a new matcher
-
-                        // token_list can be empty if there is no conjunction (i.e. only references
-                        // or an epsilon matcher). We will create a matcher with an
-                        // empty conjunction in this case.
-                        let atom = MatcherAtom::Submatchers(Submatchers::new(*tid, matchers));
-                        let conjunctions = if token_list.is_empty() {
-                            Vec::new()
+                        if let Some(list) = partition.get_mut(token_list_nc) {
+                            list.push(id);
                         } else {
-                            let mut conjunctions = vec![BTreeSet::from([atom])];
-                            conjunctions.append(&mut vec![BTreeSet::new(); token_list.len() - 1]);
-                            conjunctions
-                        };
-                        let token_list = TokenList::new(token_list, false, false);
-                        let references = HashSet::from([MatcherReference::Subtable(*tid)]);
+                            partition.insert(token_list_nc.to_owned(), vec![id]);
+                        }
+                    });
 
-                        Matcher::new(conjunctions, token_list, references)
-                    })
+                    // create a new matcher for each bin with the respective submatchers
+                    partition
+                        .into_iter()
+                        .map(|(token_list, matchers)| {
+                            // associate all matchers with equal token_list with a new matcher
+
+                            // token_list can be empty if there is no conjunction (i.e. only references
+                            // or an epsilon matcher). We will create a matcher with an
+                            // empty conjunction in this case.
+                            let atom = MatcherAtom::Submatchers(Submatchers::new(*tid, Some(matchers)));
+                            let conjunctions = if token_list.is_empty() {
+                                Vec::new()
+                            } else {
+                                let mut conjunctions = vec![BTreeSet::from([atom])];
+                                conjunctions.append(&mut vec![BTreeSet::new(); token_list.len() - 1]);
+                                conjunctions
+                            };
+                            let token_list = TokenList::new(token_list, false, false);
+                            let references = HashSet::from([MatcherReference::Subtable(*tid)]);
+
+                            Matcher::new(conjunctions, token_list, references)
+                        })
                     .collect_vec()
+                }
             }
             MOIRSymbolId::Field(fid) => {
                 // create a wildcard field matcher to extract value later on
@@ -174,7 +171,7 @@ impl SleighCompiler {
                     field: *fid,
                     matcher: field_matcher,
                 };
-                let tokens = TokenList::new(vec![field.parent], false, false);
+                let tokens = TokenList::new(vec![Some(field.parent)], false, false);
 
                 vec![Matcher::new(
                     vec![BTreeSet::from([atom])],
@@ -193,7 +190,7 @@ impl SleighCompiler {
             _ => todo!("Generate error report for invalid symbol type"),
         };
 
-        Ok(MatcherCreationResult::Matchers(matchers))
+        Ok(matchers)
     }
 
     fn process_binary_op(
@@ -202,19 +199,12 @@ impl SleighCompiler {
         op: Spanned<SASTBinaryOp>,
         rhs: &Spanned<SASTBitPatternConstraint>,
         table_id: TableId,
-    ) -> SleighCompilerResult<MatcherCreationResult> {
+    ) -> SleighCompilerResult<Vec<Matcher>> {
         // Binary op case (mode=1 & op=0x7). Or expressions will be split and Concat
         // expressions verified, replaced by & and local tokens will be assigned.
 
-        let mut matchers_lhs = match self.create_matchers_recursive(lhs, table_id)? {
-            MatcherCreationResult::Matchers(matchers) => matchers,
-            MatcherCreationResult::Recursion => return Ok(MatcherCreationResult::Recursion),
-        };
-
-        let mut matchers_rhs = match self.create_matchers_recursive(rhs, table_id)? {
-            MatcherCreationResult::Matchers(matchers) => matchers,
-            MatcherCreationResult::Recursion => return Ok(MatcherCreationResult::Recursion),
-        };
+        let mut matchers_lhs = self.create_matchers_recursive(lhs, table_id)?;
+        let mut matchers_rhs = self.create_matchers_recursive(rhs, table_id)?;
 
         let new_matchers = match op.into_value() {
             SASTBinaryOp::And => {
@@ -237,21 +227,15 @@ impl SleighCompiler {
                         // Make sure tokens are the same (since lhs and rhs can be inconsistent in
                         // case a subtable with multiple constructors was used). If this is the
                         // case the resulting matcher can be discarded.
-                        if let Ok(merged_tokens) =
-                            self.merge_token_lists(&matcher_lhs_nc.token_list, &matcher_rhs_nc.token_list)
+                        if let Some(merged_tokens) = merge_token_lists(&matcher_lhs_nc.token_list, &matcher_rhs_nc.token_list)
                         {
                             let mut token_list = context_matcher.token_list;
-                            token_list.list.append(&mut merged_tokens.to_vec());
-                            token_list.remove_padding();
-
-                            // this should only be reported as an error if no compatible token
-                            // lists exist for all lhs and rhs matchers
-                            // TODO: todo!("Generate warning for inconsistent tokens.");
+                            token_list.list.extend(merged_tokens.list);
 
                             let mut conjunctions = context_matcher.conjunctions;
                             conjunctions.append(&mut merge_conjunctions(
-                                &matcher_lhs_nc.conjunctions,
-                                &matcher_rhs_nc.conjunctions,
+                                    &matcher_lhs_nc.conjunctions,
+                                    &matcher_rhs_nc.conjunctions,
                             ));
 
                             let mut references = matcher_lhs.references.clone();
@@ -283,17 +267,18 @@ impl SleighCompiler {
                 let context_lhs = extract_context(&mut matcher_lhs_nc, None);
                 let context_rhs = extract_context(&mut matcher_rhs_nc, None);
 
-                let mut merged_tokens = self
-                    .merge_token_lists(&matcher_lhs_nc.token_list, &matcher_rhs_nc.token_list)?
-                    .to_vec();
+                let merged_tokens = match merge_token_lists(&matcher_lhs_nc.token_list, &matcher_rhs_nc.token_list) {
+                    Some(merged_tokens) => merged_tokens,
+                    // not compatible => abort
+                    None => return Ok(vec![])
+                };
 
                 // Add missing conjunction/symbol lists in case the resulting token list is
                 // longer than the original list. This is not necessary for the other cases
                 // since everything is merged into one which we do not do here.
                 matchers_lhs.iter_mut().for_each(|matcher| {
                     let mut token_list = context_lhs.token_list.clone();
-                    token_list.list.append(&mut merged_tokens.clone());
-                    token_list.remove_padding();
+                    token_list.list.extend(merged_tokens.list.iter());
                     for _ in matcher.token_list.list.len()..token_list.list.len() {
                         matcher.conjunctions.push(BTreeSet::new());
                     }
@@ -302,8 +287,7 @@ impl SleighCompiler {
 
                 matchers_rhs.iter_mut().for_each(|matcher| {
                     let mut token_list = context_rhs.token_list.clone();
-                    token_list.list.append(&mut merged_tokens);
-                    token_list.remove_padding();
+                    token_list.list.extend(merged_tokens.list.iter());
                     for _ in matcher.token_list.list.len()..token_list.list.len() {
                         matcher.conjunctions.push(BTreeSet::new());
                     }
@@ -334,10 +318,10 @@ impl SleighCompiler {
                         let mut token_list = context_matcher.token_list.clone();
                         token_list
                             .list
-                            .append(&mut matcher_lhs_nc.token_list.list.clone());
+                            .extend(matcher_lhs_nc.token_list.list);
                         token_list
                             .list
-                            .append(&mut matcher_rhs_nc.token_list.list.clone());
+                            .extend(matcher_rhs_nc.token_list.list);
                         token_list.remove_padding();
 
                         let mut references = matcher_lhs.references.clone();
@@ -351,7 +335,7 @@ impl SleighCompiler {
             }
         };
 
-        Ok(MatcherCreationResult::Matchers(new_matchers))
+        Ok(new_matchers)
     }
 
     fn process_unary_op(
@@ -359,11 +343,8 @@ impl SleighCompiler {
         op: Spanned<SASTUnaryOp>,
         operand: &Spanned<SASTBitPatternConstraint>,
         table_id: TableId,
-    ) -> SleighCompilerResult<MatcherCreationResult> {
-        let mut matchers = match self.create_matchers_recursive(operand, table_id)? {
-            MatcherCreationResult::Matchers(matchers) => matchers,
-            MatcherCreationResult::Recursion => return Ok(MatcherCreationResult::Recursion),
-        };
+    ) -> SleighCompilerResult<Vec<Matcher>> {
+        let mut matchers = self.create_matchers_recursive(operand, table_id)?;
 
         // append/prepend undetermined token to each matcher
         match op.into_value() {
@@ -379,7 +360,7 @@ impl SleighCompiler {
             }
         }
 
-        Ok(MatcherCreationResult::Matchers(matchers))
+        Ok(matchers)
     }
 
     fn process_advanced_constraint(
@@ -401,7 +382,7 @@ impl SleighCompiler {
             .field_by_symbol_id(lhs_field_id)
             .ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing field") })?;
 
-        let token_list = TokenList::new(vec![lhs_field.parent], false, false);
+        let token_list = TokenList::new(vec![Some(lhs_field.parent)], false, false);
 
         // one matcher per conjunction returned
         Ok(conjunctions
@@ -606,7 +587,7 @@ impl SleighCompiler {
                     None
                 }
             })
-            .collect::<Vec<_>>()
+        .collect::<Vec<_>>()
     }
 
     /// Generate multiple matcher atoms matching on every possible
@@ -625,7 +606,7 @@ impl SleighCompiler {
                     None
                 }
             })
-            .collect::<Vec<_>>()
+        .collect::<Vec<_>>()
     }
 
     /// Generate an or chain of matcher atoms matching on every possible
@@ -644,77 +625,106 @@ impl SleighCompiler {
                     None
                 }
             })
-            .collect::<Vec<_>>()
+        .collect::<Vec<_>>()
+    }
+}
+
+/// Merge two token lists by checking whether they are compatible with one another, i.e. if they
+/// are equal taking potential left/right justification for different lengths into account, and
+/// by filling potential None tokens. Two lists are always compatible if one of them is empty.
+///
+/// # Return
+/// - Some(list) if the lists are compatible with `list` being the more specific (i.e. longer) one
+/// - None if the lists are not compatible
+pub(crate) fn merge_token_lists(
+    lhs: &TokenList,
+    rhs: &TokenList,
+) -> Option<TokenList> {
+    // lists can only be empty for empty or epsilon matchers
+    if lhs.list.is_empty() {
+        return Some(TokenList::new(rhs.list.clone(), false, false));
+    } else if rhs.list.is_empty() {
+        return Some(TokenList::new(lhs.list.clone(), false, false));
     }
 
-    /// Merge two token lists by checking whether they are compatible with one another, i.e. if they
-    /// are equal taking potential left/right justification for different lengths into account. Two
-    /// lists are always compatible if one of them is empty.
+    if lhs.justify_left && rhs.justify_left {
+        // find most common suffix
+        let i = lhs.list.len().min(rhs.list.len());
+        return Some(TokenList::new(lhs.list[(lhs.list.len() - i)..].to_vec(), false, false));
+    }
 
-    /// # Return
-    /// - Ok(list) if the lists are compatible with `list` being the more specific (i.e. longer) one
-    /// - Err() if the lists are not compatible
-    fn merge_token_lists<'a>(
-        &self,
-        lhs: &'a TokenList,
-        rhs: &'a TokenList,
-    ) -> SleighCompilerResult<&'a [MOIRFieldParent]> {
-        // lists can only be empty for empty or epsilon matchers
-        if lhs.list.is_empty() {
-            return Ok(&rhs.list);
-        } else if rhs.list.is_empty() {
-            return Ok(&lhs.list);
-        }
+    if lhs.justify_right && rhs.justify_right {
+        // find most common prefix
+        let i = lhs.list.len().min(rhs.list.len());
+        return Some(TokenList::new(lhs.list[..i].to_vec(), false, false));
+    }
 
-        if lhs.justify_left && rhs.justify_left {
-            // find most common suffix
-            let i = lhs.list.len().min(rhs.list.len());
-            return Ok(&lhs.list[(lhs.list.len() - i)..]);
-        }
+    // padded one contained in longer? (start/end/middle)
+    let (padded, non_padded) = if lhs.justify_right || lhs.justify_left {
+        (lhs, rhs)
+    } else {
+        (rhs, lhs)
+    };
 
-        if lhs.justify_right && rhs.justify_right {
-            // find most common prefix
-            let i = lhs.list.len().min(rhs.list.len());
-            return Ok(&lhs.list[..i]);
-        }
+    if (padded.justify_left || padded.justify_right) && padded.list.len() > non_padded.list.len() {
+        todo!("Generate error report for padded length greater than non-padded length");
+    }
 
-        // padded one contained in longer? (start/end/middle)
-        let (padded, non_padded) = if lhs.justify_right || lhs.justify_left {
-            (lhs, rhs)
-        } else {
-            (rhs, lhs)
-        };
-
-        if (padded.justify_left || padded.justify_right) && padded.list.len() > non_padded.list.len() {
-            todo!("Generate error report for padded length greater than non-padded length");
-        }
-
-        if padded.justify_right && padded.justify_left {
-            // both padded => is padded list contained in non_padded?
-            for si in 0..(non_padded.list.len() - padded.list.len()) {
-                if &padded.list[..] == &non_padded.list[si..(si + padded.list.len())] {
-                    return Ok(&non_padded.list);
+    if padded.justify_right && padded.justify_left {
+        // both padded => is padded list contained in non_padded?
+        'next: for si in 0..(non_padded.list.len() - padded.list.len()) {
+            for (v0, v1) in padded.list[..].iter().zip(non_padded.list[si..(si + padded.list.len())].iter()) {
+                if v0.is_some_and(|v0| v1.is_some_and(|v1| v0 != v1)) {
+                    // only skip if both are Some and not equal
+                    continue 'next;
                 }
             }
-        } else if padded.justify_right {
-            // start padded => is smaller list present at end of larger?
-            if &padded.list[..] == &non_padded.list[(non_padded.list.len() - padded.list.len())..] {
-                return Ok(&non_padded.list);
-            }
-        } else if padded.justify_left {
-            // end padded => is smaller list present at start of larger?
-            if &padded.list[..] == &non_padded.list[..padded.list.len()] {
-                return Ok(&non_padded.list);
-            }
-        }
 
-        // nothing padded => regular full-length search
-        if padded == non_padded {
-            Ok(&non_padded.list)
-        } else {
-            Err(SleighCompilerError::TODO)
+            // compatible => collect into new list while filling None values
+            let list = padded.list[..].iter().zip(non_padded.list[si..(si + padded.list.len())].iter()).map(|(v0, v1)| {
+                v0.clone().or(v1.clone())
+            }).collect_vec();
+            return Some(TokenList::new(list, false, false));
+        }
+    } else if padded.justify_right {
+        // start padded => is smaller list present at end of larger?
+        if &padded.list[..] == &non_padded.list[(non_padded.list.len() - padded.list.len())..] {
+            // compatible => collect into new list while filling None values
+            let list = padded.list[..].iter().zip(non_padded.list[(non_padded.list.len() - padded.list.len())..].iter()).map(|(v0, v1)| {
+                v0.clone().or(v1.clone())
+            }).collect_vec();
+            return Some(TokenList::new(list, false, false));
+        }
+    } else if padded.justify_left {
+        // end padded => is smaller list present at start of larger?
+        if &padded.list[..] == &non_padded.list[..padded.list.len()] {
+            // compatible => collect into new list while filling None values
+            let list = padded.list[..].iter().zip(non_padded.list[..padded.list.len()].iter()).map(|(v0, v1)| {
+                v0.clone().or(v1.clone())
+            }).collect_vec();
+            return Some(TokenList::new(list, false, false));
         }
     }
+
+    // nothing padded => regular full-length search
+    let mut is_equal = true;
+    for (v0, v1) in padded.list.iter().zip(non_padded.list.iter()) {
+        if v0.is_some_and(|v0| v1.is_some_and(|v1| v0 != v1)) {
+            // only skip if both are Some and not equal
+            is_equal = false;
+            break;
+        }
+    }
+
+    if is_equal {
+        // compatible => collect into new list while filling None values
+        let list = padded.list.iter().zip(non_padded.list.iter()).map(|(v0, v1)| {
+            v0.clone().or(v1.clone())
+        }).collect_vec();
+        return Some(TokenList::new(list, false, false));
+    }
+
+    None
 }
 
 /// Removes all [MOIRFieldParent::Context] tokens as well as token fields from `lhs` and `rhs` and
@@ -730,21 +740,25 @@ fn extract_context(
         .list
         .iter()
         .zip(lhs.conjunctions.iter())
-        .filter_map(|(token, conjunction)| match token {
-            MOIRFieldParent::Context(_) => Some((token.clone(), conjunction.clone())),
-            MOIRFieldParent::Token(_) => None,
-        });
+        .filter_map(|(token, conjunction)| token.and_then(|token| {
+            match token {
+                MOIRFieldParent::Context(_) => Some((Some(token.clone()), conjunction.clone())),
+                MOIRFieldParent::Token(_) => None,
+            }
+        }));
 
     let mut context_rhs = if let Some(ref rhs) = rhs_maybe {
         rhs.token_list
             .list
             .iter()
             .zip(rhs.conjunctions.iter())
-            .filter_map(|(token, conjunction)| match token {
-                MOIRFieldParent::Context(_) => Some((token.clone(), conjunction.clone())),
-                MOIRFieldParent::Token(_) => None,
-            })
-            .collect::<Vec<_>>()
+            .filter_map(|(token, conjunction)| token.and_then(|token| {
+                match token {
+                    MOIRFieldParent::Context(_) => Some((Some(token.clone()), conjunction.clone())),
+                    MOIRFieldParent::Token(_) => None,
+                }
+            }))
+        .collect::<Vec<_>>()
     } else {
         Vec::new()
     };
@@ -770,9 +784,12 @@ fn extract_context(
         .list
         .iter()
         .zip(lhs.conjunctions.iter())
-        .filter_map(|(token, conjunction)| match token {
-            MOIRFieldParent::Context(_) => None,
-            MOIRFieldParent::Token(_) => Some((token.clone(), conjunction.clone())),
+        .filter_map(|(token, conjunction)| {
+            if matches!(token, Some(MOIRFieldParent::Context(_))) {
+                None
+            } else {
+                Some((token.clone(), conjunction.clone()))
+            }
         });
 
     let (lhs_tokens, lhs_conjunctions): (Vec<_>, Vec<_>) = lhs_new.into_iter().unzip();
@@ -791,9 +808,12 @@ fn extract_context(
             .list
             .iter()
             .zip(rhs.conjunctions.iter())
-            .filter_map(|(token, conjunction)| match token {
-                MOIRFieldParent::Context(_) => None,
-                MOIRFieldParent::Token(_) => Some((token.clone(), conjunction.clone())),
+            .filter_map(|(token, conjunction)| {
+                if matches!(token, Some(MOIRFieldParent::Context(_))) {
+                    None
+                } else {
+                    Some((token.clone(), conjunction.clone()))
+                }
             });
 
         let (rhs_tokens, rhs_conjunctions): (Vec<_>, Vec<_>) = rhs_new.into_iter().unzip();
@@ -827,4 +847,19 @@ fn merge_conjunctions(
     }
 
     conjunctions_combined
+}
+
+/// Returns an error if not every matcher is concretized, i.e. if the token list
+/// contains any `None` tokens. This is the case if a recursive table is used in
+/// & constraints which we disallow.
+fn ensure_concretized(matchers: &Vec<Matcher>) -> SleighCompilerResult {
+    for matcher in matchers.iter() {
+        for parent in matcher.token_list.list.iter() {
+            if parent.is_none() {
+                Err(SleighCompilerError::TODO)?;
+            }
+        }
+    }
+
+    Ok(())
 }

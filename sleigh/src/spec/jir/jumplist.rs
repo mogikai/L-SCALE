@@ -6,14 +6,16 @@ use itertools::Itertools;
 use crate::compiler::error::SleighCompilerError;
 use crate::compiler::SleighCompilerResult;
 use crate::new_typed_index_table_id;
+use crate::spec::jir::trace_jir;
 use crate::spec::moir::common::MOIRSize;
+use crate::spec::moir::constructor::ConstructorId;
 use crate::spec::moir::context::MOIRContextId;
 use crate::spec::typed_index_table::TypedIndexTable;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NextJumplistEntry {
     Jumplist(JumplistId),
-    Matcher(String),
+    Constructor(String),
     // we need a stub in case of entries that only link to another list without
     // consuming and without any next entries (e.g. for submasks)
     Stub,
@@ -38,22 +40,29 @@ impl JumplistEntry {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum JumplistContainer {
     // multiple alternatives are possible in case of a shared prefix
     Small([Option<Vec<JumplistEntry>>; 256]),
     Large(HashMap<u64, Vec<JumplistEntry>>),
 }
 
+impl Default for JumplistContainer {
+    fn default() -> Self {
+        JumplistContainer::Small([const { None }; 256])
+    }
+}
+
 // Data can come from either the byte stream or an external context provider.
 // This needs to be accounted for when creating the lists.
-#[derive(Debug, Clone, Copy, PartialOrd, Ord, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialOrd, Ord, Hash, PartialEq, Eq, Default)]
 pub(crate) enum DataProvider {
+    #[default]
     ByteStream,
     Context(MOIRContextId),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct Jumplist {
     container: JumplistContainer,
     pub(crate) mask: u64, // usually only a few bits are actually relevant for indexing into the list
@@ -170,7 +179,7 @@ impl Jumplist {
             }
             DataProvider::Context(cid) => {
                 // todo!("Provide context values")
-                Some((0x20010c021 & self.mask, bytes))
+                Some((0x20010c001 & self.mask, bytes))
             }
         }
     }
@@ -197,8 +206,9 @@ impl Jumplist {
                         .ok_or_else(|| -> SleighCompilerError {
                             todo!("Generate error report for missing jumplist")
                         })?;
-                    if let Some(list_matching) = sublist.r#match(bytes, jumplist_cache)? {
-                        matching.merge(list_matching)
+                    if let Some(submatching) = sublist.r#match(bytes, jumplist_cache)? {
+                        // TODO nothing
+                        matching.merge(submatching);
                     } else {
                         sublists_match = false;
                         break;
@@ -222,8 +232,9 @@ impl Jumplist {
                             return Ok(Some(matching));
                         }
                     }
-                    NextJumplistEntry::Matcher(display) => {
-                        matching.push(display.clone());
+                    NextJumplistEntry::Constructor(constructor_id) => {
+                        trace_jir!("Running constructor {}", constructor_id);
+                        matching.push(constructor_id.clone());
                         return Ok(Some(matching));
                     }
                     NextJumplistEntry::Stub => return Ok(Some(matching)),

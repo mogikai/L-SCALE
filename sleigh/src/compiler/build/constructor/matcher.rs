@@ -93,14 +93,15 @@ impl Matching {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
 pub struct TokenList {
-    pub list: Vec<MOIRFieldParent>,
+    /// This can be `None` for shallow references when recursion is used
+    pub list: Vec<Option<MOIRFieldParent>>,
     pub justify_left: bool,
     pub justify_right: bool,
 }
 
 impl TokenList {
     pub fn new(
-        list: Vec<MOIRFieldParent>,
+        list: Vec<Option<MOIRFieldParent>>,
         justify_left: bool,
         justify_right: bool,
     ) -> Self {
@@ -133,21 +134,22 @@ pub struct Matcher {
     pub(crate) display: Option<String>, // TODO remove
 }
 
-/// Since not all matchers are compatible with each other, we don't just specify subtables
-/// but also a list of corresponding compatible matchers.
-#[derive(Debug, Clone, PartialOrd, Ord, Hash, PartialEq, Eq)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Ord, PartialOrd)]
 pub(crate) struct Submatchers {
-    pub(crate) table: TableId,
-    pub(crate) matchers: Vec<MatcherId>,
+    pub table: TableId,
+    /// Matchers is Some:
+    /// - Token list is concretized and can be used for verifying & constraints. Since not all
+    /// matchers are compatible with each other, we don't just specify subtables but also a list of
+    /// corresponding compatible matchers.
+
+    /// Matchers is None:
+    /// - Token list is not concretized; this is the case if recursion is encountered. Using it with
+    /// & constraints will constrain it.
+    pub matchers: Option<Vec<MatcherId>>
 }
 
 impl Submatchers {
-    pub(crate) fn new(
-        table: TableId,
-        matchers: Vec<MatcherId>,
-    ) -> Self {
-        Self { table, matchers }
-    }
+    pub(crate) fn new(table: TableId, matchers: Option<Vec<MatcherId>>) -> Self { Self { table, matchers } }
 }
 
 #[derive(Debug, Clone, PartialOrd, Ord, Eq, PartialEq, Hash)]

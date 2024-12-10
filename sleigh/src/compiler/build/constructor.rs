@@ -1,4 +1,5 @@
 use self::matcher::Matcher;
+use crate::compiler::ast::constructor::disassembly_section::SASTDisassemblySection;
 use crate::compiler::ast::Spanned;
 use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::build::constructor::matcher::MatcherReference;
@@ -13,6 +14,7 @@ use crate::spec::builder::{
     MOIRSymbolId,
     StringId,
 };
+use crate::spec::moir::actions::MOIRAction;
 use crate::spec::moir::constructor::MOIRConstructor;
 use crate::spec::moir::scope::{
     MOIRMaybeSize,
@@ -31,18 +33,15 @@ use tracing::{
 };
 
 pub(crate) mod matcher;
-mod matcher_builder;
+pub(crate) mod matcher_builder;
 
 impl SleighCompiler {
     /// Process a constructor. This will create the table in which the constructor is anchored, if
     /// it does not exist. Then, the bit pattern section is validated.
-    /// # Return on success
-    /// - None if the constructor was fully processed
-    /// - Some(consructor) if the constructor processing was delayed because of recursion
     pub(super) fn process_constructor(
         &mut self,
         spanned_constructor: Spanned<SASTConstructor>,
-    ) -> SleighCompilerResult<Option<Spanned<SASTConstructor>>> {
+    ) -> SleighCompilerResult {
         let (constructor, span) = spanned_constructor.into_tuple();
         #[allow(unused_variables)]
         let table_name = constructor
@@ -55,20 +54,11 @@ impl SleighCompiler {
         trace_build!("=======================================");
         trace_build!("Defining constructor in table {:?}", table_name);
 
-        // TODO: Need to parse the disassembly section here as well and add that information to the matcher
-
         let table_id = self
             .spec_builder
             .get_table_id_or_create(constructor.table.transpose())?;
 
-        // TODO: Need to parse the disassembly section here as well and add that information to the matcher
-        let mut matchers = match self.create_matchers(&constructor.bit_pattern_section.constraint, table_id)? {
-            matcher_builder::MatcherCreationResult::Matchers(matchers) => matchers,
-            matcher_builder::MatcherCreationResult::Recursion => {
-                trace_build!("Constructor is recursive, skipping...");
-                return Ok(Some(Spanned::new(constructor, span)));
-            }
-        };
+        let mut matchers = self.create_matchers(&constructor.bit_pattern_section.constraint, table_id)?;
 
         let mut references = HashSet::new();
         matchers.iter().for_each(|matcher| {
@@ -78,11 +68,13 @@ impl SleighCompiler {
 
         let display_section = constructor.display_section.into_value();
         let scope = self.pc_create_scope(display_section.identifiers, &references)?;
+        let actions = self.pc_process_actions(constructor.disassembly_section)?;
         let mut moir_constructor = MOIRConstructor {
             local_scope: scope,
             instructions: vec![],
             display: display_section.display_str.into_value(),
             export: None,
+            actions,
         };
         trace_build!("{}", moir_constructor.debug_scope());
 
@@ -129,7 +121,15 @@ impl SleighCompiler {
             .expect("We just inserted this table");
         self.pc_validate_exports(table)?;
 
-        Ok(None)
+        Ok(())
+    }
+
+    /// Process the disassembly actions section into a list of [MOIRAction].
+    fn pc_process_actions(
+        &self,
+        actions_section: Spanned<SASTDisassemblySection>
+    ) -> SleighCompilerResult<Vec<MOIRAction>> {
+        Ok(vec![])
     }
 
     /// Validates the constructors in the table.
@@ -222,7 +222,9 @@ impl SleighCompiler {
         scope.declare_local(self.spec_builder.intern("inst_next2"), MOIRSlice::inst_next2());
 
         self.resolve_references_to_local_scope(&mut scope, references)?;
+        trace_build!("display_identifiers={:?}", display_identifiers);
         for ident in display_identifiers {
+
             // TODO: We probably need to figure out a better way to handle these locals that are constructed
             //       in the disassembly section.
             let local = scope.local(*ident.value());
