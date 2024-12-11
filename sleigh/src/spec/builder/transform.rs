@@ -1,10 +1,16 @@
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::ast::Spanned;
+use crate::compiler::error::{
+    InternalError,
+    InternalErrorType,
+};
 use crate::spec::builder::{
+    CustomInterner,
     MOIRSymbolId,
     MOIRSymbolTables,
     StringId,
 };
+use crate::spec::jir::custom_op::JIRCustomOp;
 use crate::spec::jir::space::{
     JIRSpace,
     JIRSpaceType,
@@ -15,21 +21,26 @@ use crate::spec::moir::address_space::{
     MOIRSpaceType,
     SpaceId,
 };
+use crate::spec::moir::custom_op::MOIRCustomOp;
 use crate::spec::moir::varnode::{
     MOIRVarNode,
     VarNodeId,
 };
 use crate::spec::typed_index_table::TypedIndexTable;
 use crate::spec::{
+    CustomOpId,
     Ident,
     JIRSymbolId,
     JIRSymbolTables,
 };
+use mogi_utilities::index_map::PrimaryMap;
 use std::collections::HashMap;
+use string_interner::StringInterner;
+use string_interner::backend::StringBackend;
 
 #[derive(Debug)]
-pub(super) struct MOIRToJIRTransformer {
-    moir: MOIRData,
+pub(super) struct MOIRToJIRTransformer<'a> {
+    moir: MOIRData<'a>,
     jir: JIRData,
 }
 
@@ -42,15 +53,17 @@ pub struct JIRData {
 }
 
 #[derive(Debug)]
-struct MOIRData {
+struct MOIRData<'a> {
+    interner: &'a StringInterner<StringBackend>,
     symbol_ids: TypedIndexTable<Ident, MOIRSymbolId>,
     symbol_strings: HashMap<Ident, Spanned<StringId>>,
     symbol_tables: MOIRSymbolTables,
     string_to_ident_mapping: HashMap<StringId, Ident>,
 }
 
-impl MOIRToJIRTransformer {
+impl<'a> MOIRToJIRTransformer<'a> {
     pub fn new(
+        interner: &'a StringInterner<StringBackend>,
         symbol_ids: TypedIndexTable<Ident, MOIRSymbolId>,
         symbol_strings: HashMap<Ident, Spanned<StringId>>,
         symbol_tables: MOIRSymbolTables,
@@ -58,6 +71,7 @@ impl MOIRToJIRTransformer {
     ) -> Self {
         Self {
             moir: MOIRData {
+                interner,
                 symbol_ids,
                 symbol_strings,
                 symbol_tables,
@@ -102,10 +116,29 @@ impl MOIRToJIRTransformer {
             tables: self.moir.symbol_tables.tables,
             constructors: self.moir.symbol_tables.constructors,
             varnodes: transform_varnodes(self.moir.symbol_tables.varnodes)?,
+            custom_ops: transform_custom_ops(self.moir.interner, self.moir.symbol_tables.custom_ops)?,
         };
         self.jir.string_to_ident_mapping = self.moir.string_to_ident_mapping;
         Ok(self.jir)
     }
+}
+
+fn transform_custom_ops(
+    interner: &StringInterner<StringBackend>,
+    custom_ops: PrimaryMap<CustomOpId, MOIRCustomOp>,
+) -> InternalCompilerResult<PrimaryMap<CustomOpId, JIRCustomOp>> {
+    custom_ops
+        .into_iter()
+        .map(|(id, op)| match op {
+            MOIRCustomOp::Declared { .. } => Err(InternalError::from(InternalErrorType::Unknown)),
+            MOIRCustomOp::Defined { name, .. } => Ok((id, JIRCustomOp {
+                name: interner
+                    .string(*name)
+                    .expect("The string has to exist since we saved an id to it.")
+                    .to_string(),
+            })),
+        })
+        .collect::<Result<PrimaryMap<CustomOpId, JIRCustomOp>, InternalError>>()
 }
 
 fn transform_spaces(

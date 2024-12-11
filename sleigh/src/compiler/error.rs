@@ -167,6 +167,8 @@ pub enum InternalErrorType {
     UndefinedSymbol(#[from] UndefinedSymbol),
     #[error("Invalid symbol type: {0}")]
     InvalidSymbolType(#[from] InvalidSymbolType),
+    #[error("An unknown error occurred.")]
+    Unknown,
 }
 
 #[derive(Debug, Error)]

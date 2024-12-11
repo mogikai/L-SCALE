@@ -122,6 +122,10 @@ impl<K: MapKey, V> PrimaryMap<K, V> {
         self.data.get_mut(key.to_index())
     }
 
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
     pub fn first(&self) -> Option<&V> {
         self.data.first()
     }
@@ -150,11 +154,14 @@ impl<'a, K, V> IntoIterator for &'a PrimaryMap<K, V>
 where
     K: MapKey,
 {
-    type Item = &'a V;
-    type IntoIter = std::slice::Iter<'a, V>;
+    type Item = (K, &'a V);
+    type IntoIter = std::iter::Map<std::iter::Enumerate<std::slice::Iter<'a, V>>, fn((usize, &'a V)) -> (K, &'a V)>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.data.iter()
+        self.data
+            .iter()
+            .enumerate()
+            .map(|(k, v)| (MapKey::try_from_index(k).expect("Enumerating must produce a valid index"), v))
     }
 }
 
@@ -162,11 +169,15 @@ impl<'a, K, V> IntoIterator for &'a mut PrimaryMap<K, V>
 where
     K: MapKey,
 {
-    type Item = &'a mut V;
-    type IntoIter = std::slice::IterMut<'a, V>;
+    type Item = (K, &'a mut V);
+    type IntoIter =
+        std::iter::Map<std::iter::Enumerate<std::slice::IterMut<'a, V>>, fn((usize, &'a mut V)) -> (K, &'a mut V)>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.data.iter_mut()
+        self.data
+            .iter_mut()
+            .enumerate()
+            .map(|(k, v)| (MapKey::try_from_index(k).expect("Enumerating must produce a valid index"), v))
     }
 }
 
@@ -206,6 +217,15 @@ impl<K: MapKey, V> IndexMut<K> for PrimaryMap<K, V> {
         key: K,
     ) -> &mut Self::Output {
         &mut self.data[key.to_index()]
+    }
+}
+
+impl<K: MapKey, V> FromIterator<(K, V)> for PrimaryMap<K, V> {
+    fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
+        Self {
+            data: Vec::from_iter(iter.into_iter().map(|(_, v)| v)),
+            phantom_data: Default::default(),
+        }
     }
 }
 

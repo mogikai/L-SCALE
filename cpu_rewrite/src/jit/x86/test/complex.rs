@@ -6,6 +6,8 @@ use crate::jit::x86::test::{
     setup,
 };
 use mogi_sleigh::jinst;
+use mogi_sleigh::spec::CustomOpId;
+use mogi_utilities::index_map::MapKey;
 
 #[test]
 fn test_complex() {
@@ -18,19 +20,22 @@ fn test_complex() {
     let result = get_reg_slice(&spec, reg_out);
     let slice_a = get_reg_slice(&spec, reg_a);
     let slice_b = get_reg_slice(&spec, reg_b);
-    set_slice(&jit, &mut context, slice_a, a);
-    set_slice(&jit, &mut context, slice_b, b);
+    set_slice(&mut *context, slice_a, a);
+    set_slice(&mut *context, slice_b, b);
+
+    let id = CustomOpId::try_from_index(5).unwrap();
 
     let instructions = vec![
         //
         jinst!(result = slice_a * slice_b),
         jinst!(slice_b = slice_a),
         jinst!(slice_b = slice_b - 43983),
+        jinst!(result = (*id)(slice_a, slice_b)),
         jinst!(result = result / slice_b),
         jinst!(result = result + 342),
     ];
     exec_instructions(&mut jit, &mut context, &instructions);
-    let actual: u32 = get_slice_value(&jit, &context, &spec, result);
+    let actual: u32 = get_slice_value(context.as_ref(), &spec, result);
 
     let expected = (a * b) / (a.wrapping_sub(43983)) + 342;
     assert_eq!(actual, expected, "Got {:#x} but expected {:#x}. Operands: {:#x}, {:#x}", actual, expected, a, b);

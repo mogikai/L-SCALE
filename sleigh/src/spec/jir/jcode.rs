@@ -175,7 +175,13 @@ pub enum JIROperation {
     Unimpl,
     // -------------------------- GENERIC LOAD/STORE --------------------------
     Copy,
+    /// output: The target slice to load into <br>
+    /// input_a: The address to load from. <br>
+    /// The size of the load is determined by the size of the output slice.
     Load(SpaceId),
+    /// input_a: The address to store to <br>
+    /// input_b: The value to store <br>
+    /// The size of the store is determined by the size of the input_b slice.
     Store(SpaceId),
     // -------------------------- INTEGER ARITHMETIC --------------------------
     // Binary operations

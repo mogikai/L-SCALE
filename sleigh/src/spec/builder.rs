@@ -90,6 +90,7 @@ use chumsky::input::{
     Input,
 };
 use chumsky::inspector::Inspector;
+use mogi_utilities::index_map::PrimaryMap;
 use slotmap::SlotMap;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
@@ -146,7 +147,7 @@ pub(super) struct MOIRSymbolTables {
     pub(super) varnodes: TypedIndexTable<VarNodeId, MOIRVarNode>,
     pub(super) tokens: TypedIndexTable<TokenId, MOIRToken>,
     pub(super) fields: TypedIndexTable<FieldId, MOIRField>,
-    pub(super) custom_ops: TypedIndexTable<CustomOpId, MOIRCustomOp>,
+    pub(super) custom_ops: PrimaryMap<CustomOpId, MOIRCustomOp>,
     // bitrange registers are treated more like placeholders for the corresponding pcode operations to realize access
     pub(super) bitrange_registers: TypedIndexTable<BitrangeRegisterId, MOIRTBitrangeRegister>,
 }
@@ -244,7 +245,10 @@ impl ProcessorSpecificationBuilder {
         ident: Spanned<StringId>,
     ) -> Result<Ident, InternalError> {
         let symbol_id = self.declare_symbol(ident)?;
-        let custom_op_id = self.symbol_tables.custom_ops.insert(MOIRCustomOp::Declared);
+        let custom_op_id = self
+            .symbol_tables
+            .custom_ops
+            .insert(MOIRCustomOp::Declared { name: *ident.value() });
         self.define_symbol(symbol_id, MOIRSymbolId::CustomOp(custom_op_id))?;
         Ok(symbol_id)
     }
@@ -866,6 +870,7 @@ impl ProcessorSpecificationBuilder {
         debug!("Found {} custom operations", self.symbol_tables.custom_ops.len());
         let root_table = self.table_id_by_ident(&self.root_table)?;
         let context = MOIRToJIRTransformer::new(
+            &self.interner,
             self.symbol_ids,
             self.symbol_strings,
             self.symbol_tables,

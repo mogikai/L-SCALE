@@ -2,9 +2,11 @@ use crate::jit::cache::{
     JitCacheError,
     JitCode,
 };
+use mogi_sleigh::spec::CustomOpId;
 use mogi_sleigh::spec::jir::jcode::JIRInstruction;
 use mogi_sleigh::spec::jir::values::{
     JIRSlice,
+    JIRValue,
     VarNodeId,
 };
 use mogi_utilities::addresses::EVAddr;
@@ -51,6 +53,14 @@ pub trait MogiJit {
     /// The context is owned by the [CPU] and passed to the jit runtime
     /// via the context pointer, which can then access its internals.
     fn new_runtime_context(&self) -> Self::RuntimeContext;
+
+    ///
+    fn set_custom_op_callback<CB>(
+        &mut self,
+        callback: Box<CB>,
+    ) -> JITResult
+    where
+        CB: Fn(CustomOpId, JIRSlice, JIRValue, JIRValue);
 
     /// Create a new block that starts at the provided emulated virtual address.
     /// Only one block can be built at once.
@@ -120,24 +130,20 @@ pub trait MogiJit {
         context: &'a mut Self::RuntimeContext,
         varnode: VarNodeId,
     ) -> Result<&'a mut [u8], JitError>;
-
-    /// Get a reference to the bytes of the provided slice from the runtime context.
-    fn slice<'a>(
-        &self,
-        context: &'a Self::RuntimeContext,
-        slice: JIRSlice,
-    ) -> Result<&'a [u8], JitError>;
-
-    /// Get a mutable reference to the bytes of the provided slice from the runtime context.
-    fn slice_mut<'a>(
-        &self,
-        context: &'a mut Self::RuntimeContext,
-        slice: JIRSlice,
-    ) -> Result<&'a mut [u8], JitError>;
 }
 
 /// The jit context trait defines methods that every jit context implementation must provide.
 /// This facilitates access to the underlying cpu information like registers, exceptions and the PC.
-pub trait JITRuntimeContext {}
+pub trait JITRuntimeContext {
+    fn slice(
+        &self,
+        slice: JIRSlice,
+    ) -> Result<&[u8], JitError>;
+
+    fn slice_mut(
+        &mut self,
+        slice: JIRSlice,
+    ) -> Result<&mut [u8], JitError>;
+}
 
 pub type PreludeSignature = extern "C" fn(context: *mut c_void, block: JitCode);

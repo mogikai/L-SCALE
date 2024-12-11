@@ -4,7 +4,10 @@ mod complex;
 mod divide;
 mod multiply;
 
-use crate::jit::api::MogiJit;
+use crate::jit::api::{
+    JITRuntimeContext,
+    MogiJit,
+};
 use crate::jit::x86::X86MogiJit;
 use mogi_mem::mmu::MogiMMU;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
@@ -48,13 +51,13 @@ fn setup(
     (jit, specification, context)
 }
 
-fn set_slice<T: MogiJit, V: ToBytes>(
-    jit: &T,
-    context: &mut T::RuntimeContext,
+fn set_slice<T: JITRuntimeContext, V: ToBytes>(
+    context: &mut T,
     slice: JIRSlice,
     value: V,
 ) {
-    jit.slice_mut(context, slice)
+    context
+        .slice_mut(slice)
         .unwrap()
         .copy_from_slice(value.to_le_bytes().as_ref());
 }
@@ -75,9 +78,8 @@ where
     FromBytes::from_le_bytes(&data.try_into().unwrap())
 }
 
-fn get_slice_value<T: MogiJit, V: FromBytes>(
-    jit: &T,
-    context: &T::RuntimeContext,
+fn get_slice_value<T: JITRuntimeContext, V: FromBytes>(
+    context: &T,
     processor_spec: &Rc<RefCell<ProcessorSpecification>>,
     slice: JIRSlice,
 ) -> V
@@ -86,7 +88,7 @@ where
     for<'a> <&'a [u8] as TryInto<V::Bytes>>::Error: Debug,
     <V as FromBytes>::Bytes: Sized,
 {
-    let data = jit.slice(context, slice).unwrap();
+    let data = context.slice(slice).unwrap();
     FromBytes::from_le_bytes(&data.try_into().unwrap())
 }
 
@@ -140,8 +142,8 @@ fn test_instruction_generic<T, U>(
     let result = get_reg_slice(&processor_spec, reg_out);
     let slice_a = get_reg_slice(&processor_spec, reg_a);
     let slice_b = get_reg_slice(&processor_spec, reg_b);
-    set_slice(jit, context, slice_a, a);
-    set_slice(jit, context, slice_b, b);
+    set_slice(context, slice_a, a);
+    set_slice(context, slice_b, b);
 
     let (instruction, result) = instruction_builder(result, slice_a, slice_b, a, b);
     let instructions = vec![
@@ -149,14 +151,14 @@ fn test_instruction_generic<T, U>(
         instruction,
     ];
     exec_instructions(jit, context, &instructions);
-    let actual: U = get_slice_value(jit, &context, &processor_spec, result);
+    let actual: U = get_slice_value(context, &processor_spec, result);
 
     let expected = verify_op(a, b);
     assert_eq!(actual, expected, "Got {:#x} but expected {:#x}. Operands: {:#x}, {:#x}", actual, expected, a, b);
 
     // Check that r8 and r9 have not been touched
-    let a_value: U = get_slice_value(jit, &context, &processor_spec, slice_a);
-    let b_value: U = get_slice_value(jit, &context, &processor_spec, slice_b);
+    let a_value: U = get_slice_value(context, &processor_spec, slice_a);
+    let b_value: U = get_slice_value(context, &processor_spec, slice_b);
     if result != slice_a {
         assert_eq!(a_value, a);
     }

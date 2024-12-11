@@ -22,7 +22,6 @@ use dynasmrt::{
 };
 use mogi_mem::mmu::MogiMMU;
 use mogi_mem::tlb::tlb::TLB;
-use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_sleigh::spec::jir::common::JIRSize;
 use mogi_sleigh::spec::jir::jcode::{
     JIRInstruction,
@@ -35,6 +34,10 @@ use mogi_sleigh::spec::jir::values::{
     JIRVarNode,
     JIRVarNodeId,
     VarNodeId,
+};
+use mogi_sleigh::spec::{
+    CustomOpId,
+    ProcessorSpecification,
 };
 use mogi_utilities::addresses::{
     EVAddr,
@@ -394,6 +397,13 @@ impl Space {
     }
 }
 
+struct CustomOpArgs {
+    op_id: CustomOpId,
+    output: JIRSlice,
+    input_a: JIRValue,
+    input_b: JIRValue,
+}
+
 /// This is the context of the JIT. It is stored in the RBP register, which has the alias `cpu_context`.
 /// This should be kept small, only containing absolutely necessary information like the address spaces
 /// or tlb pointer.
@@ -404,6 +414,7 @@ pub struct X86JITRuntimeContext {
     /// A Pointer to the tlb for guest memory accesses.
     tlb: Option<NonNull<TLB>>,
     pc: usize,
+    custom_ops: Vec<CustomOpArgs>,
 }
 
 impl X86JITRuntimeContext {
@@ -423,7 +434,21 @@ impl X86JITRuntimeContext {
     }
 }
 
-impl JITRuntimeContext for X86JITRuntimeContext {}
+impl JITRuntimeContext for X86JITRuntimeContext {
+    fn slice(
+        &self,
+        slice: JIRSlice,
+    ) -> Result<&[u8], JitError> {
+        Ok(self.spaces[usize::from(slice.space_id)].slice(slice))
+    }
+
+    fn slice_mut(
+        &mut self,
+        slice: JIRSlice,
+    ) -> Result<&mut [u8], JitError> {
+        Ok(self.spaces[usize::from(slice.space_id)].slice_mut(slice))
+    }
+}
 
 pub struct X86MogiJit {
     processor_specification: Rc<RefCell<ProcessorSpecification>>,
@@ -547,7 +572,18 @@ impl MogiJit for X86MogiJit {
             spaces: array::from_fn(|_| Space::new()),
             tlb: None,
             pc: 0,
+            custom_ops: Default::default(),
         }
+    }
+
+    fn set_custom_op_callback<CB>(
+        &mut self,
+        callback: Box<CB>,
+    ) -> JITResult
+    where
+        CB: Fn(CustomOpId, JIRSlice, JIRValue, JIRValue),
+    {
+        todo!()
     }
 
     fn new_block(
@@ -575,8 +611,8 @@ impl MogiJit for X86MogiJit {
         match jinst.operation {
             JIROperation::Unimpl => {}
             JIROperation::Copy => return self.emit_copy(output?, input_a?),
-            JIROperation::Load(_) => {}
-            JIROperation::Store(_) => {}
+            JIROperation::Load(space_id) => return self.emit_load(output?, input_a?, space_id),
+            JIROperation::Store(space_id) => return self.emit_store(input_a?, space_id, input_b?),
             JIROperation::IntAdd => return self.emit_add(output?, input_a?, input_b?),
             JIROperation::IntSubtract => return self.emit_subtract(output?, input_a?, input_b?),
             JIROperation::IntMul => return self.emit_multiply(output?, input_a?, input_b?),
@@ -643,7 +679,9 @@ impl MogiJit for X86MogiJit {
             JIROperation::Ceil => {}
             JIROperation::Floor => {}
             JIROperation::Round => {}
-            JIROperation::CustomOp { .. } => {}
+            JIROperation::CustomOp { op_id, ref extra_args } => {
+                return self.emit_custom_op_call(op_id, output?, input_a?, input_b?, extra_args.as_slice());
+            }
         }
         todo!()
     }
@@ -777,22 +815,6 @@ impl MogiJit for X86MogiJit {
         let spec = self.processor_specification.borrow();
         let varnode = spec.varnode_by_id(varnode).unwrap();
         Ok(context.spaces[usize::from(varnode.space_id)].varnode_mut(varnode))
-    }
-
-    fn slice<'a>(
-        &self,
-        context: &'a Self::RuntimeContext,
-        slice: JIRSlice,
-    ) -> Result<&'a [u8], JitError> {
-        Ok(context.spaces[usize::from(slice.space_id)].slice(slice))
-    }
-
-    fn slice_mut<'a>(
-        &self,
-        context: &'a mut Self::RuntimeContext,
-        slice: JIRSlice,
-    ) -> Result<&'a mut [u8], JitError> {
-        Ok(context.spaces[usize::from(slice.space_id)].slice_mut(slice))
     }
 }
 

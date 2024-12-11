@@ -15,6 +15,7 @@ use thiserror::Error;
 use tracing::trace;
 
 use crate::jit::api::{
+    JITRuntimeContext,
     JitError,
     MogiJit,
 };
@@ -156,11 +157,13 @@ where
                 .unwrap();
 
             // Copy to r9
-            jit.slice_mut(&mut self.runtime_context, r9d)?
+            self.runtime_context
+                .slice_mut(r9d)?
                 .copy_from_slice((0b1000i32).to_le_bytes().as_slice());
 
             // Copy to r8
-            jit.slice_mut(&mut self.runtime_context, r8d)?
+            self.runtime_context
+                .slice_mut(r8d)?
                 .copy_from_slice((0b1101i32).to_le_bytes().as_slice());
 
             let instructions = vec![

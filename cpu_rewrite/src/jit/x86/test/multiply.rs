@@ -17,11 +17,11 @@ fn test_multiply_slice_slice() {
     let r8 = get_reg_slice(&processor_spec, "R8D");
     let r9 = get_reg_slice(&processor_spec, "R9D");
     let eax = get_reg_slice(&processor_spec, "EAX");
-    set_slice(&jit, &mut context, eax, 0x41414141u32);
+    set_slice(&mut *context, eax, 0x41414141u32);
     let result = get_reg_slice(&processor_spec, "EAX");
 
-    set_slice(&jit, &mut context, r8, 5894373u32);
-    set_slice(&jit, &mut context, r9, 6427245u32);
+    set_slice(&mut *context, r8, 5894373u32);
+    set_slice(&mut *context, r9, 6427245u32);
 
     let instructions = vec![
         //

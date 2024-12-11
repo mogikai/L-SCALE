@@ -6,19 +6,21 @@ use crate::spec::builder::{
     CustomInterner,
     StringId,
 };
+use crate::spec::jir::custom_op::JIRCustomOp;
 use crate::spec::jir::jir_block::JIRBlockId;
 use crate::spec::jir::space::JIRSpace;
 use crate::spec::jir::values::{
     JIRSlice,
     JIRVarNode,
 };
-use crate::spec::moir::address_space::SpaceId;
+pub use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::bitrange_register::BitrangeRegisterId;
 use crate::spec::moir::constructor::{
     ConstructorId,
     MOIRConstructor,
 };
-use crate::spec::moir::custom_op::CustomOpId;
+pub use crate::spec::moir::custom_op::CustomOpId;
+use crate::spec::moir::custom_op::MOIRCustomOp;
 use crate::spec::moir::endianness::MOIREndianness;
 use crate::spec::moir::field::FieldId;
 use crate::spec::moir::r#macro::MacroId;
@@ -31,6 +33,7 @@ use crate::spec::moir::varnode::VarNodeId;
 use crate::spec::typed_index_table::TypedIndexTable;
 use ariadne::Report;
 use builder::MOIRSymbolId;
+use mogi_utilities::index_map::PrimaryMap;
 use std::collections::HashMap;
 use std::ops::Range;
 use string_interner::StringInterner;
@@ -66,7 +69,7 @@ pub enum JIRSymbolId {
     CustomOp(CustomOpId),
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 pub(crate) struct JIRSymbolTables {
     // macros: TypedIndexTable<MOIRMacroId, MOIRMacro>,
     pub(crate) spaces: TypedIndexTable<SpaceId, JIRSpace>,
@@ -75,7 +78,7 @@ pub(crate) struct JIRSymbolTables {
     pub(crate) varnodes: TypedIndexTable<VarNodeId, JIRVarNode>,
     // tokens: TypedIndexTable<MOIRTokenId, MOIRToken>,
     // fields: TypedIndexTable<MOIRFieldId, MOIRField>,
-    // custom_ops: TypedIndexTable<MOIRCustomOpId, MOIRCustomOp>,
+    custom_ops: PrimaryMap<CustomOpId, JIRCustomOp>,
     // bitrange registers are treated more like placeholders for the corresponding pcode operations to realize access
     // bitrange_registers: TypedIndexTable<MOIRBitrangeRegisterId, MOIRTBitrangeRegister>,
 }

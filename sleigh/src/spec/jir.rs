@@ -3,6 +3,7 @@
 
 pub mod basic_block;
 pub mod common;
+pub mod custom_op;
 pub mod instruction;
 pub mod jcode;
 pub mod jir_block;

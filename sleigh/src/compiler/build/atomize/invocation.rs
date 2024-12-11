@@ -8,8 +8,8 @@ use crate::compiler::error::{
     InternalErrorType,
 };
 use crate::compiler::{
-    SleighCompiler,
     InternalCompilerResult,
+    SleighCompiler,
 };
 use crate::spec::builder::StringId;
 use crate::spec::moir::code::{
@@ -65,8 +65,9 @@ impl SleighCompiler {
         };
         let arg_sizes = args.iter().map(|arg| arg.size(scope)).collect::<Vec<_>>();
         match custom_op {
-            MOIRCustomOp::Declared => {
+            MOIRCustomOp::Declared { name } => {
                 *custom_op = MOIRCustomOp::Defined {
+                    name: *name,
                     input_constraints: arg_sizes,
                     output: out.map(|local| scope.size_of_local(local)),
                 }

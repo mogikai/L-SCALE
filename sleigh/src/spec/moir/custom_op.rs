@@ -1,5 +1,6 @@
-use crate::new_typed_index_table_id;
+use crate::spec::builder::StringId;
 use crate::spec::moir::scope::MOIRMaybeSize;
+use mogi_utilities::new_map_key;
 
 /// A custom operation defined in the sleigh specification
 /// The operation will be called from jited code. Any implementation
@@ -8,8 +9,9 @@ use crate::spec::moir::scope::MOIRMaybeSize;
 #[derive(Debug)]
 pub enum MOIRCustomOp {
     /// The custom operation has only been declared so far. The first invocation will define it.
-    Declared,
+    Declared { name: StringId },
     Defined {
+        name: StringId,
         /// The input constraints of the custom operation. The compiler will check if all calls
         /// satisfy the same constraints, i.e. the number of parameters and their sizes are equal.
         input_constraints: Vec<MOIRMaybeSize>,
@@ -18,4 +20,4 @@ pub enum MOIRCustomOp {
     },
 }
 
-new_typed_index_table_id! { pub struct CustomOpId; "OP"; }
+new_map_key! { pub struct CustomOpId; "OP"; }
