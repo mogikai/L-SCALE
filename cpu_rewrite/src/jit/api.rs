@@ -2,6 +2,7 @@ use crate::jit::cache::{
     JitCacheError,
     JitCode,
 };
+use crate::jit::x86::CustomOpArgs;
 use mogi_sleigh::spec::CustomOpId;
 use mogi_sleigh::spec::jir::jcode::JIRInstruction;
 use mogi_sleigh::spec::jir::values::{
@@ -12,6 +13,7 @@ use mogi_sleigh::spec::jir::values::{
 use mogi_utilities::addresses::EVAddr;
 use num_traits::FromBytes;
 use std::ffi::c_void;
+use std::pin::Pin;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -45,22 +47,24 @@ pub enum JitError {
 pub type JITResult<T = ()> = Result<T, JitError>;
 
 pub trait MogiJit {
-    type RuntimeContext: JITRuntimeContext + Sized;
+    type RuntimeContext: JITTaskRuntimeContext + Sized;
+    type GlobalContext: JITGlobalRuntimeContext + Sized;
 
     /// Creates a new context that is used during the jit runtime.
-    /// The context is opaque, but implements the [JITRuntimeContext] trait
+    /// The context is opaque, but implements the [JITTaskRuntimeContext] trait
     /// through which the internals may be accessed or modified.
     /// The context is owned by the [CPU] and passed to the jit runtime
     /// via the context pointer, which can then access its internals.
-    fn new_runtime_context(&self) -> Self::RuntimeContext;
+    fn new_runtime_context(&mut self) -> Self::RuntimeContext;
 
-    ///
-    fn set_custom_op_callback<CB>(
+    /// Register a function as implementation of the custom operation identified by `name`
+    fn register_custom_op_impl<CB>(
         &mut self,
-        callback: Box<CB>,
+        op_id: CustomOpId,
+        callback: CB,
     ) -> JITResult
     where
-        CB: Fn(CustomOpId, JIRSlice, JIRValue, JIRValue);
+        CB: Fn(&mut Self::RuntimeContext) + 'static;
 
     /// Create a new block that starts at the provided emulated virtual address.
     /// Only one block can be built at once.
@@ -134,7 +138,8 @@ pub trait MogiJit {
 
 /// The jit context trait defines methods that every jit context implementation must provide.
 /// This facilitates access to the underlying cpu information like registers, exceptions and the PC.
-pub trait JITRuntimeContext {
+/// This context is task specific. I.e. each task has its own context.
+pub trait JITTaskRuntimeContext {
     fn slice(
         &self,
         slice: JIRSlice,
@@ -145,5 +150,9 @@ pub trait JITRuntimeContext {
         slice: JIRSlice,
     ) -> Result<&mut [u8], JitError>;
 }
+
+/// The runtime context contains information that is global to all tasks (processes/threads).
+/// This can include information like callbacks, runtime helpers, etc.
+pub trait JITGlobalRuntimeContext {}
 
 pub type PreludeSignature = extern "C" fn(context: *mut c_void, block: JitCode);

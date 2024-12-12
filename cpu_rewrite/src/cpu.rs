@@ -15,7 +15,7 @@ use thiserror::Error;
 use tracing::trace;
 
 use crate::jit::api::{
-    JITRuntimeContext,
+    JITTaskRuntimeContext,
     JitError,
     MogiJit,
 };
@@ -63,7 +63,7 @@ where
     JitT: MogiJit,
 {
     pub fn new(
-        jit: JitT,
+        mut jit: JitT,
         processor_specification: Rc<RefCell<ProcessorSpecification>>,
         mmu: Rc<RefCell<MogiMMU>>,
     ) -> Self {

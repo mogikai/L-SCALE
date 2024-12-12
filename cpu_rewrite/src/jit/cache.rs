@@ -5,8 +5,8 @@ use std::marker::PhantomData;
 use thiserror::Error;
 
 use mogi_utilities::addresses::{
+    Addressable,
     EVAddr,
-    EVAddress,
 };
 
 #[derive(Debug, Error)]
@@ -43,7 +43,7 @@ pub struct JitCache<BlockT> {
 
 impl<BlockT> JitCache<BlockT>
 where
-    BlockT: AsJitCode + EVAddress,
+    BlockT: AsJitCode + Addressable<EVAddr>,
 {
     pub fn new() -> Self {
         Self {
@@ -56,7 +56,7 @@ where
         &mut self,
         block: BlockT,
     ) -> EVAddr {
-        let addr = block.ev_address();
+        let addr = block.address();
         self.cache.insert(addr, block);
         addr
     }

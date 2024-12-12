@@ -716,3 +716,8 @@ attach variables [ zmmreg_x zmmreg1_x zmmreg2_x zmm_vsib_x ]	[ ZMM8 ZMM9 ZMM10 Z
 attach variables [ bnd1 bnd2 ]       [ BND0 BND1 BND2 BND3 _ _ _ _ ];
 attach variables [ bnd1_lb bnd2_lb ] [ BND0_LB BND1_LB BND2_LB BND3_LB _ _ _ _ ];
 attach variables [ bnd1_ub bnd2_ub ] [ BND0_UB BND1_UB BND2_UB BND3_UB _ _ _ _ ];
+
+define pcodeop testop;
+:TESTINST is byte=0x0 {
+    RCX = testop(RAX, R8W);
+}

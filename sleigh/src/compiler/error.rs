@@ -378,7 +378,7 @@ impl InternalError {
                             .with_color(color_a),
                     )
             }
-            _ => todo!("unhandled error in spanned_report"),
+            e => todo!("unhandled error {e:?} in spanned_report"),
         })
         .with_message(self.error.to_string())
         // TODO include causes recursively

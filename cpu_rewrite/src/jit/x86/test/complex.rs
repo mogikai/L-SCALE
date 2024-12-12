@@ -1,3 +1,7 @@
+use crate::jit::api::{
+    JITTaskRuntimeContext,
+    MogiJit,
+};
 use crate::jit::x86::test::{
     exec_instructions,
     get_reg_slice,
@@ -8,6 +12,10 @@ use crate::jit::x86::test::{
 use mogi_sleigh::jinst;
 use mogi_sleigh::spec::CustomOpId;
 use mogi_utilities::index_map::MapKey;
+
+fn custom_op_impl<ContextT: JITTaskRuntimeContext>(context: &mut ContextT) {
+    println!("My custom callback");
+}
 
 #[test]
 fn test_complex() {
@@ -24,6 +32,8 @@ fn test_complex() {
     set_slice(&mut *context, slice_b, b);
 
     let id = CustomOpId::try_from_index(5).unwrap();
+
+    jit.register_custom_op_impl(id, custom_op_impl).unwrap();
 
     let instructions = vec![
         //

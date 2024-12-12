@@ -6,11 +6,13 @@ use crate::jit::x86::regalloc::{
     RegisterAllocationType,
     SpillBehavior,
 };
-use crate::jit::x86::{
+use crate::jit::x86::registers::{
     GPRegister,
     RegisterLoadInfo,
-    X86JITRuntimeContext,
+};
+use crate::jit::x86::{
     X86MogiJit,
+    X86TaskContext,
     assemble,
 };
 use mogi_sleigh::spec::jir::common::JIRSize;
@@ -71,7 +73,7 @@ impl X86MogiJit {
         // The register has not been loaded before.
         // We need to insert an instruction that loads it from context.
         // For that we first need to calculate the offset in the cpu context.
-        let varnode_offset = X86JITRuntimeContext::varnode_offset(slice);
+        let varnode_offset = X86TaskContext::varnode_offset(slice);
         // Emit the instruction that loads the varnode from the specified space in the context.
         match slice.size() {
             1 => {

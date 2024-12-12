@@ -4,9 +4,16 @@ use std::ptr::NonNull;
 
 mod r#impl;
 
-/// This trait can be implemented on objects that have an emulated virtual address.
-pub trait EVAddress {
-    fn ev_address(&self) -> EVAddr;
+/// A marker trait for the possible address types.
+trait Address {}
+
+/// This trait can be implemented on objects that have an address.
+/// The type of the address is specified in the generic parameter `T`.
+pub trait Addressable<T>
+where
+    T: Address,
+{
+    fn address(&self) -> T;
 }
 
 addr_impl! {
@@ -21,3 +28,4 @@ addr_impl! {
 
 /// Host virtual address
 pub type HVAddr<T> = NonNull<T>;
+impl<T> Address for HVAddr<T> {}

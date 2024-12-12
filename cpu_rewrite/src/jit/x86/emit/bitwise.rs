@@ -1,9 +1,5 @@
-use crate::jit::api::{
-    JITResult,
-    JitError,
-};
+use crate::jit::api::JITResult;
 use crate::jit::x86::{
-    GPRegister,
     X86MogiJit,
     assemble,
 };
@@ -12,7 +8,6 @@ use mogi_sleigh::spec::jir::values::{
     JIRSlice,
     JIRValue,
 };
-
 impl X86MogiJit {
     pub fn emit_bitwise_and(
         &mut self,

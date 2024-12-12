@@ -1,6 +1,6 @@
 use crate::jit::api::JITResult;
+use crate::jit::x86::registers::GPRegister;
 use crate::jit::x86::{
-    GPRegister,
     X86MogiJit,
     assemble,
 };

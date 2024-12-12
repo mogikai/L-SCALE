@@ -2,12 +2,14 @@ use crate::jit::api::{
     JITResult,
     JitError,
 };
-use crate::jit::x86::{
+use crate::jit::x86::registers::{
     GPRegister,
     RegisterAllocation,
     RegisterLoadInfo,
-    X86JITRuntimeContext,
+};
+use crate::jit::x86::{
     X86MogiJit,
+    X86TaskContext,
     assemble,
 };
 use mogi_sleigh::spec::jir::common::JIRSize;
@@ -113,7 +115,7 @@ impl X86MogiJit {
         register: GPRegister,
         slice: JIRSlice,
     ) -> JITResult {
-        let varnode_offset = X86JITRuntimeContext::varnode_offset(slice);
+        let varnode_offset = X86TaskContext::varnode_offset(slice);
         let assembler = &mut self.block_mut()?.assembler;
         // Emit the instruction that loads the varnode from the specified space in the context.
         match slice.size() {

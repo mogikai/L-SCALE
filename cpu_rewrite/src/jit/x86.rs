@@ -1,8 +1,9 @@
 #![allow(unused_variables)]
 //! The x86 JIT implementation can make use of all registers, except RBP, since RBP stores the cpu context.
 use crate::jit::api::{
+    JITGlobalRuntimeContext,
     JITResult,
-    JITRuntimeContext,
+    JITTaskRuntimeContext,
     JitError,
     MogiJit,
     PreludeSignature,
@@ -40,8 +41,8 @@ use mogi_sleigh::spec::{
     ProcessorSpecification,
 };
 use mogi_utilities::addresses::{
+    Addressable,
     EVAddr,
-    EVAddress,
 };
 use num_enum::{
     FromPrimitive,
@@ -53,11 +54,13 @@ use std::alloc::alloc;
 use std::cell::RefCell;
 use std::env::var;
 use std::ffi::c_void;
+use std::marker::PhantomData;
 use std::mem::offset_of;
 use std::ops::{
     Index,
     IndexMut,
 };
+use std::pin::Pin;
 use std::ptr::NonNull;
 use std::rc::Rc;
 use std::{
@@ -71,6 +74,7 @@ use tracing::{
 
 mod emit;
 mod regalloc;
+mod registers;
 #[cfg(test)]
 mod test;
 
@@ -88,213 +92,94 @@ macro_rules! assemble {
     };
 }
 
+pub struct X86MogiJit {
+    processor_specification: Rc<RefCell<ProcessorSpecification>>,
+    unfinished_block: Option<UnfinishedBasicBlock>,
+    /// The jit prelude is the entry point of the emulator. The jir prelude is called with the
+    /// context as first argument, and the block to execute as second argument (see [PreludeSignature])
+    jit_prelude: ExecutableBuffer,
+    /// The jit epilogue is the exit point of the emulator. By default, blocks will chain to this
+    /// special block, such that the execution returns to the main emulator loop.
+    /// However, it is possible to directly link multiple jited blocks together, such that the execution
+    /// remains in the jited code, skipping the main emulator loop. This is more efficient, but requires
+    /// that the blocks have already been translated and are still valid.
+    /// The epilogue will fully flush all registers into their corresponding varnodes.
+    jit_epilogue: ExecutableBuffer,
+    jit_cache: JitCache<BasicBlock>,
+    /// The register tracker keeps track of the registers used in the currently constructed block.
+    /// If all registers are occupied, one of the registers must be spilled into memory, to free
+    /// up space for the current operation.
+    register_tracker: RegisterTracker,
+    mmu: Rc<RefCell<MogiMMU>>,
+    /// The global context pointer is baked into translated blocks for, e.g., custom op callbacks.
+    /// Since the pointer is unmovable as lang as the jit exists, and the block cache is deleted
+    /// along with the jit, this is safe to access.
+    global_context: Pin<Box<X86GlobalContext>>,
+}
+
+/// This is the context of the JIT. It is stored in the RBP register, which has the alias `cpu_context`.
+/// This should be kept small, only containing absolutely necessary information like the address spaces
+/// or tlb pointer.
+pub struct X86TaskContext {
+    /// The address spaces for the cpu spec.
+    /// TODO: Maybe make the amount of address spaces generic?
+    spaces: [Space; 4],
+    /// A Pointer to the tlb for guest memory accesses.
+    /// Each task has its own TLB, hence this is in the task context.
+    tlb: Option<NonNull<TLB>>,
+    pc: usize,
+    custom_ops: Vec<Pin<Box<CustomOpArgs>>>,
+    /// For convenience, the task context contains a pointer to the global context.
+    /// The global context is however usually accessed directly in the jit code.
+    global_context: NonNull<X86GlobalContext>,
+}
+
+type Trampoline<ContextT> = extern "C" fn(&mut ContextT, *mut ());
+
+struct Callback<ContextT: JITTaskRuntimeContext> {
+    trampoline: Trampoline<ContextT>,
+    callback: *mut (),
+    phantom_data: PhantomData<ContextT>,
+}
+
+extern "C" fn trampoline<CB: Fn(&mut ContextT), ContextT: JITTaskRuntimeContext>(
+    context: &mut ContextT,
+    callback: *mut (),
+) {
+    unsafe {
+        let callback = callback as *mut CB;
+        (*callback)(context)
+    }
+}
+
+impl<ContextT> Callback<ContextT>
+where
+    ContextT: JITTaskRuntimeContext,
+{
+    fn new<CB>(callback: CB) -> Self
+    where
+        CB: Fn(&mut ContextT) + 'static,
+    {
+        Self {
+            trampoline: trampoline::<CB, ContextT>,
+            callback: Box::into_raw(Box::new(callback)) as *mut (),
+            phantom_data: Default::default(),
+        }
+    }
+}
+
+/// The global jit context. Each task context contains a pointer to this context.
+pub struct X86GlobalContext {
+    custom_op_impls: SecondaryMap<CustomOpId, Option<Callback<X86TaskContext>>>,
+}
+
 use assemble;
-
-#[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive, PartialEq, Eq)]
-#[repr(u8)]
-enum GPRegister {
-    A   = 0,
-    C   = 1,
-    D   = 2,
-    B   = 3,
-    SP  = 4,
-    BP  = 5,
-    SI  = 6,
-    DI  = 7,
-    R8  = 8,
-    R9  = 9,
-    R10 = 10,
-    R11 = 11,
-    R12 = 12,
-    R13 = 13,
-    R14 = 14,
-    R15 = 15,
-}
-
-impl From<GPRegister> for usize {
-    fn from(value: GPRegister) -> Self {
-        usize::from(u8::from(value))
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-#[repr(u8)]
-enum FPRegister {
-    ST0 = 0,
-    ST1 = 1,
-    ST2 = 2,
-    ST3 = 3,
-    ST4 = 4,
-    ST5 = 5,
-    ST6 = 6,
-    ST7 = 7,
-}
-
-#[derive(Debug, Copy, Clone)]
-#[repr(u8)]
-enum MMXRegister {
-    MMX0 = 0,
-    MMX1 = 1,
-    MMX2 = 2,
-    MMX3 = 3,
-    MMX4 = 4,
-    MMX5 = 5,
-    MMX6 = 6,
-    MMX7 = 7,
-}
-
-#[derive(Debug, Copy, Clone)]
-#[repr(u8)]
-enum XMMRegister {
-    XMM0  = 0,
-    XMM1  = 1,
-    XMM2  = 2,
-    XMM4  = 4,
-    XMM5  = 5,
-    XMM6  = 6,
-    XMM7  = 7,
-    XMM8  = 8,
-    XMM9  = 9,
-    XMM10 = 10,
-    XMM11 = 11,
-    XMM12 = 12,
-    XMM13 = 13,
-    XMM14 = 14,
-    XMM15 = 15,
-}
-
-#[derive(Debug, Copy, Clone)]
-#[repr(u8)]
-enum YMMRegister {
-    YMM0  = 0,
-    YMM1  = 1,
-    YMM2  = 2,
-    YMM4  = 4,
-    YMM5  = 5,
-    YMM6  = 6,
-    YMM7  = 7,
-    YMM8  = 8,
-    YMM9  = 9,
-    YMM10 = 10,
-    YMM11 = 11,
-    YMM12 = 12,
-    YMM13 = 13,
-    YMM14 = 14,
-    YMM15 = 15,
-}
-
-#[derive(Debug, Default)]
-struct UsedRegisters {
-    /// 16 GP registers
-    gp: BitArray<[u16; 1]>,
-    /// 8 FP registers
-    fp: BitArray<[u8; 1]>,
-    /// 8 MMX registers
-    mmx: BitArray<[u8; 1]>,
-    /// 16 XMM registers
-    xmm: BitArray<[u16; 1]>,
-    /// 16 YMM registers
-    ymm: BitArray<[u16; 1]>,
-}
-
-enum RegisterInfo {
-    Reserved,
-    Free,
-    Occupied(JIRSlice),
-}
-
-#[derive(Debug)]
-struct GPRegisterAllocations([RegisterAllocation; 16]);
-
-impl Default for GPRegisterAllocations {
-    fn default() -> Self {
-        Self(array::from_fn(|i| {
-            let reg = GPRegister::try_from(i as u8).expect("We expect the GP registers to be 0..16");
-            match reg {
-                // we reserve RAX as temporary since there are some instructions that can only use RAX
-                GPRegister::A => RegisterAllocation::Reserved,
-                // RBP is reserved for the cpu_context
-                GPRegister::BP => RegisterAllocation::Reserved,
-                // We don't want to mess with the stack pointer.
-                // TODO: It may make sense to keep the emulated stack pointer loaded in some register.
-                //       This might even be the host SP register, but we will have to save the value somewhere.
-                //       Maybe it even makes sense to provide an api where one can specify target registers
-                //       that should be loaded into fixed host registers upon entering the jit. (SP?, FLAGS?)
-                GPRegister::SP => RegisterAllocation::Reserved,
-                _ => RegisterAllocation::Free,
-            }
-        }))
-    }
-}
-
-impl GPRegisterAllocations {
-    fn iter(&self) -> impl Iterator<Item = (GPRegister, &RegisterAllocation)> {
-        self.0.iter().enumerate().map(|(i, entry)| {
-            (GPRegister::try_from(i as u8).expect("We iterate over the GP ids, hence this must not error"), entry)
-        })
-    }
-
-    fn iter_mut(&mut self) -> impl Iterator<Item = (GPRegister, &mut RegisterAllocation)> {
-        self.0.iter_mut().enumerate().map(|(i, entry)| {
-            (GPRegister::try_from(i as u8).expect("We iterate over the GP ids, hence this must not error"), entry)
-        })
-    }
-}
-
-impl Index<GPRegister> for GPRegisterAllocations {
-    type Output = RegisterAllocation;
-
-    fn index(
-        &self,
-        index: GPRegister,
-    ) -> &Self::Output {
-        &self.0[index as usize]
-    }
-}
-
-impl IndexMut<GPRegister> for GPRegisterAllocations {
-    fn index_mut(
-        &mut self,
-        index: GPRegister,
-    ) -> &mut Self::Output {
-        &mut self.0[index as usize]
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-enum RegisterAllocation {
-    Free,
-    Reserved,
-    /// The slot is occupied by a temporary. These can simply be discarded if no longer needed
-    OccupiedTemp,
-    /// The slot is occupied by a slice. The slice needs to be flushed to memory if the slot is cleared.
-    Occupied(JIRSlice),
-}
-
-/// This struct is used to keep track of which slice is loaded in what register.
-/// TODO: This most likely needs to be optimized for size.
-#[derive(Debug, Default)]
-struct RegisterTracker {
-    gp: GPRegisterAllocations,
-    fp: [Option<JIRSlice>; 8],
-    mmx: [Option<JIRSlice>; 8],
-    xmm: [Option<JIRSlice>; 16],
-    ymm: [Option<JIRSlice>; 16],
-}
-
-impl RegisterTracker {
-    /// Resets all GP register slots to empty and returns the array of slices that were previously associated with
-    /// the registers. This can be used to emit the flush instructions.
-    fn reset_gp(&mut self) -> GPRegisterAllocations {
-        mem::take(&mut self.gp)
-    }
-}
-
-enum RegisterLoadInfo<T> {
-    Unloaded(T),
-    Loaded(T),
-    NeedRelocation { from: T, to: T },
-}
+use mogi_utilities::index_map::SecondaryMap;
+use registers::{
+    RegisterAllocation,
+    RegisterTracker,
+    UsedRegisters,
+};
 
 #[derive(Debug)]
 struct UnfinishedBasicBlock {
@@ -346,8 +231,8 @@ impl AsJitCode for BasicBlock {
     }
 }
 
-impl EVAddress for BasicBlock {
-    fn ev_address(&self) -> EVAddr {
+impl Addressable<EVAddr> for BasicBlock {
+    fn address(&self) -> EVAddr {
         self.start
     }
 }
@@ -397,27 +282,24 @@ impl Space {
     }
 }
 
-struct CustomOpArgs {
-    op_id: CustomOpId,
+#[derive(Debug)]
+pub struct CustomOpArgs {
     output: JIRSlice,
     input_a: JIRValue,
     input_b: JIRValue,
 }
 
-/// This is the context of the JIT. It is stored in the RBP register, which has the alias `cpu_context`.
-/// This should be kept small, only containing absolutely necessary information like the address spaces
-/// or tlb pointer.
-pub struct X86JITRuntimeContext {
-    /// The address spaces for the cpu spec.
-    /// TODO: Maybe make the amount of address spaces generic?
-    spaces: [Space; 4],
-    /// A Pointer to the tlb for guest memory accesses.
-    tlb: Option<NonNull<TLB>>,
-    pc: usize,
-    custom_ops: Vec<CustomOpArgs>,
+impl Default for X86GlobalContext {
+    fn default() -> Self {
+        Self {
+            custom_op_impls: Default::default(),
+        }
+    }
 }
 
-impl X86JITRuntimeContext {
+impl JITGlobalRuntimeContext for X86GlobalContext {}
+
+impl X86TaskContext {
     pub fn max_spaces() -> usize {
         4
     }
@@ -434,7 +316,7 @@ impl X86JITRuntimeContext {
     }
 }
 
-impl JITRuntimeContext for X86JITRuntimeContext {
+impl JITTaskRuntimeContext for X86TaskContext {
     fn slice(
         &self,
         slice: JIRSlice,
@@ -448,27 +330,6 @@ impl JITRuntimeContext for X86JITRuntimeContext {
     ) -> Result<&mut [u8], JitError> {
         Ok(self.spaces[usize::from(slice.space_id)].slice_mut(slice))
     }
-}
-
-pub struct X86MogiJit {
-    processor_specification: Rc<RefCell<ProcessorSpecification>>,
-    unfinished_block: Option<UnfinishedBasicBlock>,
-    /// The jit prelude is the entry point of the emulator. The jir prelude is called with the
-    /// context as first argument, and the block to execute as second argument (see [PreludeSignature])
-    jit_prelude: ExecutableBuffer,
-    /// The jit epilogue is the exit point of the emulator. By default, blocks will chain to this
-    /// special block, such that the execution returns to the main emulator loop.
-    /// However, it is possible to directly link multiple jited blocks together, such that the execution
-    /// remains in the jited code, skipping the main emulator loop. This is more efficient, but requires
-    /// that the blocks have already been translated and are still valid.
-    /// The epilogue will fully flush all registers into their corresponding varnodes.
-    jit_epilogue: ExecutableBuffer,
-    jit_cache: JitCache<BasicBlock>,
-    /// The register tracker keeps track of the registers used in the currently constructed block.
-    /// If all registers are occupied, one of the registers must be spilled into memory, to free
-    /// up space for the current operation.
-    register_tracker: RegisterTracker,
-    mmu: Rc<RefCell<MogiMMU>>,
 }
 
 impl X86MogiJit {
@@ -486,6 +347,7 @@ impl X86MogiJit {
             jit_cache: JitCache::new(),
             register_tracker: Default::default(),
             mmu,
+            global_context: Box::pin(X86GlobalContext::default()),
         }
     }
 }
@@ -565,25 +427,30 @@ impl X86MogiJit {
 }
 
 impl MogiJit for X86MogiJit {
-    type RuntimeContext = X86JITRuntimeContext;
+    type RuntimeContext = X86TaskContext;
+    type GlobalContext = X86GlobalContext;
 
-    fn new_runtime_context(&self) -> Self::RuntimeContext {
-        X86JITRuntimeContext {
+    fn new_runtime_context(&mut self) -> Self::RuntimeContext {
+        X86TaskContext {
             spaces: array::from_fn(|_| Space::new()),
             tlb: None,
             pc: 0,
             custom_ops: Default::default(),
+            global_context: NonNull::new(&mut *self.global_context)
+                .expect("The pinned pointer must be non null per definition"),
         }
     }
 
-    fn set_custom_op_callback<CB>(
+    fn register_custom_op_impl<CB>(
         &mut self,
-        callback: Box<CB>,
+        op_id: CustomOpId,
+        callback: CB,
     ) -> JITResult
     where
-        CB: Fn(CustomOpId, JIRSlice, JIRValue, JIRValue),
+        CB: Fn(&mut Self::RuntimeContext) + 'static,
     {
-        todo!()
+        self.global_context.custom_op_impls[op_id] = Some(Callback::new(callback));
+        Ok(())
     }
 
     fn new_block(
@@ -797,21 +664,21 @@ impl MogiJit for X86MogiJit {
         Ok(EVAddr::null())
     }
 
-    fn varnode<'a>(
+    fn varnode<'b>(
         &self,
-        context: &'a Self::RuntimeContext,
+        context: &'b Self::RuntimeContext,
         varnode: VarNodeId,
-    ) -> Result<&'a [u8], JitError> {
+    ) -> Result<&'b [u8], JitError> {
         let spec = self.processor_specification.borrow();
         let varnode = spec.varnode_by_id(varnode).unwrap();
         Ok(context.spaces[usize::from(varnode.space_id)].varnode(varnode))
     }
 
-    fn varnode_mut<'a>(
+    fn varnode_mut<'b>(
         &self,
-        context: &'a mut Self::RuntimeContext,
+        context: &'b mut Self::RuntimeContext,
         varnode: VarNodeId,
-    ) -> Result<&'a mut [u8], JitError> {
+    ) -> Result<&'b mut [u8], JitError> {
         let spec = self.processor_specification.borrow();
         let varnode = spec.varnode_by_id(varnode).unwrap();
         Ok(context.spaces[usize::from(varnode.space_id)].varnode_mut(varnode))

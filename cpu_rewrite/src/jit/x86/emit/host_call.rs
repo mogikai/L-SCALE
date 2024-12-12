@@ -3,8 +3,12 @@ use crate::jit::api::{
     MogiJit,
 };
 use crate::jit::x86::{
-    X86JITRuntimeContext,
+    Callback,
+    CustomOpArgs,
+    Trampoline,
+    X86GlobalContext,
     X86MogiJit,
+    X86TaskContext,
     assemble,
 };
 use mogi_sleigh::spec::CustomOpId;
@@ -13,6 +17,8 @@ use mogi_sleigh::spec::jir::values::{
     JIRValue,
 };
 use mogi_utilities::index_map::MapKey;
+use std::ffi::c_void;
+use std::pin::Pin;
 use tracing::debug;
 
 impl X86MogiJit {
@@ -30,14 +36,19 @@ impl X86MogiJit {
         //       since these are preserved by the caller.
         self.emit_flush_slices()?;
         let callback = custom_op_dispatch;
-        let op_id = op_id.to_index();
+        let Some(op) = &self.global_context.custom_op_impls[op_id] else {
+            todo!("Return error: 'Custom operation has no implementation'")
+        };
+        let trampoline = op.trampoline;
+        let op_ptr = op.callback;
         assemble!(self.block_mut()?.assembler;
             ; mov rax, QWORD callback as _
             ; mov rdi, cpu_context
+            ; mov rsi, QWORD trampoline as _
+            ; mov rdx, QWORD op_ptr as _
             // Save the current stack pointer. RBX is preserved by the caller.
             ; mov rbx, rsp
-            ; mov rsi, QWORD op_id as _
-            // Important: Make sure the stack is aligned to 16 bytes according to System V ABI
+            // Important: Make sure the stack is aligned to 16 bytes according to System V ABI before calling
             ; and rsp, DWORD -16
             ; call rax
             // restore the stack pointer
@@ -48,9 +59,9 @@ impl X86MogiJit {
 }
 
 extern "C" fn custom_op_dispatch(
-    context: &mut X86JITRuntimeContext,
-    op_id: usize,
+    context: &mut X86TaskContext,
+    trampoline: Trampoline<X86TaskContext>,
+    callback: *mut (),
 ) {
-    let op_id = CustomOpId::try_from_index(op_id).unwrap();
-    println!("Custom op dispatch for {:?}", op_id);
+    trampoline(context, callback);
 }

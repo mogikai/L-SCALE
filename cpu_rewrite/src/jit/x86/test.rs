@@ -5,7 +5,7 @@ mod divide;
 mod multiply;
 
 use crate::jit::api::{
-    JITRuntimeContext,
+    JITTaskRuntimeContext,
     MogiJit,
 };
 use crate::jit::x86::X86MogiJit;
@@ -32,6 +32,7 @@ use std::fmt::{
 };
 use std::ops::BitAnd;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::rc::Rc;
 
 fn setup(
@@ -46,12 +47,12 @@ fn setup(
         .build();
     let specification = Rc::new(RefCell::new(compiler.compile(spec_path.as_path()).unwrap()));
     let mmu = Rc::new(RefCell::new(MogiMMU::new()));
-    let jit = X86MogiJit::new(specification.clone(), mmu.clone(), debug);
+    let mut jit = X86MogiJit::new(specification.clone(), mmu.clone(), debug);
     let context = Box::new(jit.new_runtime_context());
     (jit, specification, context)
 }
 
-fn set_slice<T: JITRuntimeContext, V: ToBytes>(
+fn set_slice<T: JITTaskRuntimeContext, V: ToBytes>(
     context: &mut T,
     slice: JIRSlice,
     value: V,
@@ -78,7 +79,7 @@ where
     FromBytes::from_le_bytes(&data.try_into().unwrap())
 }
 
-fn get_slice_value<T: JITRuntimeContext, V: FromBytes>(
+fn get_slice_value<T: JITTaskRuntimeContext, V: FromBytes>(
     context: &T,
     processor_spec: &Rc<RefCell<ProcessorSpecification>>,
     slice: JIRSlice,

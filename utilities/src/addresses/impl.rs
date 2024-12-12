@@ -16,6 +16,8 @@ macro_rules! addr_impl {
         #[repr(transparent)]
         pub struct $name<T = u8>(u64, std::marker::PhantomData::<T>);
 
+        impl<T> crate::addresses::Address for $name<T> {}
+
         impl<T> Copy for $name<T> {}
 
         impl<T> Clone for $name<T> {
