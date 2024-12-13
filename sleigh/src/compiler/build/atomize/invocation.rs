@@ -8,6 +8,7 @@ use crate::compiler::error::{
     InternalErrorType,
 };
 use crate::compiler::{
+    CompilerContext,
     InternalCompilerResult,
     SleighCompiler,
 };
@@ -27,6 +28,7 @@ use crate::spec::moir::scope::{
 use crate::spec::moir::varnode::MOIRLocal;
 use itertools::Itertools;
 use itertools::traits::HomogeneousTuple;
+use tracing::debug;
 
 impl SleighCompiler {
     pub fn atomize_invocation(

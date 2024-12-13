@@ -134,7 +134,7 @@ pub struct X86TaskContext {
     global_context: NonNull<X86GlobalContext>,
 }
 
-type Trampoline<ContextT> = extern "C" fn(&mut ContextT, *mut ());
+type Trampoline<ContextT> = extern "sysv64" fn(&mut ContextT, *mut ());
 
 struct Callback<ContextT: JITTaskRuntimeContext> {
     trampoline: Trampoline<ContextT>,
@@ -143,7 +143,7 @@ struct Callback<ContextT: JITTaskRuntimeContext> {
 }
 
 #[inline]
-extern "C" fn trampoline<CB: Fn(&mut ContextT), ContextT: JITTaskRuntimeContext>(
+extern "sysv64" fn trampoline<CB: Fn(&mut ContextT), ContextT: JITTaskRuntimeContext>(
     context: &mut ContextT,
     callback: *mut (),
 ) {
