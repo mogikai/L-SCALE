@@ -142,6 +142,7 @@ struct Callback<ContextT: JITTaskRuntimeContext> {
     phantom_data: PhantomData<ContextT>,
 }
 
+#[inline]
 extern "C" fn trampoline<CB: Fn(&mut ContextT), ContextT: JITTaskRuntimeContext>(
     context: &mut ContextT,
     callback: *mut (),

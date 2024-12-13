@@ -7,8 +7,8 @@ use mogi_sleigh::compiler::error::{
 
 mod common;
 
-const ASSETS_PATH: &str = "./tests/assets/";
-const SPACE_ATTRS_PATH: &str = "./tests/assets/duplicate_space_attrs/";
+const ASSETS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/resources/test/");
+const SPACE_ATTRS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/resources/test/duplicate_space_attrs/");
 
 #[test]
 fn duplicate_space_type() {
