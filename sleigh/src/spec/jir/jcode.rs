@@ -10,6 +10,7 @@ use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::custom_op::CustomOpId;
 pub use inline_code::*;
 use std::rc::Rc;
+use tracing::trace;
 
 #[derive(Debug, Clone)]
 pub struct JIRInstruction {
@@ -34,8 +35,6 @@ impl JIRInstruction {
         let output = output.into();
         let input_a = input_a.into();
         let input_b = input_b.into();
-        assert_eq!(output.size(), input_a.size());
-        assert_eq!(input_a.size(), input_b.size());
         Self {
             output: Some(output),
             input_a: Some(input_a),
@@ -55,7 +54,6 @@ impl JIRInstruction {
     {
         let output = output.into();
         let input_a = input_a.into();
-        assert_eq!(output.size(), input_a.size());
         Self {
             output: Some(output),
             input_a: Some(input_a),
@@ -113,15 +111,15 @@ impl JIRInstruction {
     pub fn new_custom_call(
         output: Option<impl Into<JIRSlice>>,
         op_id: CustomOpId,
-        args: Vec<JIRValue>,
+        args: Vec<JIRSlice>,
     ) -> Self {
         Self {
             output: output.map(Into::into),
-            input_a: args.get(0).copied(),
-            input_b: args.get(1).copied(),
+            input_a: args.get(0).map(Into::into),
+            input_b: args.get(1).map(Into::into),
             operation: JIROperation::CustomOp {
                 op_id,
-                extra_args: Rc::new(args.into_iter().skip(2).collect()),
+                extra_args: Rc::new(args.into_iter().skip(2).map(Into::into).collect()),
             },
         }
     }
@@ -272,6 +270,6 @@ pub enum JIROperation {
     Round,
     CustomOp {
         op_id: CustomOpId,
-        extra_args: Rc<Vec<JIRValue>>,
+        extra_args: Rc<Vec<JIRSlice>>,
     },
 }

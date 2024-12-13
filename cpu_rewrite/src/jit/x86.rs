@@ -286,8 +286,8 @@ impl Space {
 #[derive(Debug)]
 pub struct CustomOpArgs {
     output: JIRSlice,
-    input_a: JIRValue,
-    input_b: JIRValue,
+    input_a: JIRSlice,
+    input_b: JIRSlice,
 }
 
 impl Default for X86GlobalContext {

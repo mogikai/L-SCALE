@@ -2,6 +2,7 @@ use crate::spec::jir::jcode::{
     JIRInstruction,
     JIROperation,
 };
+use crate::spec::jir::values::JIRValue;
 use crate::spec::moir::code::MOIROperation;
 use std::fmt::{
     Display,
@@ -85,7 +86,7 @@ impl Display for JIRInstruction {
                 if let Some(input) = self.input_b {
                     inputs.push(input);
                 }
-                inputs.extend(extra_args.iter());
+                inputs.extend(extra_args.iter().map(Into::<JIRValue>::into));
                 let len = inputs.len();
                 if len >= 2 {
                     for input in inputs[..(len - 1)].iter() {

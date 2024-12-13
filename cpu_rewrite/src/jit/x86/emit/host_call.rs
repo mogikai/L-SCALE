@@ -19,10 +19,8 @@ impl X86MogiJit {
         output: JIRSlice,
         input_a: JIRValue,
         input_b: JIRValue,
-        extra_args: &[JIRValue],
+        extra_args: &[JIRSlice],
     ) -> JITResult {
-        // TODO: Implement hooking mechanism that allows writing hooks for a custom op compiler
-        //       that directly implements the custom ops in JIR
         // Make sure all slices are flushed, such that they cannot be trashed and are available to the impl callback.
         // TODO: Use a different function to flush for callbacks.
         //       We don't really need to flush rbx, rsp, rbp, r12, r13, r14, and r15
