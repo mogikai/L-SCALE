@@ -37,6 +37,7 @@ use mogi_utilities::index_map::PrimaryMap;
 use std::collections::HashMap;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
+use tracing::warn;
 
 #[derive(Debug)]
 pub(super) struct MOIRToJIRTransformer<'a> {
@@ -127,18 +128,25 @@ fn transform_custom_ops(
     interner: &StringInterner<StringBackend>,
     custom_ops: PrimaryMap<CustomOpId, MOIRCustomOp>,
 ) -> InternalCompilerResult<PrimaryMap<CustomOpId, JIRCustomOp>> {
-    custom_ops
+    Ok(custom_ops
         .into_iter()
-        .map(|(id, op)| match op {
-            MOIRCustomOp::Declared { .. } => Err(InternalError::from(InternalErrorType::Unknown)),
-            MOIRCustomOp::Defined { name, .. } => Ok((id, JIRCustomOp {
+        .filter_map(|(id, op)| match op {
+            MOIRCustomOp::Declared { name } => {
+                let name = interner
+                    .string(*name)
+                    .expect("The string has to exist since we saved an id to it.");
+                // TODO: Emit a compiler warning instead of a log output
+                warn!("Custom op '{name}' is declared but not defined. Ignoring.");
+                None
+            }
+            MOIRCustomOp::Defined { name, .. } => Some((id, JIRCustomOp {
                 name: interner
                     .string(*name)
                     .expect("The string has to exist since we saved an id to it.")
                     .to_string(),
             })),
         })
-        .collect::<Result<PrimaryMap<CustomOpId, JIRCustomOp>, InternalError>>()
+        .collect::<PrimaryMap<CustomOpId, JIRCustomOp>>())
 }
 
 fn transform_spaces(
