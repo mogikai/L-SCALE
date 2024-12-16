@@ -2,7 +2,6 @@ use crate::jit::cache::{
     JitCacheError,
     JitCode,
 };
-use crate::jit::x86::CustomOpArgs;
 use mogi_sleigh::spec::CustomOpId;
 use mogi_sleigh::spec::jir::jcode::JIRInstruction;
 use mogi_sleigh::spec::jir::values::{
@@ -11,9 +10,7 @@ use mogi_sleigh::spec::jir::values::{
     VarNodeId,
 };
 use mogi_utilities::addresses::EVAddr;
-use num_traits::FromBytes;
 use std::ffi::c_void;
-use std::pin::Pin;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -28,10 +25,6 @@ pub enum JitError {
     AssemblerError,
     #[error("The block does not refer to the epilogue and can not be chained.")]
     NoEpilogue,
-    #[error("The instruction is missing an output and cannot be translated.")]
-    MissingOutput,
-    #[error("The instruction is missing an input parameter and cannot be translated.")]
-    MissingInput,
     #[error("The register cannot be freed since it is not a temporary.")]
     InvalidTempFree,
     #[error("The register is already allocated and cannot be reused.")]
@@ -42,6 +35,16 @@ pub enum JitError {
     CannotMoveNonSlice,
     #[error("The provided slice is not loaded.")]
     SliceNotLoaded,
+    #[error("The jit encountered a runtime error.")]
+    RuntimeError(#[from] RuntimeError),
+}
+
+#[derive(Error, Debug, Copy, Clone)]
+pub enum RuntimeError {
+    #[error("The instruction is missing an output and cannot be translated.")]
+    MissingOutput,
+    #[error("The instruction is missing an input parameter and cannot be translated.")]
+    MissingInput,
 }
 
 pub type JITResult<T = ()> = Result<T, JitError>;
@@ -64,7 +67,7 @@ pub trait MogiJit {
         callback: CB,
     ) -> JITResult
     where
-        CB: Fn(&mut Self::RuntimeContext) + 'static;
+        CB: Fn(&mut Self::RuntimeContext, &CustomOpArgs) -> Result<(), RuntimeError> + 'static;
 
     /// Create a new block that starts at the provided emulated virtual address.
     /// Only one block can be built at once.
@@ -143,12 +146,12 @@ pub trait JITTaskRuntimeContext {
     fn slice(
         &self,
         slice: JIRSlice,
-    ) -> Result<&[u8], JitError>;
+    ) -> Result<&[u8], RuntimeError>;
 
     fn slice_mut(
         &mut self,
         slice: JIRSlice,
-    ) -> Result<&mut [u8], JitError>;
+    ) -> Result<&mut [u8], RuntimeError>;
 }
 
 /// The runtime context contains information that is global to all tasks (processes/threads).
@@ -156,3 +159,31 @@ pub trait JITTaskRuntimeContext {
 pub trait JITGlobalRuntimeContext {}
 
 pub type PreludeSignature = extern "C" fn(context: *mut c_void, block: JitCode);
+
+/// A custom operation must have a signature that corresponds to this trait.
+pub trait CustomOpImpl<RuntimeContextT>:
+    FnMut(&mut RuntimeContextT, &CustomOpArgs) -> Result<(), RuntimeError>
+where
+    RuntimeContextT: JITTaskRuntimeContext,
+{
+}
+
+impl<T, RuntimeContextT> CustomOpImpl<RuntimeContextT> for T
+where
+    T: Fn(&mut RuntimeContextT, &CustomOpArgs) -> Result<(), RuntimeError>,
+    RuntimeContextT: JITTaskRuntimeContext,
+{
+}
+
+/// The arguments passed to a custom operation. The output is always a [JIRSlice] if it exists, since
+/// [JIRConst](mogi_sleigh::spec::jir::values::JIRConst) cannot be written to.
+/// For ease of access, the arguments are wrapped in a Result. Accessing an argument can be done with the
+/// `?` operator. If the argument is missing, then this will currently result in a panic, until
+/// the jit runtime gets an updated error handling mechanism.
+#[derive(Debug)]
+pub struct CustomOpArgs {
+    pub output: Result<JIRSlice, RuntimeError>,
+    pub input_a: Result<JIRValue, RuntimeError>,
+    pub input_b: Result<JIRValue, RuntimeError>,
+    pub extra_args: Vec<JIRValue>,
+}

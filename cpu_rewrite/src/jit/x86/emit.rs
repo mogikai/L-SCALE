@@ -21,3 +21,5 @@ macro_rules! mov64 {
 }
 
 use mov64;
+
+pub use host_call::CustomOpCallback;

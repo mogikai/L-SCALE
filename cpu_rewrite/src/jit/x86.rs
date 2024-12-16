@@ -1,12 +1,15 @@
 #![allow(unused_variables)]
 //! The x86 JIT implementation can make use of all registers, except RBP, since RBP stores the cpu context.
 use crate::jit::api::{
+    CustomOpArgs,
+    CustomOpImpl,
     JITGlobalRuntimeContext,
     JITResult,
     JITTaskRuntimeContext,
     JitError,
     MogiJit,
     PreludeSignature,
+    RuntimeError,
 };
 use crate::jit::cache::{
     AsJitCode,
@@ -134,48 +137,18 @@ pub struct X86TaskContext {
     global_context: NonNull<X86GlobalContext>,
 }
 
-type Trampoline<ContextT> = extern "sysv64" fn(&mut ContextT, *mut ());
-
-struct Callback<ContextT: JITTaskRuntimeContext> {
-    trampoline: Trampoline<ContextT>,
-    callback: *mut (),
-    phantom_data: PhantomData<ContextT>,
-}
-
-#[inline]
-extern "sysv64" fn trampoline<CB: Fn(&mut ContextT), ContextT: JITTaskRuntimeContext>(
-    context: &mut ContextT,
-    callback: *mut (),
-) {
-    unsafe {
-        let callback = callback as *mut CB;
-        (*callback)(context)
-    }
-}
-
-impl<ContextT> Callback<ContextT>
-where
-    ContextT: JITTaskRuntimeContext,
-{
-    fn new<CB>(callback: CB) -> Self
-    where
-        CB: Fn(&mut ContextT) + 'static,
-    {
-        Self {
-            trampoline: trampoline::<CB, ContextT>,
-            callback: Box::into_raw(Box::new(callback)) as *mut (),
-            phantom_data: Default::default(),
-        }
-    }
-}
-
 /// The global jit context. Each task context contains a pointer to this context.
 pub struct X86GlobalContext {
-    custom_op_impls: SecondaryMap<CustomOpId, Option<Callback<X86TaskContext>>>,
+    custom_op_impls: SecondaryMap<CustomOpId, Option<CustomOpCallback<X86TaskContext>>>,
 }
 
 use assemble;
-use mogi_utilities::index_map::SecondaryMap;
+use emit::CustomOpCallback;
+use mogi_utilities::index_map::{
+    PrimaryMap,
+    SecondaryMap,
+};
+use mogi_utilities::new_map_key;
 use registers::{
     RegisterAllocation,
     RegisterTracker,
@@ -187,6 +160,10 @@ struct UnfinishedBasicBlock {
     start: EVAddr,
     assembler: Assembler,
     jmp_epilogue_offset: Option<AssemblyOffset>,
+    /// Each basic block may call custom operations. The arguments are currently saved on the heap
+    /// Once the basic block is destroyed, the call and its arguments are also removed.
+    /// TODO: Check performance impact and maybe bake the arguments into the generated code?
+    custom_op_args: Vec<Box<CustomOpArgs>>,
 }
 
 // TODO: In order to more easily create the basic blocks, it might make sense to
@@ -199,6 +176,7 @@ impl UnfinishedBasicBlock {
             start,
             assembler: Assembler::new().unwrap(),
             jmp_epilogue_offset: None,
+            custom_op_args: Vec::new(),
         }
     }
 
@@ -210,7 +188,7 @@ impl UnfinishedBasicBlock {
             start: self.start,
             code: self.assembler.finalize().unwrap(),
             jmp_epilogue_offset: self.jmp_epilogue_offset,
-            used_registers: Default::default(),
+            custom_op_args: self.custom_op_args,
         })
     }
 }
@@ -220,10 +198,7 @@ struct BasicBlock {
     start: EVAddr,
     code: ExecutableBuffer,
     jmp_epilogue_offset: Option<AssemblyOffset>,
-    /// TODO: The used registers could be used during block chaining to eliminate flushes.
-    ///       For example, if the parent block writes to a register, which is simply overwritten
-    ///       in the child block, then this register never requires flushing.
-    used_registers: UsedRegisters,
+    custom_op_args: Vec<Box<CustomOpArgs>>,
 }
 
 impl AsJitCode for BasicBlock {
@@ -283,13 +258,6 @@ impl Space {
     }
 }
 
-#[derive(Debug)]
-pub struct CustomOpArgs {
-    output: JIRSlice,
-    input_a: JIRSlice,
-    input_b: JIRSlice,
-}
-
 impl Default for X86GlobalContext {
     fn default() -> Self {
         Self {
@@ -321,14 +289,14 @@ impl JITTaskRuntimeContext for X86TaskContext {
     fn slice(
         &self,
         slice: JIRSlice,
-    ) -> Result<&[u8], JitError> {
+    ) -> Result<&[u8], RuntimeError> {
         Ok(self.spaces[usize::from(slice.space_id)].slice(slice))
     }
 
     fn slice_mut(
         &mut self,
         slice: JIRSlice,
-    ) -> Result<&mut [u8], JitError> {
+    ) -> Result<&mut [u8], RuntimeError> {
         Ok(self.spaces[usize::from(slice.space_id)].slice_mut(slice))
     }
 }
@@ -448,9 +416,9 @@ impl MogiJit for X86MogiJit {
         callback: CB,
     ) -> JITResult
     where
-        CB: Fn(&mut Self::RuntimeContext) + 'static,
+        CB: CustomOpImpl<Self::RuntimeContext>,
     {
-        self.global_context.custom_op_impls[op_id] = Some(Callback::new(callback));
+        self.global_context.custom_op_impls[op_id] = Some(CustomOpCallback::new(callback));
         Ok(())
     }
 
@@ -473,9 +441,9 @@ impl MogiJit for X86MogiJit {
         // TODO: Maybe we can "allocate" the registers ahead of time and provide some hints
         //       or something similar. Allocating the registers when having a complete
         //       view on all relevant instructions may be more efficient.
-        let output = jinst.output.ok_or(JitError::MissingOutput);
-        let input_a = jinst.input_a.ok_or(JitError::MissingInput);
-        let input_b = jinst.input_b.ok_or(JitError::MissingInput);
+        let output = jinst.output.ok_or(RuntimeError::MissingOutput);
+        let input_a = jinst.input_a.ok_or(RuntimeError::MissingInput);
+        let input_b = jinst.input_b.ok_or(RuntimeError::MissingInput);
         match jinst.operation {
             JIROperation::Unimpl => {}
             JIROperation::Copy => return self.emit_copy(output?, input_a?),
@@ -548,7 +516,7 @@ impl MogiJit for X86MogiJit {
             JIROperation::Floor => {}
             JIROperation::Round => {}
             JIROperation::CustomOp { op_id, ref extra_args } => {
-                return self.emit_custom_op_call(op_id, output?, input_a?, input_b?, extra_args.as_slice());
+                return self.emit_custom_op_call(op_id, output, input_a, input_b, extra_args.as_slice());
             }
         }
         todo!()

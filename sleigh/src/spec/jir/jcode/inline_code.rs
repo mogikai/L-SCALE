@@ -525,10 +525,10 @@ macro_rules! jinst {
         jinst!(if $cond goto {$label})
     };
     ($out:tt = (*$op_id:tt)($($arg:tt),*)) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_custom_call(Some($out), $op_id, vec![$($arg),*])
+        $crate::spec::jir::jcode::JIRInstruction::new_custom_call(Some($out), $op_id, vec![$($crate::spec::jir::values::JIRValue::from($arg)),*])
     };
     ((*$op_id:tt)($($arg:tt),*)) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_custom_call(Option::<JIRSlice>::None, $op_id, vec![$($arg),*])
+        $crate::spec::jir::jcode::JIRInstruction::new_custom_call(Option::<JIRSlice>::None, $op_id, vec![$($crate::spec::jir::values::JIRValue::from($arg)),*])
     };
     ($out:tt = (*$op_id:tt)(*$args:tt)) => {
         $crate::spec::jir::jcode::JIRInstruction::new_custom_call(Some($out), $op_id, $args)

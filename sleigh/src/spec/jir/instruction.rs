@@ -26,7 +26,10 @@ use mogi_utilities::index_map::{
     PrimaryMap,
     SecondaryMap,
 };
-use mogi_utilities::new_map_key;
+use mogi_utilities::{
+    new_map_key,
+    new_map_key_16,
+};
 use std::rc::Rc;
 use tracing::debug;
 
@@ -40,7 +43,7 @@ use tracing::debug;
 #[derive(Debug, Clone)]
 pub struct TargetInstruction(Rc<TargetInstructionInner>);
 
-new_map_key! { pub struct JIRTempId; "JTMP"; }
+new_map_key_16! { pub struct JIRTempId; "JTMP"; }
 
 pub struct TargetInstructionBuilder {
     instruction: TargetInstructionInner,

@@ -158,12 +158,14 @@ where
 
             // Copy to r9
             self.runtime_context
-                .slice_mut(r9d)?
+                .slice_mut(r9d)
+                .map_err(JitError::from)?
                 .copy_from_slice((0b1000i32).to_le_bytes().as_slice());
 
             // Copy to r8
             self.runtime_context
-                .slice_mut(r8d)?
+                .slice_mut(r8d)
+                .map_err(JitError::from)?
                 .copy_from_slice((0b1101i32).to_le_bytes().as_slice());
 
             let instructions = vec![

@@ -77,7 +77,7 @@ macro_rules! new_map_key_16 {
 
         impl $crate::index_map::MapKey for $name {
             fn try_from_index(index: usize) -> Result<Self, $crate::index_map::IndexMapError> {
-                std::num::NonZero::new(u16::from(index + 1)).ok_or($crate::index_map::IndexMapError::InvalidIndex(index)).map(Self)
+                std::num::NonZero::new(u16::try_from(index + 1).map_err(|e| $crate::index_map::IndexMapError::InvalidIndex(index))?).ok_or($crate::index_map::IndexMapError::InvalidIndex(index)).map(Self)
             }
             fn to_index(&self) -> usize {
                 // This is safe, since self.0 is never zero

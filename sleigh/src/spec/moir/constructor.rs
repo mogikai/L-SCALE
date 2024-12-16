@@ -186,13 +186,7 @@ impl MOIRConstructor {
                 //       that directly implements the custom ops in JIR
                 //       It might make sense to put this into the optimizing stage.
                 let args = self.resolve_custom_op_args(target_inst, resolver, input_a, input_b, extra_args)?;
-                let args = args
-                    .into_iter()
-                    .map(|v| match v {
-                        JIRValue::Slice(s) => s,
-                        JIRValue::Const(c) => todo!(),
-                    })
-                    .collect();
+                let args = args.into_iter().collect();
 
                 if let Ok(output) = output {
                     jinst!(output = (*{ *op_id })(*args))

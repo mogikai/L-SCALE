@@ -86,7 +86,7 @@ impl Display for JIRInstruction {
                 if let Some(input) = self.input_b {
                     inputs.push(input);
                 }
-                inputs.extend(extra_args.iter().map(Into::<JIRValue>::into));
+                inputs.extend(extra_args.iter());
                 let len = inputs.len();
                 if len >= 2 {
                     for input in inputs[..(len - 1)].iter() {
