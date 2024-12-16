@@ -1,9 +1,4 @@
-use ariadne::{
-    Report,
-    Source,
-};
-use chumsky::inspector::Inspector;
-use chumsky::prelude::Input;
+use ariadne::Source;
 use slotmap::new_key_type;
 use std::fmt::{
     Debug,
@@ -19,14 +14,12 @@ use tracing::{
     info,
 };
 
-use crate::compiler::ast::Spanned;
 use crate::compiler::error::{
     InternalError,
     InternalErrorType,
     SleighCompilerError,
 };
 use crate::compiler::lexer::{
-    InputSpan,
     SleighLexer,
     SleighTokens,
 };

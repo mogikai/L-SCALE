@@ -4,8 +4,8 @@ use crate::lifter::{
 };
 use crate::spec::jir::basic_block::TargetBasicBlock;
 use crate::spec::jir::instruction::TargetInstruction;
-use imbl::HashMap;
 use imbl::hashmap::Entry;
+use imbl::HashMap;
 use mogi_utilities::addresses::EVAddr;
 
 /// The lifter cache contains all the translated instructions and blocks.

@@ -11,14 +11,10 @@ use crate::jit::api::{
 use crate::jit::x86::X86MogiJit;
 use mogi_mem::mmu::MogiMMU;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
-use mogi_sleigh::jinst;
 use mogi_sleigh::preprocessor::SleighPreprocessorFactory;
 use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_sleigh::spec::jir::jcode::JIRInstruction;
-use mogi_sleigh::spec::jir::values::{
-    JIRSlice,
-    JIRValue,
-};
+use mogi_sleigh::spec::jir::values::JIRSlice;
 use mogi_utilities::addresses::EVAddr;
 use num_traits::{
     FromBytes,
@@ -30,9 +26,7 @@ use std::fmt::{
     Debug,
     LowerHex,
 };
-use std::ops::BitAnd;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::rc::Rc;
 
 fn setup(
@@ -42,7 +36,7 @@ fn setup(
     spec_path.push("resources/test/x86/x86-64.slaspec");
     let spec_dir = spec_path.parent().unwrap();
     let factory = SleighPreprocessorFactory::new().working_dir(spec_dir.to_path_buf());
-    let mut compiler = SleighCompilerBuilder::new()
+    let compiler = SleighCompilerBuilder::new()
         .preprocessor_factory(factory)
         .build();
     let specification = Rc::new(RefCell::new(compiler.compile(spec_path.as_path()).unwrap()));

@@ -1,9 +1,8 @@
-use crate::compiler::CompilerContext;
 use crate::compiler::ast::Spanned;
-use crate::compiler::lexer::InputSpan;
 use crate::new_typed_index_table_id;
 use crate::spec::builder::{
     CustomInterner,
+    MOIRSymbolId,
     StringId,
 };
 use crate::spec::jir::custom_op::JIRCustomOp;
@@ -20,7 +19,6 @@ use crate::spec::moir::constructor::{
     MOIRConstructor,
 };
 pub use crate::spec::moir::custom_op::CustomOpId;
-use crate::spec::moir::custom_op::MOIRCustomOp;
 use crate::spec::moir::endianness::MOIREndianness;
 use crate::spec::moir::field::FieldId;
 use crate::spec::moir::r#macro::MacroId;
@@ -31,8 +29,6 @@ use crate::spec::moir::table::{
 use crate::spec::moir::token::TokenId;
 use crate::spec::moir::varnode::VarNodeId;
 use crate::spec::typed_index_table::TypedIndexTable;
-use ariadne::Report;
-use builder::MOIRSymbolId;
 use mogi_utilities::index_map::PrimaryMap;
 use std::collections::HashMap;
 use std::ops::Range;

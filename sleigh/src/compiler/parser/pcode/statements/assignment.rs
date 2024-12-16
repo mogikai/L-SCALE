@@ -1,16 +1,16 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
 use crate::compiler::ast::pcode::statement::SASTPCodeStatement;
+use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::expression::pcode_expression;
 use crate::compiler::parser::pcode::target_expression::target_expression;
 use crate::compiler::parser::{
-    SleighParserExtra,
     sleigh_control,
     sleigh_keyword,
     sleigh_operation,
     whitespace_padded,
+    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighControlCharacter,
@@ -18,11 +18,11 @@ use crate::compiler::tokens::{
     SleighOperation,
     SleighToken,
 };
-use chumsky::Parser;
 use chumsky::prelude::{
     none_of,
     via_parser,
 };
+use chumsky::Parser;
 
 pub fn pcode_assignment_statement<'tokens>()
 -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeStatement>, SleighParserExtra<'tokens>> + Clone {

@@ -1,7 +1,7 @@
 use crate::compiler::build::trace_build;
 use crate::compiler::{
-    SleighCompiler,
     InternalCompilerResult,
+    SleighCompiler,
 };
 use crate::spec::moir::code::{
     MOIRInstruction,

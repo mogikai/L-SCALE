@@ -4,7 +4,6 @@ use crate::jit::x86::{
     X86MogiJit,
     assemble,
 };
-use bitvec::macros::internal::funty::Integral;
 use mogi_sleigh::spec::jir::values::{
     JIRConst,
     JIRSlice,

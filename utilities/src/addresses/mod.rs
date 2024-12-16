@@ -9,6 +9,7 @@ trait Address {}
 
 /// This trait can be implemented on objects that have an address.
 /// The type of the address is specified in the generic parameter `T`.
+#[allow(private_bounds)]
 pub trait Addressable<T>
 where
     T: Address,

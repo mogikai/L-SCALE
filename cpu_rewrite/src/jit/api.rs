@@ -92,8 +92,8 @@ pub trait MogiJit {
     /// the epilogue block, but directly into the next block `target`.
     fn chain_blocks(
         &mut self,
-        origin_block_address: EVAddr,
-        target_block_address: EVAddr,
+        _origin_block_address: EVAddr,
+        _target_block_address: EVAddr,
     ) -> JITResult {
         todo!()
     }

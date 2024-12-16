@@ -2,8 +2,6 @@ use crate::spec::jir::jcode::{
     JIRInstruction,
     JIROperation,
 };
-use crate::spec::jir::values::JIRValue;
-use crate::spec::moir::code::MOIROperation;
 use std::fmt::{
     Display,
     Formatter,

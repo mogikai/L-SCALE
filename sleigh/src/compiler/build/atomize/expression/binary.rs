@@ -1,9 +1,9 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::expression::{
     SASTPCodeBinaryOp,
     SASTPCodeExpression,
     SASTPcodeOpCategory,
 };
+use crate::compiler::ast::Spanned;
 use crate::compiler::build::atomize::expression::{
     from_bool,
     into_bool,
@@ -14,12 +14,12 @@ use crate::compiler::error::{
     InternalError,
 };
 use crate::compiler::{
-    SleighCompiler,
     InternalCompilerResult,
+    SleighCompiler,
 };
 use crate::spec::moir::code::{
-    MOIRInstruction,
     moir_instruction,
+    MOIRInstruction,
 };
 use crate::spec::moir::scope::{
     MOIRLocalId,
@@ -30,11 +30,6 @@ use crate::spec::moir::varnode::{
     MOIRConst,
     MOIRLocal,
 };
-use num::{
-    CheckedAdd,
-    CheckedSub,
-};
-use std::fmt::Display;
 
 impl SleighCompiler {
     pub fn atomize_binary_operation(

@@ -1,4 +1,3 @@
-use crate::spec::ProcessorSpecResult;
 use crate::spec::jir::common::JIRSize;
 use crate::spec::jir::instruction::JIRTempId;
 use crate::spec::moir::address_space::SpaceId;

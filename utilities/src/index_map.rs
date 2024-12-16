@@ -1,6 +1,5 @@
 use std::hash::Hash;
 use std::marker::PhantomData;
-use std::num::NonZero;
 use std::ops::{
     Index,
     IndexMut,

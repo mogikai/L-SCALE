@@ -1,18 +1,13 @@
-use crate::compiler::error::InternalError;
 use crate::jinst;
 use crate::spec::builder::StringId;
 use crate::spec::jir::common::JIRSize;
-use crate::spec::jir::instruction::{
-    TargetInstruction,
-    TargetInstructionBuilder,
-};
+use crate::spec::jir::instruction::TargetInstructionBuilder;
 use crate::spec::jir::space::JIRSpaceType;
 use crate::spec::jir::trace_jir;
 use crate::spec::jir::values::{
     JIRConst,
     JIRSlice,
     JIRValue,
-    JIRVarNodeId,
 };
 use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::constructor::MOIRConstructor;

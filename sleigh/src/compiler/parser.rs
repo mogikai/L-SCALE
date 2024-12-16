@@ -4,11 +4,7 @@ use crate::compiler::ast::{
     SleighAST,
     Spanned,
 };
-use crate::compiler::error::{
-    InternalError,
-    InternalErrorType,
-    SleighCompilerError,
-};
+use crate::compiler::error::SleighCompilerError;
 use crate::compiler::inputcache::CompilerInputCache;
 use crate::compiler::lexer::{
     InputSpan,
@@ -60,7 +56,6 @@ use chumsky::primitive::{
     choice,
     just,
 };
-use chumsky::span::Span;
 use chumsky::{
     IterParser,
     ParseResult,

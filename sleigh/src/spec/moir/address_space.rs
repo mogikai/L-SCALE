@@ -1,9 +1,6 @@
 use crate::compiler::ast::define::SASTAddressSpaceType;
 use crate::spec::moir::common::MOIRSize;
-use crate::{
-    new_typed_index_table_id,
-    new_typed_index_table_id_16,
-};
+use crate::new_typed_index_table_id_16;
 
 #[derive(Debug)]
 /// A space refers to an address space with which the cpu can interact by storing or reading data to or from.

@@ -1,7 +1,4 @@
-use crate::compiler::error::{
-    InternalError,
-    SleighCompilerError,
-};
+use crate::compiler::error::SleighCompilerError;
 use crate::compiler::inputcache::CompilerInputCache;
 use crate::compiler::lexer::{
     SleighLexer,

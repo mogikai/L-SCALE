@@ -1,11 +1,8 @@
 use crate::jit::x86::test::{
     setup,
-    test_instruction_generic,
     test_multiple_instruction_generic,
 };
-use bitvec::macros::internal::funty::Integral;
 use mogi_sleigh::jinst;
-use std::ops::Div;
 
 #[test]
 fn test_divide_const_const_8() {

@@ -4,12 +4,9 @@ use crate::jit::x86::test::{
     get_slice_value_by_name,
     set_slice,
     setup,
-    test_instruction_generic,
     test_multiple_instruction_generic,
 };
-use bitvec::macros::internal::funty::Integral;
 use mogi_sleigh::jinst;
-use num_traits::WrappingMul;
 
 #[test]
 fn test_multiply_slice_slice() {

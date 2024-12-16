@@ -1,11 +1,9 @@
-use crate::compiler::CompilerContext;
 use crate::lifter::cache::LifterCache;
 use crate::spec::ProcessorSpecification;
 use crate::spec::builder::CustomInterner;
 use crate::spec::jir::instruction::TargetInstruction;
 use crate::spec::jir::local_resolver::JIRResolver;
 use crate::spec::jir::values::{
-    JIRConst,
     JIRSlice,
     JIRValue,
     VarNodeId,
@@ -75,7 +73,7 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
             }
         }
         // No cache entry? Fetch data now.
-        let data = self.instruction_source.load(addr);
+        let _data = self.instruction_source.load(addr);
         // TODO: Perform the matching on the instruction bytes to
         //       get the correct constructor and resolve context
         let constructor = self
@@ -128,7 +126,7 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
             .constructors
             .get(ConstructorId::from(172))
             .expect("");
-        let mut resolver43 = JIRResolver::new(&self.specification, constructor43, addr, inst_next, None);
+        let resolver43 = JIRResolver::new(&self.specification, constructor43, addr, inst_next, None);
 
         let constructor9 = self
             .specification
@@ -215,8 +213,8 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
 
     fn lift_block(
         &self,
-        addr: EVAddr,
-        source: impl TargetInstructionSource,
+        _addr: EVAddr,
+        _source: impl TargetInstructionSource,
     ) -> LifterResult<(EVAddr, Vec<TargetInstruction>)> {
         todo!()
     }

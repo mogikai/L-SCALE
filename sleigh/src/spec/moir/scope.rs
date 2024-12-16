@@ -1,3 +1,4 @@
+use crate::compiler::InternalCompilerResult;
 use crate::compiler::ast::Spanned;
 use crate::compiler::error::{
     DuplicatedIdentifier,
@@ -5,9 +6,6 @@ use crate::compiler::error::{
     InternalErrorType,
 };
 use crate::compiler::lexer::InputSpan;
-use crate::compiler::{
-    InternalCompilerResult,
-};
 use crate::new_typed_index_table_id;
 use crate::spec::builder::{
     CustomInterner,
@@ -27,7 +25,6 @@ use crate::spec::moir::varnode::{
     MOIRSlice,
 };
 use crate::spec::typed_index_table::TypedIndexTable;
-use itertools::Itertools;
 use mogi_utilities::index_map::PrimaryMap;
 use mogi_utilities::new_map_key;
 use std::collections::hash_map::Entry;
@@ -233,7 +230,7 @@ impl MOIRScope {
         result
     }
 
-    pub fn iter_used_temps(&self) -> impl Iterator<Item = (MOIRLocalId, MOIRTemporary)> {
+    pub(crate) fn iter_used_temps(&self) -> impl Iterator<Item = (MOIRLocalId, MOIRTemporary)> {
         self.used_locals.iter().copied().filter_map(|local_id| {
             match self
                 .slices

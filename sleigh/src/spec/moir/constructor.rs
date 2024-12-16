@@ -2,13 +2,8 @@ use crate::compiler::InternalCompilerResult;
 use crate::spec::jir::instruction::{
     TargetInstruction,
     TargetInstructionBuilder,
-    TargetInstructionId,
 };
 use crate::spec::jir::jcode::JIRInstruction;
-use crate::spec::jir::jir_block::{
-    JIRBlock,
-    JIRBlockId,
-};
 use crate::spec::jir::local_resolver::{
     JIRResolvedValue,
     JIRResolver,
@@ -24,9 +19,7 @@ use crate::spec::moir::code::{
     MOIROpCategory,
     MOIROperation,
 };
-use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::scope::{
-    LabelId,
     MOIRLocalId,
     MOIRMaybeSize,
     MOIRScope,
@@ -41,7 +34,6 @@ use crate::{
     jinst,
     new_typed_index_table_id,
 };
-use itertools::Itertools;
 use std::iter::once;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;

@@ -29,16 +29,16 @@ use crate::spec::builder::{
 use chumsky::error::Rich;
 use chumsky::input::MapExtra;
 use chumsky::prelude::{
-    Recursive,
     any,
     end,
     just,
+    Recursive,
 };
 use chumsky::{
-    IterParser,
-    Parser,
     extra,
     select,
+    IterParser,
+    Parser,
 };
 
 type SleighPreprocessorExtra<'tokens> =

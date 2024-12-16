@@ -1,8 +1,8 @@
-use chumsky::Parser;
 use chumsky::primitive::choice;
+use chumsky::Parser;
 
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::attach::SASTAttach;
+use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::tokens::{
@@ -15,10 +15,10 @@ use self::value::value;
 use self::variable::variable;
 
 use super::{
-    SleighParserExtra,
     sleigh_control,
     sleigh_keyword,
     sleigh_whitespace,
+    SleighParserExtra,
 };
 
 mod name;
@@ -47,8 +47,8 @@ mod test {
 
     use crate::compiler::parser::report_errors;
     use crate::compiler::parser::test::{
-        TestResult,
         test_parser,
+        TestResult,
     };
 
     use super::attach;

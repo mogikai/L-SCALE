@@ -12,10 +12,7 @@ use super::moir::context::{
     MOIRContext,
     MOIRContextId,
 };
-use crate::compiler::ast::{
-    Spanned,
-    SpannedToken,
-};
+use crate::compiler::ast::Spanned;
 use crate::compiler::build::matcher::{
     Matcher,
     MatcherId,
@@ -28,20 +25,14 @@ use crate::compiler::error::{
     InternalError,
     InternalErrorType,
     InvalidSymbolType,
-    SleighCompilerError,
     UndefinedIdentifier,
     UndefinedSymbol,
     UnmappedIdentifier,
 };
-use crate::compiler::lexer::{
-    InputSpan,
-    ParserInput,
-    SleighLexerInput,
-};
+use crate::compiler::lexer::InputSpan;
 use crate::compiler::{
     CompilerContext,
     InternalCompilerResult,
-    SleighCompilerResult,
 };
 use crate::spec::builder::transform::MOIRToJIRTransformer;
 use crate::spec::moir::address_space::{
@@ -858,7 +849,7 @@ impl ProcessorSpecificationBuilder {
         Self::default()
     }
 
-    pub fn build(mut self) -> InternalCompilerResult<ProcessorSpecification> {
+    pub fn build(self) -> InternalCompilerResult<ProcessorSpecification> {
         debug!("Finalizing spec:");
         debug!("Found {} symbols", self.symbol_ids.len());
         debug!("Found {} tables", self.symbol_tables.tables.len());
@@ -971,20 +962,20 @@ impl<'src, I: Input<'src>> Inspector<'src, I> for ProcessorSpecificationBuilder 
 
     fn on_token(
         &mut self,
-        token: &I::Token,
+        _: &I::Token,
     ) {
     }
 
     fn on_save<'parse>(
         &self,
-        cursor: &Cursor<'src, 'parse, I>,
+        _: &Cursor<'src, 'parse, I>,
     ) -> Self::Checkpoint {
         ()
     }
 
     fn on_rewind<'parse>(
         &mut self,
-        marker: &Checkpoint<'src, 'parse, I, Self::Checkpoint>,
+        _: &Checkpoint<'src, 'parse, I, Self::Checkpoint>,
     ) {
     }
 }

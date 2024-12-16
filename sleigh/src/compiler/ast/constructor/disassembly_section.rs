@@ -1,5 +1,5 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::SASTIdent;
+use crate::compiler::ast::Spanned;
 
 /// Used inside the disassembly section for arbitrary calculations
 #[derive(Debug)]

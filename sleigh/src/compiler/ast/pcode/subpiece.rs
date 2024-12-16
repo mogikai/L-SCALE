@@ -1,9 +1,9 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::{
     SASTIdent,
     SASTLiteral,
     SASTSize,
 };
+use crate::compiler::ast::Spanned;
 
 #[derive(Debug, Clone)]
 pub struct SASTPCodeSubpiece {

@@ -1,3 +1,4 @@
+use crate::PAGE_OFFSET_BITS;
 use crate::physical::page::PageData;
 use crate::tlb::entry::TLBEntry;
 use crate::tlb::{
@@ -6,7 +7,6 @@ use crate::tlb::{
     TLB_INDEX_BITS,
     TLB_SIZE,
 };
-use crate::PAGE_OFFSET_BITS;
 use mogi_utilities::addresses::{
     EVAddr,
     HVAddr,
@@ -136,7 +136,7 @@ impl TLB {
         (entry.tag == addr.tag())
             .then_some(entry.target)
             .flatten()
-            .map(|addr| addr.as_ref())
+            .map(|addr| unsafe { addr.as_ref() })
     }
 
     /// Get the page data containing the requested address from the TLB.
@@ -149,6 +149,6 @@ impl TLB {
         (entry.tag == addr.tag())
             .then_some(entry.target)
             .flatten()
-            .map(|mut addr| addr.as_mut())
+            .map(|mut addr| unsafe { addr.as_mut() })
     }
 }

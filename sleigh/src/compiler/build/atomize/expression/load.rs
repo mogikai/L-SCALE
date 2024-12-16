@@ -1,14 +1,14 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
+use crate::compiler::ast::Spanned;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::InternalError;
 use crate::compiler::{
-    SleighCompiler,
     InternalCompilerResult,
+    SleighCompiler,
 };
 use crate::spec::moir::code::{
-    MOIRInstruction,
     moir_instruction,
+    MOIRInstruction,
 };
 use crate::spec::moir::scope::{
     MOIRLocalId,

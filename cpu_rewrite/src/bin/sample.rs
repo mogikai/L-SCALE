@@ -11,8 +11,6 @@ use mogi_sleigh::preprocessor::SleighPreprocessorFactory;
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
-use std::time::Instant;
-use tracing::info;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;

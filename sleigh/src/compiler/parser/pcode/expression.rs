@@ -1,9 +1,9 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::expression::{
     SASTPCodeBinaryOp,
     SASTPCodeExpression,
     SASTPCodeUnaryOp,
 };
+use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::atomic_expressions::{
@@ -19,12 +19,11 @@ use crate::compiler::parser::pcode::operators::{
     unary_operator,
 };
 use crate::compiler::parser::{
-    SleighParserExtra,
     parenthesized,
     sleigh_number,
     whitespace_padded,
+    SleighParserExtra,
 };
-use chumsky::Parser;
 use chumsky::input::MapExtra;
 use chumsky::pratt::{
     infix,
@@ -33,6 +32,7 @@ use chumsky::pratt::{
 };
 use chumsky::primitive::choice;
 use chumsky::recursive::Recursive;
+use chumsky::Parser;
 
 pub(super) fn pcode_expression<'tokens>()
 -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeExpression>, SleighParserExtra<'tokens>> + Clone {
@@ -163,11 +163,11 @@ fn fold_binary_operation<'tokens>(
 #[cfg(test)]
 mod test {
     use super::pcode_expression;
-    use crate::compiler::ast::Spanned;
     use crate::compiler::ast::pcode::expression::{
         SASTPCodeBinaryOp,
         SASTPCodeExpression,
     };
+    use crate::compiler::ast::Spanned;
     use crate::compiler::parser::test::TestResult;
     use chumsky::Parser;
 

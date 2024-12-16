@@ -1,9 +1,5 @@
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::ast::Spanned;
-use crate::compiler::error::{
-    InternalError,
-    InternalErrorType,
-};
 use crate::spec::builder::{
     CustomInterner,
     MOIRSymbolId,

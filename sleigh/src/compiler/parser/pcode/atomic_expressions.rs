@@ -17,7 +17,6 @@ use SleighOperation::{
     LessThan,
 };
 
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::{
     SASTIdent,
     SASTSize,
@@ -32,13 +31,13 @@ use crate::compiler::ast::pcode::subpiece::{
     SASTPCodeSubpieceSelector,
     SASTPCodeSubpieceTarget,
 };
+use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
-    SleighParserExtra,
     at_least_one_sleigh_whitespace,
-    one_sleigh_whitespace,
-    parenthesized,
+    parenthesized
+    ,
     sast_ident,
     sast_ident_spanned,
     sleigh_control,
@@ -46,6 +45,7 @@ use crate::compiler::parser::{
     sleigh_operation,
     sleigh_whitespace,
     whitespace_padded,
+    SleighParserExtra,
 };
 use crate::compiler::tokens::SleighControlCharacter::{
     CloseBracket,

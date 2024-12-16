@@ -15,12 +15,10 @@ use crate::spec::jir::values::{
 };
 use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::scope::LabelId;
-use crate::spec::typed_index_table::TypedIndexTable;
 use crate::spec::{
     ProcessorSpecResult,
     ProcessorSpecificationError,
 };
-use itertools::Itertools;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::{
     PrimaryMap,
@@ -114,7 +112,7 @@ impl TargetInstructionBuilder {
             .map(|v| v.end())
             .unwrap_or(0)
             .try_into()
-            .map_err(|e| ProcessorSpecificationError::OutOfTempSpace)?;
+            .map_err(|_| ProcessorSpecificationError::OutOfTempSpace)?;
         let id = self.instruction.temporaries.insert(JIRVarNode {
             space_id: self.temp_space,
             offset: offset.into(),

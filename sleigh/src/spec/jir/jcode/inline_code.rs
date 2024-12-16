@@ -537,5 +537,4 @@ macro_rules! jinst {
         $crate::spec::jir::jcode::JIRInstruction::new_custom_call(Option::<JIRSlice>::None, $op_id, $args)
     };
 }
-use crate::spec::jir::values::JIRValue;
 pub use jinst;

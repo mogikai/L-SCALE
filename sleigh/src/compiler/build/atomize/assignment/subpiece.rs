@@ -1,4 +1,3 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::{
     SASTIdent,
     SASTSize,
@@ -9,18 +8,19 @@ use crate::compiler::ast::pcode::subpiece::{
     SASTPCodeSubpieceSelector,
     SASTPCodeSubpieceTarget,
 };
+use crate::compiler::ast::Spanned;
 use crate::compiler::error::{
     CannotTruncateLhs,
     InternalError,
 };
 use crate::compiler::{
-    SleighCompiler,
     InternalCompilerResult,
+    SleighCompiler,
 };
 use crate::spec::builder::ProcessorSpecificationBuilder;
 use crate::spec::moir::code::{
-    MOIRInstruction,
     moir_instruction,
+    MOIRInstruction,
 };
 use crate::spec::moir::scope::{
     MOIRLocalId,
@@ -88,12 +88,10 @@ fn ensure_valid_subpiece_size(
     // If the subpiece tries to create a slice that is
     // larger than the original, we generate an error.
     if size
-        > scope
-            .size_of_local(lhs)
-            .ok_or_else(|| -> InternalError {
-                // We cannot slice a value that has an undetermined size
-                todo!("Generate error for undetermined size")
-            })?
+        > scope.size_of_local(lhs).ok_or_else(|| -> InternalError {
+            // We cannot slice a value that has an undetermined size
+            todo!("Generate error for undetermined size")
+        })?
     {
         todo!("Generate error for subpiece being larger than underlying slice.")
     }

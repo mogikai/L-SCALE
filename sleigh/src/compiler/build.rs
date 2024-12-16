@@ -29,14 +29,12 @@ use crate::compiler::ast::{
 };
 use crate::compiler::error::{
     DuplicatedSpaceAttribute,
-    InvalidFieldRange,
     InternalError,
-    InternalErrorType,
+    InvalidFieldRange,
 };
-use crate::compiler::lexer::InputSpan;
 use crate::compiler::{
-    SleighCompiler,
     InternalCompilerResult,
+    SleighCompiler,
 };
 use crate::spec::moir::address_space::{
     MOIRSpace,
@@ -47,12 +45,8 @@ use crate::spec::moir::field::{
     MOIRField,
     MOIRFieldParent,
 };
-use crate::spec::moir::token::{
-    MOIRToken,
-    TokenId,
-};
+use crate::spec::moir::token::MOIRToken;
 use crate::spec::moir::varnode::MOIRVarNode;
-use chumsky::container::Container;
 use std::ops::Range;
 use tracing::{
     debug,
@@ -304,7 +298,8 @@ impl SleighCompiler {
                 .make_field(MOIRFieldParent::Context(context_id), bits, range)
                 .map_err(|e| InternalError::from_error(e.into()))?
             {
-                let result = self.spec_builder
+                let result = self
+                    .spec_builder
                     .define_field(field.name.clone().transmute(), moir_field);
                 self.report_error_or_unwrap(result)?;
             }

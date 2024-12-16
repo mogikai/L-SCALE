@@ -1,14 +1,14 @@
 use chumsky::Parser;
 
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::define::SASTUserPcodeOp;
+use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
-    SleighParserExtra,
     sast_ident_spanned,
     sleigh_keyword,
     sleigh_whitespace,
+    SleighParserExtra,
 };
 use crate::compiler::tokens::SleighKeyword;
 

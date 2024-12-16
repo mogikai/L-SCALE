@@ -1,9 +1,6 @@
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
 use mogi_sleigh::preprocessor::SleighPreprocessorFactory;
-use std::path::{
-    Path,
-    PathBuf,
-};
+use std::path::PathBuf;
 
 #[test]
 fn compiler_test() {

@@ -1,8 +1,7 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::pcode::statement::SASTPCodeStatement;
+use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
-use crate::compiler::parser::SleighParserExtra;
 use crate::compiler::parser::pcode::atomic_expressions::pcode_label;
 use crate::compiler::parser::pcode::statements::assignment::pcode_assignment_statement;
 use crate::compiler::parser::pcode::statements::branching::{
@@ -15,8 +14,9 @@ use crate::compiler::parser::pcode::statements::build::pcode_build_statement;
 use crate::compiler::parser::pcode::statements::declaration::pcode_declaration_statement;
 use crate::compiler::parser::pcode::statements::export::pcode_export_statement;
 use crate::compiler::parser::pcode::statements::invocation::pcode_standalone_invocation_statement;
-use chumsky::Parser;
+use crate::compiler::parser::SleighParserExtra;
 use chumsky::prelude::choice;
+use chumsky::Parser;
 
 pub mod assignment;
 pub mod branching;
@@ -55,11 +55,10 @@ pub fn pcode_statement<'tokens>() -> impl Parser<
 mod test {
     use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
     use crate::compiler::ast::pcode::target_expression::SASTPCodeTargetExpression;
-    use crate::compiler::error::InternalError;
     use crate::compiler::parser::report_errors;
     use crate::compiler::parser::test::{
-        TestResult,
         test_parser,
+        TestResult,
     };
 
     use super::*;

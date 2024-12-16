@@ -1,16 +1,16 @@
 use chumsky::Parser;
 
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::expression::{
     SASTPCodeBinaryOp,
     SASTPCodeUnaryOp,
 };
+use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
-    SleighParserExtra,
     sleigh_operation,
     whitespace_padded,
+    SleighParserExtra,
 };
 use crate::compiler::tokens::SleighOperation;
 use crate::compiler::tokens::SleighOperation::{

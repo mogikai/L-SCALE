@@ -16,7 +16,6 @@ use crate::jit::cache::{
     JitCache,
     JitCode,
 };
-use bitvec::array::BitArray;
 use dynasmrt::x64::Assembler;
 use dynasmrt::{
     AssemblyOffset,
@@ -26,17 +25,13 @@ use dynasmrt::{
 };
 use mogi_mem::mmu::MogiMMU;
 use mogi_mem::tlb::tlb::TLB;
-use mogi_sleigh::spec::jir::common::JIRSize;
 use mogi_sleigh::spec::jir::jcode::{
     JIRInstruction,
     JIROperation,
 };
 use mogi_sleigh::spec::jir::values::{
-    JIRConst,
     JIRSlice,
-    JIRValue,
     JIRVarNode,
-    JIRVarNodeId,
     VarNodeId,
 };
 use mogi_sleigh::spec::{
@@ -47,22 +42,9 @@ use mogi_utilities::addresses::{
     Addressable,
     EVAddr,
 };
-use num_enum::{
-    FromPrimitive,
-    IntoPrimitive,
-    TryFromPrimitive,
-};
-use num_traits::FromBytes;
-use std::alloc::alloc;
 use std::cell::RefCell;
-use std::env::var;
 use std::ffi::c_void;
-use std::marker::PhantomData;
 use std::mem::offset_of;
-use std::ops::{
-    Index,
-    IndexMut,
-};
 use std::pin::Pin;
 use std::ptr::NonNull;
 use std::rc::Rc;
@@ -70,10 +52,7 @@ use std::{
     array,
     mem,
 };
-use tracing::{
-    debug,
-    trace,
-};
+use tracing::trace;
 
 mod emit;
 mod regalloc;
@@ -83,6 +62,7 @@ mod test;
 
 macro_rules! assemble {
     ($asm:expr; $($t:tt)*) => {
+        #[allow(unused_imports)]
         use dynasmrt::DynasmApi;
         use dynasmrt::dynasm;
         dynasm!($asm
@@ -144,15 +124,10 @@ pub struct X86GlobalContext {
 
 use assemble;
 use emit::CustomOpCallback;
-use mogi_utilities::index_map::{
-    PrimaryMap,
-    SecondaryMap,
-};
-use mogi_utilities::new_map_key;
+use mogi_utilities::index_map::SecondaryMap;
 use registers::{
     RegisterAllocation,
     RegisterTracker,
-    UsedRegisters,
 };
 
 #[derive(Debug)]

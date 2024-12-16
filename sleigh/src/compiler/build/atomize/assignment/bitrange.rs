@@ -1,18 +1,18 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::{
     SASTIdent,
     SASTSize,
 };
 use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
+use crate::compiler::ast::Spanned;
 use crate::compiler::{
-    SleighCompiler,
     InternalCompilerResult,
+    SleighCompiler,
 };
 use crate::spec::builder::ProcessorSpecificationBuilder;
 use crate::spec::moir::code::{
-    MOIRInstruction,
     moir_instruction,
+    MOIRInstruction,
 };
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::scope::{

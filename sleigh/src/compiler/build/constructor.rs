@@ -5,14 +5,14 @@ use super::matcher::{
     MatcherExpression,
     MatcherReference,
 };
-use crate::compiler::ast::Spanned;
-use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::ast::constructor::bit_pattern_section::{
     SASTBinaryOp,
     SASTBitPatternConstraint,
     SASTConstraintOp,
     SASTConstraintPattern,
 };
+use crate::compiler::ast::constructor::SASTConstructor;
+use crate::compiler::ast::Spanned;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::{
     InternalError,
@@ -20,39 +20,26 @@ use crate::compiler::error::{
 };
 use crate::compiler::{
     CompilerContext,
-    SleighCompiler,
     InternalCompilerResult,
+    SleighCompiler,
 };
-use crate::spec::ProcessorSpecificationError;
 use crate::spec::builder::{
     MOIRSymbolId,
     StringId,
 };
-use crate::spec::moir::code::{
-    MOIRInstruction,
-    MOIROperation,
-};
-use crate::spec::moir::constructor::{
-    ConstructorId,
-    MOIRConstructor,
-};
+use crate::spec::moir::constructor::MOIRConstructor;
 use crate::spec::moir::field::FieldId;
 use crate::spec::moir::scope::{
     MOIRMaybeSize,
     MOIRScope,
 };
-use crate::spec::moir::table::{
-    MOIRExport,
-    MOIRTable,
-};
+use crate::spec::moir::table::MOIRTable;
 use crate::spec::moir::varnode::{
-    MOIRLocal,
     MOIRReference,
     MOIRSlice,
 };
+use crate::spec::ProcessorSpecificationError;
 use tracing::debug;
-
-use crate::spec::ProcessorSpecificationError::SymbolUndeclared;
 
 impl SleighCompiler {
     /// Process a constructor. This will create the table in which the constructor is anchored, if it does not exist.

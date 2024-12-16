@@ -10,7 +10,6 @@ use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::custom_op::CustomOpId;
 pub use inline_code::*;
 use std::rc::Rc;
-use tracing::trace;
 
 #[derive(Debug, Clone)]
 pub struct JIRInstruction {

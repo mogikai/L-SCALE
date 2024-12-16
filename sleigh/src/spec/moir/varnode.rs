@@ -3,6 +3,7 @@ use crate::compiler::error::{
     InternalError,
     SliceError,
 };
+use crate::new_typed_index_table_id_16;
 use crate::spec::moir::MOIR_ADDRESS_SIZE;
 use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::common::MOIRSize;
@@ -14,10 +15,6 @@ use crate::spec::moir::scope::{
     MOIRTemporaryId,
 };
 use crate::spec::moir::table::TableId;
-use crate::{
-    new_typed_index_table_id,
-    new_typed_index_table_id_16,
-};
 use std::fmt::{
     Display,
     Formatter,
@@ -420,22 +417,19 @@ impl MOIRConst {
         start: MOIRSize,
         end: MOIRSize,
     ) -> InternalCompilerResult<MOIRConst> {
-        let new_size = end.saturating_sub(start);
-        // For each byte we need to shift 8 bit.
-        let start_bit = start * 8;
         // We can only slice if the underlying value has a size already.
-        let MOIRMaybeSize::Determined(size) = self.size() else {
-            Err(InternalError::from_error(SliceError::UndeterminedSize.into()))?
-        };
-        if new_size > size {
-            let e = SliceError::InvalidSliceSize {
-                new: new_size,
-                current: size,
-            };
-            Err(InternalError::from_error(e.into()))?
-        }
         Ok(match self {
             MOIRConst::Determined(value, size) => {
+                let new_size = end.saturating_sub(start);
+                if new_size > size {
+                    let e = SliceError::InvalidSliceSize {
+                        new: new_size,
+                        current: size,
+                    };
+                    Err(InternalError::from_error(e.into()))?
+                }
+                // For each byte we need to shift 8 bit.
+                let start_bit = start * 8;
                 let value = value >> start_bit;
                 MOIRConst::Determined(value, new_size)
             }

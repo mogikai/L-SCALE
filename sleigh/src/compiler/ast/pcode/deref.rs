@@ -1,9 +1,9 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::{
     SASTIdent,
     SASTSize,
 };
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
+use crate::compiler::ast::Spanned;
 
 /// `*v1` load data stored at v1
 /// `*[space]v1` load data stored at v1 in space

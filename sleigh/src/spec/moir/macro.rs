@@ -1,6 +1,6 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::pcode::SASTPCode;
+use crate::compiler::ast::Spanned;
 use crate::new_typed_index_table_id;
 
 #[derive(Debug, Clone)]

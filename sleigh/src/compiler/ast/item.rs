@@ -1,9 +1,9 @@
 use super::attach::SASTAttach;
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::ast::define::SASTDefine;
 use crate::compiler::ast::pcode_macro::SASTPCodeMacro;
 use crate::compiler::ast::with::SASTWith;
+use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::InputSpan;
 
 #[derive(Debug)]

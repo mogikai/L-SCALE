@@ -9,13 +9,9 @@ use crate::jit::x86::test::{
     set_slice,
     setup,
 };
-use bitvec::macros::internal::funty::Integral;
 use mogi_sleigh::jinst;
 use mogi_sleigh::spec::CustomOpId;
-use mogi_sleigh::spec::jir::values::{
-    JIRSlice,
-    JIRValue,
-};
+use mogi_sleigh::spec::jir::values::JIRValue;
 use mogi_utilities::index_map::MapKey;
 
 #[test]

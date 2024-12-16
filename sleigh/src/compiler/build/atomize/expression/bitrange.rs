@@ -1,12 +1,12 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
+use crate::compiler::ast::Spanned;
 use crate::compiler::{
-    SleighCompiler,
     InternalCompilerResult,
+    SleighCompiler,
 };
 use crate::spec::moir::code::{
-    MOIRInstruction,
     moir_instruction,
+    MOIRInstruction,
 };
 use crate::spec::moir::scope::{
     MOIRLocalId,

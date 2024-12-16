@@ -1,16 +1,11 @@
 use crate::new_typed_index_table_id;
 use crate::spec::moir::address_space::SpaceId;
-use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::ConstructorId;
 use crate::spec::moir::scope::{
     MOIRMaybeSize,
     MOIRScope,
 };
-use crate::spec::moir::varnode::{
-    MOIRConst,
-    MOIRLocal,
-    MOIRSlice,
-};
+use crate::spec::moir::varnode::MOIRLocal;
 
 #[derive(Debug, Clone, Default)]
 pub struct MOIRTable {

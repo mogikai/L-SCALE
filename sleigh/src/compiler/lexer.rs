@@ -4,7 +4,6 @@ use std::ops::Range;
 use crate::compiler::ast::SpannedToken;
 use crate::compiler::error::{
     InternalError,
-    InternalErrorType,
     SleighCompilerError,
 };
 use crate::compiler::inputcache::CompilerInputCache;
@@ -17,7 +16,6 @@ use crate::compiler::tokens::{
 use crate::compiler::{
     CompilerContext,
     InputId,
-    InternalCompilerResult,
     SleighCompilerResult,
 };
 use crate::spec::builder::{

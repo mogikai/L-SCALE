@@ -1,15 +1,15 @@
 use chumsky::Parser;
 
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::statement::SASTPCodeStatement;
+use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::expression::pcode_expression;
 use crate::compiler::parser::{
-    SleighParserExtra,
     sleigh_control,
     sleigh_keyword,
     whitespace_padded,
+    SleighParserExtra,
 };
 use crate::compiler::tokens::SleighControlCharacter;
 use crate::compiler::tokens::SleighKeyword::Export;

@@ -1,7 +1,7 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::constructor::bit_pattern_section::SASTBitPatternSection;
 use crate::compiler::ast::constructor::disassembly_section::SASTDisassemblySection;
 use crate::compiler::ast::item::SASTItem;
+use crate::compiler::ast::Spanned;
 use crate::spec::builder::StringId;
 
 /// A with block is similar to a constructor. Like the constructor, it specifies a table that it belongs to

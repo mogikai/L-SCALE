@@ -1,8 +1,8 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::constructor::bit_pattern_section::SASTBitPatternSection;
 use crate::compiler::ast::constructor::disassembly_section::SASTDisassemblySection;
 use crate::compiler::ast::constructor::display_section::SASTDisplaySection;
 use crate::compiler::ast::constructor::semantic_section::SASTSemanticSection;
+use crate::compiler::ast::Spanned;
 use crate::spec::builder::StringId;
 
 pub mod bit_pattern_section;

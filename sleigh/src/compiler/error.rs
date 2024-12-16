@@ -18,7 +18,6 @@ use ariadne::{
     Report,
     ReportKind,
 };
-use chumsky::span::Span;
 use std::collections::HashMap;
 use std::fmt::{
     Debug,

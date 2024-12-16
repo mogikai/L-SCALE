@@ -14,9 +14,8 @@ use crate::compiler::ast::pcode::{
     SASTPCodeLabelledStatement,
 };
 use crate::compiler::{
-    CompilerContext,
-    SleighCompiler,
     InternalCompilerResult,
+    SleighCompiler,
 };
 use crate::spec::builder::StringId;
 use crate::spec::moir::code::{
@@ -38,9 +37,6 @@ use crate::compiler::error::{
     InternalError,
     InternalErrorType,
 };
-use crate::spec::moir::MOIR_ADDRESS_SIZE;
-use crate::spec::moir::address_space::MOIRSpaceType;
-use std::fmt::Write;
 
 impl SleighCompiler {
     pub fn atomize_pcode(
@@ -89,7 +85,7 @@ impl SleighCompiler {
                     // We ignore the output, since top level invocations do not output anything.
                     // TODO: Maybe it makes sense to update the pcodeop definition here to "no output"?
                     self.atomize_invocation(scope, instructions, None, invocation)
-                        .map(|option| ())
+                        .map(|_| ())
                 }
                 SASTPCodeStatement::Build(table) => self.atomize_build(scope, instructions, table.transmute()),
                 SASTPCodeStatement::Export(expression) => {

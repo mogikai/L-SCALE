@@ -1,7 +1,7 @@
 use chumsky::Parser;
 
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::statement::SASTPCodeStatement;
+use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::atomic_expressions::{
@@ -9,10 +9,10 @@ use crate::compiler::parser::pcode::atomic_expressions::{
     pcode_number_literal_whitespace_padded,
 };
 use crate::compiler::parser::{
-    SleighParserExtra,
     sleigh_control,
     sleigh_keyword,
     whitespace_padded,
+    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighControlCharacter,

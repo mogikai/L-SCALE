@@ -1,19 +1,18 @@
 use chumsky::{
+    select,
     IterParser,
     Parser,
-    select,
 };
 
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::define::{
     SASTToken,
     SASTTokenField,
     SASTTokenFieldAttribute,
 };
+use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
-    SleighParserExtra,
     sast_ident_spanned,
     sleigh_control,
     sleigh_keyword,
@@ -21,6 +20,7 @@ use crate::compiler::parser::{
     sleigh_operation,
     sleigh_whitespace,
     whitespace_padded,
+    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighControlCharacter,

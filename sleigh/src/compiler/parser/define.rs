@@ -1,5 +1,5 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::define::SASTDefine;
+use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::define::endianness::endianness;
 use crate::compiler::parser::helpers::spanned;
@@ -8,16 +8,16 @@ use crate::compiler::tokens::{
     SleighKeyword,
     SleighToken,
 };
-use chumsky::Parser;
 use chumsky::prelude::none_of;
 use chumsky::primitive::choice;
 use chumsky::recovery::via_parser;
+use chumsky::Parser;
 
 use super::{
-    SleighParserExtra,
     sleigh_control,
     sleigh_keyword,
     whitespace_padded,
+    SleighParserExtra,
 };
 
 use self::address_space::address_space;
@@ -76,8 +76,8 @@ mod test {
 
     use crate::compiler::parser::report_errors;
     use crate::compiler::parser::test::{
-        TestResult,
         test_parser,
+        TestResult,
     };
 
     use super::define;

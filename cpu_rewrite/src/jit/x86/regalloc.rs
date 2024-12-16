@@ -12,7 +12,6 @@ use crate::jit::x86::{
     X86TaskContext,
     assemble,
 };
-use mogi_sleigh::spec::jir::common::JIRSize;
 use mogi_sleigh::spec::jir::values::JIRSlice;
 use tracing::trace;
 

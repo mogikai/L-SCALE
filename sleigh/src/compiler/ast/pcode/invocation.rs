@@ -1,6 +1,6 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
+use crate::compiler::ast::Spanned;
 
 #[derive(Debug, Clone)]
 pub struct SASTPCodeInvocation {

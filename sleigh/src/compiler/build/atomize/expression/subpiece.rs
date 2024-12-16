@@ -1,13 +1,13 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::subpiece::{
     SASTPCodeSubpiece,
     SASTPCodeSubpieceSelector,
     SASTPCodeSubpieceTarget,
 };
+use crate::compiler::ast::Spanned;
 use crate::compiler::error::InternalError;
 use crate::compiler::{
-    SleighCompiler,
     InternalCompilerResult,
+    SleighCompiler,
 };
 use crate::spec::moir::scope::{
     MOIRMaybeSize,
@@ -38,9 +38,8 @@ impl SleighCompiler {
                 // i.e. must be determined by the external size constraint.
                 (
                     offset,
-                    size_constraint.ok_or_else(|| -> InternalError {
-                        todo!("Generate error for missing size constraint")
-                    })?,
+                    size_constraint
+                        .ok_or_else(|| -> InternalError { todo!("Generate error for missing size constraint") })?,
                 )
             }
         };

@@ -9,12 +9,12 @@ mod load;
 mod subpiece;
 mod unary;
 
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::SASTLiteral;
 use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
+use crate::compiler::ast::Spanned;
 use crate::compiler::{
-    SleighCompiler,
     InternalCompilerResult,
+    SleighCompiler,
 };
 use crate::spec::moir::code::MOIRInstruction;
 use crate::spec::moir::scope::{

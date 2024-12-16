@@ -1,4 +1,3 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::{
     SASTIdent,
     SASTLiteral,
@@ -8,6 +7,7 @@ use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
 use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::ast::pcode::invocation::SASTPCodeInvocation;
 use crate::compiler::ast::pcode::subpiece::SASTPCodeSubpiece;
+use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::InputSpan;
 use std::fmt::{
     Display,

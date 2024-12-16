@@ -1,17 +1,17 @@
 use chumsky::{
-    Parser,
     select,
+    Parser,
 };
 
-use crate::compiler::ast::Spanned;
 use crate::compiler::ast::define::SASTEndianness;
+use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::{
-    SleighParserExtra,
     sleigh_keyword,
     sleigh_operation,
     whitespace_padded,
+    SleighParserExtra,
 };
 use crate::compiler::tokens::{
     SleighKeyword,
