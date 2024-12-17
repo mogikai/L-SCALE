@@ -1,3 +1,4 @@
+use petgraph::graph::NodeIndex;
 use std::collections::hash_map::Entry;
 use std::collections::{
     BTreeMap,
@@ -5,6 +6,8 @@ use std::collections::{
     HashMap,
     HashSet,
 };
+use std::fs::File;
+use std::io::Write;
 use std::process::exit;
 
 use chumsky::container::{
@@ -13,6 +16,12 @@ use chumsky::container::{
 };
 use itertools::Itertools;
 use num::PrimInt;
+use petgraph::data::Build;
+use petgraph::dot::{
+    Config,
+    Dot,
+};
+use petgraph::Graph;
 
 use crate::compiler::ast::pcode::deref;
 use crate::compiler::build::constructor::matcher::{
@@ -60,6 +69,7 @@ use crate::spec::moir::varnode::{
     VarNodeId,
 };
 use crate::spec::typed_index_table::TypedIndexTable;
+use crate::spec::ProcessorSpecificationError;
 
 // Entries for different masks can be combined vertically by building up a hierarchy layer by layer
 // or horizontally by ORing the mask bits together and filling missing entries by enumerating
@@ -69,7 +79,8 @@ use crate::spec::typed_index_table::TypedIndexTable;
 // Right now, this threshold only applies to a single value so multiple masks
 // can produce different sets of values that together exceed this threshold.
 // TODO find better way to do this.
-const MASK_EXPAND_THRESHOLD: u32 = 256u32.ilog2();
+// const MASK_EXPAND_THRESHOLD: u32 = 256u32.ilog2();
+const MASK_EXPAND_THRESHOLD: u32 = 0u32;
 
 /// Create a [Jumplist] for the root [MOIRTable]
 pub(super) struct JumplistBuilder<'a> {
@@ -157,15 +168,17 @@ impl<'a> JumplistBuilder<'a> {
         );
 
         // for (jumplist_id, jumplist) in self.jumplist_cache.iter() {
-        //     if jumplist_id == root_jumplist_id || jumplist.values().count() == 0 {
+        //     if jumplist_id == root_jumplist_id {
         //         continue;
         //     }
 
-        //     trace_build!("(jumplist_id, jumplist) = {:#?}", (jumplist_id, jumplist));
+        //     trace_build!("(jumplist_id, jumplist) = {:#x?}", (jumplist_id, jumplist));
         // }
 
         // let root_jumplist = self.jumplist_cache.get(root_jumplist_id).unwrap();
-        // trace_build!("(root_jumplist_id, root_jumplist) = {:#?}", (root_jumplist_id, root_jumplist));
+        // trace_build!("(root_jumplist_id, root_jumplist) = {:#x?}", (root_jumplist_id, root_jumplist));
+
+        save_graph(root_jumplist_id, &self.jumplist_cache);
 
         Ok((root_jumplist_id, self.jumplist_cache))
     }
@@ -219,32 +232,38 @@ impl<'a> JumplistBuilder<'a> {
                     }
                 };
 
-                // cache dummy result to break infinite recursion cycles
-                let new_jumplist_id = self.jumplist_cache.insert(Jumplist::default());
+                if matchers.is_empty() {
+                    trace_build!("Table does not contain any matchers");
+                    Err(ProcessorSpecificationError::UnresolvedSubtable)?
+                }
+
+                // dummy list to break infinite recursion
+                let dummy_jumplist_id = self.jumplist_cache.insert(Jumplist::default());
                 self.sublist_cache
-                    .insert(submatchers.clone(), new_jumplist_id);
+                    .insert(submatchers.clone(), dummy_jumplist_id);
 
                 // create single jumplist out of all matchers
-                self.create_jumplist(0, &matchers, new_jumplist_id)?;
+                let new_jumplist = self.create_jumplist(0, &matchers)?;
+                self.jumplist_cache.replace(dummy_jumplist_id, new_jumplist);
 
-                Ok(new_jumplist_id)
+                Ok(dummy_jumplist_id)
             }
         }
     }
 
     /// Create a single jumplist for multiple matchers. Multiple lists will be created and merged
     /// into one dummy list if the matchers have different [DataProvider]s at `token_index`.
-    /// The new list will be inserted at `jumplist_slot`.
     ///
     /// # Preconditions:
     /// - `matchers` must not be empty
     /// - each matcher must have a token list of length at least `token_index` + 1
+    /// # Return on success
+    /// - the newly created jumplist
     fn create_jumplist(
         &mut self,
         token_index: usize,
         matchers: &[&'a Matcher],
-        jumplist_slot: JumplistId,
-    ) -> SleighCompilerResult {
+    ) -> SleighCompilerResult<Jumplist> {
         debug_assert_ne!(matchers.len(), 0, "There must be matchers");
         for matcher in matchers.iter() {
             debug_assert!(matcher.token_list.list.len() > token_index, "Matcher token list not long enough");
@@ -268,7 +287,7 @@ impl<'a> JumplistBuilder<'a> {
                                 // Some => we know the size
                                 let token_size = self.get_token_size(parent)?;
                                 let data_provider = match parent {
-                                    MOIRFieldParent::Token(tid) => DataProvider::ByteStream,
+                                    MOIRFieldParent::Token(_) => DataProvider::ByteStream,
                                     MOIRFieldParent::Context(cid) => DataProvider::Context(*cid),
                                 };
 
@@ -292,58 +311,46 @@ impl<'a> JumplistBuilder<'a> {
         // 2. partition rows by data provider
         let partitioned_rows = partition_by_data_provider(rows);
 
-        // 3. create lists
-        if partitioned_rows.len() > 1 {
-            // multiple lists => create dummy list
-            let jumplists = partitioned_rows
-                .into_iter()
-                .map(|(_, rows)| {
-                    let partition_jumplist_id = self.jumplist_cache.insert(Jumplist::default());
-                    self.create_jumplist_bytes(rows, token_index, 0, partition_jumplist_id)?;
-                    Ok(partition_jumplist_id)
-                })
-                .collect::<SleighCompilerResult<Vec<_>>>()?;
+        // 3. create jumplists for each partition
+        let jumplists = partitioned_rows
+            .into_iter()
+            .map(|(_, rows)| Ok(self.create_jumplist_bytes(rows, token_index, 0)?))
+            .collect::<SleighCompilerResult<Vec<_>>>()?;
 
+        // 4. either use directly or combine
+        if jumplists.len() > 1 {
+            // multiple lists => create dummy list
             let mut jumplist_new = Jumplist::default();
-            for jumplist_id in jumplists.into_iter() {
+            for jumplist in jumplists.into_iter() {
+                let jumplist_id = self.jumplist_cache.insert(jumplist);
                 jumplist_new.insert(0, JumplistEntry::new(vec![], NextJumplistEntry::Jumplist(jumplist_id)), false)?;
             }
 
-            // insert dummy list into given slot
-            self.jumplist_cache
-                .replace(jumplist_slot, jumplist_new)
-                .expect("If we replace we must have a previous value");
+            Ok(jumplist_new)
         } else {
-            // only a single list => insert into given slot
-            self.create_jumplist_bytes(
-                partitioned_rows
-                    .into_iter()
-                    .nth(0)
-                    .expect("There must be at least one element")
-                    .1,
-                token_index,
-                0,
-                jumplist_slot,
-            )?;
+            // only a single list => use directly
+            Ok(jumplists
+                .into_iter()
+                .nth(0)
+                .expect("At least one list must have been created"))
         }
-
-        Ok(())
     }
 
     /// Recursion used to process tokens of different length but with the same provider into a
     /// single jumplist by repeatedly splitting larger tokens into the least common size and then
-    /// building jumplists on top of that. The new list will be inserted at `jumplist_slot`.
+    /// building jumplists on top of that.
     ///
     /// # Preconditions
     /// - `rows` must not be empty
     /// - `data_provider` must be the same for all rows
+    /// # Return on success
+    /// - the newly created jumplist
     fn create_jumplist_bytes(
         &mut self,
         mut rows: Vec<Row<'a>>,
         token_index: usize,
         bytes_consumed: MOIRSize,
-        jumplist_slot: JumplistId,
-    ) -> SleighCompilerResult {
+    ) -> SleighCompilerResult<Jumplist> {
         debug_assert_ne!(rows.len(), 0, "There must be rows");
         for row in &rows {
             debug_assert_eq!(
@@ -378,51 +385,11 @@ impl<'a> JumplistBuilder<'a> {
             size_bits
                 .extract_from(lhs.mask)
                 .cmp(&size_bits.extract_from(rhs.mask))
-                .reverse()
         });
 
-        // start with combined mask
-        let mask_combined = size_bits.extract_from(rows.iter().fold(0x0u64, |acc, row| acc | row.mask));
+        let jumplist = self.create_jumplist_mask(rows, token_index, bytes_consumed, &size_bits)?;
 
-        let mut leaf_lists = Vec::new();
-        self.create_jumplist_mask(
-            rows,
-            &mut leaf_lists,
-            token_index,
-            bytes_consumed,
-            mask_combined,
-            &size_bits,
-            Vec::new(),
-        )?;
-
-        if leaf_lists.len() > 1 {
-            // multiple lists => create dummy list
-            let mut jumplist_new = Jumplist::default();
-            for leaf_list in leaf_lists.into_iter() {
-                let leaf_list_id = self.jumplist_cache.insert(leaf_list);
-                jumplist_new.insert(
-                    0,
-                    JumplistEntry::new(Vec::new(), NextJumplistEntry::Jumplist(leaf_list_id)),
-                    false,
-                )?;
-            }
-
-            // insert into slot
-            self.jumplist_cache
-                .replace(jumplist_slot, jumplist_new)
-                .expect("There must be a previous value");
-        } else {
-            // only a single list => insert directly into slot
-            self.jumplist_cache.replace(
-                jumplist_slot,
-                leaf_lists
-                    .into_iter()
-                    .nth(0)
-                    .expect("There must be at least one leaf list"),
-            );
-        }
-
-        Ok(())
+        Ok(jumplist)
     }
 
     /// Recursion used to process rows with different masks into a single jumplist by repeatedly
@@ -433,18 +400,14 @@ impl<'a> JumplistBuilder<'a> {
     /// - `rows` must not be empty
     /// - `data_provider` must be the same for all rows
     /// # Return on success
-    /// - the id of the newly created jumplist if it's not a leaf node
+    /// - the newly created jumplist
     fn create_jumplist_mask(
         &mut self,
         rows: Vec<Row<'a>>,
-        leaf_lists: &mut Vec<Jumplist>,
         token_index: usize,
         bytes_consumed: MOIRSize,
-        mask: u64,
         size_bits: &MOIRBitRange,
-        // values are propagated down the first path only
-        mut propagated_values: Vec<u64>,
-    ) -> SleighCompilerResult<Option<JumplistId>> {
+    ) -> SleighCompilerResult<Jumplist> {
         debug_assert_ne!(rows.len(), 0, "There must be rows");
         for row in &rows {
             debug_assert_eq!(
@@ -454,40 +417,45 @@ impl<'a> JumplistBuilder<'a> {
             );
         }
 
-        // split parent set from rows as well as all child sets while expanding
-        // rows whose mask differs in at most MASK_EXPAND_THRESHOLD places
-        let mut parent_set: Vec<Row> = Vec::new();
-        let mut child_sets: Vec<(u64, Vec<Row>)> = Vec::new();
+        // partition rows into submask congruence sets
+        let mut sets = Vec::<(u64, Vec<Row<'a>>, Vec<Row<'a>>)>::new();
         'next_row: for row in rows.into_iter() {
-            let row_mask = size_bits.extract_from(row.mask);
-            let distance = (row_mask ^ mask).count_ones();
-            if distance <= MASK_EXPAND_THRESHOLD {
-                // full mask => parent set
-                parent_set.push(row);
-            } else {
-                // not full mask => child set
-                // is submask of existing? => insert into existing child set
-                for (child_set_mask, child_set) in child_sets.iter_mut() {
-                    if is_submask(*child_set_mask, row_mask) {
-                        child_set.push(row);
-                        continue 'next_row;
-                    }
+            for (set_mask, set_rows_child, set_rows_parent) in sets.iter_mut() {
+                // TODO expansion
+                if (*set_mask ^ size_bits.extract_from(row.mask)).count_ones() <= MASK_EXPAND_THRESHOLD {
+                    // full mask => put into child set to process now
+                    set_rows_child.push(row);
+                    continue 'next_row;
+                } else if is_submask(*set_mask, size_bits.extract_from(row.mask)) {
+                    // not full mask => put into parent set to process later
+                    set_rows_parent.push(row);
+                    continue 'next_row;
                 }
-
-                // is not a submask? => insert as new child set
-                child_sets.push((row_mask, vec![row]));
             }
+
+            // no match => put into new set
+            sets.push((size_bits.extract_from(row.mask), vec![row], vec![]));
         }
 
-        // process all parent rows (i.e. rows with a full mask); the partition can be empty at the
-        // first recursion level in which case nothing will be added to the list and
-        // no references will be set since there's nothing to refer to
-        let parent = if !parent_set.is_empty() {
+        // collect child jumplists and then either use directly if only one is created
+        // or combine using a dummy list
+        let mut child_jumplists = Vec::new();
+        for (set_mask, set_rows_child, set_rows_parent) in sets {
+            // process parent set into jumplist
+            let jumplist_parent_id = if !set_rows_parent.is_empty() {
+                let jumplist_parent =
+                    self.create_jumplist_mask(set_rows_parent, token_index, bytes_consumed, size_bits)?;
+                Some(self.jumplist_cache.insert(jumplist_parent))
+            } else {
+                None
+            };
+
+            // process child set into jumplist
             let size_delta = size_bits.bytes().expect("This must be a multiple of 8");
-            let mut jumplist_parent = Jumplist::new(
-                mask,
+            let mut jumplist_child = Jumplist::new(
+                set_mask,
                 size_delta,
-                parent_set
+                set_rows_child
                     .get(0)
                     .expect("We just checked this")
                     .data_provider,
@@ -495,7 +463,7 @@ impl<'a> JumplistBuilder<'a> {
 
             // partition by value and submatchers
             let mut partitions: BTreeMap<(u64, Vec<&'a Submatchers>), Vec<Row>> = BTreeMap::new();
-            for row in parent_set.into_iter() {
+            for row in set_rows_child.into_iter() {
                 let submatchers_list = if bytes_consumed == 0 {
                     // first iteration: take sublists into account
                     row.submatchers_list.clone() // TODO how to do this without cloning?
@@ -507,6 +475,22 @@ impl<'a> JumplistBuilder<'a> {
                     .entry((size_bits.extract_from(row.value), submatchers_list))
                     .or_default()
                     .push(row);
+            }
+
+            // add reference to parent jumplist before everything else so it's checked first
+            if let Some(jumplist_parent_id) = jumplist_parent_id {
+                let jumplist_parent = self
+                    .jumplist_cache
+                    .get(jumplist_parent_id)
+                    .expect("We just inserted this");
+                for propagated_value in jumplist_parent
+                    .values()
+                    .map(|parent_value| parent_value & set_mask)
+                    .unique()
+                {
+                    let propagated_entry = JumplistEntry::new(vec![jumplist_parent_id], NextJumplistEntry::Stub);
+                    jumplist_child.insert(propagated_value, propagated_entry, false);
+                }
             }
 
             // for each partition: create next byte jumplist if not all bytes have been consumed;
@@ -537,58 +521,55 @@ impl<'a> JumplistBuilder<'a> {
 
                 // create entries for jumplist of trailing bytes
                 if !next_byte_rows.is_empty() {
-                    // Since the masks of different entries may differ, we create entries
-                    // for all necessary values. Precedence of rows with a higher
-                    // mask is ensured by sorting rows.
-                    let expanded_values = expand_rows(&next_byte_rows, mask, value, size_bits);
+                    let expanded_values = expand_rows(&next_byte_rows, set_mask, value, size_bits);
 
-                    let trailing_jumplist_id = self.jumplist_cache.insert(Jumplist::default());
-                    self.create_jumplist_bytes(
-                        next_byte_rows,
-                        token_index,
-                        bytes_consumed + size_delta,
-                        trailing_jumplist_id,
-                    )?;
+                    let trailing_jumplist =
+                        self.create_jumplist_bytes(next_byte_rows, token_index, bytes_consumed + size_delta)?;
 
+                    // nothing to optimize here
+                    let trailing_jumplist_id = self.jumplist_cache.insert(trailing_jumplist);
                     let next_entry_trailing = NextJumplistEntry::Jumplist(trailing_jumplist_id);
 
                     let entry = JumplistEntry::new(sublist_ids.clone(), next_entry_trailing);
                     // first entry for non-expanded values...
-                    jumplist_parent.insert(value, entry.clone(), false)?;
+                    jumplist_child.insert(value, entry.clone(), false)?;
 
                     // ...then for expanded values
                     for expanded_value in expanded_values {
-                        jumplist_parent.insert(expanded_value, entry.clone(), false)?;
+                        jumplist_child.insert(expanded_value, entry.clone(), false)?;
                     }
                 };
 
                 // create entries for terminal rows that still have tokens remaining
                 if !terminal_token_rows.is_empty() {
-                    let expanded_values = expand_rows(&terminal_token_rows, mask, value, size_bits);
+                    let expanded_values = expand_rows(&terminal_token_rows, set_mask, value, size_bits);
 
                     let terminal_token_matchers = terminal_token_rows
                         .into_iter()
                         .map(|row| row.matcher)
                         .collect_vec();
-                    let next_token_jumplist_id = self.jumplist_cache.insert(Jumplist::default());
-                    self.create_jumplist(token_index + 1, &terminal_token_matchers, next_token_jumplist_id)?;
+
+                    // nothing to optimize here
+                    let next_token_jumplist = self.create_jumplist(token_index + 1, &terminal_token_matchers)?;
+                    let next_token_jumplist_id = self.jumplist_cache.insert(next_token_jumplist);
+
                     let next_entry_tokens = NextJumplistEntry::Jumplist(next_token_jumplist_id);
                     let entry = JumplistEntry::new(sublist_ids.clone(), next_entry_tokens);
-                    jumplist_parent.insert(value, entry.clone(), false)?;
+                    jumplist_child.insert(value, entry.clone(), false)?;
 
                     for expanded_value in expanded_values {
-                        jumplist_parent.insert(expanded_value, entry.clone(), false)?;
+                        jumplist_child.insert(expanded_value, entry.clone(), false)?;
                     }
                 }
 
                 // create entries for terminal row that ends in a matcher
                 if let Some(terminal_matcher_row) = terminal_matcher_rows.first() {
-                    // this assertion does not have to hold true since two matchers can have the
+                    let expanded_values = expand_rows(&terminal_matcher_rows, set_mask, value, size_bits);
+
+                    //home/bas39150/fuzzyemu/sleigh/src/spec/moir/field.rs/ this assertion does not have to hold true since two matchers can have the
                     // same primary matching path but different subtables (TODO should we check
                     // this?)
                     // assert!(terminal_matcher_rows.len() < 2, "There can't be more than one matcher in the same path");
-                    let expanded_values = expand_rows(&terminal_matcher_rows, mask, value, size_bits);
-
                     let next_entry_matcher = NextJumplistEntry::Constructor(
                         terminal_matcher_row
                             .matcher
@@ -597,95 +578,38 @@ impl<'a> JumplistBuilder<'a> {
                             .expect("This must be set at this point")
                             .clone(),
                     );
+
                     let entry = JumplistEntry::new(sublist_ids, next_entry_matcher);
-                    jumplist_parent.insert(value, entry.clone(), false)?;
+                    jumplist_child.insert(value, entry.clone(), false)?;
 
                     for expanded_value in expanded_values {
-                        jumplist_parent.insert(expanded_value, entry.clone(), false)?;
+                        jumplist_child.insert(expanded_value, entry.clone(), false)?;
                     }
                 }
             }
 
-            // extend propagated values by parent values
-            propagated_values.extend(jumplist_parent.values());
+            child_jumplists.push(jumplist_child);
+        }
 
-            if child_sets.is_empty() {
-                // leaf node => add to leaf list, but don't insert into cache yet
-                // (since it might be the only one which then needs to be inserted
-                // into the appropriate slot, but we don't know that until we finish)
-                leaf_lists.push(jumplist_parent);
-                None
-            } else {
-                // non-leaf node => insert into cache and continue
-                let jumplist_parent_id = self.jumplist_cache.insert(jumplist_parent);
-                Some(jumplist_parent_id)
+        // either use directly or combine
+        let jumplist_new = if child_jumplists.len() > 1 {
+            // multiple lists => create dummy list
+            let mut jumplist_new = Jumplist::default();
+            for child_jumplist in child_jumplists.into_iter() {
+                let child_jumplist_id = self.jumplist_cache.insert(child_jumplist);
+                let entry = JumplistEntry::new(vec![], NextJumplistEntry::Jumplist(child_jumplist_id));
+                jumplist_new.insert(0, entry, false);
             }
+            jumplist_new
         } else {
-            None
+            // only a single list => use directly
+            child_jumplists
+                .into_iter()
+                .nth(0)
+                .expect("There must be at least one list")
         };
 
-        // Now create jumplists for each child and add necessary references to the
-        // previously created parent jumplist to the first child at the beginning
-        // for higher precedence. A single path is enough since all leaf nodes
-        // will be linearly searched.
-
-        // first set for path propagation
-        if let Some((child_set_mask, child_set)) = child_sets.first() {
-            let values = propagated_values.clone();
-
-            let child_list = self
-                .create_jumplist_mask(
-                    child_set.clone(),
-                    leaf_lists,
-                    token_index,
-                    bytes_consumed,
-                    *child_set_mask,
-                    size_bits,
-                    propagated_values,
-                )?
-                .map(|child_jumplist_id| {
-                    // modify non-leaf node with known id
-                    self.jumplist_cache
-                        .get_mut(child_jumplist_id)
-                        .expect("If we inserted it it must exist")
-                })
-                .unwrap_or_else(|| {
-                    // modify leaf node directly (in this case the most recent one)
-                    leaf_lists
-                        .last_mut()
-                        .expect("There must be a leaf list if the returned jumplist id is None")
-                });
-
-            if let Some(jumplist_parent_id) = &parent {
-                let masked_propagated_values = values
-                    .into_iter()
-                    .map(|propagated_value| propagated_value & child_set_mask)
-                    .unique();
-
-                for masked_propagated_value in masked_propagated_values {
-                    child_list.insert(
-                        masked_propagated_value,
-                        JumplistEntry::new(vec![*jumplist_parent_id], NextJumplistEntry::Stub),
-                        true,
-                    )?;
-                }
-            }
-        }
-
-        // create jumplists for remaining child sets
-        for (child_set_mask, child_set) in child_sets.into_iter().skip(1) {
-            self.create_jumplist_mask(
-                child_set,
-                leaf_lists,
-                token_index,
-                bytes_consumed,
-                child_set_mask,
-                size_bits,
-                Vec::new(),
-            )?;
-        }
-
-        Ok(parent)
+        Ok(jumplist_new)
     }
 
     fn get_token_size(
@@ -816,8 +740,8 @@ fn extract_from_conjunction(conjunction: &BTreeSet<MatcherAtom>) -> (u64, u64, V
 /// Returns true if `submask` is a submask of `supermask`,
 /// i.e. if all bits set in `submask` are also set in `supermask`
 fn is_submask(
-    supermask: u64,
     submask: u64,
+    supermask: u64,
 ) -> bool {
     (submask ^ supermask) & submask == 0
 }
@@ -831,4 +755,60 @@ fn partition_by_data_provider(rows: Vec<Row>) -> BTreeMap<DataProvider, Vec<Row>
     }
 
     partitions
+}
+
+fn save_graph(
+    root: JumplistId,
+    jumplist_cache: &TypedIndexTable<JumplistId, Jumplist>,
+) {
+    // depth-first traversal
+    let mut stack = vec![root];
+    let mut nodes = HashMap::<NextJumplistEntry, NodeIndex>::new();
+    let mut graph = Graph::<String, String>::new();
+
+    while let Some(top) = stack.pop() {
+        let list = jumplist_cache.get(top).unwrap();
+        let list_node = *nodes
+            .entry(NextJumplistEntry::Jumplist(top))
+            .or_insert_with(|| graph.add_node(format!("L{}", usize::from(top))));
+
+        for (value, entries) in list.entries() {
+            for entry in entries {
+                // process next_entry
+                let entry_node = *nodes.entry(entry.next_entry.clone()).or_insert_with(|| {
+                    // not seen => insert node and push onto stack
+                    let entry_node_weight = match &entry.next_entry {
+                        NextJumplistEntry::Jumplist(jlid) => {
+                            stack.push(*jlid);
+                            format!("L{}", usize::from(*jlid))
+                        }
+                        NextJumplistEntry::Constructor(cid) => format!("C{}", cid),
+                        NextJumplistEntry::Stub => format!("S"),
+                    };
+
+                    graph.add_node(entry_node_weight)
+                });
+
+                graph.add_edge(list_node, entry_node, format!("NE{:#x}", value));
+
+                // process sublists
+                for sublist in &entry.same_token_jumplists {
+                    let sublist_node = *nodes
+                        .entry(NextJumplistEntry::Jumplist(*sublist))
+                        .or_insert_with(|| {
+                            // not seen => insert node and push onto stack
+                            let sublist_node_weight = format!("L{}", usize::from(*sublist));
+                            stack.push(*sublist);
+                            graph.add_node(sublist_node_weight)
+                        });
+
+                    graph.add_edge(list_node, sublist_node, format!("SL{:#x}", value));
+                }
+            }
+        }
+    }
+
+    let dot = Dot::with_config(&graph, &[]);
+    let mut file = File::create("jumplist_graph.gv").unwrap();
+    writeln!(file, "{:?}", dot);
 }

@@ -12,7 +12,7 @@ use crate::spec::moir::constructor::ConstructorId;
 use crate::spec::moir::context::MOIRContextId;
 use crate::spec::typed_index_table::TypedIndexTable;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum NextJumplistEntry {
     Jumplist(JumplistId),
     Constructor(String),
@@ -49,7 +49,7 @@ pub(crate) enum JumplistContainer {
 
 impl Default for JumplistContainer {
     fn default() -> Self {
-        JumplistContainer::Small([const { None }; 256])
+        JumplistContainer::Large(HashMap::default())
     }
 }
 
@@ -179,7 +179,7 @@ impl Jumplist {
             }
             DataProvider::Context(cid) => {
                 // todo!("Provide context values")
-                Some((0x20010c001 & self.mask, bytes))
+                Some((0xA1 & self.mask, bytes))
             }
         }
     }
@@ -282,6 +282,17 @@ impl Jumplist {
                     .map(|entries| (u64::try_from(value).unwrap(), entries))
             })),
             JumplistContainer::Large(map) => Box::new(map.iter_mut().map(|(value, entries)| (*value, entries))),
+        }
+    }
+
+    pub(crate) fn entries<'a>(&'a self) -> Box<dyn Iterator<Item = (u64, &'a Vec<JumplistEntry>)> + 'a> {
+        match &self.container {
+            JumplistContainer::Small(array) => Box::new(array.iter().enumerate().filter_map(|(value, option)| {
+                option
+                    .as_ref()
+                    .map(|entries| (u64::try_from(value).unwrap(), entries))
+            })),
+            JumplistContainer::Large(map) => Box::new(map.iter().map(|(value, entries)| (*value, entries))),
         }
     }
 }
