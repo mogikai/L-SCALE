@@ -136,6 +136,7 @@ impl X86MogiJit {
         target_gpr: GPRegister,
         source: JIRValue,
     ) -> JITResult {
+        // TODO: Fix loading to existing gpr. When eax is specified, the value is first loaded to a different register.
         match source {
             JIRValue::Slice(slice) => {
                 self.emit_load_slice_to_gpr(target_gpr, slice)?;

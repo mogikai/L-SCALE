@@ -11,21 +11,49 @@ pub const TLB_TAG_BITS: usize = EVAddr::<u8>::bits() - (crate::PAGE_OFFSET_BITS 
 
 pub trait PageIndex {
     fn index(&self) -> u64;
+
+    /// The number of bits to shift to get the index
+    fn index_shift_from_start() -> u64;
+
+    /// The mask to apply to the shifted value to extract the actual index.
+    fn index_mask() -> u64;
 }
 
 pub trait PageTag {
     fn tag(&self) -> u64;
+
+    /// The number of bits to shift from the index to get the tag.
+    fn tag_shift_from_index() -> u64;
+
+    /// The mask to apply to the shifted value to extract the actual tag.
+    fn tag_mask() -> u64;
 }
 
 impl<T> PageIndex for EVAddr<T> {
     fn index(&self) -> u64 {
         (self >> PAGE_OFFSET_BITS) & ((1 << TLB_INDEX_BITS) - 1)
     }
+
+    fn index_shift_from_start() -> u64 {
+        PAGE_OFFSET_BITS as u64
+    }
+
+    fn index_mask() -> u64 {
+        (1 << TLB_INDEX_BITS) - 1
+    }
 }
 
 impl<T> PageTag for EVAddr<T> {
     fn tag(&self) -> u64 {
         (self >> (PAGE_OFFSET_BITS + TLB_INDEX_BITS)) & ((1 << TLB_TAG_BITS) - 1)
+    }
+
+    fn tag_shift_from_index() -> u64 {
+        TLB_INDEX_BITS as u64
+    }
+
+    fn tag_mask() -> u64 {
+        (1 << TLB_TAG_BITS) - 1
     }
 }
 

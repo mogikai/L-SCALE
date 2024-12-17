@@ -2,6 +2,7 @@ mod add;
 mod bitand;
 mod complex;
 mod divide;
+mod load;
 mod multiply;
 
 use crate::jit::api::{

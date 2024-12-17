@@ -2,6 +2,7 @@ use crate::jit::cache::{
     JitCacheError,
     JitCode,
 };
+use mogi_mem::tlb::tlb::TLB;
 use mogi_sleigh::spec::CustomOpId;
 use mogi_sleigh::spec::jir::jcode::JIRInstruction;
 use mogi_sleigh::spec::jir::values::{
@@ -141,6 +142,7 @@ pub trait MogiJit {
 
 /// The jit context trait defines methods that every jit context implementation must provide.
 /// This facilitates access to the underlying cpu information like registers, exceptions and the PC.
+/// The context also owns the [TLB] which the mmu can access to populate entries.
 /// This context is task specific. I.e. each task has its own context.
 pub trait JITTaskRuntimeContext {
     fn slice(
@@ -152,6 +154,12 @@ pub trait JITTaskRuntimeContext {
         &mut self,
         slice: JIRSlice,
     ) -> Result<&mut [u8], RuntimeError>;
+
+    /// Get a reference to the tlb of this task context
+    fn tlb(&self) -> &TLB;
+
+    /// Get a mutable reference to the tlb of this task context.
+    fn tlb_mut(&mut self) -> &mut TLB;
 }
 
 /// The runtime context contains information that is global to all tasks (processes/threads).

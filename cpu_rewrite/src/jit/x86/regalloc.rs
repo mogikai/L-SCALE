@@ -215,7 +215,10 @@ impl X86MogiJit {
         }
         if let Some(free_gpr) = free_gpr {
             match alloc_type {
-                RegisterAllocationType::Temp => Ok(RegisterLoadInfo::Loaded(free_gpr)),
+                RegisterAllocationType::Temp => {
+                    self.register_tracker.gp[free_gpr] = RegisterAllocation::OccupiedTemp;
+                    Ok(RegisterLoadInfo::Loaded(free_gpr))
+                }
                 RegisterAllocationType::Slice(slice) => {
                     trace!("Allocating new GP register {free_gpr:?} for slice {slice:?}");
                     self.register_tracker.gp[free_gpr] = RegisterAllocation::Occupied(slice);

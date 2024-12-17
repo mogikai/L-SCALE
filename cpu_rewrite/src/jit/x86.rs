@@ -24,7 +24,10 @@ use dynasmrt::{
     dynasm,
 };
 use mogi_mem::mmu::MogiMMU;
-use mogi_mem::tlb::tlb::TLB;
+use mogi_mem::tlb::tlb::{
+    AccessType,
+    TLB,
+};
 use mogi_sleigh::spec::jir::jcode::{
     JIRInstruction,
     JIROperation,
@@ -62,6 +65,7 @@ mod test;
 
 macro_rules! assemble {
     ($asm:expr; $($t:tt)*) => {
+        {
         #[allow(unused_imports)]
         use dynasmrt::DynasmApi;
         use dynasmrt::dynasm;
@@ -72,6 +76,7 @@ macro_rules! assemble {
             ; .alias cpu_context, rbp
             $($t)*
         )
+    }
     };
 }
 
@@ -104,14 +109,14 @@ pub struct X86MogiJit {
 /// This should be kept small, only containing absolutely necessary information like the address spaces
 /// or tlb pointer.
 pub struct X86TaskContext {
+    /// Each task has its own TLB, hence this is in the task context.
+    /// The TLB facilitates fast [EVAddr] to [HVAddr](mogi_utilities::addresses::HVAddr) translation.
+    /// I.e. a guest address is translated to a host address where the actual data is stored.
+    tlb: TLB,
     /// The address spaces for the cpu spec.
     /// TODO: Maybe make the amount of address spaces generic?
     spaces: [Space; 4],
-    /// A Pointer to the tlb for guest memory accesses.
-    /// Each task has its own TLB, hence this is in the task context.
-    tlb: Option<NonNull<TLB>>,
     pc: usize,
-    custom_ops: Vec<Pin<Box<CustomOpArgs>>>,
     /// For convenience, the task context contains a pointer to the global context.
     /// The global context is however usually accessed directly in the jit code.
     global_context: NonNull<X86GlobalContext>,
@@ -248,6 +253,13 @@ impl X86TaskContext {
         4
     }
 
+    pub fn tlb_offset(access_type: AccessType) -> usize {
+        match access_type {
+            AccessType::Load => offset_of!(Self, tlb) + offset_of!(TLB, read_entries),
+            AccessType::Store => offset_of!(Self, tlb) + offset_of!(TLB, write_entries),
+        }
+    }
+
     pub fn varnode_offset(slice: JIRSlice) -> usize {
         // TODO: We need to either make sure in the spec generation, that space_id is in range, or
         //       perform some kind of mapping.
@@ -273,6 +285,14 @@ impl JITTaskRuntimeContext for X86TaskContext {
         slice: JIRSlice,
     ) -> Result<&mut [u8], RuntimeError> {
         Ok(self.spaces[usize::from(slice.space_id)].slice_mut(slice))
+    }
+
+    fn tlb(&self) -> &TLB {
+        &self.tlb
+    }
+
+    fn tlb_mut(&mut self) -> &mut TLB {
+        &mut self.tlb
     }
 }
 
@@ -377,9 +397,8 @@ impl MogiJit for X86MogiJit {
     fn new_runtime_context(&mut self) -> Self::RuntimeContext {
         X86TaskContext {
             spaces: array::from_fn(|_| Space::new()),
-            tlb: None,
+            tlb: TLB::new(),
             pc: 0,
-            custom_ops: Default::default(),
             global_context: NonNull::new(&mut *self.global_context)
                 .expect("The pinned pointer must be non null per definition"),
         }
