@@ -45,8 +45,8 @@ impl X86MogiJit {
     ) -> JITResult {
         // Div expects the dividend in D:A (or just AX for word/byte size)
         // Since we only deal with 64-bit numbers currently, it is enough to load A and zero D
-        let dividend_lower_gpr = GPRegister::A;
-        let dividend_upper_gpr = GPRegister::D;
+        let dividend_lower_gpr = GPRegister::AX;
+        let dividend_upper_gpr = GPRegister::DX;
         self.emit_load_value_to_gpr(dividend_lower_gpr, dividend)?;
         // Make sure we have the D register and potentially flush existing contents to memory.
         self.reserve_gp_as_temp(dividend_upper_gpr)?;

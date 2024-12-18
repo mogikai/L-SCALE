@@ -16,10 +16,10 @@ use std::{
 #[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive, PartialEq, Eq)]
 #[repr(u8)]
 pub enum GPRegister {
-    A   = 0,
-    C   = 1,
-    D   = 2,
-    B   = 3,
+    AX  = 0,
+    CX  = 1,
+    DX  = 2,
+    BX  = 3,
     SP  = 4,
     BP  = 5,
     SI  = 6,
@@ -135,7 +135,7 @@ impl Default for GPRegisterAllocations {
             let reg = GPRegister::try_from(i as u8).expect("We expect the GP registers to be 0..16");
             match reg {
                 // we reserve RAX as temporary since there are some instructions that can only use RAX
-                GPRegister::A => RegisterAllocation::Reserved,
+                GPRegister::AX => RegisterAllocation::Reserved,
                 // RBP is reserved for the cpu_context
                 GPRegister::BP => RegisterAllocation::Reserved,
                 // We don't want to mess with the stack pointer.

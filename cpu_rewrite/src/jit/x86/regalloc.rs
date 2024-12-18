@@ -15,6 +15,7 @@ use crate::jit::x86::{
 use mogi_sleigh::spec::jir::values::JIRSlice;
 use tracing::trace;
 
+#[derive(Debug, Copy, Clone)]
 pub(super) enum RegisterAllocationType {
     /// Allocate a temporary
     Temp,
@@ -53,17 +54,17 @@ impl X86MogiJit {
     pub(super) fn reserve_gp_as_temp(
         &mut self,
         gpr: GPRegister,
-    ) -> JITResult {
+    ) -> JITResult<GPRegister> {
         let allocation = self.register_tracker.gp[gpr];
         match allocation {
             RegisterAllocation::Occupied(slice) => {
                 self.move_slice_from_gp(gpr)?;
                 self.register_tracker.gp[gpr] = RegisterAllocation::OccupiedTemp;
-                Ok(())
+                Ok(gpr)
             }
             RegisterAllocation::Free => {
                 self.register_tracker.gp[gpr] = RegisterAllocation::OccupiedTemp;
-                Ok(())
+                Ok(gpr)
             }
             _ => {
                 // Reserved or already allocated temps cannot be used.
@@ -248,6 +249,6 @@ impl X86MogiJit {
     /// Return the temporary [GPRegister].
     #[inline]
     pub(super) fn get_temp_gpr(&self) -> GPRegister {
-        GPRegister::A
+        GPRegister::AX
     }
 }

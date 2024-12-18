@@ -3,9 +3,9 @@
 mod arithmetic;
 mod bitwise;
 mod host_call;
-mod load;
 mod logic;
 mod mmu;
+mod slice_load;
 
 /// Emit a 64 bit mov instruction, but only if the registers differ.
 macro_rules! mov64 {

@@ -11,6 +11,7 @@ use std::fmt::{
 
 #[derive(Copy, Clone)]
 #[repr(C)]
+#[repr(align(16))]
 pub struct TLBEntry {
     pub tag: u64,
     /// The target host address of the page. Since an HVAddr can never be null (see [NonNull]),

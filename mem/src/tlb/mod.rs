@@ -13,7 +13,7 @@ pub trait PageIndex {
     fn index(&self) -> u64;
 
     /// The number of bits to shift to get the index
-    fn index_shift_from_start() -> u64;
+    fn index_shift_from_start() -> u8;
 
     /// The mask to apply to the shifted value to extract the actual index.
     fn index_mask() -> u64;
@@ -23,7 +23,7 @@ pub trait PageTag {
     fn tag(&self) -> u64;
 
     /// The number of bits to shift from the index to get the tag.
-    fn tag_shift_from_index() -> u64;
+    fn tag_shift_from_index() -> u8;
 
     /// The mask to apply to the shifted value to extract the actual tag.
     fn tag_mask() -> u64;
@@ -34,8 +34,10 @@ impl<T> PageIndex for EVAddr<T> {
         (self >> PAGE_OFFSET_BITS) & ((1 << TLB_INDEX_BITS) - 1)
     }
 
-    fn index_shift_from_start() -> u64 {
-        PAGE_OFFSET_BITS as u64
+    fn index_shift_from_start() -> u8 {
+        PAGE_OFFSET_BITS
+            .try_into()
+            .expect("Shift bits must fit in a u8")
     }
 
     fn index_mask() -> u64 {
@@ -48,8 +50,10 @@ impl<T> PageTag for EVAddr<T> {
         (self >> (PAGE_OFFSET_BITS + TLB_INDEX_BITS)) & ((1 << TLB_TAG_BITS) - 1)
     }
 
-    fn tag_shift_from_index() -> u64 {
-        TLB_INDEX_BITS as u64
+    fn tag_shift_from_index() -> u8 {
+        TLB_INDEX_BITS
+            .try_into()
+            .expect("Shift bits must fit in a u8")
     }
 
     fn tag_mask() -> u64 {

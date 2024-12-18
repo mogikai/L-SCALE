@@ -8,6 +8,7 @@ use crate::jit::x86::regalloc::{
 };
 use crate::jit::x86::registers::{
     GPRegister,
+    RegisterAllocation,
     RegisterLoadInfo,
 };
 use crate::jit::x86::{
@@ -289,5 +290,43 @@ impl X86MogiJit {
             (self.load_slice_gpr(output), self.load_slice_gpr(input_b))
         };
         Ok((target_gp, operand_gp))
+    }
+
+    /// Preserve all slices that are in registers that need to be preserved by the caller.
+    /// Does not touch temporaries.
+    pub(crate) fn preserve_registers_caller(&mut self) -> JITResult {
+        // Iterate over the loaded slices and flush them to memory
+        // TODO: Do not insert flush instructions for dead registers.
+        for (register, allocation) in self.register_tracker.reset_gp().iter() {
+            if let RegisterAllocation::Occupied(slice) = allocation {
+                match register {
+                    GPRegister::AX
+                    | GPRegister::CX
+                    | GPRegister::DX
+                    | GPRegister::SI
+                    | GPRegister::DI
+                    | GPRegister::R8
+                    | GPRegister::R9
+                    | GPRegister::R10
+                    | GPRegister::R11 => {
+                        // preserved by caller.
+                        self.emit_flush_register_to_slice(register, *slice)?;
+                    }
+                    GPRegister::BX
+                    | GPRegister::SP
+                    | GPRegister::BP
+                    | GPRegister::R12
+                    | GPRegister::R13
+                    | GPRegister::R14
+                    | GPRegister::R15 => {
+                        // preserved by callee
+                    }
+                }
+            } else {
+                // Copy over old allocation (temps)
+                self.register_tracker.gp[register] = *allocation;
+            }
+        }
+        Ok(())
     }
 }

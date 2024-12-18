@@ -22,21 +22,25 @@ use mogi_utilities::addresses::{
 use mogi_utilities::index_map::MapKey;
 
 #[test]
-fn test_load() {
+fn test_load_tlb_hit() {
     let (mut jit, spec, mut context) = setup(false);
     let reg_out = "RAX";
     let addr_reg = "RBX";
     let a = 0x800fafafu64;
+    let value = 0x1234567890abcdefu64;
     let result = get_reg_slice(&spec, reg_out);
     let addr_slice = get_reg_slice(&spec, addr_reg);
     set_slice(&mut *context, addr_slice, a);
+
+    let mut page = Box::new(PageData::zero());
+    page.data[0xfaf..0xfaf + 8].copy_from_slice(&value.to_le_bytes());
 
     let addr = EVAddr::from(0x800fafafu64);
     let id = CustomOpId::try_from_index(5).unwrap();
     unsafe {
         context
             .tlb
-            .insert_read(addr, HVAddr::new_unchecked(0x1234u64 as *mut PageData));
+            .insert_read(addr, HVAddr::new_unchecked(page.as_mut() as *mut _));
     }
 
     let instructions = vec![
@@ -46,6 +50,6 @@ fn test_load() {
     exec_instructions(&mut jit, &mut context, &instructions);
     let actual: u64 = get_slice_value(context.as_ref(), &spec, result);
 
-    let expected = 0;
+    let expected = value;
     assert_eq!(actual, expected, "Got {:#x} but expected {:#x}. Operands: {:#x}", actual, expected, a);
 }
