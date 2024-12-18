@@ -68,6 +68,8 @@ use std::collections::{
     HashMap,
     HashSet,
 };
+use std::process::exit;
+use std::time::Instant;
 
 use self::jumplist::JumplistBuilder;
 
@@ -95,19 +97,6 @@ struct MOIRData {
     string_to_ident_mapping: HashMap<StringId, Ident>,
     context: TypedIndexTable<MOIRContextId, MOIRContext>,
     root_table_id: TableId,
-}
-
-// TODO remove/move to somewhere else
-#[derive(Debug)]
-struct ResolvedMatcher {
-    // matching
-    token_byte_count: Vec<usize>,
-    token_field_matchers: Vec<Vec<FieldMatcher>>,
-    context_field_matchers: Vec<Vec<FieldMatcher>>,
-
-    // extraction
-    fields: Vec<Vec<FieldId>>,
-    constructor_id: ConstructorId,
 }
 
 impl MOIRToJIRTransformer {
@@ -176,9 +165,7 @@ impl MOIRToJIRTransformer {
 
         // TODO remove
         let root_jumplist = jumplist_cache.get(root_jumplist_id).unwrap();
-        let bytes = [
-            0x13, 0xff, 0x34, 0x12, 0x00, 0x00,
-        ];
+        let bytes = [ 0x48, 0x01, 0xd8 ];
         let matching = root_jumplist.r#match(&bytes, &jumplist_cache);
         eprintln!("matching = {:#?}", matching);
 

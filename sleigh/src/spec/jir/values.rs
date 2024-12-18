@@ -71,6 +71,11 @@ impl JIRConst {
     pub fn value(&self) -> u128 {
         self.value
     }
+
+    pub fn size(&self) -> JIRSize {
+        self.size
+
+    }
 }
 
 impl JIRSlice {
