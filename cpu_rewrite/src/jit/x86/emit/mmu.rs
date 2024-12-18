@@ -45,7 +45,10 @@ impl X86MogiJit {
         space_id: SpaceId,
         value: JIRValue,
     ) -> JITResult {
-        todo!()
+        let host_address_gpr = self.reserve_gp_as_temp(GPRegister::DI)?;
+        self.emit_tlb_lookup(host_address_gpr, addr, space_id, value.size(), AccessType::Store)?;
+        self.emit_host_store(value, host_address_gpr)?;
+        self.temp_free(host_address_gpr)
     }
 
     /// Translate the provided guest address into a host address
@@ -66,8 +69,8 @@ impl X86MogiJit {
         let tag_gpr = self.temp_alloc();
         // TODO: Rewrite temp allocation to automatically free the allocated variables when they go out of scope.
         let tlb_offset = X86TaskContext::tlb_offset(access_type);
-        let tag_offset = offset_of!(TLBEntry, tag);
-        let target_offset = offset_of!(TLBEntry, target);
+        let tag_offset = tlb_offset + offset_of!(TLBEntry, tag);
+        let target_offset = tlb_offset + offset_of!(TLBEntry, target);
         let entry_size = size_of::<TLBEntry>();
         // Various assertions that are needed for now until this is made more generic.
         // We currently assume addresses of size 8 bytes, and that a tlb entry has
@@ -91,7 +94,7 @@ impl X86MogiJit {
             // index = index * entry_size
             ; shl Rd(addr_gpr as u8), BYTE entry_shift as _
             // compare tag and entry.tag
-            ; cmp Rq(tag_gpr as u8), QWORD [Rq(addr_gpr as u8) + tlb_offset as _ + cpu_context]
+            ; cmp Rq(tag_gpr as u8), QWORD [Rq(addr_gpr as u8) + tag_offset as _ + cpu_context]
             ; jne >tlb_miss
             // TLB hit. Extract the page offset from the EVAddr
             ; and Rd(translated_address_gpr as u8), WORD 0xfff
@@ -155,6 +158,45 @@ impl X86MogiJit {
                 todo!()
             }
         }
+        Ok(())
+    }
+
+    fn emit_host_store(
+        &mut self,
+        value: JIRValue,
+        host_address_gpr: GPRegister,
+    ) -> JITResult {
+        // TODO: Make sure the store does not cross page boundaries.
+        // TODO: This can be optimized to directly move into the memory location.
+        //       For JIRConsts this can be done with immediate values.
+        let out_gpr = self.temp_alloc();
+        self.emit_load_value_to_gpr(out_gpr, value)?;
+        match value.size() {
+            1 => {
+                assemble!(self.block_mut()?.assembler;
+                    ; mov BYTE [Rq(host_address_gpr as u8)], Rb(out_gpr as u8)
+                );
+            }
+            2 => {
+                assemble!(self.block_mut()?.assembler;
+                    ; mov WORD [Rq(host_address_gpr as u8)], Rw(out_gpr as u8)
+                );
+            }
+            3..=4 => {
+                assemble!(self.block_mut()?.assembler;
+                    ; mov DWORD [Rq(host_address_gpr as u8)], Rd(out_gpr as u8)
+                );
+            }
+            5..=8 => {
+                assemble!(self.block_mut()?.assembler;
+                    ; mov QWORD [Rq(host_address_gpr as u8)], Rq(out_gpr as u8)
+                );
+            }
+            _ => {
+                todo!()
+            }
+        }
+        self.temp_free(out_gpr)?;
         Ok(())
     }
 }

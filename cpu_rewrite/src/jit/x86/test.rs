@@ -4,6 +4,7 @@ mod complex;
 mod divide;
 mod load;
 mod multiply;
+mod store;
 
 use crate::jit::api::{
     JITTaskRuntimeContext,
