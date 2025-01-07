@@ -10,6 +10,7 @@ use crate::jit::api::{
     MogiJit,
     PreludeSignature,
     RuntimeError,
+    TlbMissHelper,
 };
 use crate::jit::cache::{
     AsJitCode,
@@ -44,6 +45,7 @@ use mogi_sleigh::spec::{
 use mogi_utilities::addresses::{
     Addressable,
     EVAddr,
+    HVAddr,
 };
 use std::cell::RefCell;
 use std::ffi::c_void;
@@ -125,8 +127,11 @@ pub struct X86TaskContext {
 /// The global jit context. Each task context contains a pointer to this context.
 pub struct X86GlobalContext {
     custom_op_impls: SecondaryMap<CustomOpId, Option<CustomOpCallback<X86TaskContext>>>,
+    tlb_miss_read_callback: Option<TlbMissCallback<X86TaskContext>>,
+    tlb_miss_write_callback: Option<TlbMissCallback<X86TaskContext>>,
 }
 
+use crate::jit::x86::emit::TlbMissCallback;
 use assemble;
 use emit::CustomOpCallback;
 use mogi_utilities::index_map::SecondaryMap;
@@ -242,6 +247,8 @@ impl Default for X86GlobalContext {
     fn default() -> Self {
         Self {
             custom_op_impls: Default::default(),
+            tlb_miss_read_callback: Default::default(),
+            tlb_miss_write_callback: Default::default(),
         }
     }
 }
@@ -414,6 +421,27 @@ impl MogiJit for X86MogiJit {
     {
         self.global_context.custom_op_impls[op_id] = Some(CustomOpCallback::new(callback));
         Ok(())
+    }
+
+    fn register_tlb_read_miss_callback<CB>(
+        &mut self,
+        callback: CB,
+    ) -> JITResult
+    where
+        CB: TlbMissHelper<Self::RuntimeContext>,
+    {
+        self.global_context.tlb_miss_read_callback = Some(TlbMissCallback::new(callback));
+        Ok(())
+    }
+
+    fn register_tlb_write_miss_callback<CB>(
+        &mut self,
+        callback: CB,
+    ) -> JITResult
+    where
+        CB: TlbMissHelper<Self::RuntimeContext>,
+    {
+        todo!()
     }
 
     fn new_block(

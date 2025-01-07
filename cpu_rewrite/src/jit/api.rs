@@ -2,15 +2,26 @@ use crate::jit::cache::{
     JitCacheError,
     JitCode,
 };
-use mogi_mem::tlb::tlb::TLB;
-use mogi_sleigh::spec::CustomOpId;
+use mogi_mem::physical::Page;
+use mogi_mem::physical::page::PageData;
+use mogi_mem::tlb::tlb::{
+    AccessType,
+    TLB,
+};
 use mogi_sleigh::spec::jir::jcode::JIRInstruction;
 use mogi_sleigh::spec::jir::values::{
     JIRSlice,
     JIRValue,
     VarNodeId,
 };
-use mogi_utilities::addresses::EVAddr;
+use mogi_sleigh::spec::{
+    CustomOpId,
+    SpaceId,
+};
+use mogi_utilities::addresses::{
+    EVAddr,
+    HVAddr,
+};
 use std::ffi::c_void;
 use thiserror::Error;
 
@@ -38,6 +49,10 @@ pub enum JitError {
     SliceNotLoaded,
     #[error("The jit encountered a runtime error.")]
     RuntimeError(#[from] RuntimeError),
+    #[error(
+        "The tlb callback for access type {0} is missing. Please register a callback using register_tlb_read_miss_callback or register_tlb_write_miss_callback."
+    )]
+    MissingTlbCallback(AccessType),
 }
 
 #[derive(Error, Debug, Copy, Clone)]
@@ -68,7 +83,21 @@ pub trait MogiJit {
         callback: CB,
     ) -> JITResult
     where
-        CB: Fn(&mut Self::RuntimeContext, &CustomOpArgs) -> Result<(), RuntimeError> + 'static;
+        CB: CustomOpImpl<Self::RuntimeContext>;
+
+    fn register_tlb_read_miss_callback<CB>(
+        &mut self,
+        callback: CB,
+    ) -> JITResult
+    where
+        CB: TlbMissHelper<Self::RuntimeContext>;
+
+    fn register_tlb_write_miss_callback<CB>(
+        &mut self,
+        callback: CB,
+    ) -> JITResult
+    where
+        CB: TlbMissHelper<Self::RuntimeContext>;
 
     /// Create a new block that starts at the provided emulated virtual address.
     /// Only one block can be built at once.
@@ -169,8 +198,7 @@ pub trait JITGlobalRuntimeContext {}
 pub type PreludeSignature = extern "C" fn(context: *mut c_void, block: JitCode);
 
 /// A custom operation must have a signature that corresponds to this trait.
-pub trait CustomOpImpl<RuntimeContextT>:
-    FnMut(&mut RuntimeContextT, &CustomOpArgs) -> Result<(), RuntimeError>
+pub trait CustomOpImpl<RuntimeContextT>: Fn(&mut RuntimeContextT, &CustomOpArgs) -> Result<(), RuntimeError>
 where
     RuntimeContextT: JITTaskRuntimeContext,
 {
@@ -179,6 +207,21 @@ where
 impl<T, RuntimeContextT> CustomOpImpl<RuntimeContextT> for T
 where
     T: Fn(&mut RuntimeContextT, &CustomOpArgs) -> Result<(), RuntimeError>,
+    RuntimeContextT: JITTaskRuntimeContext,
+{
+}
+
+/// The tlb miss helpers must have a signature that corresponds to this trait.
+pub trait TlbMissHelper<RuntimeContextT>:
+    Fn(&mut RuntimeContextT, EVAddr, usize, SpaceId) -> Result<HVAddr<PageData>, RuntimeError>
+where
+    RuntimeContextT: JITTaskRuntimeContext,
+{
+}
+
+impl<T, RuntimeContextT> TlbMissHelper<RuntimeContextT> for T
+where
+    T: Fn(&mut RuntimeContextT, EVAddr, usize, SpaceId) -> Result<HVAddr<PageData>, RuntimeError>,
     RuntimeContextT: JITTaskRuntimeContext,
 {
 }

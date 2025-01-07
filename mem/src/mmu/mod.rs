@@ -9,15 +9,15 @@ use crate::physical::{
 };
 use crate::tlb::tlb::TLB;
 use crate::{
-    PageOffset,
     PAGE_SIZE,
+    PageOffset,
 };
 use mogi_system::components::mmu::{
+    MMU,
     MemoryAction,
     MmuResult,
     PageFaultCallback,
     Permission,
-    MMU,
 };
 use mogi_utilities::addresses::{
     EPAddr,
@@ -192,8 +192,8 @@ impl MogiMMU {
                 self.physical_memory.page_by_id(page_id)?
             };
             populate_tlb(&mut self.memory_context.tlb, addr, page, action);
-            let size = min(len, PAGE_SIZE - addr.offset());
-            let page_start = addr.offset();
+            let size = min(len, PAGE_SIZE - addr.page_offset());
+            let page_start = addr.page_offset();
             let page_end = page_start + size;
             check_permissions(&page.permissions()[page_start..page_end], action.required_permissions())?;
             buffer[i..i + size].copy_from_slice(&page.data()[page_start..page_end]);
@@ -218,8 +218,8 @@ impl MogiMMU {
         while len > 0 {
             // TODO: This could maybe be optimized a bit, so we dont have to look up each page individually
             let page = self.physical_memory.page(addr)?;
-            let size = min(len, PAGE_SIZE - addr.offset());
-            let page_start = addr.offset();
+            let size = min(len, PAGE_SIZE - addr.page_offset());
+            let page_start = addr.page_offset();
             let page_end = page_start + size;
             check_permissions(&page.permissions()[page_start..page_end], action.required_permissions())?;
             buffer[i..i + size].copy_from_slice(&page.data()[page_start..page_end]);
@@ -311,8 +311,8 @@ impl MMU for MogiMMU {
         // Write in page sized chunks
         while len > 0 {
             let page = self.physical_memory.page_mut(addr)?;
-            let size = min(len, PAGE_SIZE - addr.offset());
-            let page_start = addr.offset();
+            let size = min(len, PAGE_SIZE - addr.page_offset());
+            let page_start = addr.page_offset();
             let page_end = page_start + size;
             check_permissions(&page.permissions()[page_start..page_end], MemoryAction::WRITE.required_permissions())?;
             page.data_mut()[page_start..page_end].copy_from_slice(&data[i..i + size]);
@@ -351,8 +351,8 @@ impl MMU for MogiMMU {
         while len > 0 {
             let page_id = self.resolve_to_page_id(addr, MemoryAction::WRITE)?;
             let page = self.physical_memory.page_by_id_mut(page_id)?;
-            let size = min(len, PAGE_SIZE - addr.offset());
-            let page_start = addr.offset();
+            let size = min(len, PAGE_SIZE - addr.page_offset());
+            let page_start = addr.page_offset();
             let page_end = page_start + size;
             check_permissions(&page.permissions()[page_start..page_end], MemoryAction::WRITE.required_permissions())?;
             page.data_mut()[page_start..page_end].copy_from_slice(&data[i..i + size]);
@@ -430,12 +430,12 @@ fn check_permissions(
 
 #[cfg(test)]
 mod test {
-    use crate::mmu::MogiMMU;
     use crate::PAGE_SIZE;
+    use crate::mmu::MogiMMU;
     use addr_align::Align;
     use mogi_system::components::mmu::{
-        Permission,
         MMU,
+        Permission,
     };
     use mogi_utilities::addresses::EPAddr;
 

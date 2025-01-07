@@ -1,6 +1,11 @@
 use crate::jit::api::{
+    CustomOpArgs,
+    CustomOpImpl,
     JITResult,
+    JITTaskRuntimeContext,
+    JitError,
     MogiJit,
+    TlbMissHelper,
 };
 use crate::jit::x86::registers::GPRegister;
 use crate::jit::x86::{
@@ -9,6 +14,7 @@ use crate::jit::x86::{
     assemble,
 };
 use dynasmrt::DynasmLabelApi;
+use mogi_mem::physical::page::PageData;
 use mogi_mem::tlb::entry::TLBEntry;
 use mogi_mem::tlb::tlb::AccessType;
 use mogi_mem::tlb::{
@@ -21,7 +27,11 @@ use mogi_sleigh::spec::jir::values::{
     JIRSlice,
     JIRValue,
 };
-use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::addresses::{
+    EVAddr,
+    HVAddr,
+};
+use std::marker::PhantomData;
 use std::mem::offset_of;
 
 impl X86MogiJit {
@@ -31,9 +41,9 @@ impl X86MogiJit {
         addr: JIRValue,
         space_id: SpaceId,
     ) -> JITResult {
-        // We reserve RDI as temp since it will be used to pass the address to the helper
+        // We reserve RDX as temp since it will be used to pass the address to the helper
         // in case of a tlb miss
-        let host_address_gpr = self.reserve_gp_as_temp(GPRegister::DI)?;
+        let host_address_gpr = self.reserve_gp_as_temp(GPRegister::DX)?;
         self.emit_tlb_lookup(host_address_gpr, addr, space_id, output.size(), AccessType::Load)?;
         self.emit_host_load(output, host_address_gpr)?;
         self.temp_free(host_address_gpr)
@@ -45,7 +55,7 @@ impl X86MogiJit {
         space_id: SpaceId,
         value: JIRValue,
     ) -> JITResult {
-        let host_address_gpr = self.reserve_gp_as_temp(GPRegister::DI)?;
+        let host_address_gpr = self.reserve_gp_as_temp(GPRegister::DX)?;
         self.emit_tlb_lookup(host_address_gpr, addr, space_id, value.size(), AccessType::Store)?;
         self.emit_host_store(value, host_address_gpr)?;
         self.temp_free(host_address_gpr)
@@ -60,8 +70,8 @@ impl X86MogiJit {
         size: JIRSize,
         access_type: AccessType,
     ) -> JITResult {
-        // the tlb lookup assumes that the translated address is in DI
-        assert_eq!(translated_address_gpr, GPRegister::DI);
+        // the tlb lookup assumes that the translated address is in DX
+        assert_eq!(translated_address_gpr, GPRegister::DX);
         // TODO: Check page boundaries. Also, how do we handle a cross-page access?
         let addr_gpr = self.get_temp_gpr();
         self.emit_load_value_to_gpr(addr_gpr, addr)?;
@@ -107,15 +117,28 @@ impl X86MogiJit {
         // TODO: Only flush registers that are not preserved by callee
         self.preserve_registers_caller()?;
 
+        let Some(callback) = match access_type {
+            AccessType::Load => &self.global_context.tlb_miss_read_callback,
+            AccessType::Store => &self.global_context.tlb_miss_write_callback,
+        }
+        .as_ref() else {
+            Err(JitError::MissingTlbCallback(access_type))?
+        };
+        let (translate_trampoline, translate_callback) = (callback.trampoline, callback.callback);
+
         assemble!(self.block_mut()?.assembler;
             ; tlb_miss:
-            // call external helper. The helper should have a signature along the lines of
-            // helper(evaddr, size) -> page_addr
-            // evaddr is already loaded in RDI.
-            ; mov rsi, WORD size as _
-            ; mov edx, DWORD usize::from(space_id) as _
+            // call external helper trampoline.
+            // trampoline(context, callback, evaddr, size, space_id) -> page_addr
+            //    ^^^       ^^^       ^^^     ^^^    ^^^      ^^^          ^^^
+            //    eax       rdi       rsi     rdx    rcx      r8           rax
+            ; mov rdi, cpu_context
+            ; mov rsi, QWORD translate_callback as _
+            // evaddr is already loaded in RDX.
+            ; mov rcx, WORD size as _
+            ; mov r8d, DWORD usize::from(space_id) as _
             // TODO: Call the correct helper function.
-            ; mov rax, QWORD 0x1234
+            ; mov rax, QWORD translate_trampoline as _
             ; call rax
             // The result of the helper is the host address
             ; mov Rq(translated_address_gpr as u8), rax
@@ -169,8 +192,14 @@ impl X86MogiJit {
         // TODO: Make sure the store does not cross page boundaries.
         // TODO: This can be optimized to directly move into the memory location.
         //       For JIRConsts this can be done with immediate values.
-        let out_gpr = self.temp_alloc();
-        self.emit_load_value_to_gpr(out_gpr, value)?;
+        let out_gpr = match value {
+            JIRValue::Slice(slice) => self.load_slice_gpr(slice),
+            JIRValue::Const(value) => {
+                let out_gpr = self.temp_alloc();
+                self.emit_load_const_to_gpr(out_gpr, value)?;
+                out_gpr
+            }
+        };
         match value.size() {
             1 => {
                 assemble!(self.block_mut()?.assembler;
@@ -196,7 +225,57 @@ impl X86MogiJit {
                 todo!()
             }
         }
-        self.temp_free(out_gpr)?;
+        if let JIRValue::Const(_) = value {
+            self.temp_free(out_gpr)?;
+        }
         Ok(())
     }
+}
+
+type TlbMissTrampoline<ContextT> =
+    unsafe extern "sysv64" fn(&mut ContextT, *mut (), EVAddr, usize, SpaceId) -> HVAddr<PageData>;
+
+/// The custom op callback consists of a trampoline function that acts as a transition layer between assembly
+/// and rust code. Usually, the rust compiler will be able to inline the closures into this trampoline.
+/// The callback signature is defined in [CustomOpImpl]. The callback gets the [JITTaskRuntimeContext] and the [CustomOpArgs].
+pub struct TlbMissCallback<ContextT: JITTaskRuntimeContext> {
+    trampoline: TlbMissTrampoline<ContextT>,
+    callback: *mut (),
+    phantom_data: PhantomData<ContextT>,
+}
+
+impl<ContextT> TlbMissCallback<ContextT>
+where
+    ContextT: JITTaskRuntimeContext,
+{
+    pub fn new<CB>(callback: CB) -> Self
+    where
+        CB: TlbMissHelper<ContextT>,
+    {
+        Self {
+            trampoline: trampoline::<CB, ContextT>,
+            callback: Box::into_raw(Box::new(callback)) as *mut (),
+            phantom_data: Default::default(),
+        }
+    }
+}
+
+#[inline]
+/// SAFETY: The trampoline is called by the jit runtime. The runtime must ensure that `callback` points to a valid
+///         closure.
+unsafe extern "sysv64" fn trampoline<CB, ContextT>(
+    context: &mut ContextT,
+    callback: *mut (),
+    addr: EVAddr,
+    size: usize,
+    space_id: SpaceId,
+) -> HVAddr<PageData>
+where
+    CB: TlbMissHelper<ContextT>,
+    ContextT: JITTaskRuntimeContext,
+{
+    let callback = callback as *mut CB;
+    // TODO: Instead of unwrapping, we want to force a jit exit upon returning and pass the error on to the
+    //       caller of the jit.
+    unsafe { (*callback)(context, addr, size, space_id).unwrap() }
 }

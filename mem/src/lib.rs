@@ -18,17 +18,18 @@ pub const PAGE_SIZE: usize = 1 << PAGE_OFFSET_BITS;
 pub const MAX_PAGE_OFFSET: usize = (1 << PAGE_OFFSET_BITS) - 1;
 
 pub trait PageOffset {
-    fn offset(&self) -> usize;
+    /// Calculate the offset from the start of the page where this address lives.
+    fn page_offset(&self) -> usize;
 }
 
 impl<T> PageOffset for EVAddr<T> {
-    fn offset(&self) -> usize {
+    fn page_offset(&self) -> usize {
         (*self & ((1 << PAGE_OFFSET_BITS) - 1)) as usize
     }
 }
 
 impl<T> PageOffset for EPAddr<T> {
-    fn offset(&self) -> usize {
+    fn page_offset(&self) -> usize {
         (*self & ((1 << PAGE_OFFSET_BITS) - 1)) as usize
     }
 }

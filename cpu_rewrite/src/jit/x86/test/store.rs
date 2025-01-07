@@ -1,0 +1,52 @@
+use crate::jit::x86::test::{
+    exec_instructions,
+    get_reg_slice,
+    get_slice_value,
+    set_slice,
+    setup,
+};
+use mogi_mem::physical::page::PageData;
+use mogi_sleigh::jinst;
+use mogi_sleigh::spec::{
+    CustomOpId,
+    SpaceId,
+};
+use mogi_utilities::addresses::{
+    EVAddr,
+    HVAddr,
+};
+use mogi_utilities::index_map::MapKey;
+
+#[test]
+fn test_store_tlb_hit() {
+    let (mut jit, spec, mut context) = setup(false);
+    let value_reg = "RAX";
+    let addr_reg = "RBX";
+    let a = 0x800fafafu64;
+    let value = 0x1234567890abcdefu64;
+    let value_slice = get_reg_slice(&spec, value_reg);
+    let addr_slice = get_reg_slice(&spec, addr_reg);
+    set_slice(&mut *context, addr_slice, a);
+    set_slice(&mut *context, value_slice, value);
+
+    let mut page = Box::new(PageData::zero());
+
+    let addr = EVAddr::from(0x800fafafu64);
+    let id = CustomOpId::try_from_index(5).unwrap();
+    unsafe {
+        context
+            .tlb
+            .insert_write(addr, HVAddr::new_unchecked(page.as_mut() as *mut _));
+    }
+
+    let instructions = vec![
+        //
+        jinst!(*[{SpaceId::from(0)}]addr_slice = value_slice),
+    ];
+    exec_instructions(&mut jit, &mut context, &instructions);
+
+    let actual = u64::from_le_bytes(page.data[0xfaf..0xfaf + 8].try_into().unwrap());
+
+    let expected = value;
+    assert_eq!(actual, expected, "Got {:#x} but expected {:#x}. Operands: {:#x}", actual, expected, a);
+}

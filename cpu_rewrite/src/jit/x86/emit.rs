@@ -7,6 +7,8 @@ mod logic;
 mod mmu;
 mod slice_load;
 
+pub use mmu::TlbMissCallback;
+
 /// Emit a 64 bit mov instruction, but only if the registers differ.
 macro_rules! mov64 {
     ($asm:expr; $dest_reg:expr, $src_reg:expr) => {

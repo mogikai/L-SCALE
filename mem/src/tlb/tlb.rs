@@ -13,6 +13,7 @@ use mogi_utilities::addresses::{
 };
 use std::fmt::{
     Debug,
+    Display,
     Formatter,
 };
 
@@ -24,9 +25,22 @@ pub struct TLB {
     pub write_entries: [TLBEntry; TLB_SIZE],
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum AccessType {
     Load,
     Store,
+}
+
+impl Display for AccessType {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "{}", match self {
+            AccessType::Load => "load",
+            AccessType::Store => "store",
+        })
+    }
 }
 
 impl Debug for TLB {
