@@ -323,7 +323,7 @@ impl<'a> JumplistBuilder<'a> {
             let mut jumplist_new = Jumplist::default();
             for jumplist in jumplists.into_iter() {
                 let jumplist_id = self.jumplist_cache.insert(jumplist);
-                jumplist_new.insert(0, JumplistEntry::new(vec![], NextJumplistEntry::Jumplist(jumplist_id)), false)?;
+                jumplist_new.insert(0, JumplistEntry::new(vec![], NextJumplistEntry::TrailingConsume(jumplist_id)), false)?;
             }
 
             Ok(jumplist_new)
@@ -383,8 +383,8 @@ impl<'a> JumplistBuilder<'a> {
         // iterate over and remove rows
         rows.sort_by(|lhs, rhs| {
             size_bits
-                .extract_from(lhs.mask)
-                .cmp(&size_bits.extract_from(rhs.mask))
+                .extract(lhs.mask)
+                .cmp(&size_bits.extract(rhs.mask))
         });
 
         let jumplists = self.create_jumplist_mask(rows, token_index, bytes_consumed, &size_bits)?;
@@ -394,7 +394,7 @@ impl<'a> JumplistBuilder<'a> {
             let mut jumplist_new = Jumplist::default();
             for jumplist in jumplists.into_iter() {
                 let jumplist_id = self.jumplist_cache.insert(jumplist);
-                let entry = JumplistEntry::new(vec![], NextJumplistEntry::Jumplist(jumplist_id));
+                let entry = JumplistEntry::new(vec![], NextJumplistEntry::TrailingConsume(jumplist_id));
                 jumplist_new.insert(0, entry, false)?;
             }
             jumplist_new
@@ -435,11 +435,11 @@ impl<'a> JumplistBuilder<'a> {
         'next_row: for row in rows.into_iter() {
             for (set_mask, set_rows_child, set_rows_parent) in sets.iter_mut() {
                 // TODO expansion
-                if (*set_mask ^ size_bits.extract_from(row.mask)).count_ones() <= MASK_EXPAND_THRESHOLD {
+                if (*set_mask ^ size_bits.extract(row.mask)).count_ones() <= MASK_EXPAND_THRESHOLD {
                     // full mask => put into child set to process now
                     set_rows_child.push(row);
                     continue 'next_row;
-                } else if is_submask(*set_mask, size_bits.extract_from(row.mask)) {
+                } else if is_submask(*set_mask, size_bits.extract(row.mask)) {
                     // not full mask => put into parent set to process later
                     set_rows_parent.push(row);
                     continue 'next_row;
@@ -447,7 +447,7 @@ impl<'a> JumplistBuilder<'a> {
             }
 
             // no match => put into new set
-            sets.push((size_bits.extract_from(row.mask), vec![row], vec![]));
+            sets.push((size_bits.extract(row.mask), vec![row], vec![]));
         }
 
         // collect child jumplists and then either use directly if only one is created
@@ -480,7 +480,9 @@ impl<'a> JumplistBuilder<'a> {
                     .map(|parent_value| parent_value & set_mask)
                     .unique()
                 {
-                    let propagated_entry = JumplistEntry::new(vec![jumplist_parent_id], NextJumplistEntry::Stub);
+                    // use NextJumplistEntry::TrailingSkip since we want to continue but not consume any
+                    // bytes
+                    let propagated_entry = JumplistEntry::new(vec![], NextJumplistEntry::TrailingSkip(jumplist_parent_id));
                     jumplist_child.insert(propagated_value, propagated_entry, false)?;
                 }
             }
@@ -496,7 +498,7 @@ impl<'a> JumplistBuilder<'a> {
                 };
 
                 partitions
-                    .entry((size_bits.extract_from(row.value), submatchers_list))
+                    .entry((size_bits.extract(row.value), submatchers_list))
                     .or_default()
                     .push(row);
             }
@@ -536,7 +538,7 @@ impl<'a> JumplistBuilder<'a> {
 
                     // nothing to optimize here
                     let trailing_jumplist_id = self.jumplist_cache.insert(trailing_jumplist);
-                    let next_entry_trailing = NextJumplistEntry::Jumplist(trailing_jumplist_id);
+                    let next_entry_trailing = NextJumplistEntry::TrailingConsume(trailing_jumplist_id);
 
                     let entry = JumplistEntry::new(sublist_ids.clone(), next_entry_trailing);
                     // first entry for non-expanded values...
@@ -561,7 +563,7 @@ impl<'a> JumplistBuilder<'a> {
                     let next_token_jumplist = self.create_jumplist(token_index + 1, &terminal_token_matchers)?;
                     let next_token_jumplist_id = self.jumplist_cache.insert(next_token_jumplist);
 
-                    let next_entry_tokens = NextJumplistEntry::Jumplist(next_token_jumplist_id);
+                    let next_entry_tokens = NextJumplistEntry::TrailingConsume(next_token_jumplist_id);
                     let entry = JumplistEntry::new(sublist_ids.clone(), next_entry_tokens);
                     jumplist_child.insert(value, entry.clone(), false)?;
 
@@ -581,11 +583,8 @@ impl<'a> JumplistBuilder<'a> {
                     let next_entry_matcher = NextJumplistEntry::Constructor(
                         terminal_matcher_row
                             .matcher
-                            .display
-                            .as_ref()
-                            .expect("This must be set at this point")
-                            .clone(),
-                    );
+                            .constructor.expect("The constructor must be set at this point")
+                        );
 
                     let entry = JumplistEntry::new(sublist_ids, next_entry_matcher);
                     jumplist_child.insert(value, entry.clone(), false)?;
@@ -696,7 +695,7 @@ fn expand_rows(
 ) -> Vec<u64> {
     let largest_common_mask = rows
         .iter()
-        .fold(!0u64, |acc, row| acc & size_bits.extract_from(row.mask));
+        .fold(!0u64, |acc, row| acc & size_bits.extract(row.mask));
     expand_mask(value, largest_common_mask, mask)
 }
 
@@ -759,7 +758,7 @@ fn save_graph(
     while let Some(top) = stack.pop() {
         let list = jumplist_cache.get(top).unwrap();
         let list_node = *nodes
-            .entry(NextJumplistEntry::Jumplist(top))
+            .entry(NextJumplistEntry::TrailingConsume(top))
             .or_insert_with(|| graph.add_node(format!("L{}", usize::from(top))));
 
         for (value, entries) in list.entries() {
@@ -768,12 +767,15 @@ fn save_graph(
                 let entry_node = *nodes.entry(entry.next_entry.clone()).or_insert_with(|| {
                     // not seen => insert node and push onto stack
                     let entry_node_weight = match &entry.next_entry {
-                        NextJumplistEntry::Jumplist(jlid) => {
+                        NextJumplistEntry::TrailingConsume(jlid) => {
                             stack.push(*jlid);
                             format!("L{}", usize::from(*jlid))
                         }
+                        NextJumplistEntry::TrailingSkip(jlid) => {
+                            stack.push(*jlid);
+                            format!("S{}", usize::from(*jlid))
+                        },
                         NextJumplistEntry::Constructor(cid) => format!("C{}", cid),
-                        NextJumplistEntry::Stub => format!("S"),
                     };
 
                     graph.add_node(entry_node_weight)
@@ -782,9 +784,9 @@ fn save_graph(
                 graph.add_edge(list_node, entry_node, format!("NE{:#x}", value));
 
                 // process sublists
-                for sublist in &entry.same_token_jumplists {
+                for sublist in &entry.sublists {
                     let sublist_node = *nodes
-                        .entry(NextJumplistEntry::Jumplist(*sublist))
+                        .entry(NextJumplistEntry::TrailingConsume(*sublist))
                         .or_insert_with(|| {
                             // not seen => insert node and push onto stack
                             let sublist_node_weight = format!("L{}", usize::from(*sublist));
@@ -800,5 +802,5 @@ fn save_graph(
 
     let dot = Dot::with_config(&graph, &[]);
     let mut file = File::create("jumplist_graph.gv").unwrap();
-    writeln!(file, "{:?}", dot);
+    writeln!(file, "{:?}", dot).unwrap();
 }

@@ -14,5 +14,6 @@ pub mod scope;
 pub mod table;
 pub mod token;
 pub mod varnode;
+pub mod actions;
 
 pub const MOIR_ADDRESS_SIZE: MOIRSize = 8;

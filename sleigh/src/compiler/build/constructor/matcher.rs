@@ -175,5 +175,3 @@ impl Matcher {
 }
 
 new_typed_index_table_id! { pub struct MatcherId; "MTCHR"; }
-
-// r0=0; r1=1...

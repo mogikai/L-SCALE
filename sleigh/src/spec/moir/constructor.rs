@@ -47,11 +47,14 @@ use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 use tracing::debug;
 
+use super::actions::MOIRAction;
+
 #[derive(Debug)]
 pub struct MOIRConstructor {
     pub local_scope: MOIRScope,
     pub instructions: Vec<MOIRInstruction>,
     pub display: String,
+    pub actions: Vec<MOIRAction>,
     /// A constructor may export a value. The export refers to a local in this constructor.
     /// To resolve the value, the scope for this constructor has to be used.
     /// 7.7.2.3. Exports

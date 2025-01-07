@@ -30,6 +30,7 @@ use crate::spec::{
     ProcessorSpecResult,
     ProcessorSpecificationError,
 };
+use chumsky::input::Input;
 use itertools::Itertools;
 use mogi_utilities::index_map::PrimaryMap;
 use mogi_utilities::new_map_key;
@@ -47,6 +48,16 @@ use std::fmt::{
 use std::process::id;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
+
+use super::field::MOIRBitRange;
+
+/// When matching using jumplists, we extract fields directly from the byte stream using an offset
+/// and a mask.
+pub(crate) struct FieldExtractor {
+    field_id: FieldId,
+    byte_offset: usize,
+    bits: MOIRBitRange,
+}
 
 /// A scope for locals and labels used in constructors and macros
 #[derive(Default)]
@@ -70,6 +81,8 @@ pub struct MOIRScope {
     /// Otherwise, the semantic section first needs to be parsed in order to find the right
     /// size constraint. The resulting size constraint for a field will then be
     field_sizes: HashMap<FieldId, MOIRMaybeSize>,
+    /// To get the actual matching field values out of the byte stream.
+    field_extractors: Vec<FieldExtractor>,
 
     /// A helper set to keep track of which local variable is actually used.
     /// Unused variables can be removed from this set.
@@ -303,6 +316,13 @@ impl MOIRScope {
         }
         let id = self.slices.insert(value);
         self.locals.insert(ident, id);
+    }
+
+    /// Extract all field values from a byte stream.
+    pub(crate) fn extract_fields(&self, bytes: &[u8]) -> HashMap<FieldId, u64> {
+        self.field_extractors.iter().map(|extractor| {
+            (extractor.field_id, 0)
+        }).collect()
     }
 
     /// Marks subtables as implicitly built and stores the instruction ids where the builds are performed.

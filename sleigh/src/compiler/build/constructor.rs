@@ -129,6 +129,12 @@ impl SleighCompiler {
         &self,
         actions_section: Spanned<SASTDisassemblySection>
     ) -> SleighCompilerResult<Vec<MOIRAction>> {
+        if let Some(sast_actions) = actions_section.into_value().actions {
+            // let moir_actions = sast_actions.into_iter().map(|sast_action| {
+            //     sast_action
+            // })
+        }
+
         Ok(vec![])
     }
 

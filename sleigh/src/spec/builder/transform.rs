@@ -166,7 +166,9 @@ impl MOIRToJIRTransformer {
         // TODO remove
         let root_jumplist = jumplist_cache.get(root_jumplist_id).unwrap();
         let bytes = [ 0x48, 0x01, 0xd8 ];
-        let matching = root_jumplist.r#match(&bytes, &jumplist_cache);
+        let mut context = TypedIndexTable::default();
+        context.insert(0x81);
+        let matching = root_jumplist.r#match(&bytes, &jumplist_cache, &self.moir.symbol_tables.constructors, &mut context);
         eprintln!("matching = {:#?}", matching);
 
         self.jir.symbol_tables = JIRSymbolTables {

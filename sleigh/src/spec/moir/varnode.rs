@@ -179,7 +179,7 @@ impl Display for MOIRSlice {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum MOIRReference {
     Field(FieldId),
     SubTable(TableId),

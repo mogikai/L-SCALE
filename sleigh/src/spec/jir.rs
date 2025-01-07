@@ -10,6 +10,7 @@ pub mod local_resolver;
 pub mod space;
 pub mod values;
 pub mod jumplist;
+pub mod context_provider;
 
 #[cfg(feature = "trace_jir")]
 macro_rules! trace_jir {

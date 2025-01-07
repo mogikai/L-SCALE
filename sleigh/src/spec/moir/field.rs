@@ -45,11 +45,20 @@ impl MOIRBitRange {
         ((1 << self.bits()) - 1) << self.start
     }
 
-    pub fn extract_from(
+    /// Right-shift `v` by `self.start` and apply `self.mask()`
+    pub fn extract(
         &self,
         v: u64,
     ) -> u64 {
         (v >> self.start) & self.mask()
+    }
+
+    /// Apply `self.mask()` to `v` and left-shift by `self.start`
+    pub fn insert(
+        &self,
+        v: u64,
+    ) -> u64 {
+        (v & self.mask()) << self.start
     }
 }
 
