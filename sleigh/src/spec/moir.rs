@@ -1,18 +1,18 @@
 use crate::spec::moir::common::MOIRSize;
 
-pub mod address_space;
-pub mod bitrange_register;
-pub mod code;
-pub mod common;
-pub mod constructor;
-pub mod context;
-pub mod custom_op;
-pub mod endianness;
-pub mod field;
-pub mod r#macro;
-pub mod scope;
-pub mod table;
-pub mod token;
-pub mod varnode;
+pub(crate) mod address_space;
+pub(crate) mod bitrange_register;
+pub(crate) mod code;
+pub(crate) mod common;
+pub(crate) mod constructor;
+pub(crate) mod context;
+pub(crate) mod custom_op;
+pub(crate) mod endianness;
+pub(crate) mod field;
+pub(crate) mod r#macro;
+pub(crate) mod scope;
+pub(crate) mod table;
+pub(crate) mod token;
+pub(crate) mod varnode;
 
-pub const MOIR_ADDRESS_SIZE: MOIRSize = 8;
+pub(crate) const MOIR_ADDRESS_SIZE: MOIRSize = 8;

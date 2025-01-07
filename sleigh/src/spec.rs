@@ -40,7 +40,7 @@ use tracing::debug;
 
 pub mod builder;
 pub mod jir;
-pub(crate) mod moir;
+pub mod moir;
 pub mod typed_index_table;
 
 new_typed_index_table_id! {
