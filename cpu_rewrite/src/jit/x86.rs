@@ -423,6 +423,13 @@ impl MogiJit for X86MogiJit {
         Ok(())
     }
 
+    /// Register a callback that translates the provided [EVAddr] into an [HVAddr]
+    /// in case the [TLB] does not contain a corresponding entry.
+    /// The callback must perform a permission check and return an error, if the access would
+    /// violate access permissions.
+    /// This callback may add a [TLB] entry to facilitate faster translation for future accesses.
+    /// There are two callbacks, one for read accesses and one for write accesses
+    /// (see [Self::register_tlb_write_miss_callback])
     fn register_tlb_read_miss_callback<CB>(
         &mut self,
         callback: CB,
@@ -434,6 +441,11 @@ impl MogiJit for X86MogiJit {
         Ok(())
     }
 
+    /// Register a callback that translates the provided [EVAddr] into an [HVAddr]
+    /// in case the [TLB] does not contain a corresponding entry.
+    /// The callback must perform a permission check and return an error, if the access would
+    /// violate access permissions.
+    /// See [Self::register_tlb_read_miss_callback].
     fn register_tlb_write_miss_callback<CB>(
         &mut self,
         callback: CB,

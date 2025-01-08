@@ -18,7 +18,9 @@
 //! ## Memory translation
 //! TODO: Describe how the tlb works, and how the tlb miss callbacks work
 //!
-#![feature(let_chains)] // TODO: Disallow dead code once prototyping is done
+#![feature(let_chains)]
+#![feature(abort_unwind)]
+// TODO: Disallow dead code once prototyping is done
 #![allow(dead_code)]
 extern crate core;
 

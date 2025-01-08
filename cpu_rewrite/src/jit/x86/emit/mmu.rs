@@ -94,6 +94,22 @@ impl X86MogiJit {
         assemble!(self.block_mut()?.assembler;
             // We copy over the whole address in case of a tlb miss.
             ; mov Rq(translated_address_gpr as u8), Rq(addr_gpr as u8)
+        );
+
+        // If the size is 1 the address is always aligned.
+        // TODO: We need to check if the size of the data is less than the actual load operation.
+        //       If this is the case, then we need to insert an additional check for the larger
+        //       access size so that we don't cross page boundaries.
+        if size > 1 {
+            assemble!(self.block_mut()?.assembler;
+                // Check alignment
+                ; test Rq(addr_gpr as u8), (size - 1) as i32
+                // TODO: Jump to unaligned access code.
+                ; jnz >tlb_miss
+            )
+        }
+
+        assemble!(self.block_mut()?.assembler;
             ; shr Rq(addr_gpr as u8), BYTE EVAddr::<u8>::index_shift_from_start() as _
             ; mov Rq(tag_gpr as u8), Rq(addr_gpr as u8)
             ; and Rd(addr_gpr as u8), DWORD EVAddr::<u8>::index_mask() as _
@@ -110,11 +126,11 @@ impl X86MogiJit {
             ; and Rd(translated_address_gpr as u8), WORD 0xfff
             // Add target onto the page offset
             ; add Rq(translated_address_gpr as u8), QWORD [Rq(addr_gpr as u8) + target_offset as _ + cpu_context]
+            // TODO: Permission check
             ; jmp >success
         );
 
         // We emit flush code first, and then the call into the memory helper. On TLB hit this code is skipped.
-        // TODO: Only flush registers that are not preserved by callee
         self.preserve_registers_caller()?;
 
         let Some(callback) = match access_type {
@@ -126,6 +142,9 @@ impl X86MogiJit {
         };
         let (translate_trampoline, translate_callback) = (callback.trampoline, callback.callback);
 
+        // TODO: This code is generic and can be moved to the end of the translation,
+        //       since it should be in the cold path anyway. It will need to be split into read
+        //       and write.
         assemble!(self.block_mut()?.assembler;
             ; tlb_miss:
             // call external helper trampoline.
@@ -277,5 +296,5 @@ where
     let callback = callback as *mut CB;
     // TODO: Instead of unwrapping, we want to force a jit exit upon returning and pass the error on to the
     //       caller of the jit.
-    unsafe { (*callback)(context, addr, size, space_id).unwrap() }
+    std::panic::abort_unwind(|| unsafe { (*callback)(context, addr, size, space_id).unwrap() })
 }
