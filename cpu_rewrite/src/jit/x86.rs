@@ -26,6 +26,7 @@ use dynasmrt::{
     VecAssembler,
     dynasm,
 };
+use memmap2::MmapOptions;
 use mogi_mem::mmu::MogiMMU;
 use mogi_mem::tlb::tlb::{
     AccessType,
@@ -86,6 +87,7 @@ macro_rules! assemble {
 }
 
 pub struct X86MogiJit {
+    code_buffer: CodeBuffer,
     processor_specification: Rc<RefCell<ProcessorSpecification>>,
     unfinished_block: Option<UnfinishedBasicBlock>,
     /// The jit prelude is the entry point of the emulator. The jir prelude is called with the
@@ -98,6 +100,8 @@ pub struct X86MogiJit {
     /// that the blocks have already been translated and are still valid.
     /// The epilogue will fully flush all registers into their corresponding varnodes.
     jit_epilogue: ExecutableBuffer,
+    // TODO: Cache the non-translated basic blocks instead. We need to cache them
+    //       in order to facilitate any modifications
     jit_cache: JitCache<BasicBlock>,
     /// The register tracker keeps track of the registers used in the currently constructed block.
     /// If all registers are occupied, one of the registers must be spilled into memory, to free
@@ -137,6 +141,7 @@ pub struct X86GlobalContext {
     tlb_miss_write_callback: Option<TlbMissCallback<X86TaskContext>>,
 }
 
+use crate::jit::code_buffer::CodeBuffer;
 use crate::jit::x86::emit::TlbMissCallback;
 use assemble;
 use emit::CustomOpCallback;
@@ -323,7 +328,9 @@ impl X86MogiJit {
         mmu: Rc<RefCell<MogiMMU>>,
         debug: bool,
     ) -> Self {
+        let map = MmapOptions::new().len(4096 * (2 << 16)).map_anon().unwrap();
         Self {
+            code_buffer: CodeBuffer::new().unwrap(),
             processor_specification,
             unfinished_block: Default::default(),
             jit_prelude: build_prelude(debug).unwrap(),
