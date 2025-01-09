@@ -189,6 +189,16 @@ pub trait JITTaskRuntimeContext {
 
     /// Get a mutable reference to the tlb of this task context.
     fn tlb_mut(&mut self) -> &mut TLB;
+
+    /// Callbacks may set a runtime error in the context.
+    /// This causes the jit to exit as soon as possible,
+    /// returning the set error. Some callbacks may cause
+    /// the jit to immediately exit, flushing any cached
+    /// varnodes to context.
+    fn set_runtime_error(
+        &mut self,
+        error: RuntimeError,
+    );
 }
 
 /// The runtime context contains information that is global to all tasks (processes/threads).

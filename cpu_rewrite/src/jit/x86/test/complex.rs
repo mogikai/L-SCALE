@@ -16,7 +16,7 @@ use mogi_utilities::index_map::MapKey;
 
 #[test]
 fn test_complex() {
-    let (mut jit, spec, mut context) = setup(true);
+    let (mut jit, spec, mut context) = setup(false);
     let reg_out = "EAX";
     let reg_a = "EBX";
     let reg_b = "ECX";

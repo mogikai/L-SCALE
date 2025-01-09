@@ -31,8 +31,10 @@ use mogi_utilities::addresses::{
     EVAddr,
     HVAddr,
 };
+use std::backtrace::Backtrace;
 use std::marker::PhantomData;
 use std::mem::offset_of;
+use std::panic::AssertUnwindSafe;
 
 impl X86MogiJit {
     pub fn emit_load(
@@ -130,6 +132,8 @@ impl X86MogiJit {
             ; jmp >success
         );
 
+        // TODO: Move the tlb miss code out of the happy path.
+        //       We most likely want to defer writing the slow path to the end of the basic block?
         // We emit flush code first, and then the call into the memory helper. On TLB hit this code is skipped.
         self.preserve_registers_caller()?;
 
@@ -141,10 +145,6 @@ impl X86MogiJit {
             Err(JitError::MissingTlbCallback(access_type))?
         };
         let (translate_trampoline, translate_callback) = (callback.trampoline, callback.callback);
-
-        // TODO: This code is generic and can be moved to the end of the translation,
-        //       since it should be in the cold path anyway. It will need to be split into read
-        //       and write.
         assemble!(self.block_mut()?.assembler;
             ; tlb_miss:
             // call external helper trampoline.
@@ -158,7 +158,20 @@ impl X86MogiJit {
             ; mov r8d, DWORD usize::from(space_id) as _
             // TODO: Call the correct helper function.
             ; mov rax, QWORD translate_trampoline as _
+            //// Perform the trampoline call
+            // Save the current stack pointer. RBX is preserved by the caller.
+            ; mov rbx, rsp
+            // Important: Make sure the stack is aligned to 16 bytes according to System V ABI before calling
+            ; and rsp, DWORD -16
+            // Call the trampoline
             ; call rax
+            // restore the stack pointer
+            ; mov rsp, rbx
+            ; test rax, rax
+            // If the translation returns zero, we encountered an error.
+            // Jump to the exit code to exit the jit.
+            ; jz >exit_failure
+            //// End of trampoline call sequence
             // The result of the helper is the host address
             ; mov Rq(translated_address_gpr as u8), rax
             // tlb hit skips to here. Regardless of hit or miss, the address will be in addr_gpr if possible.
@@ -252,7 +265,7 @@ impl X86MogiJit {
 }
 
 type TlbMissTrampoline<ContextT> =
-    unsafe extern "sysv64" fn(&mut ContextT, *mut (), EVAddr, usize, SpaceId) -> HVAddr<PageData>;
+    unsafe extern "sysv64" fn(&mut ContextT, *mut (), EVAddr, usize, SpaceId) -> Option<HVAddr<PageData>>;
 
 /// The custom op callback consists of a trampoline function that acts as a transition layer between assembly
 /// and rust code. Usually, the rust compiler will be able to inline the closures into this trampoline.
@@ -288,13 +301,18 @@ unsafe extern "sysv64" fn trampoline<CB, ContextT>(
     addr: EVAddr,
     size: usize,
     space_id: SpaceId,
-) -> HVAddr<PageData>
+) -> Option<HVAddr<PageData>>
 where
     CB: TlbMissHelper<ContextT>,
     ContextT: JITTaskRuntimeContext,
 {
     let callback = callback as *mut CB;
-    // TODO: Instead of unwrapping, we want to force a jit exit upon returning and pass the error on to the
-    //       caller of the jit.
-    std::panic::abort_unwind(|| unsafe { (*callback)(context, addr, size, space_id).unwrap() })
+    unsafe { (*callback)(context, addr, size, space_id) }
+        .map_err(|e| {
+            // Set the error in the runtime context so that it can be retrieved upon exiting
+            // the jited code. The JIT will then return the error, instead of continuing execution.
+            context.set_runtime_error(e);
+            e
+        })
+        .ok()
 }

@@ -17,11 +17,13 @@ use crate::jit::cache::{
     JitCache,
     JitCode,
 };
-use dynasmrt::x64::Assembler;
+use dynasmrt::x64::X64Relocation;
 use dynasmrt::{
+    Assembler,
     AssemblyOffset,
     DynasmApi,
     ExecutableBuffer,
+    VecAssembler,
     dynasm,
 };
 use mogi_mem::mmu::MogiMMU;
@@ -70,6 +72,7 @@ macro_rules! assemble {
         {
         #[allow(unused_imports)]
         use dynasmrt::DynasmApi;
+        use dynasmrt::DynasmLabelApi;
         use dynasmrt::dynasm;
         dynasm!($asm
             ; .arch x64
@@ -122,6 +125,9 @@ pub struct X86TaskContext {
     /// For convenience, the task context contains a pointer to the global context.
     /// The global context is however usually accessed directly in the jit code.
     global_context: NonNull<X86GlobalContext>,
+    /// If a runtime error occurred, it is stored here, and the jit exits as soon
+    /// as possible.
+    runtime_error: Option<RuntimeError>,
 }
 
 /// The global jit context. Each task context contains a pointer to this context.
@@ -143,7 +149,7 @@ use registers::{
 #[derive(Debug)]
 struct UnfinishedBasicBlock {
     start: EVAddr,
-    assembler: Assembler,
+    assembler: Assembler<X64Relocation>,
     jmp_epilogue_offset: Option<AssemblyOffset>,
     /// Each basic block may call custom operations. The arguments are currently saved on the heap
     /// Once the basic block is destroyed, the call and its arguments are also removed.
@@ -301,6 +307,13 @@ impl JITTaskRuntimeContext for X86TaskContext {
     fn tlb_mut(&mut self) -> &mut TLB {
         &mut self.tlb
     }
+
+    fn set_runtime_error(
+        &mut self,
+        error: RuntimeError,
+    ) {
+        self.runtime_error = Some(error);
+    }
 }
 
 impl X86MogiJit {
@@ -346,7 +359,7 @@ impl X86MogiJit {
                 .ptr(epilogue_offset)
                 .offset_from(origin.code.as_ptr()) as usize
         };
-        let mut new_jmp = Assembler::new()?;
+        let mut new_jmp = Assembler::<X64Relocation>::new()?;
         dynasm!(new_jmp
         ; jmp jmp_offset as _
         );
@@ -408,6 +421,7 @@ impl MogiJit for X86MogiJit {
             pc: 0,
             global_context: NonNull::new(&mut *self.global_context)
                 .expect("The pinned pointer must be non null per definition"),
+            runtime_error: None,
         }
     }
 
@@ -453,7 +467,8 @@ impl MogiJit for X86MogiJit {
     where
         CB: TlbMissHelper<Self::RuntimeContext>,
     {
-        todo!()
+        self.global_context.tlb_miss_write_callback = Some(TlbMissCallback::new(callback));
+        Ok(())
     }
 
     fn new_block(
@@ -640,6 +655,16 @@ impl MogiJit for X86MogiJit {
             // ; mov rax, QWORD epilogue as _
             ; jmp DWORD 0
         );
+
+        // let failure_jmp_addr = Some(block.assembler.offset());
+        // let orign_address = unsafe { origin.code.ptr(epilogue_offset).add(5) };
+        // let jmp_offset = i32::try_from(unsafe { self.jit_epilogue.as_ptr().offset_from(orign_address) }).unwrap();
+        assemble!(block.assembler;
+            // In case of failure, we want to exit, instead of jumping into a chained block.
+            ; exit_failure:
+            ; jmp DWORD 0
+        );
+
         let block = block.finalize()?;
         let addr = self.jit_cache.populate(block);
         self.chain_blocks_direct(addr, self.jit_epilogue.as_ptr())?;
@@ -692,7 +717,7 @@ impl MogiJit for X86MogiJit {
 /// The prelude is called like a C function, and thus only callee saved registers need to be preserved inside
 /// the call. The Signature of the jit prelude function can be found here: [PreludeSignature]
 fn build_prelude(debug: bool) -> Result<ExecutableBuffer, JitError> {
-    let mut asm = Assembler::new()?;
+    let mut asm = Assembler::<X64Relocation>::new()?;
     if debug {
         assemble!(asm;
             // For debugging we break on jumping into the prelude.
@@ -722,7 +747,7 @@ fn build_prelude(debug: bool) -> Result<ExecutableBuffer, JitError> {
 /// Builds the epilogue of the jit. This block is jumped to, when the emulated code wants to exit into the emulator.
 /// The code pops all the saved registers and then returns into the function that called the prelude.
 fn build_epilogue() -> Result<ExecutableBuffer, JitError> {
-    let mut asm = Assembler::new()?;
+    let mut asm = Assembler::<X64Relocation>::new()?;
     dynasm!(asm
         ; pop r15
         ; pop r14
