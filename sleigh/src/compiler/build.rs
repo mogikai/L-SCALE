@@ -270,7 +270,10 @@ impl SleighCompiler {
             for field in token.fields.into_iter() {
                 let name = field.name.clone().transmute();
                 // +1 since end is inclusive, but `MOIRBitRange` is exclusive
-                let range = MOIRBitRange::new(*field.start.value() as u8, *field.end.value() as u8 + 1);
+                let range = MOIRBitRange::new(
+                    MOIRSize::try_from(*field.start.value()).unwrap(),
+                    MOIRSize::try_from(*field.end.value() + 1).unwrap(),
+                );
                 if let Some(field) = self.make_field(MOIRFieldParent::Token(token_id), bits, range)? {
                     let result = self.spec_builder.define_field(name, field);
                     self.report_error_or_unwrap(result)?;
@@ -289,7 +292,10 @@ impl SleighCompiler {
             .define_context(context.varnode.clone().transmute())?;
         for field in &context.fields {
             // +1 since end is inclusive, but `MOIRBitRange` is exclusive
-            let range = MOIRBitRange::new(*field.start.value() as u8, *field.end.value() as u8 + 1);
+            let range = MOIRBitRange::new(
+                MOIRSize::try_from(*field.start.value()).unwrap(),
+                MOIRSize::try_from(*field.end.value() + 1).unwrap(),
+            );
             if let Some(moir_field) = self.make_field(MOIRFieldParent::Context(context_id), bits, range)? {
                 let result = self
                     .spec_builder

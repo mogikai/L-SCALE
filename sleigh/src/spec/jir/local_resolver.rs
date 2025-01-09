@@ -96,6 +96,18 @@ impl<'a> JIRResolver<'a> {
         }
     }
 
+    // TODO remove
+    pub(crate) fn print_hierarchy(&self, depth: u32) {
+        for _ in 0..depth {
+            eprint!(" ");
+        }
+
+        eprintln!("|-> {:?}", self.constructor.display);
+        for subtable_resolver in self.subtables.values() {
+            subtable_resolver.print_hierarchy(depth + 4);
+        }
+    }
+
     /// Resolve the unresolved temporaries for the associated constructor.
     /// This will allocate temp varnodes in the [TargetInstruction] for each temporary
     /// in the scope.

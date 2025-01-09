@@ -34,6 +34,9 @@ use crate::compiler::{
     SleighCompilerResult,
 };
 use crate::spec::builder::transform::MOIRToJIRTransformer;
+use crate::spec::jir::context_provider::ContextProvider;
+use crate::spec::jir::jumplist::JumplistId;
+use crate::spec::jir::trace_jir;
 use crate::spec::moir::address_space::{
     MOIRSpace,
     MOIRSpaceIsDefault,
@@ -173,7 +176,6 @@ pub struct ProcessorSpecificationBuilder {
     /// Context defined on top of existing varnodes containing context fields (e.g. a dedicated
     /// `contextreg` varnode containing a field `longmode=(0,1)` for x86).
     context: TypedIndexTable<MOIRContextId, MOIRContext>,
-    zero_token: Option<TokenId>,
 
     /// Maps a string identifier to the corresponding internal [Ident].
     /// This is useful for the compiler, when an identifier string references another symbol.
@@ -749,10 +751,6 @@ impl ProcessorSpecificationBuilder {
     ) -> Option<MOIROperation> {
         self.builtin_ops.get(ident.value()).cloned()
     }
-
-    pub fn zero_token(&self) -> Option<TokenId> {
-        self.zero_token
-    }
 }
 
 impl Default for ProcessorSpecificationBuilder {
@@ -777,7 +775,6 @@ impl Default for ProcessorSpecificationBuilder {
             endianness: None,
             alignment: None,
             context: Default::default(),
-            zero_token: None,
             string_to_ident_mapping: Default::default(),
             root_table,
             default_space: None,
@@ -830,7 +827,6 @@ impl Default for ProcessorSpecificationBuilder {
                 endianness_override: None,
             })
             .expect("This may not error at this point");
-        slf.zero_token = Some(zero_token);
         slf.define_field(Spanned::new(epsilon, InputSpan::default()), MOIRField {
             parent: MOIRFieldParent::Token(zero_token),
             bits: MOIRBitRange::new(0, 0),
@@ -877,6 +873,7 @@ impl ProcessorSpecificationBuilder {
             symbol_strings: jir.symbol_strings,
             symbol_tables: jir.symbol_tables,
             string_to_ident_mapping: jir.string_to_ident_mapping,
+            jumplist_cache: jir.jumplist_cache,
             root_table,
             default_space: self
                 .default_space
@@ -890,6 +887,24 @@ impl ProcessorSpecificationBuilder {
             // The default alignment is 1
             alignment: self.alignment.map(Spanned::into_value).unwrap_or(1),
         };
+
+        {
+            // TODO remove
+            let root_jumplist = spec.jumplist_cache.get(JumplistId::from(0)).unwrap();
+            // mod=1
+            let bytes = [ 0x48, 0xC1, 0x4C, 0xB5, 0x00, 0x0D ];
+
+            let mut context_provider = ContextProvider::new(&spec.symbol_tables.fields);
+            // longMode=1
+            *context_provider.context_value_mut(MOIRContextId::from(0))? = 0x1;
+
+            // TODO finish matching
+            let matching = root_jumplist.r#match(&bytes, &spec.jumplist_cache, &spec, &spec.symbol_tables.constructors, &mut context_provider)?;
+            if let Some(matching) = matching {
+                matching.print_hierarchy(0);
+            }
+        }
+
         Ok(spec)
     }
 }

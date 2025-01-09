@@ -16,13 +16,14 @@ use chumsky::container::{
 };
 use itertools::Itertools;
 use num::PrimInt;
+use petgraph::Graph;
 use petgraph::data::Build;
 use petgraph::dot::{
     Config,
     Dot,
 };
-use petgraph::Graph;
 
+use crate::compiler::SleighCompilerResult;
 use crate::compiler::ast::pcode::deref;
 use crate::compiler::build::constructor::matcher::{
     FieldMatcher,
@@ -35,9 +36,10 @@ use crate::compiler::build::constructor::matcher::{
 use crate::compiler::build::constructor::matcher_builder::merge_token_lists;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
-use crate::compiler::SleighCompilerResult;
+use crate::spec::ProcessorSpecificationError;
 use crate::spec::jir::jumplist::{
     DataProvider,
+    FieldExtractor,
     Jumplist,
     JumplistEntry,
     JumplistId,
@@ -53,7 +55,9 @@ use crate::spec::moir::context::{
     MOIRContextId,
 };
 use crate::spec::moir::field::{
+    FieldId,
     MOIRBitRange,
+    MOIRField,
     MOIRFieldParent,
 };
 use crate::spec::moir::table::{
@@ -69,7 +73,6 @@ use crate::spec::moir::varnode::{
     VarNodeId,
 };
 use crate::spec::typed_index_table::TypedIndexTable;
-use crate::spec::ProcessorSpecificationError;
 
 // Entries for different masks can be combined vertically by building up a hierarchy layer by layer
 // or horizontally by ORing the mask bits together and filling missing entries by enumerating
@@ -87,6 +90,7 @@ pub(super) struct JumplistBuilder<'a> {
     jumplist_cache: TypedIndexTable<JumplistId, Jumplist>,
     sublist_cache: HashMap<Submatchers, JumplistId>,
     tables: &'a TypedIndexTable<TableId, MOIRTable>,
+    fields: &'a TypedIndexTable<FieldId, MOIRField>,
     tokens: &'a TypedIndexTable<TokenId, MOIRToken>,
     context: &'a TypedIndexTable<MOIRContextId, MOIRContext>,
     varnodes: &'a TypedIndexTable<VarNodeId, MOIRVarNode>,
@@ -128,6 +132,7 @@ impl<'a> Row<'a> {
 impl<'a> JumplistBuilder<'a> {
     pub(super) fn new(
         tables: &'a TypedIndexTable<TableId, MOIRTable>,
+        fields: &'a TypedIndexTable<FieldId, MOIRField>,
         tokens: &'a TypedIndexTable<TokenId, MOIRToken>,
         context: &'a TypedIndexTable<MOIRContextId, MOIRContext>,
         varnodes: &'a TypedIndexTable<VarNodeId, MOIRVarNode>,
@@ -137,6 +142,7 @@ impl<'a> JumplistBuilder<'a> {
             jumplist_cache: TypedIndexTable::default(),
             sublist_cache: HashMap::new(),
             tables,
+            fields,
             tokens,
             context,
             varnodes,
@@ -147,7 +153,7 @@ impl<'a> JumplistBuilder<'a> {
     pub(super) fn transform(
         mut self,
         root_table_id: TableId,
-    ) -> SleighCompilerResult<(JumplistId, TypedIndexTable<JumplistId, Jumplist>)> {
+    ) -> SleighCompilerResult<TypedIndexTable<JumplistId, Jumplist>> {
         trace_build!("Processing {} tables into jumplists", self.tables.len());
 
         let root_table = self
@@ -167,20 +173,20 @@ impl<'a> JumplistBuilder<'a> {
             self.sublist_cache.len(),
         );
 
-        for (jumplist_id, jumplist) in self.jumplist_cache.iter() {
-            if jumplist_id == root_jumplist_id {
-                continue;
-            }
+        // for (jumplist_id, jumplist) in self.jumplist_cache.iter() {
+        //     if jumplist_id == root_jumplist_id {
+        //         continue;
+        //     }
 
-            trace_build!("(jumplist_id, jumplist) = {:#x?}", (jumplist_id, jumplist));
-        }
+        //     trace_build!("(jumplist_id, jumplist) = {:#x?}", (jumplist_id, jumplist));
+        // }
 
-        let root_jumplist = self.jumplist_cache.get(root_jumplist_id).unwrap();
-        trace_build!("(root_jumplist_id, root_jumplist) = {:#x?}", (root_jumplist_id, root_jumplist));
+        // let root_jumplist = self.jumplist_cache.get(root_jumplist_id).unwrap();
+        // trace_build!("(root_jumplist_id, root_jumplist) = {:#x?}", (root_jumplist_id, root_jumplist));
 
         save_graph(root_jumplist_id, &self.jumplist_cache);
 
-        Ok((root_jumplist_id, self.jumplist_cache))
+        Ok(self.jumplist_cache)
     }
 
     /// Process a table by creating and merging corresponding jumplists for each matcher in
@@ -323,7 +329,11 @@ impl<'a> JumplistBuilder<'a> {
             let mut jumplist_new = Jumplist::default();
             for jumplist in jumplists.into_iter() {
                 let jumplist_id = self.jumplist_cache.insert(jumplist);
-                jumplist_new.insert(0, JumplistEntry::new(vec![], NextJumplistEntry::TrailingConsume(jumplist_id)), false)?;
+                jumplist_new.insert(
+                    0,
+                    JumplistEntry::new(vec![], NextJumplistEntry::TrailingNext(jumplist_id)),
+                    false,
+                )?;
             }
 
             Ok(jumplist_new)
@@ -369,8 +379,8 @@ impl<'a> JumplistBuilder<'a> {
             - bytes_consumed;
 
         let size_bits = MOIRBitRange::new(
-            u8::try_from(bytes_consumed * 8).expect("This should be 64 at most"),
-            u8::try_from((bytes_consumed + size_delta) * 8).expect("This should be 64 at most"),
+            MOIRSize::try_from(bytes_consumed * 8).unwrap(),
+            MOIRSize::try_from((bytes_consumed + size_delta) * 8).unwrap(),
         );
 
         // We create intermediary jumplists to handle different masks without creating additional
@@ -387,19 +397,22 @@ impl<'a> JumplistBuilder<'a> {
                 .cmp(&size_bits.extract(rhs.mask))
         });
 
-        let jumplists = self.create_jumplist_mask(rows, token_index, bytes_consumed, &size_bits)?;
+        let jumplists = self.create_jumplist_mask(rows, token_index, bytes_consumed, size_bits)?;
 
         // combine if multiple, use directly if only one
-        let jumplist = if jumplists.len() > 1 {
+        let mut jumplist = if jumplists.len() > 1 {
             let mut jumplist_new = Jumplist::default();
             for jumplist in jumplists.into_iter() {
                 let jumplist_id = self.jumplist_cache.insert(jumplist);
-                let entry = JumplistEntry::new(vec![], NextJumplistEntry::TrailingConsume(jumplist_id));
+                let entry = JumplistEntry::new(vec![], NextJumplistEntry::TrailingNext(jumplist_id));
                 jumplist_new.insert(0, entry, false)?;
             }
             jumplist_new
         } else {
-            jumplists.into_iter().nth(0).expect("There must be at least one jumplist")
+            jumplists
+                .into_iter()
+                .nth(0)
+                .expect("There must be at least one jumplist")
         };
 
         Ok(jumplist)
@@ -410,7 +423,6 @@ impl<'a> JumplistBuilder<'a> {
     /// collected in `leaf_lists` for insertion into the final list.
     ///
     /// # Preconditions
-    /// - `rows` must not be empty
     /// - `data_provider` must be the same for all rows
     /// # Return on success
     /// - (potentially multiple) jumplists, one for each distinct matching path
@@ -419,9 +431,12 @@ impl<'a> JumplistBuilder<'a> {
         rows: Vec<Row<'a>>,
         token_index: usize,
         bytes_consumed: MOIRSize,
-        size_bits: &MOIRBitRange,
+        size_bits: MOIRBitRange,
     ) -> SleighCompilerResult<Vec<Jumplist>> {
-        debug_assert_ne!(rows.len(), 0, "There must be rows");
+        if rows.is_empty() {
+            // base case: nothing to create
+            return Ok(vec![]);
+        }
         for row in &rows {
             debug_assert_eq!(
                 row.data_provider,
@@ -455,7 +470,11 @@ impl<'a> JumplistBuilder<'a> {
         let mut child_jumplists = Vec::new();
         for (set_mask, set_rows_child, set_rows_parent) in sets {
             // process parent set into jumplists
-            let jumplists_parents = self.create_jumplist_mask(set_rows_parent, token_index, bytes_consumed, size_bits)?;
+            let jumplists_parents =
+                self.create_jumplist_mask(set_rows_parent, token_index, bytes_consumed, size_bits)?;
+
+            // collect field extractors for the current token and byte offset
+            let field_extractors = self.collect_field_extractors(&set_rows_child, token_index, size_bits)?;
 
             // process child set into jumplist
             let size_delta = size_bits.bytes().expect("This must be a multiple of 8");
@@ -466,6 +485,7 @@ impl<'a> JumplistBuilder<'a> {
                     .get(0)
                     .expect("We just checked this")
                     .data_provider,
+                field_extractors,
             );
 
             // propagate parent lists
@@ -482,7 +502,8 @@ impl<'a> JumplistBuilder<'a> {
                 {
                     // use NextJumplistEntry::TrailingSkip since we want to continue but not consume any
                     // bytes
-                    let propagated_entry = JumplistEntry::new(vec![], NextJumplistEntry::TrailingSkip(jumplist_parent_id));
+                    let propagated_entry =
+                        JumplistEntry::new(vec![], NextJumplistEntry::TrailingSame(jumplist_parent_id));
                     jumplist_child.insert(propagated_value, propagated_entry, false)?;
                 }
             }
@@ -538,7 +559,7 @@ impl<'a> JumplistBuilder<'a> {
 
                     // nothing to optimize here
                     let trailing_jumplist_id = self.jumplist_cache.insert(trailing_jumplist);
-                    let next_entry_trailing = NextJumplistEntry::TrailingConsume(trailing_jumplist_id);
+                    let next_entry_trailing = NextJumplistEntry::TrailingNext(trailing_jumplist_id);
 
                     let entry = JumplistEntry::new(sublist_ids.clone(), next_entry_trailing);
                     // first entry for non-expanded values...
@@ -563,7 +584,7 @@ impl<'a> JumplistBuilder<'a> {
                     let next_token_jumplist = self.create_jumplist(token_index + 1, &terminal_token_matchers)?;
                     let next_token_jumplist_id = self.jumplist_cache.insert(next_token_jumplist);
 
-                    let next_entry_tokens = NextJumplistEntry::TrailingConsume(next_token_jumplist_id);
+                    let next_entry_tokens = NextJumplistEntry::TrailingNext(next_token_jumplist_id);
                     let entry = JumplistEntry::new(sublist_ids.clone(), next_entry_tokens);
                     jumplist_child.insert(value, entry.clone(), false)?;
 
@@ -583,8 +604,9 @@ impl<'a> JumplistBuilder<'a> {
                     let next_entry_matcher = NextJumplistEntry::Constructor(
                         terminal_matcher_row
                             .matcher
-                            .constructor.expect("The constructor must be set at this point")
-                        );
+                            .constructor
+                            .expect("The constructor must be set at this point"),
+                    );
 
                     let entry = JumplistEntry::new(sublist_ids, next_entry_matcher);
                     jumplist_child.insert(value, entry.clone(), false)?;
@@ -630,6 +652,42 @@ impl<'a> JumplistBuilder<'a> {
                 Ok(varnode.size)
             }
         }
+    }
+
+    fn collect_field_extractors(
+        &self,
+        rows: &Vec<Row<'a>>,
+        token_index: usize,
+        size_bits: MOIRBitRange,
+    ) -> SleighCompilerResult<HashMap<ConstructorId, Vec<FieldExtractor>>> {
+        let mut field_extractors = HashMap::<ConstructorId, Vec<FieldExtractor>>::new();
+
+        for row in rows {
+            let constructor_id = row
+                .matcher
+                .constructor
+                .expect("There must be a constructor set at this point");
+            let conjunction = row
+                .matcher
+                .conjunctions
+                .get(token_index)
+                .expect("There must be a token");
+
+            let extractors = field_extractors.entry(constructor_id).or_default();
+
+            for atom in conjunction {
+                if let MatcherAtom::Field { field_id, matcher: _ } = atom {
+                    let field = self
+                        .fields
+                        .get(*field_id)
+                        .ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing field") })?;
+                    let intersection_bits = field.bits & size_bits;
+                    extractors.push(FieldExtractor::new(*field_id, intersection_bits));
+                }
+            }
+        }
+
+        Ok(field_extractors)
     }
 }
 
@@ -691,7 +749,7 @@ fn expand_rows(
     rows: &Vec<Row>,
     mask: u64,
     value: u64,
-    size_bits: &MOIRBitRange,
+    size_bits: MOIRBitRange,
 ) -> Vec<u64> {
     let largest_common_mask = rows
         .iter()
@@ -706,7 +764,7 @@ fn extract_from_conjunction(conjunction: &BTreeSet<MatcherAtom>) -> (u64, u64, V
     let mut subtables = Vec::new();
     for atom in conjunction {
         match atom {
-            MatcherAtom::Field { field: _, matcher } => {
+            MatcherAtom::Field { field_id: _, matcher } => {
                 if let FieldMatcher::Value {
                     mask: fmask,
                     value: fvalue,
@@ -758,7 +816,7 @@ fn save_graph(
     while let Some(top) = stack.pop() {
         let list = jumplist_cache.get(top).unwrap();
         let list_node = *nodes
-            .entry(NextJumplistEntry::TrailingConsume(top))
+            .entry(NextJumplistEntry::TrailingNext(top))
             .or_insert_with(|| graph.add_node(format!("L{}", usize::from(top))));
 
         for (value, entries) in list.entries() {
@@ -767,14 +825,14 @@ fn save_graph(
                 let entry_node = *nodes.entry(entry.next_entry.clone()).or_insert_with(|| {
                     // not seen => insert node and push onto stack
                     let entry_node_weight = match &entry.next_entry {
-                        NextJumplistEntry::TrailingConsume(jlid) => {
+                        NextJumplistEntry::TrailingNext(jlid) => {
                             stack.push(*jlid);
                             format!("L{}", usize::from(*jlid))
                         }
-                        NextJumplistEntry::TrailingSkip(jlid) => {
+                        NextJumplistEntry::TrailingSame(jlid) => {
                             stack.push(*jlid);
                             format!("S{}", usize::from(*jlid))
-                        },
+                        }
                         NextJumplistEntry::Constructor(cid) => format!("C{}", cid),
                     };
 
@@ -786,7 +844,7 @@ fn save_graph(
                 // process sublists
                 for sublist in &entry.sublists {
                     let sublist_node = *nodes
-                        .entry(NextJumplistEntry::TrailingConsume(*sublist))
+                        .entry(NextJumplistEntry::TrailingNext(*sublist))
                         .or_insert_with(|| {
                             // not seen => insert node and push onto stack
                             let sublist_node_weight = format!("L{}", usize::from(*sublist));

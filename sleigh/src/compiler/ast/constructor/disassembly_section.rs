@@ -3,7 +3,7 @@ use crate::compiler::ast::Spanned;
 use crate::compiler::StringId;
 
 /// Used inside the disassembly section for arbitrary calculations
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SASTPatternExpression {
     Add(Box<Spanned<SASTPatternExpression>>, Box<Spanned<SASTPatternExpression>>),
     Sub(Box<Spanned<SASTPatternExpression>>, Box<Spanned<SASTPatternExpression>>),

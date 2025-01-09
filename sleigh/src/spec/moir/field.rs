@@ -7,16 +7,16 @@ use super::common::MOIRSize;
 use super::context::MOIRContextId;
 use super::varnode::VarNodeId;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct MOIRBitRange {
-    pub start: u8,
-    pub end: u8,
+    pub start: MOIRSize,
+    pub end: MOIRSize,
 }
 
 impl MOIRBitRange {
     pub fn new(
-        start: u8,
-        end: u8,
+        start: MOIRSize,
+        end: MOIRSize,
     ) -> Self {
         Self { start, end }
     }
@@ -41,8 +41,8 @@ impl MOIRBitRange {
     }
 
     /// Generate a mask for the bit range including shifts.
-    pub fn mask_shift(&self) -> u64 {
-        ((1 << self.bits()) - 1) << self.start
+    pub fn shifted_mask(&self) -> u64 {
+        self.mask() << self.start
     }
 
     /// Right-shift `v` by `self.start` and apply `self.mask()`
@@ -59,6 +59,16 @@ impl MOIRBitRange {
         v: u64,
     ) -> u64 {
         (v & self.mask()) << self.start
+    }
+}
+
+impl std::ops::BitAnd for MOIRBitRange {
+    type Output = Self;
+
+    /// Calculates the intersection of `self` and `rhs`. Note that this operation keeps ranges
+    /// continuous so it's well-defined.
+    fn bitand(self, rhs: Self) -> Self::Output {
+        MOIRBitRange::new(self.start.max(rhs.start), self.end.min(rhs.end))
     }
 }
 

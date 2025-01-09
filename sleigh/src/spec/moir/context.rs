@@ -2,15 +2,6 @@ use crate::new_typed_index_table_id;
 
 use super::varnode::VarNodeId;
 
-#[derive(Debug, Default)]
-pub struct MOIRContextFieldId(usize);
-
-impl From<usize> for MOIRContextFieldId {
-    fn from(value: usize) -> Self {
-        Self(value)
-    }
-}
-
 #[derive(Debug)]
 pub struct MOIRContext {
     /// The varnode the context is defined on top of.

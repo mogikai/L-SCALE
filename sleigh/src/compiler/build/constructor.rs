@@ -1,5 +1,5 @@
 use self::matcher::Matcher;
-use crate::compiler::ast::constructor::disassembly_section::SASTDisassemblySection;
+use crate::compiler::ast::constructor::disassembly_section::{SASTDisassemblySection, SASTPatternExpression};
 use crate::compiler::ast::Spanned;
 use crate::compiler::ast::constructor::SASTConstructor;
 use crate::compiler::build::constructor::matcher::MatcherReference;
@@ -14,8 +14,9 @@ use crate::spec::builder::{
     MOIRSymbolId,
     StringId,
 };
-use crate::spec::moir::actions::MOIRAction;
+use crate::spec::moir::actions::{MOIRAction, MOIRActionLocal, MOIRActionTarget, MOIRPatternExpression};
 use crate::spec::moir::constructor::MOIRConstructor;
+use crate::spec::moir::field::MOIRFieldParent;
 use crate::spec::moir::scope::{
     MOIRMaybeSize,
     MOIRScope,
@@ -57,6 +58,7 @@ impl SleighCompiler {
         let table_id = self
             .spec_builder
             .get_table_id_or_create(constructor.table.transpose())?;
+
 
         let mut matchers = self.create_matchers(&constructor.bit_pattern_section.constraint, table_id)?;
 
@@ -130,12 +132,57 @@ impl SleighCompiler {
         actions_section: Spanned<SASTDisassemblySection>
     ) -> SleighCompilerResult<Vec<MOIRAction>> {
         if let Some(sast_actions) = actions_section.into_value().actions {
-            // let moir_actions = sast_actions.into_iter().map(|sast_action| {
-            //     sast_action
-            // })
-        }
+            let moir_actions = sast_actions.into_iter().filter_map(|sast_action| {
+                // TODO replace Option by Result and handle tepmoraries
+                let field_id = match self.spec_builder.field_id_by_ident(&sast_action.lhs.transmute()) {
+                    Ok(field_id) => field_id,
+                    Err(_) => return None,
+                };
 
-        Ok(vec![])
+                let field = self.spec_builder.field_by_symbol_id(field_id).ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing field") }).ok()?;
+                if !matches!(field.parent, MOIRFieldParent::Context(_)) {
+                    todo!("Generate error report for non-context field as lhs in action");
+                }
+
+                // TODO do this without cloning since we have ownership
+                let expression = self.pc_convert_expression(sast_action.rhs.clone()).ok()?;
+                Some(MOIRAction::new(MOIRActionTarget::ContextField(field_id), expression))
+            }).collect::<Vec<_>>();
+
+            Ok(moir_actions)
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    /// Convert a [SASTPatternExpression] to a [MOIRPatternExpression] while resolving referenced
+    /// symbols to [MOIRActionLocal]s.
+    fn pc_convert_expression(&self, sast_expr: Spanned<SASTPatternExpression>) -> SleighCompilerResult<MOIRPatternExpression> {
+        let (sast_expr, span) = sast_expr.into_tuple();
+        Ok(match sast_expr {
+            SASTPatternExpression::Add(lhs, rhs) => MOIRPatternExpression::Add(Box::new(self.pc_convert_expression(*lhs)?), Box::new(self.pc_convert_expression(*rhs)?)),
+            SASTPatternExpression::Sub(lhs, rhs) => MOIRPatternExpression::Sub(Box::new(self.pc_convert_expression(*lhs)?), Box::new(self.pc_convert_expression(*rhs)?)),
+            SASTPatternExpression::Mul(lhs, rhs) => MOIRPatternExpression::Mul(Box::new(self.pc_convert_expression(*lhs)?), Box::new(self.pc_convert_expression(*rhs)?)),
+            SASTPatternExpression::Div(lhs, rhs) => MOIRPatternExpression::Div(Box::new(self.pc_convert_expression(*lhs)?), Box::new(self.pc_convert_expression(*rhs)?)),
+            SASTPatternExpression::Shl(lhs, rhs) => MOIRPatternExpression::Shl(Box::new(self.pc_convert_expression(*lhs)?), Box::new(self.pc_convert_expression(*rhs)?)),
+            SASTPatternExpression::Shr(lhs, rhs) => MOIRPatternExpression::Shr(Box::new(self.pc_convert_expression(*lhs)?), Box::new(self.pc_convert_expression(*rhs)?)),
+            SASTPatternExpression::And(lhs, rhs) => MOIRPatternExpression::And(Box::new(self.pc_convert_expression(*lhs)?), Box::new(self.pc_convert_expression(*rhs)?)),
+            SASTPatternExpression::Or(lhs, rhs)  => MOIRPatternExpression::Or( Box::new(self.pc_convert_expression(*lhs)?), Box::new(self.pc_convert_expression(*rhs)?)),
+            SASTPatternExpression::Xor(lhs, rhs) => MOIRPatternExpression::Xor(Box::new(self.pc_convert_expression(*lhs)?), Box::new(self.pc_convert_expression(*rhs)?)),
+            SASTPatternExpression::Not(expr) => MOIRPatternExpression::Not(Box::new(self.pc_convert_expression(*expr)?)),
+            SASTPatternExpression::Symbol(ident) => {
+                // this must be a field or a temporary, but we deal only with fields for now
+                // TODO deal with temporaries
+                let field_id = match self.spec_builder.field_id_by_ident(&Spanned::new(ident.0, span)) {
+                    Ok(field) => field,
+                    // TODO handle temporaries
+                    Err(_) => return Ok(MOIRPatternExpression::Integer(0)),
+                };
+
+                MOIRPatternExpression::Local(MOIRActionLocal::Field(field_id))
+            },
+            SASTPatternExpression::Integer(value) => MOIRPatternExpression::Integer(u64::try_from(value).expect("Negative integer truncated in action")),
+        })
     }
 
     /// Validates the constructors in the table.

@@ -34,6 +34,9 @@ use string_interner::backend::StringBackend;
 use strum_macros::Display;
 use thiserror::Error;
 
+use self::jir::jumplist::{Jumplist, JumplistId};
+use self::moir::field::MOIRField;
+
 pub mod builder;
 pub mod jir;
 pub(crate) mod moir;
@@ -69,8 +72,8 @@ pub(crate) struct JIRSymbolTables {
     pub(crate) tables: TypedIndexTable<TableId, MOIRTable>,
     pub(crate) constructors: TypedIndexTable<ConstructorId, MOIRConstructor>,
     pub(crate) varnodes: TypedIndexTable<VarNodeId, JIRVarNode>,
+    pub(crate) fields: TypedIndexTable<FieldId, MOIRField>,
     // tokens: TypedIndexTable<MOIRTokenId, MOIRToken>,
-    // fields: TypedIndexTable<MOIRFieldId, MOIRField>,
     // custom_ops: TypedIndexTable<MOIRCustomOpId, MOIRCustomOp>,
     // bitrange registers are treated more like placeholders for the corresponding pcode operations to realize access
     // bitrange_registers: TypedIndexTable<MOIRBitrangeRegisterId, MOIRTBitrangeRegister>,
@@ -96,6 +99,9 @@ pub struct ProcessorSpecification {
     /// This will need to be resolved to the correct [Ident], so that the PSB can then
     /// use the internal identifiers, instead of the strings.
     pub(crate) string_to_ident_mapping: HashMap<StringId, Ident>,
+
+    /// The first jumplist is the root from which matching begins.
+    pub(crate) jumplist_cache: TypedIndexTable<JumplistId, Jumplist>,
 
     pub(crate) root_table: TableId,
 

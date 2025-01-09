@@ -16,6 +16,7 @@ use crate::spec::builder::{
     MOIRSymbolTables,
     StringId,
 };
+use crate::spec::jir::context_provider::ContextProvider;
 use crate::spec::jir::jumplist::{
     Jumplist,
     JumplistContainer,
@@ -86,6 +87,7 @@ pub struct JIRData {
     pub symbol_ids: TypedIndexTable<Ident, JIRSymbolId>,
     pub symbol_strings: HashMap<Ident, StringId>,
     pub symbol_tables: JIRSymbolTables,
+    pub jumplist_cache: TypedIndexTable<JumplistId, Jumplist>,
     pub string_to_ident_mapping: HashMap<StringId, Ident>,
 }
 
@@ -121,6 +123,7 @@ impl MOIRToJIRTransformer {
                 symbol_ids: Default::default(),
                 symbol_strings: Default::default(),
                 symbol_tables: Default::default(),
+                jumplist_cache: Default::default(),
                 string_to_ident_mapping: Default::default(),
             },
         }
@@ -153,9 +156,9 @@ impl MOIRToJIRTransformer {
             .map(|(k, v)| (k, v.into_value()))
             .collect();
 
-        // TODO integrate everything
-        let (root_jumplist_id, jumplist_cache) = JumplistBuilder::new(
+        let jumplist_cache = JumplistBuilder::new(
             &self.moir.symbol_tables.tables,
+            &self.moir.symbol_tables.fields,
             &self.moir.symbol_tables.tokens,
             &self.moir.context,
             &self.moir.symbol_tables.varnodes,
@@ -163,19 +166,14 @@ impl MOIRToJIRTransformer {
         )
         .transform(self.moir.root_table_id)?;
 
-        // TODO remove
-        let root_jumplist = jumplist_cache.get(root_jumplist_id).unwrap();
-        let bytes = [ 0x48, 0x01, 0xd8 ];
-        let mut context = TypedIndexTable::default();
-        context.insert(0x81);
-        let matching = root_jumplist.r#match(&bytes, &jumplist_cache, &self.moir.symbol_tables.constructors, &mut context);
-        eprintln!("matching = {:#?}", matching);
+        self.jir.jumplist_cache = jumplist_cache;
 
         self.jir.symbol_tables = JIRSymbolTables {
             spaces: transform_spaces(self.moir.symbol_tables.spaces)?,
             tables: self.moir.symbol_tables.tables,
             constructors: self.moir.symbol_tables.constructors,
             varnodes: transform_varnodes(self.moir.symbol_tables.varnodes)?,
+            fields: self.moir.symbol_tables.fields,
         };
         self.jir.string_to_ident_mapping = self.moir.string_to_ident_mapping;
         Ok(self.jir)

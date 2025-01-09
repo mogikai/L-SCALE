@@ -44,6 +44,8 @@ pub enum FieldMatcher {
     // matches everything (TODO can this be removed? might be needed somewhere)
     Wildcard,
     // everything else (except nontrivial expressions) is broken down to mask-value comparisons
+    // TODO do we need to store the mask? do we still work with FieldIds later on or just bit
+    // ranges? right now this is redundand
     Value { mask: u64, value: u64 },
 }
 
@@ -154,7 +156,7 @@ impl Submatchers {
 
 #[derive(Debug, Clone, PartialOrd, Ord, Eq, PartialEq, Hash)]
 pub(crate) enum MatcherAtom {
-    Field { field: FieldId, matcher: FieldMatcher },
+    Field { field_id: FieldId, matcher: FieldMatcher },
     Submatchers(Submatchers),
 }
 
