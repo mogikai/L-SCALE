@@ -199,6 +199,8 @@ pub trait JITTaskRuntimeContext {
         &mut self,
         error: RuntimeError,
     );
+
+    fn runtime_error(&self) -> Option<RuntimeError>;
 }
 
 /// The runtime context contains information that is global to all tasks (processes/threads).

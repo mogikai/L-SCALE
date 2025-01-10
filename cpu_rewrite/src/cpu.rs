@@ -18,6 +18,7 @@ use crate::jit::api::{
     JITTaskRuntimeContext,
     JitError,
     MogiJit,
+    RuntimeError,
 };
 
 #[derive(Error, Debug)]
@@ -28,6 +29,8 @@ pub enum StopReason {
     UserAbort,
     #[error("An interrupt was encountered")]
     Interrupt,
+    #[error("The jit runtime encountered an error")]
+    RuntimeError(#[from] RuntimeError),
     #[error("The just in time compiler encountered an error")]
     JitError(#[from] JitError),
 }
@@ -89,6 +92,9 @@ where
                     let jit = self.jit.borrow();
                     let block = jit.fetch_block(jit.instruction_pointer(&self.runtime_context).unwrap())?;
                     jit.prelude()?(context, block);
+                    if let Some(error) = self.runtime_context.runtime_error() {
+                        Err(error)?
+                    }
                     let ecx = self
                         .processor_specification
                         .borrow()

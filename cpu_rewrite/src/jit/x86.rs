@@ -319,6 +319,10 @@ impl JITTaskRuntimeContext for X86TaskContext {
     ) {
         self.runtime_error = Some(error);
     }
+
+    fn runtime_error(&self) -> Option<RuntimeError> {
+        self.runtime_error
+    }
 }
 
 impl X86MogiJit {

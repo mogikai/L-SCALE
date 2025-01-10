@@ -56,6 +56,13 @@ impl CodeBuffer {
             blocks: Default::default(),
         })
     }
+
+    pub fn add_compiled_block(
+        &mut self,
+        block: (),
+    ) -> Result<(), CodeBufferError> {
+        Ok(())
+    }
 }
 
 impl AsRef<[u8]> for CodeBuffer {

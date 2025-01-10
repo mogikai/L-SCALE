@@ -1,7 +1,4 @@
-use crate::jit::api::{
-    MogiJit,
-    RuntimeError,
-};
+use crate::jit::api::MogiJit;
 use crate::jit::x86::test::{
     exec_instructions,
     get_reg_slice,
@@ -17,7 +14,6 @@ use mogi_utilities::addresses::{
     EVAddr,
     HVAddr,
 };
-use std::ptr::null_mut;
 
 #[test]
 fn test_load_tlb_hit() {
