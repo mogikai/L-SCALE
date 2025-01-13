@@ -116,7 +116,7 @@ impl X86MogiJit {
         slice: JIRSlice,
     ) -> JITResult {
         let varnode_offset = X86TaskContext::varnode_offset(slice);
-        let assembler = &mut self.block_mut()?.assembler;
+        let assembler = &mut self.block_mut()?.assembler();
         // Emit the instruction that loads the varnode from the specified space in the context.
         match slice.size() {
             1 => {

@@ -40,17 +40,17 @@ impl X86MogiJit {
                             panic!("Zero sized slices are not allowed")
                         }
                         1 => {
-                            assemble!(self.block_mut()?.assembler;
+                            assemble!(self.block_mut()?.assembler();
                                 ; and Rq(output_gp as u8), BYTE immediate as _
                             );
                         }
                         2 => {
-                            assemble!(self.block_mut()?.assembler;
+                            assemble!(self.block_mut()?.assembler();
                                 ; and Rq(output_gp as u8), WORD immediate as _
                             );
                         }
                         3..=4 => {
-                            assemble!(self.block_mut()?.assembler;
+                            assemble!(self.block_mut()?.assembler();
                                 ; and Rq(output_gp as u8), DWORD immediate as _
                             );
                         }
@@ -76,14 +76,14 @@ impl X86MogiJit {
                         let output_gp = self.load_slice_gpr(output);
                         (output_gp, tmp)
                     };
-                    assemble!(self.block_mut()?.assembler;
+                    assemble!(self.block_mut()?.assembler();
                         ; and Rq(output_gp as u8), Rq(operand_gp as u8)
                     );
                 }
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
                 let (target_gp, operand_gp) = self.load_commutative_inputs(output, input_a, input_b)?;
-                assemble!(self.block_mut()?.assembler;
+                assemble!(self.block_mut()?.assembler();
                     ; and Rq(target_gp as u8), Rq(operand_gp as u8)
                 );
             }

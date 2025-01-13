@@ -93,7 +93,7 @@ impl X86MogiJit {
             .trailing_zeros()
             .try_into()
             .expect("The exponent must fit into u8");
-        assemble!(self.block_mut()?.assembler;
+        assemble!(self.block_mut()?.assembler();
             // We copy over the whole address in case of a tlb miss.
             ; mov Rq(translated_address_gpr as u8), Rq(addr_gpr as u8)
         );
@@ -103,7 +103,7 @@ impl X86MogiJit {
         //       If this is the case, then we need to insert an additional check for the larger
         //       access size so that we don't cross page boundaries.
         if size > 1 {
-            assemble!(self.block_mut()?.assembler;
+            assemble!(self.block_mut()?.assembler();
                 // Check alignment
                 ; test Rq(addr_gpr as u8), (size - 1) as i32
                 // TODO: Jump to unaligned access code.
@@ -111,7 +111,7 @@ impl X86MogiJit {
             )
         }
 
-        assemble!(self.block_mut()?.assembler;
+        assemble!(self.block_mut()?.assembler();
             ; shr Rq(addr_gpr as u8), BYTE EVAddr::<u8>::index_shift_from_start() as _
             ; mov Rq(tag_gpr as u8), Rq(addr_gpr as u8)
             ; and Rd(addr_gpr as u8), DWORD EVAddr::<u8>::index_mask() as _
@@ -145,7 +145,7 @@ impl X86MogiJit {
             Err(JitError::MissingTlbCallback(access_type))?
         };
         let (translate_trampoline, translate_callback) = (callback.trampoline, callback.callback);
-        assemble!(self.block_mut()?.assembler;
+        assemble!(self.block_mut()?.assembler();
             ; tlb_miss:
             // call external helper trampoline.
             // trampoline(context, callback, evaddr, size, space_id) -> page_addr
@@ -170,7 +170,7 @@ impl X86MogiJit {
             ; test rax, rax
             // If the translation returns zero, we encountered an error.
             // Jump to the exit code to exit the jit.
-            ; jz >exit_failure
+            ; jz ->exit_failure
             //// End of trampoline call sequence
             // The result of the helper is the host address
             ; mov Rq(translated_address_gpr as u8), rax
@@ -190,22 +190,22 @@ impl X86MogiJit {
         let out_gpr = self.get_slice_gp(output);
         match output.size() {
             1 => {
-                assemble!(self.block_mut()?.assembler;
+                assemble!(self.block_mut()?.assembler();
                     ; movzx Rd(out_gpr as u8), BYTE [Rq(host_address_gpr as u8)]
                 );
             }
             2 => {
-                assemble!(self.block_mut()?.assembler;
+                assemble!(self.block_mut()?.assembler();
                     ; movzx Rd(out_gpr as u8), WORD [Rq(host_address_gpr as u8)]
                 );
             }
             3..=4 => {
-                assemble!(self.block_mut()?.assembler;
+                assemble!(self.block_mut()?.assembler();
                     ; mov Rd(out_gpr as u8), DWORD [Rq(host_address_gpr as u8)]
                 );
             }
             5..=8 => {
-                assemble!(self.block_mut()?.assembler;
+                assemble!(self.block_mut()?.assembler();
                     ; mov Rq(out_gpr as u8), QWORD [Rq(host_address_gpr as u8)]
                 );
             }
@@ -234,22 +234,22 @@ impl X86MogiJit {
         };
         match value.size() {
             1 => {
-                assemble!(self.block_mut()?.assembler;
+                assemble!(self.block_mut()?.assembler();
                     ; mov BYTE [Rq(host_address_gpr as u8)], Rb(out_gpr as u8)
                 );
             }
             2 => {
-                assemble!(self.block_mut()?.assembler;
+                assemble!(self.block_mut()?.assembler();
                     ; mov WORD [Rq(host_address_gpr as u8)], Rw(out_gpr as u8)
                 );
             }
             3..=4 => {
-                assemble!(self.block_mut()?.assembler;
+                assemble!(self.block_mut()?.assembler();
                     ; mov DWORD [Rq(host_address_gpr as u8)], Rd(out_gpr as u8)
                 );
             }
             5..=8 => {
-                assemble!(self.block_mut()?.assembler;
+                assemble!(self.block_mut()?.assembler();
                     ; mov QWORD [Rq(host_address_gpr as u8)], Rq(out_gpr as u8)
                 );
             }

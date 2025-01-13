@@ -78,23 +78,23 @@ impl X86MogiJit {
         // Emit the instruction that loads the varnode from the specified space in the context.
         match slice.size() {
             1 => {
-                assemble!(self.block_mut().unwrap().assembler;
+                assemble!(self.block_mut().unwrap().assembler();
                     ; movzx Rq(register as u8), BYTE [cpu_context + varnode_offset as _]
                 );
             }
             2 => {
-                assemble!(self.block_mut().unwrap().assembler;
+                assemble!(self.block_mut().unwrap().assembler();
                     ; movzx Rq(register as u8), WORD [cpu_context + varnode_offset as _]
                 );
             }
             4 => {
                 // Moving to the lower 32 bits of a register zeros the upper 32 bits
-                assemble!(self.block_mut().unwrap().assembler;
+                assemble!(self.block_mut().unwrap().assembler();
                     ; mov Rd(register as u8), DWORD [cpu_context + varnode_offset as _]
                 );
             }
             8 => {
-                assemble!(self.block_mut().unwrap().assembler;
+                assemble!(self.block_mut().unwrap().assembler();
                     ; mov Rq(register as u8), QWORD [cpu_context + varnode_offset as _]
                 );
             }
@@ -184,12 +184,12 @@ impl X86MogiJit {
         }
         match size {
             1..=4 => {
-                assemble!(self.block_mut()?.assembler;
+                assemble!(self.block_mut()?.assembler();
                     ; mov Rd(target as u8), Rd(source as u8)
                 );
             }
             5..=8 => {
-                assemble!(self.block_mut()?.assembler;
+                assemble!(self.block_mut()?.assembler();
                     ; mov Rq(target as u8), Rq(source as u8)
                 );
             }
@@ -216,24 +216,24 @@ impl X86MogiJit {
         match size {
             1 => {
                 // Move to 32 bit register to zero extend.
-                assemble!(block.assembler;
+                assemble!(block.assembler();
                     ; mov Rd(target_reg as u8), BYTE value as _
                 );
             }
             2 => {
                 // Move to 32 bit register to zero extend.
-                assemble!(block.assembler;
+                assemble!(block.assembler();
                     ; mov Rd(target_reg as u8), WORD value as _
                 );
             }
             3..=4 => {
                 // We need to move to 32 bit register here, since the 64 bit move sign extends?????
-                assemble!(block.assembler;
+                assemble!(block.assembler();
                     ; mov Rd(target_reg as u8), DWORD value as _
                 );
             }
             5..=8 => {
-                assemble!(block.assembler;
+                assemble!(block.assembler();
                     ; mov Rq(target_reg as u8), QWORD value as _
                 );
             }
@@ -258,7 +258,7 @@ impl X86MogiJit {
                 // in the future it might make sense to do more specific stuff here
                 // For now, it is enough to do xor r32, r32.
                 // This also zeros the upper 32 bits for 64 bit registers (see intel sdm)
-                assemble!(self.block_mut()?.assembler;
+                assemble!(self.block_mut()?.assembler();
                     ; xor Rd(target as u8), Rd(target as u8)
                 );
             }

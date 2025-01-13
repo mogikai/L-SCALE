@@ -43,7 +43,7 @@ pub struct JitCache<BlockT> {
 
 impl<BlockT> JitCache<BlockT>
 where
-    BlockT: AsJitCode + Addressable<EVAddr>,
+    BlockT: Addressable<EVAddr>,
 {
     pub fn new() -> Self {
         Self {
@@ -55,10 +55,10 @@ where
     pub fn populate(
         &mut self,
         block: BlockT,
-    ) -> EVAddr {
+    ) -> &mut BlockT {
         let addr = block.address();
         self.cache.insert(addr, block);
-        addr
+        self.cache.get_mut(&addr).unwrap()
     }
 
     pub fn take(
@@ -68,16 +68,5 @@ where
         self.cache
             .remove(&evaddr)
             .ok_or(JitCacheError::BlockNotFound)
-    }
-
-    pub fn get_block_code(
-        &self,
-        evaddr: EVAddr,
-    ) -> Result<JitCode, JitCacheError> {
-        Ok(self
-            .cache
-            .get(&evaddr)
-            .ok_or(JitCacheError::BlockNotFound)?
-            .as_jit_code())
     }
 }

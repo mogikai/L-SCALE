@@ -40,19 +40,16 @@ impl X86MogiJit {
         let op_ptr = op.callback;
 
         let block = self.block_mut()?;
-        block.custom_op_args.push(Box::new(CustomOpArgs {
+        let args = Box::new(CustomOpArgs {
             output,
             input_a,
             input_b,
             extra_args: extra_args.to_vec(),
-        }));
-        let args_ptr = block
-            .custom_op_args
-            .last()
-            .expect("We just inserted this")
-            .as_ref() as *const _;
+        });
+        let args_ptr = args.as_ref() as *const _;
+        block.add_custom_op_args(args);
         // sysv64 calling convention
-        assemble!(block.assembler;
+        assemble!(block.assembler();
             // Move the trampoline to rax. We later call rax.
             ; mov rax, QWORD trampoline as _
             // First argument of the trampoline: The cpu context

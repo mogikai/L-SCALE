@@ -88,10 +88,9 @@ where
             self.translate_blocks()?;
             match self.must_interpret() {
                 MustInterpret::No => {
-                    let context = &mut *self.runtime_context as *mut _ as *mut c_void;
                     let jit = self.jit.borrow();
-                    let block = jit.fetch_block(jit.instruction_pointer(&self.runtime_context).unwrap())?;
-                    jit.prelude()?(context, block);
+                    let ip = jit.instruction_pointer(&self.runtime_context)?;
+                    jit.execute(&mut self.runtime_context, ip)?;
                     if let Some(error) = self.runtime_context.runtime_error() {
                         Err(error)?
                     }
@@ -137,10 +136,7 @@ where
         {
             // TODO: Remove demo block
             let mut jit = self.jit.borrow_mut();
-            if jit
-                .fetch_block(jit.instruction_pointer(&self.runtime_context)?)
-                .is_ok()
-            {
+            if jit.is_cached(jit.instruction_pointer(&self.runtime_context)?) {
                 // The block is already translated. Return
                 return Ok(());
             }

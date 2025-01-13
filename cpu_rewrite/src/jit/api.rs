@@ -2,6 +2,8 @@ use crate::jit::cache::{
     JitCacheError,
     JitCode,
 };
+use crate::jit::code_buffer::CodeBufferError;
+use dynasmrt::DynasmError;
 use mogi_mem::physical::Page;
 use mogi_mem::physical::page::PageData;
 use mogi_mem::tlb::tlb::{
@@ -23,6 +25,7 @@ use mogi_utilities::addresses::{
     HVAddr,
 };
 use std::ffi::c_void;
+use std::ptr::NonNull;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -33,8 +36,10 @@ pub enum JitError {
     IOError,
     #[error("The JIT cache encountered an error.")]
     CacheError(#[from] JitCacheError),
+    #[error("The JIT cache has no entry for the requested block at address {0:?}")]
+    BlockNotFound(EVAddr),
     #[error("The assembler produced an error, while trying to assemble the basic block.")]
-    AssemblerError,
+    AssemblerError(#[from] DynasmError),
     #[error("The block does not refer to the epilogue and can not be chained.")]
     NoEpilogue,
     #[error("The register cannot be freed since it is not a temporary.")]
@@ -53,6 +58,8 @@ pub enum JitError {
         "The tlb callback for access type {0} is missing. Please register a callback using register_tlb_read_miss_callback or register_tlb_write_miss_callback."
     )]
     MissingTlbCallback(AccessType),
+    #[error("The jit encountered a buffer error.")]
+    CodeBufferError(#[from] CodeBufferError),
 }
 
 #[derive(Error, Debug, Copy, Clone)]
@@ -132,18 +139,20 @@ pub trait MogiJit {
     /// This also resets the JIT such that a new block can be built by emitting instructions.
     fn finalize_block(&mut self) -> JITResult;
 
-    /// Get the block starting at emulated virtual address `evaddr`.
-    /// If no block is registered for this emulated virtual address,
-    /// None is returned.
-    fn fetch_block(
+    /// Execute the block at the specified emulated virtual address.
+    /// If there is no translated block, an error is returned.
+    fn execute(
         &self,
-        evaddr: EVAddr,
-    ) -> Result<JitCode, JitError>;
+        context: &mut Self::RuntimeContext,
+        block: EVAddr,
+    ) -> Result<(), JitError>;
 
-    /// Fetch the jit prelude function. This is effectively the entrypoint
-    /// of the jit. The signature of the returned jit prelude function is
-    /// specified here: [PreludeSignature]
-    fn prelude(&self) -> Result<PreludeSignature, JitError>;
+    /// Checks if the block at the specified adress is already translated and in the execution
+    /// cache.
+    fn is_cached(
+        &self,
+        block: EVAddr,
+    ) -> bool;
 
     /// Read the architecture specific instruction pointer value from the runtime context.
     /// This looks up the correct varnode according to the specification and returns the current value.
@@ -207,7 +216,7 @@ pub trait JITTaskRuntimeContext {
 /// This can include information like callbacks, runtime helpers, etc.
 pub trait JITGlobalRuntimeContext {}
 
-pub type PreludeSignature = extern "C" fn(context: *mut c_void, block: JitCode);
+pub type PreludeSignature = extern "C" fn(context: *mut c_void, block: NonNull<u8>);
 
 /// A custom operation must have a signature that corresponds to this trait.
 pub trait CustomOpImpl<RuntimeContextT>: Fn(&mut RuntimeContextT, &CustomOpArgs) -> Result<(), RuntimeError>

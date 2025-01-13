@@ -54,7 +54,7 @@ impl X86MogiJit {
             DivisionType::Signed => {
                 // Sign extend rax to rdx:rax
                 // TODO: Use cwd or cdq for other sizes?
-                assemble!(self.block_mut()?.assembler;
+                assemble!(self.block_mut()?.assembler();
                     ; cqo
                 );
             }
@@ -78,19 +78,19 @@ impl X86MogiJit {
         let output_gpr = self.get_slice_gp(output);
         match division_type {
             DivisionType::Signed => {
-                assemble!(self.block_mut()?.assembler;
+                assemble!(self.block_mut()?.assembler();
                     ; idiv Rq(divisor_gpr as u8)
                 );
             }
             DivisionType::Unsigned => {
-                assemble!(self.block_mut()?.assembler;
+                assemble!(self.block_mut()?.assembler();
                     ; div Rq(divisor_gpr as u8)
                 );
             }
         }
         // Finally we can copy over the result into the output if they are in different registers.
         if output_gpr != dividend_lower_gpr {
-            assemble!(self.block_mut()?.assembler;
+            assemble!(self.block_mut()?.assembler();
                 // dividend_lower contains the quotient
                 // dividend_upper contains the remainder, which we do not need here.
                 ; mov Rq(output_gpr as u8), Rq(dividend_lower_gpr as u8)

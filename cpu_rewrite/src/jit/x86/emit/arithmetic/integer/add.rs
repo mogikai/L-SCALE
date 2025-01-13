@@ -42,7 +42,7 @@ impl X86MogiJit {
                 let b: u8 = self.load_slice_gpr(b).into();
                 let output: u8 = self.load_slice_gpr(output).into();
                 let block = self.block_mut()?;
-                assemble!(block.assembler;
+                assemble!(block.assembler();
                     ; lea Rq(output), [Rq(a) + Rq(b)]
                 );
             }
@@ -79,7 +79,7 @@ impl X86MogiJit {
             if let AddSub::Sub = add_sub {
                 b = -b;
             }
-            assemble!(self.block_mut()?.assembler;
+            assemble!(self.block_mut()?.assembler();
                 ; lea Rq(output), [BYTE Rq(a) + b]
             );
         } else if b < i32::MAX as u128 {
@@ -88,7 +88,7 @@ impl X86MogiJit {
             if let AddSub::Sub = add_sub {
                 b = -b;
             }
-            assemble!(self.block_mut()?.assembler;
+            assemble!(self.block_mut()?.assembler();
                 ; lea Rq(output), [Rq(a) + b]
             );
         } else if b < u64::MAX as u128 && size <= 8 {
@@ -102,8 +102,8 @@ impl X86MogiJit {
                 b = -b;
             }
             let tmp = self.get_temp_gpr();
-            assemble!(self.block_mut()?.assembler;
-                ;; mov64!(self.block_mut()?.assembler; output, a)
+            assemble!(self.block_mut()?.assembler();
+                ;; mov64!(self.block_mut()?.assembler(); output, a)
                 ; mov Rq(tmp as u8), QWORD b as _
                 ; add Rq(output), Rq(tmp as u8)
             );

@@ -111,11 +111,8 @@ fn exec_instructions<T: MogiJit>(
     jit.emit_flush_slices().unwrap();
     jit.finalize_block().unwrap();
 
-    let block = jit
-        .fetch_block(jit.instruction_pointer(&context).unwrap())
+    jit.execute(context, jit.instruction_pointer(&context).unwrap())
         .unwrap();
-    let context = &mut *context as *mut _ as *mut c_void;
-    jit.prelude().unwrap()(context, block);
 }
 
 fn test_instruction_generic<T, U>(

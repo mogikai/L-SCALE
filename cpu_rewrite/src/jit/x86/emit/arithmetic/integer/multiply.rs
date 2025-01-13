@@ -72,7 +72,7 @@ impl X86MogiJit {
                 let output_gp = self.load_slice_gpr(output);
                 let input_a_gp = self.load_slice_gpr(input_a);
                 let immediate = input_b.value();
-                assemble!(self.block_mut()?.assembler;
+                assemble!(self.block_mut()?.assembler();
                     ; imul Rq(output_gp as u8), Rq(input_a_gp as u8), BYTE immediate as _
                 );
             }
@@ -81,7 +81,7 @@ impl X86MogiJit {
                 let output_gp = self.load_slice_gpr(output);
                 let input_a_gp = self.load_slice_gpr(input_a);
                 let immediate = input_b.value();
-                assemble!(self.block_mut()?.assembler;
+                assemble!(self.block_mut()?.assembler();
                     ; imul Rq(output_gp as u8), Rq(input_a_gp as u8), WORD immediate as _
                 );
             }
@@ -90,7 +90,7 @@ impl X86MogiJit {
                 let output_gp = self.load_slice_gpr(output);
                 let input_a_gp = self.load_slice_gpr(input_a);
                 let immediate = input_b.value();
-                assemble!(self.block_mut()?.assembler;
+                assemble!(self.block_mut()?.assembler();
                     ; imul Rq(output_gp as u8), Rq(input_a_gp as u8), DWORD immediate as _
                 );
             }
@@ -102,7 +102,7 @@ impl X86MogiJit {
                 let temp_gpr = self.get_temp_gpr();
                 self.emit_load_const_to_gpr(temp_gpr, input_b)?;
 
-                assemble!(self.block_mut()?.assembler;
+                assemble!(self.block_mut()?.assembler();
                     ; imul Rq(output_gpr as u8), Rq(temp_gpr as u8)
                 );
             }
@@ -121,7 +121,7 @@ impl X86MogiJit {
         input_b: JIRSlice,
     ) -> Result<(), JitError> {
         let (target_gp, operand_gp) = self.load_commutative_inputs(output, input_a, input_b)?;
-        assemble!(self.block_mut()?.assembler;
+        assemble!(self.block_mut()?.assembler();
             ; imul Rq(target_gp as u8), Rq(operand_gp as u8)
         );
         Ok(())

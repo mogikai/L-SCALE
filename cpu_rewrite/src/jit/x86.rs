@@ -22,8 +22,8 @@ use dynasmrt::{
     Assembler,
     AssemblyOffset,
     DynasmApi,
+    DynasmLabelApi,
     ExecutableBuffer,
-    VecAssembler,
     dynasm,
 };
 use memmap2::MmapOptions;
@@ -65,6 +65,7 @@ use tracing::trace;
 mod emit;
 mod regalloc;
 mod registers;
+mod scaffolding;
 #[cfg(test)]
 mod test;
 
@@ -87,22 +88,21 @@ macro_rules! assemble {
 }
 
 pub struct X86MogiJit {
-    code_buffer: CodeBuffer,
+    code_buffer: CodeBuffer<X64Relocation>,
     processor_specification: Rc<RefCell<ProcessorSpecification>>,
-    unfinished_block: Option<UnfinishedBasicBlock>,
+    current_block: Option<EVAddr>,
     /// The jit prelude is the entry point of the emulator. The jir prelude is called with the
     /// context as first argument, and the block to execute as second argument (see [PreludeSignature])
-    jit_prelude: ExecutableBuffer,
+    /// The prelude always lives in the first 1024 bits of the executable buffer.
+    jit_prelude_block: AnonymousBlockId,
+    jit_prelude: PreludeSignature,
     /// The jit epilogue is the exit point of the emulator. By default, blocks will chain to this
     /// special block, such that the execution returns to the main emulator loop.
     /// However, it is possible to directly link multiple jited blocks together, such that the execution
     /// remains in the jited code, skipping the main emulator loop. This is more efficient, but requires
     /// that the blocks have already been translated and are still valid.
     /// The epilogue will fully flush all registers into their corresponding varnodes.
-    jit_epilogue: ExecutableBuffer,
-    // TODO: Cache the non-translated basic blocks instead. We need to cache them
-    //       in order to facilitate any modifications
-    jit_cache: JitCache<BasicBlock>,
+    jit_epilogue_block: AnonymousBlockId,
     /// The register tracker keeps track of the registers used in the currently constructed block.
     /// If all registers are occupied, one of the registers must be spilled into memory, to free
     /// up space for the current operation.
@@ -141,8 +141,17 @@ pub struct X86GlobalContext {
     tlb_miss_write_callback: Option<TlbMissCallback<X86TaskContext>>,
 }
 
-use crate::jit::code_buffer::CodeBuffer;
+use crate::jit::assembler::MogiAssembler;
+use crate::jit::code_buffer::{
+    AnonymousBlockId,
+    CodeBuffer,
+    TargetBasicBlock,
+};
 use crate::jit::x86::emit::TlbMissCallback;
+use crate::jit::x86::scaffolding::{
+    build_epilogue,
+    build_prelude,
+};
 use assemble;
 use emit::CustomOpCallback;
 use mogi_utilities::index_map::SecondaryMap;
@@ -150,64 +159,6 @@ use registers::{
     RegisterAllocation,
     RegisterTracker,
 };
-
-#[derive(Debug)]
-struct UnfinishedBasicBlock {
-    start: EVAddr,
-    assembler: Assembler<X64Relocation>,
-    jmp_epilogue_offset: Option<AssemblyOffset>,
-    /// Each basic block may call custom operations. The arguments are currently saved on the heap
-    /// Once the basic block is destroyed, the call and its arguments are also removed.
-    /// TODO: Check performance impact and maybe bake the arguments into the generated code?
-    custom_op_args: Vec<Box<CustomOpArgs>>,
-}
-
-// TODO: In order to more easily create the basic blocks, it might make sense to
-//       create a jumplist at the end of each basic block, where we can insert the
-//       jumps to the following blocks
-
-impl UnfinishedBasicBlock {
-    pub fn new(start: EVAddr) -> Self {
-        Self {
-            start,
-            assembler: Assembler::new().unwrap(),
-            jmp_epilogue_offset: None,
-            custom_op_args: Vec::new(),
-        }
-    }
-
-    pub fn finalize(mut self) -> Result<BasicBlock, JitError> {
-        self.assembler
-            .commit()
-            .map_err(|_| JitError::AssemblerError)?;
-        Ok(BasicBlock {
-            start: self.start,
-            code: self.assembler.finalize().unwrap(),
-            jmp_epilogue_offset: self.jmp_epilogue_offset,
-            custom_op_args: self.custom_op_args,
-        })
-    }
-}
-
-#[derive(Debug)]
-struct BasicBlock {
-    start: EVAddr,
-    code: ExecutableBuffer,
-    jmp_epilogue_offset: Option<AssemblyOffset>,
-    custom_op_args: Vec<Box<CustomOpArgs>>,
-}
-
-impl AsJitCode for BasicBlock {
-    fn as_jit_code(&self) -> JitCode {
-        JitCode::from(self.code.as_ptr() as *const c_void)
-    }
-}
-
-impl Addressable<EVAddr> for BasicBlock {
-    fn address(&self) -> EVAddr {
-        self.start
-    }
-}
 
 #[repr(transparent)]
 /// The storage vec contains all registers and temporaries in a serialized form.
@@ -333,13 +284,16 @@ impl X86MogiJit {
         debug: bool,
     ) -> Self {
         let map = MmapOptions::new().len(4096 * (2 << 16)).map_anon().unwrap();
+        let mut code_buffer = CodeBuffer::new().unwrap();
+        let (prelude_block, prelude) = build_prelude(&mut code_buffer, debug).unwrap();
+        let epilogue_block = build_epilogue(&mut code_buffer).unwrap();
         Self {
-            code_buffer: CodeBuffer::new().unwrap(),
+            code_buffer,
             processor_specification,
-            unfinished_block: Default::default(),
-            jit_prelude: build_prelude(debug).unwrap(),
-            jit_epilogue: build_epilogue().unwrap(),
-            jit_cache: JitCache::new(),
+            current_block: Default::default(),
+            jit_prelude_block: prelude_block,
+            jit_prelude: prelude,
+            jit_epilogue_block: epilogue_block,
             register_tracker: Default::default(),
             mmu,
             global_context: Box::pin(X86GlobalContext::default()),
@@ -354,34 +308,36 @@ impl X86MogiJit {
         origin_block_address: EVAddr,
         target_address: *const u8,
     ) -> JITResult {
-        // We need to take the block out of the cache, in order to modify it.
-        let mut origin = self.jit_cache.take(origin_block_address)?;
-        let Some(epilogue_offset) = origin.jmp_epilogue_offset else {
-            Err(JitError::NoEpilogue)?
-        };
-        // The origin address is after the jump instruction, hence we add 5 here.
-        // See the intel manual for relative jmp size with 32 bit argument.
-        let orign_address = unsafe { origin.code.ptr(epilogue_offset).add(5) };
-        let jmp_offset = i32::try_from(unsafe { target_address.offset_from(orign_address) }).unwrap();
-        // We know this must be safe, since the offset points into the memory starting at code.as_ptr
-        let offset = unsafe {
-            origin
-                .code
-                .ptr(epilogue_offset)
-                .offset_from(origin.code.as_ptr()) as usize
-        };
-        let mut new_jmp = Assembler::<X64Relocation>::new()?;
-        dynasm!(new_jmp
-        ; jmp jmp_offset as _
-        );
-        let new_jmp = new_jmp.finalize().unwrap();
-        let mut code = origin.code.make_mut()?;
-        // Replace the jmp instruction with a new one pointing to the new target address
-        code[offset..offset + new_jmp.len()].copy_from_slice(&new_jmp);
-        origin.code = code.make_exec()?;
-        // Done! We can now put the block back into the cache.
-        self.jit_cache.populate(origin);
-        Ok(())
+        todo!()
+        // // We need to take the block out of the cache, in order to modify it.
+        // let mut origin = self.jit_cache.take(origin_block_address)?;
+        // let Some(epilogue_offset) = origin.jmp_epilogue_offset else {
+        //     Err(JitError::NoEpilogue)?
+        // };
+        // // The origin address is after the jump instruction, hence we add 5 here.
+        // // See the intel manual for relative jmp size with 32 bit argument.
+        // let orign_address = unsafe { origin.code.ptr(epilogue_offset).add(5) };
+        // let jmp_offset = i32::try_from(unsafe { target_address.offset_from(orign_address) }).unwrap();
+        // // We know this must be safe, since the offset points into the memory starting at code.as_ptr
+        // let offset = unsafe {
+        //     origin
+        //         .code
+        //         .ptr(epilogue_offset)
+        //         .offset_from(origin.code.as_ptr()) as usize
+        // };
+        // let mut new_jmp = MogiAssembler::<X64Relocation>::new(0)?;
+        // dynasm!(new_jmp
+        // ; jmp jmp_offset as _
+        // );
+        // let new_jmp = new_jmp.finalize().unwrap();
+        // let mut code = origin.code.make_mut()?;
+        // let mut code = origin.code.make_mut()?;
+        // // Replace the jmp instruction with a new one pointing to the new target address
+        // code[offset..offset + new_jmp.len()].copy_from_slice(&new_jmp);
+        // origin.code = code.make_exec()?;
+        // // Done! We can now put the block back into the cache.
+        // self.jit_cache.populate(origin);
+        // Ok(())
     }
 
     // fn emit_host_load(
@@ -414,10 +370,11 @@ impl X86MogiJit {
     // }
 
     #[inline]
-    fn block_mut(&mut self) -> Result<&mut UnfinishedBasicBlock, JitError> {
-        self.unfinished_block
-            .as_mut()
-            .ok_or(JitError::NoActiveBlock)
+    fn block_mut(&mut self) -> Result<&mut TargetBasicBlock<X64Relocation>, JitError> {
+        Ok(self
+            .code_buffer
+            .block_mut(self.current_block.ok_or(JitError::NoActiveBlock)?)
+            .expect("The block must exist"))
     }
 }
 
@@ -486,10 +443,25 @@ impl MogiJit for X86MogiJit {
         &mut self,
         evaddr: EVAddr,
     ) -> JITResult {
-        if self.unfinished_block.is_some() {
+        if self.current_block.is_some() {
             todo!("Return error: 'Tried to create new block without finalizing the previous block'")
         }
-        self.unfinished_block = Some(UnfinishedBasicBlock::new(evaddr));
+        // TODO: Pull the fixed size out and estimate the size based on the number of jir instructions
+        self.code_buffer.create_block(evaddr, 1024)?;
+        self.current_block = Some(evaddr);
+        // Fetch the offset of the epilogue block
+        let exit_offset = self
+            .code_buffer
+            .anonymous_block_offset(self.jit_epilogue_block);
+        let block = self
+            .code_buffer
+            .block_mut(evaddr)
+            .expect("We just created this block");
+
+        // Set both exit succes and exit fail to the jit epilogue
+        // TODO: Different block for exit_fail?
+        block.set_exit_success(exit_offset)?;
+        block.set_exit_failure(exit_offset)?;
         Ok(())
     }
 
@@ -644,56 +616,56 @@ impl MogiJit for X86MogiJit {
         origin_block_address: EVAddr,
         target_block_address: EVAddr,
     ) -> JITResult {
-        // This is safe, since we only relocate the target block if we need to update the code.
-        // This requires unchaining the block, which will remove this address and replace it with
-        // the epilogue.
-        let target_address = unsafe {
-            self.jit_cache
-                .get_block_code(target_block_address)?
-                .raw_ptr()
-        };
-        self.chain_blocks_direct(origin_block_address, target_address)
+        todo!()
+        // // This is safe, since we only relocate the target block if we need to update the code.
+        // // This requires unchaining the block, which will remove this address and replace it with
+        // // the epilogue.
+        // let target_address = unsafe {
+        //     self.jit_cache
+        //         .get_block_code(target_block_address)?
+        //         .raw_ptr()
+        // };
+        // self.chain_blocks_direct(origin_block_address, target_address)
     }
 
     fn finalize_block(&mut self) -> JITResult {
-        let Some(mut block) = self.unfinished_block.take() else {
+        let Some(mut block_addr) = self.current_block.take() else {
             todo!("Return error: 'Cannot finalize because no block was started'")
         };
-        // Write the final jump instruction to the jit epilogue.
-        // This can later be overridden to jump directly to the next block.
-        block.jmp_epilogue_offset = Some(block.assembler.offset());
-        dynasm!(block.assembler
-            // ; mov rax, QWORD epilogue as _
-            ; jmp DWORD 0
+        let block = self
+            .code_buffer
+            .block_mut(block_addr)
+            .expect("The block must exist");
+
+        assemble!(block.assembler();
+            ; jmp ->exit_success
         );
 
-        // let failure_jmp_addr = Some(block.assembler.offset());
-        // let orign_address = unsafe { origin.code.ptr(epilogue_offset).add(5) };
-        // let jmp_offset = i32::try_from(unsafe { self.jit_epilogue.as_ptr().offset_from(orign_address) }).unwrap();
-        assemble!(block.assembler;
-            // In case of failure, we want to exit, instead of jumping into a chained block.
-            ; exit_failure:
-            ; jmp DWORD 0
-        );
-
-        let block = block.finalize()?;
-        let addr = self.jit_cache.populate(block);
-        self.chain_blocks_direct(addr, self.jit_epilogue.as_ptr())?;
+        block.commit()?;
+        // TODO: Insert ops into code buffer
+        // self.chain_blocks_direct(address, self.jit_epilogue.as_ptr())?;
         Ok(())
     }
 
-    fn fetch_block(
+    fn execute(
         &self,
-        evaddr: EVAddr,
-    ) -> Result<JitCode, JitError> {
-        self.jit_cache
-            .get_block_code(evaddr)
-            .map_err(JitError::from)
+        context: &mut Self::RuntimeContext,
+        block: EVAddr,
+    ) -> Result<(), JitError> {
+        let block = self
+            .code_buffer
+            .block(block)
+            .ok_or(JitError::BlockNotFound(block))?
+            .ptr();
+        (self.jit_prelude)(context as *mut _ as *mut c_void, block);
+        Ok(())
     }
 
-    fn prelude(&self) -> Result<PreludeSignature, JitError> {
-        let jit_code: PreludeSignature = unsafe { mem::transmute(self.jit_prelude.as_ptr()) };
-        Ok(jit_code)
+    fn is_cached(
+        &self,
+        block: EVAddr,
+    ) -> bool {
+        self.code_buffer.block(block).is_some()
     }
 
     fn instruction_pointer(
@@ -722,53 +694,6 @@ impl MogiJit for X86MogiJit {
         let varnode = spec.varnode_by_id(varnode).unwrap();
         Ok(context.spaces[usize::from(varnode.space_id)].varnode_mut(varnode))
     }
-}
-
-/// This function builds the jit prelude. It is a function that is called in order to enter the jited code.
-/// The prelude is called like a C function, and thus only callee saved registers need to be preserved inside
-/// the call. The Signature of the jit prelude function can be found here: [PreludeSignature]
-fn build_prelude(debug: bool) -> Result<ExecutableBuffer, JitError> {
-    let mut asm = Assembler::<X64Relocation>::new()?;
-    if debug {
-        assemble!(asm;
-            // For debugging we break on jumping into the prelude.
-            ; int1
-        );
-    }
-    assemble!(asm;
-        // See the System V ABI specification: https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf
-        // Push callee saved registers onto stack
-        ; push rbp
-        ; push rbx
-        ; push r12
-        ; push r13
-        ; push r14
-        ; push r15
-        // Move context to rbp. Function arguments are passed in RDI, RSI, RDX, RCX, R8, R9
-        // TODO: We might need to save RSP somewhere if we want to modify it.
-        //       Otherwise we will break the calling code, if we don't restore RSP correctly.
-        ; mov rbp, rdi
-        // Jump to provided block
-        ; jmp rsi
-    );
-    // TODO: It might be necessary to put additional info onto the stack or reserve some space for tmp values?
-    Ok(asm.finalize().unwrap())
-}
-
-/// Builds the epilogue of the jit. This block is jumped to, when the emulated code wants to exit into the emulator.
-/// The code pops all the saved registers and then returns into the function that called the prelude.
-fn build_epilogue() -> Result<ExecutableBuffer, JitError> {
-    let mut asm = Assembler::<X64Relocation>::new()?;
-    dynasm!(asm
-        ; pop r15
-        ; pop r14
-        ; pop r13
-        ; pop r12
-        ; pop rbx
-        ; pop rbp
-        ; ret
-    );
-    Ok(asm.finalize().unwrap())
 }
 
 impl From<std::io::Error> for JitError {
