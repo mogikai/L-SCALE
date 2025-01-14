@@ -64,6 +64,8 @@ pub enum JitError {
 
 #[derive(Error, Debug, Copy, Clone)]
 pub enum RuntimeError {
+    #[error("The jit encountered a permission error.")]
+    PermissionError,
     #[error("The instruction is missing an output and cannot be translated.")]
     MissingOutput,
     #[error("The instruction is missing an input parameter and cannot be translated.")]
