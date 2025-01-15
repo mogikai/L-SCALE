@@ -32,10 +32,26 @@ pub enum CodeBufferError {
 
 /// This struct keeps track of the buffer accosiated with some executable code.
 /// It consists of the pointer to the area of executable memory and its size.
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct Code {
     ptr: NonNull<u8>,
     size: usize,
+}
+
+impl Code {
+    pub fn ptr(&self) -> NonNull<u8> {
+        self.ptr
+    }
+
+    pub fn size(&self) -> usize {
+        self.size
+    }
+}
+
+impl AsRef<[u8]> for Code {
+    fn as_ref(&self) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.size) }
+    }
 }
 
 impl AsMut<[u8]> for Code {
@@ -54,14 +70,16 @@ pub struct AnonymousBlockId(usize);
 /// The compiled block also contains a list of arguments for any custom op calls.
 #[derive(Debug)]
 pub struct TargetBasicBlock<R: Relocation> {
-    code: Code,
+    /// The code location where this basic block is encoded.
+    /// If this is a newly created block, there might not yet be a code location allocated to this block.
+    code: Option<Code>,
     /// Each basic block may call custom operations. The arguments are currently saved on the heap
     /// Once the basic block is destroyed, the call and its arguments are also removed.
     /// TODO: Check performance impact and maybe bake the arguments into the generated code?
     custom_op_args: Vec<Box<CustomOpArgs>>,
     assembler: MogiAssembler<R>,
     /// The assembly offset that points to the start of this block.
-    start_offset: AssemblyOffset,
+    block_offset: AssemblyOffset,
 }
 
 // TODO: In order to more easily create the basic blocks, it might make sense to
@@ -70,16 +88,16 @@ pub struct TargetBasicBlock<R: Relocation> {
 
 impl<R: Relocation + Clone> TargetBasicBlock<R> {
     /// Get the pointer to the start of executable code for this target block.
-    pub fn ptr(&self) -> NonNull<u8> {
-        self.code.ptr
+    pub fn ptr(&self) -> Option<NonNull<u8>> {
+        self.code.map(|c| c.ptr)
     }
 
     pub fn assembler(&mut self) -> &mut MogiAssembler<R> {
         &mut self.assembler
     }
 
-    pub fn start_offset(&self) -> AssemblyOffset {
-        self.start_offset
+    pub fn block_offset(&self) -> AssemblyOffset {
+        self.block_offset
     }
 
     pub fn add_custom_op_args(
@@ -89,35 +107,55 @@ impl<R: Relocation + Clone> TargetBasicBlock<R> {
         self.custom_op_args.push(args);
     }
 
-    /// Set the assembly offset for the code to execute when the block finishes.
+    /// Set the target block for the code to execute when the block finishes.
     /// This will usually be the jit epilogue, but can also be a chained block.
-    pub fn set_exit_success(
+    /// # Safety
+    /// TODO
+    pub unsafe fn set_exit_success(
         &mut self,
-        offset: AssemblyOffset,
-    ) -> JITResult {
-        self.assembler
-            .labels_mut()
-            .define_global("exit_success", offset)
-            .map_err(|e| e.into())
+        target: NonNull<u8>,
+    ) {
+        unsafe { self.assembler.set_global_label("exit_success", target) }
     }
 
-    /// Set the assembly offset for the code to execute when the jit runtime encounters an error.
+    /// Set the target block for the code to execute when the jit runtime encounters an error.
     /// In case of a runtime error, the error field in the runtime context is set.
-    pub fn set_exit_failure(
+    /// # Safety
+    /// TODO
+    pub unsafe fn set_exit_failure(
         &mut self,
-        offset: AssemblyOffset,
+        target: NonNull<u8>,
+    ) {
+        unsafe { self.assembler.set_global_label("exit_failure", target) }
+    }
+
+    pub fn encoded_size(&self) -> usize {
+        self.assembler.encoded_size()
+    }
+
+    pub fn needs_relocation(&self) -> bool {
+        let Some(code) = self.code else { return false };
+        self.assembler.encoded_size() > code.size
+    }
+
+    pub fn relocate(
+        &mut self,
+        new_code_location: Code,
     ) -> JITResult {
-        self.assembler
-            .labels_mut()
-            .define_global("exit_failure", offset)
-            .map_err(|e| e.into())
+        todo!()
     }
 
     /// Commits pending changes to the assembly buffer and applies all relocation patches.
     /// Copies the bytes into the executable buffer.
     pub fn commit(&mut self) -> JITResult {
-        let bytes = self.assembler.commit().map_err(JitError::AssemblerError)?;
-        self.code.as_mut()[..bytes.len()].copy_from_slice(&bytes);
+        let Some(code) = self.code else { todo!("Correct error") };
+        // Write the assembly buffer to executable code and perform relocations.
+        // TODO: Describe why this is safe to call
+        unsafe {
+            self.assembler
+                .write(code)
+                .map_err(JitError::AssemblerError)?;
+        }
         Ok(())
     }
 }
@@ -157,23 +195,13 @@ impl<R: Relocation + Clone> CodeBuffer<R> {
     pub fn create_block(
         &mut self,
         start: EVAddr,
-        estimated_size: usize,
     ) -> Result<(), CodeBufferError> {
-        if estimated_size > self.size - self.occupied {
-            todo!("Not enough space error")
-        }
-        let code = Code {
-            ptr: unsafe { self.buf.add(self.occupied) },
-            size: estimated_size,
-        };
-
         self.blocks.insert(start, TargetBasicBlock {
-            code,
+            code: None,
             custom_op_args: vec![],
-            assembler: unsafe { MogiAssembler::new(self.buf, self.occupied) },
-            start_offset: AssemblyOffset(self.occupied),
+            assembler: MogiAssembler::new(),
+            block_offset: AssemblyOffset(self.occupied),
         });
-        self.occupied += estimated_size;
         Ok(())
     }
 
@@ -189,6 +217,28 @@ impl<R: Relocation + Clone> CodeBuffer<R> {
         start: EVAddr,
     ) -> Option<&mut TargetBasicBlock<R>> {
         self.blocks.get_mut(&start)
+    }
+
+    /// Writes the blocks assembly to the code buffer, potentially allocating a new area for the assembly to reside in.
+    pub fn write_block(
+        &mut self,
+        evaddr: EVAddr,
+    ) -> JITResult {
+        let block = self
+            .blocks
+            .get_mut(&evaddr)
+            .ok_or_else(|| -> JitError { todo!("Return correct error") })?;
+        let required_size = block.encoded_size();
+        if required_size > self.size - self.occupied {
+            todo!("Emit error for insufficient size")
+        }
+        block.code = Some(Code {
+            ptr: unsafe { self.buf.byte_add(self.occupied) },
+            size: required_size,
+        });
+        self.occupied += required_size;
+        block.commit()?;
+        Ok(())
     }
 
     /// Create a new anonymous block (i.e. it has no EVAddr) and return its id.
@@ -207,10 +257,10 @@ impl<R: Relocation + Clone> CodeBuffer<R> {
         };
 
         self.anonymous_blocks.push(TargetBasicBlock {
-            code,
+            code: Some(code),
             custom_op_args: Vec::new(),
-            assembler: unsafe { MogiAssembler::new(self.buf, self.occupied) },
-            start_offset: AssemblyOffset(self.occupied),
+            assembler: MogiAssembler::new(),
+            block_offset: AssemblyOffset(self.occupied),
         });
         self.occupied += size;
         Ok(AnonymousBlockId(self.anonymous_blocks.len() - 1))
@@ -234,6 +284,6 @@ impl<R: Relocation + Clone> CodeBuffer<R> {
         &self,
         id: AnonymousBlockId,
     ) -> AssemblyOffset {
-        self.anonymous_blocks[id.0].start_offset()
+        self.anonymous_blocks[id.0].block_offset()
     }
 }

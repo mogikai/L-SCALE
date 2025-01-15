@@ -62,10 +62,30 @@ use std::{
 };
 use tracing::trace;
 
+use crate::jit::assembler::MogiAssembler;
+use crate::jit::code_buffer::{
+    AnonymousBlockId,
+    CodeBuffer,
+    TargetBasicBlock,
+};
+use crate::jit::x86::emit::TlbMissCallback;
+use crate::jit::x86::scaffolding::{
+    build_epilogue,
+    build_prelude,
+};
+use emit::CustomOpCallback;
+use mogi_utilities::index_map::SecondaryMap;
+use registers::{
+    RegisterAllocation,
+    RegisterTracker,
+};
+use task_context::X86TaskContext;
+
 mod emit;
 mod regalloc;
 mod registers;
 mod scaffolding;
+mod task_context;
 #[cfg(test)]
 mod test;
 
@@ -86,6 +106,8 @@ macro_rules! assemble {
     }
     };
 }
+
+use assemble;
 
 pub struct X86MogiJit {
     code_buffer: CodeBuffer<X64Relocation>,
@@ -114,26 +136,6 @@ pub struct X86MogiJit {
     global_context: Pin<Box<X86GlobalContext>>,
 }
 
-/// This is the context of the JIT. It is stored in the RBP register, which has the alias `cpu_context`.
-/// This should be kept small, only containing absolutely necessary information like the address spaces
-/// or tlb pointer.
-pub struct X86TaskContext {
-    /// Each task has its own TLB, hence this is in the task context.
-    /// The TLB facilitates fast [EVAddr] to [HVAddr](mogi_utilities::addresses::HVAddr) translation.
-    /// I.e. a guest address is translated to a host address where the actual data is stored.
-    tlb: TLB,
-    /// The address spaces for the cpu spec.
-    /// TODO: Maybe make the amount of address spaces generic?
-    spaces: [Space; 4],
-    pc: usize,
-    /// For convenience, the task context contains a pointer to the global context.
-    /// The global context is however usually accessed directly in the jit code.
-    global_context: NonNull<X86GlobalContext>,
-    /// If a runtime error occurred, it is stored here, and the jit exits as soon
-    /// as possible.
-    runtime_error: Option<RuntimeError>,
-}
-
 /// The global jit context. Each task context contains a pointer to this context.
 pub struct X86GlobalContext {
     custom_op_impls: SecondaryMap<CustomOpId, Option<CustomOpCallback<X86TaskContext>>>,
@@ -141,30 +143,12 @@ pub struct X86GlobalContext {
     tlb_miss_write_callback: Option<TlbMissCallback<X86TaskContext>>,
 }
 
-use crate::jit::assembler::MogiAssembler;
-use crate::jit::code_buffer::{
-    AnonymousBlockId,
-    CodeBuffer,
-    TargetBasicBlock,
-};
-use crate::jit::x86::emit::TlbMissCallback;
-use crate::jit::x86::scaffolding::{
-    build_epilogue,
-    build_prelude,
-};
-use assemble;
-use emit::CustomOpCallback;
-use mogi_utilities::index_map::SecondaryMap;
-use registers::{
-    RegisterAllocation,
-    RegisterTracker,
-};
-
 #[repr(transparent)]
 /// The storage vec contains all registers and temporaries in a serialized form.
 /// Each variable has an index and size.
 /// TODO: We might need to compact the spaces in the spec, since they contain a lot of
 ///       unused areas. We could then possibly reduce the size to one or two pages.
+#[derive(Debug)]
 struct Space([u8; 0x3000]);
 
 impl Space {
@@ -216,65 +200,6 @@ impl Default for X86GlobalContext {
 }
 
 impl JITGlobalRuntimeContext for X86GlobalContext {}
-
-impl X86TaskContext {
-    pub fn max_spaces() -> usize {
-        4
-    }
-
-    pub fn tlb_offset(access_type: AccessType) -> usize {
-        match access_type {
-            AccessType::Load => offset_of!(Self, tlb) + offset_of!(TLB, read_entries),
-            AccessType::Store => offset_of!(Self, tlb) + offset_of!(TLB, write_entries),
-        }
-    }
-
-    pub fn varnode_offset(slice: JIRSlice) -> usize {
-        // TODO: We need to either make sure in the spec generation, that space_id is in range, or
-        //       perform some kind of mapping.
-        assert!(usize::from(slice.space_id) < Self::max_spaces());
-        trace!("Loading slice {slice:?} that refers to varnode {:?} into GP register", slice.varnode_id);
-        // space = spaces[varnode.space_id]
-        let space_offset = offset_of!(Self, spaces) + usize::from(slice.space_id) * size_of::<Space>();
-        // space[slice.offset]
-        space_offset + slice.offset as usize
-    }
-}
-
-impl JITTaskRuntimeContext for X86TaskContext {
-    fn slice(
-        &self,
-        slice: JIRSlice,
-    ) -> Result<&[u8], RuntimeError> {
-        Ok(self.spaces[usize::from(slice.space_id)].slice(slice))
-    }
-
-    fn slice_mut(
-        &mut self,
-        slice: JIRSlice,
-    ) -> Result<&mut [u8], RuntimeError> {
-        Ok(self.spaces[usize::from(slice.space_id)].slice_mut(slice))
-    }
-
-    fn tlb(&self) -> &TLB {
-        &self.tlb
-    }
-
-    fn tlb_mut(&mut self) -> &mut TLB {
-        &mut self.tlb
-    }
-
-    fn set_runtime_error(
-        &mut self,
-        error: RuntimeError,
-    ) {
-        self.runtime_error = Some(error);
-    }
-
-    fn runtime_error(&self) -> Option<RuntimeError> {
-        self.runtime_error
-    }
-}
 
 impl X86MogiJit {
     // TODO: Make MMU generic (put behind trait)
@@ -383,14 +308,9 @@ impl MogiJit for X86MogiJit {
     type GlobalContext = X86GlobalContext;
 
     fn new_runtime_context(&mut self) -> Self::RuntimeContext {
-        X86TaskContext {
-            spaces: array::from_fn(|_| Space::new()),
-            tlb: TLB::new(),
-            pc: 0,
-            global_context: NonNull::new(&mut *self.global_context)
-                .expect("The pinned pointer must be non null per definition"),
-            runtime_error: None,
-        }
+        X86TaskContext::new(
+            NonNull::new(&mut *self.global_context).expect("The pinned pointer must be non null per definition"),
+        )
     }
 
     fn register_custom_op_impl<CB>(
@@ -447,12 +367,14 @@ impl MogiJit for X86MogiJit {
             todo!("Return error: 'Tried to create new block without finalizing the previous block'")
         }
         // TODO: Pull the fixed size out and estimate the size based on the number of jir instructions
-        self.code_buffer.create_block(evaddr, 1024)?;
+        self.code_buffer.create_block(evaddr)?;
         self.current_block = Some(evaddr);
         // Fetch the offset of the epilogue block
-        let exit_offset = self
+        let epilogue_code = self
             .code_buffer
-            .anonymous_block_offset(self.jit_epilogue_block);
+            .anonymous_block(self.jit_epilogue_block)
+            .ptr()
+            .expect("The epilogue block code must exist");
         let block = self
             .code_buffer
             .block_mut(evaddr)
@@ -460,8 +382,10 @@ impl MogiJit for X86MogiJit {
 
         // Set both exit succes and exit fail to the jit epilogue
         // TODO: Different block for exit_fail?
-        block.set_exit_success(exit_offset)?;
-        block.set_exit_failure(exit_offset)?;
+        unsafe {
+            block.set_exit_success(epilogue_code);
+            block.set_exit_failure(epilogue_code);
+        }
         Ok(())
     }
 
@@ -641,9 +565,7 @@ impl MogiJit for X86MogiJit {
             ; jmp ->exit_success
         );
 
-        block.commit()?;
-        // TODO: Insert ops into code buffer
-        // self.chain_blocks_direct(address, self.jit_epilogue.as_ptr())?;
+        self.code_buffer.write_block(block_addr)?;
         Ok(())
     }
 
@@ -656,7 +578,8 @@ impl MogiJit for X86MogiJit {
             .code_buffer
             .block(block)
             .ok_or(JitError::BlockNotFound(block))?
-            .ptr();
+            .ptr()
+            .ok_or_else(|| -> JitError { todo!("Return error for missing jit code") })?;
         (self.jit_prelude)(context as *mut _ as *mut c_void, block);
         Ok(())
     }
@@ -682,7 +605,7 @@ impl MogiJit for X86MogiJit {
     ) -> Result<&'b [u8], JitError> {
         let spec = self.processor_specification.borrow();
         let varnode = spec.varnode_by_id(varnode).unwrap();
-        Ok(context.spaces[usize::from(varnode.space_id)].varnode(varnode))
+        Ok(context.spaces()[usize::from(varnode.space_id)].varnode(varnode))
     }
 
     fn varnode_mut<'b>(
@@ -692,7 +615,7 @@ impl MogiJit for X86MogiJit {
     ) -> Result<&'b mut [u8], JitError> {
         let spec = self.processor_specification.borrow();
         let varnode = spec.varnode_by_id(varnode).unwrap();
-        Ok(context.spaces[usize::from(varnode.space_id)].varnode_mut(varnode))
+        Ok(context.spaces_mut()[usize::from(varnode.space_id)].varnode_mut(varnode))
     }
 }
 

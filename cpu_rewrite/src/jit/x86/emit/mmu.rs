@@ -4,13 +4,12 @@ use crate::jit::api::{
     JITResult,
     JITTaskRuntimeContext,
     JitError,
-    MogiJit,
     TlbMissHelper,
 };
 use crate::jit::x86::registers::GPRegister;
+use crate::jit::x86::task_context::X86TaskContext;
 use crate::jit::x86::{
     X86MogiJit,
-    X86TaskContext,
     assemble,
 };
 use dynasmrt::DynasmLabelApi;
@@ -31,10 +30,8 @@ use mogi_utilities::addresses::{
     EVAddr,
     HVAddr,
 };
-use std::backtrace::Backtrace;
 use std::marker::PhantomData;
 use std::mem::offset_of;
-use std::panic::AssertUnwindSafe;
 
 impl X86MogiJit {
     pub fn emit_load(
@@ -103,6 +100,7 @@ impl X86MogiJit {
         //       If this is the case, then we need to insert an additional check for the larger
         //       access size so that we don't cross page boundaries.
         if size > 1 {
+            assert!(size.is_power_of_two());
             assemble!(self.block_mut()?.assembler();
                 // Check alignment
                 ; test Rq(addr_gpr as u8), (size - 1) as i32
@@ -128,7 +126,11 @@ impl X86MogiJit {
             ; and Rd(translated_address_gpr as u8), WORD 0xfff
             // Add target onto the page offset
             ; add Rq(translated_address_gpr as u8), QWORD [Rq(addr_gpr as u8) + target_offset as _ + cpu_context]
-            // TODO: Permission check
+            // Permissions do not need to be checked, since we have two tlb tables. One for read and one for write.
+            // If the address is on a page that is in the read table, then it is readable, and if it is in the
+            // write table, it is writable. Execute permissions are handled via the jit buffer, i.e. code is flushed
+            // as soon as it is made non-executable. The permission check is performed on a tlb miss. If the check
+            // succeeds, then any future accesses will go through the tlb until the line is flushed.
             ; jmp >success
         );
 

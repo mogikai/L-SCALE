@@ -11,9 +11,9 @@ use crate::jit::x86::registers::{
     RegisterAllocation,
     RegisterLoadInfo,
 };
+use crate::jit::x86::task_context::X86TaskContext;
 use crate::jit::x86::{
     X86MogiJit,
-    X86TaskContext,
     assemble,
 };
 use mogi_sleigh::spec::jir::common::JIRSize;

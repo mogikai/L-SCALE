@@ -40,7 +40,7 @@ fn test_load_tlb_hit() {
     let addr = EVAddr::from(a);
     unsafe {
         context
-            .tlb
+            .tlb_mut()
             .insert_read(addr, HVAddr::new_unchecked(page.as_mut() as *mut _));
     }
 
@@ -79,6 +79,52 @@ fn test_load_tlb_miss_success() {
 
     let instructions = vec![
         //
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
         jinst!(result = *[{SpaceId::from(0)}]addr_slice),
     ];
     exec_instructions(&mut jit, &mut context, &instructions);

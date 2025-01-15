@@ -1,10 +1,14 @@
+use crate::jit::code_buffer::Code;
 use dynasmrt::components::{
     LabelRegistry,
     ManagedRelocs,
     PatchLoc,
     StaticLabel,
 };
-use dynasmrt::relocations::Relocation;
+use dynasmrt::relocations::{
+    ImpossibleRelocation,
+    Relocation,
+};
 use dynasmrt::{
     AssemblyOffset,
     DynamicLabel,
@@ -13,8 +17,8 @@ use dynasmrt::{
     DynasmLabelApi,
     LabelKind,
     TargetKind,
-    UncommittedModifier,
 };
+use fnv::FnvHashMap;
 use std::collections::BTreeMap;
 use std::ptr::NonNull;
 
@@ -79,12 +83,35 @@ impl<R: Relocation> RelocRegistry<R> {
 #[derive(Debug)]
 pub struct MogiAssembler<R: Relocation> {
     ops: Vec<u8>,
-    baseaddr: NonNull<u8>,
-    start_offset: usize,
     labels: LabelRegistry,
+    /// Block global labels. These labels reference an absolute address somewhere in host memory.
+    /// The label target must be located in a memory region that is continuous with the address to where
+    /// this block will ultimately be written.
+    global_labels: FnvHashMap<&'static str, NonNull<u8>>,
     relocs: RelocRegistry<R>,
-    managed: ManagedRelocs<R>,
     error: Option<DynasmError>,
+}
+
+trait CustomRelocation {
+    fn global_patch(
+        &self,
+        buffer: &mut [u8],
+        buf_addr: usize,
+        global_offset: isize,
+    ) -> Result<(), ImpossibleRelocation>;
+}
+
+impl<R: Relocation> CustomRelocation for PatchLoc<R> {
+    fn global_patch(
+        &self,
+        buffer: &mut [u8],
+        buf_addr: usize,
+        global_offset: isize,
+    ) -> Result<(), ImpossibleRelocation> {
+        // Local offset of zero, but we want to globally offset
+        let value = self.value(0, buf_addr) + global_offset;
+        self.relocation.write_value(buffer, value)
+    }
 }
 
 impl<R: Relocation + Clone> MogiAssembler<R> {
@@ -97,17 +124,12 @@ impl<R: Relocation + Clone> MogiAssembler<R> {
     ///   and the entire memory range between `baseaddr` and the result must be in bounds of that
     ///   allocated object. In particular, this range must not "wrap around" the edge of the
     ///   address space.
-    pub unsafe fn new(
-        baseaddr: NonNull<u8>,
-        offset: usize,
-    ) -> MogiAssembler<R> {
+    pub fn new() -> MogiAssembler<R> {
         MogiAssembler {
             ops: Default::default(),
-            baseaddr,
-            start_offset: offset,
             labels: Default::default(),
+            global_labels: Default::default(),
             relocs: RelocRegistry::new(),
-            managed: ManagedRelocs::new(),
             error: None,
         }
     }
@@ -122,8 +144,6 @@ impl<R: Relocation + Clone> MogiAssembler<R> {
     /// `static_references` determines the preallocated space for references to local/global labels.
     /// `dynamic_references` determines the preallocated space for references to dynamic labels.
     pub fn new_with_capacity(
-        baseaddr: NonNull<u8>,
-        offset: usize,
         ops_capacity: usize,
         local_labels: usize,
         global_labels: usize,
@@ -131,11 +151,9 @@ impl<R: Relocation + Clone> MogiAssembler<R> {
     ) -> MogiAssembler<R> {
         MogiAssembler {
             ops: Vec::with_capacity(ops_capacity),
-            baseaddr,
-            start_offset: offset,
             labels: LabelRegistry::with_capacity(local_labels, global_labels, dynamic_labels),
+            global_labels: Default::default(),
             relocs: RelocRegistry::new(),
-            managed: ManagedRelocs::new(),
             error: None,
         }
     }
@@ -153,72 +171,73 @@ impl<R: Relocation + Clone> MogiAssembler<R> {
         self.labels.new_dynamic_label()
     }
 
-    /// Resolves any relocations emitted to the assembler before this point.
-    /// If an impossible relocation was specified before this point, returns them here.
-    /// Returns the assembled operations as a slice.
-    pub fn commit(&mut self) -> Result<&[u8], DynasmError> {
-        self.encode_relocs()?;
-        Ok(&self.ops)
+    /// Fetch the size of the currently encoded instructions
+    pub fn encoded_size(&self) -> usize {
+        self.ops.len()
     }
 
-    // encode uncommited relocations
-    fn encode_relocs(&mut self) -> Result<(), DynasmError> {
+    /// Writes the code from the assembly buffer to the provided code location and performs any needed relocations.
+    pub unsafe fn write(
+        &mut self,
+        mut code: Code,
+    ) -> Result<(), DynasmError> {
+        if code.size() < self.ops.len() {
+            todo!("Return error for insufficient size")
+        }
         // If we accrued any errors while assembling before, emit them now.
         if let Some(e) = self.error.take() {
             Err(e)?
         }
+        let code_ptr = code.ptr();
+        let code_ptr_usize = code.ptr().addr().get();
+        let buff = code.as_mut();
+        buff[..self.ops.len()].copy_from_slice(&self.ops);
 
         // Resolve statics
         for (loc, label) in self.relocs.iter_statics() {
-            let target = self.labels.resolve_static(&label)?;
-            let buf = &mut self.ops[loc.range(self.start_offset)];
-            if loc
-                .patch(buf, self.baseaddr.addr().get(), target.0)
-                .is_err()
-            {
+            let result = if let Some(target) = self.global_labels.get(label.get_name()) {
+                let global_offset = target.byte_offset_from(code_ptr);
+                loc.global_patch(&mut buff[loc.range(0)], code_ptr_usize, global_offset)
+                    .is_err()
+            } else {
+                let target = self.labels.resolve_static(&label)?;
+                loc.patch(&mut buff[loc.range(0)], code_ptr_usize, target.0)
+                    .is_err()
+            };
+            if result {
                 return Err(DynasmError::ImpossibleRelocation(if label.is_global() {
                     TargetKind::Global(label.get_name())
                 } else {
                     TargetKind::Local(label.get_name())
                 }));
             }
-            if loc.needs_adjustment() {
-                self.managed.add(loc.clone())
-            }
         }
 
         // Resolve dynamics
         for (loc, id) in self.relocs.iter_dynamics() {
             let target = self.labels.resolve_dynamic(*id)?;
-            let buf = &mut self.ops[loc.range(self.start_offset)];
             if loc
-                .patch(buf, self.baseaddr.addr().get(), target.0)
+                .patch(&mut buff[loc.range(0)], code_ptr_usize, target.0)
                 .is_err()
             {
                 return Err(DynasmError::ImpossibleRelocation(TargetKind::Dynamic(*id)));
-            }
-            if loc.needs_adjustment() {
-                self.managed.add(loc.clone())
             }
         }
 
         Ok(())
     }
 
-    /// Use an `UncommittedModifier` to alter uncommitted code.
-    /// This does not allow the user to change labels/relocations.
-    pub fn alter(&mut self) -> UncommittedModifier {
-        UncommittedModifier::new(&mut self.ops, AssemblyOffset(self.start_offset))
-    }
-
-    /// Provides access to the assemblers internal labels registry
-    pub fn labels(&self) -> &LabelRegistry {
-        &self.labels
-    }
-
-    /// Provides mutable access to the assemblers internal labels registry
-    pub fn labels_mut(&mut self) -> &mut LabelRegistry {
-        &mut self.labels
+    /// Set the global label `name` to point to the provided host address.
+    ///
+    /// # Safety
+    /// The `target` must reside in the same contiguous memory region where this block will be encoded to.
+    /// If this is not the case, encoding the block will be undefined behavior.
+    pub unsafe fn set_global_label(
+        &mut self,
+        name: &'static str,
+        target: NonNull<u8>,
+    ) {
+        self.global_labels.insert(name, target);
     }
 }
 
@@ -246,8 +265,8 @@ impl<'a, R: Relocation> Extend<&'a u8> for MogiAssembler<R> {
 
 impl<R: Relocation> DynasmApi for MogiAssembler<R> {
     fn offset(&self) -> AssemblyOffset {
-        // The assembly offset
-        AssemblyOffset(self.start_offset + self.ops.len())
+        // The current assembly offset in the code buffer.
+        AssemblyOffset(self.ops.len())
     }
     fn push(
         &mut self,
@@ -283,6 +302,10 @@ impl<R: Relocation> DynasmLabelApi for MogiAssembler<R> {
         &mut self,
         name: &'static str,
     ) {
+        if self.global_labels.contains_key(name) {
+            self.error = Some(DynasmError::DuplicateLabel(LabelKind::Global(name)));
+            return;
+        }
         let offset = self.offset();
         if let Err(e) = self.labels.define_global(name, offset) {
             self.error = Some(e)
@@ -359,16 +382,20 @@ impl<R: Relocation> DynasmLabelApi for MogiAssembler<R> {
     }
     fn bare_relocation(
         &mut self,
-        target: usize,
-        field_offset: u8,
-        ref_offset: u8,
-        kind: R,
+        _target: usize,
+        _field_offset: u8,
+        _ref_offset: u8,
+        _kind: R,
     ) {
-        let location = self.offset();
-        let loc = PatchLoc::new(location, 0, field_offset, ref_offset, kind);
-        let buf = &mut self.ops[loc.range(self.start_offset)];
-        if loc.patch(buf, self.baseaddr.addr().get(), target).is_err() {
-            self.error = Some(DynasmError::ImpossibleRelocation(TargetKind::Extern(target)))
-        }
+        panic!("bare_relocation is not supported by MogiAssembler");
+        // let location = self.offset();
+        // let loc = PatchLoc::new(location, 0, field_offset, ref_offset, kind);
+        // let buf = &mut self.ops[loc.range(0)];
+        // if loc
+        //     .patch(buf, 0, target)
+        //     .is_err()
+        // {
+        //     self.error = Some(DynasmError::ImpossibleRelocation(TargetKind::Extern(target)))
+        // }
     }
 }

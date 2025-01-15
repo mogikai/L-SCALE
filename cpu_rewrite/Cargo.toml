@@ -17,6 +17,7 @@ num_enum = "0.7.3"
 num-traits = "0.2.19"
 memmap2 = "0.9.5"
 libc = "0.2.159"
+fnv = "1.0.7"
 
 [profile.test]
 opt-level = 3

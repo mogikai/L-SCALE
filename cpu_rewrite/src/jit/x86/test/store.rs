@@ -1,4 +1,7 @@
-use crate::jit::api::MogiJit;
+use crate::jit::api::{
+    JITTaskRuntimeContext,
+    MogiJit,
+};
 use crate::jit::x86::test::{
     exec_instructions,
     get_reg_slice,
@@ -40,7 +43,7 @@ fn test_store_tlb_hit() {
     let id = CustomOpId::try_from_index(5).unwrap();
     unsafe {
         context
-            .tlb
+            .tlb_mut()
             .insert_write(addr, HVAddr::new_unchecked(page.as_mut() as *mut _));
     }
 
