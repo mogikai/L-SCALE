@@ -182,7 +182,7 @@ where
             }
             jit.emit_flush_slices()?;
             jit.finalize_block()?;
-            // jit.chain_blocks(EVAddr::null(), EVAddr::null())?;
+            jit.chain_blocks(EVAddr::null(), EVAddr::null())?;
             Ok(())
         }
     }

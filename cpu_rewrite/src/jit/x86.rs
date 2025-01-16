@@ -540,7 +540,22 @@ impl MogiJit for X86MogiJit {
         origin_block_address: EVAddr,
         target_block_address: EVAddr,
     ) -> JITResult {
-        todo!()
+        let target_block_ptr = self
+            .code_buffer
+            .block(target_block_address)
+            .ok_or(JitError::BlockNotFound(target_block_address))?
+            .ptr()
+            .ok_or(JitError::BlockNotFound(target_block_address))?;
+        let origin_block = self
+            .code_buffer
+            .block_mut(origin_block_address)
+            .ok_or(JitError::BlockNotFound(origin_block_address))?;
+        // TODO: Safety?
+        unsafe {
+            origin_block.set_exit_success(target_block_ptr);
+        }
+        origin_block.commit()?;
+        Ok(())
         // // This is safe, since we only relocate the target block if we need to update the code.
         // // This requires unchaining the block, which will remove this address and replace it with
         // // the epilogue.
