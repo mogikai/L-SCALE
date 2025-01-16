@@ -66,7 +66,7 @@ use crate::jit::assembler::MogiAssembler;
 use crate::jit::code_buffer::{
     AnonymousBlockId,
     CodeBuffer,
-    TargetBasicBlock,
+    CompiledBasicBlock,
 };
 use crate::jit::x86::emit::TlbMissCallback;
 use crate::jit::x86::scaffolding::{
@@ -295,7 +295,7 @@ impl X86MogiJit {
     // }
 
     #[inline]
-    fn block_mut(&mut self) -> Result<&mut TargetBasicBlock<X64Relocation>, JitError> {
+    fn block_mut(&mut self) -> Result<&mut CompiledBasicBlock<X64Relocation>, JitError> {
         Ok(self
             .code_buffer
             .block_mut(self.current_block.ok_or(JitError::NoActiveBlock)?)
@@ -366,7 +366,6 @@ impl MogiJit for X86MogiJit {
         if self.current_block.is_some() {
             todo!("Return error: 'Tried to create new block without finalizing the previous block'")
         }
-        // TODO: Pull the fixed size out and estimate the size based on the number of jir instructions
         self.code_buffer.create_block(evaddr)?;
         self.current_block = Some(evaddr);
         // Fetch the offset of the epilogue block
@@ -415,9 +414,9 @@ impl MogiJit for X86MogiJit {
             JIROperation::IntLeft => {}
             JIROperation::IntRight => {}
             JIROperation::IntSRight => {}
-            JIROperation::IntOr => {}
+            JIROperation::IntOr => return self.emit_bitwise_or(output?, input_a?, input_b?),
             JIROperation::IntAnd => return self.emit_bitwise_and(output?, input_a?, input_b?),
-            JIROperation::IntXor => {}
+            JIROperation::IntXor => return self.emit_bitwise_xor(output?, input_a?, input_b?),
             JIROperation::IntSLess => {}
             JIROperation::IntSGreater => {}
             JIROperation::IntSLessEqual => {}

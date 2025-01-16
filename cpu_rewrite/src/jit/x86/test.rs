@@ -1,5 +1,7 @@
 mod add;
 mod bitand;
+mod bitor;
+mod bitxor;
 mod complex;
 mod divide;
 mod load;

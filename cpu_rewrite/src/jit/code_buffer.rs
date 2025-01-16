@@ -69,7 +69,7 @@ pub struct AnonymousBlockId(usize);
 /// A compiled target basic block. Points to a region inside the executable buffer.
 /// The compiled block also contains a list of arguments for any custom op calls.
 #[derive(Debug)]
-pub struct TargetBasicBlock<R: Relocation> {
+pub struct CompiledBasicBlock<R: Relocation> {
     /// The code location where this basic block is encoded.
     /// If this is a newly created block, there might not yet be a code location allocated to this block.
     code: Option<Code>,
@@ -86,7 +86,7 @@ pub struct TargetBasicBlock<R: Relocation> {
 //       create a jumplist at the end of each basic block, where we can insert the
 //       jumps to the following blocks
 
-impl<R: Relocation + Clone> TargetBasicBlock<R> {
+impl<R: Relocation + Clone> CompiledBasicBlock<R> {
     /// Get the pointer to the start of executable code for this target block.
     pub fn ptr(&self) -> Option<NonNull<u8>> {
         self.code.map(|c| c.ptr)
@@ -167,8 +167,8 @@ pub struct CodeBuffer<R: Relocation> {
     /// TODO: keep a list of free areas.
     occupied: usize,
     /// Keeps track of the blocks we have already compiled.
-    blocks: HashMap<EVAddr, TargetBasicBlock<R>>,
-    anonymous_blocks: Vec<TargetBasicBlock<R>>,
+    blocks: HashMap<EVAddr, CompiledBasicBlock<R>>,
+    anonymous_blocks: Vec<CompiledBasicBlock<R>>,
 }
 
 impl<R: Relocation + Clone> CodeBuffer<R> {
@@ -196,7 +196,7 @@ impl<R: Relocation + Clone> CodeBuffer<R> {
         &mut self,
         start: EVAddr,
     ) -> Result<(), CodeBufferError> {
-        self.blocks.insert(start, TargetBasicBlock {
+        self.blocks.insert(start, CompiledBasicBlock {
             code: None,
             custom_op_args: vec![],
             assembler: MogiAssembler::new(),
@@ -208,14 +208,14 @@ impl<R: Relocation + Clone> CodeBuffer<R> {
     pub fn block(
         &self,
         start: EVAddr,
-    ) -> Option<&TargetBasicBlock<R>> {
+    ) -> Option<&CompiledBasicBlock<R>> {
         self.blocks.get(&start)
     }
 
     pub fn block_mut(
         &mut self,
         start: EVAddr,
-    ) -> Option<&mut TargetBasicBlock<R>> {
+    ) -> Option<&mut CompiledBasicBlock<R>> {
         self.blocks.get_mut(&start)
     }
 
@@ -256,7 +256,7 @@ impl<R: Relocation + Clone> CodeBuffer<R> {
             size,
         };
 
-        self.anonymous_blocks.push(TargetBasicBlock {
+        self.anonymous_blocks.push(CompiledBasicBlock {
             code: Some(code),
             custom_op_args: Vec::new(),
             assembler: MogiAssembler::new(),
@@ -269,14 +269,14 @@ impl<R: Relocation + Clone> CodeBuffer<R> {
     pub fn anonymous_block(
         &self,
         id: AnonymousBlockId,
-    ) -> &TargetBasicBlock<R> {
+    ) -> &CompiledBasicBlock<R> {
         &self.anonymous_blocks[id.0]
     }
 
     pub fn anonymous_block_mut(
         &mut self,
         id: AnonymousBlockId,
-    ) -> &mut TargetBasicBlock<R> {
+    ) -> &mut CompiledBasicBlock<R> {
         &mut self.anonymous_blocks[id.0]
     }
 

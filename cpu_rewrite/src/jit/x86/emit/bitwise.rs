@@ -1,19 +1,162 @@
 use crate::jit::api::JITResult;
+use crate::jit::x86::registers::GPRegister;
 use crate::jit::x86::{
     X86MogiJit,
     assemble,
 };
+use mogi_sleigh::spec::jir::common::JIRSize;
 use mogi_sleigh::spec::jir::values::{
     JIRConst,
     JIRSlice,
     JIRValue,
 };
+
 impl X86MogiJit {
     pub fn emit_bitwise_and(
         &mut self,
         output: JIRSlice,
         input_a: JIRValue,
         input_b: JIRValue,
+    ) -> JITResult {
+        self.emit_bitwise_op(
+            output,
+            input_a,
+            input_b,
+            |jit, output_gp, immediate, size| {
+                // Choose the smallest encoding that still fits
+                match size {
+                    0 => {
+                        panic!("Zero sized slices are not allowed")
+                    }
+                    1 => {
+                        assemble!(jit.block_mut()?.assembler();
+                            ; and Rq(output_gp as u8), BYTE immediate as _
+                        );
+                    }
+                    2 => {
+                        assemble!(jit.block_mut()?.assembler();
+                            ; and Rq(output_gp as u8), WORD immediate as _
+                        );
+                    }
+                    3..=4 => {
+                        assemble!(jit.block_mut()?.assembler();
+                            ; and Rq(output_gp as u8), DWORD immediate as _
+                        );
+                    }
+                    _ => {
+                        unreachable!("This code is not reachable because we checked beforehand, that the size is <= 4")
+                    }
+                }
+                Ok(())
+            },
+            |jit, output_gp, operand_gp, _size| {
+                assemble!(jit.block_mut()?.assembler();
+                    ; and Rq(output_gp as u8), Rq(operand_gp as u8)
+                );
+                Ok(())
+            },
+        )
+    }
+
+    pub fn emit_bitwise_or(
+        &mut self,
+        output: JIRSlice,
+        input_a: JIRValue,
+        input_b: JIRValue,
+    ) -> JITResult {
+        self.emit_bitwise_op(
+            output,
+            input_a,
+            input_b,
+            |jit, output_gp, immediate, size| {
+                // Choose the smallest encoding that still fits
+                match size {
+                    0 => {
+                        panic!("Zero sized slices are not allowed")
+                    }
+                    1 => {
+                        assemble!(jit.block_mut()?.assembler();
+                            ; or Rq(output_gp as u8), BYTE immediate as _
+                        );
+                    }
+                    2 => {
+                        assemble!(jit.block_mut()?.assembler();
+                            ; or Rq(output_gp as u8), WORD immediate as _
+                        );
+                    }
+                    3..=4 => {
+                        assemble!(jit.block_mut()?.assembler();
+                            ; or Rq(output_gp as u8), DWORD immediate as _
+                        );
+                    }
+                    _ => {
+                        unreachable!("This code is not reachable because we checked beforehand, that the size is <= 4")
+                    }
+                }
+                Ok(())
+            },
+            |jit, output_gp, operand_gp, _size| {
+                assemble!(jit.block_mut()?.assembler();
+                    ; or Rq(output_gp as u8), Rq(operand_gp as u8)
+                );
+                Ok(())
+            },
+        )
+    }
+
+    pub fn emit_bitwise_xor(
+        &mut self,
+        output: JIRSlice,
+        input_a: JIRValue,
+        input_b: JIRValue,
+    ) -> JITResult {
+        self.emit_bitwise_op(
+            output,
+            input_a,
+            input_b,
+            |jit, output_gp, immediate, size| {
+                // Choose the smallest encoding that still fits
+                match size {
+                    0 => {
+                        panic!("Zero sized slices are not allowed")
+                    }
+                    1 => {
+                        assemble!(jit.block_mut()?.assembler();
+                            ; xor Rq(output_gp as u8), BYTE immediate as _
+                        );
+                    }
+                    2 => {
+                        assemble!(jit.block_mut()?.assembler();
+                            ; xor Rq(output_gp as u8), WORD immediate as _
+                        );
+                    }
+                    3..=4 => {
+                        assemble!(jit.block_mut()?.assembler();
+                            ; xor Rq(output_gp as u8), DWORD immediate as _
+                        );
+                    }
+                    _ => {
+                        unreachable!("This code is not reachable because we checked beforehand, that the size is <= 4")
+                    }
+                }
+                Ok(())
+            },
+            |jit, output_gp, operand_gp, _size| {
+                assemble!(jit.block_mut()?.assembler();
+                    ; xor Rq(output_gp as u8), Rq(operand_gp as u8)
+                );
+                Ok(())
+            },
+        )
+    }
+
+    pub fn emit_bitwise_op(
+        &mut self,
+        output: JIRSlice,
+        input_a: JIRValue,
+        input_b: JIRValue,
+        op_gp_imm: fn(&mut X86MogiJit, GPRegister, u128, JIRSize) -> JITResult,
+        op_gp_gp: fn(&mut X86MogiJit, GPRegister, GPRegister, JIRSize) -> JITResult,
     ) -> JITResult {
         assert_eq!(input_a.size(), input_b.size());
         // TODO: It might make sense to directly put the memory reference into the instruction, instead of loading
@@ -23,7 +166,7 @@ impl X86MogiJit {
         match (input_a, input_b) {
             (JIRValue::Const(input_a), JIRValue::Const(input_b)) => {
                 // In the const case we can simply calculate the value ahead of time and move it into the output.
-                self.emit_copy(output, JIRConst::new(input_a.value() & input_b.value(), input_a.size()))?
+                self.emit_copy(output, JIRConst::new(input_a.value() | input_b.value(), input_a.size()))?
             }
             (JIRValue::Slice(input_a), JIRValue::Const(input_b))
             | (JIRValue::Const(input_b), JIRValue::Slice(input_a)) => {
@@ -34,32 +177,7 @@ impl X86MogiJit {
                     // Copy the input into the output, since x86 uses the first operand as output.
                     self.emit_copy(output, input_a)?;
                     let output_gp = self.load_slice_gpr(output);
-                    // Choose the smallest encoding that still fits
-                    match immediate_size {
-                        0 => {
-                            panic!("Zero sized slices are not allowed")
-                        }
-                        1 => {
-                            assemble!(self.block_mut()?.assembler();
-                                ; and Rq(output_gp as u8), BYTE immediate as _
-                            );
-                        }
-                        2 => {
-                            assemble!(self.block_mut()?.assembler();
-                                ; and Rq(output_gp as u8), WORD immediate as _
-                            );
-                        }
-                        3..=4 => {
-                            assemble!(self.block_mut()?.assembler();
-                                ; and Rq(output_gp as u8), DWORD immediate as _
-                            );
-                        }
-                        _ => {
-                            unreachable!(
-                                "This code is not reachable because we checked beforehand, that the size is <= 4"
-                            )
-                        }
-                    }
+                    op_gp_imm(self, output_gp, immediate, immediate_size)?;
                 } else if immediate_size <= 8 {
                     // Immediates up to 64 bits need to be moved into a register first.
                     let (output_gp, operand_gp) = if output != input_a {
@@ -76,16 +194,14 @@ impl X86MogiJit {
                         let output_gp = self.load_slice_gpr(output);
                         (output_gp, tmp)
                     };
-                    assemble!(self.block_mut()?.assembler();
-                        ; and Rq(output_gp as u8), Rq(operand_gp as u8)
-                    );
+                    op_gp_gp(self, output_gp, operand_gp, immediate_size)?;
+                } else {
+                    todo!("Unsupported operation size")
                 }
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
                 let (target_gp, operand_gp) = self.load_commutative_inputs(output, input_a, input_b)?;
-                assemble!(self.block_mut()?.assembler();
-                    ; and Rq(target_gp as u8), Rq(operand_gp as u8)
-                );
+                op_gp_gp(self, target_gp, operand_gp, input_a.size())?;
             }
         }
         Ok(())
