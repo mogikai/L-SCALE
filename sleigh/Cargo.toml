@@ -8,7 +8,7 @@ tracing = { version = "0.1.40", features = ["release_max_level_trace"] }
 slotmap = "1.0.*"
 thiserror = "2.0.3"
 ariadne = "0.5.0"
-chumsky = { features = ["label", "pratt"], git = "https://github.com/zesterer/chumsky.git" }
+chumsky = { features = ["pratt"], git = "https://github.com/zesterer/chumsky.git" }
 string-interner = "0.18.0"
 num = "0.4.3"
 strum_macros = "0.26.4"
