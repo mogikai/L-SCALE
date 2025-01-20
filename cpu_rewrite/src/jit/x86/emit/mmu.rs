@@ -6,6 +6,7 @@ use crate::jit::api::{
     JitError,
     TlbMissHelper,
 };
+use crate::jit::x86::regalloc::SliceType;
 use crate::jit::x86::registers::GPRegister;
 use crate::jit::x86::task_context::X86TaskContext;
 use crate::jit::x86::{
@@ -189,7 +190,7 @@ impl X86MogiJit {
     ) -> JITResult {
         // TODO: Make sure the load does not cross page boundaries.
         // Allocate the output slice gpr, or get an existing one.
-        let out_gpr = self.get_slice_gp(output);
+        let out_gpr = self.get_slice_gp(output, SliceType::Output);
         match output.size() {
             1 => {
                 assemble!(self.block_mut()?.assembler();
@@ -227,7 +228,7 @@ impl X86MogiJit {
         // TODO: This can be optimized to directly move into the memory location.
         //       For JIRConsts this can be done with immediate values.
         let out_gpr = match value {
-            JIRValue::Slice(slice) => self.load_slice_gpr(slice),
+            JIRValue::Slice(slice) => self.load_slice_gpr(slice, SliceType::Input),
             JIRValue::Const(value) => {
                 let out_gpr = self.temp_alloc();
                 self.emit_load_const_to_gpr(out_gpr, value)?;

@@ -1,6 +1,7 @@
 use crate::jit::api::JITResult;
 use crate::jit::x86::emit::arithmetic::integer::AddSub;
 use crate::jit::x86::emit::mov64;
+use crate::jit::x86::regalloc::SliceType;
 use crate::jit::x86::{
     X86MogiJit,
     assemble,
@@ -38,9 +39,9 @@ impl X86MogiJit {
                 self.emit_add_reg_const(output, a, b.value())?;
             }
             (JIRValue::Slice(a), JIRValue::Slice(b)) => {
-                let a: u8 = self.load_slice_gpr(a).into();
-                let b: u8 = self.load_slice_gpr(b).into();
-                let output: u8 = self.load_slice_gpr(output).into();
+                let a: u8 = self.load_slice_gpr(a, SliceType::Input).into();
+                let b: u8 = self.load_slice_gpr(b, SliceType::Input).into();
+                let output: u8 = self.load_slice_gpr(output, SliceType::Output).into();
                 let block = self.block_mut()?;
                 assemble!(block.assembler();
                     ; lea Rq(output), [Rq(a) + Rq(b)]
@@ -71,8 +72,8 @@ impl X86MogiJit {
         add_sub: AddSub,
     ) -> JITResult {
         let size = output.size();
-        let a: u8 = self.load_slice_gpr(a).into();
-        let output: u8 = self.load_slice_gpr(output).into();
+        let a: u8 = self.load_slice_gpr(a, SliceType::Input).into();
+        let output: u8 = self.load_slice_gpr(output, SliceType::Output).into();
         if b < i8::MAX as u128 {
             // Use byte sized displacement for operands that fit into one byte.
             let mut b = b as i8;

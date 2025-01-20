@@ -1,4 +1,5 @@
 use crate::jit::api::JITResult;
+use crate::jit::x86::regalloc::SliceType;
 use crate::jit::x86::registers::GPRegister;
 use crate::jit::x86::{
     X86MogiJit,
@@ -66,7 +67,7 @@ impl X86MogiJit {
 
         // Fetch the divisor register and load the value.
         let divisor_gpr = match divisor {
-            JIRValue::Slice(divisor_slice) => self.load_slice_gpr(divisor_slice),
+            JIRValue::Slice(divisor_slice) => self.load_slice_gpr(divisor_slice, SliceType::Input),
             JIRValue::Const(divisor_const) => {
                 let tmp = self.temp_alloc();
                 self.emit_load_const_to_gpr(tmp, divisor_const)?;
@@ -75,7 +76,7 @@ impl X86MogiJit {
         };
 
         // Fetch the output gpr and perform the division.
-        let output_gpr = self.get_slice_gp(output);
+        let output_gpr = self.get_slice_gp(output, SliceType::Output);
         match division_type {
             DivisionType::Signed => {
                 assemble!(self.block_mut()?.assembler();

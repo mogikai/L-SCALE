@@ -19,10 +19,20 @@ use tracing::trace;
 pub(super) enum RegisterAllocationType {
     /// Allocate a temporary
     Temp,
-    /// Allocate a slice
+    /// Allocate a slice. This slice is used for inputs and is not flushed to context.
+    /// Spilling these slices is usually cheaper because they do not have to be written to context.
+    /// The slice can be promoted to an [OutSlice](RegisterAllocationType::OutSlice) which will cause
+    /// it to get flushed to context upon de-allocation.
     Slice(JIRSlice),
+    /// Allocate a slice that is flushed back to context
+    OutSlice(JIRSlice),
     /// Reallocate a slice to a different gpr
     Realloc(JIRSlice),
+}
+
+pub enum SliceType {
+    Input,
+    Output,
 }
 
 /// Describes what happens during register allocation, in case a spill is necessary.
@@ -157,9 +167,14 @@ impl X86MogiJit {
     pub(super) fn get_slice_gp(
         &mut self,
         slice: JIRSlice,
+        slice_type: SliceType,
     ) -> GPRegister {
+        let allocation_type = match slice_type {
+            SliceType::Input => RegisterAllocationType::Slice(slice),
+            SliceType::Output => RegisterAllocationType::OutSlice(slice),
+        };
         let register = self
-            .allocate_gp(None, RegisterAllocationType::Slice(slice), SpillBehavior::Spill)
+            .allocate_gp(None, allocation_type, SpillBehavior::Spill)
             .expect("Since spill was provided, the register allocation must not fail.");
         match register {
             RegisterLoadInfo::Unloaded(register) => register,
@@ -202,10 +217,17 @@ impl X86MogiJit {
                     }
                 }
                 RegisterAllocation::Reserved | RegisterAllocation::OccupiedTemp => {}
-                RegisterAllocation::Occupied(entry) => match alloc_type {
+                RegisterAllocation::Occupied(entry) | RegisterAllocation::OccupiedDirty(entry) => match alloc_type {
                     RegisterAllocationType::Slice(slice) if *entry == slice => {
                         trace!("Slice {slice:?} is already loaded in GP register {register:?}");
                         return Ok(RegisterLoadInfo::Loaded(register));
+                    }
+                    RegisterAllocationType::OutSlice(slice) if *entry == slice => {
+                        trace!(
+                            "Slice {slice:?} is already loaded in GP register {register:?}. Promoting it to OutSlice..."
+                        );
+                        old_gpr = Some(register);
+                        break;
                     }
                     RegisterAllocationType::Realloc(slice) if *entry == slice => {
                         old_gpr = Some(register);
@@ -225,6 +247,16 @@ impl X86MogiJit {
                     self.register_tracker.gp[free_gpr] = RegisterAllocation::Occupied(slice);
                     Ok(RegisterLoadInfo::Unloaded(free_gpr))
                 }
+                RegisterAllocationType::OutSlice(slice) => {
+                    let Some(old_gpr) = old_gpr else {
+                        // The out slice is not loaded yet, we need to load it now.
+                        self.register_tracker.gp[free_gpr] = RegisterAllocation::OccupiedDirty(slice);
+                        return Ok(RegisterLoadInfo::Unloaded(free_gpr));
+                    };
+                    // Promote old gpr to occupied dirty such that it is flushed correctly.
+                    self.register_tracker.gp[old_gpr] = RegisterAllocation::OccupiedDirty(slice);
+                    Ok(RegisterLoadInfo::Loaded(old_gpr))
+                }
                 RegisterAllocationType::Realloc(slice) => {
                     let Some(old_gpr) = old_gpr else {
                         Err(JitError::SliceNotLoaded)?
@@ -239,6 +271,13 @@ impl X86MogiJit {
                 }
             }
         } else {
+            if let RegisterAllocationType::OutSlice(slice) = alloc_type {
+                let Some(old_gpr) = old_gpr else {
+                    Err(JitError::SliceNotLoaded)?
+                };
+                self.register_tracker.gp[old_gpr] = RegisterAllocation::OccupiedDirty(slice);
+                return Ok(RegisterLoadInfo::Loaded(old_gpr));
+            }
             match spill_behavior {
                 SpillBehavior::Spill => todo!("Handle register spill"),
                 SpillBehavior::Fail => Err(JitError::NoRegistersAvailable),

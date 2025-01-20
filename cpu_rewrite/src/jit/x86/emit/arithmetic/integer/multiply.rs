@@ -2,6 +2,7 @@ use crate::jit::api::{
     JITResult,
     JitError,
 };
+use crate::jit::x86::regalloc::SliceType;
 use crate::jit::x86::{
     X86MogiJit,
     assemble,
@@ -69,8 +70,8 @@ impl X86MogiJit {
         match imm_size {
             1 => {
                 // We can encode the constant as immediate if it fits into at most 4  bytes.
-                let output_gp = self.load_slice_gpr(output);
-                let input_a_gp = self.load_slice_gpr(input_a);
+                let output_gp = self.load_slice_gpr(output, SliceType::Output);
+                let input_a_gp = self.load_slice_gpr(input_a, SliceType::Input);
                 let immediate = input_b.value();
                 assemble!(self.block_mut()?.assembler();
                     ; imul Rq(output_gp as u8), Rq(input_a_gp as u8), BYTE immediate as _
@@ -78,8 +79,8 @@ impl X86MogiJit {
             }
             2 => {
                 // We can encode the constant as immediate if it fits into at most 4  bytes.
-                let output_gp = self.load_slice_gpr(output);
-                let input_a_gp = self.load_slice_gpr(input_a);
+                let output_gp = self.load_slice_gpr(output, SliceType::Output);
+                let input_a_gp = self.load_slice_gpr(input_a, SliceType::Input);
                 let immediate = input_b.value();
                 assemble!(self.block_mut()?.assembler();
                     ; imul Rq(output_gp as u8), Rq(input_a_gp as u8), WORD immediate as _
@@ -87,8 +88,8 @@ impl X86MogiJit {
             }
             3..=4 => {
                 // We can encode the constant as immediate if it fits into at most 4  bytes.
-                let output_gp = self.load_slice_gpr(output);
-                let input_a_gp = self.load_slice_gpr(input_a);
+                let output_gp = self.load_slice_gpr(output, SliceType::Output);
+                let input_a_gp = self.load_slice_gpr(input_a, SliceType::Input);
                 let immediate = input_b.value();
                 assemble!(self.block_mut()?.assembler();
                     ; imul Rq(output_gp as u8), Rq(input_a_gp as u8), DWORD immediate as _
@@ -98,7 +99,7 @@ impl X86MogiJit {
                 // We need to copy the input to the output, since imul reg, reg uses the first argument as
                 // input and output argument.
                 self.emit_copy(output, input_a)?;
-                let output_gpr = self.load_slice_gpr(output);
+                let output_gpr = self.load_slice_gpr(output, SliceType::Output);
                 let temp_gpr = self.get_temp_gpr();
                 self.emit_load_const_to_gpr(temp_gpr, input_b)?;
 

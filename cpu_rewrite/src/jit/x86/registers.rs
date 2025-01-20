@@ -120,12 +120,6 @@ pub struct UsedRegisters {
     ymm: BitArray<[u16; 1]>,
 }
 
-enum RegisterInfo {
-    Reserved,
-    Free,
-    Occupied(JIRSlice),
-}
-
 #[derive(Debug)]
 pub struct GPRegisterAllocations([RegisterAllocation; 16]);
 
@@ -190,8 +184,10 @@ pub enum RegisterAllocation {
     Reserved,
     /// The slot is occupied by a temporary. These can simply be discarded if no longer needed
     OccupiedTemp,
-    /// The slot is occupied by a slice. The slice needs to be flushed to memory if the slot is cleared.
+    /// The slot is occupied by a slice. The slice was not modified and thus can be discarded.
     Occupied(JIRSlice),
+    /// The slot is occupied by a slice. The slice needs to be flushed to memory if the slot is cleared.
+    OccupiedDirty(JIRSlice),
 }
 
 /// This struct is used to keep track of which slice is loaded in what register.

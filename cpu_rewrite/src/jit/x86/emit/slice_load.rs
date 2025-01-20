@@ -4,6 +4,7 @@ use crate::jit::api::{
 };
 use crate::jit::x86::regalloc::{
     RegisterAllocationType,
+    SliceType,
     SpillBehavior,
 };
 use crate::jit::x86::registers::{
@@ -34,8 +35,9 @@ impl X86MogiJit {
     pub(super) fn load_slice_gpr(
         &mut self,
         slice: JIRSlice,
+        slice_type: SliceType,
     ) -> GPRegister {
-        self.load_slice_gpr_with_hint(None, slice)
+        self.load_slice_gpr_with_hint(None, slice, slice_type)
     }
 
     /// Works like [load_slice_gpr], but tries to load the [JIRSlice] to
@@ -45,9 +47,14 @@ impl X86MogiJit {
         &mut self,
         hint: Option<GPRegister>,
         slice: JIRSlice,
+        slice_type: SliceType,
     ) -> GPRegister {
+        let alloc_type = match slice_type {
+            SliceType::Input => RegisterAllocationType::Slice(slice),
+            SliceType::Output => RegisterAllocationType::OutSlice(slice),
+        };
         let register = self
-            .allocate_gp(hint, RegisterAllocationType::Slice(slice), SpillBehavior::Spill)
+            .allocate_gp(hint, alloc_type, SpillBehavior::Spill)
             .expect("Since we directed the allocation to spill if no space is available, this has to succeed");
         match register {
             RegisterLoadInfo::Unloaded(register) => {
@@ -118,13 +125,13 @@ impl X86MogiJit {
 
         if target == source {
             // If target==source we just need to make sure the target is loaded.
-            self.load_slice_gpr(target);
+            self.load_slice_gpr(target, SliceType::Output);
             return Ok(());
         }
 
         // Allocate and associate a GP register with the slice.
         // No load is needed, since we overwrite the data anyway for a copy.
-        let target_reg = self.get_slice_gp(target);
+        let target_reg = self.get_slice_gp(target, SliceType::Output);
         self.emit_load_value_to_gpr(target_reg, source)
     }
 
@@ -140,7 +147,8 @@ impl X86MogiJit {
         // TODO: Fix loading to existing gpr. When eax is specified, the value is first loaded to a different register.
         match source {
             JIRValue::Slice(slice) => {
-                self.emit_load_slice_to_gpr(target_gpr, slice)?;
+                // Values can only appear on the right hand side of an expression and hence must be inputs.
+                self.emit_load_slice_to_gpr(target_gpr, slice, SliceType::Input)?;
             }
             JIRValue::Const(value) => {
                 self.emit_load_const_to_gpr(target_gpr, value)?;
@@ -156,6 +164,7 @@ impl X86MogiJit {
         &mut self,
         target_reg: GPRegister,
         slice: JIRSlice,
+        slice_type: SliceType,
     ) -> JITResult {
         let size = slice.size();
         if size <= 8 {
@@ -163,7 +172,7 @@ impl X86MogiJit {
             //       We could omit a few mov instructions in some cases that way.
             //       I.e. if the slice is not loaded yet, use the provided hint, and otherwise
             //       we just return the gpr to which the slice was already loaded.
-            let reg = self.load_slice_gpr_with_hint(Some(target_reg), slice);
+            let reg = self.load_slice_gpr_with_hint(Some(target_reg), slice, slice_type);
             self.copy_gpr_to_gpr(target_reg, reg, size)?;
         } else {
             todo!("Support sizes > 8")
@@ -281,13 +290,13 @@ impl X86MogiJit {
         input_b: JIRSlice,
     ) -> Result<(GPRegister, GPRegister), JitError> {
         let (target_gp, operand_gp) = if output == input_a {
-            (self.load_slice_gpr(input_a), self.load_slice_gpr(input_b))
+            (self.load_slice_gpr(input_a, SliceType::Output), self.load_slice_gpr(input_b, SliceType::Input))
         } else if output == input_b {
-            (self.load_slice_gpr(input_b), self.load_slice_gpr(input_a))
+            (self.load_slice_gpr(input_b, SliceType::Output), self.load_slice_gpr(input_a, SliceType::Input))
         } else {
             // Copy one of the operands to the output and then do the and operation
             self.emit_copy(output, input_a)?;
-            (self.load_slice_gpr(output), self.load_slice_gpr(input_b))
+            (self.load_slice_gpr(output, SliceType::Output), self.load_slice_gpr(input_b, SliceType::Input))
         };
         Ok((target_gp, operand_gp))
     }

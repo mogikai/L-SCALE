@@ -441,7 +441,7 @@ impl MogiJit for X86MogiJit {
             JIROperation::FloatNotEquals => {}
             JIROperation::FloatNegate => {}
             JIROperation::BoolOr => {}
-            JIROperation::BoolAnd => {}
+            JIROperation::BoolAnd => return self.emit_boolean_and(output?, input_a?, input_b?),
             JIROperation::BoolXor => {}
             JIROperation::BoolNegate => {}
             JIROperation::CallDirect => {}
@@ -481,7 +481,7 @@ impl MogiJit for X86MogiJit {
         // Iterate over the loaded slices and flush them to memory
         // TODO: Do not insert flush instructions for dead registers.
         for (register, slice) in self.register_tracker.reset_gp().iter() {
-            if let RegisterAllocation::Occupied(slice) = slice {
+            if let RegisterAllocation::OccupiedDirty(slice) = slice {
                 self.emit_flush_register_to_slice(register, *slice)?;
             }
         }
