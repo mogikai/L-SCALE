@@ -140,7 +140,7 @@ where
                 // The block is already translated. Return
                 return Ok(());
             }
-            jit.new_block(EVAddr::null())?;
+            jit.new_block(EVAddr::null(), Some(EVAddr::null()))?;
             // TODO: Insert instructions into block.
             let r8d = self
                 .processor_specification
@@ -180,7 +180,6 @@ where
             for instruction in instructions {
                 jit.emit_jinst(&instruction)?;
             }
-            jit.emit_flush_slices()?;
             jit.finalize_block()?;
             jit.chain_blocks(EVAddr::null(), EVAddr::null())?;
             Ok(())

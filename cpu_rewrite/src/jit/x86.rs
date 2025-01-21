@@ -362,11 +362,12 @@ impl MogiJit for X86MogiJit {
     fn new_block(
         &mut self,
         evaddr: EVAddr,
+        successor: Option<EVAddr>,
     ) -> JITResult {
         if self.current_block.is_some() {
             todo!("Return error: 'Tried to create new block without finalizing the previous block'")
         }
-        self.code_buffer.create_block(evaddr)?;
+        self.code_buffer.create_block(evaddr, successor)?;
         self.current_block = Some(evaddr);
         // Fetch the offset of the epilogue block
         let epilogue_code = self
@@ -448,7 +449,7 @@ impl MogiJit for X86MogiJit {
             JIROperation::CallIndirect => {}
             JIROperation::ReturnDirect => {}
             JIROperation::ReturnIndirect => {}
-            JIROperation::GotoDirect => {}
+            JIROperation::GotoDirect => return self.emit_goto_direct(input_a?),
             JIROperation::GotoIndirect => {}
             JIROperation::GotoDirectIf => {}
             JIROperation::GotoIndirectIf => {}
@@ -567,18 +568,30 @@ impl MogiJit for X86MogiJit {
     }
 
     fn finalize_block(&mut self) -> JITResult {
-        let Some(mut block_addr) = self.current_block.take() else {
+        if self.current_block.is_none() {
             todo!("Return error: 'Cannot finalize because no block was started'")
         };
-        let block = self
-            .code_buffer
-            .block_mut(block_addr)
-            .expect("The block must exist");
-
-        assemble!(block.assembler();
-            ; jmp ->exit_success
-        );
-
+        self.emit_flush_slices()?;
+        match self.block_mut()?.successor() {
+            None => {
+                // No successor specified. This means the processor is halting or something similar.
+                // Jump to failure exit.
+                // TODO: Write exception to runtime context.
+                todo!();
+                assemble!(self.block_mut()?.assembler();
+                    ; jmp ->exit_failure
+                );
+            }
+            Some(next) => {
+                // Write the pc before we exit the block to make it visible to the jit.
+                // TODO: This could maybe be optimized such that we do not write the pc on chained blocks?
+                self.emit_write_pc(u64::from(next).into())?;
+                assemble!(self.block_mut()?.assembler();
+                    ; jmp ->exit_success
+                );
+            }
+        }
+        let block_addr = self.current_block.take().expect("The block must exist");
         self.code_buffer.write_block(block_addr)?;
         Ok(())
     }
@@ -609,7 +622,17 @@ impl MogiJit for X86MogiJit {
         &self,
         context: &Self::RuntimeContext,
     ) -> Result<EVAddr, JitError> {
-        Ok(EVAddr::null())
+        let pc = EVAddr::from(u64::from_le_bytes(
+            context
+                .slice(
+                    self.processor_specification
+                        .borrow()
+                        .program_counter_slice(),
+                )?
+                .try_into()
+                .unwrap(),
+        ));
+        Ok(pc)
     }
 
     fn varnode<'b>(

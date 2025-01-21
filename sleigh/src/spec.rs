@@ -111,6 +111,16 @@ pub struct ProcessorSpecification {
 }
 
 impl ProcessorSpecification {
+    /// Gets the slice associated with the program counter of the cpu.
+    pub fn program_counter_slice(&self) -> JIRSlice {
+        // TODO: Read this from somewhere instead of hardcoding it. Currently x64 specific
+        self.varnode_slice_by_string("RIP").unwrap()
+    }
+
+    pub fn default_space(&self) -> SpaceId {
+        self.default_space
+    }
+
     /// Lookup a varnode by its string identifier.
     /// This lookup is expensive. Consider resolving
     /// to an id first and using the id in subsequent

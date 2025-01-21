@@ -1,6 +1,7 @@
 //! This module contains all the functions that are used to emit code for [JIRInstruction]s
 
 mod arithmetic;
+mod flow;
 mod host_call;
 mod logic;
 mod mmu;

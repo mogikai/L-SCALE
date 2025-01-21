@@ -113,6 +113,7 @@ pub trait MogiJit {
     fn new_block(
         &mut self,
         evaddr: EVAddr,
+        successor: Option<EVAddr>,
     ) -> JITResult;
 
     /// Emit jited code for the provided [JIRInstruction]. The JIT compiler will allocate

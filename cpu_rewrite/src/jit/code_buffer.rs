@@ -78,6 +78,8 @@ pub struct CompiledBasicBlock<R: Relocation> {
     /// TODO: Check performance impact and maybe bake the arguments into the generated code?
     custom_op_args: Vec<Box<CustomOpArgs>>,
     assembler: MogiAssembler<R>,
+    /// The next block that needs to be executed when following the normal execution path.
+    successor: Option<EVAddr>,
 }
 
 // TODO: In order to more easily create the basic blocks, it might make sense to
@@ -88,6 +90,10 @@ impl<R: Relocation + Clone> CompiledBasicBlock<R> {
     /// Get the pointer to the start of executable code for this target block.
     pub fn ptr(&self) -> Option<NonNull<u8>> {
         self.code.map(|c| c.ptr)
+    }
+
+    pub fn successor(&self) -> Option<EVAddr> {
+        self.successor
     }
 
     pub fn assembler(&mut self) -> &mut MogiAssembler<R> {
@@ -110,6 +116,13 @@ impl<R: Relocation + Clone> CompiledBasicBlock<R> {
         target: NonNull<u8>,
     ) {
         unsafe { self.assembler.set_global_label("exit_success", target) }
+    }
+
+    pub unsafe fn set_exit_alternate(
+        &mut self,
+        target: NonNull<u8>,
+    ) {
+        unsafe { self.assembler.set_global_label("exit_alternate", target) }
     }
 
     /// Set the target block for the code to execute when the jit runtime encounters an error.
@@ -189,11 +202,13 @@ impl<R: Relocation + Clone> CodeBuffer<R> {
     pub fn create_block(
         &mut self,
         start: EVAddr,
+        successor: Option<EVAddr>,
     ) -> Result<(), CodeBufferError> {
         self.blocks.insert(start, CompiledBasicBlock {
             code: None,
             custom_op_args: vec![],
             assembler: MogiAssembler::new(),
+            successor,
         });
         Ok(())
     }
@@ -253,6 +268,7 @@ impl<R: Relocation + Clone> CodeBuffer<R> {
             code: Some(code),
             custom_op_args: Vec::new(),
             assembler: MogiAssembler::new(),
+            successor: None,
         });
         self.occupied += size;
         Ok(AnonymousBlockId(self.anonymous_blocks.len() - 1))

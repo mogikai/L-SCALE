@@ -18,6 +18,7 @@ use mogi_utilities::index_map::MapKey;
 fn test_complex() {
     let (mut jit, spec, mut context) = setup(false);
     let reg_out = "EAX";
+    let reg_addr = "RDX";
     let reg_a = "EBX";
     let reg_b = "ECX";
     let a = 2348u32;
@@ -25,8 +26,10 @@ fn test_complex() {
     let result = get_reg_slice(&spec, reg_out);
     let slice_a = get_reg_slice(&spec, reg_a);
     let slice_b = get_reg_slice(&spec, reg_b);
+    let slice_addr = get_reg_slice(&spec, reg_addr);
     set_slice(&mut *context, slice_a, a);
     set_slice(&mut *context, slice_b, b);
+    set_slice(&mut *context, slice_addr, 0x1234u64);
 
     let id = CustomOpId::try_from_index(5).unwrap();
 
@@ -53,6 +56,7 @@ fn test_complex() {
         jinst!(result = (*id)(slice_a, slice_b)),
         jinst!(result = result / slice_b),
         jinst!(result = result + 342),
+        jinst!(goto slice_addr),
     ];
     exec_instructions(&mut jit, &mut context, &instructions);
     let actual: u32 = get_slice_value(context.as_ref(), &spec, result);
@@ -65,4 +69,6 @@ fn test_complex() {
     let result = result + 342;
     let expected = result;
     assert_eq!(actual, expected, "Got {:#x} but expected {:#x}. Operands: {:#x}, {:#x}", actual, expected, a, b);
+    let program_counter = jit.instruction_pointer(context.as_ref()).unwrap();
+    assert_eq!(u64::from(program_counter), 0x1234u64)
 }
