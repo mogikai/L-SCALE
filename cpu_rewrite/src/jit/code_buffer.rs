@@ -78,8 +78,6 @@ pub struct CompiledBasicBlock<R: Relocation> {
     /// TODO: Check performance impact and maybe bake the arguments into the generated code?
     custom_op_args: Vec<Box<CustomOpArgs>>,
     assembler: MogiAssembler<R>,
-    /// The assembly offset that points to the start of this block.
-    block_offset: AssemblyOffset,
 }
 
 // TODO: In order to more easily create the basic blocks, it might make sense to
@@ -94,10 +92,6 @@ impl<R: Relocation + Clone> CompiledBasicBlock<R> {
 
     pub fn assembler(&mut self) -> &mut MogiAssembler<R> {
         &mut self.assembler
-    }
-
-    pub fn block_offset(&self) -> AssemblyOffset {
-        self.block_offset
     }
 
     pub fn add_custom_op_args(
@@ -200,7 +194,6 @@ impl<R: Relocation + Clone> CodeBuffer<R> {
             code: None,
             custom_op_args: vec![],
             assembler: MogiAssembler::new(),
-            block_offset: AssemblyOffset(self.occupied),
         });
         Ok(())
     }
@@ -260,7 +253,6 @@ impl<R: Relocation + Clone> CodeBuffer<R> {
             code: Some(code),
             custom_op_args: Vec::new(),
             assembler: MogiAssembler::new(),
-            block_offset: AssemblyOffset(self.occupied),
         });
         self.occupied += size;
         Ok(AnonymousBlockId(self.anonymous_blocks.len() - 1))
@@ -278,12 +270,5 @@ impl<R: Relocation + Clone> CodeBuffer<R> {
         id: AnonymousBlockId,
     ) -> &mut CompiledBasicBlock<R> {
         &mut self.anonymous_blocks[id.0]
-    }
-
-    pub fn anonymous_block_offset(
-        &self,
-        id: AnonymousBlockId,
-    ) -> AssemblyOffset {
-        self.anonymous_blocks[id.0].block_offset()
     }
 }
