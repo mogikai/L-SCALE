@@ -1,6 +1,6 @@
 use crate::jit::x86::test::{
     setup,
-    test_multiple_instruction_generic,
+    test_multiple_binary_instruction_generic,
 };
 use mogi_sleigh::jinst;
 use std::ops::Not;
@@ -14,7 +14,7 @@ fn neg<T: Not<Output = T>>(
 #[test]
 fn test_negate_slice() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -30,7 +30,7 @@ fn test_negate_slice() {
 #[test]
 fn test_negate_const_byte() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -46,7 +46,7 @@ fn test_negate_const_byte() {
 #[test]
 fn test_negate_qword() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -57,7 +57,7 @@ fn test_negate_qword() {
         "R8",
         "R9",
     );
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -68,7 +68,7 @@ fn test_negate_qword() {
         "R8",
         "R9",
     );
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -79,7 +79,7 @@ fn test_negate_qword() {
         "R8",
         "R9",
     );
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,

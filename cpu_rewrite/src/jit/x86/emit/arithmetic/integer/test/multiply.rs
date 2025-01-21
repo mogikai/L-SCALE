@@ -4,7 +4,7 @@ use crate::jit::x86::test::{
     get_slice_value_by_name,
     set_slice,
     setup,
-    test_multiple_instruction_generic,
+    test_multiple_binary_instruction_generic,
 };
 use mogi_sleigh::jinst;
 
@@ -41,7 +41,7 @@ fn test_multiply_slice_slice() {
 #[test]
 fn test_multiply_signed_slice_slice_multiple() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -52,7 +52,7 @@ fn test_multiply_signed_slice_slice_multiple() {
         "EBX",
         "ECX",
     );
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -63,7 +63,7 @@ fn test_multiply_signed_slice_slice_multiple() {
         "EBX",
         "ECX",
     );
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -96,7 +96,7 @@ fn test_multiply_const_const() {
 #[test]
 fn test_multiply_signed_const_const() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -112,7 +112,7 @@ fn test_multiply_signed_const_const() {
 #[test]
 fn test_multiply_slice_const_8() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -128,7 +128,7 @@ fn test_multiply_slice_const_8() {
 #[test]
 fn test_multiply_slice_const_16() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -144,7 +144,7 @@ fn test_multiply_slice_const_16() {
 #[test]
 fn test_multiply_slice_const_32() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -160,7 +160,7 @@ fn test_multiply_slice_const_32() {
 #[test]
 fn test_multiply_slice_const_64() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -176,7 +176,7 @@ fn test_multiply_slice_const_64() {
 #[test]
 fn test_multiply_slice_const_input_equal_output() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -187,7 +187,7 @@ fn test_multiply_slice_const_input_equal_output() {
         "RBX",
         "RCX",
     );
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,

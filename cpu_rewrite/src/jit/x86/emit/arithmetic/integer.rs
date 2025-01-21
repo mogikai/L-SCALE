@@ -1,7 +1,10 @@
 mod add;
 mod divide;
 mod multiply;
+mod negate;
 mod subtract;
+#[cfg(test)]
+mod test;
 
 use crate::jit::api::JITResult;
 use crate::jit::x86::X86MogiJit;

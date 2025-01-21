@@ -428,7 +428,7 @@ impl MogiJit for X86MogiJit {
             JIROperation::IntEquals => {}
             JIROperation::IntNotEquals => {}
             JIROperation::BitNegate => return self.emit_bitwise_negate(output?, input_a?),
-            JIROperation::IntNegate => {}
+            JIROperation::IntNegate => return self.emit_negate(output?, input_a?),
             JIROperation::FloatDiv => {}
             JIROperation::FloatMul => {}
             JIROperation::FloatAdd => {}

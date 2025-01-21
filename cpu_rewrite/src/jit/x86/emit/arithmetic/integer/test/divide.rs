@@ -1,13 +1,13 @@
 use crate::jit::x86::test::{
     setup,
-    test_multiple_instruction_generic,
+    test_multiple_binary_instruction_generic,
 };
 use mogi_sleigh::jinst;
 
 #[test]
 fn test_divide_const_const_8() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -25,7 +25,7 @@ fn test_divide_const_const_8() {
 #[test]
 fn test_divide_const_const_16() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -43,7 +43,7 @@ fn test_divide_const_const_16() {
 #[test]
 fn test_divide_const_const_32() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -61,7 +61,7 @@ fn test_divide_const_const_32() {
 #[test]
 fn test_divide_const_const_64() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -79,7 +79,7 @@ fn test_divide_const_const_64() {
 #[test]
 fn test_divide_slice_slice_8() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -97,7 +97,7 @@ fn test_divide_slice_slice_8() {
 #[test]
 fn test_divide_slice_slice_16() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -115,7 +115,7 @@ fn test_divide_slice_slice_16() {
 #[test]
 fn test_divide_slice_slice_32() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -133,7 +133,7 @@ fn test_divide_slice_slice_32() {
 #[test]
 fn test_divide_slice_slice_64() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -151,7 +151,7 @@ fn test_divide_slice_slice_64() {
 #[test]
 fn test_divide_slice_const_8() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -169,7 +169,7 @@ fn test_divide_slice_const_8() {
 #[test]
 fn test_divide_slice_const_16() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -187,7 +187,7 @@ fn test_divide_slice_const_16() {
 #[test]
 fn test_divide_slice_const_32() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -205,7 +205,7 @@ fn test_divide_slice_const_32() {
 #[test]
 fn test_divide_slice_const_64() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -223,7 +223,7 @@ fn test_divide_slice_const_64() {
 #[test]
 fn test_divide_const_slice_8() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -241,7 +241,7 @@ fn test_divide_const_slice_8() {
 #[test]
 fn test_divide_const_slice_16() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -259,7 +259,7 @@ fn test_divide_const_slice_16() {
 #[test]
 fn test_divide_const_slice_32() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -277,7 +277,7 @@ fn test_divide_const_slice_32() {
 #[test]
 fn test_divide_const_slice_64() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -295,7 +295,7 @@ fn test_divide_const_slice_64() {
 #[test]
 fn test_divide_const_slice_64_input_equal_output() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -308,7 +308,7 @@ fn test_divide_const_slice_64_input_equal_output() {
         "RBX",
         "RCX",
     );
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -326,7 +326,7 @@ fn test_divide_const_slice_64_input_equal_output() {
 #[test]
 fn test_divide_signed_const_const_64() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
@@ -344,7 +344,7 @@ fn test_divide_signed_const_const_64() {
 #[test]
 fn test_divide_signed_slice_slice_64() {
     let (mut jit, processor_spec, mut context) = setup(false);
-    test_multiple_instruction_generic(
+    test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,
         &mut context,
