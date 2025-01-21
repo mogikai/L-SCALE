@@ -1,5 +1,4 @@
 mod add;
-mod and;
 mod bitand;
 mod bitor;
 mod bitxor;
@@ -26,7 +25,6 @@ use num_traits::{
     ToBytes,
 };
 use std::cell::RefCell;
-use std::ffi::c_void;
 use std::fmt::{
     Debug,
     LowerHex,
@@ -34,7 +32,7 @@ use std::fmt::{
 use std::path::PathBuf;
 use std::rc::Rc;
 
-fn setup(
+pub(super) fn setup(
     debug: bool
 ) -> (X86MogiJit, Rc<RefCell<ProcessorSpecification>>, Box<<X86MogiJit as MogiJit>::RuntimeContext>) {
     let mut spec_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -51,7 +49,7 @@ fn setup(
     (jit, specification, context)
 }
 
-fn set_slice<T: JITTaskRuntimeContext, V: ToBytes>(
+pub(super) fn set_slice<T: JITTaskRuntimeContext, V: ToBytes>(
     context: &mut T,
     slice: JIRSlice,
     value: V,
@@ -62,7 +60,7 @@ fn set_slice<T: JITTaskRuntimeContext, V: ToBytes>(
         .copy_from_slice(value.to_le_bytes().as_ref());
 }
 
-fn get_slice_value_by_name<T: MogiJit, V: FromBytes>(
+pub(super) fn get_slice_value_by_name<T: MogiJit, V: FromBytes>(
     jit: &T,
     context: &T::RuntimeContext,
     processor_spec: &Rc<RefCell<ProcessorSpecification>>,
@@ -78,7 +76,7 @@ where
     FromBytes::from_le_bytes(&data.try_into().unwrap())
 }
 
-fn get_slice_value<T: JITTaskRuntimeContext, V: FromBytes>(
+pub(super) fn get_slice_value<T: JITTaskRuntimeContext, V: FromBytes>(
     context: &T,
     processor_spec: &Rc<RefCell<ProcessorSpecification>>,
     slice: JIRSlice,
@@ -92,7 +90,7 @@ where
     FromBytes::from_le_bytes(&data.try_into().unwrap())
 }
 
-fn get_reg_slice(
+pub(super) fn get_reg_slice(
     processor_spec: &Rc<RefCell<ProcessorSpecification>>,
     name: &str,
 ) -> JIRSlice {
@@ -102,7 +100,7 @@ fn get_reg_slice(
         .unwrap()
 }
 
-fn exec_instructions<T: MogiJit>(
+pub(super) fn exec_instructions<T: MogiJit>(
     jit: &mut T,
     context: &mut T::RuntimeContext,
     instructions: &[JIRInstruction],
@@ -118,7 +116,7 @@ fn exec_instructions<T: MogiJit>(
         .unwrap();
 }
 
-fn test_instruction_generic<T, U>(
+pub(super) fn test_instruction_generic<T, U>(
     processor_spec: &Rc<RefCell<ProcessorSpecification>>,
     jit: &mut T,
     context: &mut T::RuntimeContext,
@@ -165,7 +163,7 @@ fn test_instruction_generic<T, U>(
 }
 
 /// Test all combinations of values when iterating over the type, using the provided step size.
-fn test_multiple_instruction_generic<T, U, B, V>(
+pub(super) fn test_multiple_instruction_generic<T, U, B, V>(
     processor_spec: &Rc<RefCell<ProcessorSpecification>>,
     jit: &mut T,
     context: &mut T::RuntimeContext,

@@ -5,6 +5,7 @@ use crate::jit::x86::{
     assemble,
 };
 use mogi_sleigh::spec::jir::values::{
+    JIRConst,
     JIRSlice,
     JIRValue,
 };
@@ -55,5 +56,43 @@ impl X86MogiJit {
         }
         self.emit_normalize_boolean_inputs(input_a, input_b)?;
         self.emit_bitwise_and(output, input_a, input_b)
+    }
+
+    pub fn emit_boolean_or(
+        &mut self,
+        output: JIRSlice,
+        input_a: JIRValue,
+        input_b: JIRValue,
+    ) -> JITResult {
+        if output.size() != 1 || output.size() != input_a.size() || input_a.size() != input_b.size() {
+            todo!("Invalid boolean size")
+        }
+        self.emit_normalize_boolean_inputs(input_a, input_b)?;
+        self.emit_bitwise_or(output, input_a, input_b)
+    }
+
+    pub fn emit_boolean_xor(
+        &mut self,
+        output: JIRSlice,
+        input_a: JIRValue,
+        input_b: JIRValue,
+    ) -> JITResult {
+        if output.size() != 1 || output.size() != input_a.size() || input_a.size() != input_b.size() {
+            todo!("Invalid boolean size")
+        }
+        self.emit_normalize_boolean_inputs(input_a, input_b)?;
+        self.emit_bitwise_xor(output, input_a, input_b)
+    }
+
+    pub fn emit_boolean_negate(
+        &mut self,
+        output: JIRSlice,
+        input: JIRValue,
+    ) -> JITResult {
+        if output.size() != 1 || output.size() != input.size() {
+            todo!("Invalid boolean size")
+        }
+        self.emit_normalize_boolean_input(input)?;
+        self.emit_bitwise_xor(output, input, JIRConst::new(1, 1).into())
     }
 }

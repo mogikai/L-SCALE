@@ -23,6 +23,7 @@ impl X86MogiJit {
             output,
             input_a,
             input_b,
+            |a, b| JIRConst::new(a.value() & b.value(), a.size()),
             |jit, output_gp, immediate, size| {
                 // Choose the smallest encoding that still fits
                 match size {
@@ -69,6 +70,7 @@ impl X86MogiJit {
             output,
             input_a,
             input_b,
+            |a, b| JIRConst::new(a.value() | b.value(), a.size()),
             |jit, output_gp, immediate, size| {
                 // Choose the smallest encoding that still fits
                 match size {
@@ -115,6 +117,7 @@ impl X86MogiJit {
             output,
             input_a,
             input_b,
+            |a, b| JIRConst::new(a.value() ^ b.value(), a.size()),
             |jit, output_gp, immediate, size| {
                 // Choose the smallest encoding that still fits
                 match size {
@@ -156,6 +159,7 @@ impl X86MogiJit {
         output: JIRSlice,
         input_a: JIRValue,
         input_b: JIRValue,
+        op_const: fn(JIRConst, JIRConst) -> JIRConst,
         op_gp_imm: fn(&mut X86MogiJit, GPRegister, u128, JIRSize) -> JITResult,
         op_gp_gp: fn(&mut X86MogiJit, GPRegister, GPRegister, JIRSize) -> JITResult,
     ) -> JITResult {
@@ -167,7 +171,7 @@ impl X86MogiJit {
         match (input_a, input_b) {
             (JIRValue::Const(input_a), JIRValue::Const(input_b)) => {
                 // In the const case we can simply calculate the value ahead of time and move it into the output.
-                self.emit_copy(output, JIRConst::new(input_a.value() | input_b.value(), input_a.size()))?
+                self.emit_copy(output, op_const(input_a, input_b))?
             }
             (JIRValue::Slice(input_a), JIRValue::Const(input_b))
             | (JIRValue::Const(input_b), JIRValue::Slice(input_a)) => {
@@ -203,6 +207,32 @@ impl X86MogiJit {
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
                 let (target_gp, operand_gp) = self.load_commutative_inputs(output, input_a, input_b)?;
                 op_gp_gp(self, target_gp, operand_gp, input_a.size())?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn emit_bitwise_negate(
+        &mut self,
+        output: JIRSlice,
+        input_a: JIRValue,
+    ) -> JITResult {
+        assert_eq!(output.size(), input_a.size());
+        // TODO: It might make sense to directly put the memory reference into the instruction, instead of loading
+        //       to a register first. However, this requires that we know if the value is used in subsequent instructions
+        //       because if it is used, we have to load it in a register. The exception to this is for cases like
+        //       out = out OP b, where out does not have to be loaded first and we can just use the mem reference directly.
+        match input_a {
+            JIRValue::Const(input_a) => {
+                // In the const case we can simply calculate the value ahead of time and move it into the output.
+                self.emit_copy(output, JIRConst::new(!input_a.value(), input_a.size()))?;
+            }
+            JIRValue::Slice(input_a) => {
+                self.emit_copy(output, input_a)?;
+                let output_gpr = self.load_slice_gpr(output, SliceType::Output);
+                assemble!(self.block_mut()?.assembler();
+                    ; not Rq(output_gpr as u8)
+                );
             }
         }
         Ok(())

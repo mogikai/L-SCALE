@@ -427,7 +427,7 @@ impl MogiJit for X86MogiJit {
             JIROperation::IntGreaterEqual => {}
             JIROperation::IntEquals => {}
             JIROperation::IntNotEquals => {}
-            JIROperation::BitNegate => {}
+            JIROperation::BitNegate => return self.emit_bitwise_negate(output?, input_a?),
             JIROperation::IntNegate => {}
             JIROperation::FloatDiv => {}
             JIROperation::FloatMul => {}
@@ -440,10 +440,10 @@ impl MogiJit for X86MogiJit {
             JIROperation::FloatEquals => {}
             JIROperation::FloatNotEquals => {}
             JIROperation::FloatNegate => {}
-            JIROperation::BoolOr => {}
+            JIROperation::BoolOr => return self.emit_boolean_or(output?, input_a?, input_b?),
             JIROperation::BoolAnd => return self.emit_boolean_and(output?, input_a?, input_b?),
-            JIROperation::BoolXor => {}
-            JIROperation::BoolNegate => {}
+            JIROperation::BoolXor => return self.emit_boolean_xor(output?, input_a?, input_b?),
+            JIROperation::BoolNegate => return self.emit_boolean_negate(output?, input_a?),
             JIROperation::CallDirect => {}
             JIROperation::CallIndirect => {}
             JIROperation::ReturnDirect => {}
