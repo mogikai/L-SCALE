@@ -1,10 +1,15 @@
 use self::matcher::Matcher;
-use crate::compiler::ast::constructor::disassembly_section::{SASTDisassemblySection, SASTPatternExpression};
 use crate::compiler::ast::Spanned;
+use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::constructor::SASTConstructor;
+use crate::compiler::ast::constructor::disassembly_section::{
+    SASTDisassemblySection,
+    SASTPatternExpression,
+};
 use crate::compiler::build::constructor::matcher::MatcherReference;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::SleighCompilerError;
+use crate::compiler::lexer::InputSpan;
 use crate::compiler::{
     CompilerContext,
     SleighCompiler,
@@ -14,10 +19,16 @@ use crate::spec::builder::{
     MOIRSymbolId,
     StringId,
 };
-use crate::spec::moir::actions::{MOIRAction, MOIRActionLocal, MOIRActionTarget, MOIRPatternExpression};
+use crate::spec::moir::actions::{
+    MOIRAction,
+    MOIRActionTarget,
+    MOIRPatternExpression,
+};
+use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::MOIRConstructor;
 use crate::spec::moir::field::MOIRFieldParent;
 use crate::spec::moir::scope::{
+    MOIRLocalId,
     MOIRMaybeSize,
     MOIRScope,
 };
@@ -27,10 +38,12 @@ use crate::spec::moir::varnode::{
     MOIRSlice,
 };
 use itertools::Itertools;
+use mogi_utilities::addresses::EVAddr;
 use std::collections::HashSet;
 use tracing::{
     debug,
     trace,
+    warn,
 };
 
 pub(crate) mod matcher;
@@ -59,8 +72,11 @@ impl SleighCompiler {
             .spec_builder
             .get_table_id_or_create(constructor.table.transpose())?;
 
-
-        let mut matchers = self.create_matchers(&constructor.bit_pattern_section.constraint, table_id)?;
+        if table_name == "Mem" {
+            eprintln!("hello world");
+        }
+        let constructor_id = self.spec_builder.next_constructor_id();
+        let matchers = self.create_matchers(&constructor.bit_pattern_section.constraint, table_id, constructor_id)?;
 
         let mut references = HashSet::new();
         matchers.iter().for_each(|matcher| {
@@ -69,8 +85,8 @@ impl SleighCompiler {
         let references = references.into_iter().collect_vec();
 
         let display_section = constructor.display_section.into_value();
-        let scope = self.pc_create_scope(display_section.identifiers, &references)?;
-        let actions = self.pc_process_actions(constructor.disassembly_section)?;
+        let mut scope = self.pc_create_scope(display_section.identifiers, &references)?;
+        let actions = self.pc_process_actions(&mut scope, constructor.disassembly_section)?;
         let mut moir_constructor = MOIRConstructor {
             local_scope: scope,
             instructions: vec![],
@@ -97,24 +113,16 @@ impl SleighCompiler {
         //     .realize_temporaries(&mut self.spec_builder)?;
         trace_build!("{}", moir_constructor.mcode_debug_string(self.spec_builder.interner()));
 
-        let display = moir_constructor.display.clone();
-
         // Define the constructor and insert it into the corresponding table.
-        let id = self.spec_builder.define_constructor(moir_constructor)?;
-
-        // insert the constructor id into the corresponding matchers
-        matchers.iter_mut().for_each(|matcher| {
-            matcher.constructor = Some(id);
-            matcher.display = Some(display.clone()); // TODO remove
-        });
+        self.spec_builder.define_constructor(moir_constructor)?;
 
         self.register_matchers(constructor.table.clone().transpose(), matchers)?;
 
         let table = self
             .spec_builder
             .create_or_modify_table(constructor.table.transpose())?;
-        table.constructors.push(id);
-        trace_build!("Constructor with id {:?} added to table {:?}", id, table_name);
+        table.constructors.push(constructor_id);
+        trace_build!("Constructor with id {:?} added to table {:?}", constructor_id, table_name);
 
         // Catch any errors with exports
         let table = self
@@ -126,63 +134,172 @@ impl SleighCompiler {
         Ok(())
     }
 
+    fn pc_action_target(
+        &self,
+        scope: &mut MOIRScope,
+        sast_action_lhs: Spanned<SASTIdent>,
+    ) -> SleighCompilerResult<MOIRActionTarget> {
+        let local_id = self.pc_resolve_local(scope, sast_action_lhs)?;
+
+        // local can be a context field or a temporary which we need to check for
+        let slice = scope.resolve_local(local_id)?;
+        if let MOIRReference::Field(field_id) = slice.reference {
+            let field = self
+                .spec_builder
+                .field_by_symbol_id(field_id)
+                .ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing field") })?;
+            if matches!(field.parent, MOIRFieldParent::Context(_)) {
+                // context field
+                return Ok(MOIRActionTarget::ContextField(field_id));
+            }
+        }
+
+        // not a context field
+        Ok(MOIRActionTarget::Local(local_id))
+    }
+
+    /// Convert a [SASTPatternExpression] to a [MOIRPatternExpression] while resolving referenced
+    /// symbols to [MOIRActionLocal]s.
+    fn pc_convert_expression(
+        &self,
+        scope: &mut MOIRScope,
+        sast_expr: Spanned<SASTPatternExpression>,
+    ) -> SleighCompilerResult<MOIRPatternExpression> {
+        let (sast_expr, span) = sast_expr.into_tuple();
+        Ok(match sast_expr {
+            SASTPatternExpression::Add(lhs, rhs) => MOIRPatternExpression::Add(
+                Box::new(self.pc_convert_expression(scope, *lhs)?),
+                Box::new(self.pc_convert_expression(scope, *rhs)?),
+            ),
+            SASTPatternExpression::Sub(lhs, rhs) => MOIRPatternExpression::Sub(
+                Box::new(self.pc_convert_expression(scope, *lhs)?),
+                Box::new(self.pc_convert_expression(scope, *rhs)?),
+            ),
+            SASTPatternExpression::Mul(lhs, rhs) => MOIRPatternExpression::Mul(
+                Box::new(self.pc_convert_expression(scope, *lhs)?),
+                Box::new(self.pc_convert_expression(scope, *rhs)?),
+            ),
+            SASTPatternExpression::Div(lhs, rhs) => MOIRPatternExpression::Div(
+                Box::new(self.pc_convert_expression(scope, *lhs)?),
+                Box::new(self.pc_convert_expression(scope, *rhs)?),
+            ),
+            SASTPatternExpression::Shl(lhs, rhs) => MOIRPatternExpression::Shl(
+                Box::new(self.pc_convert_expression(scope, *lhs)?),
+                Box::new(self.pc_convert_expression(scope, *rhs)?),
+            ),
+            SASTPatternExpression::Shr(lhs, rhs) => MOIRPatternExpression::Shr(
+                Box::new(self.pc_convert_expression(scope, *lhs)?),
+                Box::new(self.pc_convert_expression(scope, *rhs)?),
+            ),
+            SASTPatternExpression::And(lhs, rhs) => MOIRPatternExpression::And(
+                Box::new(self.pc_convert_expression(scope, *lhs)?),
+                Box::new(self.pc_convert_expression(scope, *rhs)?),
+            ),
+            SASTPatternExpression::Or(lhs, rhs) => MOIRPatternExpression::Or(
+                Box::new(self.pc_convert_expression(scope, *lhs)?),
+                Box::new(self.pc_convert_expression(scope, *rhs)?),
+            ),
+            SASTPatternExpression::Xor(lhs, rhs) => MOIRPatternExpression::Xor(
+                Box::new(self.pc_convert_expression(scope, *lhs)?),
+                Box::new(self.pc_convert_expression(scope, *rhs)?),
+            ),
+            SASTPatternExpression::Not(expr) => {
+                MOIRPatternExpression::Not(Box::new(self.pc_convert_expression(scope, *expr)?))
+            }
+            SASTPatternExpression::Symbol(ident) => {
+                // TODO correct span
+                MOIRPatternExpression::Local(self.pc_resolve_local(scope, Spanned::new(ident, InputSpan::default()))?)
+            }
+            SASTPatternExpression::Integer(value) => MOIRPatternExpression::Integer(value as u64),
+        })
+    }
+
+    /// When parsing the disassembly actions, not all identifiers must have
+    /// been previously stored as locals. There are two cases:
+    /// - ident appears in lhs or rhs as a symbol, more specifically a context field
+    /// - ident appears in lhs and is not a symbol
+    /// It is an error for ident to appear in rhs if it has not been previously
+    /// defined. It is also an error for previously defined symbols that are not
+    /// context fields to appear in lhs or rhs.
+    ///
+    /// This function will modify the scope appropriately and return the resolved local
+    /// id.
+    fn pc_resolve_local(
+        &self,
+        scope: &mut MOIRScope,
+        ident: Spanned<SASTIdent>,
+    ) -> SleighCompilerResult<MOIRLocalId> {
+        Ok(match scope.local_id_by_ident(ident.into_value().into()) {
+            Some(local_id) => {
+                // already defined => everything good, use as-is
+                local_id
+            }
+            None => {
+                // ident did not previously appear as local => check for the two cases defined above
+                match self.spec_builder.get_symbol_and_ident(&ident.transmute()) {
+                    Some((symbol_id, _)) => {
+                        // previously defined as symbol => check if it's a context field
+                        // and if so, store as local
+                        match symbol_id {
+                            MOIRSymbolId::Field(field_id) => {
+                                let field = self.spec_builder.field_by_symbol_id(*field_id).ok_or_else(
+                                    || -> SleighCompilerError { todo!("Generate error report for missing field") },
+                                )?;
+                                match field.parent {
+                                    MOIRFieldParent::Token(_) => {
+                                        // not a context field => error
+                                        todo!("Generate error report for token field in left-hand side of action");
+                                    }
+                                    MOIRFieldParent::Context(_) => {
+                                        let reference = MOIRReference::Field(*field_id);
+                                        let slice = MOIRSlice {
+                                            reference,
+                                            start: 0,
+                                            end: MOIRMaybeSize::Undetermined,
+                                        };
+
+                                        let id = scope.declare_local(ident.into_value().into(), slice);
+                                        id
+                                    }
+                                }
+                            }
+                            _ => {
+                                // not a field => error
+                                todo!("Generate error report for non-context field symbol in left-hand side of action")
+                            }
+                        }
+                    }
+                    None => {
+                        // not previously defined as symbol => allocate new const
+                        scope.allocate_named_const(ident.transmute(), MOIRMaybeSize::Undetermined)?
+                    }
+                }
+            }
+        })
+    }
+
     /// Process the disassembly actions section into a list of [MOIRAction].
     fn pc_process_actions(
         &self,
-        actions_section: Spanned<SASTDisassemblySection>
+        scope: &mut MOIRScope,
+        actions_section: Spanned<SASTDisassemblySection>,
     ) -> SleighCompilerResult<Vec<MOIRAction>> {
         if let Some(sast_actions) = actions_section.into_value().actions {
-            let moir_actions = sast_actions.into_iter().filter_map(|sast_action| {
-                // TODO replace Option by Result and handle tepmoraries
-                let field_id = match self.spec_builder.field_id_by_ident(&sast_action.lhs.transmute()) {
-                    Ok(field_id) => field_id,
-                    Err(_) => return None,
-                };
+            let moir_actions = sast_actions
+                .into_iter()
+                .map(|sast_action| {
+                    let target = self.pc_action_target(scope, sast_action.lhs)?;
 
-                let field = self.spec_builder.field_by_symbol_id(field_id).ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing field") }).ok()?;
-                if !matches!(field.parent, MOIRFieldParent::Context(_)) {
-                    todo!("Generate error report for non-context field as lhs in action");
-                }
-
-                // TODO do this without cloning since we have ownership
-                let expression = self.pc_convert_expression(sast_action.rhs.clone()).ok()?;
-                Some(MOIRAction::new(MOIRActionTarget::ContextField(field_id), expression))
-            }).collect::<Vec<_>>();
+                    // TODO do this without cloning since we have ownership
+                    let expression = self.pc_convert_expression(scope, sast_action.rhs.clone())?;
+                    Ok(MOIRAction::new(target, expression))
+                })
+                .collect::<SleighCompilerResult<Vec<_>>>()?;
 
             Ok(moir_actions)
         } else {
             Ok(vec![])
         }
-    }
-
-    /// Convert a [SASTPatternExpression] to a [MOIRPatternExpression] while resolving referenced
-    /// symbols to [MOIRActionLocal]s.
-    fn pc_convert_expression(&self, sast_expr: Spanned<SASTPatternExpression>) -> SleighCompilerResult<MOIRPatternExpression> {
-        let (sast_expr, span) = sast_expr.into_tuple();
-        Ok(match sast_expr {
-            SASTPatternExpression::Add(lhs, rhs) => MOIRPatternExpression::Add(Box::new(self.pc_convert_expression(*lhs)?), Box::new(self.pc_convert_expression(*rhs)?)),
-            SASTPatternExpression::Sub(lhs, rhs) => MOIRPatternExpression::Sub(Box::new(self.pc_convert_expression(*lhs)?), Box::new(self.pc_convert_expression(*rhs)?)),
-            SASTPatternExpression::Mul(lhs, rhs) => MOIRPatternExpression::Mul(Box::new(self.pc_convert_expression(*lhs)?), Box::new(self.pc_convert_expression(*rhs)?)),
-            SASTPatternExpression::Div(lhs, rhs) => MOIRPatternExpression::Div(Box::new(self.pc_convert_expression(*lhs)?), Box::new(self.pc_convert_expression(*rhs)?)),
-            SASTPatternExpression::Shl(lhs, rhs) => MOIRPatternExpression::Shl(Box::new(self.pc_convert_expression(*lhs)?), Box::new(self.pc_convert_expression(*rhs)?)),
-            SASTPatternExpression::Shr(lhs, rhs) => MOIRPatternExpression::Shr(Box::new(self.pc_convert_expression(*lhs)?), Box::new(self.pc_convert_expression(*rhs)?)),
-            SASTPatternExpression::And(lhs, rhs) => MOIRPatternExpression::And(Box::new(self.pc_convert_expression(*lhs)?), Box::new(self.pc_convert_expression(*rhs)?)),
-            SASTPatternExpression::Or(lhs, rhs)  => MOIRPatternExpression::Or( Box::new(self.pc_convert_expression(*lhs)?), Box::new(self.pc_convert_expression(*rhs)?)),
-            SASTPatternExpression::Xor(lhs, rhs) => MOIRPatternExpression::Xor(Box::new(self.pc_convert_expression(*lhs)?), Box::new(self.pc_convert_expression(*rhs)?)),
-            SASTPatternExpression::Not(expr) => MOIRPatternExpression::Not(Box::new(self.pc_convert_expression(*expr)?)),
-            SASTPatternExpression::Symbol(ident) => {
-                // this must be a field or a temporary, but we deal only with fields for now
-                // TODO deal with temporaries
-                let field_id = match self.spec_builder.field_id_by_ident(&Spanned::new(ident.0, span)) {
-                    Ok(field) => field,
-                    // TODO handle temporaries
-                    Err(_) => return Ok(MOIRPatternExpression::Integer(0)),
-                };
-
-                MOIRPatternExpression::Local(MOIRActionLocal::Field(field_id))
-            },
-            SASTPatternExpression::Integer(value) => MOIRPatternExpression::Integer(u64::try_from(value).expect("Negative integer truncated in action")),
-        })
     }
 
     /// Validates the constructors in the table.
@@ -267,17 +384,19 @@ impl SleighCompiler {
         display_identifiers: Vec<Spanned<StringId>>,
         references: &[MatcherReference],
     ) -> Result<MOIRScope, SleighCompilerError> {
-        let mut scope = MOIRScope::default();
         // Declare the special identifiers that are filled with constants upon calling the constructor.
         // Their sizes are undetermined and inferred from context.
-        scope.declare_local(self.spec_builder.intern("inst_start"), MOIRSlice::inst_start());
-        scope.declare_local(self.spec_builder.intern("inst_next"), MOIRSlice::inst_next());
-        scope.declare_local(self.spec_builder.intern("inst_next2"), MOIRSlice::inst_next2());
+        let inst_start = self.spec_builder.intern("inst_start");
+        let inst_next = self.spec_builder.intern("inst_next");
+        let inst_next2 = self.spec_builder.intern("inst_next2");
+
+        // TODO where to get this from at this point?
+        let addr_bytes = EVAddr::<u8>::bits() / 8;
+        let mut scope = MOIRScope::new(inst_start, inst_next, inst_next2, addr_bytes.try_into().unwrap());
 
         self.resolve_references_to_local_scope(&mut scope, references)?;
         trace_build!("display_identifiers={:?}", display_identifiers);
         for ident in display_identifiers {
-
             // TODO: We probably need to figure out a better way to handle these locals that are constructed
             //       in the disassembly section.
             let local = scope.local(*ident.value());
@@ -285,7 +404,9 @@ impl SleighCompiler {
                 #[allow(unused_variables)]
                 let str = self.spec_builder.resolve_string_id(*ident.value());
                 trace_build!("Local scope is missing identifier {str}. Allocating it now.");
-                scope.allocate_named_temporary(ident.clone(), MOIRMaybeSize::Undetermined)?;
+
+                // display identifiers don't have a known size
+                scope.allocate_named_const(ident.clone(), MOIRMaybeSize::Undetermined)?;
             }
         }
         Ok(scope)

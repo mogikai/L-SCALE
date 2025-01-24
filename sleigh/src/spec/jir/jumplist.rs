@@ -10,10 +10,8 @@ use crate::compiler::error::SleighCompilerError;
 use crate::new_typed_index_table_id;
 use crate::spec::ProcessorSpecification;
 use crate::spec::jir::trace_jir;
-use crate::spec::moir::actions::{
-    MOIRActionLocal,
-    MOIRActionTarget,
-};
+use crate::spec::jir::values::JIRConst;
+use crate::spec::moir::actions::MOIRActionTarget;
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::{
     ConstructorId,
@@ -42,10 +40,11 @@ use super::values::JIRValue;
 /// the remaining sublists with their byte slices.
 #[derive(Debug)]
 struct LocalMatching<'a> {
-    pub(crate) sublists: Vec<&'a Vec<JumplistId>>,
-    pub(crate) bytes: Vec<&'a [u8]>,
-    pub(crate) constructor_id: ConstructorId,
-    pub(crate) extracted_fields: HashMap<FieldId, u64>,
+    sublists: Vec<&'a Vec<JumplistId>>,
+    bytes: Vec<&'a [u8]>,
+    constructor_id: ConstructorId,
+    table_id: TableId,
+    extracted_fields: HashMap<FieldId, u64>,
 }
 
 impl<'a> LocalMatching<'a> {
@@ -53,11 +52,13 @@ impl<'a> LocalMatching<'a> {
         sublists: Vec<&'a Vec<JumplistId>>,
         bytes: Vec<&'a [u8]>,
         constructor_id: ConstructorId,
+        table_id: TableId,
     ) -> Self {
         Self {
             sublists,
             bytes,
             constructor_id,
+            table_id,
             extracted_fields: HashMap::new(),
         }
     }
@@ -88,10 +89,6 @@ impl FieldExtractor {
         token_value: u64,
         fields: &mut HashMap<FieldId, u64>,
     ) {
-        if self.field_id == FieldId::from(127) {
-            trace_jir!("{}", token_value);
-            trace_jir!("{:?}", self.bits);
-        }
         let field_mut = fields.entry(self.field_id).or_default();
         *field_mut |= self.bits.extract(token_value);
     }
@@ -103,7 +100,7 @@ pub(crate) enum NextJumplistEntry {
     TrailingNext(JumplistId),
     // don't consume any bytes and continue with next
     TrailingSame(JumplistId),
-    Constructor(ConstructorId),
+    Constructor { cid: ConstructorId, tid: TableId },
 }
 
 #[derive(Debug, Clone)]
@@ -283,8 +280,9 @@ impl Jumplist {
 
                         jumplist.match_local(bytes, jumplist_cache, context_provider)?
                     }
-                    NextJumplistEntry::Constructor(cid) => {
-                        vec![LocalMatching::new(Vec::new(), Vec::new(), *cid)]
+                    NextJumplistEntry::Constructor { cid, tid } => {
+                        trace_jir!("Reached leaf; cid={cid:?}, tid={tid:?}");
+                        vec![LocalMatching::new(Vec::new(), Vec::new(), *cid, *tid)]
                     }
                 };
 
@@ -318,7 +316,7 @@ impl Jumplist {
         spec: &'a ProcessorSpecification,
         constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
         context_provider: &mut ContextProvider,
-    ) -> SleighCompilerResult<Option<JIRResolver>> {
+    ) -> SleighCompilerResult<Option<(TableId, JIRResolver<'a>)>> {
         // TODO handle end of byte stream
         // let (value, remaining_bytes) = self.decode_value(bytes, context)?.expect("Couldn't decode value");
 
@@ -329,42 +327,54 @@ impl Jumplist {
         // and descent into sublists
 
         'next_candidate: for local_matching in local_matchings {
-            trace_jir!("Extracted fields {:#?}", local_matching.extracted_fields);
-
-            let constructor = constructors
-                .get(local_matching.constructor_id)
-                .ok_or_else(|| -> SleighCompilerError {
-                    todo!("Generate error report for missing constructor");
-                })?;
+            let constructor =
+                constructors
+                    .get(local_matching.constructor_id)
+                    .ok_or_else(|| -> SleighCompilerError {
+                        todo!("Generate error report for missing constructor");
+                    })?;
 
             trace_jir!("Got constructor {}", constructor.display);
-            trace_jir!("local_matching.extracted_fields = {:#?}", local_matching.extracted_fields);
 
-            let mut values = HashMap::with_capacity(context_provider.len() + local_matching.extracted_fields.len());
-            values.extend(
-                local_matching
-                .extracted_fields
-                .into_iter()
-                .map(|(field_id, field_value)| (MOIRActionLocal::Field(field_id), field_value)),
+            // the resolver with all local values is needed for the actions so we
+            // instantiate it here
+            let mut resolver = JIRResolver::new(
+                spec,
+                constructor,
+                EVAddr::from(0xDEADBEEFu64),
+                EVAddr::from(0xDEADBEEFu64),
+                Some(EVAddr::from(0xDEADBEEFu64)),
             );
 
-            trace_jir!("constructor.actions = {:#?}", constructor.actions);
+            for (field_id, field_value) in local_matching.extracted_fields.into_iter() {
+                trace_jir!("Defining field value {field_id:?} := {field_value:?}");
+                resolver.define_field(field_id, field_value)?;
+            }
+
+            for (context_field_id, context_field_value) in context_provider.values() {
+                if resolver.has_field(context_field_id) {
+                    trace_jir!("Defining context field value {context_field_id:?} := {context_field_value:?}");
+                    resolver.define_field(context_field_id, context_field_value)?;
+                }
+            }
 
             context_provider.push_state();
 
             for action in &constructor.actions {
-                let value = action.evaluate(&values)?;
+                let value = action.evaluate(&resolver)?;
                 match action.lhs {
                     MOIRActionTarget::ContextField(field_id) => {
-                        trace_jir!("Action is setting {}={}", field_id, value);
+                        trace_jir!("Action is setting field {} := {}", field_id, value);
                         context_provider.set_field_value(field_id, value)?;
+                        resolver.define_field(field_id, value)?;
                     }
                     // TODO implement temporaries
-                    MOIRActionTarget::Temporary(temp_id) => todo!("Handle temporary values"),
+                    MOIRActionTarget::Local(local_id) => {
+                        trace_jir!("Action is setting local {} := {}", local_id, value);
+                        resolver.define_id(local_id, JIRValue::Const(JIRConst::new(value.into(), 0)));
+                    }
                 }
             }
-
-            trace_jir!("context_provider.context_values = {:#?}", context_provider.context_values);
 
             // TODO what about the bytes consumed by the sublists? this doesn't really work since we
             // can't delay that to the end since the amount of bytes consumed affects later matching
@@ -373,49 +383,52 @@ impl Jumplist {
             let mut sublist_resolvers = Vec::new();
             for (sublist_ids, sublist_bytes) in local_matching
                 .sublists
-                    .into_iter()
-                    .zip(local_matching.bytes.into_iter())
-                    {
-                        for sublist_id in sublist_ids {
-                            let sublist = jumplist_cache
-                                .get(*sublist_id)
-                                .ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing jumplist") })?;
-                            trace_jir!(
-                                "Descending into sublist {:#?} with bytes={:?} (from {})",
-                                sublist_id,
-                                sublist_bytes,
-                                constructor.display
-                            );
-                            trace_jir!("sublist = {sublist:#?}");
-                            let resolver =
-                                match sublist.r#match(sublist_bytes, jumplist_cache, spec, constructors, context_provider)? {
-                                    Some(resolver) => resolver,
-                                    None => {
-                                        // no match => try next
-                                        context_provider.pop_state();
-                                        continue 'next_candidate;
-                                    }
-                                };
-                            sublist_resolvers.push(resolver);
+                .into_iter()
+                .zip(local_matching.bytes.into_iter())
+            {
+                for sublist_id in sublist_ids {
+                    let sublist = jumplist_cache
+                        .get(*sublist_id)
+                        .ok_or_else(|| -> SleighCompilerError {
+                            todo!("Generate error report for missing jumplist")
+                        })?;
+                    trace_jir!(
+                        "Descending into sublist {:#?} with bytes={:?} (from {})",
+                        sublist_id,
+                        sublist_bytes,
+                        constructor.display
+                    );
+                    let (table_id, resolver) =
+                        match sublist.r#match(sublist_bytes, jumplist_cache, spec, constructors, context_provider)? {
+                            Some(resolver) => resolver,
+                            None => {
+                                // no match => try next
+                                trace_jir!("No match, trying next (if existing)");
+                                context_provider.pop_state()?;
+                                continue 'next_candidate;
+                            }
+                        };
+                    sublist_resolvers.push((table_id, resolver));
 
-                            trace_jir!("Sublist {sublist_id} matches");
-                        }
-                    }
+                    trace_jir!("Sublist {sublist_id} matches");
+                }
+            }
 
             trace_jir!("Got a complete match");
 
             // everything matched
 
             // TODO handle context flow
-            context_provider.pop_state();
+            context_provider.pop_state()?;
 
-            let mut resolver = JIRResolver::new(spec, constructor, EVAddr::from(0u64), EVAddr::from(0u64), None);
-            for sublist_resolver in sublist_resolvers {
+            // finish resolver
+            for (table_id, sublist_resolver) in sublist_resolvers {
                 // TODO somehow get the table id to here
-                resolver.define_subtable_resolver(TableId::from(0), sublist_resolver);
+                trace_jir!("Adding subtable resolver {table_id:?}");
+                resolver.define_subtable_resolver(table_id, sublist_resolver)?;
             }
 
-            return Ok(Some(resolver));
+            return Ok(Some((local_matching.table_id, resolver)));
         }
 
         Ok(None)
@@ -442,8 +455,8 @@ impl Jumplist {
         match &self.container {
             JumplistContainer::Small(array) => Box::new(
                 (0..array.len())
-                .filter(|index| array.get(*index).expect("We checked for this").is_some())
-                .map(|index| u64::try_from(index).unwrap()),
+                    .filter(|index| array.get(*index).expect("We checked for this").is_some())
+                    .map(|index| u64::try_from(index).unwrap()),
             ),
             JumplistContainer::Large(map) => Box::new(map.keys().copied()),
         }

@@ -8,7 +8,7 @@ use itertools::Itertools;
 macro_rules! new_typed_index_table_id {
     ( $(#[$outer:meta])* $vis:vis struct $name:ident; $display_prefix:literal;) => {
         $(#[$outer])*
-        #[derive(Debug, Eq, PartialEq, PartialOrd, Ord, Copy, Clone, Hash)]
+        #[derive(Debug, Eq, PartialEq, PartialOrd, Ord, Copy, Clone, Hash, Default)]
         #[repr(transparent)]
         $vis struct $name(usize);
         impl From<usize> for $name {
@@ -79,7 +79,7 @@ where
     }
 
     pub fn next_key(&self) -> K {
-        K::from(self.0.len() - 1)
+        K::from(self.0.len())
     }
 
     pub fn values(&self) -> impl Iterator<Item = &V> {
@@ -124,9 +124,13 @@ where
         self.0.get_mut(usize::from(key))
     }
 
-    pub fn replace(&mut self, key: K, element: V) -> Option<V> {
-        self.0.get_mut(usize::from(key)).and_then(|prev| {
-            Some(std::mem::replace(prev, element))
-        })
+    pub fn replace(
+        &mut self,
+        key: K,
+        element: V,
+    ) -> Option<V> {
+        self.0
+            .get_mut(usize::from(key))
+            .and_then(|prev| Some(std::mem::replace(prev, element)))
     }
 }

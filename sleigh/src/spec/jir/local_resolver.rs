@@ -1,11 +1,9 @@
+use crate::compiler::SleighCompilerResult;
 use crate::compiler::error::SleighCompilerError;
 use crate::jinst;
 use crate::spec::builder::StringId;
 use crate::spec::jir::common::JIRSize;
-use crate::spec::jir::instruction::{
-    TargetInstruction,
-    TargetInstructionBuilder,
-};
+use crate::spec::jir::instruction::TargetInstructionBuilder;
 use crate::spec::jir::space::JIRSpaceType;
 use crate::spec::jir::trace_jir;
 use crate::spec::jir::values::{
@@ -16,6 +14,7 @@ use crate::spec::jir::values::{
 };
 use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::constructor::MOIRConstructor;
+use crate::spec::moir::field::FieldId;
 use crate::spec::moir::scope::{
     MOIRLocalId,
     MOIRMaybeSize,
@@ -37,6 +36,8 @@ use crate::spec::{
 use mogi_utilities::addresses::EVAddr;
 use std::collections::HashMap;
 use tracing::debug;
+
+use super::instruction::TargetInstruction;
 
 pub enum JIRResolvedValue {
     Value(JIRValue),
@@ -71,33 +72,55 @@ pub struct JIRResolver<'a> {
     constructor: &'a MOIRConstructor,
     values: HashMap<MOIRLocalId, JIRValue>,
     subtables: HashMap<TableId, JIRResolver<'a>>,
-    inst_start: EVAddr,
-    inst_next: EVAddr,
-    /// Since inst_next2 is rarely needed it can be set to None
-    inst_next2: Option<EVAddr>,
 }
 
 impl<'a> JIRResolver<'a> {
     pub fn new(
         spec: &'a ProcessorSpecification,
         constructor: &'a MOIRConstructor,
+        // TODO do we need this at construction time? or can we set this later?
         inst_start: EVAddr,
         inst_next: EVAddr,
         inst_next2: Option<EVAddr>,
     ) -> Self {
+        let local_inst_start = constructor.local_scope.inst_start();
+        let local_inst_next = constructor.local_scope.inst_next();
+        let local_inst_next2 = constructor.local_scope.inst_next2();
+
+        // TODO correct generic
+        let addr_bytes = EVAddr::<u8>::bits() / 8;
+
+        let mut values = HashMap::from([
+            (
+                local_inst_start,
+                JIRValue::Const(JIRConst::new(inst_start.try_into().unwrap(), addr_bytes.try_into().unwrap())),
+            ),
+            (
+                local_inst_next,
+                JIRValue::Const(JIRConst::new(inst_next.try_into().unwrap(), addr_bytes.try_into().unwrap())),
+            ),
+        ]);
+
+        if let Some(inst_next2) = inst_next2 {
+            values.insert(
+                local_inst_next2,
+                JIRValue::Const(JIRConst::new(inst_next2.try_into().unwrap(), addr_bytes.try_into().unwrap())),
+            );
+        }
+
         Self {
             spec,
             constructor,
-            values: Default::default(),
+            values,
             subtables: Default::default(),
-            inst_start,
-            inst_next,
-            inst_next2,
         }
     }
 
     // TODO remove
-    pub(crate) fn print_hierarchy(&self, depth: u32) {
+    pub(crate) fn print_hierarchy(
+        &self,
+        depth: u32,
+    ) {
         for _ in 0..depth {
             eprint!(" ");
         }
@@ -105,6 +128,21 @@ impl<'a> JIRResolver<'a> {
         eprintln!("|-> {:?}", self.constructor.display);
         for subtable_resolver in self.subtables.values() {
             subtable_resolver.print_hierarchy(depth + 4);
+        }
+    }
+
+    // TODO remove
+    pub(crate) fn print_mcode(
+        &self,
+        depth: u32,
+    ) {
+        for _ in 0..depth {
+            eprint!(" ");
+        }
+
+        eprintln!("{}", self.constructor.mcode_debug_string(&self.spec.interner));
+        for subtable_resolver in self.subtables.values() {
+            subtable_resolver.print_mcode(depth + 4);
         }
     }
 
@@ -130,8 +168,104 @@ impl<'a> JIRResolver<'a> {
         self.spec.temp_space
     }
 
+    pub fn build(self) -> ProcessorSpecResult<TargetInstruction> {
+        self.constructor.generate_jcode(self)
+    }
+
     pub fn constructor(&self) -> &MOIRConstructor {
         self.constructor
+    }
+
+    /// Assign `value` to the local given by `local_id`. Return the previous value if existing.
+    pub fn define_id(
+        &mut self,
+        local_id: MOIRLocalId,
+        value: JIRValue,
+    ) -> Option<JIRValue> {
+        self.values.insert(local_id, value)
+    }
+
+    pub fn has_field(
+        &self,
+        field_id: FieldId,
+    ) -> bool {
+        self.constructor
+            .local_scope
+            .local_id_by_field_id(field_id)
+            .is_some()
+    }
+
+    /// Assign `value` to the local corresponding to `field_id`.
+    pub fn define_field(
+        &mut self,
+        field_id: FieldId,
+        value: u64,
+    ) -> SleighCompilerResult {
+        let local_id = self
+            .constructor
+            .local_scope
+            .local_id_by_field_id(field_id)
+            .ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing field id in scope") })?;
+
+        let field_size = self
+            .constructor
+            .local_scope
+            .field_size(field_id)?
+            .determined_or(0);
+
+        let jir_value = self
+            .values
+            .entry(local_id)
+            .or_insert(JIRValue::Const(JIRConst::new(0, field_size)));
+        let JIRValue::Const(c) = jir_value else {
+            todo!("Generate error report for slice in field extractor");
+        };
+
+        *c.value_mut() = value as u128;
+        Ok(())
+    }
+
+    /// Return the [MOIRReference::Const] assigned to the local `local_id` or return an error if no
+    /// value is assigned.
+    pub fn resolve_local_id_to_const(
+        &self,
+        local_id: MOIRLocalId,
+    ) -> SleighCompilerResult<u128> {
+        let value = self
+            .values
+            .get(&local_id)
+            .ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing local value") })?;
+        Ok(match value {
+            JIRValue::Const(c) => c.value(),
+            _ => todo!("Generate error report for non-const value in const resolution"),
+        })
+    }
+
+    pub fn inst_start(&self) -> SleighCompilerResult<EVAddr> {
+        let local_id = self.constructor.local_scope.inst_start();
+        let value: u64 = self
+            .resolve_local_id_to_const(local_id)?
+            .try_into()
+            .unwrap();
+        Ok(value.into())
+    }
+
+    pub fn inst_next(&self) -> SleighCompilerResult<EVAddr> {
+        let local_id = self.constructor.local_scope.inst_next();
+        let value: u64 = self
+            .resolve_local_id_to_const(local_id)?
+            .try_into()
+            .unwrap();
+        Ok(value.into())
+    }
+
+    pub fn inst_next2(&self) -> SleighCompilerResult<EVAddr> {
+        let local_id = self.constructor.local_scope.inst_next2();
+        let value: u64 = self
+            .resolve_local_id_to_const(local_id)?
+            .try_into()
+            .unwrap();
+        Ok(value.into())
     }
 
     pub fn define_ident(
@@ -151,7 +285,7 @@ impl<'a> JIRResolver<'a> {
         let local_id = self
             .constructor
             .local_scope
-            .local_id(ident)
+            .local_id_by_ident(ident)
             .ok_or_else(|| todo!("Generate error"))?;
         let previous = self.values.insert(local_id, value);
         assert!(previous.is_none());
@@ -221,18 +355,50 @@ impl<'a> JIRResolver<'a> {
                 }
                 JIRSlice::new(varnode_id, start, end).into()
             }
-            MOIRReference::Temporary(_) => match self.values.get(&local).copied() {
+            MOIRReference::Temporary(_) | MOIRReference::Const(_) => match self.values.get(&local).copied() {
                 None => todo!("Generate error for unresolved temporary."),
                 Some(value) => value.into(),
             },
-            MOIRReference::Field(_) => {
+            MOIRReference::Field(field_id) => {
                 let Some(value) = self.values.get(&local).copied() else {
                     debug!("Constructor: {:?}", self.constructor);
                     debug!("Scope is {}", self.constructor.local_scope);
                     debug!("Local id is {local}");
                     todo!("Generate error for a local that cannot be resolved because it was not defined")
                 };
-                value.into()
+
+                if let JIRValue::Const(c) = value {
+                    let field_value = c.value();
+
+                    let field =
+                        self.spec.symbol_tables.fields.get(field_id).ok_or_else(
+                            || -> ProcessorSpecificationError { todo!("Generate error for missing field") },
+                        )?;
+                    if !field.variables.is_empty() {
+                        // attach variables => resolve varnode
+                        let varnode_id = field.variables[usize::try_from(field_value).unwrap()];
+                        let varnode = self.spec.symbol_tables.varnodes.get(varnode_id).unwrap();
+
+                        let slice = JIRSlice {
+                            varnode_id: JIRVarNodeId::VarNode(varnode_id),
+                            start: 0,
+                            end: varnode.size,
+                        };
+
+                        JIRResolvedValue::Value(JIRValue::Slice(slice))
+                    } else if !field.values.is_empty() {
+                        todo!("values");
+                    } else if !field.strings.is_empty() {
+                        todo!("display");
+                    } else {
+                        JIRResolvedValue::Value(JIRValue::Const(JIRConst::new(
+                            field_value,
+                            field.bits.bytes().unwrap(),
+                        )))
+                    }
+                } else {
+                    todo!("Generate error for field resolving to non-const");
+                }
             }
             MOIRReference::SubTable(table_id) => {
                 let subtable_resolver = self
@@ -242,14 +408,6 @@ impl<'a> JIRResolver<'a> {
                 // Check the subtable resolver for the symbol that is exported and resolve it to a JIRValue.
                 debug!("Descending into subtable {table_id} to resolve export");
                 subtable_resolver.resolve_export(instruction_builder)?
-            }
-            MOIRReference::InstStart => JIRConst::new(self.inst_start.into(), 8).into(),
-            MOIRReference::InstNext => JIRConst::new(self.inst_next.into(), 8).into(),
-            MOIRReference::InstNext2 => {
-                let Some(inst_next2) = self.inst_next2 else {
-                    todo!("Generate error for inst_next2 undefined")
-                };
-                JIRConst::new(inst_next2.into(), 8).into()
             }
         })
     }
@@ -328,13 +486,5 @@ impl<'a> JIRResolver<'a> {
             }
             JIRValue::Const(c) => Ok(Some(JIRConst::new(c.value(), size))),
         }
-    }
-
-    pub fn inst_start(&self) -> EVAddr {
-        self.inst_start
-    }
-
-    pub fn inst_next(&self) -> EVAddr {
-        self.inst_next
     }
 }

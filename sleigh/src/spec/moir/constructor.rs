@@ -105,8 +105,15 @@ impl MOIRConstructor {
         &self,
         mut resolver: JIRResolver,
     ) -> ProcessorSpecResult<TargetInstruction> {
-        let mut target_inst =
-            TargetInstructionBuilder::new(resolver.temp_space(), resolver.inst_start(), resolver.inst_next());
+        let mut target_inst = TargetInstructionBuilder::new(
+            resolver.temp_space(),
+            resolver
+                .inst_start()
+                .expect("There must be an inst_start set"),
+            resolver
+                .inst_next()
+                .expect("There must be an inst_next set"),
+        );
         resolver.realize_temporaries(&mut target_inst)?;
         for block in self.instructions.chunk_by(|inst, next_inst| {
             !matches!(inst.operation.op_category(), MOIROpCategory::Branch) && next_inst.label.is_none()

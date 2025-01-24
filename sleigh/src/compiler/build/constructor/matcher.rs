@@ -132,8 +132,8 @@ pub struct Matcher {
     // extracted in the first place. Used for the scope.
     pub(crate) references: HashSet<MatcherReference>,
 
-    pub(crate) constructor: Option<ConstructorId>,
-    pub(crate) display: Option<String>, // TODO remove
+    pub(crate) table_id: TableId,
+    pub(crate) constructor_id: ConstructorId,
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Ord, PartialOrd)]
@@ -147,11 +147,16 @@ pub(crate) struct Submatchers {
     /// Matchers is None:
     /// - Token list is not concretized; this is the case if recursion is encountered. Using it with
     /// & constraints will constrain it.
-    pub matchers: Option<Vec<MatcherId>>
+    pub matchers: Option<Vec<MatcherId>>,
 }
 
 impl Submatchers {
-    pub(crate) fn new(table: TableId, matchers: Option<Vec<MatcherId>>) -> Self { Self { table, matchers } }
+    pub(crate) fn new(
+        table: TableId,
+        matchers: Option<Vec<MatcherId>>,
+    ) -> Self {
+        Self { table, matchers }
+    }
 }
 
 #[derive(Debug, Clone, PartialOrd, Ord, Eq, PartialEq, Hash)]
@@ -165,13 +170,15 @@ impl Matcher {
         conjunctions: Vec<BTreeSet<MatcherAtom>>,
         token_list: TokenList,
         references: HashSet<MatcherReference>,
+        table_id: TableId,
+        constructor_id: ConstructorId,
     ) -> Self {
         Self {
             conjunctions,
             token_list,
             references,
-            constructor: None, // this will be set later
-            display: None,
+            table_id,
+            constructor_id,
         }
     }
 }

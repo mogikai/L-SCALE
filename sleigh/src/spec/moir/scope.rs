@@ -68,11 +68,14 @@ pub struct MOIRScope {
     temporaries: TypedIndexTable<MOIRTemporaryId, MOIRTemporary>,
     /// Contains the actual local variables.
     slices: TypedIndexTable<MOIRLocalId, MOIRSlice>,
+
     /// The field sizes we have inferred. If fields resolve to varnodes, then the size can
     /// be determined by the constructor parsing before the semantic section.
     /// Otherwise, the semantic section first needs to be parsed in order to find the right
     /// size constraint. The resulting size constraint for a field will then be
     field_sizes: HashMap<FieldId, MOIRMaybeSize>,
+    /// A map that is used to lookup local ids by field ids.
+    field_to_local: HashMap<FieldId, MOIRLocalId>,
 
     /// A helper set to keep track of which local variable is actually used.
     /// Unused variables can be removed from this set.
@@ -84,6 +87,11 @@ pub struct MOIRScope {
     /// the implicit build is replaced by a `nop` and the subtable is marked
     /// as explicitly built. A second explicit build is not allowed.
     subtable_builds: HashMap<TableId, SubTableBuild>,
+
+    /// These locals are explicitly set from outside so we need to store their id.
+    inst_start: MOIRLocalId,
+    inst_next: MOIRLocalId,
+    inst_next2: MOIRLocalId,
 }
 
 new_typed_index_table_id! { pub struct MOIRLocalId; "L"; }
@@ -217,8 +225,33 @@ impl From<Option<MOIRSize>> for MOIRMaybeSize {
 }
 
 new_typed_index_table_id! { pub struct MOIRTemporaryId; "T"; }
+new_map_key! { pub struct ActionValueId; "AV"; }
 
 impl MOIRScope {
+    pub fn new(
+        inst_start: StringId,
+        inst_next: StringId,
+        inst_next2: StringId,
+        addr_size: MOIRSize,
+    ) -> Self {
+        let mut slf = Self::default();
+
+        // these predefined consts have a known size
+        let s = MOIRMaybeSize::Determined(addr_size);
+
+        slf.inst_start = slf
+            .allocate_named_const(Spanned::new(inst_start, InputSpan::default()), s)
+            .expect("This can't fail at this point");
+        slf.inst_next = slf
+            .allocate_named_const(Spanned::new(inst_next, InputSpan::default()), s)
+            .expect("This can't fail at this point");
+        slf.inst_next2 = slf
+            .allocate_named_const(Spanned::new(inst_next2, InputSpan::default()), s)
+            .expect("This can't fail at this point");
+
+        slf
+    }
+
     /// Clears the namespace before calling the provided function and afterward restores it to its original state.
     /// This allows atomization of macro calls, because they have their own name resolution, but use the same
     /// scope of locals, just with different name mappings.
@@ -296,16 +329,22 @@ impl MOIRScope {
         &mut self,
         ident: StringId,
         value: MOIRSlice,
-    ) {
+    ) -> MOIRLocalId {
+        let id = self.slices.insert(value);
         if let MOIRReference::Field(field_id) = value.reference {
             // For fields we keep track of the size that was first specified.
             // For fields with attached variables this will be the underlying
             // varnode size. For other fields, this will be the size that is
             // inferred for the first occurrence in the pcode.
             self.field_sizes.insert(field_id, value.size());
+
+            // We also store a mapping from field id to local id for insertion
+            // later on.
+            self.field_to_local.insert(field_id, id);
         }
-        let id = self.slices.insert(value);
+
         self.locals.insert(ident, id);
+        id
     }
 
     /// Marks subtables as implicitly built and stores the instruction ids where the builds are performed.
@@ -368,6 +407,33 @@ impl MOIRScope {
             .insert(MOIRSlice::temporary(self.temporaries.insert(MOIRTemporary { size }), 0, size))
     }
 
+    /// Named consts are treated in a similar fashing as named temporaries, but no backing varnode
+    /// is allocated and they don't have a size.
+    pub fn allocate_named_const(
+        &mut self,
+        ident: Spanned<StringId>,
+        size: MOIRMaybeSize,
+    ) -> SleighCompilerResult<MOIRLocalId> {
+        let (ident, ident_span) = ident.into_tuple();
+        let id = self.temporaries.insert(MOIRTemporary { size });
+        match self.locals.entry(ident) {
+            Entry::Occupied(_) => Err(generate_identifier_exists_report(
+                "",
+                self.local_spans
+                    .get(&ident)
+                    .expect("This must exist, since the locals entry is occupied")
+                    .clone(),
+                ident_span,
+            )),
+            Entry::Vacant(entry) => {
+                self.local_spans.insert(ident, ident_span);
+                let id = self.slices.insert(MOIRSlice::named_const(id, size));
+                entry.insert(id);
+                Ok(id)
+            }
+        }
+    }
+
     /// Try to allocate a named temporary. If the temporary already exists,
     /// an error report is generated.
     pub fn allocate_named_temporary(
@@ -399,14 +465,45 @@ impl MOIRScope {
         &self,
         ident: StringId,
     ) -> Option<&MOIRSlice> {
-        self.slices.get(self.local_id(ident)?)
+        self.slices.get(self.local_id_by_ident(ident)?)
     }
 
-    pub fn local_id(
+    /// Return the size of the field specified by `field_id` or an error if no
+    /// size is stored.
+    pub fn field_size(
+        &self,
+        field_id: FieldId,
+    ) -> SleighCompilerResult<MOIRMaybeSize> {
+        self.field_sizes
+            .get(&field_id)
+            .ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing field size") })
+            .copied()
+    }
+
+    pub fn local_id_by_field_id(
+        &self,
+        field_id: FieldId,
+    ) -> Option<MOIRLocalId> {
+        self.field_to_local.get(&field_id).copied()
+    }
+
+    pub fn local_id_by_ident(
         &self,
         ident: StringId,
     ) -> Option<MOIRLocalId> {
         self.locals.get(&ident).copied()
+    }
+
+    pub fn inst_start(&self) -> MOIRLocalId {
+        self.inst_start
+    }
+
+    pub fn inst_next(&self) -> MOIRLocalId {
+        self.inst_next
+    }
+
+    pub fn inst_next2(&self) -> MOIRLocalId {
+        self.inst_next2
     }
 
     /// Returns the size of the provided local if it is determined.

@@ -262,6 +262,10 @@ impl ProcessorSpecificationBuilder {
         Ok(self.symbol_tables.constructors.insert(constructor))
     }
 
+    pub(crate) fn next_constructor_id(&self) -> ConstructorId {
+        self.symbol_tables.constructors.next_key()
+    }
+
     pub(crate) fn define_space(
         &mut self,
         ident: Spanned<StringId>,
@@ -843,7 +847,7 @@ impl ProcessorSpecificationBuilder {
         Self::default()
     }
 
-    pub fn build(mut self) -> SleighCompilerResult<ProcessorSpecification> {
+    pub fn build(self) -> SleighCompilerResult<ProcessorSpecification> {
         debug!("Finalizing spec:");
         debug!("Found {} symbols", self.symbol_ids.len());
         debug!("Found {} tables", self.symbol_tables.tables.len());
@@ -887,23 +891,6 @@ impl ProcessorSpecificationBuilder {
             // The default alignment is 1
             alignment: self.alignment.map(Spanned::into_value).unwrap_or(1),
         };
-
-        {
-            // TODO remove
-            let root_jumplist = spec.jumplist_cache.get(JumplistId::from(0)).unwrap();
-            // mod=1
-            let bytes = [ 0x48, 0xC1, 0x4C, 0xB5, 0x00, 0x0D ];
-
-            let mut context_provider = ContextProvider::new(&spec.symbol_tables.fields);
-            // longMode=1
-            *context_provider.context_value_mut(MOIRContextId::from(0))? = 0x1;
-
-            // TODO finish matching
-            let matching = root_jumplist.r#match(&bytes, &spec.jumplist_cache, &spec, &spec.symbol_tables.constructors, &mut context_provider)?;
-            if let Some(matching) = matching {
-                matching.print_hierarchy(0);
-            }
-        }
 
         Ok(spec)
     }

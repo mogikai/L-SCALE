@@ -32,6 +32,7 @@ use crate::compiler::{
     SleighCompilerResult,
 };
 use crate::spec::builder::MOIRSymbolId;
+use crate::spec::moir::constructor::ConstructorId;
 use crate::spec::moir::field::{
     FieldId,
     MOIRField,
@@ -52,9 +53,10 @@ impl SleighCompiler {
     pub(super) fn create_matchers(
         &self,
         constraint: &Spanned<SASTBitPatternConstraint>,
-        table_id: TableId, // used for detecting recursion
+        table_id: TableId,
+        constructor_id: ConstructorId,
     ) -> SleighCompilerResult<Vec<Matcher>> {
-        let matchers = self.create_matchers_recursive(constraint, table_id)?;
+        let matchers = self.create_matchers_recursive(constraint, table_id, constructor_id)?;
 
         Ok(matchers)
     }
@@ -64,14 +66,19 @@ impl SleighCompiler {
         &self,
         constraint: &Spanned<SASTBitPatternConstraint>,
         table_id: TableId,
+        constructor_id: ConstructorId,
     ) -> SleighCompilerResult<Vec<Matcher>> {
         let (constraint, _span) = constraint.as_tuple();
         let new_matchers = match constraint {
-            SASTBitPatternConstraint::Ident(ident) => self.process_ident(*ident, table_id)?,
-            SASTBitPatternConstraint::BinaryOp(lhs, op, rhs) => self.process_binary_op(lhs, *op, rhs, table_id)?,
-            SASTBitPatternConstraint::UnaryOp(op, operand) => self.process_unary_op(*op, operand, table_id)?,
+            SASTBitPatternConstraint::Ident(ident) => self.process_ident(*ident, table_id, constructor_id)?,
+            SASTBitPatternConstraint::BinaryOp(lhs, op, rhs) => {
+                self.process_binary_op(lhs, *op, rhs, table_id, constructor_id)?
+            }
+            SASTBitPatternConstraint::UnaryOp(op, operand) => {
+                self.process_unary_op(*op, operand, table_id, constructor_id)?
+            }
             SASTBitPatternConstraint::AdvancedConstraint(lhs, op, pattern) => {
-                self.process_advanced_constraint(*lhs, *op, *pattern)?
+                self.process_advanced_constraint(*lhs, *op, *pattern, table_id, constructor_id)?
             }
             SASTBitPatternConstraint::Invalid => {
                 todo!("Generate error report for an invalid constraint");
@@ -87,6 +94,7 @@ impl SleighCompiler {
         &self,
         ident: Spanned<SASTIdent>,
         table_id: TableId,
+        constructor_id: ConstructorId,
     ) -> SleighCompilerResult<Vec<Matcher>> {
         // Ident case: freestanding fields, varnodes or subtables linking global to local symbols. This
         // is one of the base cases and yields multiple simple [Matcher] with [MatcherAtom::Linkage]
@@ -104,7 +112,13 @@ impl SleighCompiler {
                     let conjunctions = vec![BTreeSet::from([atom])];
                     let references = HashSet::from([MatcherReference::Subtable(*tid)]);
                     let token_list = TokenList::new(vec![None], false, false);
-                    vec![Matcher::new(conjunctions, token_list, references)]
+                    vec![Matcher::new(
+                        conjunctions,
+                        token_list,
+                        references,
+                        table_id,
+                        constructor_id,
+                    )]
                 } else {
                     // no recursion => hoist up
                     let table = self
@@ -121,7 +135,9 @@ impl SleighCompiler {
                             .token_list
                             .list
                             .iter()
-                            .position(|parent| parent.is_some_and(|parent| matches!(parent, MOIRFieldParent::Context(_))))
+                            .position(|parent| {
+                                parent.is_some_and(|parent| matches!(parent, MOIRFieldParent::Context(_)))
+                            })
                             .map(|pos| pos + 1)
                             .unwrap_or(0)..];
 
@@ -141,6 +157,7 @@ impl SleighCompiler {
                             // token_list can be empty if there is no conjunction (i.e. only references
                             // or an epsilon matcher). We will create a matcher with an
                             // empty conjunction in this case.
+
                             let atom = MatcherAtom::Submatchers(Submatchers::new(*tid, Some(matchers)));
                             let conjunctions = if token_list.is_empty() {
                                 Vec::new()
@@ -152,9 +169,9 @@ impl SleighCompiler {
                             let token_list = TokenList::new(token_list, false, false);
                             let references = HashSet::from([MatcherReference::Subtable(*tid)]);
 
-                            Matcher::new(conjunctions, token_list, references)
+                            Matcher::new(conjunctions, token_list, references, table_id, constructor_id)
                         })
-                    .collect_vec()
+                        .collect_vec()
                 }
             }
             MOIRSymbolId::Field(fid) => {
@@ -177,6 +194,8 @@ impl SleighCompiler {
                     vec![BTreeSet::from([atom])],
                     tokens,
                     HashSet::from([MatcherReference::Field(*fid)]),
+                    table_id,
+                    constructor_id,
                 )]
             }
             MOIRSymbolId::VarNode(vnid) => {
@@ -185,7 +204,13 @@ impl SleighCompiler {
                 let token_list = TokenList::new(Vec::new(), false, false);
                 let references = HashSet::from([MatcherReference::Varnode(*vnid)]);
 
-                vec![Matcher::new(conjunctions, token_list, references)]
+                vec![Matcher::new(
+                    conjunctions,
+                    token_list,
+                    references,
+                    table_id,
+                    constructor_id,
+                )]
             }
             _ => todo!("Generate error report for invalid symbol type"),
         };
@@ -199,12 +224,13 @@ impl SleighCompiler {
         op: Spanned<SASTBinaryOp>,
         rhs: &Spanned<SASTBitPatternConstraint>,
         table_id: TableId,
+        constructor_id: ConstructorId,
     ) -> SleighCompilerResult<Vec<Matcher>> {
         // Binary op case (mode=1 & op=0x7). Or expressions will be split and Concat
         // expressions verified, replaced by & and local tokens will be assigned.
 
-        let mut matchers_lhs = self.create_matchers_recursive(lhs, table_id)?;
-        let mut matchers_rhs = self.create_matchers_recursive(rhs, table_id)?;
+        let mut matchers_lhs = self.create_matchers_recursive(lhs, table_id, constructor_id)?;
+        let mut matchers_rhs = self.create_matchers_recursive(rhs, table_id, constructor_id)?;
 
         let new_matchers = match op.into_value() {
             SASTBinaryOp::And => {
@@ -222,26 +248,36 @@ impl SleighCompiler {
                         // decided to use & and not ; to separate context from regular tokens.
                         let mut matcher_lhs_nc = matcher_lhs.clone();
                         let mut matcher_rhs_nc = matcher_rhs.clone();
+                        // eprintln!("matcher_lhs_nc = {:#?}", matcher_lhs_nc);
+                        // eprintln!("matcher_rhs_nc = {:#?}", matcher_rhs_nc);
                         let context_matcher = extract_context(&mut matcher_lhs_nc, Some(&mut matcher_rhs_nc));
+                        // eprintln!("context_matcher = {:#?}", context_matcher);
 
                         // Make sure tokens are the same (since lhs and rhs can be inconsistent in
                         // case a subtable with multiple constructors was used). If this is the
                         // case the resulting matcher can be discarded.
-                        if let Some(merged_tokens) = merge_token_lists(&matcher_lhs_nc.token_list, &matcher_rhs_nc.token_list)
+                        if let Some(merged_tokens) =
+                            merge_token_lists(&matcher_lhs_nc.token_list, &matcher_rhs_nc.token_list)
                         {
                             let mut token_list = context_matcher.token_list;
                             token_list.list.extend(merged_tokens.list);
 
                             let mut conjunctions = context_matcher.conjunctions;
                             conjunctions.append(&mut merge_conjunctions(
-                                    &matcher_lhs_nc.conjunctions,
-                                    &matcher_rhs_nc.conjunctions,
+                                &matcher_lhs_nc.conjunctions,
+                                &matcher_rhs_nc.conjunctions,
                             ));
 
                             let mut references = matcher_lhs.references.clone();
                             references.extend(matcher_rhs.references.clone().into_iter());
 
-                            new_matchers.push(Matcher::new(conjunctions, token_list, references));
+                            new_matchers.push(Matcher::new(
+                                conjunctions,
+                                token_list,
+                                references,
+                                table_id,
+                                constructor_id,
+                            ));
                         }
                     }
                 }
@@ -270,7 +306,7 @@ impl SleighCompiler {
                 let merged_tokens = match merge_token_lists(&matcher_lhs_nc.token_list, &matcher_rhs_nc.token_list) {
                     Some(merged_tokens) => merged_tokens,
                     // not compatible => abort
-                    None => return Ok(vec![])
+                    None => return Ok(vec![]),
                 };
 
                 // Add missing conjunction/symbol lists in case the resulting token list is
@@ -316,18 +352,14 @@ impl SleighCompiler {
                         conjunctions.append(&mut matcher_rhs_nc.conjunctions.clone());
 
                         let mut token_list = context_matcher.token_list.clone();
-                        token_list
-                            .list
-                            .extend(matcher_lhs_nc.token_list.list);
-                        token_list
-                            .list
-                            .extend(matcher_rhs_nc.token_list.list);
+                        token_list.list.extend(matcher_lhs_nc.token_list.list);
+                        token_list.list.extend(matcher_rhs_nc.token_list.list);
                         token_list.remove_padding();
 
                         let mut references = matcher_lhs.references.clone();
                         references.extend(matcher_rhs.references.clone().into_iter());
 
-                        new_matchers.push(Matcher::new(conjunctions, token_list, references));
+                        new_matchers.push(Matcher::new(conjunctions, token_list, references, table_id, constructor_id));
                     }
                 }
 
@@ -343,8 +375,9 @@ impl SleighCompiler {
         op: Spanned<SASTUnaryOp>,
         operand: &Spanned<SASTBitPatternConstraint>,
         table_id: TableId,
+        constructor_id: ConstructorId,
     ) -> SleighCompilerResult<Vec<Matcher>> {
-        let mut matchers = self.create_matchers_recursive(operand, table_id)?;
+        let mut matchers = self.create_matchers_recursive(operand, table_id, constructor_id)?;
 
         // append/prepend undetermined token to each matcher
         match op.into_value() {
@@ -368,6 +401,8 @@ impl SleighCompiler {
         lhs: Spanned<SASTIdent>,
         op: Spanned<SASTConstraintOp>,
         pattern: Spanned<SASTConstraintPattern>,
+        table_id: TableId,
+        constructor_id: ConstructorId,
     ) -> SleighCompilerResult<Vec<Matcher>> {
         let lhs_field_id = match self.spec_builder.get_symbol(&lhs.clone().transmute())? {
             MOIRSymbolId::Field(fid) => *fid,
@@ -387,7 +422,7 @@ impl SleighCompiler {
         // one matcher per conjunction returned
         Ok(conjunctions
             .into_iter()
-            .map(|c| Matcher::new(vec![c], token_list.clone(), references.clone()))
+            .map(|c| Matcher::new(vec![c], token_list.clone(), references.clone(), table_id, constructor_id))
             .collect::<Vec<_>>())
     }
 
@@ -587,7 +622,7 @@ impl SleighCompiler {
                     None
                 }
             })
-        .collect::<Vec<_>>()
+            .collect::<Vec<_>>()
     }
 
     /// Generate multiple matcher atoms matching on every possible
@@ -606,7 +641,7 @@ impl SleighCompiler {
                     None
                 }
             })
-        .collect::<Vec<_>>()
+            .collect::<Vec<_>>()
     }
 
     /// Generate an or chain of matcher atoms matching on every possible
@@ -625,7 +660,7 @@ impl SleighCompiler {
                     None
                 }
             })
-        .collect::<Vec<_>>()
+            .collect::<Vec<_>>()
     }
 }
 
@@ -673,7 +708,10 @@ pub(crate) fn merge_token_lists(
     if padded.justify_right && padded.justify_left {
         // both padded => is padded list contained in non_padded?
         'next: for si in 0..(non_padded.list.len() - padded.list.len()) {
-            for (v0, v1) in padded.list[..].iter().zip(non_padded.list[si..(si + padded.list.len())].iter()) {
+            for (v0, v1) in padded.list[..]
+                .iter()
+                .zip(non_padded.list[si..(si + padded.list.len())].iter())
+            {
                 if v0.is_some_and(|v0| v1.is_some_and(|v1| v0 != v1)) {
                     // only skip if both are Some and not equal
                     continue 'next;
@@ -681,27 +719,33 @@ pub(crate) fn merge_token_lists(
             }
 
             // compatible => collect into new list while filling None values
-            let list = padded.list[..].iter().zip(non_padded.list[si..(si + padded.list.len())].iter()).map(|(v0, v1)| {
-                v0.clone().or(v1.clone())
-            }).collect_vec();
+            let list = padded.list[..]
+                .iter()
+                .zip(non_padded.list[si..(si + padded.list.len())].iter())
+                .map(|(v0, v1)| v0.clone().or(v1.clone()))
+                .collect_vec();
             return Some(TokenList::new(list, false, false));
         }
     } else if padded.justify_right {
         // start padded => is smaller list present at end of larger?
         if &padded.list[..] == &non_padded.list[(non_padded.list.len() - padded.list.len())..] {
             // compatible => collect into new list while filling None values
-            let list = padded.list[..].iter().zip(non_padded.list[(non_padded.list.len() - padded.list.len())..].iter()).map(|(v0, v1)| {
-                v0.clone().or(v1.clone())
-            }).collect_vec();
+            let list = padded.list[..]
+                .iter()
+                .zip(non_padded.list[(non_padded.list.len() - padded.list.len())..].iter())
+                .map(|(v0, v1)| v0.clone().or(v1.clone()))
+                .collect_vec();
             return Some(TokenList::new(list, false, false));
         }
     } else if padded.justify_left {
         // end padded => is smaller list present at start of larger?
         if &padded.list[..] == &non_padded.list[..padded.list.len()] {
             // compatible => collect into new list while filling None values
-            let list = padded.list[..].iter().zip(non_padded.list[..padded.list.len()].iter()).map(|(v0, v1)| {
-                v0.clone().or(v1.clone())
-            }).collect_vec();
+            let list = padded.list[..]
+                .iter()
+                .zip(non_padded.list[..padded.list.len()].iter())
+                .map(|(v0, v1)| v0.clone().or(v1.clone()))
+                .collect_vec();
             return Some(TokenList::new(list, false, false));
         }
     }
@@ -718,9 +762,12 @@ pub(crate) fn merge_token_lists(
 
     if is_equal {
         // compatible => collect into new list while filling None values
-        let list = padded.list.iter().zip(non_padded.list.iter()).map(|(v0, v1)| {
-            v0.clone().or(v1.clone())
-        }).collect_vec();
+        let list = padded
+            .list
+            .iter()
+            .zip(non_padded.list.iter())
+            .map(|(v0, v1)| v0.clone().or(v1.clone()))
+            .collect_vec();
         return Some(TokenList::new(list, false, false));
     }
 
@@ -740,25 +787,25 @@ fn extract_context(
         .list
         .iter()
         .zip(lhs.conjunctions.iter())
-        .filter_map(|(token, conjunction)| token.and_then(|token| {
-            match token {
+        .filter_map(|(token, conjunction)| {
+            token.and_then(|token| match token {
                 MOIRFieldParent::Context(_) => Some((Some(token.clone()), conjunction.clone())),
                 MOIRFieldParent::Token(_) => None,
-            }
-        }));
+            })
+        });
 
     let mut context_rhs = if let Some(ref rhs) = rhs_maybe {
         rhs.token_list
             .list
             .iter()
             .zip(rhs.conjunctions.iter())
-            .filter_map(|(token, conjunction)| token.and_then(|token| {
-                match token {
+            .filter_map(|(token, conjunction)| {
+                token.and_then(|token| match token {
                     MOIRFieldParent::Context(_) => Some((Some(token.clone()), conjunction.clone())),
                     MOIRFieldParent::Token(_) => None,
-                }
-            }))
-        .collect::<Vec<_>>()
+                })
+            })
+            .collect::<Vec<_>>()
     } else {
         Vec::new()
     };
@@ -776,8 +823,13 @@ fn extract_context(
     }
 
     let (context_tokens, context_conjunctions): (Vec<_>, Vec<_>) = context_rhs.into_iter().unzip();
-    let context_matcher =
-        Matcher::new(context_conjunctions, TokenList::new(context_tokens, false, false), HashSet::new());
+    let context_matcher = Matcher::new(
+        context_conjunctions,
+        TokenList::new(context_tokens, false, false),
+        HashSet::new(),
+        lhs.table_id,
+        lhs.constructor_id,
+    );
 
     let lhs_new = lhs
         .token_list
@@ -800,6 +852,8 @@ fn extract_context(
             ..lhs.token_list
         },
         HashSet::new(),
+        lhs.table_id,
+        lhs.constructor_id,
     );
 
     if let Some(rhs) = rhs_maybe {
@@ -824,6 +878,8 @@ fn extract_context(
                 ..rhs.token_list
             },
             HashSet::new(),
+            rhs.table_id,
+            rhs.constructor_id,
         );
     }
 

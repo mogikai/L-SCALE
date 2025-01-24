@@ -601,12 +601,10 @@ impl<'a> JumplistBuilder<'a> {
                     // same primary matching path but different subtables (TODO should we check
                     // this?)
                     // assert!(terminal_matcher_rows.len() < 2, "There can't be more than one matcher in the same path");
-                    let next_entry_matcher = NextJumplistEntry::Constructor(
-                        terminal_matcher_row
-                            .matcher
-                            .constructor
-                            .expect("The constructor must be set at this point"),
-                    );
+                    let next_entry_matcher = NextJumplistEntry::Constructor {
+                        tid: terminal_matcher_row.matcher.table_id,
+                        cid: terminal_matcher_row.matcher.constructor_id,
+                    };
 
                     let entry = JumplistEntry::new(sublist_ids, next_entry_matcher);
                     jumplist_child.insert(value, entry.clone(), false)?;
@@ -663,10 +661,8 @@ impl<'a> JumplistBuilder<'a> {
         let mut field_extractors = HashMap::<ConstructorId, Vec<FieldExtractor>>::new();
 
         for row in rows {
-            let constructor_id = row
-                .matcher
-                .constructor
-                .expect("There must be a constructor set at this point");
+            let constructor_id = row.matcher.constructor_id;
+
             let conjunction = row
                 .matcher
                 .conjunctions
@@ -833,7 +829,7 @@ fn save_graph(
                             stack.push(*jlid);
                             format!("S{}", usize::from(*jlid))
                         }
-                        NextJumplistEntry::Constructor(cid) => format!("C{}", cid),
+                        NextJumplistEntry::Constructor { cid, tid: _ } => format!("C{}", cid),
                     };
 
                     graph.add_node(entry_node_weight)

@@ -68,13 +68,16 @@ impl JIRConst {
         Self { value, size }
     }
 
+    pub fn value_mut(&mut self) -> &mut u128 {
+        &mut self.value
+    }
+
     pub fn value(&self) -> u128 {
         self.value
     }
 
     pub fn size(&self) -> JIRSize {
         self.size
-
     }
 }
 

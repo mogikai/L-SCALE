@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::compiler::SleighCompilerResult;
 use crate::compiler::ast::Spanned;
 use crate::compiler::error::SleighCompilerError;
+use crate::spec::jir::local_resolver::JIRResolver;
 use crate::spec::jir::trace_jir;
 use crate::spec::jir::values::{
     JIRConst,
@@ -28,14 +29,6 @@ use super::varnode::{
     MOIRReference,
 };
 
-/// Actions can use fields (either from context or the bit pattern) as well as
-/// previously defined locals (i.e. temporaries) as parameters.
-#[derive(Debug, Eq, PartialEq, Hash)]
-pub(crate) enum MOIRActionLocal {
-    Field(FieldId),
-    Temporary(MOIRTemporaryId),
-}
-
 #[derive(Debug)]
 pub(crate) enum MOIRPatternExpression {
     Add(Box<MOIRPatternExpression>, Box<MOIRPatternExpression>),
@@ -48,8 +41,8 @@ pub(crate) enum MOIRPatternExpression {
     Or(Box<MOIRPatternExpression>, Box<MOIRPatternExpression>),
     Xor(Box<MOIRPatternExpression>, Box<MOIRPatternExpression>),
     Not(Box<MOIRPatternExpression>),
-    Local(MOIRActionLocal),
-    Integer(u64), // TODO signed? unsigned? 64 or 128 bit?
+    Local(MOIRLocalId),
+    Integer(u64),
 }
 
 /// We differentiate between actions that change context and actions that set
@@ -57,7 +50,7 @@ pub(crate) enum MOIRPatternExpression {
 #[derive(Debug)]
 pub(crate) enum MOIRActionTarget {
     ContextField(FieldId),
-    Temporary(MOIRTemporaryId),
+    Local(MOIRLocalId),
 }
 
 /// Disassembly actions are used for dynamic calculations at disassembly time to for example
@@ -73,19 +66,16 @@ impl MOIRAction {
         lhs: MOIRActionTarget,
         expression: MOIRPatternExpression,
     ) -> Self {
-        Self {
-            lhs,
-            expression,
-        }
+        Self { lhs, expression }
     }
 }
 
 impl MOIRAction {
     pub(crate) fn evaluate(
         &self,
-        values: &HashMap<MOIRActionLocal, u64>,
+        resolver: &JIRResolver,
     ) -> SleighCompilerResult<u64> {
-        self.expression.evaluate(values)
+        self.expression.evaluate(resolver)
     }
 }
 
@@ -93,23 +83,26 @@ impl MOIRPatternExpression {
     // TODO should this be signed?
     pub(crate) fn evaluate(
         &self,
-        values: &HashMap<MOIRActionLocal, u64>,
+        resolver: &JIRResolver,
     ) -> SleighCompilerResult<u64> {
         Ok(match self {
-            MOIRPatternExpression::Add(lhs, rhs) => lhs.evaluate(values)? + rhs.evaluate(values)?,
-            MOIRPatternExpression::Sub(lhs, rhs) => lhs.evaluate(values)? - rhs.evaluate(values)?,
-            MOIRPatternExpression::Mul(lhs, rhs) => lhs.evaluate(values)? * rhs.evaluate(values)?,
-            MOIRPatternExpression::Div(lhs, rhs) => lhs.evaluate(values)? / rhs.evaluate(values)?,
-            MOIRPatternExpression::Shl(lhs, rhs) => lhs.evaluate(values)? << rhs.evaluate(values)?,
-            MOIRPatternExpression::Shr(lhs, rhs) => lhs.evaluate(values)? >> rhs.evaluate(values)?,
-            MOIRPatternExpression::And(lhs, rhs) => lhs.evaluate(values)? & rhs.evaluate(values)?,
-            MOIRPatternExpression::Or(lhs, rhs) => lhs.evaluate(values)? | rhs.evaluate(values)?,
-            MOIRPatternExpression::Xor(lhs, rhs) => lhs.evaluate(values)? ^ rhs.evaluate(values)?,
-            MOIRPatternExpression::Not(expr) => !expr.evaluate(values)?,
-            MOIRPatternExpression::Local(local) => *values.get(local).ok_or_else(|| -> SleighCompilerError {
-                todo!("Generate error report for missing local {:?} value in pattern expression", local)
-            })?,
-            MOIRPatternExpression::Integer(value) => u64::from(*value),
+            MOIRPatternExpression::Add(lhs, rhs) => lhs.evaluate(resolver)? + rhs.evaluate(resolver)?,
+            MOIRPatternExpression::Sub(lhs, rhs) => lhs.evaluate(resolver)? - rhs.evaluate(resolver)?,
+            MOIRPatternExpression::Mul(lhs, rhs) => lhs.evaluate(resolver)? * rhs.evaluate(resolver)?,
+            MOIRPatternExpression::Div(lhs, rhs) => lhs.evaluate(resolver)? / rhs.evaluate(resolver)?,
+            MOIRPatternExpression::Shl(lhs, rhs) => lhs.evaluate(resolver)? << rhs.evaluate(resolver)?,
+            MOIRPatternExpression::Shr(lhs, rhs) => {
+                ((lhs.evaluate(resolver)? as i64) >> rhs.evaluate(resolver)?) as u64
+            }
+            MOIRPatternExpression::And(lhs, rhs) => lhs.evaluate(resolver)? & rhs.evaluate(resolver)?,
+            MOIRPatternExpression::Or(lhs, rhs) => lhs.evaluate(resolver)? | rhs.evaluate(resolver)?,
+            MOIRPatternExpression::Xor(lhs, rhs) => lhs.evaluate(resolver)? ^ rhs.evaluate(resolver)?,
+            MOIRPatternExpression::Not(expr) => !expr.evaluate(resolver)?,
+            MOIRPatternExpression::Local(local_id) => resolver
+                .resolve_local_id_to_const(*local_id)?
+                .try_into()
+                .expect("Actions only support 64-bit values"),
+            MOIRPatternExpression::Integer(value) => *value,
         })
     }
 }
