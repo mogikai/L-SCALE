@@ -67,7 +67,7 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
         let root_jumplist = self.specification.jumplist_cache.get(0.into()).unwrap();
 
         // mod=1
-        let bytes = [0x48, 0x05, 0x34, 0x12, 0x00, 0x00];
+        let bytes = [ 0xC4, 0xE2, 0xE3, 0xF5, 0x04, 0xAD, 0x37, 0x13, 0x00, 0x00 ];
 
         let mut context_provider = ContextProvider::new(&self.specification.symbol_tables.fields);
         // longMode=1

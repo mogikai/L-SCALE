@@ -129,22 +129,10 @@ impl SleighCompiler {
                     // partition table matchers by token list
                     let mut partition = BTreeMap::<_, Vec<_>>::new();
                     table.matchers.iter().for_each(|(id, matcher)| {
-                        // we don't care about the context of the referenced submatchers
-                        // so we completely skip it
-                        let token_list_nc = &matcher.token_list.list[matcher
-                            .token_list
-                            .list
-                            .iter()
-                            .position(|parent| {
-                                parent.is_some_and(|parent| matches!(parent, MOIRFieldParent::Context(_)))
-                            })
-                            .map(|pos| pos + 1)
-                            .unwrap_or(0)..];
-
-                        if let Some(list) = partition.get_mut(token_list_nc) {
+                        if let Some(list) = partition.get_mut(&matcher.token_list.list) {
                             list.push(id);
                         } else {
-                            partition.insert(token_list_nc.to_owned(), vec![id]);
+                            partition.insert(&matcher.token_list.list, vec![id]);
                         }
                     });
 
@@ -166,7 +154,7 @@ impl SleighCompiler {
                                 conjunctions.append(&mut vec![BTreeSet::new(); token_list.len() - 1]);
                                 conjunctions
                             };
-                            let token_list = TokenList::new(token_list, false, false);
+                            let token_list = TokenList::new(token_list.clone(), false, false);
                             let references = HashSet::from([MatcherReference::Subtable(*tid)]);
 
                             Matcher::new(conjunctions, token_list, references, table_id, constructor_id)
