@@ -100,7 +100,7 @@ pub trait Mountpoint: Restorable + Debug {
         entry: FSEntryId,
         pos: usize,
         len: usize,
-    ) -> Result<Vec<u8>, FSError>;
+    ) -> Result<Option<Vec<u8>>, FSError>;
 
     fn write(
         &mut self,

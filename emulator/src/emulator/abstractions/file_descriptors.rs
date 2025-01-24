@@ -65,7 +65,7 @@ pub trait FileDescriptorOps {
         &self,
         fd: &mut Self::D,
         count: u64,
-    ) -> Result<Vec<u8>, FileDescriptorError> {
+    ) -> Result<Option<Vec<u8>>, FileDescriptorError> {
         todo!()
     }
 
@@ -79,7 +79,7 @@ pub trait FileDescriptorOps {
         fd: &mut Self::D,
         offset: u64,
         length: u64,
-    ) -> Result<Vec<u8>, FileDescriptorError> {
+    ) -> Result<Option<Vec<u8>>, FileDescriptorError> {
         todo!()
     }
 

@@ -137,7 +137,7 @@ impl Mountpoint for PersistendFS {
         entry: FSEntryId,
         pos: usize,
         len: usize,
-    ) -> Result<Vec<u8>, FSError> {
+    ) -> Result<Option<Vec<u8>>, FSError> {
         let entry = self.inodes.most_recent_entry(entry)?;
         if let Some(FSContent::File { blocks }) = &entry.content {
             if pos > entry.stat.st_size as usize {
@@ -159,7 +159,7 @@ impl Mountpoint for PersistendFS {
                     buffer.set_len(read);
                 }
             }
-            Ok(buffer)
+            Ok(Some(buffer))
         } else {
             trace!("cant read: {:?}", entry.content);
             Err(FSError::Invalid)

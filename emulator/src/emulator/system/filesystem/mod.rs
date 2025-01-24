@@ -85,6 +85,7 @@ impl Filesystem {
     ) -> Result<Vec<u8>, FSError> {
         let size = self.stat(file_id)?.st_size as usize;
         self.read(file_id, 0, size)
+            .map(|data| data.expect("read should return Some"))
     }
 
     pub fn read_symlink(
@@ -109,7 +110,7 @@ impl Filesystem {
         file_id: FileId,
         pos: usize,
         len: usize,
-    ) -> Result<Vec<u8>, FSError> {
+    ) -> Result<Option<Vec<u8>>, FSError> {
         let mountpoint = self
             .mountpoints
             .get(usize::from(file_id.fs))

@@ -118,7 +118,10 @@ where
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADF)?;
         let fd = &mut *fd;
-        let d = fd.pread(pos, count).unwrap();
+        let d = match fd.pread(pos, count)? {
+            None => return Err(SyscallError::Yield),
+            Some(data) => data,
+        };
         Ok(memory.write_direct(buf, d.as_slice())? as u64)
     }
 
@@ -136,7 +139,11 @@ where
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EINVAL)?;
         let file = &mut *file;
-        Ok(memory.write_direct(buf, file.read(count).unwrap().as_slice())? as u64)
+        let data = match file.read(count)? {
+            None => return Err(SyscallError::Yield),
+            Some(data) => data,
+        };
+        Ok(memory.write_direct(buf, data.as_slice())? as u64)
     }
 
     pub fn fstat(

@@ -120,7 +120,7 @@ impl<D: Default + Clone> FileDescriptor<D> {
     pub fn read(
         &mut self,
         count: u64,
-    ) -> Result<Vec<u8>, FileDescriptorError> {
+    ) -> Result<Option<Vec<u8>>, FileDescriptorError> {
         self.ops.read(&mut self.data, count)
     }
 
@@ -128,7 +128,7 @@ impl<D: Default + Clone> FileDescriptor<D> {
         &mut self,
         offset: u64,
         length: u64,
-    ) -> Result<Vec<u8>, FileDescriptorError> {
+    ) -> Result<Option<Vec<u8>>, FileDescriptorError> {
         self.ops.pread(&mut self.data, offset, length)
     }
 

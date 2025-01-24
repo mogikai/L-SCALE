@@ -73,7 +73,7 @@ impl FileDescriptorOps for WriteOnly {
         &self,
         fd: &mut Self::D,
         count: u64,
-    ) -> Result<Vec<u8>, FileDescriptorError> {
+    ) -> Result<Option<Vec<u8>>, FileDescriptorError> {
         todo!()
     }
 
@@ -82,7 +82,7 @@ impl FileDescriptorOps for WriteOnly {
         fd: &mut Self::D,
         offset: u64,
         length: u64,
-    ) -> Result<Vec<u8>, FileDescriptorError> {
+    ) -> Result<Option<Vec<u8>>, FileDescriptorError> {
         todo!()
     }
 
@@ -202,13 +202,13 @@ impl FileDescriptorOps for ReadOnly {
         &self,
         fd: &mut Self::D,
         count: u64,
-    ) -> Result<Vec<u8>, FileDescriptorError> {
+    ) -> Result<Option<Vec<u8>>, FileDescriptorError> {
         // TODO: Use special io file?
         let file = fd.file.as_mut().ok_or(FileDescriptorError::NotSupported)?;
         let upper = min(file.pos + count as usize, self.data.len());
         let result = self.data[file.pos..upper].to_vec();
         file.pos += result.len();
-        Ok(result)
+        Ok(Some(result))
     }
 
     fn pread(
@@ -216,7 +216,7 @@ impl FileDescriptorOps for ReadOnly {
         fd: &mut Self::D,
         offset: u64,
         length: u64,
-    ) -> Result<Vec<u8>, FileDescriptorError> {
+    ) -> Result<Option<Vec<u8>>, FileDescriptorError> {
         todo!()
     }
 

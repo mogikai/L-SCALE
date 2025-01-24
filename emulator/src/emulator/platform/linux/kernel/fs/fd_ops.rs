@@ -1,17 +1,10 @@
-use std::cell::{
-    Ref,
-    RefCell,
-};
-use std::rc::Rc;
-
-use byteorder::ByteOrder;
+use std::cell::Ref;
 
 use crate::emulator::abstractions::file_descriptors::{
     FileDescriptorError,
     FileDescriptorOps,
     FileOperationsReady,
 };
-use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::network::{
     ShutdownMethod,
     SocketAddress,
@@ -22,10 +15,7 @@ use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
 use crate::emulator::platform::linux::kernel::socket::Optval;
 use crate::emulator::system::fd_map::FileDescriptor;
-use crate::emulator::system::filesystem::{
-    Filesystem,
-    Stat,
-};
+use crate::emulator::system::filesystem::Stat;
 
 #[derive(Debug, Clone)]
 pub struct FileOps {}
@@ -68,14 +58,18 @@ impl FileDescriptorOps for FileOps {
         &self,
         fd: &mut Self::D,
         count: u64,
-    ) -> Result<Vec<u8>, FileDescriptorError> {
+    ) -> Result<Option<Vec<u8>>, FileDescriptorError> {
         let fd = fd.file.as_mut().ok_or(FileDescriptorError::NotSupported)?;
         let result = fd
             .filesystem
             .borrow()
             .read(fd.fse_id, fd.pos, count as usize)?;
-        fd.pos += result.len();
-        Ok(result)
+        if let Some(data) = result {
+            fd.pos += data.len();
+            Ok(Some(data))
+        } else {
+            Ok(None)
+        }
     }
 
     fn pread(
@@ -83,7 +77,7 @@ impl FileDescriptorOps for FileOps {
         fd: &mut Self::D,
         offset: u64,
         length: u64,
-    ) -> Result<Vec<u8>, FileDescriptorError> {
+    ) -> Result<Option<Vec<u8>>, FileDescriptorError> {
         let fd = fd.file.as_mut().ok_or(FileDescriptorError::NotSupported)?;
         Ok(fd
             .filesystem

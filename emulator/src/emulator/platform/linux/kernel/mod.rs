@@ -261,9 +261,10 @@ where
                 .ok_or(LinuxKernelError::ENOENT)?;
             trace!("Loading elf file {elf_file:?}");
             let elf_file = &mut *elf_file;
-            elf_file.pread(0, u64::MAX)?
+            elf_file
+                .pread(0, u64::MAX)?
+                .expect("pread should return Some")
         };
-
         let elf = Elf::parse(&elf_data).unwrap();
 
         if !elf.is_lib {

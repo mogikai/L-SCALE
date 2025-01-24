@@ -255,7 +255,7 @@ where
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EINVAL)?;
         let fd = &mut *fd;
-        let data = fd.pread(offset, length)?;
+        let data = fd.pread(offset, length)?.expect("pread should be Some");
 
         let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory)
