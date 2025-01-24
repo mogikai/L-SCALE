@@ -102,11 +102,14 @@ pub(super) fn exec_instructions<T: MogiJit>(
     context: &mut T::RuntimeContext,
     instructions: &[JIRInstruction],
 ) {
-    jit.new_block(EVAddr::null(), Some(EVAddr::null())).unwrap();
+    jit.new_block(EVAddr::from(0x800100u64), Some(EVAddr::from(0x800200u64)))
+        .unwrap();
     for instruction in instructions {
         jit.emit_jinst(&instruction).unwrap();
     }
     jit.finalize_block().unwrap();
+    jit.set_instruction_pointer(context, EVAddr::from(0x800100u64))
+        .unwrap();
 
     jit.execute(context, jit.instruction_pointer(&context).unwrap())
         .unwrap();

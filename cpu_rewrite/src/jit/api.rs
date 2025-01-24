@@ -132,11 +132,10 @@ pub trait MogiJit {
     /// the epilogue block, but directly into the next block `target`.
     fn chain_blocks(
         &mut self,
-        _origin_block_address: EVAddr,
-        _target_block_address: EVAddr,
-    ) -> JITResult {
-        todo!()
-    }
+        origin_block_address: EVAddr,
+        target_block_address: EVAddr,
+        path: JITPathChoice,
+    ) -> JITResult;
 
     /// Finalize the emitted instructions as a block and add it to the jit cache.
     /// This also resets the JIT such that a new block can be built by emitting instructions.
@@ -164,6 +163,15 @@ pub trait MogiJit {
     fn instruction_pointer(
         &self,
         context: &Self::RuntimeContext,
+    ) -> Result<EVAddr, JitError>;
+
+    /// Set the architecture specific instruction pointer value in the runtime context.
+    /// This looks up the correct varnode according to the specification and sets the value to `ip`.
+    /// For convenience, the old value of the instruction pointer is returned.
+    fn set_instruction_pointer(
+        &self,
+        context: &mut Self::RuntimeContext,
+        ip: EVAddr,
     ) -> Result<EVAddr, JitError>;
 
     /// Get a reference to the bytes of the underlying varnode from the runtime context.
@@ -219,7 +227,11 @@ pub trait JITTaskRuntimeContext {
 /// This can include information like callbacks, runtime helpers, etc.
 pub trait JITGlobalRuntimeContext {}
 
-pub type PreludeSignature = extern "C" fn(context: *mut c_void, block: NonNull<u8>);
+/// # Safety
+/// Calling the prelude function is undefined behavior if one of the following condition is not met:
+/// * `context` must be a valid pointer to a [MogiJit::RuntimeContext].
+/// * `block` must point to a range of executable memory associated with a block inside a [CodeBuffer](crate::jit::code_buffer::CodeBuffer).
+pub type PreludeSignature = unsafe extern "C" fn(context: *mut c_void, block: NonNull<u8>);
 
 /// A custom operation must have a signature that corresponds to this trait.
 pub trait CustomOpImpl<RuntimeContextT>: Fn(&mut RuntimeContextT, &CustomOpArgs) -> Result<(), RuntimeError>
@@ -261,4 +273,9 @@ pub struct CustomOpArgs {
     pub input_a: Result<JIRValue, RuntimeError>,
     pub input_b: Result<JIRValue, RuntimeError>,
     pub extra_args: Vec<JIRValue>,
+}
+
+pub enum JITPathChoice {
+    Main,
+    Alternate,
 }

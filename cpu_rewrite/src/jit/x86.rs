@@ -4,6 +4,7 @@ use crate::jit::api::{
     CustomOpArgs,
     CustomOpImpl,
     JITGlobalRuntimeContext,
+    JITPathChoice,
     JITResult,
     JITTaskRuntimeContext,
     JitError,
@@ -384,6 +385,7 @@ impl MogiJit for X86MogiJit {
         // TODO: Different block for exit_fail?
         unsafe {
             block.set_exit_success(epilogue_code);
+            block.set_exit_alternate(epilogue_code);
             block.set_exit_failure(epilogue_code);
         }
         Ok(())
@@ -450,8 +452,8 @@ impl MogiJit for X86MogiJit {
             JIROperation::ReturnDirect => {}
             JIROperation::ReturnIndirect => {}
             JIROperation::GotoDirect => return self.emit_goto_direct(input_a?),
-            JIROperation::GotoIndirect => {}
-            JIROperation::GotoDirectIf => {}
+            JIROperation::GotoIndirect => return self.emit_goto_indirect(input_a?),
+            JIROperation::GotoDirectIf => return self.emit_goto_direct_if(input_a?, input_b?),
             JIROperation::GotoIndirectIf => {}
             JIROperation::JCodeGoto(_) => {}
             JIROperation::JCodeGotoIf(_) => {}
@@ -539,6 +541,7 @@ impl MogiJit for X86MogiJit {
         &mut self,
         origin_block_address: EVAddr,
         target_block_address: EVAddr,
+        path: JITPathChoice,
     ) -> JITResult {
         let target_block_ptr = self
             .code_buffer
@@ -551,8 +554,13 @@ impl MogiJit for X86MogiJit {
             .block_mut(origin_block_address)
             .ok_or(JitError::BlockNotFound(origin_block_address))?;
         // TODO: Safety?
-        unsafe {
-            origin_block.set_exit_success(target_block_ptr);
+        match path {
+            JITPathChoice::Main => unsafe {
+                origin_block.set_exit_success(target_block_ptr);
+            },
+            JITPathChoice::Alternate => unsafe {
+                origin_block.set_exit_alternate(target_block_ptr);
+            },
         }
         origin_block.commit()?;
         Ok(())
@@ -571,21 +579,21 @@ impl MogiJit for X86MogiJit {
         if self.current_block.is_none() {
             todo!("Return error: 'Cannot finalize because no block was started'")
         };
-        self.emit_flush_slices()?;
-        match self.block_mut()?.successor() {
+        match self.block_mut()?.fallthrough() {
             None => {
                 // No successor specified. This means the processor is halting or something similar.
                 // Jump to failure exit.
                 // TODO: Write exception to runtime context.
-                todo!();
                 assemble!(self.block_mut()?.assembler();
-                    ; jmp ->exit_failure
+                    // Intentionally trigger an exception, since this case is a todo
+                    ; mov rax, [0x0]
                 );
             }
             Some(next) => {
                 // Write the pc before we exit the block to make it visible to the jit.
                 // TODO: This could maybe be optimized such that we do not write the pc on chained blocks?
                 self.emit_write_pc(u64::from(next).into())?;
+                self.emit_flush_slices()?;
                 assemble!(self.block_mut()?.assembler();
                     ; jmp ->exit_success
                 );
@@ -607,7 +615,14 @@ impl MogiJit for X86MogiJit {
             .ok_or(JitError::BlockNotFound(block))?
             .ptr()
             .ok_or_else(|| -> JitError { todo!("Return error for missing jit code") })?;
-        (self.jit_prelude)(context as *mut _ as *mut c_void, block);
+        // SAFETY: Context is a valid pointer to a runtime context. The context outlives this function call,
+        //         since it is passed in from outside the function.
+        //         The pointer to the executable memory of the block is valid, since we just fetched it from the
+        //         code buffer, and it will remain valid for the lifetime of this function.
+        //         TODO: What about self-modifying code?
+        unsafe {
+            (self.jit_prelude)(context as *mut _ as *mut c_void, block);
+        }
         Ok(())
     }
 
@@ -633,6 +648,21 @@ impl MogiJit for X86MogiJit {
                 .unwrap(),
         ));
         Ok(pc)
+    }
+
+    fn set_instruction_pointer(
+        &self,
+        context: &mut Self::RuntimeContext,
+        ip: EVAddr,
+    ) -> Result<EVAddr, JitError> {
+        let pc = context.slice_mut(
+            self.processor_specification
+                .borrow()
+                .program_counter_slice(),
+        )?;
+        let old_pc = EVAddr::from(u64::from_le_bytes(pc.try_into().unwrap()));
+        pc.copy_from_slice(u64::from(ip).to_le_bytes().as_slice());
+        Ok(old_pc)
     }
 
     fn varnode<'b>(

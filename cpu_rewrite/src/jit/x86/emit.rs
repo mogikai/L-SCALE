@@ -6,6 +6,8 @@ mod host_call;
 mod logic;
 mod mmu;
 mod slice_load;
+#[cfg(test)]
+mod test;
 
 pub use mmu::TlbMissCallback;
 

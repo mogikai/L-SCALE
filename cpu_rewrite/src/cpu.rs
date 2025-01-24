@@ -15,6 +15,7 @@ use thiserror::Error;
 use tracing::trace;
 
 use crate::jit::api::{
+    JITPathChoice,
     JITTaskRuntimeContext,
     JitError,
     MogiJit,
@@ -181,7 +182,7 @@ where
                 jit.emit_jinst(&instruction)?;
             }
             jit.finalize_block()?;
-            jit.chain_blocks(EVAddr::null(), EVAddr::null())?;
+            jit.chain_blocks(EVAddr::null(), EVAddr::null(), JITPathChoice::Main)?;
             Ok(())
         }
     }

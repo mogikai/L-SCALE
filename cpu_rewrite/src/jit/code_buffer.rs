@@ -79,7 +79,8 @@ pub struct CompiledBasicBlock<R: Relocation> {
     custom_op_args: Vec<Box<CustomOpArgs>>,
     assembler: MogiAssembler<R>,
     /// The next block that needs to be executed when following the normal execution path.
-    successor: Option<EVAddr>,
+    /// This is cleared when the block ends with a non-conditional goto instruction.
+    fallthrough: Option<EVAddr>,
 }
 
 // TODO: In order to more easily create the basic blocks, it might make sense to
@@ -92,8 +93,12 @@ impl<R: Relocation + Clone> CompiledBasicBlock<R> {
         self.code.map(|c| c.ptr)
     }
 
-    pub fn successor(&self) -> Option<EVAddr> {
-        self.successor
+    pub fn fallthrough(&self) -> Option<EVAddr> {
+        self.fallthrough
+    }
+
+    pub(super) fn clear_fallthrough(&mut self) {
+        self.fallthrough = None;
     }
 
     pub fn assembler(&mut self) -> &mut MogiAssembler<R> {
@@ -208,7 +213,7 @@ impl<R: Relocation + Clone> CodeBuffer<R> {
             code: None,
             custom_op_args: vec![],
             assembler: MogiAssembler::new(),
-            successor,
+            fallthrough: successor,
         });
         Ok(())
     }
@@ -268,7 +273,7 @@ impl<R: Relocation + Clone> CodeBuffer<R> {
             code: Some(code),
             custom_op_args: Vec::new(),
             assembler: MogiAssembler::new(),
-            successor: None,
+            fallthrough: None,
         });
         self.occupied += size;
         Ok(AnonymousBlockId(self.anonymous_blocks.len() - 1))
