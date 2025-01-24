@@ -34,7 +34,7 @@ use crate::spec::{
     ProcessorSpecificationError,
 };
 use mogi_utilities::addresses::EVAddr;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use tracing::debug;
 
 use super::instruction::TargetInstruction;
@@ -70,8 +70,8 @@ impl From<JIRValue> for JIRResolvedValue {
 pub struct JIRResolver<'a> {
     spec: &'a ProcessorSpecification,
     constructor: &'a MOIRConstructor,
-    values: HashMap<MOIRLocalId, JIRValue>,
-    subtables: HashMap<TableId, JIRResolver<'a>>,
+    values: FxHashMap<MOIRLocalId, JIRValue>,
+    subtables: FxHashMap<TableId, JIRResolver<'a>>,
 }
 
 impl<'a> JIRResolver<'a> {
@@ -90,16 +90,9 @@ impl<'a> JIRResolver<'a> {
         // TODO correct generic
         let addr_bytes = EVAddr::<u8>::bits() / 8;
 
-        let mut values = HashMap::from([
-            (
-                local_inst_start,
-                JIRValue::Const(JIRConst::new(inst_start.try_into().unwrap(), addr_bytes.try_into().unwrap())),
-            ),
-            (
-                local_inst_next,
-                JIRValue::Const(JIRConst::new(inst_next.try_into().unwrap(), addr_bytes.try_into().unwrap())),
-            ),
-        ]);
+        let mut values = FxHashMap::default();
+        values.insert(local_inst_start, JIRValue::Const(JIRConst::new(inst_start.try_into().unwrap(), addr_bytes.try_into().unwrap())));
+        values.insert(local_inst_next, JIRValue::Const(JIRConst::new(inst_next.try_into().unwrap(), addr_bytes.try_into().unwrap())));
 
         if let Some(inst_next2) = inst_next2 {
             values.insert(

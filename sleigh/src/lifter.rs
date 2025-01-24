@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use crate::compiler::CompilerContext;
 use crate::lifter::cache::LifterCache;
 use crate::spec::ProcessorSpecification;
@@ -76,24 +78,32 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
             .context_value_mut(MOIRContextId::from(0))
             .unwrap() = 0x21;
 
-        // TODO finish matching
-        let resolver = root_jumplist
-            .r#match(
-                &bytes,
-                &self.specification.jumplist_cache,
-                &self.specification,
-                &self.specification.symbol_tables.constructors,
-                &mut context_provider,
-            )
-            .unwrap();
+        let count = 1_000;
+        let start = Instant::now();
+        for _ in 0..count {
+            let resolver = root_jumplist
+                .r#match(
+                    &bytes,
+                    &self.specification.jumplist_cache,
+                    &self.specification,
+                    &self.specification.symbol_tables.constructors,
+                    &mut context_provider,
+                )
+                .unwrap();
 
-        if let Some((_, resolver)) = resolver {
-            resolver.print_hierarchy(0);
-            resolver.print_mcode(0);
-
-            let target_instruction = resolver.build().unwrap();
-            trace_jir!("{target_instruction}");
+            std::hint::black_box(resolver);
         }
+
+        let duration = (Instant::now() - start) / count;
+        eprintln!("duration = {:?}", duration);
+
+        // if let Some((_, resolver)) = resolver {
+        //     resolver.print_hierarchy(0);
+        //     resolver.print_mcode(0);
+
+        //     let target_instruction = resolver.build().unwrap();
+        //     trace_jir!("{target_instruction}");
+        // }
 
         todo!("return values")
     }

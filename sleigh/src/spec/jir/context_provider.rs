@@ -14,29 +14,30 @@ use crate::spec::typed_index_table::TypedIndexTable;
 
 #[derive(Debug, Default)]
 pub(crate) struct ContextProvider<'a> {
-    pub(crate) context_values: HashMap<MOIRContextId, u64>,
+    // context ids are assumed to be contiguous and therefore pushed onto and popped
+    // from this vector when saving and restoring state
+    context_values: Vec<u64>,
+    num_values: usize,
     context_fields: HashMap<FieldId, &'a MOIRField>,
-
-    // TODO improve
-    states: Vec<HashMap<MOIRContextId, u64>>,
 }
 
 impl<'a> ContextProvider<'a> {
     pub(crate) fn new(fields: &'a TypedIndexTable<FieldId, MOIRField>) -> Self {
-        let mut context_values = HashMap::new();
+        let mut highest_cid = MOIRContextId::from(0);
         let mut context_fields = HashMap::new();
 
         for (field_id, field) in fields.iter() {
             if let MOIRFieldParent::Context(cid) = field.parent {
-                context_values.insert(cid, 0);
+                highest_cid = highest_cid.max(cid);
                 context_fields.insert(field_id, field);
             }
         }
 
         Self {
-            context_values,
+            // initialize default layer with zeroes
+            context_values: vec![0; usize::from(highest_cid) + 1],
+            num_values: usize::from(highest_cid) + 1,
             context_fields,
-            states: vec![],
         }
     }
 
@@ -61,10 +62,13 @@ impl<'a> ContextProvider<'a> {
         &self,
         cid: MOIRContextId,
     ) -> SleighCompilerResult<u64> {
-        Ok(*self
-            .context_values
-            .get(&cid)
-            .ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing context value") })?)
+        if usize::from(cid) >= self.num_values {
+            todo!("Generate error report for out of bounds context id");
+        }
+
+        let index = self.context_values.len() - usize::from(cid) - 1;
+
+        Ok(*self.context_values.get(index).expect("We checked this above"))
     }
 
     /// Get a mutable reference to the value of a context register. Return an error if no value is
@@ -73,9 +77,13 @@ impl<'a> ContextProvider<'a> {
         &mut self,
         cid: MOIRContextId,
     ) -> SleighCompilerResult<&mut u64> {
-        self.context_values
-            .get_mut(&cid)
-            .ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for missing context value") })
+        if usize::from(cid) >= self.num_values {
+            todo!("Generate error report for out of bounds context id");
+        }
+
+        let index = self.context_values.len() - usize::from(cid) - 1;
+
+        Ok(self.context_values.get_mut(index).expect("We checked this above"))
     }
 
     /// Get the value of context field `field_id`. Return an error if `field_id` does not point to a context field.
@@ -123,17 +131,23 @@ impl<'a> ContextProvider<'a> {
     /// in case we get stuck in a dead end when descending into subtables. This function
     /// stores the current state so changes can be undone.
     pub(crate) fn push_state(&mut self) {
-        self.states.push(self.context_values.clone());
+        let start = self.context_values.len() - self.num_values;
+
+        for i in 0..self.num_values {
+            self.context_values.push(self.context_values[start + i]);
+        }
     }
 
     /// The context will be set for a successful match on the current layer, but needs to be reset
     /// in case we get stuck in a dead end when descending into subtables. This function
     /// undoes the latest pushed changes.
     pub(crate) fn pop_state(&mut self) -> SleighCompilerResult {
-        self.context_values = self
-            .states
-            .pop()
-            .ok_or_else(|| -> SleighCompilerError { todo!("Generate error report for popping an empty state") })?;
+        // the default layer can't be popped
+        if self.context_values.len() < 2 * self.num_values {
+            todo!("Generate error report for popping empty state");
+        }
+
+        self.context_values.truncate(self.context_values.len() - self.num_values);
         Ok(())
     }
 }

@@ -72,9 +72,6 @@ impl SleighCompiler {
             .spec_builder
             .get_table_id_or_create(constructor.table.transpose())?;
 
-        if table_name == "Mem" {
-            eprintln!("hello world");
-        }
         let constructor_id = self.spec_builder.next_constructor_id();
         let matchers = self.create_matchers(&constructor.bit_pattern_section.constraint, table_id, constructor_id)?;
 

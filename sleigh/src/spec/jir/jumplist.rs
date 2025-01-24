@@ -1,8 +1,7 @@
-use std::collections::HashMap;
-
 use chumsky::container::Container;
 use itertools::Itertools;
 use mogi_utilities::addresses::EVAddr;
+use rustc_hash::FxHashMap;
 use tracing::field;
 
 use crate::compiler::SleighCompilerResult;
@@ -44,7 +43,7 @@ struct LocalMatching<'a> {
     bytes: Vec<&'a [u8]>,
     constructor_id: ConstructorId,
     table_id: TableId,
-    extracted_fields: HashMap<FieldId, u64>,
+    extracted_fields: FxHashMap<FieldId, u64>,
 }
 
 impl<'a> LocalMatching<'a> {
@@ -59,7 +58,7 @@ impl<'a> LocalMatching<'a> {
             bytes,
             constructor_id,
             table_id,
-            extracted_fields: HashMap::new(),
+            extracted_fields: FxHashMap::default()
         }
     }
 }
@@ -87,7 +86,7 @@ impl FieldExtractor {
     pub(crate) fn process_value(
         &self,
         token_value: u64,
-        fields: &mut HashMap<FieldId, u64>,
+        fields: &mut FxHashMap<FieldId, u64>,
     ) {
         let field_mut = fields.entry(self.field_id).or_default();
         *field_mut |= self.bits.extract(token_value);
@@ -123,12 +122,12 @@ impl JumplistEntry {
 pub(crate) enum JumplistContainer {
     // multiple alternatives are possible in case of a shared prefix
     Small([Option<Vec<JumplistEntry>>; 256]),
-    Large(HashMap<u64, Vec<JumplistEntry>>),
+    Large(FxHashMap<u64, Vec<JumplistEntry>>),
 }
 
 impl Default for JumplistContainer {
     fn default() -> Self {
-        JumplistContainer::Large(HashMap::default())
+        JumplistContainer::Large(FxHashMap::default())
     }
 }
 
@@ -147,7 +146,7 @@ pub(crate) struct Jumplist {
     mask: u64, // usually only a few bits are actually relevant for indexing into the list
     bytes: MOIRSize,
     data_provider: DataProvider,
-    field_extractors: HashMap<ConstructorId, Vec<FieldExtractor>>,
+    field_extractors: FxHashMap<ConstructorId, Vec<FieldExtractor>>,
 }
 
 impl Jumplist {
@@ -155,13 +154,12 @@ impl Jumplist {
         mask: u64,
         bytes: MOIRSize,
         data_provider: DataProvider,
-        field_extractors: HashMap<ConstructorId, Vec<FieldExtractor>>,
+        field_extractors: FxHashMap<ConstructorId, Vec<FieldExtractor>>,
     ) -> Self {
         let container = if bytes <= 1 {
-            // JumplistContainer::Small([const { Option::None }; 256])
-            JumplistContainer::Large(HashMap::new())
+            JumplistContainer::Small([const { Option::None }; 256])
         } else {
-            JumplistContainer::Large(HashMap::new())
+            JumplistContainer::Large(FxHashMap::default())
         };
 
         Self {

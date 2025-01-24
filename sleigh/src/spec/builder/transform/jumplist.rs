@@ -1,4 +1,5 @@
 use petgraph::graph::NodeIndex;
+use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 use std::collections::{
     BTreeMap,
@@ -657,8 +658,8 @@ impl<'a> JumplistBuilder<'a> {
         rows: &Vec<Row<'a>>,
         token_index: usize,
         size_bits: MOIRBitRange,
-    ) -> SleighCompilerResult<HashMap<ConstructorId, Vec<FieldExtractor>>> {
-        let mut field_extractors = HashMap::<ConstructorId, Vec<FieldExtractor>>::new();
+    ) -> SleighCompilerResult<FxHashMap<ConstructorId, Vec<FieldExtractor>>> {
+        let mut field_extractors = FxHashMap::<ConstructorId, Vec<FieldExtractor>>::default();
 
         for row in rows {
             let constructor_id = row.matcher.constructor_id;
