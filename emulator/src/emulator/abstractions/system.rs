@@ -22,6 +22,7 @@ use rand::{
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::rc::Rc;
+use crate::emulator::system::stdio::Stdio;
 
 pub trait SystemControl: Clone {
     type TaskIdT: Ord + Copy + Clone + Default + 'static;
@@ -44,4 +45,5 @@ pub trait SystemControl: Clone {
     fn task_manager(&self) -> &Rc<RefCell<TaskManager<Self::TaskIdT, Self::KernelTaskT>>>;
     fn tcp(&self) -> &Rc<RefCell<Self::TcpT>>;
     fn fd_map(&self) -> &Rc<RefCell<FileDescriptorMap<Self::FDT, Self::TaskIdT, Self::FDDataT>>>;
+    fn stdio(&self) -> &Rc<RefCell<Stdio>>;
 }

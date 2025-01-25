@@ -50,6 +50,30 @@ use bmp::{
 };
 use graphviz_rust::attributes::dimen;
 use hilbert_curve::convert_1d_to_2d;
+use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
+use mogi_emulator::emulator::abstractions::filesystem::{
+    FSEntry,
+    FileId,
+    Mountpoint,
+};
+use mogi_emulator::emulator::abstractions::network::{
+    IPAddress,
+    SocketAddress,
+    SocketId,
+};
+use mogi_emulator::emulator::abstractions::system::SystemControl;
+use mogi_emulator::emulator::interface::emulator::{
+    Emulator,
+    ExitReason,
+};
+use mogi_emulator::emulator::interface::network::tcp::{
+    TCPSocket,
+    TCPSystemControl,
+};
+use mogi_emulator::emulator::platform::linux::kernel::task_id::TaskId;
+use mogi_emulator::emulator::system::memory::MappingType;
+use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::error::memory::MemoryError;
 use petgraph::dot::{
     Config,
     Dot,
@@ -74,26 +98,6 @@ use tracing::{
     debug,
     trace,
 };
-
-use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
-use mogi_emulator::emulator::abstractions::network::{
-    IPAddress,
-    SocketAddress,
-    SocketId,
-};
-use mogi_emulator::emulator::abstractions::system::SystemControl;
-use mogi_emulator::emulator::interface::emulator::{
-    Emulator,
-    ExitReason,
-};
-use mogi_emulator::emulator::interface::network::tcp::{
-    TCPSocket,
-    TCPSystemControl,
-};
-use mogi_emulator::emulator::platform::linux::kernel::task_id::TaskId;
-use mogi_emulator::emulator::system::memory::MappingType;
-use mogi_utilities::addresses::EVAddr;
-use mogi_utilities::error::memory::MemoryError;
 
 use crate::api::observer::{
     DebuggableObserver,
@@ -943,6 +947,7 @@ where
         emulator.register_meter(bb_collector);
         let behavior_observer = Rc::new(RefCell::new(behavior_observer));
         let behavior_reducer = Rc::new(RefCell::new(BasicBlockBehaviorReducer::new(behavior_observer.clone())));
+
         Self {
             state: Default::default(),
             state_builder: Default::default(),

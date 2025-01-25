@@ -25,6 +25,7 @@ use crate::emulator::system::fd_map::{
 };
 use crate::emulator::system::filesystem::Filesystem;
 use crate::emulator::system::memory::Memory;
+use crate::emulator::system::stdio::Stdio;
 use crate::emulator::system::task_manager::TaskManager;
 use mogi_system::components::restore::Restorable;
 
@@ -37,6 +38,7 @@ pub mod filesystem;
 pub mod hardware;
 pub mod memory;
 pub mod prng;
+pub mod stdio;
 pub mod task_manager;
 
 /// This struct contains the global system state and system components like memory and filesystem or the system clock.
@@ -66,6 +68,7 @@ where
     pub fd_map: Rc<RefCell<FileDescriptorMap<FD, TaskId, FDData>>>,
     pub task_manager: Rc<RefCell<TaskManager<TaskId, KernelTaskT>>>,
     pub tcp: Rc<RefCell<TcpT>>,
+    pub stdio: Rc<RefCell<Stdio>>,
 }
 
 impl<FD, FDData, TaskId, KernelTaskT, Endianness, CpuT, MmuT, TcpT, PrngT> Clone
@@ -92,6 +95,7 @@ where
             fd_map: self.fd_map.clone(),
             task_manager: self.task_manager.clone(),
             tcp: self.tcp.clone(),
+            stdio: self.stdio.clone(),
         }
     }
 }
@@ -119,6 +123,7 @@ where
         fd_map: FileDescriptorMap<FD, TaskId, FDData>,
         task_manager: TaskManager<TaskId, KernelTaskT>,
         tcp: Rc<RefCell<TcpT>>,
+        stdio: Rc<RefCell<Stdio>>,
     ) -> Self {
         Self {
             cpu,
@@ -129,6 +134,7 @@ where
             prng_map: Rc::new(RefCell::new(prng_map)),
             fd_map: Rc::new(RefCell::new(fd_map)),
             task_manager: Rc::new(RefCell::new(task_manager)),
+            stdio,
             tcp,
         }
     }
@@ -191,6 +197,10 @@ where
 
     fn fd_map(&self) -> &Rc<RefCell<FileDescriptorMap<Self::FDT, Self::TaskIdT, Self::FDDataT>>> {
         &self.fd_map
+    }
+
+    fn stdio(&self) -> &Rc<RefCell<Stdio>> {
+        &self.stdio
     }
 }
 

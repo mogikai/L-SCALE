@@ -87,6 +87,11 @@ macro_rules! sys_component_mut {
     };
 }
 
+use crate::emulator::system::stdio::{
+    StdInputOps,
+    StdOutputOps,
+    StdioData,
+};
 use mogi_system::components::cpu::{
     CPU,
     RegisterX86,
@@ -433,20 +438,18 @@ where
 
     pub fn add_stdio_handles(&mut self) {
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
-        let mut read_only = FileDescriptor::new(Box::new(default_handles::ReadOnly::new()));
-        // TODO: Dont use pseudo file. Instead use actual filesystem backed input
-        read_only.data.file = Some(FileData::new(self.system.filesystem.clone(), FileId::default(), None));
-        file_descriptor_map.insert_at(&self.task_id, 0.into(), read_only);
-        file_descriptor_map.insert_at(
-            &self.task_id,
-            1.into(),
-            FileDescriptor::new(Box::new(default_handles::WriteOnly::new())),
-        );
-        file_descriptor_map.insert_at(
-            &self.task_id,
-            2.into(),
-            FileDescriptor::new(Box::new(default_handles::WriteOnly::new())),
-        );
+
+        let mut stdin = FileDescriptor::new(Box::new(StdInputOps::new()));
+        stdin.data.stdio = Some(StdioData::new(self.system.stdio.clone()));
+        file_descriptor_map.insert_at(&self.task_id, 0.into(), stdin);
+
+        let mut stdout = FileDescriptor::new(Box::new(StdOutputOps::new()));
+        stdout.data.stdio = Some(StdioData::new(self.system.stdio.clone()));
+        file_descriptor_map.insert_at(&self.task_id, 1.into(), stdout);
+
+        let mut stderr = FileDescriptor::new(Box::new(StdOutputOps::new()));
+        stderr.data.stdio = Some(StdioData::new(self.system.stdio.clone()));
+        file_descriptor_map.insert_at(&self.task_id, 2.into(), stderr);
     }
 
     pub fn brk(

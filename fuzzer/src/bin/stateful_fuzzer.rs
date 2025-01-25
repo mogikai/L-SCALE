@@ -23,6 +23,7 @@ use mogi_emulator::emulator::system::fd_map::FileDescriptorMap;
 use mogi_emulator::emulator::system::filesystem::Filesystem;
 use mogi_emulator::emulator::system::memory::Memory;
 use mogi_emulator::emulator::system::prng::SeedablePrngMap;
+use mogi_emulator::emulator::system::stdio::Stdio;
 use mogi_emulator::emulator::system::task_manager::TaskManager;
 use mogi_fuzzer::core::fuzzer::Fuzzer;
 use mogi_fuzzer::io::tcp::TCP;
@@ -82,6 +83,7 @@ fn main() {
     let prng_map = SeedablePrngMap::new(0xcafef00dd15ea5e5cafef00dd15ea5e5_u128.to_ne_bytes());
     let file_descriptor_map = FileDescriptorMap::new();
     let tcp = Rc::new(RefCell::new(TCP::new()));
+    let stdio = Rc::new(RefCell::new(Stdio::new()));
     let system = System::new(
         cpu.clone(),
         mmu.clone(),
@@ -92,6 +94,7 @@ fn main() {
         file_descriptor_map,
         task_manager,
         tcp.clone(),
+        stdio,
     );
 
     let initial_task = LinuxKernelTask::new(system.clone(), 1337, 1);

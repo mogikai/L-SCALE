@@ -11,6 +11,7 @@ use crate::emulator::platform::linux::kernel::net::netlink::rtnetlink::NetlinkDa
 use crate::emulator::platform::linux::kernel::net::unix::UnixSocketData;
 use crate::emulator::platform::linux::signalfd::SignalFD;
 use crate::emulator::system::fd_map::FdId;
+use crate::emulator::system::stdio::StdioData;
 
 // TODO: Move to platform directory and make FileDescriptor generic
 #[derive(Default, Debug, Clone)]
@@ -22,6 +23,7 @@ pub struct FileDescriptorData {
     pub epoll: Option<EpollData>,
     pub usock: Option<UnixSocketData>,
     pub netlink: Option<NetlinkData>,
+    pub stdio: Option<StdioData>,
 }
 
 #[derive(Hash, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Default)]
