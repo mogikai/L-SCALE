@@ -1,39 +1,20 @@
 #![allow(unused_variables)]
 
-use std::cmp::Ordering;
 use std::collections::{
     BTreeSet,
     HashMap,
     HashSet,
 };
 
-use itertools::Itertools;
-
-use crate::compiler::SleighCompilerResult;
-use crate::compiler::error::SleighCompilerError;
 use crate::new_typed_index_table_id;
 use crate::spec::builder::MOIRSymbolId;
 use crate::spec::moir::constructor::ConstructorId;
-use crate::spec::moir::context::{
-    MOIRContext,
-    MOIRContextId,
-};
-use crate::spec::moir::endianness::MOIREndianness;
 use crate::spec::moir::field::{
     FieldId,
-    MOIRField,
     MOIRFieldParent,
 };
-use crate::spec::moir::table::{
-    MOIRTable,
-    TableId,
-};
-use crate::spec::moir::token::{
-    MOIRToken,
-    TokenId,
-};
+use crate::spec::moir::table::TableId;
 use crate::spec::moir::varnode::VarNodeId;
-use crate::spec::typed_index_table::TypedIndexTable;
 
 // TODO: for now we assume each token to be of a maximum of 8 bytes, but this doesn't have to be
 // the case probably

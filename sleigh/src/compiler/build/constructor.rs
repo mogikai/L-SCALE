@@ -11,7 +11,6 @@ use crate::compiler::build::trace_build;
 use crate::compiler::error::{
     InternalError,
     InternalErrorType,
-    SleighCompilerError,
 };
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::{
@@ -28,7 +27,6 @@ use crate::spec::moir::actions::{
     MOIRActionTarget,
     MOIRPatternExpression,
 };
-use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::MOIRConstructor;
 use crate::spec::moir::field::MOIRFieldParent;
 use crate::spec::moir::scope::{
@@ -47,7 +45,6 @@ use std::collections::HashSet;
 use tracing::{
     debug,
     trace,
-    warn,
 };
 
 pub(crate) mod matcher;
@@ -168,7 +165,7 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         sast_expr: Spanned<SASTPatternExpression>,
     ) -> InternalCompilerResult<MOIRPatternExpression> {
-        let (sast_expr, span) = sast_expr.into_tuple();
+        let (sast_expr, _) = sast_expr.into_tuple();
         Ok(match sast_expr {
             SASTPatternExpression::Add(lhs, rhs) => MOIRPatternExpression::Add(
                 Box::new(self.pc_convert_expression(scope, *lhs)?),

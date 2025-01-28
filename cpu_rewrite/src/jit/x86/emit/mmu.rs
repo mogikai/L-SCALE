@@ -1,6 +1,4 @@
 use crate::jit::api::{
-    CustomOpArgs,
-    CustomOpImpl,
     JITResult,
     JITTaskRuntimeContext,
     JitError,
@@ -13,7 +11,6 @@ use crate::jit::x86::{
     X86MogiJit,
     assemble,
 };
-use dynasmrt::DynasmLabelApi;
 use mogi_mem::physical::page::PageData;
 use mogi_mem::tlb::entry::TLBEntry;
 use mogi_mem::tlb::tlb::AccessType;

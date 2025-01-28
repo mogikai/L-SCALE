@@ -49,7 +49,6 @@ use crate::spec::moir::field::{
 };
 use crate::spec::moir::token::MOIRToken;
 use crate::spec::moir::varnode::MOIRVarNode;
-use chumsky::container::Container;
 use tracing::{
     debug,
     trace,

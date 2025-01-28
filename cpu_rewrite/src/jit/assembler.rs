@@ -1,7 +1,6 @@
 use crate::jit::code_buffer::Code;
 use dynasmrt::components::{
     LabelRegistry,
-    ManagedRelocs,
     PatchLoc,
     StaticLabel,
 };
@@ -196,7 +195,10 @@ impl<R: Relocation + Clone> MogiAssembler<R> {
         // Resolve statics
         for (loc, label) in self.relocs.iter_statics() {
             let result = if let Some(target) = self.global_labels.get(label.get_name()) {
-                let global_offset = target.byte_offset_from(code_ptr);
+                // SAFETY: The api of the assembler specifies that for all addresses provided to the assembler,
+                //         the address must be located in the same continuous memory region provided by a
+                //         CodeBuffer object. As long as these safety requirements are upheld, this op is safe.
+                let global_offset = unsafe { target.byte_offset_from(code_ptr) };
                 loc.global_patch(&mut buff[loc.range(0)], code_ptr_usize, global_offset)
                     .is_err()
             } else {

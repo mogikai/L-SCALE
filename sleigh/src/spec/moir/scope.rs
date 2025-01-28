@@ -25,12 +25,6 @@ use crate::spec::moir::varnode::{
     MOIRSlice,
 };
 use crate::spec::typed_index_table::TypedIndexTable;
-use crate::spec::{
-    ProcessorSpecResult,
-    ProcessorSpecificationError,
-};
-use chumsky::input::Input;
-use itertools::Itertools;
 use mogi_utilities::index_map::PrimaryMap;
 use mogi_utilities::new_map_key;
 use std::collections::hash_map::Entry;
@@ -46,8 +40,6 @@ use std::fmt::{
 };
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
-
-use super::field::MOIRBitRange;
 
 /// A scope for locals and labels used in constructors and macros
 #[derive(Default, Clone)]

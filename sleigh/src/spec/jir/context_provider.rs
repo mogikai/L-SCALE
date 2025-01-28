@@ -1,4 +1,3 @@
-use chumsky::container::Container;
 use imbl::HashMap;
 
 use crate::compiler::InternalCompilerResult;
@@ -6,7 +5,6 @@ use crate::compiler::error::InternalError;
 use crate::spec::moir::context::MOIRContextId;
 use crate::spec::moir::field::{
     FieldId,
-    MOIRBitRange,
     MOIRField,
     MOIRFieldParent,
 };

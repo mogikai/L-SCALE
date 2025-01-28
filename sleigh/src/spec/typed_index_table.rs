@@ -1,8 +1,5 @@
 use std::marker::PhantomData;
 
-use chumsky::container::Container;
-use itertools::Itertools;
-
 /// Creates a new symbol table identifier that can be used to index a [TypedIndexTable].
 #[macro_export(local_inner_macros)]
 macro_rules! new_typed_index_table_id {

@@ -30,10 +30,3 @@ arrayvec = "0.7.4"
 rand_pcg = "0.3.1"
 hilbert_curve = "0.2.0"
 bmp = "0.5.0"
-
-[profile.release]
-opt-level = 3
-strip = "symbols"
-debug-assertions = false
-overflow-checks = false
-lto = "fat"

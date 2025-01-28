@@ -1,7 +1,6 @@
 #![allow(unused_variables)]
 //! The x86 JIT implementation can make use of all registers, except RBP, since RBP stores the cpu context.
 use crate::jit::api::{
-    CustomOpArgs,
     CustomOpImpl,
     JITGlobalRuntimeContext,
     JITPathChoice,
@@ -13,26 +12,10 @@ use crate::jit::api::{
     RuntimeError,
     TlbMissHelper,
 };
-use crate::jit::cache::{
-    AsJitCode,
-    JitCache,
-    JitCode,
-};
+use dynasmrt::dynasm;
 use dynasmrt::x64::X64Relocation;
-use dynasmrt::{
-    Assembler,
-    AssemblyOffset,
-    DynasmApi,
-    DynasmLabelApi,
-    ExecutableBuffer,
-    dynasm,
-};
 use memmap2::MmapOptions;
 use mogi_mem::mmu::MogiMMU;
-use mogi_mem::tlb::tlb::{
-    AccessType,
-    TLB,
-};
 use mogi_sleigh::spec::jir::jcode::{
     JIRInstruction,
     JIROperation,
@@ -46,24 +29,14 @@ use mogi_sleigh::spec::{
     CustomOpId,
     ProcessorSpecification,
 };
-use mogi_utilities::addresses::{
-    Addressable,
-    EVAddr,
-    HVAddr,
-};
+use mogi_utilities::addresses::EVAddr;
 use std::cell::RefCell;
 use std::ffi::c_void;
-use std::mem::offset_of;
 use std::pin::Pin;
 use std::ptr::NonNull;
 use std::rc::Rc;
-use std::{
-    array,
-    mem,
-};
 use tracing::trace;
 
-use crate::jit::assembler::MogiAssembler;
 use crate::jit::code_buffer::{
     AnonymousBlockId,
     CodeBuffer,
@@ -95,6 +68,7 @@ macro_rules! assemble {
         {
         #[allow(unused_imports)]
         use dynasmrt::DynasmApi;
+        #[allow(unused_imports)]
         use dynasmrt::DynasmLabelApi;
         use dynasmrt::dynasm;
         dynasm!($asm
@@ -150,7 +124,7 @@ pub struct X86GlobalContext {
 /// TODO: We might need to compact the spaces in the spec, since they contain a lot of
 ///       unused areas. We could then possibly reduce the size to one or two pages.
 #[derive(Debug)]
-struct Space([u8; 0x3000]);
+pub struct Space([u8; 0x3000]);
 
 impl Space {
     fn new() -> Self {

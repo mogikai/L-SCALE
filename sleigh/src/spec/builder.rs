@@ -12,11 +12,7 @@ use super::moir::context::{
     MOIRContext,
     MOIRContextId,
 };
-use crate::compiler::ast::{
-    Spanned,
-    SpannedToken,
-};
-use crate::compiler::build::constructor::matcher::MatcherId;
+use crate::compiler::ast::Spanned;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::{
     DuplicateDefineType,
@@ -35,9 +31,6 @@ use crate::compiler::{
     InternalCompilerResult,
 };
 use crate::spec::builder::transform::MOIRToJIRTransformer;
-use crate::spec::jir::context_provider::ContextProvider;
-use crate::spec::jir::jumplist::JumplistId;
-use crate::spec::jir::trace_jir;
 use crate::spec::moir::address_space::{
     MOIRSpace,
     MOIRSpaceIsDefault,
@@ -87,7 +80,6 @@ use chumsky::input::{
 };
 use chumsky::inspector::Inspector;
 use mogi_utilities::index_map::PrimaryMap;
-use slotmap::SlotMap;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::fmt::{
@@ -875,7 +867,8 @@ impl Default for ProcessorSpecificationBuilder {
             variables: vec![],
             values: vec![],
             strings: vec![],
-        });
+        })
+        .unwrap();
         slf
     }
 }

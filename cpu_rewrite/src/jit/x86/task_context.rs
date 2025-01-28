@@ -11,7 +11,6 @@ use mogi_mem::tlb::tlb::{
     TLB,
 };
 use mogi_sleigh::spec::jir::values::JIRSlice;
-use mogi_utilities::addresses::EVAddr;
 use std::array;
 use std::mem::offset_of;
 use std::ptr::NonNull;

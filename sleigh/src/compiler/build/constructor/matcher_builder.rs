@@ -1,8 +1,6 @@
-use core::panic;
 use std::collections::{
     BTreeMap,
     BTreeSet,
-    HashMap,
     HashSet,
 };
 
@@ -26,10 +24,7 @@ use crate::compiler::build::constructor::matcher::{
     MatcherReference,
     TokenList,
 };
-use crate::compiler::error::{
-    InternalError,
-    SleighCompilerError,
-};
+use crate::compiler::error::InternalError;
 use crate::compiler::{
     InternalCompilerResult,
     SleighCompiler,
@@ -902,7 +897,7 @@ fn ensure_concretized(matchers: &Vec<Matcher>) -> SleighCompilerResult {
     for matcher in matchers.iter() {
         for parent in matcher.token_list.list.iter() {
             if parent.is_none() {
-                Err(todo!())?;
+                todo!()
             }
         }
     }

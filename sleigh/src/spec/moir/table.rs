@@ -1,6 +1,7 @@
-use std::collections::BTreeSet;
-
-use crate::compiler::build::constructor::matcher::{Matcher, MatcherId};
+use crate::compiler::build::constructor::matcher::{
+    Matcher,
+    MatcherId,
+};
 use crate::new_typed_index_table_id;
 use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::constructor::ConstructorId;

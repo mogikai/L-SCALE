@@ -1,45 +1,27 @@
 use petgraph::graph::NodeIndex;
 use rustc_hash::FxHashMap;
-use std::collections::hash_map::Entry;
 use std::collections::{
     BTreeMap,
     BTreeSet,
     HashMap,
-    HashSet,
 };
 use std::fs::File;
 use std::io::Write;
-use std::process::exit;
 
-use chumsky::container::{
-    Container,
-    Seq,
-};
+use chumsky::container::Seq;
 use itertools::Itertools;
-use num::PrimInt;
 use petgraph::Graph;
-use petgraph::data::Build;
-use petgraph::dot::{
-    Config,
-    Dot,
-};
+use petgraph::dot::Dot;
 
 use crate::compiler::InternalCompilerResult;
-use crate::compiler::ast::pcode::deref;
 use crate::compiler::build::constructor::matcher::{
     FieldMatcher,
     Matcher,
     MatcherAtom,
-    MatcherId,
     Submatchers,
-    TokenList,
 };
-use crate::compiler::build::constructor::matcher_builder::merge_token_lists;
 use crate::compiler::build::trace_build;
-use crate::compiler::error::{
-    InternalError,
-    SleighCompilerError,
-};
+use crate::compiler::error::InternalError;
 use crate::spec::ProcessorSpecificationError;
 use crate::spec::jir::jumplist::{
     DataProvider,
@@ -166,7 +148,7 @@ impl<'a> JumplistBuilder<'a> {
             .ok_or_else(|| -> InternalError {
                 todo!("Generate error report for missing root table");
             })?;
-        let root_matcher_ids = root_table.matchers.iter().map(|(key, _)| key).collect_vec();
+        let _root_matcher_ids = root_table.matchers.iter().map(|(key, _)| key).collect_vec();
         let submatchers = Submatchers::new(root_table_id, None);
 
         let root_jumplist_id = self.process_submatchers(&submatchers)?;
@@ -404,7 +386,7 @@ impl<'a> JumplistBuilder<'a> {
         let jumplists = self.create_jumplist_mask(rows, token_index, bytes_consumed, size_bits)?;
 
         // combine if multiple, use directly if only one
-        let mut jumplist = if jumplists.len() > 1 {
+        let jumplist = if jumplists.len() > 1 {
             let mut jumplist_new = Jumplist::default();
             for jumplist in jumplists.into_iter() {
                 let jumplist_id = self.jumplist_cache.insert(jumplist);

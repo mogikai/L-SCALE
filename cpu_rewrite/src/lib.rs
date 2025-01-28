@@ -22,6 +22,7 @@
 #![feature(abort_unwind)]
 // TODO: Disallow dead code once prototyping is done
 #![allow(dead_code)]
+#![deny(unsafe_op_in_unsafe_fn)]
 extern crate core;
 
 pub mod cpu;

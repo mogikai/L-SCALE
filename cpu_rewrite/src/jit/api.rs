@@ -1,17 +1,12 @@
-use crate::jit::cache::{
-    JitCacheError,
-    JitCode,
-};
+use crate::jit::cache::JitCacheError;
 use crate::jit::code_buffer::CodeBufferError;
 use dynasmrt::DynasmError;
-use mogi_mem::physical::Page;
 use mogi_mem::physical::page::PageData;
 use mogi_mem::tlb::tlb::{
     AccessType,
     TLB,
 };
 use mogi_sleigh::spec::jir::jcode::JIRInstruction;
-use mogi_sleigh::spec::jir::jir_block::JIRBlockId;
 use mogi_sleigh::spec::jir::values::{
     JIRSlice,
     JIRValue,

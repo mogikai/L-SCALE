@@ -3,7 +3,6 @@
 //! This includes for example the registers and a pointer to the currently active `TLB`.
 
 use std::cell::RefCell;
-use std::ffi::c_void;
 use std::fmt::Debug;
 use std::rc::Rc;
 

@@ -1,6 +1,5 @@
-use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::Spanned;
-use crate::compiler::StringId;
+use crate::compiler::ast::common::SASTIdent;
 
 /// Used inside the disassembly section for arbitrary calculations
 #[derive(Debug, Clone)]

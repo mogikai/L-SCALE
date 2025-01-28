@@ -1,7 +1,6 @@
 use crate::new_typed_index_table_id;
 use crate::spec::builder::StringId;
 use crate::spec::moir::token::TokenId;
-use std::ops::Range;
 
 use super::common::MOIRSize;
 use super::context::MOIRContextId;
@@ -67,7 +66,10 @@ impl std::ops::BitAnd for MOIRBitRange {
 
     /// Calculates the intersection of `self` and `rhs`. Note that this operation keeps ranges
     /// continuous so it's well-defined.
-    fn bitand(self, rhs: Self) -> Self::Output {
+    fn bitand(
+        self,
+        rhs: Self,
+    ) -> Self::Output {
         MOIRBitRange::new(self.start.max(rhs.start), self.end.min(rhs.end))
     }
 }

@@ -1,31 +1,17 @@
 use crate::compiler::InternalCompilerResult;
-use itertools::Itertools;
 
 use crate::compiler::ast::Spanned;
-use crate::compiler::build::constructor::matcher::{
-    FieldMatcher,
-    Matcher,
-    MatcherAtom,
-    MatcherId,
-};
-use crate::compiler::build::trace_build;
-use crate::compiler::error::SleighCompilerError;
-use crate::compiler::SleighCompilerResult;
 use crate::spec::builder::{
     CustomInterner,
     MOIRSymbolId,
     MOIRSymbolTables,
     StringId,
 };
-use crate::spec::jir::context_provider::ContextProvider;
+use crate::spec::jir::custom_op::JIRCustomOp;
 use crate::spec::jir::jumplist::{
     Jumplist,
-    JumplistContainer,
-    JumplistEntry,
     JumplistId,
-    NextJumplistEntry,
 };
-use crate::spec::jir::custom_op::JIRCustomOp;
 use crate::spec::jir::space::{
     JIRSpace,
     JIRSpaceType,
@@ -36,28 +22,12 @@ use crate::spec::moir::address_space::{
     MOIRSpaceType,
     SpaceId,
 };
-use crate::spec::moir::custom_op::MOIRCustomOp;
-use crate::spec::moir::common::MOIRSize;
-use crate::spec::moir::constructor::{
-    ConstructorId,
-    MOIRConstructor,
-};
 use crate::spec::moir::context::{
     MOIRContext,
     MOIRContextId,
 };
-use crate::spec::moir::field::{
-    FieldId,
-    MOIRFieldParent,
-};
-use crate::spec::moir::table::{
-    MOIRTable,
-    TableId,
-};
-use crate::spec::moir::token::{
-    MOIRToken,
-    TokenId,
-};
+use crate::spec::moir::custom_op::MOIRCustomOp;
+use crate::spec::moir::table::TableId;
 use crate::spec::moir::varnode::{
     MOIRVarNode,
     VarNodeId,
@@ -70,12 +40,7 @@ use crate::spec::{
     JIRSymbolTables,
 };
 use mogi_utilities::index_map::PrimaryMap;
-use std::collections::{
-    HashMap,
-    HashSet,
-};
-use std::process::exit;
-use std::time::Instant;
+use std::collections::HashMap;
 
 use self::jumplist::JumplistBuilder;
 

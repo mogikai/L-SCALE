@@ -1,26 +1,13 @@
 use std::time::Instant;
 
-use crate::compiler::CompilerContext;
 use crate::lifter::cache::LifterCache;
 use crate::spec::ProcessorSpecification;
-use crate::spec::builder::CustomInterner;
 use crate::spec::jir::context_provider::ContextProvider;
 use crate::spec::jir::instruction::TargetInstruction;
-use crate::spec::jir::local_resolver::JIRResolver;
-use crate::spec::jir::trace_jir;
-use crate::spec::jir::values::{
-    JIRSlice,
-    JIRValue,
-    VarNodeId,
-};
-use crate::spec::moir::address_space::SpaceId;
-use crate::spec::moir::constructor::ConstructorId;
 use crate::spec::moir::context::MOIRContextId;
-use crate::spec::moir::table::TableId;
 use mogi_utilities::addresses::EVAddr;
 use source::TargetInstructionSource;
 use thiserror::Error;
-use tracing::debug;
 
 pub mod cache;
 pub mod source;
@@ -63,8 +50,8 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
     /// See [TargetInstruction] for more detail.
     pub fn lift<'slf>(
         &mut self,
-        addr: EVAddr,
-        cid: usize,
+        _addr: EVAddr,
+        _cid: usize,
     ) -> LifterResult<(EVAddr, &TargetInstruction)> {
         // self.cache.flush_instruction(addr)?;
         // // Check the cache. If it contains the instruction we can simply return it.
@@ -86,7 +73,7 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
         let root_jumplist = self.specification.jumplist_cache.get(0.into()).unwrap();
 
         // mod=1
-        let bytes = [ 0xC4, 0xE2, 0xE3, 0xF5, 0x04, 0xAD, 0x37, 0x13, 0x00, 0x00 ];
+        let bytes = [0xC4, 0xE2, 0xE3, 0xF5, 0x04, 0xAD, 0x37, 0x13, 0x00, 0x00];
 
         let mut context_provider = ContextProvider::new(&self.specification.symbol_tables.fields);
         // longMode=1

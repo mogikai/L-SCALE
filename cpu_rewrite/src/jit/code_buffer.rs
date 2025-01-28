@@ -4,7 +4,6 @@ use crate::jit::api::{
     JitError,
 };
 use crate::jit::assembler::MogiAssembler;
-use dynasmrt::AssemblyOffset;
 use dynasmrt::relocations::Relocation;
 use libc::{
     MADV_HUGEPAGE,
@@ -22,6 +21,7 @@ use std::ptr::{
 };
 use thiserror::Error;
 
+#[allow(non_upper_case_globals)]
 const GiB: usize = 1 << 30;
 
 #[derive(Debug, Error)]
@@ -152,7 +152,7 @@ impl<R: Relocation + Clone> CompiledBasicBlock<R> {
 
     pub fn relocate(
         &mut self,
-        new_code_location: Code,
+        _new_code_location: Code,
     ) -> JITResult {
         todo!()
     }

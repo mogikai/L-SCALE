@@ -1,8 +1,5 @@
-use chumsky::container::Container;
-use itertools::Itertools;
 use mogi_utilities::addresses::EVAddr;
 use rustc_hash::FxHashMap;
-use tracing::field;
 
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
@@ -20,11 +17,8 @@ use crate::spec::moir::context::MOIRContextId;
 use crate::spec::moir::field::{
     FieldId,
     MOIRBitRange,
-    MOIRField,
 };
-use crate::spec::moir::scope::MOIRLocalId;
 use crate::spec::moir::table::TableId;
-use crate::spec::moir::varnode::MOIRReference;
 use crate::spec::typed_index_table::TypedIndexTable;
 
 use super::context_provider::ContextProvider;
