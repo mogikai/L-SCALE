@@ -1,3 +1,18 @@
+use chumsky::error::Rich;
+use chumsky::input::MapExtra;
+use chumsky::prelude::{
+    any,
+    end,
+    just,
+    Recursive,
+};
+use chumsky::{
+    extra,
+    select,
+    IterParser,
+    Parser,
+};
+
 use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::{
     InputSpan,
@@ -25,20 +40,6 @@ use crate::preprocessor::blocks::{
 use crate::spec::builder::{
     ProcessorSpecificationBuilder,
     StringId,
-};
-use chumsky::error::Rich;
-use chumsky::input::MapExtra;
-use chumsky::prelude::{
-    any,
-    end,
-    just,
-    Recursive,
-};
-use chumsky::{
-    extra,
-    select,
-    IterParser,
-    Parser,
 };
 
 type SleighPreprocessorExtra<'tokens> =

@@ -1,10 +1,29 @@
 use crate::compiler::InternalCompilerResult;
+use itertools::Itertools;
+
 use crate::compiler::ast::Spanned;
+use crate::compiler::build::constructor::matcher::{
+    FieldMatcher,
+    Matcher,
+    MatcherAtom,
+    MatcherId,
+};
+use crate::compiler::build::trace_build;
+use crate::compiler::error::SleighCompilerError;
+use crate::compiler::SleighCompilerResult;
 use crate::spec::builder::{
     CustomInterner,
     MOIRSymbolId,
     MOIRSymbolTables,
     StringId,
+};
+use crate::spec::jir::context_provider::ContextProvider;
+use crate::spec::jir::jumplist::{
+    Jumplist,
+    JumplistContainer,
+    JumplistEntry,
+    JumplistId,
+    NextJumplistEntry,
 };
 use crate::spec::jir::custom_op::JIRCustomOp;
 use crate::spec::jir::space::{
@@ -18,6 +37,27 @@ use crate::spec::moir::address_space::{
     SpaceId,
 };
 use crate::spec::moir::custom_op::MOIRCustomOp;
+use crate::spec::moir::common::MOIRSize;
+use crate::spec::moir::constructor::{
+    ConstructorId,
+    MOIRConstructor,
+};
+use crate::spec::moir::context::{
+    MOIRContext,
+    MOIRContextId,
+};
+use crate::spec::moir::field::{
+    FieldId,
+    MOIRFieldParent,
+};
+use crate::spec::moir::table::{
+    MOIRTable,
+    TableId,
+};
+use crate::spec::moir::token::{
+    MOIRToken,
+    TokenId,
+};
 use crate::spec::moir::varnode::{
     MOIRVarNode,
     VarNodeId,
@@ -30,7 +70,16 @@ use crate::spec::{
     JIRSymbolTables,
 };
 use mogi_utilities::index_map::PrimaryMap;
-use std::collections::HashMap;
+use std::collections::{
+    HashMap,
+    HashSet,
+};
+use std::process::exit;
+use std::time::Instant;
+
+use self::jumplist::JumplistBuilder;
+
+mod jumplist;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 use tracing::warn;
@@ -46,6 +95,7 @@ pub struct JIRData {
     pub symbol_ids: TypedIndexTable<Ident, JIRSymbolId>,
     pub symbol_strings: HashMap<Ident, StringId>,
     pub symbol_tables: JIRSymbolTables,
+    pub jumplist_cache: TypedIndexTable<JumplistId, Jumplist>,
     pub string_to_ident_mapping: HashMap<StringId, Ident>,
 }
 
@@ -56,6 +106,8 @@ struct MOIRData<'a> {
     symbol_strings: HashMap<Ident, Spanned<StringId>>,
     symbol_tables: MOIRSymbolTables,
     string_to_ident_mapping: HashMap<StringId, Ident>,
+    context: TypedIndexTable<MOIRContextId, MOIRContext>,
+    root_table_id: TableId,
 }
 
 impl<'a> MOIRToJIRTransformer<'a> {
@@ -65,6 +117,8 @@ impl<'a> MOIRToJIRTransformer<'a> {
         symbol_strings: HashMap<Ident, Spanned<StringId>>,
         symbol_tables: MOIRSymbolTables,
         string_to_ident_mapping: HashMap<StringId, Ident>,
+        context: TypedIndexTable<MOIRContextId, MOIRContext>,
+        root_table_id: TableId,
     ) -> Self {
         Self {
             moir: MOIRData {
@@ -73,15 +127,19 @@ impl<'a> MOIRToJIRTransformer<'a> {
                 symbol_strings,
                 symbol_tables,
                 string_to_ident_mapping,
+                context,
+                root_table_id,
             },
             jir: JIRData {
                 symbol_ids: Default::default(),
                 symbol_strings: Default::default(),
                 symbol_tables: Default::default(),
+                jumplist_cache: Default::default(),
                 string_to_ident_mapping: Default::default(),
             },
         }
     }
+
     pub fn transform(mut self) -> InternalCompilerResult<JIRData> {
         self.jir.symbol_ids = self
             .moir
@@ -108,12 +166,26 @@ impl<'a> MOIRToJIRTransformer<'a> {
             .into_iter()
             .map(|(k, v)| (k, v.into_value()))
             .collect();
+
+        let jumplist_cache = JumplistBuilder::new(
+            &self.moir.symbol_tables.tables,
+            &self.moir.symbol_tables.fields,
+            &self.moir.symbol_tables.tokens,
+            &self.moir.context,
+            &self.moir.symbol_tables.varnodes,
+            &self.moir.symbol_tables.constructors,
+        )
+        .transform(self.moir.root_table_id)?;
+
+        self.jir.jumplist_cache = jumplist_cache;
+
         self.jir.symbol_tables = JIRSymbolTables {
             spaces: transform_spaces(self.moir.symbol_tables.spaces)?,
             tables: self.moir.symbol_tables.tables,
             constructors: self.moir.symbol_tables.constructors,
             varnodes: transform_varnodes(self.moir.symbol_tables.varnodes)?,
             custom_ops: transform_custom_ops(self.moir.interner, self.moir.symbol_tables.custom_ops)?,
+            fields: self.moir.symbol_tables.fields,
         };
         self.jir.string_to_ident_mapping = self.moir.string_to_ident_mapping;
         Ok(self.jir)

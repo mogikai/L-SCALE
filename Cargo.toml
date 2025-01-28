@@ -49,3 +49,8 @@ opt-level = 3
 
 #[profile.test.package.mogi_neocpu]
 #opt-level = 0
+
+[profile.release-with-debug]
+inherits = 'release'
+opt-level = 3
+debug = true

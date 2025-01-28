@@ -1,8 +1,13 @@
+use std::time::Instant;
+
+use crate::compiler::CompilerContext;
 use crate::lifter::cache::LifterCache;
 use crate::spec::ProcessorSpecification;
 use crate::spec::builder::CustomInterner;
+use crate::spec::jir::context_provider::ContextProvider;
 use crate::spec::jir::instruction::TargetInstruction;
 use crate::spec::jir::local_resolver::JIRResolver;
+use crate::spec::jir::trace_jir;
 use crate::spec::jir::values::{
     JIRSlice,
     JIRValue,
@@ -10,6 +15,7 @@ use crate::spec::jir::values::{
 };
 use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::constructor::ConstructorId;
+use crate::spec::moir::context::MOIRContextId;
 use crate::spec::moir::table::TableId;
 use mogi_utilities::addresses::EVAddr;
 use source::TargetInstructionSource;
@@ -60,155 +66,63 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
         addr: EVAddr,
         cid: usize,
     ) -> LifterResult<(EVAddr, &TargetInstruction)> {
-        self.cache.flush_instruction(addr)?;
-        // Check the cache. If it contains the instruction we can simply return it.
-        if self.cache.is_instruction_cached(addr) {
-            // TODO: Remove the outer check once the conditional control flow borrow checking lands
-            //       See https://github.com/rust-lang/rfcs/blob/master/text/2094-nll.md#problem-case-3-conditional-control-flow-across-functions
-            match self.cache.fetch_instruction(addr) {
-                Ok(instruction) => {
-                    return Ok((instruction.next(), instruction));
-                }
-                Err(_) => unreachable!(),
-            }
+        // self.cache.flush_instruction(addr)?;
+        // // Check the cache. If it contains the instruction we can simply return it.
+        // if self.cache.is_instruction_cached(addr) {
+        //     // TODO: Remove the outer check once the conditional control flow borrow checking lands
+        //     //       See https://github.com/rust-lang/rfcs/blob/master/text/2094-nll.md#problem-case-3-conditional-control-flow-across-functions
+        //     match self.cache.fetch_instruction(addr) {
+        //         Ok(instruction) => {
+        //             return Ok((instruction.next(), instruction));
+        //         }
+        //         Err(_) => unreachable!(),
+        //     }
+        // }
+        // // No cache entry? Fetch data now.
+        // let data = self.instruction_source.load(addr);
+        // // TODO: Perform the matching on the instruction bytes to
+        // //       get the correct constructor and resolve context
+
+        let root_jumplist = self.specification.jumplist_cache.get(0.into()).unwrap();
+
+        // mod=1
+        let bytes = [ 0xC4, 0xE2, 0xE3, 0xF5, 0x04, 0xAD, 0x37, 0x13, 0x00, 0x00 ];
+
+        let mut context_provider = ContextProvider::new(&self.specification.symbol_tables.fields);
+        // longMode=1
+        // addrSize=2
+        *context_provider
+            .context_value_mut(MOIRContextId::from(0))
+            .unwrap() = 0x21;
+
+        let count = 1_000;
+        let start = Instant::now();
+        for _ in 0..count {
+            let resolver = root_jumplist
+                .r#match(
+                    &bytes,
+                    &self.specification.jumplist_cache,
+                    &self.specification,
+                    &self.specification.symbol_tables.constructors,
+                    &mut context_provider,
+                )
+                .unwrap();
+
+            std::hint::black_box(resolver);
         }
-        // No cache entry? Fetch data now.
-        let _data = self.instruction_source.load(addr);
-        // TODO: Perform the matching on the instruction bytes to
-        //       get the correct constructor and resolve context
-        let constructor = self
-            .specification
-            .symbol_tables
-            .constructors
-            .get(ConstructorId::from(cid))
-            .expect("");
-        debug!("{}", constructor.mcode_debug_string(&self.specification.interner));
-        // TODO: Calculate size of instruction and add it here.
-        // TODO: For inst_next2 we need to decode the next instruction as well.
-        //       since this is expensive, we probably should buffer this, and
-        //       also only calculate inst_next2 if we actually need it in the body.
-        //       For now we just set it to None
-        let inst_next = addr + 8;
-        let mut resolver = JIRResolver::new(&self.specification, constructor, addr, inst_next, None);
-        resolver
-            .define_ident(
-                self.specification.interner.lookup("vexVVVV_r32").unwrap(),
-                JIRValue::Slice(JIRSlice::new(VarNodeId::from(0), SpaceId::from(3), 0, 4)),
-            )
-            .expect("");
-        resolver
-            .define_ident(
-                self.specification.interner.lookup("rm32").unwrap(),
-                JIRValue::Slice(JIRSlice::new(VarNodeId::from(0), SpaceId::from(3), 0, 4)),
-            )
-            .expect("");
 
-        let constructor3 = self
-            .specification
-            .symbol_tables
-            .constructors
-            .get(ConstructorId::from(5))
-            .expect("");
-        let mut resolver3 = JIRResolver::new(&self.specification, constructor3, addr, inst_next, None);
-        resolver3
-            .define_ident(
-                self.specification.interner.lookup("reg32").unwrap(),
-                JIRValue::Slice(JIRSlice::new(VarNodeId::from(5), SpaceId::from(3), 0, 4)),
-            )
-            .expect("");
-        resolver
-            .define_subtable_resolver(TableId::from(3), resolver3)
-            .expect("");
+        let duration = (Instant::now() - start) / count;
+        eprintln!("duration = {:?}", duration);
 
-        let constructor43 = self
-            .specification
-            .symbol_tables
-            .constructors
-            .get(ConstructorId::from(172))
-            .expect("");
-        let resolver43 = JIRResolver::new(&self.specification, constructor43, addr, inst_next, None);
+        // if let Some((_, resolver)) = resolver {
+        //     resolver.print_hierarchy(0);
+        //     resolver.print_mcode(0);
 
-        let constructor9 = self
-            .specification
-            .symbol_tables
-            .constructors
-            .get(ConstructorId::from(20))
-            .expect("");
-        let mut resolver9 = JIRResolver::new(&self.specification, constructor9, addr, inst_next, None);
-        resolver9
-            .define_ident(
-                self.specification.interner.lookup("r32").unwrap(),
-                JIRValue::Slice(JIRSlice::new(VarNodeId::from(5), SpaceId::from(3), 0, 4)),
-            )
-            .expect("");
+        //     let target_instruction = resolver.build().unwrap();
+        //     trace_jir!("{target_instruction}");
+        // }
 
-        let constructor39 = self
-            .specification
-            .symbol_tables
-            .constructors
-            .get(ConstructorId::from(130))
-            .expect("");
-        let mut resolver39 = JIRResolver::new(&self.specification, constructor39, addr, inst_next, None);
-        resolver39
-            .define_subtable_resolver(TableId::from(9), resolver9)
-            .expect("");
-
-        let constructor46 = self
-            .specification
-            .symbol_tables
-            .constructors
-            .get(ConstructorId::from(200))
-            .expect("");
-        let mut resolver46 = JIRResolver::new(&self.specification, constructor46, addr, inst_next, None);
-        resolver46
-            .define_subtable_resolver(TableId::from(43), resolver43)
-            .expect("");
-        resolver46
-            .define_subtable_resolver(TableId::from(39), resolver39)
-            .expect("");
-
-        let constructor118 = self
-            .specification
-            .symbol_tables
-            .constructors
-            .get(ConstructorId::from(358))
-            .expect("");
-        let mut resolver118 = JIRResolver::new(&self.specification, constructor118, addr, inst_next, None);
-        resolver118
-            .define_subtable_resolver(TableId::from(46), resolver46)
-            .expect("");
-        resolver
-            .define_subtable_resolver(TableId::from(118), resolver118)
-            .expect("");
-
-        let sub_constructor = self
-            .specification
-            .symbol_tables
-            .constructors
-            .get(ConstructorId::from(366))
-            .expect("");
-        let mut sub_resolver = JIRResolver::new(&self.specification, sub_constructor, addr, inst_next, None);
-        sub_resolver
-            .define_ident(
-                self.specification.interner.lookup("reg32").unwrap(),
-                JIRValue::Slice(JIRSlice::new(VarNodeId::from(0), SpaceId::from(3), 0, 4)),
-            )
-            .expect("");
-        sub_resolver
-            .define_ident(
-                self.specification.interner.lookup("reg64").unwrap(),
-                JIRValue::Slice(JIRSlice::new(VarNodeId::from(0), SpaceId::from(3), 0, 8)),
-            )
-            .expect("");
-        resolver
-            .define_subtable_resolver(TableId::from(123), sub_resolver)
-            .expect("");
-
-        // Generate the jcode for the instruction.
-        let instruction = constructor.generate_jcode(resolver).expect("");
-        // Now we can cache it for future access.
-        let instruction = self.cache.cache_instruction(addr, instruction)?;
-        Ok((instruction.next(), instruction))
+        todo!("return values")
     }
 
     fn lift_block(

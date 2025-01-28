@@ -39,11 +39,14 @@ use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 use tracing::debug;
 
+use super::actions::MOIRAction;
+
 #[derive(Debug, Clone)]
 pub struct MOIRConstructor {
     pub local_scope: MOIRScope,
     pub instructions: Vec<MOIRInstruction>,
     pub display: String,
+    pub actions: Vec<MOIRAction>,
     /// A constructor may export a value. The export refers to a local in this constructor.
     /// To resolve the value, the scope for this constructor has to be used.
     /// 7.7.2.3. Exports
@@ -94,8 +97,15 @@ impl MOIRConstructor {
         &self,
         mut resolver: JIRResolver,
     ) -> ProcessorSpecResult<TargetInstruction> {
-        let mut target_inst =
-            TargetInstructionBuilder::new(resolver.temp_space(), resolver.inst_start(), resolver.inst_next());
+        let mut target_inst = TargetInstructionBuilder::new(
+            resolver.temp_space(),
+            resolver
+                .inst_start()
+                .expect("There must be an inst_start set"),
+            resolver
+                .inst_next()
+                .expect("There must be an inst_next set"),
+        );
         resolver.realize_temporaries(&mut target_inst)?;
         for block in self.instructions.chunk_by(|inst, next_inst| {
             !matches!(inst.operation.op_category(), MOIROpCategory::Branch) && next_inst.label.is_none()

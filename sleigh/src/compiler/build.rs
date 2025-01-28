@@ -3,9 +3,8 @@
 //! syntax tree and processing each item.
 
 pub mod atomize;
-mod constructor;
+pub(crate) mod constructor;
 mod r#macro;
-pub mod matcher;
 
 use crate::compiler::ast::attach::SASTAttach;
 use crate::compiler::ast::define::{
@@ -36,18 +35,21 @@ use crate::compiler::{
     InternalCompilerResult,
     SleighCompiler,
 };
+use crate::spec::ProcessorSpecificationError;
 use crate::spec::moir::address_space::{
     MOIRSpace,
     MOIRSpaceIsDefault,
     MOIRSpaceType,
 };
+use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::field::{
+    MOIRBitRange,
     MOIRField,
     MOIRFieldParent,
 };
 use crate::spec::moir::token::MOIRToken;
 use crate::spec::moir::varnode::MOIRVarNode;
-use std::ops::Range;
+use chumsky::container::Container;
 use tracing::{
     debug,
     trace,
@@ -62,6 +64,7 @@ impl SleighCompiler {
     ) -> InternalCompilerResult {
         debug!("The AST has {} toplevel items", ast.items.len());
         self.process_items(ast.items)
+        // TODO add pass after all items have been processed to deal with recursive tables
     }
 
     fn process_items(
@@ -81,6 +84,7 @@ impl SleighCompiler {
             };
             self.report_error_or_unwrap(result)?;
         }
+
         Ok(())
     }
 
@@ -263,20 +267,24 @@ impl SleighCompiler {
         // We first define the token and then we can define its fields, since they need to refer to the token.
         let (token, _) = token.into_tuple();
         let bits = token.bits.into_value();
+        if bits % 8 != 0 {
+            Err(ProcessorSpecificationError::TokenSizeNotAMultipleOfEightBit)?;
+        }
         let result = self
             .spec_builder
             .define_token(token.name.transmute(), MOIRToken {
-                bits,
+                bytes: MOIRSize::try_from(bits).map_err(|_| -> InternalError { todo!() })? / 8,
                 endianness_override: token.endian_override.map(|e| e.into_value().into()),
             });
         if let Some(token_id) = self.report_error_or_unwrap(result)? {
             for field in token.fields.into_iter() {
                 let name = field.name.clone().transmute();
-                let range = field.start.clone().into_value()..field.end.clone().into_value() + 1;
-                if let Some(field) = self
-                    .make_field(MOIRFieldParent::Token(token_id), bits, range)
-                    .map_err(|e| InternalError::with_span(e.into(), "field", field.span().clone()))?
-                {
+                // +1 since end is inclusive, but `MOIRBitRange` is exclusive
+                let range = MOIRBitRange::new(
+                    MOIRSize::try_from(*field.start.value()).unwrap(),
+                    MOIRSize::try_from(*field.end.value() + 1).unwrap(),
+                );
+                if let Some(field) = self.make_field(MOIRFieldParent::Token(token_id), bits, range)? {
                     let result = self.spec_builder.define_field(name, field);
                     self.report_error_or_unwrap(result)?;
                 }
@@ -293,11 +301,12 @@ impl SleighCompiler {
             .spec_builder
             .define_context(context.varnode.clone().transmute())?;
         for field in &context.fields {
-            let range = field.start.clone().into_value()..field.end.clone().into_value() + 1;
-            if let Some(moir_field) = self
-                .make_field(MOIRFieldParent::Context(context_id), bits, range)
-                .map_err(|e| InternalError::from_error(e.into()))?
-            {
+            // +1 since end is inclusive, but `MOIRBitRange` is exclusive
+            let range = MOIRBitRange::new(
+                MOIRSize::try_from(*field.start.value()).unwrap(),
+                MOIRSize::try_from(*field.end.value() + 1).unwrap(),
+            );
+            if let Some(moir_field) = self.make_field(MOIRFieldParent::Context(context_id), bits, range)? {
                 let result = self
                     .spec_builder
                     .define_field(field.name.clone().transmute(), moir_field);
@@ -316,12 +325,16 @@ impl SleighCompiler {
         &mut self,
         parent: MOIRFieldParent,
         bits: u64,
-        field_range: Range<u64>,
-    ) -> Result<Option<MOIRField>, InvalidFieldRange> {
+        field_range: MOIRBitRange,
+    ) -> InternalCompilerResult<Option<MOIRField>> {
         if field_range.start > field_range.end {
-            Err(InvalidFieldRange::EndBeforeStart(field_range))
-        } else if field_range.end - field_range.start > bits {
-            Err(InvalidFieldRange::TooLargeRange(bits, field_range))
+            Err(InternalError::from_error(
+                InvalidFieldRange::EndBeforeStart(field_range.start as u64..field_range.end as u64).into(),
+            ))
+        } else if field_range.bits() > MOIRSize::try_from(bits).unwrap() {
+            Err(InternalError::from_error(
+                InvalidFieldRange::TooLargeRange(bits, field_range.start as u64..field_range.end as u64).into(),
+            ))
         } else {
             // The variables, values, and strings fields are later attached with attach statements.
             let field = MOIRField {

@@ -1,11 +1,14 @@
 use std::marker::PhantomData;
 
+use chumsky::container::Container;
+use itertools::Itertools;
+
 /// Creates a new symbol table identifier that can be used to index a [TypedIndexTable].
 #[macro_export(local_inner_macros)]
 macro_rules! new_typed_index_table_id {
     ( $(#[$outer:meta])* $vis:vis struct $name:ident; $display_prefix:literal;) => {
         $(#[$outer])*
-        #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
+        #[derive(Debug, Eq, PartialEq, PartialOrd, Ord, Copy, Clone, Hash, Default)]
         #[repr(transparent)]
         $vis struct $name(usize);
         impl From<usize> for $name {
@@ -106,12 +109,27 @@ where
         K::from(self.0.len() - 1)
     }
 
+    pub fn next_key(&self) -> K {
+        K::from(self.0.len())
+    }
+
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.0.iter()
+    }
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
+        self.0.iter_mut()
+    }
+
+    pub fn into_values(self) -> impl Iterator<Item = V> {
+        self.0.into_iter()
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (K, &V)> {
         self.0.iter().enumerate().map(|(i, v)| (K::from(i), v))
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (K, &mut V)> {
+        self.0.iter_mut().enumerate().map(|(i, v)| (K::from(i), v))
     }
 
     pub fn into_iter(self) -> impl Iterator<Item = (K, V)> {
@@ -135,5 +153,15 @@ where
         key: K,
     ) -> Option<&mut V> {
         self.0.get_mut(usize::from(key))
+    }
+
+    pub fn replace(
+        &mut self,
+        key: K,
+        element: V,
+    ) -> Option<V> {
+        self.0
+            .get_mut(usize::from(key))
+            .and_then(|prev| Some(std::mem::replace(prev, element)))
     }
 }

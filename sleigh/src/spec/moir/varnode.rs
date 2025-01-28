@@ -20,6 +20,8 @@ use std::fmt::{
     Formatter,
 };
 
+use super::scope::ActionValueId;
+
 #[derive(Debug)]
 /// A varnode is the unit of data manipulated by p-code.
 /// It is simply a contiguous sequence of bytes in some address space.
@@ -70,6 +72,17 @@ impl MOIRSlice {
         }
     }
 
+    pub fn named_const(
+        temporary: MOIRTemporaryId,
+        end: MOIRMaybeSize,
+    ) -> Self {
+        Self {
+            reference: MOIRReference::Const(temporary),
+            start: 0u16,
+            end,
+        }
+    }
+
     pub fn temporary(
         temporary: MOIRTemporaryId,
         start: MOIRSize,
@@ -79,30 +92,6 @@ impl MOIRSlice {
             reference: MOIRReference::Temporary(temporary),
             start,
             end,
-        }
-    }
-
-    pub fn inst_start() -> Self {
-        Self {
-            reference: MOIRReference::InstStart,
-            start: 0,
-            end: MOIRMaybeSize::Determined(MOIR_ADDRESS_SIZE),
-        }
-    }
-
-    pub fn inst_next() -> Self {
-        Self {
-            reference: MOIRReference::InstNext,
-            start: 0,
-            end: MOIRMaybeSize::Determined(MOIR_ADDRESS_SIZE),
-        }
-    }
-
-    pub fn inst_next2() -> Self {
-        Self {
-            reference: MOIRReference::InstNext2,
-            start: 0,
-            end: MOIRMaybeSize::Determined(MOIR_ADDRESS_SIZE),
         }
     }
 
@@ -188,17 +177,16 @@ impl Display for MOIRSlice {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 pub enum MOIRReference {
     Field(FieldId),
     SubTable(TableId),
     VarNode(VarNodeId),
     Temporary(MOIRTemporaryId),
-    /// The InstX References are special references that are resolved
-    /// to a constant as soon as the constructor is called.
-    InstStart,
-    InstNext,
-    InstNext2,
+    /// Const values represent constants and are calculated in the disassembly actions section.
+    /// They still refer to a temporary id, but will not be resolved to a varnode. They also
+    /// include the predefined symbols `inst_start`, `inst_next` and `inst_next2`.
+    Const(MOIRTemporaryId),
 }
 
 impl Display for MOIRReference {
@@ -211,9 +199,7 @@ impl Display for MOIRReference {
             MOIRReference::SubTable(id) => write!(f, "{id}"),
             MOIRReference::VarNode(id) => write!(f, "{id}"),
             MOIRReference::Temporary(id) => write!(f, "{id}"),
-            MOIRReference::InstStart => write!(f, "inst_start"),
-            MOIRReference::InstNext => write!(f, "inst_next"),
-            MOIRReference::InstNext2 => write!(f, "inst_next2"),
+            MOIRReference::Const(id) => write!(f, "{id}"),
         }
     }
 }

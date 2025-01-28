@@ -38,6 +38,9 @@ use strum_macros::Display;
 use thiserror::Error;
 use tracing::debug;
 
+use self::jir::jumplist::{Jumplist, JumplistId};
+use self::moir::field::MOIRField;
+
 pub mod builder;
 pub mod jir;
 pub mod moir;
@@ -72,6 +75,7 @@ pub(crate) struct JIRSymbolTables {
     pub(crate) tables: TypedIndexTable<TableId, MOIRTable>,
     pub(crate) constructors: TypedIndexTable<ConstructorId, MOIRConstructor>,
     pub(crate) varnodes: TypedIndexTable<VarNodeId, JIRVarNode>,
+    pub(crate) fields: TypedIndexTable<FieldId, MOIRField>,
     // tokens: TypedIndexTable<MOIRTokenId, MOIRToken>,
     // fields: TypedIndexTable<MOIRFieldId, MOIRField>,
     custom_ops: PrimaryMap<CustomOpId, JIRCustomOp>,
@@ -99,6 +103,9 @@ pub struct ProcessorSpecification {
     /// This will need to be resolved to the correct [Ident], so that the PSB can then
     /// use the internal identifiers, instead of the strings.
     pub(crate) string_to_ident_mapping: HashMap<StringId, Ident>,
+
+    /// The first jumplist is the root from which matching begins.
+    pub(crate) jumplist_cache: TypedIndexTable<JumplistId, Jumplist>,
 
     pub(crate) root_table: TableId,
 
@@ -337,6 +344,8 @@ pub enum ProcessorSpecificationError {
     UndefinedBlock(JIRBlockId),
     #[error("The subtable could not be resolved to a constructor")]
     UnresolvedSubtable,
+    #[error("The token size is not a multiple of 8 bit")]
+    TokenSizeNotAMultipleOfEightBit,
     #[error("The temporary allocator ran out of space.")]
     OutOfTempSpace,
 }

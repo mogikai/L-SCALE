@@ -12,11 +12,11 @@ use super::moir::context::{
     MOIRContext,
     MOIRContextId,
 };
-use crate::compiler::ast::Spanned;
-use crate::compiler::build::matcher::{
-    Matcher,
-    MatcherId,
+use crate::compiler::ast::{
+    Spanned,
+    SpannedToken,
 };
+use crate::compiler::build::constructor::matcher::MatcherId;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::{
     DuplicateDefineType,
@@ -35,6 +35,9 @@ use crate::compiler::{
     InternalCompilerResult,
 };
 use crate::spec::builder::transform::MOIRToJIRTransformer;
+use crate::spec::jir::context_provider::ContextProvider;
+use crate::spec::jir::jumplist::JumplistId;
+use crate::spec::jir::trace_jir;
 use crate::spec::moir::address_space::{
     MOIRSpace,
     MOIRSpaceIsDefault,
@@ -53,7 +56,9 @@ use crate::spec::moir::custom_op::{
 use crate::spec::moir::endianness::MOIREndianness;
 use crate::spec::moir::field::{
     FieldId,
+    MOIRBitRange,
     MOIRField,
+    MOIRFieldParent,
 };
 use crate::spec::moir::r#macro::MOIRMacro;
 use crate::spec::moir::table::MOIRTable;
@@ -167,9 +172,7 @@ pub struct ProcessorSpecificationBuilder {
     alignment: Option<Spanned<u16>>,
     /// Context defined on top of existing varnodes containing context fields (e.g. a dedicated
     /// `contextreg` varnode containing a field `longmode=(0,1)` for x86).
-    context: SlotMap<MOIRContextId, MOIRContext>,
-
-    matchers: SlotMap<MatcherId, Matcher>,
+    context: TypedIndexTable<MOIRContextId, MOIRContext>,
 
     /// Maps a string identifier to the corresponding internal [Ident].
     /// This is useful for the compiler, when an identifier string references another symbol.
@@ -271,6 +274,10 @@ impl ProcessorSpecificationBuilder {
         Ok(self.symbol_tables.constructors.insert(constructor))
     }
 
+    pub(crate) fn next_constructor_id(&self) -> ConstructorId {
+        self.symbol_tables.constructors.next_key()
+    }
+
     pub(crate) fn define_space(
         &mut self,
         ident: Spanned<StringId>,
@@ -360,8 +367,16 @@ impl ProcessorSpecificationBuilder {
         token: MOIRToken,
     ) -> Result<TokenId, InternalError> {
         let symbol_id = self.declare_symbol(ident)?;
-        let token_id = self.symbol_tables.tokens.insert(token);
+        let token_id = self.define_unnamed_token(token)?;
         self.define_symbol(symbol_id, MOIRSymbolId::Token(token_id))?;
+        Ok(token_id)
+    }
+
+    pub(crate) fn define_unnamed_token(
+        &mut self,
+        token: MOIRToken,
+    ) -> InternalCompilerResult<TokenId> {
+        let token_id = self.symbol_tables.tokens.insert(token);
         Ok(token_id)
     }
 
@@ -483,26 +498,33 @@ impl ProcessorSpecificationBuilder {
         Ok((context_id, varnode_bits as u64))
     }
 
-    /// Modify the provided table. If None is provided, the root table is used.
-    pub(crate) fn create_or_modify_table(
+    pub(crate) fn get_table_id_or_create(
         &mut self,
         ident: Option<Spanned<StringId>>,
-    ) -> InternalCompilerResult<&mut MOIRTable> {
+    ) -> InternalCompilerResult<TableId> {
         let ident = ident.unwrap_or(self.root_table.clone());
-        let table_id = if let Some((symbol, _)) = self.get_symbol_and_ident(&ident) {
+        if let Some((symbol, _)) = self.get_symbol_and_ident(&ident) {
             // Symbol is defined. Do stuff with it.
             if let MOIRSymbolId::Table(table_id) = symbol {
-                *table_id
+                Ok(*table_id)
             } else {
                 todo!("Generate error report")
             }
         } else {
             // Symbol needs to be defined first.
-            let symbol_id = self.declare_symbol(ident)?;
+            let symbol_id = self.declare_symbol(ident.clone())?;
             let table_id = self.symbol_tables.tables.insert(MOIRTable::default());
             self.define_symbol(symbol_id, MOIRSymbolId::Table(table_id))?;
-            table_id
-        };
+            Ok(table_id)
+        }
+    }
+
+    /// Modify the provided table. If None is provided, the root table is used.
+    pub(crate) fn create_or_modify_table(
+        &mut self,
+        ident: Option<Spanned<StringId>>,
+    ) -> InternalCompilerResult<&mut MOIRTable> {
+        let table_id = self.get_table_id_or_create(ident)?;
         Ok(self
             .symbol_tables
             .tables
@@ -795,7 +817,6 @@ impl Default for ProcessorSpecificationBuilder {
             endianness: None,
             alignment: None,
             context: Default::default(),
-            matchers: Default::default(),
             string_to_ident_mapping: Default::default(),
             root_table,
             default_space: None,
@@ -840,6 +861,21 @@ impl Default for ProcessorSpecificationBuilder {
             size: 0,
         })
         .expect("This may not error at this point");
+
+        // define epsilon as field belonging to a zero-sized token
+        let zero_token = slf
+            .define_unnamed_token(MOIRToken {
+                bytes: 0,
+                endianness_override: None,
+            })
+            .expect("This may not error at this point");
+        slf.define_field(Spanned::new(epsilon, InputSpan::default()), MOIRField {
+            parent: MOIRFieldParent::Token(zero_token),
+            bits: MOIRBitRange::new(0, 0),
+            variables: vec![],
+            values: vec![],
+            strings: vec![],
+        });
         slf
     }
 }
@@ -855,10 +891,12 @@ impl ProcessorSpecificationBuilder {
         debug!("Found {} tables", self.symbol_tables.tables.len());
         debug!("Found {} macros", self.symbol_tables.macros.len());
         debug!("Found {} tokens", self.symbol_tables.tokens.len());
+        debug!("Found {} context varnodes", self.context.len());
         debug!("Found {} fields", self.symbol_tables.fields.len());
         debug!("Found {} spaces", self.symbol_tables.spaces.len());
         debug!("Found {} global varnodes", self.symbol_tables.varnodes.len());
         debug!("Found {} custom operations", self.symbol_tables.custom_ops.len());
+
         let root_table = self.table_id_by_ident(&self.root_table)?;
         let context = MOIRToJIRTransformer::new(
             &self.interner,
@@ -866,6 +904,8 @@ impl ProcessorSpecificationBuilder {
             self.symbol_strings,
             self.symbol_tables,
             self.string_to_ident_mapping,
+            self.context,
+            root_table,
         );
         let jir = context.transform()?;
         // TODO: Generate more helpful error reports during final build step
@@ -876,6 +916,7 @@ impl ProcessorSpecificationBuilder {
             symbol_strings: jir.symbol_strings,
             symbol_tables: jir.symbol_tables,
             string_to_ident_mapping: jir.string_to_ident_mapping,
+            jumplist_cache: jir.jumplist_cache,
             root_table,
             default_space: self
                 .default_space
@@ -889,6 +930,7 @@ impl ProcessorSpecificationBuilder {
             // The default alignment is 1
             alignment: self.alignment.map(Spanned::into_value).unwrap_or(1),
         };
+
         Ok(spec)
     }
 }
