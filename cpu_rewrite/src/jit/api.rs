@@ -11,6 +11,7 @@ use mogi_mem::tlb::tlb::{
     TLB,
 };
 use mogi_sleigh::spec::jir::jcode::JIRInstruction;
+use mogi_sleigh::spec::jir::jir_block::JIRBlockId;
 use mogi_sleigh::spec::jir::values::{
     JIRSlice,
     JIRValue,
@@ -108,9 +109,9 @@ pub trait MogiJit {
     where
         CB: TlbMissHelper<Self::RuntimeContext>;
 
-    /// Create a new block that starts at the provided emulated virtual address.
+    /// Create a new target block that starts at the provided emulated virtual address.
     /// Only one block can be built at once.
-    fn new_block(
+    fn new_target_block(
         &mut self,
         evaddr: EVAddr,
         successor: Option<EVAddr>,

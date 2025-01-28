@@ -13,7 +13,6 @@ impl Display for JIRInstruction {
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
         match &self.operation {
-            JIROperation::Unimpl => write!(f, "(unimpl)"),
             JIROperation::PopCount
             | JIROperation::LZCount
             | JIROperation::ZeroExtend
@@ -149,7 +148,10 @@ impl Display for JIROperation {
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
-            JIROperation::Unimpl => write!(f, "unimpl"),
+            JIROperation::BlockStart(_) => write!(f, "block_start"),
+            JIROperation::BlockEnd(_) => write!(f, "block_end"),
+            JIROperation::InstructionStart(_) => write!(f, "instruction_start"),
+            JIROperation::InstructionEnd(_) => write!(f, "instruction_end"),
             JIROperation::Copy => write!(f, ""),
             JIROperation::CustomOp { .. } => write!(f, "custom"),
             JIROperation::PopCount => write!(f, "popcount"),

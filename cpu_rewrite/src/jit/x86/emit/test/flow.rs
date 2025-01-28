@@ -131,18 +131,18 @@ fn setup_blocks(
     jit.set_instruction_pointer(&mut context, start_block_addr)
         .unwrap();
 
-    jit.new_block(start_block_addr, Some(false_block_addr))
+    jit.new_target_block(start_block_addr, Some(false_block_addr))
         .unwrap();
     jit.emit_jinst(&jinst!(if slice_cond goto slice_addr))
         .unwrap();
     jit.finalize_block().unwrap();
 
-    jit.new_block(false_block_addr, Some(end_block_addr))
+    jit.new_target_block(false_block_addr, Some(end_block_addr))
         .unwrap();
     jit.emit_jinst(&jinst!(slice_result = 0x41u32)).unwrap();
     jit.finalize_block().unwrap();
 
-    jit.new_block(true_block_addr, Some(end_block_addr))
+    jit.new_target_block(true_block_addr, Some(end_block_addr))
         .unwrap();
     jit.emit_jinst(&jinst!(slice_result = 0x42u32)).unwrap();
     jit.finalize_block().unwrap();

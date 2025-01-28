@@ -360,7 +360,7 @@ impl MogiJit for X86MogiJit {
         Ok(())
     }
 
-    fn new_block(
+    fn new_target_block(
         &mut self,
         evaddr: EVAddr,
         successor: Option<EVAddr>,
@@ -403,7 +403,10 @@ impl MogiJit for X86MogiJit {
         let input_a = jinst.input_a.ok_or(RuntimeError::MissingInput);
         let input_b = jinst.input_b.ok_or(RuntimeError::MissingInput);
         match jinst.operation {
-            JIROperation::Unimpl => {}
+            JIROperation::BlockStart(block_id) => {}
+            JIROperation::BlockEnd(block_id) => {}
+            JIROperation::InstructionStart(addr) => {}
+            JIROperation::InstructionEnd(addr) => {}
             JIROperation::Copy => return self.emit_copy(output?, input_a?),
             JIROperation::Load(space_id) => return self.emit_load(output?, input_a?, space_id),
             JIROperation::Store(space_id) => return self.emit_store(input_a?, space_id, input_b?),
@@ -455,8 +458,8 @@ impl MogiJit for X86MogiJit {
             JIROperation::GotoIndirect => return self.emit_goto_indirect(input_a?),
             JIROperation::GotoDirectIf => return self.emit_goto_direct_if(input_a?, input_b?),
             JIROperation::GotoIndirectIf => {}
-            JIROperation::JCodeGoto(_) => {}
-            JIROperation::JCodeGotoIf(_) => {}
+            JIROperation::JCodeGoto(block_id) => {}
+            JIROperation::JCodeGotoIf(block_id) => {}
             JIROperation::PopCount => {}
             JIROperation::LZCount => {}
             JIROperation::ZeroExtend => {}

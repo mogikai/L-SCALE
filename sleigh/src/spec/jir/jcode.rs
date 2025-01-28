@@ -9,6 +9,7 @@ use crate::spec::jir::values::{
 use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::custom_op::CustomOpId;
 pub use inline_code::*;
+use mogi_utilities::addresses::EVAddr;
 use std::rc::Rc;
 
 #[derive(Debug, Clone)]
@@ -168,8 +169,11 @@ impl JIRInstruction {
 
 #[derive(Debug, Clone)]
 pub enum JIROperation {
-    // TODO: Remove this dummy op
-    Unimpl,
+    // ------------------------ JIR STRUCTURE HELPERS -------------------------
+    BlockStart(JIRBlockId),
+    BlockEnd(JIRBlockId),
+    InstructionStart(EVAddr),
+    InstructionEnd(EVAddr),
     // -------------------------- GENERIC LOAD/STORE --------------------------
     Copy,
     /// output: The target slice to load into <br>
