@@ -1,3 +1,8 @@
+use self::jir::jumplist::{
+    Jumplist,
+    JumplistId,
+};
+use self::moir::field::MOIRField;
 use crate::compiler::ast::Spanned;
 use crate::new_typed_index_table_id;
 use crate::spec::builder::{
@@ -5,6 +10,7 @@ use crate::spec::builder::{
     MOIRSymbolId,
     StringId,
 };
+use crate::spec::jir::context_provider::ContextProvider;
 use crate::spec::jir::custom_op::JIRCustomOp;
 use crate::spec::jir::jir_block::JIRBlockId;
 use crate::spec::jir::space::JIRSpace;
@@ -18,6 +24,10 @@ use crate::spec::moir::constructor::{
     ConstructorId,
     MOIRConstructor,
 };
+use crate::spec::moir::context::{
+    ContextId,
+    MOIRContext,
+};
 pub use crate::spec::moir::custom_op::CustomOpId;
 use crate::spec::moir::endianness::MOIREndianness;
 use crate::spec::moir::field::FieldId;
@@ -29,6 +39,7 @@ use crate::spec::moir::table::{
 use crate::spec::moir::token::TokenId;
 use crate::spec::moir::varnode::VarNodeId;
 use crate::spec::typed_index_table::TypedIndexTable;
+use imbl::HashSet;
 use mogi_utilities::index_map::PrimaryMap;
 use std::collections::HashMap;
 use std::ops::Range;
@@ -37,9 +48,6 @@ use string_interner::backend::StringBackend;
 use strum_macros::Display;
 use thiserror::Error;
 use tracing::debug;
-
-use self::jir::jumplist::{Jumplist, JumplistId};
-use self::moir::field::MOIRField;
 
 pub mod builder;
 pub mod jir;
@@ -74,7 +82,7 @@ pub(crate) struct JIRSymbolTables {
     pub(crate) spaces: TypedIndexTable<SpaceId, JIRSpace>,
     pub(crate) tables: TypedIndexTable<TableId, MOIRTable>,
     pub(crate) constructors: TypedIndexTable<ConstructorId, MOIRConstructor>,
-    pub(crate) varnodes: TypedIndexTable<VarNodeId, JIRVarNode>,
+    pub(crate) varnodes: PrimaryMap<VarNodeId, JIRVarNode>,
     pub(crate) fields: TypedIndexTable<FieldId, MOIRField>,
     // tokens: TypedIndexTable<MOIRTokenId, MOIRToken>,
     // fields: TypedIndexTable<MOIRFieldId, MOIRField>,
@@ -97,6 +105,8 @@ pub struct ProcessorSpecification {
     /// Contains a table for each symbol type. A [Ident] maps to a [JIRSymbolId], which in turn maps to the
     /// corresponding [MOIRSymbolTable] with a table-specific id type.
     pub(crate) symbol_tables: JIRSymbolTables,
+    /// A mapping to look up context ids from their varnode id.
+    pub(crate) contexts: HashMap<VarNodeId, ContextId>,
 
     /// Maps a string identifier to the corresponding internal [Ident].
     /// This is useful for the compiler, when an identifier string references another symbol.
@@ -118,6 +128,20 @@ pub struct ProcessorSpecification {
 }
 
 impl ProcessorSpecification {
+    /// Create a new context provider for the context fields in this specification.
+    pub fn context_provider(&self) -> ContextProvider {
+        ContextProvider::new(self)
+    }
+
+    pub fn context_id(
+        &self,
+        context_name: &str,
+    ) -> Option<ContextId> {
+        self.contexts
+            .get(&self.varnode_id_by_string(context_name)?)
+            .copied()
+    }
+
     /// Gets the slice associated with the program counter of the cpu.
     pub fn program_counter_slice(&self) -> JIRSlice {
         // TODO: Read this from somewhere instead of hardcoding it. Currently x64 specific

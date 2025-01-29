@@ -9,4 +9,4 @@ pub struct MOIRContext {
 }
 
 // define MOIRContextId as a key for a SlotMap instead because it's not a symbol
-new_typed_index_table_id! { pub struct MOIRContextId; "CNTXT"; }
+new_typed_index_table_id! { pub struct ContextId; "CNTXT"; }

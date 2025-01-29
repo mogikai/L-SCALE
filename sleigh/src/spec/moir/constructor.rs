@@ -121,7 +121,6 @@ impl MOIRConstructor {
             target_inst.finish_block()?;
         }
         let target_inst = target_inst.finish();
-        debug!("{target_inst}");
         Ok(target_inst)
     }
 

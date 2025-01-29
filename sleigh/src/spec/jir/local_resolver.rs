@@ -406,7 +406,6 @@ impl<'a> JIRResolver<'a> {
                     .get(&table_id)
                     .ok_or_else(|| todo!("Generate error: 'Failed to match subtable'"))?;
                 // Check the subtable resolver for the symbol that is exported and resolve it to a JIRValue.
-                debug!("Descending into subtable {table_id} to resolve export");
                 subtable_resolver.resolve_export(instruction_builder)?
             }
         })

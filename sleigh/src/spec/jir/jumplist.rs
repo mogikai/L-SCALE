@@ -1,6 +1,3 @@
-use mogi_utilities::addresses::EVAddr;
-use rustc_hash::FxHashMap;
-
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
 use crate::new_typed_index_table_id;
@@ -13,13 +10,16 @@ use crate::spec::moir::constructor::{
     ConstructorId,
     MOIRConstructor,
 };
-use crate::spec::moir::context::MOIRContextId;
+use crate::spec::moir::context::ContextId;
 use crate::spec::moir::field::{
     FieldId,
     MOIRBitRange,
 };
 use crate::spec::moir::table::TableId;
 use crate::spec::typed_index_table::TypedIndexTable;
+use mogi_utilities::addresses::EVAddr;
+use rustc_hash::FxHashMap;
+use tracing::debug;
 
 use super::context_provider::ContextProvider;
 use super::local_resolver::JIRResolver;
@@ -131,7 +131,7 @@ impl Default for JumplistContainer {
 pub(crate) enum DataProvider {
     #[default]
     ByteStream,
-    Context(MOIRContextId),
+    Context(ContextId),
 }
 
 #[derive(Debug, Clone, Default)]
@@ -300,11 +300,11 @@ impl Jumplist {
     pub(crate) fn r#match<'a>(
         &'a self,
         bytes: &[u8],
-        jumplist_cache: &'a TypedIndexTable<JumplistId, Jumplist>,
         spec: &'a ProcessorSpecification,
-        constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
         context_provider: &mut ContextProvider,
     ) -> InternalCompilerResult<Option<(TableId, JIRResolver<'a>)>> {
+        let jumplist_cache = &spec.jumplist_cache;
+        let constructors = &spec.symbol_tables.constructors;
         // TODO handle end of byte stream
         // let (value, remaining_bytes) = self.decode_value(bytes, context)?.expect("Couldn't decode value");
 
@@ -383,16 +383,15 @@ impl Jumplist {
                         sublist_bytes,
                         constructor.display
                     );
-                    let (table_id, resolver) =
-                        match sublist.r#match(sublist_bytes, jumplist_cache, spec, constructors, context_provider)? {
-                            Some(resolver) => resolver,
-                            None => {
-                                // no match => try next
-                                trace_jir!("No match, trying next (if existing)");
-                                context_provider.pop_state()?;
-                                continue 'next_candidate;
-                            }
-                        };
+                    let (table_id, resolver) = match sublist.r#match(sublist_bytes, spec, context_provider)? {
+                        Some(resolver) => resolver,
+                        None => {
+                            // no match => try next
+                            trace_jir!("No match, trying next (if existing)");
+                            context_provider.pop_state()?;
+                            continue 'next_candidate;
+                        }
+                    };
                     sublist_resolvers.push((table_id, resolver));
 
                     trace_jir!("Sublist {sublist_id} matches");

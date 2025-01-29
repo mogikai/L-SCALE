@@ -4,10 +4,11 @@ use crate::lifter::cache::LifterCache;
 use crate::spec::ProcessorSpecification;
 use crate::spec::jir::context_provider::ContextProvider;
 use crate::spec::jir::instruction::TargetInstruction;
-use crate::spec::moir::context::MOIRContextId;
+use crate::spec::moir::context::ContextId;
 use mogi_utilities::addresses::EVAddr;
 use source::TargetInstructionSource;
 use thiserror::Error;
+use tracing::debug;
 
 pub mod cache;
 pub mod source;
@@ -28,6 +29,7 @@ pub enum LifterError {
 
 pub struct Lifter<'a, 'cache, InstSourceT: TargetInstructionSource> {
     specification: &'a ProcessorSpecification,
+    context_provider: &'a mut ContextProvider,
     cache: &'cache mut LifterCache,
     instruction_source: &'a InstSourceT,
 }
@@ -35,11 +37,13 @@ pub struct Lifter<'a, 'cache, InstSourceT: TargetInstructionSource> {
 impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, InstSourceT> {
     pub fn new(
         specification: &'a ProcessorSpecification,
+        context_provider: &'a mut ContextProvider,
         cache: &'cache mut LifterCache,
         instruction_source: &'a InstSourceT,
     ) -> Self {
         Self {
             specification,
+            context_provider,
             cache,
             instruction_source,
         }
@@ -48,10 +52,9 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
     /// `source`. Returns the address of the next instruction, and the lifted instruction
     /// One target instruction corresponds to multiple lifted instructions most of the time.
     /// See [TargetInstruction] for more detail.
-    pub fn lift<'slf>(
+    pub fn lift(
         &mut self,
-        _addr: EVAddr,
-        _cid: usize,
+        addr: EVAddr,
     ) -> LifterResult<(EVAddr, &TargetInstruction)> {
         // self.cache.flush_instruction(addr)?;
         // // Check the cache. If it contains the instruction we can simply return it.
@@ -66,50 +69,29 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
         //     }
         // }
         // // No cache entry? Fetch data now.
-        // let data = self.instruction_source.load(addr);
-        // // TODO: Perform the matching on the instruction bytes to
-        // //       get the correct constructor and resolve context
+
+        let bytes = self
+            .instruction_source
+            .load(addr)
+            .map_err(|e| -> LifterError { todo!() })?;
 
         let root_jumplist = self.specification.jumplist_cache.get(0.into()).unwrap();
+        let resolver = root_jumplist
+            .r#match(&bytes, &self.specification, &mut self.context_provider)
+            .unwrap();
 
-        // mod=1
-        let bytes = [0xC4, 0xE2, 0xE3, 0xF5, 0x04, 0xAD, 0x37, 0x13, 0x00, 0x00];
+        if let Some((_, resolver)) = resolver {
+            resolver.print_hierarchy(0);
+            resolver.print_mcode(0);
 
-        let mut context_provider = ContextProvider::new(&self.specification.symbol_tables.fields);
-        // longMode=1
-        // addrSize=2
-        *context_provider
-            .context_value_mut(MOIRContextId::from(0))
-            .unwrap() = 0x21;
-
-        let count = 1_000;
-        let start = Instant::now();
-        for _ in 0..count {
-            let resolver = root_jumplist
-                .r#match(
-                    &bytes,
-                    &self.specification.jumplist_cache,
-                    &self.specification,
-                    &self.specification.symbol_tables.constructors,
-                    &mut context_provider,
-                )
-                .unwrap();
-
-            std::hint::black_box(resolver);
+            let target_instruction = self
+                .cache
+                .cache_instruction(addr, resolver.build().map_err(|_| -> LifterError { todo!() })?)?;
+            debug!("{target_instruction}");
+            Ok((addr, target_instruction))
+        } else {
+            Err(LifterError::Unknown)
         }
-
-        let duration = (Instant::now() - start) / count;
-        eprintln!("duration = {:?}", duration);
-
-        // if let Some((_, resolver)) = resolver {
-        //     resolver.print_hierarchy(0);
-        //     resolver.print_mcode(0);
-
-        //     let target_instruction = resolver.build().unwrap();
-        //     trace_jir!("{target_instruction}");
-        // }
-
-        todo!("return values")
     }
 
     fn lift_block(

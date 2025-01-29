@@ -3,7 +3,7 @@ use crate::spec::builder::StringId;
 use crate::spec::moir::token::TokenId;
 
 use super::common::MOIRSize;
-use super::context::MOIRContextId;
+use super::context::ContextId;
 use super::varnode::VarNodeId;
 
 #[derive(Debug, Clone, Copy)]
@@ -79,10 +79,10 @@ impl std::ops::BitAnd for MOIRBitRange {
 #[derive(Debug, Hash, PartialOrd, Ord, Clone, Copy, PartialEq, Eq)]
 pub enum MOIRFieldParent {
     Token(TokenId),
-    Context(MOIRContextId),
+    Context(ContextId),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MOIRField {
     /// The token or context this field is associated with.
     pub parent: MOIRFieldParent,

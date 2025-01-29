@@ -8,11 +8,6 @@ use std::collections::{
 use std::fs::File;
 use std::io::Write;
 
-use chumsky::container::Seq;
-use itertools::Itertools;
-use petgraph::Graph;
-use petgraph::dot::Dot;
-
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::build::constructor::matcher::{
     FieldMatcher,
@@ -37,8 +32,8 @@ use crate::spec::moir::constructor::{
     MOIRConstructor,
 };
 use crate::spec::moir::context::{
+    ContextId,
     MOIRContext,
-    MOIRContextId,
 };
 use crate::spec::moir::field::{
     FieldId,
@@ -59,6 +54,12 @@ use crate::spec::moir::varnode::{
     VarNodeId,
 };
 use crate::spec::typed_index_table::TypedIndexTable;
+use chumsky::container::Seq;
+use itertools::Itertools;
+use mogi_utilities::index_map::PrimaryMap;
+use petgraph::Graph;
+use petgraph::dot::Dot;
+use tracing::error;
 
 // Entries for different masks can be combined vertically by building up a hierarchy layer by layer
 // or horizontally by ORing the mask bits together and filling missing entries by enumerating
@@ -78,8 +79,8 @@ pub(super) struct JumplistBuilder<'a> {
     tables: &'a TypedIndexTable<TableId, MOIRTable>,
     fields: &'a TypedIndexTable<FieldId, MOIRField>,
     tokens: &'a TypedIndexTable<TokenId, MOIRToken>,
-    context: &'a TypedIndexTable<MOIRContextId, MOIRContext>,
-    varnodes: &'a TypedIndexTable<VarNodeId, MOIRVarNode>,
+    context: &'a TypedIndexTable<ContextId, MOIRContext>,
+    varnodes: &'a PrimaryMap<VarNodeId, MOIRVarNode>,
     constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
 }
 
@@ -120,8 +121,8 @@ impl<'a> JumplistBuilder<'a> {
         tables: &'a TypedIndexTable<TableId, MOIRTable>,
         fields: &'a TypedIndexTable<FieldId, MOIRField>,
         tokens: &'a TypedIndexTable<TokenId, MOIRToken>,
-        context: &'a TypedIndexTable<MOIRContextId, MOIRContext>,
-        varnodes: &'a TypedIndexTable<VarNodeId, MOIRVarNode>,
+        context: &'a TypedIndexTable<ContextId, MOIRContext>,
+        varnodes: &'a PrimaryMap<VarNodeId, MOIRVarNode>,
         constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
     ) -> Self {
         Self {
@@ -258,7 +259,12 @@ impl<'a> JumplistBuilder<'a> {
     ) -> InternalCompilerResult<Jumplist> {
         debug_assert_ne!(matchers.len(), 0, "There must be matchers");
         for matcher in matchers.iter() {
-            debug_assert!(matcher.token_list.list.len() > token_index, "Matcher token list not long enough");
+            if token_index >= matcher.token_list.list.len() {
+                error!(
+                    "Matcher token list not long enough: token_index={token_index} >= len={} \nMatcher: {matcher:?}",
+                    matcher.token_list.list.len()
+                );
+            }
         }
 
         // this is just a stub precalculating everything necessary for `create_jumplist_bytes`

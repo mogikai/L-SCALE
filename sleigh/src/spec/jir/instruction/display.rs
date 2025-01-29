@@ -11,7 +11,7 @@ impl Display for TargetInstruction {
     ) -> std::fmt::Result {
         writeln!(f, "\nTargetInstruction at {:?}:", self.0.start)?;
         writeln!(f, "JCode:")?;
-        for (block_id, block) in self.0.jir_blocks.iter_kv() {
+        for (block_id, block) in self.0.jir_blocks.items() {
             if let Some(block) = block {
                 writeln!(f, "{} ---", block_id)?;
                 for inst in &self.0.jir_instructions[block.range.clone()] {

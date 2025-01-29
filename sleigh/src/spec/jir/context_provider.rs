@@ -1,33 +1,34 @@
-use imbl::HashMap;
-
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
-use crate::spec::moir::context::MOIRContextId;
+use crate::spec::ProcessorSpecification;
+use crate::spec::moir::context::ContextId;
 use crate::spec::moir::field::{
     FieldId,
     MOIRField,
     MOIRFieldParent,
 };
 use crate::spec::typed_index_table::TypedIndexTable;
+use imbl::HashMap;
+use tracing::debug;
 
 #[derive(Debug, Default)]
-pub(crate) struct ContextProvider<'a> {
+pub struct ContextProvider {
     // context ids are assumed to be contiguous and therefore pushed onto and popped
     // from this vector when saving and restoring state
     context_values: Vec<u64>,
     num_values: usize,
-    context_fields: HashMap<FieldId, &'a MOIRField>,
+    context_fields: HashMap<FieldId, MOIRField>,
 }
 
-impl<'a> ContextProvider<'a> {
-    pub(crate) fn new(fields: &'a TypedIndexTable<FieldId, MOIRField>) -> Self {
-        let mut highest_cid = MOIRContextId::from(0);
+impl ContextProvider {
+    pub(crate) fn new(specification: &ProcessorSpecification) -> Self {
+        let mut highest_cid = ContextId::from(0);
         let mut context_fields = HashMap::new();
 
-        for (field_id, field) in fields.iter() {
+        for (field_id, field) in specification.symbol_tables.fields.iter() {
             if let MOIRFieldParent::Context(cid) = field.parent {
                 highest_cid = highest_cid.max(cid);
-                context_fields.insert(field_id, field);
+                context_fields.insert(field_id, field.clone());
             }
         }
 
@@ -58,7 +59,7 @@ impl<'a> ContextProvider<'a> {
     /// Get the value of a context register. Return an error if no value is associated with`cid`.
     pub(crate) fn context_value(
         &self,
-        cid: MOIRContextId,
+        cid: ContextId,
     ) -> InternalCompilerResult<u64> {
         if usize::from(cid) >= self.num_values {
             todo!("Generate error report for out of bounds context id");
@@ -74,9 +75,9 @@ impl<'a> ContextProvider<'a> {
 
     /// Get a mutable reference to the value of a context register. Return an error if no value is
     /// associated with`cid`.
-    pub(crate) fn context_value_mut(
+    pub fn context_value_mut(
         &mut self,
-        cid: MOIRContextId,
+        cid: ContextId,
     ) -> InternalCompilerResult<&mut u64> {
         if usize::from(cid) >= self.num_values {
             todo!("Generate error report for out of bounds context id");
@@ -128,6 +129,7 @@ impl<'a> ContextProvider<'a> {
         let context_value = self.context_value_mut(cid)?;
         let cleared = *context_value & !bits.shifted_mask();
         *context_value = cleared | bits.insert(value);
+        debug!("Set context field {field_id:?} to {value:?} ({context_value})");
         Ok(())
     }
 
@@ -138,6 +140,7 @@ impl<'a> ContextProvider<'a> {
         let start = self.context_values.len() - self.num_values;
 
         for i in 0..self.num_values {
+            debug!("Pushing state value {i}: {}", self.context_values[start + i]);
             self.context_values.push(self.context_values[start + i]);
         }
     }

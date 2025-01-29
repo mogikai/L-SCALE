@@ -14,6 +14,7 @@ use crate::spec::moir::scope::{
     MOIRTemporaryId,
 };
 use crate::spec::moir::table::TableId;
+use mogi_utilities::new_map_key_16;
 use std::fmt::{
     Display,
     Formatter,
@@ -421,4 +422,4 @@ impl MOIRConst {
     }
 }
 
-new_typed_index_table_id_16! { pub struct VarNodeId; "V"; }
+new_map_key_16! { pub struct VarNodeId; "V"; }

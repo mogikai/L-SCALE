@@ -9,8 +9,8 @@ use super::moir::bitrange_register::{
     MOIRTBitrangeRegister,
 };
 use super::moir::context::{
+    ContextId,
     MOIRContext,
-    MOIRContextId,
 };
 use crate::compiler::ast::Spanned;
 use crate::compiler::build::trace_build;
@@ -79,7 +79,10 @@ use chumsky::input::{
     Input,
 };
 use chumsky::inspector::Inspector;
-use mogi_utilities::index_map::PrimaryMap;
+use mogi_utilities::index_map::{
+    PrimaryMap,
+    SecondaryMap,
+};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::fmt::{
@@ -132,7 +135,7 @@ pub(super) struct MOIRSymbolTables {
     pub(super) spaces: TypedIndexTable<SpaceId, MOIRSpace>,
     pub(super) tables: TypedIndexTable<TableId, MOIRTable>,
     pub(super) constructors: TypedIndexTable<ConstructorId, MOIRConstructor>,
-    pub(super) varnodes: TypedIndexTable<VarNodeId, MOIRVarNode>,
+    pub(super) varnodes: PrimaryMap<VarNodeId, MOIRVarNode>,
     pub(super) tokens: TypedIndexTable<TokenId, MOIRToken>,
     pub(super) fields: TypedIndexTable<FieldId, MOIRField>,
     pub(super) custom_ops: PrimaryMap<CustomOpId, MOIRCustomOp>,
@@ -164,7 +167,7 @@ pub struct ProcessorSpecificationBuilder {
     alignment: Option<Spanned<u16>>,
     /// Context defined on top of existing varnodes containing context fields (e.g. a dedicated
     /// `contextreg` varnode containing a field `longmode=(0,1)` for x86).
-    context: TypedIndexTable<MOIRContextId, MOIRContext>,
+    context: TypedIndexTable<ContextId, MOIRContext>,
 
     /// Maps a string identifier to the corresponding internal [Ident].
     /// This is useful for the compiler, when an identifier string references another symbol.
@@ -477,7 +480,7 @@ impl ProcessorSpecificationBuilder {
     pub(crate) fn define_context(
         &mut self,
         varnode_ident: Spanned<StringId>,
-    ) -> InternalCompilerResult<(MOIRContextId, u64)> {
+    ) -> InternalCompilerResult<(ContextId, u64)> {
         let varnode_id = self.varnode_id_by_ident(&varnode_ident)?;
         let moir_context = MOIRContext { varnode: varnode_id };
         let varnode_bits = self
@@ -867,8 +870,7 @@ impl Default for ProcessorSpecificationBuilder {
             variables: vec![],
             values: vec![],
             strings: vec![],
-        })
-        .unwrap();
+        });
         slf
     }
 }
@@ -897,7 +899,7 @@ impl ProcessorSpecificationBuilder {
             self.symbol_strings,
             self.symbol_tables,
             self.string_to_ident_mapping,
-            self.context,
+            &self.context,
             root_table,
         );
         let jir = context.transform()?;
@@ -908,6 +910,11 @@ impl ProcessorSpecificationBuilder {
             symbol_ids: jir.symbol_ids,
             symbol_strings: jir.symbol_strings,
             symbol_tables: jir.symbol_tables,
+            contexts: self
+                .context
+                .iter()
+                .map(|(id, context)| (context.varnode, id))
+                .collect(),
             string_to_ident_mapping: jir.string_to_ident_mapping,
             jumplist_cache: jir.jumplist_cache,
             root_table,

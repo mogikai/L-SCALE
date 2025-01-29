@@ -23,8 +23,8 @@ use crate::spec::moir::address_space::{
     SpaceId,
 };
 use crate::spec::moir::context::{
+    ContextId,
     MOIRContext,
-    MOIRContextId,
 };
 use crate::spec::moir::custom_op::MOIRCustomOp;
 use crate::spec::moir::table::TableId;
@@ -71,7 +71,7 @@ struct MOIRData<'a> {
     symbol_strings: HashMap<Ident, Spanned<StringId>>,
     symbol_tables: MOIRSymbolTables,
     string_to_ident_mapping: HashMap<StringId, Ident>,
-    context: TypedIndexTable<MOIRContextId, MOIRContext>,
+    context: &'a TypedIndexTable<ContextId, MOIRContext>,
     root_table_id: TableId,
 }
 
@@ -82,7 +82,7 @@ impl<'a> MOIRToJIRTransformer<'a> {
         symbol_strings: HashMap<Ident, Spanned<StringId>>,
         symbol_tables: MOIRSymbolTables,
         string_to_ident_mapping: HashMap<StringId, Ident>,
-        context: TypedIndexTable<MOIRContextId, MOIRContext>,
+        context: &'a TypedIndexTable<ContextId, MOIRContext>,
         root_table_id: TableId,
     ) -> Self {
         Self {
@@ -205,8 +205,8 @@ fn transform_spaces(
 }
 
 fn transform_varnodes(
-    varnodes: TypedIndexTable<VarNodeId, MOIRVarNode>
-) -> InternalCompilerResult<TypedIndexTable<VarNodeId, JIRVarNode>> {
+    varnodes: PrimaryMap<VarNodeId, MOIRVarNode>
+) -> InternalCompilerResult<PrimaryMap<VarNodeId, JIRVarNode>> {
     Ok(varnodes
         .into_iter()
         .map(|(ident, varnode)| {

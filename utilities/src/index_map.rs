@@ -133,15 +133,15 @@ impl<K: MapKey, V> PrimaryMap<K, V> {
         self.data.last()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &V> {
+    pub fn values(&self) -> impl Iterator<Item = &V> {
         self.data.iter()
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut V> {
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
         self.data.iter_mut()
     }
 
-    pub fn iter_kv(&self) -> impl Iterator<Item = (K, &V)> {
+    pub fn items(&self) -> impl Iterator<Item = (K, &V)> {
         self.data
             .iter()
             .enumerate()

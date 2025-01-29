@@ -7,7 +7,7 @@ edition = "2024"
 dynasmrt = "3.0.1"
 thiserror = "2.0.3"
 mogi_utilities = { path = "../utilities", version = "0.1.0" }
-mogi_sleigh = { path = "../sleigh", version = "0.1.0", features = [] }
+mogi_sleigh = { path = "../sleigh", version = "0.1.0", features = ["trace_jir"] }
 mogi_mem = { path = "../mem" }
 tracing = { version = "0.1.37", default-features = false }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }

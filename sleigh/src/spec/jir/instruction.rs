@@ -201,7 +201,6 @@ impl TargetInstructionBuilder {
             .end = self.instruction.jir_instructions.len();
         self.previous_block_id = Some(block_id);
         self.current_block_id = None;
-        debug!("Finished block {block_id}");
         Ok(block_id)
     }
 
