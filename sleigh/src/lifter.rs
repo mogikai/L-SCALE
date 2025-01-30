@@ -2,8 +2,11 @@ use std::time::Instant;
 
 use crate::lifter::cache::LifterCache;
 use crate::spec::ProcessorSpecification;
+use crate::spec::jir::basic_block::{
+    TargetBasicBlock,
+    TargetBasicBlockBuilder,
+};
 use crate::spec::jir::context_provider::ContextProvider;
-use crate::spec::jir::instruction::TargetInstruction;
 use crate::spec::moir::context::ContextId;
 use mogi_utilities::addresses::EVAddr;
 use source::TargetInstructionSource;
@@ -49,13 +52,15 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
         }
     }
     /// Lift a single instruction if possible, by fetching the bytes for the instruction from
-    /// `source`. Returns the address of the next instruction, and the lifted instruction
+    /// `source`. Returns the address of the next instruction, and the lifted basic block,
+    /// containing only this single instruction.
+    /// To decode the entire target basic block, use [Self::lift_block] instead.
     /// One target instruction corresponds to multiple lifted instructions most of the time.
-    /// See [TargetInstruction] for more detail.
+    /// See [TargetBasicBlock] for more detail.
     pub fn lift(
         &mut self,
         addr: EVAddr,
-    ) -> LifterResult<(EVAddr, &TargetInstruction)> {
+    ) -> LifterResult<(EVAddr, &TargetBasicBlock)> {
         // self.cache.flush_instruction(addr)?;
         // // Check the cache. If it contains the instruction we can simply return it.
         // if self.cache.is_instruction_cached(addr) {
@@ -81,14 +86,20 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
             .unwrap();
 
         if let Some((_, resolver)) = resolver {
+            let mut block_builder = TargetBasicBlockBuilder::new(addr, resolver.temp_space());
             resolver.print_hierarchy(0);
             resolver.print_mcode(0);
 
-            let target_instruction = self
-                .cache
-                .cache_instruction(addr, resolver.build().map_err(|_| -> LifterError { todo!() })?)?;
-            debug!("{target_instruction}");
-            Ok((addr, target_instruction))
+            resolver
+                .build(&mut block_builder)
+                .map_err(|_| -> LifterError { todo!() })?;
+
+            let block = block_builder
+                .finish()
+                .map_err(|_| -> LifterError { todo!() })?;
+            let block = self.cache.cache_block(addr, block)?;
+            debug!("{block}");
+            Ok((addr, block))
         } else {
             Err(LifterError::Unknown)
         }
@@ -98,10 +109,11 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
         &self,
         _addr: EVAddr,
         _source: impl TargetInstructionSource,
-    ) -> LifterResult<(EVAddr, Vec<TargetInstruction>)> {
+    ) -> LifterResult<(EVAddr, &TargetBasicBlock)> {
         todo!()
     }
 
+    // TODO: Move this to disassembler.
     // fn disasm(
     //     &self,
     //     data: &[u8],

@@ -3,17 +3,14 @@ use crate::lifter::{
     LifterResult,
 };
 use crate::spec::jir::basic_block::TargetBasicBlock;
-use crate::spec::jir::instruction::TargetInstruction;
-use imbl::hashmap::Entry;
 use imbl::HashMap;
+use imbl::hashmap::Entry;
 use mogi_utilities::addresses::EVAddr;
 
 /// The lifter cache contains all the translated instructions and blocks.
 /// The instruction and target block maps are copy on write datastructures.
 #[derive(Debug, Default, Clone)]
 pub struct LifterCache {
-    /// Single instructions that were lifted by lift.
-    target_instructions: HashMap<EVAddr, TargetInstruction>,
     /// Entire blocks of the target that were lifted by lift_block.
     target_blocks: HashMap<EVAddr, TargetBasicBlock>,
 }
@@ -38,24 +35,11 @@ impl LifterCache {
         }
     }
 
-    /// See [Self::cache_block]
-    /// TODO
-    pub fn cache_instruction(
-        &mut self,
-        addr: EVAddr,
-        inst: TargetInstruction,
-    ) -> LifterResult<&TargetInstruction> {
-        match self.target_instructions.entry(addr) {
-            Entry::Occupied(_) => Err(LifterError::InstructionAlreadyCached(addr)),
-            Entry::Vacant(entry) => Ok(entry.insert(inst)),
-        }
-    }
-
-    pub fn flush_instruction(
+    pub fn flush_block(
         &mut self,
         addr: EVAddr,
     ) -> LifterResult {
-        self.target_instructions.remove(&addr);
+        self.target_blocks.remove(&addr);
         Ok(())
     }
 
@@ -68,19 +52,10 @@ impl LifterCache {
             .ok_or(LifterError::BlockAlreadyCached(addr))
     }
 
-    pub fn fetch_instruction(
-        &self,
-        addr: EVAddr,
-    ) -> LifterResult<&TargetInstruction> {
-        self.target_instructions
-            .get(&addr)
-            .ok_or(LifterError::BlockAlreadyCached(addr))
-    }
-
-    pub fn is_instruction_cached(
+    pub fn is_block_cached(
         &self,
         addr: EVAddr,
     ) -> bool {
-        self.target_instructions.contains_key(&addr)
+        self.target_blocks.contains_key(&addr)
     }
 }

@@ -21,6 +21,42 @@ pub struct JIRInstruction {
 }
 
 impl JIRInstruction {
+    pub fn instruction_start(addr: EVAddr) -> Self {
+        Self {
+            output: None,
+            input_a: None,
+            input_b: None,
+            operation: JIROperation::InstructionStart(addr),
+        }
+    }
+
+    pub fn instruction_end(addr: EVAddr) -> Self {
+        Self {
+            output: None,
+            input_a: None,
+            input_b: None,
+            operation: JIROperation::InstructionEnd(addr),
+        }
+    }
+
+    pub fn block_start(block_id: JIRBlockId) -> Self {
+        Self {
+            output: None,
+            input_a: None,
+            input_b: None,
+            operation: JIROperation::BlockStart(block_id),
+        }
+    }
+
+    pub fn block_end(block_id: JIRBlockId) -> Self {
+        Self {
+            output: None,
+            input_a: None,
+            input_b: None,
+            operation: JIROperation::BlockEnd(block_id),
+        }
+    }
+
     pub fn new_binary_op<O, I1, I2>(
         output: O,
         input_a: I1,

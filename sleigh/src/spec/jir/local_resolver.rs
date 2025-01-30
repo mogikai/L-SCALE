@@ -2,6 +2,10 @@ use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
 use crate::jinst;
 use crate::spec::builder::StringId;
+use crate::spec::jir::basic_block::{
+    TargetBasicBlock,
+    TargetBasicBlockBuilder,
+};
 use crate::spec::jir::common::JIRSize;
 use crate::spec::jir::instruction::TargetInstructionBuilder;
 use crate::spec::jir::space::JIRSpaceType;
@@ -36,8 +40,6 @@ use crate::spec::{
 use mogi_utilities::addresses::EVAddr;
 use rustc_hash::FxHashMap;
 use tracing::debug;
-
-use super::instruction::TargetInstruction;
 
 pub enum JIRResolvedValue {
     Value(JIRValue),
@@ -166,8 +168,11 @@ impl<'a> JIRResolver<'a> {
         self.spec.temp_space
     }
 
-    pub fn build(self) -> ProcessorSpecResult<TargetInstruction> {
-        self.constructor.generate_jcode(self)
+    pub fn build(
+        self,
+        block_builder: &mut TargetBasicBlockBuilder,
+    ) -> ProcessorSpecResult {
+        self.constructor.generate_jcode(self, block_builder)
     }
 
     pub fn constructor(&self) -> &MOIRConstructor {

@@ -1,8 +1,10 @@
+use super::actions::MOIRAction;
 use crate::compiler::InternalCompilerResult;
-use crate::spec::jir::instruction::{
-    TargetInstruction,
-    TargetInstructionBuilder,
+use crate::spec::jir::basic_block::{
+    TargetBasicBlock,
+    TargetBasicBlockBuilder,
 };
+use crate::spec::jir::instruction::TargetInstructionBuilder;
 use crate::spec::jir::jcode::JIRInstruction;
 use crate::spec::jir::local_resolver::{
     JIRResolvedValue,
@@ -38,8 +40,6 @@ use std::iter::once;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 use tracing::debug;
-
-use super::actions::MOIRAction;
 
 #[derive(Debug, Clone)]
 pub struct MOIRConstructor {
@@ -93,12 +93,15 @@ impl MOIRConstructor {
     /// or a constant value. The constructor needs a [JIRResolver] in order
     /// to resolve locals that refer to e.g. fields.
     /// The [JIRResolver] is usually populated by the matcher during matching.
+    /// The resulting JCode is written to the provided [TargetBasicBlockBuilder].
+    /// Any temporaries are currently allocated block-wide.
     pub fn generate_jcode(
         &self,
         mut resolver: JIRResolver,
-    ) -> ProcessorSpecResult<TargetInstruction> {
+        block_builder: &mut TargetBasicBlockBuilder,
+    ) -> ProcessorSpecResult {
         let mut target_inst = TargetInstructionBuilder::new(
-            resolver.temp_space(),
+            block_builder,
             resolver
                 .inst_start()
                 .expect("There must be an inst_start set"),
@@ -120,8 +123,7 @@ impl MOIRConstructor {
             }
             target_inst.finish_block()?;
         }
-        let target_inst = target_inst.finish();
-        Ok(target_inst)
+        target_inst.finish()
     }
 
     /// Transform the MOIR code template in the constructor into JCode, but as a subtable.
