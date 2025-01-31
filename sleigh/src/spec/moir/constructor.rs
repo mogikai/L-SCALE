@@ -1,9 +1,6 @@
 use super::actions::MOIRAction;
 use crate::compiler::InternalCompilerResult;
-use crate::spec::jir::basic_block::{
-    TargetBasicBlock,
-    TargetBasicBlockBuilder,
-};
+use crate::spec::jir::basic_block::TargetBasicBlockBuilder;
 use crate::spec::jir::instruction::TargetInstructionBuilder;
 use crate::spec::jir::jcode::JIRInstruction;
 use crate::spec::jir::local_resolver::{

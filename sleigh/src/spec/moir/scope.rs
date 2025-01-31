@@ -6,7 +6,6 @@ use crate::compiler::error::{
     InternalErrorType,
 };
 use crate::compiler::lexer::InputSpan;
-use crate::new_typed_index_table_id;
 use crate::spec::builder::{
     CustomInterner,
     ProcessorSpecificationBuilder,
@@ -24,9 +23,14 @@ use crate::spec::moir::varnode::{
     MOIRReference,
     MOIRSlice,
 };
-use crate::spec::typed_index_table::TypedIndexTable;
-use mogi_utilities::index_map::PrimaryMap;
-use mogi_utilities::new_map_key;
+use mogi_utilities::index_map::{
+    PrimaryMap,
+    SecondaryMap,
+};
+use mogi_utilities::{
+    new_map_key,
+    new_map_key_16,
+};
 use std::collections::hash_map::Entry;
 use std::collections::{
     HashMap,
@@ -42,7 +46,7 @@ use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 
 /// A scope for locals and labels used in constructors and macros
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct MOIRScope {
     /// A hashmap to keep track of label ids and the location of their first definition in the span.
     labels_definitions: HashMap<StringId, Spanned<LabelId>>,
@@ -55,17 +59,17 @@ pub struct MOIRScope {
     /// section, this will produce an error.
     labels: PrimaryMap<LabelId, Option<InstructionId>>,
     /// Keeps track of the sizes of temporaries assigned as part of the semantic section.
-    temporaries: TypedIndexTable<MOIRTemporaryId, MOIRTemporary>,
+    temporaries: PrimaryMap<MOIRTemporaryId, Option<MOIRTemporary>>,
     /// Contains the actual local variables.
-    slices: TypedIndexTable<MOIRLocalId, MOIRSlice>,
+    slices: PrimaryMap<MOIRLocalId, MOIRSlice>,
 
     /// The field sizes we have inferred. If fields resolve to varnodes, then the size can
     /// be determined by the constructor parsing before the semantic section.
     /// Otherwise, the semantic section first needs to be parsed in order to find the right
     /// size constraint. The resulting size constraint for a field will then be
-    field_sizes: HashMap<FieldId, MOIRMaybeSize>,
+    field_sizes: SecondaryMap<FieldId, MOIRMaybeSize>,
     /// A map that is used to lookup local ids by field ids.
-    field_to_local: HashMap<FieldId, MOIRLocalId>,
+    field_to_local: SecondaryMap<FieldId, Option<MOIRLocalId>>,
 
     /// A helper set to keep track of which local variable is actually used.
     /// Unused variables can be removed from this set.
@@ -84,7 +88,9 @@ pub struct MOIRScope {
     inst_next2: MOIRLocalId,
 }
 
-new_typed_index_table_id! { pub struct MOIRLocalId; "L"; }
+new_map_key_16! {
+    pub struct MOIRLocalId; "L";
+}
 new_map_key! { pub struct LabelId; "LBL"; }
 
 /// InstructionId is simply an index into the instruction list.
@@ -104,9 +110,10 @@ pub(crate) struct MOIRTemporary {
     pub size: MOIRMaybeSize,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
 pub enum MOIRMaybeSize {
     Determined(MOIRSize),
+    #[default]
     Undetermined,
 }
 
@@ -215,7 +222,7 @@ impl From<Option<MOIRSize>> for MOIRMaybeSize {
     }
 }
 
-new_typed_index_table_id! { pub struct MOIRTemporaryId; "T"; }
+new_map_key_16! { pub struct MOIRTemporaryId; "T"; }
 new_map_key! { pub struct ActionValueId; "AV"; }
 
 impl MOIRScope {
@@ -225,20 +232,56 @@ impl MOIRScope {
         inst_next2: StringId,
         addr_size: MOIRSize,
     ) -> Self {
-        let mut slf = Self::default();
-
         // these predefined consts have a known size
         let s = MOIRMaybeSize::Determined(addr_size);
 
-        slf.inst_start = slf
-            .allocate_named_const(Spanned::new(inst_start, InputSpan::default()), s)
-            .expect("This can't fail at this point");
-        slf.inst_next = slf
-            .allocate_named_const(Spanned::new(inst_next, InputSpan::default()), s)
-            .expect("This can't fail at this point");
-        slf.inst_next2 = slf
-            .allocate_named_const(Spanned::new(inst_next2, InputSpan::default()), s)
-            .expect("This can't fail at this point");
+        let mut temporaries = Default::default();
+        let mut locals = Default::default();
+        let mut local_spans = Default::default();
+        let mut slices = Default::default();
+
+        let inst_start = internal_allocate_named_const(
+            &mut temporaries,
+            &mut locals,
+            &mut local_spans,
+            &mut slices,
+            Spanned::new(inst_start, InputSpan::default()),
+            s,
+        )
+        .expect("This can't fail at this point");
+        let inst_next = internal_allocate_named_const(
+            &mut temporaries,
+            &mut locals,
+            &mut local_spans,
+            &mut slices,
+            Spanned::new(inst_next, InputSpan::default()),
+            s,
+        )
+        .expect("This can't fail at this point");
+        let inst_next2 = internal_allocate_named_const(
+            &mut temporaries,
+            &mut locals,
+            &mut local_spans,
+            &mut slices,
+            Spanned::new(inst_next2, InputSpan::default()),
+            s,
+        )
+        .expect("This can't fail at this point");
+        let mut slf = Self {
+            labels_definitions: Default::default(),
+            locals,
+            local_spans,
+            used_locals: Default::default(),
+            slices,
+            field_sizes: Default::default(),
+            temporaries,
+            inst_start,
+            inst_next,
+            inst_next2,
+            labels: Default::default(),
+            field_to_local: Default::default(),
+            subtable_builds: Default::default(),
+        };
 
         slf
     }
@@ -273,9 +316,7 @@ impl MOIRScope {
             {
                 MOIRReference::Temporary(temp_id) => Some((
                     local_id,
-                    self.temporaries
-                        .get(temp_id)
-                        .copied()
+                    self.temporaries[temp_id]
                         .expect("This must exist. Otherwise we have a logic error in the Scope struct"),
                 )),
                 _ => None,
@@ -329,11 +370,11 @@ impl MOIRScope {
             // For fields with attached variables this will be the underlying
             // varnode size. For other fields, this will be the size that is
             // inferred for the first occurrence in the pcode.
-            self.field_sizes.insert(field_id, value.size());
+            self.field_sizes[field_id] = value.size();
 
             // We also store a mapping from field id to local id for insertion
             // later on.
-            self.field_to_local.insert(field_id, id);
+            self.field_to_local[field_id] = Some(id);
         }
 
         self.locals.insert(ident, id);
@@ -347,7 +388,7 @@ impl MOIRScope {
     ) -> InternalCompilerResult {
         for subtable in self
             .slices
-            .iter()
+            .items()
             .filter_map(|(_, slice)| match slice.reference {
                 MOIRReference::SubTable(id) => Some(id),
                 _ => None,
@@ -397,7 +438,7 @@ impl MOIRScope {
     ) -> MOIRLocalId {
         let size = size.into();
         self.slices
-            .insert(MOIRSlice::temporary(self.temporaries.insert(MOIRTemporary { size }), 0, size))
+            .insert(MOIRSlice::temporary(self.temporaries.insert(Some(MOIRTemporary { size })), 0, size))
     }
 
     /// Named consts are treated in a similar fashing as named temporaries, but no backing varnode
@@ -407,29 +448,14 @@ impl MOIRScope {
         ident: Spanned<StringId>,
         size: MOIRMaybeSize,
     ) -> InternalCompilerResult<MOIRLocalId> {
-        let (ident, ident_span) = ident.into_tuple();
-        let id = self.temporaries.insert(MOIRTemporary { size });
-        match self.locals.entry(ident) {
-            Entry::Occupied(_) => Err(InternalError::with_spans(
-                DuplicatedIdentifier { name: "".to_string() }.into(),
-                HashMap::from([
-                    (
-                        "first",
-                        self.local_spans
-                            .get(&ident)
-                            .expect("This must exist, since the locals entry is occupied")
-                            .clone(),
-                    ),
-                    ("second", ident_span.clone()),
-                ]),
-            )),
-            Entry::Vacant(entry) => {
-                self.local_spans.insert(ident, ident_span);
-                let id = self.slices.insert(MOIRSlice::named_const(id, size));
-                entry.insert(id);
-                Ok(id)
-            }
-        }
+        internal_allocate_named_const(
+            &mut self.temporaries,
+            &mut self.locals,
+            &mut self.local_spans,
+            &mut self.slices,
+            ident,
+            size,
+        )
     }
 
     /// Try to allocate a named temporary. If the temporary already exists,
@@ -440,7 +466,7 @@ impl MOIRScope {
         size: MOIRMaybeSize,
     ) -> InternalCompilerResult<MOIRLocalId> {
         let (ident, ident_span) = ident.into_tuple();
-        let id = self.temporaries.insert(MOIRTemporary { size });
+        let id = self.temporaries.insert(Some(MOIRTemporary { size }));
         match self.locals.entry(ident) {
             Entry::Occupied(_) => Err(InternalError::with_spans(
                 DuplicatedIdentifier { name: "".to_string() }.into(),
@@ -487,7 +513,7 @@ impl MOIRScope {
         &self,
         field_id: FieldId,
     ) -> Option<MOIRLocalId> {
-        self.field_to_local.get(&field_id).copied()
+        self.field_to_local[field_id]
     }
 
     pub fn local_id_by_ident(
@@ -555,11 +581,7 @@ impl MOIRScope {
             if slice.size().is_undetermined() {
                 // This is the first time we are dealing with the size of this field.
                 // Set it in the size tracking map
-                let current_size = self
-                    .field_sizes
-                    .get_mut(&field_id)
-                    .expect("The field id was given out by us so it must exist");
-                *current_size = size.into();
+                self.field_sizes[field_id] = size.into();
                 slice.set_size(size)?;
             }
         }
@@ -597,10 +619,9 @@ impl MOIRScope {
             .ok_or_else(|| -> InternalError { todo!() })?;
         match slice.reference {
             MOIRReference::Temporary(temp) => {
-                let temp = self
-                    .temporaries
-                    .get_mut(temp)
-                    .expect("We gave out the id so it must exist");
+                let temp = self.temporaries[temp]
+                    .as_mut()
+                    .expect("The temporary must exist");
                 if let MOIRMaybeSize::Determined(prev_size) = temp.size {
                     if size > prev_size {
                         // The size may be smaller, since we are dealing with slices, but never larger.
@@ -612,10 +633,7 @@ impl MOIRScope {
                 }
             }
             MOIRReference::Field(field_id) => {
-                let prev_size = self
-                    .field_sizes
-                    .get_mut(&field_id)
-                    .expect("We gave out the id so it must exist");
+                let prev_size = &mut self.field_sizes[field_id];
                 match prev_size {
                     MOIRMaybeSize::Determined(prev_size) => {
                         // If the size was previously determined, we need to make sure
@@ -737,7 +755,7 @@ impl MOIRScope {
             }
         }
         let mut out = String::new();
-        for (id, slice) in self.slices.iter() {
+        for (id, slice) in self.slices.items() {
             if self.used_locals.contains(&id) {
                 if let Some(str) = already_printed.get(&id) {
                     writeln!(out, "{str}").expect("This should not error");
@@ -751,12 +769,45 @@ impl MOIRScope {
     }
 }
 
+fn internal_allocate_named_const(
+    temporaries: &mut PrimaryMap<MOIRTemporaryId, Option<MOIRTemporary>>,
+    locals: &mut HashMap<StringId, MOIRLocalId>,
+    local_spans: &mut HashMap<StringId, InputSpan>,
+    slices: &mut PrimaryMap<MOIRLocalId, MOIRSlice>,
+    ident: Spanned<StringId>,
+    size: MOIRMaybeSize,
+) -> InternalCompilerResult<MOIRLocalId> {
+    let (ident, ident_span) = ident.into_tuple();
+    let id = temporaries.insert(Some(MOIRTemporary { size }));
+    match locals.entry(ident) {
+        Entry::Occupied(_) => Err(InternalError::with_spans(
+            DuplicatedIdentifier { name: "".to_string() }.into(),
+            HashMap::from([
+                (
+                    "first",
+                    local_spans
+                        .get(&ident)
+                        .expect("This must exist, since the locals entry is occupied")
+                        .clone(),
+                ),
+                ("second", ident_span.clone()),
+            ]),
+        )),
+        Entry::Vacant(entry) => {
+            local_spans.insert(ident, ident_span);
+            let id = slices.insert(MOIRSlice::named_const(id, size));
+            entry.insert(id);
+            Ok(id)
+        }
+    }
+}
+
 impl Display for MOIRScope {
     fn fmt(
         &self,
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
-        for (id, slice) in self.slices.iter() {
+        for (id, slice) in self.slices.items() {
             if self.used_locals.contains(&id) {
                 writeln!(f, "{: <4} {}", format!("{}:", id), slice)?;
             }
@@ -770,7 +821,7 @@ impl Debug for MOIRScope {
         &self,
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
-        for (id, slice) in self.slices.iter() {
+        for (id, slice) in self.slices.items() {
             writeln!(f, "{: <4} {}", format!("{}:", id), slice)?;
         }
         Ok(())

@@ -24,10 +24,7 @@ use crate::spec::moir::constructor::{
     ConstructorId,
     MOIRConstructor,
 };
-use crate::spec::moir::context::{
-    ContextId,
-    MOIRContext,
-};
+use crate::spec::moir::context::ContextId;
 pub use crate::spec::moir::custom_op::CustomOpId;
 use crate::spec::moir::endianness::MOIREndianness;
 use crate::spec::moir::field::FieldId;
@@ -39,7 +36,6 @@ use crate::spec::moir::table::{
 use crate::spec::moir::token::TokenId;
 use crate::spec::moir::varnode::VarNodeId;
 use crate::spec::typed_index_table::TypedIndexTable;
-use imbl::HashSet;
 use mogi_utilities::index_map::PrimaryMap;
 use std::collections::HashMap;
 use std::ops::Range;
@@ -83,7 +79,7 @@ pub(crate) struct JIRSymbolTables {
     pub(crate) tables: TypedIndexTable<TableId, MOIRTable>,
     pub(crate) constructors: TypedIndexTable<ConstructorId, MOIRConstructor>,
     pub(crate) varnodes: PrimaryMap<VarNodeId, JIRVarNode>,
-    pub(crate) fields: TypedIndexTable<FieldId, MOIRField>,
+    pub(crate) fields: PrimaryMap<FieldId, MOIRField>,
     // tokens: TypedIndexTable<MOIRTokenId, MOIRToken>,
     // fields: TypedIndexTable<MOIRFieldId, MOIRField>,
     custom_ops: PrimaryMap<CustomOpId, JIRCustomOp>,

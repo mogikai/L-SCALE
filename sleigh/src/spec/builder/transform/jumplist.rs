@@ -77,7 +77,7 @@ pub(super) struct JumplistBuilder<'a> {
     jumplist_cache: TypedIndexTable<JumplistId, Jumplist>,
     sublist_cache: HashMap<Submatchers, JumplistId>,
     tables: &'a TypedIndexTable<TableId, MOIRTable>,
-    fields: &'a TypedIndexTable<FieldId, MOIRField>,
+    fields: &'a PrimaryMap<FieldId, MOIRField>,
     tokens: &'a TypedIndexTable<TokenId, MOIRToken>,
     context: &'a TypedIndexTable<ContextId, MOIRContext>,
     varnodes: &'a PrimaryMap<VarNodeId, MOIRVarNode>,
@@ -119,7 +119,7 @@ impl<'a> Row<'a> {
 impl<'a> JumplistBuilder<'a> {
     pub(super) fn new(
         tables: &'a TypedIndexTable<TableId, MOIRTable>,
-        fields: &'a TypedIndexTable<FieldId, MOIRField>,
+        fields: &'a PrimaryMap<FieldId, MOIRField>,
         tokens: &'a TypedIndexTable<TokenId, MOIRToken>,
         context: &'a TypedIndexTable<ContextId, MOIRContext>,
         varnodes: &'a PrimaryMap<VarNodeId, MOIRVarNode>,

@@ -2,10 +2,7 @@ use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
 use crate::jinst;
 use crate::spec::builder::StringId;
-use crate::spec::jir::basic_block::{
-    TargetBasicBlock,
-    TargetBasicBlockBuilder,
-};
+use crate::spec::jir::basic_block::TargetBasicBlockBuilder;
 use crate::spec::jir::common::JIRSize;
 use crate::spec::jir::instruction::TargetInstructionBuilder;
 use crate::spec::jir::space::JIRSpaceType;
@@ -37,8 +34,9 @@ use crate::spec::{
     ProcessorSpecification,
     ProcessorSpecificationError,
 };
+use fnv::FnvHashMap;
 use mogi_utilities::addresses::EVAddr;
-use rustc_hash::FxHashMap;
+use mogi_utilities::index_map::SecondaryMap;
 use tracing::debug;
 
 pub enum JIRResolvedValue {
@@ -72,8 +70,8 @@ impl From<JIRValue> for JIRResolvedValue {
 pub struct JIRResolver<'a> {
     spec: &'a ProcessorSpecification,
     constructor: &'a MOIRConstructor,
-    values: FxHashMap<MOIRLocalId, JIRValue>,
-    subtables: FxHashMap<TableId, JIRResolver<'a>>,
+    values: SecondaryMap<MOIRLocalId, Option<JIRValue>>,
+    subtables: FnvHashMap<TableId, JIRResolver<'a>>,
 }
 
 impl<'a> JIRResolver<'a> {
@@ -92,21 +90,15 @@ impl<'a> JIRResolver<'a> {
         // TODO correct generic
         let addr_bytes = EVAddr::<u8>::bits() / 8;
 
-        let mut values = FxHashMap::default();
-        values.insert(
-            local_inst_start,
-            JIRValue::Const(JIRConst::new(inst_start.try_into().unwrap(), addr_bytes.try_into().unwrap())),
-        );
-        values.insert(
-            local_inst_next,
-            JIRValue::Const(JIRConst::new(inst_next.try_into().unwrap(), addr_bytes.try_into().unwrap())),
-        );
+        let mut values = SecondaryMap::default();
+        values[local_inst_start] =
+            Some(JIRValue::Const(JIRConst::new(inst_start.try_into().unwrap(), addr_bytes.try_into().unwrap())));
+        values[local_inst_next] =
+            Some(JIRValue::Const(JIRConst::new(inst_next.try_into().unwrap(), addr_bytes.try_into().unwrap())));
 
         if let Some(inst_next2) = inst_next2 {
-            values.insert(
-                local_inst_next2,
-                JIRValue::Const(JIRConst::new(inst_next2.try_into().unwrap(), addr_bytes.try_into().unwrap())),
-            );
+            values[local_inst_next2] =
+                Some(JIRValue::Const(JIRConst::new(inst_next2.try_into().unwrap(), addr_bytes.try_into().unwrap())));
         }
 
         Self {
@@ -159,7 +151,7 @@ impl<'a> JIRResolver<'a> {
                 todo!("Generate error for undetermined temporary size")
             };
             let tmp_slice = instruction_builder.alloc_temporary(size)?;
-            self.values.insert(local, tmp_slice.into());
+            self.values[local] = Some(tmp_slice.into());
         }
         Ok(())
     }
@@ -184,8 +176,8 @@ impl<'a> JIRResolver<'a> {
         &mut self,
         local_id: MOIRLocalId,
         value: JIRValue,
-    ) -> Option<JIRValue> {
-        self.values.insert(local_id, value)
+    ) {
+        self.values[local_id] = Some(value);
     }
 
     pub fn has_field(
@@ -216,10 +208,7 @@ impl<'a> JIRResolver<'a> {
             .field_size(field_id)?
             .determined_or(0);
 
-        let jir_value = self
-            .values
-            .entry(local_id)
-            .or_insert(JIRValue::Const(JIRConst::new(0, field_size)));
+        let jir_value = self.values[local_id].get_or_insert(JIRValue::Const(JIRConst::new(0, field_size)));
         let JIRValue::Const(c) = jir_value else {
             todo!("Generate error report for slice in field extractor");
         };
@@ -234,9 +223,7 @@ impl<'a> JIRResolver<'a> {
         &self,
         local_id: MOIRLocalId,
     ) -> InternalCompilerResult<u128> {
-        let value = self
-            .values
-            .get(&local_id)
+        let value = self.values[local_id]
             .ok_or_else(|| -> InternalError { todo!("Generate error report for missing local value") })?;
         Ok(match value {
             JIRValue::Const(c) => c.value(),
@@ -290,8 +277,8 @@ impl<'a> JIRResolver<'a> {
             .local_scope
             .local_id_by_ident(ident)
             .ok_or_else(|| todo!("Generate error"))?;
-        let previous = self.values.insert(local_id, value);
-        assert!(previous.is_none());
+        assert!(self.values[local_id].is_none());
+        self.values[local_id] = Some(value);
         Ok(())
     }
 
@@ -353,18 +340,18 @@ impl<'a> JIRResolver<'a> {
             .ok_or_else(|| todo!("Generate error for undefined size"))?;
         Ok(match value.reference {
             MOIRReference::VarNode(varnode_id) => {
-                if self.values.contains_key(&local) {
+                if self.values[local].is_some() {
                     todo!("Generate error for overridden varnode.")
                 }
                 let varnode = self.spec.varnode_slice_by_id(varnode_id)?;
                 JIRSlice::new(varnode_id, varnode.space_id, varnode.offset + start, end).into()
             }
-            MOIRReference::Temporary(_) | MOIRReference::Const(_) => match self.values.get(&local).copied() {
+            MOIRReference::Temporary(_) | MOIRReference::Const(_) => match self.values[local] {
                 None => todo!("Generate error for unresolved temporary."),
                 Some(value) => value.into(),
             },
             MOIRReference::Field(field_id) => {
-                let Some(value) = self.values.get(&local).copied() else {
+                let Some(value) = self.values[local] else {
                     debug!("Constructor: {:?}", self.constructor);
                     debug!("Scope is {}", self.constructor.local_scope);
                     debug!("Local id is {local}");

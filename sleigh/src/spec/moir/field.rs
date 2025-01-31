@@ -1,6 +1,6 @@
-use crate::new_typed_index_table_id;
 use crate::spec::builder::StringId;
 use crate::spec::moir::token::TokenId;
+use mogi_utilities::new_map_key;
 
 use super::common::MOIRSize;
 use super::context::ContextId;
@@ -100,4 +100,4 @@ pub struct MOIRField {
     pub strings: Vec<StringId>,
 }
 
-new_typed_index_table_id! { pub struct FieldId; "F"; }
+new_map_key! { pub struct FieldId; "F"; }

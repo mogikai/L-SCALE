@@ -29,7 +29,7 @@ pub trait MapKey: Copy + PartialEq + Eq + Hash {
 macro_rules! new_map_key {
     ( $(#[$outer:meta])* $vis:vis struct $name:ident; $display_prefix:literal;) => {
         $(#[$outer])*
-        #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
+        #[derive(Debug, Eq, PartialEq, PartialOrd, Ord, Copy, Clone, Hash)]
         #[repr(transparent)]
         $vis struct $name(std::num::NonZero<usize>);
 
@@ -293,5 +293,17 @@ where
             self.data.resize_with(index + 1, Default::default);
         }
         &mut self.data[index]
+    }
+}
+
+impl<K, V> SecondaryMap<K, V>
+where
+    K: MapKey,
+{
+    pub fn get(
+        &self,
+        index: &K,
+    ) -> Option<&V> {
+        self.data.get(index.to_index())
     }
 }

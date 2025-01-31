@@ -3,7 +3,6 @@ use crate::compiler::error::{
     InternalError,
     SliceError,
 };
-use crate::new_typed_index_table_id_16;
 use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::field::FieldId;

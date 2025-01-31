@@ -6,10 +6,7 @@ use crate::spec::jir::trace_jir;
 use crate::spec::jir::values::JIRConst;
 use crate::spec::moir::actions::MOIRActionTarget;
 use crate::spec::moir::common::MOIRSize;
-use crate::spec::moir::constructor::{
-    ConstructorId,
-    MOIRConstructor,
-};
+use crate::spec::moir::constructor::ConstructorId;
 use crate::spec::moir::context::ContextId;
 use crate::spec::moir::field::{
     FieldId,
@@ -19,7 +16,6 @@ use crate::spec::moir::table::TableId;
 use crate::spec::typed_index_table::TypedIndexTable;
 use mogi_utilities::addresses::EVAddr;
 use rustc_hash::FxHashMap;
-use tracing::debug;
 
 use super::context_provider::ContextProvider;
 use super::local_resolver::JIRResolver;

@@ -7,8 +7,7 @@ use crate::spec::moir::field::{
     MOIRField,
     MOIRFieldParent,
 };
-use crate::spec::typed_index_table::TypedIndexTable;
-use imbl::HashMap;
+use fnv::FnvHashMap;
 use tracing::debug;
 
 #[derive(Debug, Default)]
@@ -17,15 +16,15 @@ pub struct ContextProvider {
     // from this vector when saving and restoring state
     context_values: Vec<u64>,
     num_values: usize,
-    context_fields: HashMap<FieldId, MOIRField>,
+    context_fields: FnvHashMap<FieldId, MOIRField>,
 }
 
 impl ContextProvider {
     pub(crate) fn new(specification: &ProcessorSpecification) -> Self {
         let mut highest_cid = ContextId::from(0);
-        let mut context_fields = HashMap::new();
+        let mut context_fields = FnvHashMap::default();
 
-        for (field_id, field) in specification.symbol_tables.fields.iter() {
+        for (field_id, field) in specification.symbol_tables.fields.items() {
             if let MOIRFieldParent::Context(cid) = field.parent {
                 highest_cid = highest_cid.max(cid);
                 context_fields.insert(field_id, field.clone());

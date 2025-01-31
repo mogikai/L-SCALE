@@ -79,10 +79,7 @@ use chumsky::input::{
     Input,
 };
 use chumsky::inspector::Inspector;
-use mogi_utilities::index_map::{
-    PrimaryMap,
-    SecondaryMap,
-};
+use mogi_utilities::index_map::PrimaryMap;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::fmt::{
@@ -137,7 +134,7 @@ pub(super) struct MOIRSymbolTables {
     pub(super) constructors: TypedIndexTable<ConstructorId, MOIRConstructor>,
     pub(super) varnodes: PrimaryMap<VarNodeId, MOIRVarNode>,
     pub(super) tokens: TypedIndexTable<TokenId, MOIRToken>,
-    pub(super) fields: TypedIndexTable<FieldId, MOIRField>,
+    pub(super) fields: PrimaryMap<FieldId, MOIRField>,
     pub(super) custom_ops: PrimaryMap<CustomOpId, MOIRCustomOp>,
     // bitrange registers are treated more like placeholders for the corresponding pcode operations to realize access
     pub(super) bitrange_registers: TypedIndexTable<BitrangeRegisterId, MOIRTBitrangeRegister>,

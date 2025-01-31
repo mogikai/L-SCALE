@@ -1,3 +1,4 @@
+use std::hint::black_box;
 use std::time::Instant;
 
 use crate::lifter::cache::LifterCache;
@@ -7,7 +8,6 @@ use crate::spec::jir::basic_block::{
     TargetBasicBlockBuilder,
 };
 use crate::spec::jir::context_provider::ContextProvider;
-use crate::spec::moir::context::ContextId;
 use mogi_utilities::addresses::EVAddr;
 use source::TargetInstructionSource;
 use thiserror::Error;
@@ -78,9 +78,19 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
         let bytes = self
             .instruction_source
             .load(addr)
-            .map_err(|e| -> LifterError { todo!() })?;
+            .map_err(|_| -> LifterError { todo!() })?;
 
         let root_jumplist = self.specification.jumplist_cache.get(0.into()).unwrap();
+        let count = 100_000;
+        let start = Instant::now();
+        for _ in 0..count {
+            let resolver = root_jumplist
+                .r#match(&bytes, &self.specification, &mut self.context_provider)
+                .unwrap();
+            black_box(resolver);
+        }
+        println!("Matching time: {:?}", start.elapsed() / count);
+
         let resolver = root_jumplist
             .r#match(&bytes, &self.specification, &mut self.context_provider)
             .unwrap();
