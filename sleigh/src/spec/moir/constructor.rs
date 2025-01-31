@@ -26,8 +26,7 @@ use crate::spec::moir::scope::{
 use crate::spec::moir::table::MOIRExport;
 use crate::spec::moir::varnode::MOIRLocal;
 use crate::spec::{
-    ProcessorSpecResult,
-    ProcessorSpecificationError,
+    ProcessorSpecResult, ProcessorSpecification, ProcessorSpecificationError
 };
 use crate::{
     jinst,
@@ -36,7 +35,8 @@ use crate::{
 use std::iter::once;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
-use tracing::debug;
+
+use super::field_extractor::FieldExtractor;
 
 #[derive(Debug, Clone)]
 pub struct MOIRConstructor {
@@ -44,6 +44,9 @@ pub struct MOIRConstructor {
     pub instructions: Vec<MOIRInstruction>,
     pub display: String,
     pub(crate) actions: Vec<MOIRAction>,
+    pub(crate) modifies_context: bool,
+    /// Field extractors will be used to extract the field values from the token stream.
+    pub(crate) field_extractors: Vec<FieldExtractor>,
     /// A constructor may export a value. The export refers to a local in this constructor.
     /// To resolve the value, the scope for this constructor has to be used.
     /// 7.7.2.3. Exports
@@ -94,6 +97,7 @@ impl MOIRConstructor {
     /// Any temporaries are currently allocated block-wide.
     pub fn generate_jcode(
         &self,
+        spec: &ProcessorSpecification,
         mut resolver: JIRResolver,
         block_builder: &mut TargetBasicBlockBuilder,
     ) -> ProcessorSpecResult {
@@ -116,7 +120,7 @@ impl MOIRConstructor {
                 target_inst.start_block()?
             };
             for inst in block {
-                self.generate_instruction(&mut resolver, &mut target_inst, inst)?;
+                self.generate_instruction(spec, &mut resolver, &mut target_inst, inst)?;
             }
             target_inst.finish_block()?;
         }
@@ -129,6 +133,7 @@ impl MOIRConstructor {
     /// will pick off where we left.
     pub(crate) fn generate_jcode_subtable(
         &self,
+        spec: &ProcessorSpecification,
         resolver: &mut JIRResolver,
         inst_builder: &mut TargetInstructionBuilder,
     ) -> ProcessorSpecResult {
@@ -152,7 +157,7 @@ impl MOIRConstructor {
                 inst_builder.start_block()?;
             };
             for inst in block {
-                self.generate_instruction(resolver, inst_builder, inst)?;
+                self.generate_instruction(spec, resolver, inst_builder, inst)?;
             }
             // We only finish blocks when starting new blocks. The last block will remain unfinished, since
             // the parent constructor will pick up generating instructions for that block.
@@ -162,30 +167,31 @@ impl MOIRConstructor {
 
     fn generate_instruction(
         &self,
+        spec: &ProcessorSpecification,
         resolver: &mut JIRResolver,
         target_inst: &mut TargetInstructionBuilder,
         inst: &MOIRInstruction,
     ) -> ProcessorSpecResult {
-        let (output, output_store) = match self.resolve_output(target_inst, resolver, &inst.output)? {
+        let (output, output_store) = match self.resolve_output(spec, target_inst, resolver, &inst.output)? {
             None => (Err(ProcessorSpecificationError::MissingOutput), None),
             Some((output, output_store)) => (Ok(output), output_store),
         };
         let input_a = self
-            .resolve_input(target_inst, resolver, &inst.input_a)?
+            .resolve_input(spec, target_inst, resolver, &inst.input_a)?
             .ok_or(ProcessorSpecificationError::MissingInput);
         let input_b = self
-            .resolve_input(target_inst, resolver, &inst.input_b)?
+            .resolve_input(spec, target_inst, resolver, &inst.input_b)?
             .ok_or(ProcessorSpecificationError::MissingInput);
         trace_jir!("Generating instruction {inst}\n");
         trace_jir!("Resolved inputs: {input_a:?} {input_b:?}");
         let inst = match &inst.operation {
-            MOIROperation::Build(table) => return resolver.build_subtable(target_inst, *table),
+            MOIROperation::Build(table) => return resolver.build_subtable(spec, target_inst, *table),
             MOIROperation::Copy => jinst!({ output? } = { input_a? }),
             MOIROperation::CustomOp { op_id, extra_args } => {
                 // TODO: Implement hooking mechanism that allows writing hooks for a custom op compiler
                 //       that directly implements the custom ops in JIR
                 //       It might make sense to put this into the optimizing stage.
-                let args = self.resolve_custom_op_args(target_inst, resolver, input_a, input_b, extra_args)?;
+                let args = self.resolve_custom_op_args(spec, target_inst, resolver, input_a, input_b, extra_args)?;
                 let args = args.into_iter().collect();
 
                 if let Ok(output) = output {
@@ -215,7 +221,7 @@ impl MOIRConstructor {
             MOIROperation::Load(space) => {
                 let output = output?;
                 let address = input_a?;
-                if let Some(optimized) = resolver.optimize_const_load(address, *space, output.size())? {
+                if let Some(optimized) = resolver.optimize_const_load(spec, address, *space, output.size())? {
                     // If the load was optimized to a constant we can simply assign it here.
                     jinst!(output = optimized)
                 } else {
@@ -293,6 +299,7 @@ impl MOIRConstructor {
 
     fn resolve_custom_op_args(
         &self,
+        spec: &ProcessorSpecification,
         instruction_builder: &mut TargetInstructionBuilder,
         resolver: &JIRResolver,
         input_a: ProcessorSpecResult<JIRValue>,
@@ -314,7 +321,7 @@ impl MOIRConstructor {
                 .chain(once(input_b))
                 .chain(args.iter().copied().map(|input| {
                     resolver
-                        .resolve_local(instruction_builder, input)
+                        .resolve_local(spec, instruction_builder, input)
                         .and_then(|resolved| match resolved {
                             // If we have a value, we can simply return that.
                             JIRResolvedValue::Value(value) => Ok(value),
@@ -337,6 +344,7 @@ impl MOIRConstructor {
     /// after the operation that writes to the out temporary.
     fn resolve_output(
         &self,
+        spec: &ProcessorSpecification,
         instruction_builder: &mut TargetInstructionBuilder,
         resolver: &JIRResolver,
         output: &Option<MOIRLocalId>,
@@ -344,7 +352,7 @@ impl MOIRConstructor {
         output
             .map(|out| {
                 resolver
-                    .resolve_local_id(instruction_builder, out)
+                    .resolve_local_id(spec, instruction_builder, out)
                     .and_then(|o| match o {
                         JIRResolvedValue::Value(value) => match value {
                             JIRValue::Slice(slice) => Ok((slice, None)),
@@ -361,6 +369,7 @@ impl MOIRConstructor {
 
     fn resolve_input(
         &self,
+        spec: &ProcessorSpecification,
         instruction_builder: &mut TargetInstructionBuilder,
         resolver: &JIRResolver,
         input: &Option<MOIRLocal>,
@@ -368,7 +377,7 @@ impl MOIRConstructor {
         input
             .map(|input| {
                 resolver
-                    .resolve_local(instruction_builder, input)
+                    .resolve_local(spec, instruction_builder, input)
                     .and_then(|resolved| match resolved {
                         JIRResolvedValue::Value(value) => Ok(value),
                         JIRResolvedValue::Reference { address, space, size } => instruction_builder
@@ -430,6 +439,7 @@ impl MOIRConstructor {
                 MOIRExport::MemReference { address, .. } => self.local_scope.mark_local_as_used(*address)?,
             }
         }
+
         Ok(())
     }
 }

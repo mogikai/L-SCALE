@@ -15,5 +15,6 @@ pub(crate) mod table;
 pub(crate) mod token;
 pub(crate) mod varnode;
 pub(crate) mod actions;
+pub(crate) mod field_extractor;
 
 pub(crate) const MOIR_ADDRESS_SIZE: MOIRSize = 8;

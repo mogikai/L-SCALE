@@ -85,23 +85,23 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
         let start = Instant::now();
         for _ in 0..count {
             let resolver = root_jumplist
-                .r#match(&bytes, &self.specification, &mut self.context_provider)
+                .r#match(&bytes, &self.specification.jumplist_cache, &self.specification.symbol_tables.constructors, &mut self.context_provider)
                 .unwrap();
             black_box(resolver);
         }
         println!("Matching time: {:?}", start.elapsed() / count);
 
         let resolver = root_jumplist
-            .r#match(&bytes, &self.specification, &mut self.context_provider)
+            .r#match(&bytes, &self.specification.jumplist_cache, &self.specification.symbol_tables.constructors, &mut self.context_provider)
             .unwrap();
 
         if let Some((_, resolver)) = resolver {
-            let mut block_builder = TargetBasicBlockBuilder::new(addr, resolver.temp_space());
+            let mut block_builder = TargetBasicBlockBuilder::new(addr, self.specification.temp_space);
             resolver.print_hierarchy(0);
-            resolver.print_mcode(0);
+            resolver.print_mcode(&self.specification, 0);
 
             resolver
-                .build(&mut block_builder)
+                .build(&self.specification, &mut block_builder)
                 .map_err(|_| -> LifterError { todo!() })?;
 
             let block = block_builder

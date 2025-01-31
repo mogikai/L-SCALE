@@ -20,7 +20,6 @@ use crate::compiler::error::InternalError;
 use crate::spec::ProcessorSpecificationError;
 use crate::spec::jir::jumplist::{
     DataProvider,
-    FieldExtractor,
     Jumplist,
     JumplistEntry,
     JumplistId,
@@ -72,6 +71,38 @@ use tracing::error;
 // const MASK_EXPAND_THRESHOLD: u32 = 256u32.ilog2();
 const MASK_EXPAND_THRESHOLD: u32 = 0u32;
 
+/// Helpful information that is collected while building.
+#[derive(Debug, Default)]
+struct JumplistDiagnostics {
+    // dummy jumplists have a mask of zero and only act as a branching node for other lists
+    dummy_jumplist_count: usize,
+    // number of lists created at the top level through `process_submatchers`
+    root_level_count: usize,
+    // number of lists created at the top level through `create_jumplist`
+    byte_level_count: usize,
+
+    // number of rows that are categorized as a child
+    merged_row_count: usize,
+    // number of rows that are categorized as a parent
+    parent_row_count: usize,
+    // number of total paths for mask matching
+    unique_mask_paths: usize,
+
+    // number of values propagated down from mask parents to their children
+    propagated_parent_value_count: usize,
+    // number of partitions by value and submatchers
+    value_submatcher_partition_count: usize,
+    // number of rows that have a next byte
+    next_byte_row_count: usize,
+    // number of rows that have a next token
+    terminal_token_row_count: usize,
+    // number of rows that have a next constructor
+    terminal_matcher_row_count: usize,
+
+    // total number of entries created
+    entry_count: usize,
+}
+
 /// Create a [Jumplist] for the root [MOIRTable]
 pub(super) struct JumplistBuilder<'a> {
     jumplist_cache: TypedIndexTable<JumplistId, Jumplist>,
@@ -82,6 +113,7 @@ pub(super) struct JumplistBuilder<'a> {
     context: &'a TypedIndexTable<ContextId, MOIRContext>,
     varnodes: &'a PrimaryMap<VarNodeId, MOIRVarNode>,
     constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
+    diagnostics: JumplistDiagnostics,
 }
 
 // Temporary data used for processing tokens and bytes
@@ -134,6 +166,7 @@ impl<'a> JumplistBuilder<'a> {
             context,
             varnodes,
             constructors,
+            diagnostics: JumplistDiagnostics::default(),
         }
     }
 
@@ -160,6 +193,9 @@ impl<'a> JumplistBuilder<'a> {
             self.sublist_cache.len(),
         );
 
+        // trace_build!("Jumplist diagnostics: {:#?}", self.diagnostics);
+        eprintln!("Jumplist diagnostics: {:#?}", self.diagnostics);
+
         // for (jumplist_id, jumplist) in self.jumplist_cache.iter() {
         //     if jumplist_id == root_jumplist_id {
         //         continue;
@@ -168,8 +204,8 @@ impl<'a> JumplistBuilder<'a> {
         //     trace_build!("(jumplist_id, jumplist) = {:#x?}", (jumplist_id, jumplist));
         // }
 
-        // let root_jumplist = self.jumplist_cache.get(root_jumplist_id).unwrap();
-        // trace_build!("(root_jumplist_id, root_jumplist) = {:#x?}", (root_jumplist_id, root_jumplist));
+        let root_jumplist = self.jumplist_cache.get(root_jumplist_id).unwrap();
+        trace_build!("(root_jumplist_id, root_jumplist) = {:#x?}", (root_jumplist_id, root_jumplist));
 
         save_graph(root_jumplist_id, &self.jumplist_cache);
 
@@ -238,6 +274,8 @@ impl<'a> JumplistBuilder<'a> {
                 // create single jumplist out of all matchers
                 let new_jumplist = self.create_jumplist(0, &matchers)?;
                 self.jumplist_cache.replace(dummy_jumplist_id, new_jumplist);
+
+                self.diagnostics.root_level_count += 1;
 
                 Ok(dummy_jumplist_id)
             }
@@ -315,9 +353,13 @@ impl<'a> JumplistBuilder<'a> {
             .map(|(_, rows)| Ok(self.create_jumplist_bytes(rows, token_index, 0)?))
             .collect::<InternalCompilerResult<Vec<_>>>()?;
 
+        self.diagnostics.byte_level_count += 1;
+
         // 4. either use directly or combine
         if jumplists.len() > 1 {
             // multiple lists => create dummy list
+            self.diagnostics.dummy_jumplist_count += 1;
+
             let mut jumplist_new = Jumplist::default();
             for jumplist in jumplists.into_iter() {
                 let jumplist_id = self.jumplist_cache.insert(jumplist);
@@ -326,6 +368,7 @@ impl<'a> JumplistBuilder<'a> {
                     JumplistEntry::new(vec![], NextJumplistEntry::TrailingNext(jumplist_id)),
                     false,
                 )?;
+                self.diagnostics.entry_count += 1;
             }
 
             Ok(jumplist_new)
@@ -398,6 +441,7 @@ impl<'a> JumplistBuilder<'a> {
                 let jumplist_id = self.jumplist_cache.insert(jumplist);
                 let entry = JumplistEntry::new(vec![], NextJumplistEntry::TrailingNext(jumplist_id));
                 jumplist_new.insert(0, entry, false)?;
+                self.diagnostics.entry_count += 1;
             }
             jumplist_new
         } else {
@@ -437,36 +481,19 @@ impl<'a> JumplistBuilder<'a> {
             );
         }
 
-        // partition rows into submask congruence sets
-        let mut sets = Vec::<(u64, Vec<Row<'a>>, Vec<Row<'a>>)>::new();
-        'next_row: for row in rows.into_iter() {
-            for (set_mask, set_rows_child, set_rows_parent) in sets.iter_mut() {
-                // TODO expansion
-                if (*set_mask ^ size_bits.extract(row.mask)).count_ones() <= MASK_EXPAND_THRESHOLD {
-                    // full mask => put into child set to process now
-                    set_rows_child.push(row);
-                    continue 'next_row;
-                } else if is_submask(*set_mask, size_bits.extract(row.mask)) {
-                    // not full mask => put into parent set to process later
-                    set_rows_parent.push(row);
-                    continue 'next_row;
-                }
-            }
+        let merged_rows = merge_rows(rows, size_bits);
+        self.diagnostics.merged_row_count += merged_rows.len();
 
-            // no match => put into new set
-            sets.push((size_bits.extract(row.mask), vec![row], vec![]));
-        }
+        let hierarchy = arrange_into_hierarchy(merged_rows);
+        self.diagnostics.unique_mask_paths += hierarchy.len();
 
         // collect child jumplists and then either use directly if only one is created
         // or combine using a dummy list
         let mut child_jumplists = Vec::new();
-        for (set_mask, set_rows_child, set_rows_parent) in sets {
+        for (set_mask, set_rows_child, set_rows_parent) in hierarchy {
             // process parent set into jumplists
             let jumplists_parents =
                 self.create_jumplist_mask(set_rows_parent, token_index, bytes_consumed, size_bits)?;
-
-            // collect field extractors for the current token and byte offset
-            let field_extractors = self.collect_field_extractors(&set_rows_child, token_index, size_bits)?;
 
             // process child set into jumplist
             let size_delta = size_bits.bytes().expect("This must be a multiple of 8");
@@ -477,7 +504,6 @@ impl<'a> JumplistBuilder<'a> {
                     .get(0)
                     .expect("We just checked this")
                     .data_provider,
-                field_extractors,
             );
 
             // propagate parent lists
@@ -492,11 +518,13 @@ impl<'a> JumplistBuilder<'a> {
                     .map(|parent_value| parent_value & set_mask)
                     .unique()
                 {
-                    // use NextJumplistEntry::TrailingSkip since we want to continue but not consume any
+                    // use NextJumplistEntry::TrailingSame since we want to continue but not consume any
                     // bytes
                     let propagated_entry =
                         JumplistEntry::new(vec![], NextJumplistEntry::TrailingSame(jumplist_parent_id));
                     jumplist_child.insert(propagated_value, propagated_entry, false)?;
+                    self.diagnostics.entry_count += 1;
+                    self.diagnostics.propagated_parent_value_count += 1;
                 }
             }
 
@@ -515,6 +543,8 @@ impl<'a> JumplistBuilder<'a> {
                     .or_default()
                     .push(row);
             }
+
+            self.diagnostics.value_submatcher_partition_count += partitions.len();
 
             // for each partition: create next byte jumplist if not all bytes have been consumed;
             // otherwise continue with next token or matcher
@@ -542,6 +572,10 @@ impl<'a> JumplistBuilder<'a> {
                             .unwrap_or(false)
                     });
 
+                self.diagnostics.next_byte_row_count += next_byte_rows.len();
+                self.diagnostics.terminal_token_row_count += terminal_token_rows.len();
+                self.diagnostics.terminal_matcher_row_count += terminal_matcher_rows.len();
+
                 // create entries for jumplist of trailing bytes
                 if !next_byte_rows.is_empty() {
                     let expanded_values = expand_rows(&next_byte_rows, set_mask, value, size_bits);
@@ -556,10 +590,12 @@ impl<'a> JumplistBuilder<'a> {
                     let entry = JumplistEntry::new(sublist_ids.clone(), next_entry_trailing);
                     // first entry for non-expanded values...
                     jumplist_child.insert(value, entry.clone(), false)?;
+                    self.diagnostics.entry_count += 1;
 
                     // ...then for expanded values
-                    for expanded_value in expanded_values {
+                    for expanded_value in expanded_values.into_iter() {
                         jumplist_child.insert(expanded_value, entry.clone(), false)?;
+                        self.diagnostics.entry_count += 1;
                     }
                 };
 
@@ -579,9 +615,11 @@ impl<'a> JumplistBuilder<'a> {
                     let next_entry_tokens = NextJumplistEntry::TrailingNext(next_token_jumplist_id);
                     let entry = JumplistEntry::new(sublist_ids.clone(), next_entry_tokens);
                     jumplist_child.insert(value, entry.clone(), false)?;
+                    self.diagnostics.entry_count += 1;
 
-                    for expanded_value in expanded_values {
+                    for expanded_value in expanded_values.into_iter() {
                         jumplist_child.insert(expanded_value, entry.clone(), false)?;
+                        self.diagnostics.entry_count += 1;
                     }
                 }
 
@@ -600,9 +638,11 @@ impl<'a> JumplistBuilder<'a> {
 
                     let entry = JumplistEntry::new(sublist_ids, next_entry_matcher);
                     jumplist_child.insert(value, entry.clone(), false)?;
+                    self.diagnostics.entry_count += 1;
 
-                    for expanded_value in expanded_values {
+                    for expanded_value in expanded_values.into_iter() {
                         jumplist_child.insert(expanded_value, entry.clone(), false)?;
+                        self.diagnostics.entry_count += 1;
                     }
                 }
             }
@@ -640,40 +680,6 @@ impl<'a> JumplistBuilder<'a> {
             }
         }
     }
-
-    fn collect_field_extractors(
-        &self,
-        rows: &Vec<Row<'a>>,
-        token_index: usize,
-        size_bits: MOIRBitRange,
-    ) -> InternalCompilerResult<FxHashMap<ConstructorId, Vec<FieldExtractor>>> {
-        let mut field_extractors = FxHashMap::<ConstructorId, Vec<FieldExtractor>>::default();
-
-        for row in rows {
-            let constructor_id = row.matcher.constructor_id;
-
-            let conjunction = row
-                .matcher
-                .conjunctions
-                .get(token_index)
-                .expect("There must be a token");
-
-            let extractors = field_extractors.entry(constructor_id).or_default();
-
-            for atom in conjunction {
-                if let MatcherAtom::Field { field_id, matcher: _ } = atom {
-                    let field = self
-                        .fields
-                        .get(*field_id)
-                        .ok_or_else(|| -> InternalError { todo!("Generate error report for missing field") })?;
-                    let intersection_bits = field.bits & size_bits;
-                    extractors.push(FieldExtractor::new(*field_id, intersection_bits));
-                }
-            }
-        }
-
-        Ok(field_extractors)
-    }
 }
 
 /// Enumerates all values `v` s.t.:
@@ -707,13 +713,16 @@ fn expand_mask(
         .map(|position| (position, 0))
         .collect_vec();
 
-    for _ in 1..=num_values {
+    for _ in 0..=num_values {
         // add new value to values depending on the current delta_positions
         let mut new_value = value;
         for &(dpi, dpv) in delta_positions.iter() {
             new_value |= dpv << dpi;
         }
-        new_values.push(new_value);
+
+        if new_value != value {
+            new_values.push(new_value);
+        }
 
         // increase delta_positions by one
         for (_, dpv) in delta_positions.iter_mut() {
@@ -739,6 +748,7 @@ fn expand_rows(
     let largest_common_mask = rows
         .iter()
         .fold(!0u64, |acc, row| acc & size_bits.extract(row.mask));
+
     expand_mask(value, largest_common_mask, mask)
 }
 
@@ -787,6 +797,59 @@ fn partition_by_data_provider(rows: Vec<Row>) -> BTreeMap<DataProvider, Vec<Row>
     }
 
     partitions
+}
+
+/// Merge rows into sets such that the set mask (the disjunction of all masks of this set)
+/// has a Hamming distance less than or equal than MASK_EXPAND_THRESHOLD from every mask in
+/// this set.
+fn merge_rows<'a>(rows: Vec<Row<'a>>, size_bits: MOIRBitRange) -> Vec<(u64, Vec<Row<'a>>)> {
+    let mut sets = Vec::<(u64, Vec<Row<'a>>)>::new();
+    'next_row: for row in rows.into_iter() {
+        let row_mask = size_bits.extract(row.mask);
+
+        'next_set: for (set_mask, set_rows) in sets.iter_mut() {
+            let new_mask = *set_mask | row_mask;
+
+            for set_row in &*set_rows {
+                if (size_bits.extract(set_row.mask) ^ new_mask).count_ones() > MASK_EXPAND_THRESHOLD {
+                    // new row does not fit into this set => check next set
+                    continue 'next_set;
+                }
+            }
+
+            // new row fits into this set => insert and continue with next row
+            set_rows.push(row);
+            *set_mask = new_mask;
+            continue 'next_row;
+        }
+
+        // new row does not fit into any set => create new one
+        sets.push((row_mask, vec![row]));
+    }
+
+    sets
+}
+
+/// Arrange all merged rows into a hierarchy w.r.t. the supermask relation.
+fn arrange_into_hierarchy<'a>(merged_rows: Vec<(u64, Vec<Row<'a>>)>) -> Vec<(u64, Vec<Row<'a>>, Vec<Row<'a>>)> {
+    let mut sets = Vec::<(u64, Vec<Row<'a>>, Vec<Row<'a>>)>::new();
+
+    'next_merged: for (merged_mask, mut merged_rows) in merged_rows.into_iter() {
+        // set_children is not modified since all rows with equal mask were already merged in the
+        // previous step
+        for (set_mask, _, set_parents) in sets.iter_mut() {
+            if is_submask(*set_mask, merged_mask) {
+                // set mask is submask of merged mask => merged rows are parents
+                set_parents.append(&mut merged_rows);
+                continue 'next_merged;
+            }
+        }
+
+        // set mask is not a submask of any set => add new set with itself as the child
+        sets.push((merged_mask, merged_rows, vec![]));
+    }
+
+    sets
 }
 
 fn save_graph(

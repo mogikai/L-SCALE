@@ -1,0 +1,626 @@
+# SLA specification file for Intel x86
+
+@ifdef IA64
+@define SIZE     "8"
+@define STACKPTR "RSP"
+@else
+@define SIZE     "4"
+@define STACKPTR "ESP"
+@endif
+
+define endian=little;
+
+define space ram type=ram_space size=$(SIZE) default;
+define space register type=register_space size=4;
+
+# General purpose registers
+
+@ifdef IA64
+define register offset=0 size=8      [  RAX               RCX               RDX               RBX               RSP               RBP               RSI               RDI ];
+define register offset=0 size=4      [  EAX _             ECX _             EDX _             EBX _             ESP _             EBP _             ESI _             EDI ];
+define register offset=0 size=2      [  AX _ _ _          CX _ _ _          DX _ _ _          BX _ _ _          SP _ _ _          BP _ _ _          SI _ _ _          DI ];
+define register offset=0 size=1      [  AL AH _ _ _ _ _ _ CL CH _ _ _ _ _ _ DL DH _ _ _ _ _ _ BL BH _ _ _ _ _ _ SPL _ _ _ _ _ _ _ BPL _ _ _ _ _ _ _ SIL _ _ _ _ _ _ _ DIL ];
+
+define register offset=0x80 size=8     [ R8                R9                R10                R11                R12                R13                R14                R15 ];
+define register offset=0x80 size=4     [ R8D _             R9D _             R10D _             R11D _             R12D _             R13D _             R14D _             R15D _ ];
+define register offset=0x80 size=2     [ R8W _ _ _         R9W _ _ _         R10W _ _ _         R11W _ _ _         R12W _ _ _         R13W _ _ _         R14W _ _ _         R15W _ _ _ ];
+define register offset=0x80 size=1     [ R8B _ _ _ _ _ _ _ R9B _ _ _ _ _ _ _ R10B _ _ _ _ _ _ _ R11B _ _ _ _ _ _ _ R12B _ _ _ _ _ _ _ R13B _ _ _ _ _ _ _ R14B _ _ _ _ _ _ _ R15B _ _ _ _ _ _ _ ];
+@else
+define register offset=0 size=4      [  EAX  ECX  EDX  EBX  ESP  EBP  ESI  EDI ];
+define register offset=0 size=2      [  AX _ CX _ DX _ BX _ SP _ BP _ SI _ DI ];
+define register offset=0 size=1      [  AL AH _ _ CL CH _ _ DL DH _ _ BL BH ];
+@endif
+
+# Segment registers
+define register offset=0x100 size=2          [ ES CS SS DS FS GS ];
+define register offset=0x110 size=$(SIZE)    [ FS_OFFSET GS_OFFSET ];
+
+# Flags
+define register offset=0x200 size=1    [ CF F1 PF F3 AF F5 ZF SF
+                                         TF IF DF OF IOPL NT F15
+                                         RF VM AC VIF VIP ID ];
+@ifdef IA64
+define register offset=0x280 size=8    [ rflags      RIP ];
+define register offset=0x280 size=4    [ eflags _    EIP _ ];
+define register offset=0x280 size=2    [ flags _ _ _ IP _ _ _];
+@else
+define register offset=0x280 size=4    [ eflags EIP] ;
+define register offset=0x280 size=2    [ flags _ IP] ;
+@endif
+
+# Debug and control registers
+
+@ifdef IA64
+define register offset=0x300 size=8    [ DR0 DR1 DR2 DR3 DR4 DR5 DR6 DR7
+                                         DR8 DR9 DR10 DR11 DR12 DR13 DR14 DR15
+                                         CR0 CR1 CR2 CR3 CR4 CR5 CR6 CR7
+                                         CR8 CR9 CR10 CR11 CR12 CR13 CR14 CR15 ];
+@else
+define register offset=0x300 size=4    [ DR0 DR1 DR2 DR3 DR4 DR5 DR6 DR7
+                                         CR0 _   CR2 CR3 CR4 ];
+define register offset=0x400 size=4    [ TR0 TR1 TR2 TR3 TR4 TR5 TR6 TR7 ];
+@endif
+
+#Processor State Register - currently only XFEATURE_ENABLED_MASK=XCR0 is defined
+#
+define register offset=0x600 size=8    [ XCR0 ];
+
+# Memory Protection Extensions (MPX)
+define register offset=0x700 size=8    [ BNDCFGS BNDCFGU BNDSTATUS ];
+
+define register offset=0x740 size=16   [ BND0 BND1 BND2 BND3 _ _ _ _ ];
+define register offset=0x740 size=8    [ BND0_LB BND0_UB BND1_LB BND1_UB BND2_LB BND2_UB BND3_LB BND3_UB _ _ _ _ _ _ _ _ ];
+
+# Control Flow Extensions
+define register offset=0x7c0 size=8    [ SSP IA32_PL2_SSP IA32_PL1_SSP IA32_PL0_SSP ];
+
+# Floating point registers - as they are in 32-bit protected mode
+# See MMx registers below
+define register offset=0x1106 size=10  [ ST0 ];
+define register offset=0x1116 size=10  [ ST1 ];
+define register offset=0x1126 size=10  [ ST2 ];
+define register offset=0x1136 size=10  [ ST3 ];
+define register offset=0x1146 size=10  [ ST4 ];
+define register offset=0x1156 size=10  [ ST5 ];
+define register offset=0x1166 size=10  [ ST6 ];
+define register offset=0x1176 size=10  [ ST7 ];
+define register offset=0x1090 size=1   [ C0 C1 C2 C3 ];
+define register offset=0x1094 size=4   [ MXCSR ];
+define register offset=0x10a0 size=2   [ FPUControlWord FPUStatusWord FPUTagWord
+                                         FPULastInstructionOpcode ];
+define register offset=0x10a8 size=$(SIZE)   [ FPUDataPointer FPUInstructionPointer ];
+define register offset=0x10c8 size=2  [ FPUPointerSelector FPUDataSelector]; #FCS FDS
+                                         
+  # FCS is not modeled, deprecated as 0.
+  # FDS not modeled, deprecated as 0.
+
+#
+# YMM0 - YMM7    - available in 32 bit mode
+# YMM0 - YMM15   - available in 64 bit mode
+#                                      
+define register offset=0x1100 size=8   [ _ MM0 _ MM1 _ MM2 _ MM3 _ MM4 _ MM5 _ MM6 _ MM7 ];
+define register offset=0x1100 size=4   [
+  _ _ MM0_Da MM0_Db 
+  _ _ MM1_Da MM1_Db 
+  _ _ MM2_Da MM2_Db 
+  _ _ MM3_Da MM3_Db 
+  _ _ MM4_Da MM4_Db 
+  _ _ MM5_Da MM5_Db 
+  _ _ MM6_Da MM6_Db 
+  _ _ MM7_Da MM7_Db 
+];
+define register offset=0x1100 size=2   [
+  _ _ _ _ MM0_Wa MM0_Wb MM0_Wc MM0_Wd 
+  _ _ _ _ MM1_Wa MM1_Wb MM1_Wc MM1_Wd 
+  _ _ _ _ MM2_Wa MM2_Wb MM2_Wc MM2_Wd 
+  _ _ _ _ MM3_Wa MM3_Wb MM3_Wc MM3_Wd 
+  _ _ _ _ MM4_Wa MM4_Wb MM4_Wc MM4_Wd 
+  _ _ _ _ MM5_Wa MM5_Wb MM5_Wc MM5_Wd 
+  _ _ _ _ MM6_Wa MM6_Wb MM6_Wc MM6_Wd 
+  _ _ _ _ MM7_Wa MM7_Wb MM7_Wc MM7_Wd 
+];
+define register offset=0x1100 size=1   [
+  _ _ _ _ _ _ _ _ 
+  MM0_Ba MM0_Bb MM0_Bc MM0_Bd MM0_Be MM0_Bf MM0_Bg MM0_Bh 
+  _ _ _ _ _ _ _ _ 
+  MM1_Ba MM1_Bb MM1_Bc MM1_Bd MM1_Be MM1_Bf MM1_Bg MM1_Bh 
+  _ _ _ _ _ _ _ _ 
+  MM2_Ba MM2_Bb MM2_Bc MM2_Bd MM2_Be MM2_Bf MM2_Bg MM2_Bh 
+  _ _ _ _ _ _ _ _ 
+  MM3_Ba MM3_Bb MM3_Bc MM3_Bd MM3_Be MM3_Bf MM3_Bg MM3_Bh 
+  _ _ _ _ _ _ _ _ 
+  MM4_Ba MM4_Bb MM4_Bc MM4_Bd MM4_Be MM4_Bf MM4_Bg MM4_Bh 
+  _ _ _ _ _ _ _ _ 
+  MM5_Ba MM5_Bb MM5_Bc MM5_Bd MM5_Be MM5_Bf MM5_Bg MM5_Bh 
+  _ _ _ _ _ _ _ _ 
+  MM6_Ba MM6_Bb MM6_Bc MM6_Bd MM6_Be MM6_Bf MM6_Bg MM6_Bh 
+  _ _ _ _ _ _ _ _ 
+  MM7_Ba MM7_Bb MM7_Bc MM7_Bd MM7_Be MM7_Bf MM7_Bg MM7_Bh 
+];
+
+
+# YMMx_H is the formal name for the high double quadword of the YMMx register, XMMx is the overlay in the XMM register set
+define register offset=0x1200 size=16  [
+	XMM0 YMM0_H
+	XMM1 YMM1_H 
+	XMM2 YMM2_H 
+	XMM3 YMM3_H 
+	XMM4 YMM4_H
+	XMM5 YMM5_H
+	XMM6 YMM6_H
+	XMM7 YMM7_H
+	XMM8 YMM8_H
+	XMM9 YMM9_H
+	XMM10 YMM10_H
+	XMM11 YMM11_H
+	XMM12 YMM12_H
+	XMM13 YMM13_H
+	XMM14 YMM14_H
+	XMM15 YMM15_H
+];
+
+define register offset=0x1200 size=8   [
+  XMM0_Qa  XMM0_Qb  _ _
+  XMM1_Qa  XMM1_Qb  _ _
+  XMM2_Qa  XMM2_Qb  _ _
+  XMM3_Qa  XMM3_Qb  _ _
+  XMM4_Qa  XMM4_Qb  _ _
+  XMM5_Qa  XMM5_Qb  _ _
+  XMM6_Qa  XMM6_Qb  _ _
+  XMM7_Qa  XMM7_Qb  _ _
+  XMM8_Qa  XMM8_Qb  _ _
+  XMM9_Qa  XMM9_Qb  _ _
+  XMM10_Qa XMM10_Qb _ _
+  XMM11_Qa XMM11_Qb _ _
+  XMM12_Qa XMM12_Qb _ _
+  XMM13_Qa XMM13_Qb _ _
+  XMM14_Qa XMM14_Qb _ _
+  XMM15_Qa XMM15_Qb _ _
+];
+define register offset=0x1200 size=4   [
+  XMM0_Da  XMM0_Db  XMM0_Dc  XMM0_Dd  _ _ _ _
+  XMM1_Da  XMM1_Db  XMM1_Dc  XMM1_Dd  _ _ _ _
+  XMM2_Da  XMM2_Db  XMM2_Dc  XMM2_Dd  _ _ _ _
+  XMM3_Da  XMM3_Db  XMM3_Dc  XMM3_Dd  _ _ _ _
+  XMM4_Da  XMM4_Db  XMM4_Dc  XMM4_Dd  _ _ _ _
+  XMM5_Da  XMM5_Db  XMM5_Dc  XMM5_Dd  _ _ _ _
+  XMM6_Da  XMM6_Db  XMM6_Dc  XMM6_Dd  _ _ _ _
+  XMM7_Da  XMM7_Db  XMM7_Dc  XMM7_Dd  _ _ _ _
+  XMM8_Da  XMM8_Db  XMM8_Dc  XMM8_Dd  _ _ _ _
+  XMM9_Da  XMM9_Db  XMM9_Dc  XMM9_Dd  _ _ _ _
+  XMM10_Da XMM10_Db XMM10_Dc XMM10_Dd _ _ _ _
+  XMM11_Da XMM11_Db XMM11_Dc XMM11_Dd _ _ _ _
+  XMM12_Da XMM12_Db XMM12_Dc XMM12_Dd _ _ _ _
+  XMM13_Da XMM13_Db XMM13_Dc XMM13_Dd _ _ _ _
+  XMM14_Da XMM14_Db XMM14_Dc XMM14_Dd _ _ _ _
+  XMM15_Da XMM15_Db XMM15_Dc XMM15_Dd _ _ _ _
+];
+define register offset=0x1200 size=2   [
+  XMM0_Wa  XMM0_Wb  XMM0_Wc  XMM0_Wd  XMM0_We  XMM0_Wf  XMM0_Wg  XMM0_Wh  _ _ _ _ _ _ _ _
+  XMM1_Wa  XMM1_Wb  XMM1_Wc  XMM1_Wd  XMM1_We  XMM1_Wf  XMM1_Wg  XMM1_Wh  _ _ _ _ _ _ _ _
+  XMM2_Wa  XMM2_Wb  XMM2_Wc  XMM2_Wd  XMM2_We  XMM2_Wf  XMM2_Wg  XMM2_Wh  _ _ _ _ _ _ _ _
+  XMM3_Wa  XMM3_Wb  XMM3_Wc  XMM3_Wd  XMM3_We  XMM3_Wf  XMM3_Wg  XMM3_Wh  _ _ _ _ _ _ _ _
+  XMM4_Wa  XMM4_Wb  XMM4_Wc  XMM4_Wd  XMM4_We  XMM4_Wf  XMM4_Wg  XMM4_Wh  _ _ _ _ _ _ _ _
+  XMM5_Wa  XMM5_Wb  XMM5_Wc  XMM5_Wd  XMM5_We  XMM5_Wf  XMM5_Wg  XMM5_Wh  _ _ _ _ _ _ _ _
+  XMM6_Wa  XMM6_Wb  XMM6_Wc  XMM6_Wd  XMM6_We  XMM6_Wf  XMM6_Wg  XMM6_Wh  _ _ _ _ _ _ _ _
+  XMM7_Wa  XMM7_Wb  XMM7_Wc  XMM7_Wd  XMM7_We  XMM7_Wf  XMM7_Wg  XMM7_Wh  _ _ _ _ _ _ _ _
+  XMM8_Wa  XMM8_Wb  XMM8_Wc  XMM8_Wd  XMM8_We  XMM8_Wf  XMM8_Wg  XMM8_Wh  _ _ _ _ _ _ _ _
+  XMM9_Wa  XMM9_Wb  XMM9_Wc  XMM9_Wd  XMM9_We  XMM9_Wf  XMM9_Wg  XMM9_Wh  _ _ _ _ _ _ _ _
+  XMM10_Wa XMM10_Wb XMM10_Wc XMM10_Wd XMM10_We XMM10_Wf XMM10_Wg XMM10_Wh _ _ _ _ _ _ _ _
+  XMM11_Wa XMM11_Wb XMM11_Wc XMM11_Wd XMM11_We XMM11_Wf XMM11_Wg XMM11_Wh _ _ _ _ _ _ _ _
+  XMM12_Wa XMM12_Wb XMM12_Wc XMM12_Wd XMM12_We XMM12_Wf XMM12_Wg XMM12_Wh _ _ _ _ _ _ _ _
+  XMM13_Wa XMM13_Wb XMM13_Wc XMM13_Wd XMM13_We XMM13_Wf XMM13_Wg XMM13_Wh _ _ _ _ _ _ _ _
+  XMM14_Wa XMM14_Wb XMM14_Wc XMM14_Wd XMM14_We XMM14_Wf XMM14_Wg XMM14_Wh _ _ _ _ _ _ _ _
+  XMM15_Wa XMM15_Wb XMM15_Wc XMM15_Wd XMM15_We XMM15_Wf XMM15_Wg XMM15_Wh _ _ _ _ _ _ _ _
+];
+define register offset=0x1200 size=1   [
+  XMM0_Ba  XMM0_Bb  XMM0_Bc  XMM0_Bd  XMM0_Be  XMM0_Bf  XMM0_Bg  XMM0_Bh  XMM0_Bi  XMM0_Bj  XMM0_Bk  XMM0_Bl  XMM0_Bm  XMM0_Bn  XMM0_Bo  XMM0_Bp  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  XMM1_Ba  XMM1_Bb  XMM1_Bc  XMM1_Bd  XMM1_Be  XMM1_Bf  XMM1_Bg  XMM1_Bh  XMM1_Bi  XMM1_Bj  XMM1_Bk  XMM1_Bl  XMM1_Bm  XMM1_Bn  XMM1_Bo  XMM1_Bp  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  XMM2_Ba  XMM2_Bb  XMM2_Bc  XMM2_Bd  XMM2_Be  XMM2_Bf  XMM2_Bg  XMM2_Bh  XMM2_Bi  XMM2_Bj  XMM2_Bk  XMM2_Bl  XMM2_Bm  XMM2_Bn  XMM2_Bo  XMM2_Bp  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  XMM3_Ba  XMM3_Bb  XMM3_Bc  XMM3_Bd  XMM3_Be  XMM3_Bf  XMM3_Bg  XMM3_Bh  XMM3_Bi  XMM3_Bj  XMM3_Bk  XMM3_Bl  XMM3_Bm  XMM3_Bn  XMM3_Bo  XMM3_Bp  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  XMM4_Ba  XMM4_Bb  XMM4_Bc  XMM4_Bd  XMM4_Be  XMM4_Bf  XMM4_Bg  XMM4_Bh  XMM4_Bi  XMM4_Bj  XMM4_Bk  XMM4_Bl  XMM4_Bm  XMM4_Bn  XMM4_Bo  XMM4_Bp  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  XMM5_Ba  XMM5_Bb  XMM5_Bc  XMM5_Bd  XMM5_Be  XMM5_Bf  XMM5_Bg  XMM5_Bh  XMM5_Bi  XMM5_Bj  XMM5_Bk  XMM5_Bl  XMM5_Bm  XMM5_Bn  XMM5_Bo  XMM5_Bp  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  XMM6_Ba  XMM6_Bb  XMM6_Bc  XMM6_Bd  XMM6_Be  XMM6_Bf  XMM6_Bg  XMM6_Bh  XMM6_Bi  XMM6_Bj  XMM6_Bk  XMM6_Bl  XMM6_Bm  XMM6_Bn  XMM6_Bo  XMM6_Bp  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  XMM7_Ba  XMM7_Bb  XMM7_Bc  XMM7_Bd  XMM7_Be  XMM7_Bf  XMM7_Bg  XMM7_Bh  XMM7_Bi  XMM7_Bj  XMM7_Bk  XMM7_Bl  XMM7_Bm  XMM7_Bn  XMM7_Bo  XMM7_Bp  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  XMM8_Ba  XMM8_Bb  XMM8_Bc  XMM8_Bd  XMM8_Be  XMM8_Bf  XMM8_Bg  XMM8_Bh  XMM8_Bi  XMM8_Bj  XMM8_Bk  XMM8_Bl  XMM8_Bm  XMM8_Bn  XMM8_Bo  XMM8_Bp  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  XMM9_Ba  XMM9_Bb  XMM9_Bc  XMM9_Bd  XMM9_Be  XMM9_Bf  XMM9_Bg  XMM9_Bh  XMM9_Bi  XMM9_Bj  XMM9_Bk  XMM9_Bl  XMM9_Bm  XMM9_Bn  XMM9_Bo  XMM9_Bp  _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  XMM10_Ba XMM10_Bb XMM10_Bc XMM10_Bd XMM10_Be XMM10_Bf XMM10_Bg XMM10_Bh XMM10_Bi XMM10_Bj XMM10_Bk XMM10_Bl XMM10_Bm XMM10_Bn XMM10_Bo XMM10_Bp _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  XMM11_Ba XMM11_Bb XMM11_Bc XMM11_Bd XMM11_Be XMM11_Bf XMM11_Bg XMM11_Bh XMM11_Bi XMM11_Bj XMM11_Bk XMM11_Bl XMM11_Bm XMM11_Bn XMM11_Bo XMM11_Bp _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  XMM12_Ba XMM12_Bb XMM12_Bc XMM12_Bd XMM12_Be XMM12_Bf XMM12_Bg XMM12_Bh XMM12_Bi XMM12_Bj XMM12_Bk XMM12_Bl XMM12_Bm XMM12_Bn XMM12_Bo XMM12_Bp _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  XMM13_Ba XMM13_Bb XMM13_Bc XMM13_Bd XMM13_Be XMM13_Bf XMM13_Bg XMM13_Bh XMM13_Bi XMM13_Bj XMM13_Bk XMM13_Bl XMM13_Bm XMM13_Bn XMM13_Bo XMM13_Bp _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  XMM14_Ba XMM14_Bb XMM14_Bc XMM14_Bd XMM14_Be XMM14_Bf XMM14_Bg XMM14_Bh XMM14_Bi XMM14_Bj XMM14_Bk XMM14_Bl XMM14_Bm XMM14_Bn XMM14_Bo XMM14_Bp _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+  XMM15_Ba XMM15_Bb XMM15_Bc XMM15_Bd XMM15_Be XMM15_Bf XMM15_Bg XMM15_Bh XMM15_Bi XMM15_Bj XMM15_Bk XMM15_Bl XMM15_Bm XMM15_Bn XMM15_Bo XMM15_Bp _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+];
+define register offset=0x1200 size=32  [ YMM0   YMM1   YMM2   YMM3   YMM4    YMM5    YMM6    YMM7    YMM8    YMM9   YMM10    YMM11    YMM12    YMM13    YMM14    YMM15 ];
+
+# 0x1400 is next spot
+define register offset=0x1400 size=16  [ xmmTmp1 xmmTmp2 ];
+define register offset=0x1400 size=8   [
+  xmmTmp1_Qa  xmmTmp1_Qb
+  xmmTmp2_Qa  xmmTmp2_Qb
+];
+define register offset=0x1400 size=4   [
+  xmmTmp1_Da  xmmTmp1_Db  xmmTmp1_Dc  xmmTmp1_Dd
+  xmmTmp2_Da  xmmTmp2_Db  xmmTmp2_Dc  xmmTmp2_Dd
+];
+
+# Define context bits
+define register offset=0x2000 size=8   contextreg;
+
+#
+#
+# This context layout is important:  the 32 bit version sees addrsize as just the
+# low-order bit, whereas the 64 bit sees both bits.  This ensures that the 32 and 64
+# are technically binary compatible, but since the 32 bit language can't see that
+# addrsize is 2 bits, they won't be pulled up into constructors where bit 0 is always
+# 0 (which it is), and then you don't get the decision conflicts that choose
+# context over table order
+#
+#
+
+define context contextreg
+@ifdef IA64
+  # Stored context
+  longMode=(0,0)      # 0 for 32-bit emulation, 1 for 64-bit mode
+  reserved=(1,3)
+  addrsize=(4,5)        # =0  16-bit addressing  =1  32-bit addressing   =2 64-bit addressing
+@else
+  # Stored context
+  reserved=(0,3)
+  addrsize=(5,5)        # =0  16-bit addressing  =1  32-bit addressing
+@endif
+  bit64=(4,4)           # =0  16/32 bit          =1  64-bit
+  opsize=(6,7)          # =0  16-bit operands    =1  32-bit operands     =2 64-bit operands
+  segover=(8,10)         # 0=default 1=cs 2=ss 3=ds 4=es 5=fs 6=gs
+  highseg=(8,8)         # high bit of segover will be set for ES, FS, GS
+  protectedMode=(11,11)   # 0 for real mode, 1 for protected mode
+  # End stored context
+
+  repneprefx=(12,12)      # 0xf2 REPNE prefix
+  repprefx=(13,13)        # 0xf3 REP prefix
+  xacquireprefx=(12,12)   # 0xf2 XACQUIRE prefix
+  xreleaseprefx=(13,13)   # 0xf3 XRELEASE prefix
+  prefix_66=(14,14)       # This is not really a OPSIZE override, it means there is an real(read)/implied(vex) 66 byte
+  prefix_f3=(13,13)       # This is not really a REP override, it means there is an real(read)/implied(vex) f3 byte
+  prefix_f2=(12,12)       # This is not really a REPNE override, it means there is a real(read)/implied(vex) f2 byte
+  mandover=(12,14)        # 0x66 0xf2 or 0xf3 overrides (for mandatory prefixes)
+
+  rexWprefix=(15,15)    # REX.W bit prefix (opsize=2 when REX.W is set)
+  rexRprefix=(16,16)    # REX.R bit prefix extend r
+  rexXprefix=(17,17)    # REX.X bit prefix extend SIB index field to 4 bits
+  rexBprefix=(18,18)    # REX.B bit prefix extend r/m, SIB base, Reg operand
+  rexWRXBprefix=(15,18) # REX.WRXB bits
+  rexprefix=(19,19)     # True if the Rex prefix is present - note, if present, vex_mode is not supported
+                        #   rexWRXB bits can be re-used since they are incompatible.
+  vexMode=(20,20)       # 1 for vex instruction, 0 for normal
+  vexL=(21,21)          # 0 for 128, 1 for 256
+  vexVVVV=(22,25)       # value of vex byte for matching
+  vexVVVV_r32=(22,25)   # value of vex byte for matching a normal 32 bit register
+  vexVVVV_r64=(22,25)   # value of vex byte for matching a normal 64 bit register
+  vexVVVV_XmmReg=(22,25)       # value of vex byte for matching XmmReg
+  vexVVVV_YmmReg=(22,25)       # value of vex byte for matching YmmReg
+  vexMMMMM=(26,30)      # need to match for preceding bytes 1=0x0F, 2=0x0F 0x38, 3=0x0F 0x3A
+  
+  suffix3D=(21,28)      # 3DNow suffix byte (overlaps un-modified vex context region)
+  instrPhase=(31,31)    # 0: initial/prefix phase, 1: primary instruction phase
+
+  lockprefx=(32,32)     # 0xf0 LOCK prefix
+;
+
+
+# These are only to be used with pre-REX (original 8086, 80386) and REX encoding.  Do not use with VEX encoding.
+# These are to be used to designate that the opcode sequence begins with one of these "mandatory" prefix values.
+# This allows the other prefixes to come before the mandatory value.
+# For example:    CRC32 r32, r16 -- 66  F2 OF 38 F1 C8
+
+@define PRE_NO		"mandover=0"
+@define PRE_66		"prefix_66=1"
+@define PRE_F3		"prefix_f3=1"
+@define PRE_F2		"prefix_f2=1"
+
+
+
+# Define special registers for debugger
+@ifdef IA64
+define register offset=0x2200 size=4   [ IDTR_Limit ];
+define register offset=0x2200 size=12   [ IDTR   ];
+define register offset=0x2204 size=8   [ IDTR_Address ];
+
+define register offset=0x2220 size=4   [ GDTR_Limit ];
+define register offset=0x2220 size=12   [ GDTR   ];
+define register offset=0x2224 size=8   [ GDTR_Address ];
+
+define register offset=0x2240 size=4   [ LDTR_Limit ];
+define register offset=0x2240 size=14  [ LDTR   ];
+define register offset=0x2244 size=8   [ LDTR_Address ];
+define register offset=0x2248 size=2   [ LDTR_Attributes ];
+
+define register offset=0x2260 size=4   [ TR_Limit ];
+define register offset=0x2260 size=14  [ TR   ];
+define register offset=0x2264 size=8   [ TR_Address ];
+define register offset=0x2268 size=2   [ TR_Attributes ];
+@else
+define register offset=0x2200 size=6   [ IDTR         ];
+define register offset=0x2200 size=2   [ IDTR_Limit   ];
+define register offset=0x2202 size=4   [ IDTR_Address ];
+
+define register offset=0x2210 size=6   [ GDTR         ];
+define register offset=0x2210 size=2   [ GDTR_Limit   ];
+define register offset=0x2212 size=4   [ GDTR_Address ];
+
+define register offset=0x2220 size=6   [ LDTR         ];
+define register offset=0x2220 size=2   [ LDTR_Limit   ];
+define register offset=0x2222 size=4   [ LDTR_Address ];
+
+define register offset=0x2230 size=6   [ TR           ];
+define register offset=0x2230 size=2   [ TR_Limit     ];
+define register offset=0x2232 size=4   [ TR_Address   ];
+@endif
+
+define token opbyte (8)
+  byte=(0,7)
+  high4=(4,7)
+  high5=(3,7)
+  low5=(0,4)
+  byte_4=(4,4)
+  byte_0=(0,0)
+;
+
+define token modrm (8)
+  mod           = (6,7)
+  reg_opcode    = (3,5)
+  reg_opcode_hb = (5,5)
+  r_m           = (0,2)
+  row           = (4,7)
+  col           = (0,2)
+  page          = (3,3)
+  cond          = (0,3)
+  reg8          = (3,5)
+  reg16         = (3,5)
+  reg32         = (3,5)
+  reg64         = (3,5)
+  reg8_x0       = (3,5)
+  reg8_x1       = (3,5)
+  reg16_x       = (3,5)
+  reg32_x       = (3,5)
+  reg64_x       = (3,5)
+  Sreg          = (3,5)
+  creg          = (3,5)
+  creg_x        = (3,5)
+  debugreg      = (3,5)
+  debugreg_x    = (3,5)
+  testreg       = (3,5)
+  r8            = (0,2)
+  r16           = (0,2)
+  r32           = (0,2)
+  r64           = (0,2)
+  r8_x0         = (0,2)
+  r8_x1         = (0,2)
+  r16_x         = (0,2)
+  r32_x         = (0,2)
+  r64_x         = (0,2)
+  frow          = (4,7)
+  fpage         = (3,3)
+  freg          = (0,2)
+  rexw          = (3,3)
+  rexr          = (2,2)
+  rexx          = (1,1)
+  rexb          = (0,0)
+  mmxmod        = (6,7)
+  mmxreg        = (3,5)
+  mmxreg1       = (3,5)
+  mmxreg2       = (0,2)
+  xmmmod        = (6,7)
+  xmmreg        = (3,5)
+  ymmreg        = (3,5)
+
+  xmmreg1       = (3,5)
+  ymmreg1       = (3,5)
+  xmmreg2       = (0,2)
+  ymmreg2       = (0,2)
+
+  xmmreg_x      = (3,5)
+  ymmreg_x      = (3,5)
+  xmmreg1_x     = (3,5)
+  ymmreg1_x     = (3,5)
+  xmmreg2_x     = (0,2)
+  ymmreg2_x     = (0,2)
+  vex_pp        = (0,1)
+  vex_l         = (2,2)
+  vex_vvvv      = (3,6)
+  vex_r         = (7,7)
+  vex_x         = (6,6)
+  vex_b         = (5,5)
+  vex_w         = (7,7)
+  vex_mmmmm     = (0,4)
+  bnd1          = (3,5)
+  bnd1_lb       = (3,5)
+  bnd1_ub       = (3,5)
+  bnd2          = (0,2)
+  bnd2_lb       = (0,2)
+  bnd2_ub       = (0,2)
+;
+
+define token sib (8)
+  ss			= (6,7)
+  index			= (3,5)
+  index_x		= (3,5)
+  index64		= (3,5)
+  index64_x		= (3,5)
+  xmm_vsib		= (3,5)
+  xmm_vsib_x	= (3,5)
+  ymm_vsib		= (3,5)
+  ymm_vsib_x	= (3,5)
+  base			= (0,2)
+  base_x		= (0,2)
+  base64		= (0,2)
+  base64_x		= (0,2)
+;
+
+define token long (16)
+  idk=(0,15)
+;
+
+define token I8 (8)
+  imm8_7=(7,7)
+  Xmm_imm8_7_4=(4,7)
+  Ymm_imm8_7_4=(4,7)
+  imm8_4=(4,4)
+  imm8_0=(0,0)
+  imm8_3_0=(0,3)
+  imm8=(0,7)
+  simm8=(0,7) signed
+;
+  
+define token I16 (16)     imm16_15=(15,15) imm16=(0,15)   simm16=(0,15) signed   j16=(0,15);
+define token I32 (32)     imm32=(0,31)   simm32=(0,31) signed;
+define token I64 (64)     imm64=(0,63)   simm64=(0,63) signed;
+define token override (8)  over=(0,7);
+
+attach variables [ r32   reg32   base   index ]         [ EAX  ECX  EDX  EBX  ESP  EBP  ESI  EDI ];
+attach variables [ r16   reg16 ]                        [ AX   CX   DX   BX   SP   BP   SI   DI ];
+attach variables [ r8    reg8 ]                         [ AL   CL   DL   BL   AH   CH   DH   BH ];
+attach variables Sreg  [  ES  CS  SS  DS  FS  GS   _   _  ];
+attach variables freg  [  ST0 ST1 ST2 ST3 ST4 ST5 ST6 ST7 ];
+attach variables [ debugreg ]  [ DR0 DR1 DR2 DR3 DR4 DR5 DR6 DR7 ];
+@ifdef IA64
+attach variables [ r64   reg64   base64   index64 ]     [ RAX  RCX RDX RBX RSP RBP RSI RDI ];
+attach variables [ r64_x reg64_x base64_x index64_x ]   [ R8   R9  R10 R11 R12 R13 R14 R15 ];
+attach variables [ r32_x reg32_x base_x index_x ]       [ R8D  R9D  R10D R11D R12D R13D R14D R15D ];
+attach variables [ r16_x reg16_x ]                      [ R8W  R9W  R10W R11W R12W R13W R14W R15W ];
+attach variables [ r8_x0  reg8_x0 ]                     [ AL   CL   DL   BL   SPL  BPL  SIL  DIL  ];
+attach variables [ r8_x1  reg8_x1 ]                     [ R8B  R9B  R10B R11B R12B R13B R14B R15B ];
+attach variables [ debugreg_x ]  [ DR8 DR9 DR10 DR11 DR12 DR13 DR14 DR15 ];
+attach variables creg  [ CR0 CR1 CR2 CR3 CR4 CR5 CR6 CR7 ];
+attach variables creg_x [ CR8 CR9 CR10 CR11 CR12 CR13 CR14 CR15 ];
+@else
+attach variables [ testreg ]   [ TR0 TR1 TR2 TR3 TR6 TR7 TR6 TR7 ];
+attach variables creg  [ CR0 _ CR2 CR3 CR4 _ _ _ ];
+@endif
+
+attach values ss  [ 1 2 4 8];
+
+attach variables [ mmxreg mmxreg1 mmxreg2 ] [ MM0 MM1 MM2 MM3 MM4 MM5 MM6 MM7 ];
+
+attach variables [ xmmreg xmmreg1 xmmreg2 xmm_vsib ] [ XMM0 XMM1 XMM2 XMM3 XMM4 XMM5 XMM6 XMM7 ];
+
+attach variables [ xmmreg_x xmmreg1_x xmmreg2_x xmm_vsib_x ] [ XMM8 XMM9 XMM10 XMM11 XMM12 XMM13 XMM14 XMM15 ];
+
+attach variables [ vexVVVV_XmmReg Xmm_imm8_7_4 ] [ XMM0 XMM1 XMM2 XMM3 XMM4 XMM5 XMM6 XMM7 XMM8 XMM9 XMM10 XMM11 XMM12 XMM13 XMM14 XMM15 ];
+
+attach variables [ vexVVVV_YmmReg Ymm_imm8_7_4 ] [ YMM0 YMM1 YMM2 YMM3 YMM4 YMM5 YMM6 YMM7 YMM8 YMM9 YMM10 YMM11 YMM12 YMM13 YMM14 YMM15 ];
+
+@ifdef IA64
+attach variables [ vexVVVV_r32 ] [ EAX  ECX  EDX  EBX  ESP  EBP  ESI  EDI R8D  R9D  R10D R11D R12D R13D R14D R15D ];
+attach variables [ vexVVVV_r64 ] [ RAX  RCX  RDX  RBX  RSP  RBP  RSI  RDI R8   R9   R10  R11  R12  R13  R14  R15 ];
+@else
+attach variables [ vexVVVV_r32 ] [ EAX  ECX  EDX  EBX  ESP  EBP  ESI  EDI _    _    _    _    _    _    _    _ ];
+@endif
+
+
+attach variables [ ymmreg ymmreg1 ymmreg2 ymm_vsib ]			[ YMM0 YMM1  YMM2  YMM3  YMM4  YMM5  YMM6  YMM7 ];
+attach variables [ ymmreg_x ymmreg1_x ymmreg2_x ymm_vsib_x ]	[ YMM8 YMM9 YMM10 YMM11 YMM12 YMM13 YMM14 YMM15 ];
+
+attach variables [ bnd1 bnd2 ]       [ BND0 BND1 BND2 BND3 _ _ _ _ ];
+attach variables [ bnd1_lb bnd2_lb ] [ BND0_LB BND1_LB BND2_LB BND3_LB _ _ _ _ ];
+attach variables [ bnd1_ub bnd2_ub ] [ BND0_UB BND1_UB BND2_UB BND3_UB _ _ _ _ ];
+
+define pcodeop segment;    # Define special pcodeop that calculates the RAM address
+                           # given the segment selector and offset as input
+
+define pcodeop in;         # force in/out to show up in decompiler
+define pcodeop out;
+define pcodeop sysenter;
+define pcodeop sysexit;
+define pcodeop syscall;
+define pcodeop sysret;
+define pcodeop swapgs;
+define pcodeop invlpg;
+define pcodeop invlpga;
+define pcodeop invpcid;
+define pcodeop rdtscp;
+define pcodeop mwait;
+define pcodeop mwaitx;
+define pcodeop monitor;
+define pcodeop monitorx;
+define pcodeop swi;        # for INT instruction
+
+define pcodeop LOCK;       # for LOCK prefix
+define pcodeop UNLOCK;     # for LOCK prefix
+define pcodeop XACQUIRE;   # for XACQUIRE prefix
+define pcodeop XRELEASE;   # for XRELEASE prefix
+
+# MFL: definitions for AMD hardware assisted virtualization instructions
+define pcodeop clgi;      # clear global interrupt flag (GIF)
+define pcodeop stgi;      # set global interrupt flag (GIF)
+define pcodeop vmload;    # Load state from VMCD, opcode 0f 01 da
+define pcodeop vmmcall;   # Call VMM, opcode 0f 01 d9
+define pcodeop vmrun;     # Run virtual machine, opcode 0f 01 d8
+define pcodeop vmsave;    # Save state to VMCB, opcode 0f 0a db
+
+# MFL: definitions for Intel IA hardware assisted virtualization instructions
+define pcodeop invept;   # Invalidate Translations Derived from extended page tables (EPT); opcode 66 0f 38 80
+define pcodeop invvpid;  # Invalidate Translations Based on virtual-processor identifier (VPID); opcode 66 0f 38 81
+define pcodeop vmcall;   # Call to VM monitor by causing VM exit, opcode 0f 01 c1
+define pcodeop vmclear;  # Clear virtual-machine control structure, opcode 66 0f c7 /6
+define pcodeop vmfunc;   # call virtual-machine function refernced by EAX
+define pcodeop vmlaunch; # Launch virtual machine managed by current VMCCS; opcode 0f 01 c2
+define pcodeop vmresume; # Resume virtual machine managed by current VMCS; opcode 0f 01 c3
+define pcodeop vmptrld;  # Load pointer to virtual-machine control structure; opcode 0f c6 /6
+define pcodeop vmptrst;  # Store pointer to virtual-machine control structure; opcode 0f c7 /7
+define pcodeop vmread;   # Read field from virtual-machine control structure; opcode 0f 78
+define pcodeop vmwrite;  # Write field to virtual-machine control structure; opcode 0f 79
+define pcodeop vmxoff;   # Leave VMX operation; opcode 0f 01 c4
+define pcodeop vmxon;    # Enter VMX operation; opcode f3 0f C7 /6 
+
+@ifdef IA64
+@define LONGMODE_ON "longMode=1"
+@define LONGMODE_OFF "longMode=0"
+@else
+@define LONGMODE_OFF "epsilon" # NOP
+@endif
+
+# When not running in 64-bit mode opcode 0x82 is an alias for 0x80
+
+@ifdef IA64
+@define BYTE_80_82 "(byte=0x80 | (longMode=0 & byte=0x82))"
+@else
+@define BYTE_80_82 "(byte=0x80 | byte=0x82)"
+@endif
+
+# signed immediate value subconstructors
+
+
+# unused
+#usimm16_32: imm16 is imm16 & imm16_15=0 { export *[const]:4 imm16; }
+#usimm16_32: val is imm16 & imm16_15=1 [ val = 0xffff0000 | imm16; ] { export *[const]:4 val; }
+
+# RIP/EIP relative address - NOTE: export of size 0 is intentional so it may be adjusted
+
+define token aaa (8)
+    bit0=(0,0)
+    bit1=(1,1)
+    bit2=(2,2)
+    bit3=(3,3)
+    bit4=(4,4)
+    bit5=(5,5)
+    bit6=(6,6)
+    bit7=(7,7)
+;
+
+:C0 is bit0=0 {  }
+:C1 is bit1=1 {  }
+
+:^instruction is instrPhase=0 & over=0x2e; instruction     [ segover=1; ]  {} # CS override
+:^instruction is instrPhase=0 & over=0x36; instruction     [ segover=2; ]  {} # SS override
+:^instruction is instrPhase=0 & over=0x3e; instruction     [ segover=3; ]  {} # DS override
+:^instruction is instrPhase=0 & over=0x26; instruction     [ segover=4; ]  {} # ES override
+:^instruction is instrPhase=0 & over=0x64; instruction     [ segover=5; ]  {} # FS override
+:^instruction is instrPhase=0 & over=0x65; instruction     [ segover=6; ]  {} # GS override
+:^instruction is instrPhase=0 & over=0x66; instruction     [ opsize=opsize $xor 1; mandover = mandover $xor 1; ] {} # Operand size override
+:^instruction is instrPhase=0 & over=0x67; instruction     [ addrsize=addrsize $xor 1; ] {} # Address size override
+:^instruction is instrPhase=0 & over=0xf2; instruction     [ repneprefx=1; repprefx=0; ] {}
+:^instruction is instrPhase=0 & over=0xf3; instruction     [ repneprefx=0; repprefx=1; ] {}
+:^instruction is instrPhase=0 & over=0xf0; instruction     [ lockprefx=1; ] {}
+
+# See 'lockable.sinc' file for instructions that are lockable

@@ -1,5 +1,8 @@
 use crate::compiler::InternalCompilerResult;
+use crate::spec::jir::context_provider::ContextProvider;
 use crate::spec::jir::local_resolver::JIRResolver;
+use crate::spec::jir::trace_jir;
+use crate::spec::jir::values::{JIRConst, JIRValue};
 
 use super::field::FieldId;
 use super::scope::MOIRLocalId;
@@ -20,37 +23,44 @@ pub(crate) enum MOIRPatternExpression {
     Integer(u64),
 }
 
-/// We differentiate between actions that change context and actions that set
-/// a temporary.
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum MOIRActionTarget {
-    ContextField(FieldId),
-    Local(MOIRLocalId),
-}
-
 /// Disassembly actions are used for dynamic calculations at disassembly time to for example
 /// calculate absolute addresses for relative branches based on the current instruction address.
 #[derive(Debug, Clone)]
 pub(crate) struct MOIRAction {
-    pub(crate) lhs: MOIRActionTarget,
+    local_id: MOIRLocalId,
+    context_field: Option<FieldId>, // if this is Some, the context is modified
     expression: MOIRPatternExpression,
 }
 
 impl MOIRAction {
     pub(crate) fn new(
-        lhs: MOIRActionTarget,
+        local_id: MOIRLocalId,
+        context: Option<FieldId>,
         expression: MOIRPatternExpression,
     ) -> Self {
-        Self { lhs, expression }
+        Self { local_id, context_field: context, expression }
     }
-}
 
-impl MOIRAction {
     pub(crate) fn evaluate(
         &self,
-        resolver: &JIRResolver,
-    ) -> InternalCompilerResult<u64> {
-        self.expression.evaluate(resolver)
+        resolver: &mut JIRResolver,
+        context_provider: &mut ContextProvider,
+    ) -> InternalCompilerResult {
+        let value = self.expression.evaluate(resolver)?;
+
+        trace_jir!("Action is setting local {} := {}", self.local_id, value);
+        resolver.define_id(self.local_id, JIRValue::Const(JIRConst::new(value.into(), 0)));
+
+        if let Some(context_field) = self.context_field {
+                trace_jir!("Action is setting context field {} := {}", context_field, value);
+                context_provider.set_field_value(context_field, value)?;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn modifies_context(&self) -> bool {
+        self.context_field.is_some()
     }
 }
 

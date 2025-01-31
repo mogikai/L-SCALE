@@ -68,7 +68,6 @@ impl From<JIRValue> for JIRResolvedValue {
 
 #[derive(Debug)]
 pub struct JIRResolver<'a> {
-    spec: &'a ProcessorSpecification,
     constructor: &'a MOIRConstructor,
     values: SecondaryMap<MOIRLocalId, Option<JIRValue>>,
     subtables: FnvHashMap<TableId, JIRResolver<'a>>,
@@ -76,8 +75,8 @@ pub struct JIRResolver<'a> {
 
 impl<'a> JIRResolver<'a> {
     pub fn new(
-        spec: &'a ProcessorSpecification,
         constructor: &'a MOIRConstructor,
+        mut values: SecondaryMap<MOIRLocalId, Option<JIRValue>>,
         // TODO do we need this at construction time? or can we set this later?
         inst_start: EVAddr,
         inst_next: EVAddr,
@@ -90,7 +89,6 @@ impl<'a> JIRResolver<'a> {
         // TODO correct generic
         let addr_bytes = EVAddr::<u8>::bits() / 8;
 
-        let mut values = SecondaryMap::default();
         values[local_inst_start] =
             Some(JIRValue::Const(JIRConst::new(inst_start.try_into().unwrap(), addr_bytes.try_into().unwrap())));
         values[local_inst_next] =
@@ -102,7 +100,6 @@ impl<'a> JIRResolver<'a> {
         }
 
         Self {
-            spec,
             constructor,
             values,
             subtables: Default::default(),
@@ -127,15 +124,16 @@ impl<'a> JIRResolver<'a> {
     // TODO remove
     pub(crate) fn print_mcode(
         &self,
+        spec: &ProcessorSpecification,
         depth: u32,
     ) {
         for _ in 0..depth {
             eprint!(" ");
         }
 
-        eprintln!("{}", self.constructor.mcode_debug_string(&self.spec.interner));
+        eprintln!("{}", self.constructor.mcode_debug_string(&spec.interner));
         for subtable_resolver in self.subtables.values() {
-            subtable_resolver.print_mcode(depth + 4);
+            subtable_resolver.print_mcode(spec, depth + 4);
         }
     }
 
@@ -156,15 +154,12 @@ impl<'a> JIRResolver<'a> {
         Ok(())
     }
 
-    pub fn temp_space(&self) -> SpaceId {
-        self.spec.temp_space
-    }
-
     pub fn build(
         self,
+        spec: &ProcessorSpecification,
         block_builder: &mut TargetBasicBlockBuilder,
     ) -> ProcessorSpecResult {
-        self.constructor.generate_jcode(self, block_builder)
+        self.constructor.generate_jcode(spec, self, block_builder)
     }
 
     pub fn constructor(&self) -> &MOIRConstructor {
@@ -293,6 +288,7 @@ impl<'a> JIRResolver<'a> {
 
     pub fn build_subtable(
         &mut self,
+        spec: &ProcessorSpecification,
         instruction_builder: &mut TargetInstructionBuilder,
         subtable: TableId,
     ) -> ProcessorSpecResult {
@@ -301,19 +297,20 @@ impl<'a> JIRResolver<'a> {
             .subtables
             .get_mut(&subtable)
             .ok_or(ProcessorSpecificationError::UnresolvedSubtable)?;
-        trace_jir!("{}", resolver.constructor.mcode_debug_string(&self.spec.interner));
+        trace_jir!("{}", resolver.constructor.mcode_debug_string(&spec.interner));
         resolver
             .constructor
-            .generate_jcode_subtable(resolver, instruction_builder)
+            .generate_jcode_subtable(spec, resolver, instruction_builder)
     }
 
     pub fn resolve_local(
         &self,
+        spec: &ProcessorSpecification,
         instruction_builder: &mut TargetInstructionBuilder,
         local: MOIRLocal,
     ) -> ProcessorSpecResult<JIRResolvedValue> {
         match local {
-            MOIRLocal::Local(id) => self.resolve_local_id(instruction_builder, id),
+            MOIRLocal::Local(id) => self.resolve_local_id(spec, instruction_builder, id),
             MOIRLocal::Const(value) => {
                 let MOIRConst::Determined(value, size) = value else {
                     todo!("Generate error for undetermined size")
@@ -325,6 +322,7 @@ impl<'a> JIRResolver<'a> {
 
     pub fn resolve_local_id(
         &self,
+        spec: &ProcessorSpecification,
         instruction_builder: &mut TargetInstructionBuilder,
         local: MOIRLocalId,
     ) -> ProcessorSpecResult<JIRResolvedValue> {
@@ -343,7 +341,7 @@ impl<'a> JIRResolver<'a> {
                 if self.values[local].is_some() {
                     todo!("Generate error for overridden varnode.")
                 }
-                let varnode = self.spec.varnode_slice_by_id(varnode_id)?;
+                let varnode = spec.varnode_slice_by_id(varnode_id)?;
                 JIRSlice::new(varnode_id, varnode.space_id, varnode.offset + start, end).into()
             }
             MOIRReference::Temporary(_) | MOIRReference::Const(_) => match self.values[local] {
@@ -362,13 +360,13 @@ impl<'a> JIRResolver<'a> {
                     let field_value = c.value();
 
                     let field =
-                        self.spec.symbol_tables.fields.get(field_id).ok_or_else(
+                        spec.symbol_tables.fields.get(field_id).ok_or_else(
                             || -> ProcessorSpecificationError { todo!("Generate error for missing field") },
                         )?;
                     if !field.variables.is_empty() {
                         // attach variables => resolve varnode
                         let varnode_id = field.variables[usize::try_from(field_value).unwrap()];
-                        let varnode = self.spec.symbol_tables.varnodes.get(varnode_id).unwrap();
+                        let varnode = spec.symbol_tables.varnodes.get(varnode_id).unwrap();
 
                         let slice = JIRSlice {
                             varnode_id: JIRVarNodeId::VarNode(varnode_id),
@@ -398,13 +396,15 @@ impl<'a> JIRResolver<'a> {
                     .get(&table_id)
                     .ok_or_else(|| todo!("Generate error: 'Failed to match subtable'"))?;
                 // Check the subtable resolver for the symbol that is exported and resolve it to a JIRValue.
-                subtable_resolver.resolve_export(instruction_builder)?
+                debug!("Descending into subtable {table_id} to resolve export");
+                subtable_resolver.resolve_export(spec, instruction_builder)?
             }
         })
     }
 
     pub fn resolve_export(
         &self,
+        spec: &ProcessorSpecification,
         instruction_builder: &mut TargetInstructionBuilder,
     ) -> ProcessorSpecResult<JIRResolvedValue> {
         let Some(export) = self.constructor.export.as_ref() else {
@@ -413,10 +413,10 @@ impl<'a> JIRResolver<'a> {
         // If the export is a local, we simply return the resolved local
         // This might mean descending recursively into export resolving.
         match export {
-            MOIRExport::Local(local) => self.resolve_local(instruction_builder, *local),
+            MOIRExport::Local(local) => self.resolve_local(spec, instruction_builder, *local),
             MOIRExport::MemReference { address, space, size } => {
                 // We need to recursively resolve the address, since it might also be a dynamic reference
-                let address = self.resolve_local(instruction_builder, *address)?;
+                let address = self.resolve_local(spec, instruction_builder, *address)?;
                 let address = match address {
                     JIRResolvedValue::Value(address) => address,
                     JIRResolvedValue::Reference { address, space, size } => {
@@ -424,7 +424,7 @@ impl<'a> JIRResolver<'a> {
                         // offset as the constant value. I.e. the position in the const address space
                         // corresponds to its value.
                         // TODO: Replace with api call
-                        if let Some(optimized) = self.optimize_const_load(address, space, size)? {
+                        if let Some(optimized) = self.optimize_const_load(spec, address, space, size)? {
                             return Ok(optimized.into());
                         }
 
@@ -450,12 +450,12 @@ impl<'a> JIRResolver<'a> {
     /// Interpret the provided address as a constant. I.e. the address' offset is equal to the const's value
     pub fn optimize_const_load(
         &self,
+        spec: &ProcessorSpecification,
         address: JIRValue,
         space: SpaceId,
         size: JIRSize,
     ) -> ProcessorSpecResult<Option<JIRConst>> {
-        let JIRSpaceType::Const = self
-            .spec
+        let JIRSpaceType::Const = spec
             .symbol_tables
             .spaces
             .get(space)

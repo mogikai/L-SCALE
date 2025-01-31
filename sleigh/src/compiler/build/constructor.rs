@@ -1,4 +1,7 @@
-use self::matcher::Matcher;
+use self::matcher::{
+    Matcher,
+    MatcherAtom,
+};
 use crate::compiler::ast::Spanned;
 use crate::compiler::ast::common::SASTIdent;
 use crate::compiler::ast::constructor::SASTConstructor;
@@ -24,11 +27,14 @@ use crate::spec::builder::{
 };
 use crate::spec::moir::actions::{
     MOIRAction,
-    MOIRActionTarget,
     MOIRPatternExpression,
 };
 use crate::spec::moir::constructor::MOIRConstructor;
-use crate::spec::moir::field::MOIRFieldParent;
+use crate::spec::moir::field::{
+    FieldId,
+    MOIRFieldParent,
+};
+use crate::spec::moir::field_extractor::FieldExtractor;
 use crate::spec::moir::scope::{
     MOIRLocalId,
     MOIRMaybeSize,
@@ -36,12 +42,16 @@ use crate::spec::moir::scope::{
 };
 use crate::spec::moir::table::MOIRTable;
 use crate::spec::moir::varnode::{
+    MOIRLocal,
     MOIRReference,
     MOIRSlice,
 };
 use itertools::Itertools;
 use mogi_utilities::addresses::EVAddr;
-use std::collections::HashSet;
+use std::collections::{
+    BTreeSet,
+    HashSet,
+};
 use tracing::{
     debug,
     trace,
@@ -87,12 +97,15 @@ impl SleighCompiler {
             .pc_create_scope(display_section.identifiers, &references)
             .map_err(|e| e.span("constructor", span))?;
         let actions = self.pc_process_actions(&mut scope, constructor.disassembly_section)?;
+        let modifies_context = actions.iter().any(|action| action.modifies_context());
         let mut moir_constructor = MOIRConstructor {
             local_scope: scope,
             instructions: vec![],
             display: display_section.display_str.into_value(),
-            export: None,
             actions,
+            modifies_context,
+            field_extractors: Vec::new(),
+            export: None,
         };
         trace_build!("{}", moir_constructor.debug_scope());
 
@@ -112,6 +125,15 @@ impl SleighCompiler {
         //     .local_scope
         //     .realize_temporaries(&mut self.spec_builder)?;
         trace_build!("{}", moir_constructor.mcode_debug_string(self.spec_builder.interner()));
+
+        moir_constructor.field_extractors = self.pc_create_field_extractors(
+            matchers
+                .first()
+                .expect("There must be ast least one matcher"),
+            &moir_constructor.local_scope,
+        );
+
+        trace_build!("Created {} field extractors", moir_constructor.field_extractors.len());
 
         // Define the constructor and insert it into the corresponding table.
         self.spec_builder.define_constructor(moir_constructor)?;
@@ -138,7 +160,7 @@ impl SleighCompiler {
         &self,
         scope: &mut MOIRScope,
         sast_action_lhs: Spanned<SASTIdent>,
-    ) -> InternalCompilerResult<MOIRActionTarget> {
+    ) -> InternalCompilerResult<(MOIRLocalId, Option<FieldId>)> {
         let local_id = self.pc_resolve_local(scope, sast_action_lhs)?;
 
         // local can be a context field or a temporary which we need to check for
@@ -150,65 +172,68 @@ impl SleighCompiler {
                 .ok_or_else(|| -> InternalError { todo!("Generate error report for missing field") })?;
             if matches!(field.parent, MOIRFieldParent::Context(_)) {
                 // context field
-                return Ok(MOIRActionTarget::ContextField(field_id));
+                return Ok((local_id, Some(field_id)));
             }
         }
 
         // not a context field
-        Ok(MOIRActionTarget::Local(local_id))
+        Ok((local_id, None))
     }
 
     /// Convert a [SASTPatternExpression] to a [MOIRPatternExpression] while resolving referenced
-    /// symbols to [MOIRActionLocal]s.
+    /// symbols to [MOIRActionLocal]s and collecting all used locals.
     fn pc_convert_expression(
         &self,
         scope: &mut MOIRScope,
         sast_expr: Spanned<SASTPatternExpression>,
+        used_locals: &mut Vec<MOIRLocalId>,
     ) -> InternalCompilerResult<MOIRPatternExpression> {
         let (sast_expr, _) = sast_expr.into_tuple();
         Ok(match sast_expr {
             SASTPatternExpression::Add(lhs, rhs) => MOIRPatternExpression::Add(
-                Box::new(self.pc_convert_expression(scope, *lhs)?),
-                Box::new(self.pc_convert_expression(scope, *rhs)?),
+                Box::new(self.pc_convert_expression(scope, *lhs, used_locals)?),
+                Box::new(self.pc_convert_expression(scope, *rhs, used_locals)?),
             ),
             SASTPatternExpression::Sub(lhs, rhs) => MOIRPatternExpression::Sub(
-                Box::new(self.pc_convert_expression(scope, *lhs)?),
-                Box::new(self.pc_convert_expression(scope, *rhs)?),
+                Box::new(self.pc_convert_expression(scope, *lhs, used_locals)?),
+                Box::new(self.pc_convert_expression(scope, *rhs, used_locals)?),
             ),
             SASTPatternExpression::Mul(lhs, rhs) => MOIRPatternExpression::Mul(
-                Box::new(self.pc_convert_expression(scope, *lhs)?),
-                Box::new(self.pc_convert_expression(scope, *rhs)?),
+                Box::new(self.pc_convert_expression(scope, *lhs, used_locals)?),
+                Box::new(self.pc_convert_expression(scope, *rhs, used_locals)?),
             ),
             SASTPatternExpression::Div(lhs, rhs) => MOIRPatternExpression::Div(
-                Box::new(self.pc_convert_expression(scope, *lhs)?),
-                Box::new(self.pc_convert_expression(scope, *rhs)?),
+                Box::new(self.pc_convert_expression(scope, *lhs, used_locals)?),
+                Box::new(self.pc_convert_expression(scope, *rhs, used_locals)?),
             ),
             SASTPatternExpression::Shl(lhs, rhs) => MOIRPatternExpression::Shl(
-                Box::new(self.pc_convert_expression(scope, *lhs)?),
-                Box::new(self.pc_convert_expression(scope, *rhs)?),
+                Box::new(self.pc_convert_expression(scope, *lhs, used_locals)?),
+                Box::new(self.pc_convert_expression(scope, *rhs, used_locals)?),
             ),
             SASTPatternExpression::Shr(lhs, rhs) => MOIRPatternExpression::Shr(
-                Box::new(self.pc_convert_expression(scope, *lhs)?),
-                Box::new(self.pc_convert_expression(scope, *rhs)?),
+                Box::new(self.pc_convert_expression(scope, *lhs, used_locals)?),
+                Box::new(self.pc_convert_expression(scope, *rhs, used_locals)?),
             ),
             SASTPatternExpression::And(lhs, rhs) => MOIRPatternExpression::And(
-                Box::new(self.pc_convert_expression(scope, *lhs)?),
-                Box::new(self.pc_convert_expression(scope, *rhs)?),
+                Box::new(self.pc_convert_expression(scope, *lhs, used_locals)?),
+                Box::new(self.pc_convert_expression(scope, *rhs, used_locals)?),
             ),
             SASTPatternExpression::Or(lhs, rhs) => MOIRPatternExpression::Or(
-                Box::new(self.pc_convert_expression(scope, *lhs)?),
-                Box::new(self.pc_convert_expression(scope, *rhs)?),
+                Box::new(self.pc_convert_expression(scope, *lhs, used_locals)?),
+                Box::new(self.pc_convert_expression(scope, *rhs, used_locals)?),
             ),
             SASTPatternExpression::Xor(lhs, rhs) => MOIRPatternExpression::Xor(
-                Box::new(self.pc_convert_expression(scope, *lhs)?),
-                Box::new(self.pc_convert_expression(scope, *rhs)?),
+                Box::new(self.pc_convert_expression(scope, *lhs, used_locals)?),
+                Box::new(self.pc_convert_expression(scope, *rhs, used_locals)?),
             ),
             SASTPatternExpression::Not(expr) => {
-                MOIRPatternExpression::Not(Box::new(self.pc_convert_expression(scope, *expr)?))
+                MOIRPatternExpression::Not(Box::new(self.pc_convert_expression(scope, *expr, used_locals)?))
             }
             SASTPatternExpression::Symbol(ident) => {
                 // TODO correct span
-                MOIRPatternExpression::Local(self.pc_resolve_local(scope, Spanned::new(ident, InputSpan::default()))?)
+                let local_id = self.pc_resolve_local(scope, Spanned::new(ident, InputSpan::default()))?;
+                used_locals.push(local_id);
+                MOIRPatternExpression::Local(local_id)
             }
             SASTPatternExpression::Integer(value) => MOIRPatternExpression::Integer(value as u64),
         })
@@ -288,11 +313,23 @@ impl SleighCompiler {
             let moir_actions = sast_actions
                 .into_iter()
                 .map(|sast_action| {
-                    let target = self.pc_action_target(scope, sast_action.lhs)?;
+                    let (local_id, context_field) = self.pc_action_target(scope, sast_action.lhs)?;
 
                     // TODO do this without cloning since we have ownership
-                    let expression = self.pc_convert_expression(scope, sast_action.rhs.clone())?;
-                    Ok(MOIRAction::new(target, expression))
+                    let mut expression_locals = Vec::new();
+                    let expression =
+                        self.pc_convert_expression(scope, sast_action.rhs.clone(), &mut expression_locals)?;
+
+                    // mark locals
+                    for expression_local in expression_locals.into_iter() {
+                        trace_build!("Marking action local {} as used", expression_local);
+                        scope.mark_local_as_used(MOIRLocal::Local(expression_local))?;
+                    }
+
+                    trace_build!("Marking action local {} as used", local_id);
+                    scope.mark_local_as_used(MOIRLocal::Local(local_id))?;
+
+                    Ok(MOIRAction::new(local_id, context_field, expression))
                 })
                 .collect::<InternalCompilerResult<Vec<_>>>()?;
 
@@ -300,6 +337,62 @@ impl SleighCompiler {
         } else {
             Ok(vec![])
         }
+    }
+
+    /// Create field extractors from a matcher and a scope. Since all matchers need
+    /// to have all necessary field, it is enough to only use the first one.
+    fn pc_create_field_extractors(
+        &self,
+        matcher: &Matcher,
+        scope: &MOIRScope,
+    ) -> Vec<FieldExtractor> {
+        scope
+            .get_used_fields()
+            .filter(|(field_id, _)| {
+                // ignore context fields
+                let field = self
+                    .spec_builder
+                    .field_by_symbol_id(*field_id)
+                    .expect("There must be a field");
+                matches!(field.parent, MOIRFieldParent::Token(_))
+            })
+            .map(|(field_id, local_id)| {
+                // find token index where field is present
+                let token_index = matcher
+                    .conjunctions
+                    .iter()
+                    .zip(matcher.token_list.list.iter())
+                    .skip_while(|(_, token)| {
+                        // ignore context tokens
+                        token.is_some_and(|token| matches!(token, MOIRFieldParent::Context(_)))
+                    })
+                    .enumerate()
+                    .find_map(|(index, (conjunction, _))| {
+                        for atom in conjunction.iter() {
+                            if let MatcherAtom::Field {
+                                field_id: atom_field_id,
+                                matcher: _,
+                            } = atom
+                            {
+                                // field present in atom
+                                if *atom_field_id == field_id {
+                                    return Some(index);
+                                }
+                            }
+                        }
+
+                        // field not present in atom
+                        None
+                    })
+                    .expect("Field id present in scope but not in matcher");
+
+                let field = self
+                    .spec_builder
+                    .field_by_symbol_id(field_id)
+                    .expect("Missing field id");
+                FieldExtractor::new(local_id, 0, token_index, field.bits)
+            })
+            .collect_vec()
     }
 
     /// Validates the constructors in the table.
