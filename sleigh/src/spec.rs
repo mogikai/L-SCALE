@@ -36,9 +36,22 @@ use crate::spec::moir::table::{
 use crate::spec::moir::token::TokenId;
 use crate::spec::moir::varnode::VarNodeId;
 use crate::spec::typed_index_table::TypedIndexTable;
+use brotli::{
+    Decompressor,
+    DecompressorWriter,
+};
 use mogi_utilities::index_map::PrimaryMap;
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use std::collections::HashMap;
+use std::io::{
+    Read,
+    Write,
+};
 use std::ops::Range;
+use std::str::from_utf8;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 use strum_macros::Display;
@@ -60,7 +73,7 @@ new_typed_index_table_id! {
 
 pub type ProcessorSpecResult<T = ()> = Result<T, ProcessorSpecificationError>;
 
-#[derive(Debug, Clone, Copy, Display, PartialEq)]
+#[derive(Debug, Clone, Copy, Display, PartialEq, Serialize, Deserialize)]
 pub enum JIRSymbolId {
     Macro(MacroId),
     Space(SpaceId),
@@ -72,7 +85,7 @@ pub enum JIRSymbolId {
     CustomOp(CustomOpId),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub(crate) struct JIRSymbolTables {
     // macros: TypedIndexTable<MOIRMacroId, MOIRMacro>,
     pub(crate) spaces: TypedIndexTable<SpaceId, JIRSpace>,
@@ -87,7 +100,7 @@ pub(crate) struct JIRSymbolTables {
     // bitrange_registers: TypedIndexTable<MOIRBitrangeRegisterId, MOIRTBitrangeRegister>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ProcessorSpecification {
     pub(crate) interner: StringInterner<StringBackend>,
 
@@ -310,6 +323,19 @@ impl ProcessorSpecification {
                 }
             })
             .collect()
+    }
+
+    pub fn save<W: Write>(
+        &self,
+        write: &mut W,
+    ) {
+        let mut writer = brotli::CompressorWriter::new(write, 4096, 11, 20);
+        bincode::serde::encode_into_std_write(self, &mut writer, bincode::config::standard()).unwrap();
+    }
+
+    pub fn load<R: Read>(read: &mut R) -> ProcessorSpecification {
+        let mut reader = Decompressor::new(read, 4096);
+        bincode::serde::decode_from_std_read(&mut reader, bincode::config::standard()).unwrap()
     }
 }
 

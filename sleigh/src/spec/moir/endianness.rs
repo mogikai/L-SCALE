@@ -1,6 +1,10 @@
 use crate::compiler::ast::define::SASTEndianness;
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
-#[derive(Debug, strum_macros::Display, Copy, Clone)]
+#[derive(Debug, strum_macros::Display, Copy, Clone, Serialize, Deserialize)]
 pub enum MOIREndianness {
     Big,
     Little,

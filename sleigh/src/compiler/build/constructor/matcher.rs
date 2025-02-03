@@ -1,11 +1,5 @@
 #![allow(unused_variables)]
 
-use std::collections::{
-    BTreeSet,
-    HashMap,
-    HashSet,
-};
-
 use crate::new_typed_index_table_id;
 use crate::spec::builder::MOIRSymbolId;
 use crate::spec::moir::constructor::ConstructorId;
@@ -15,12 +9,21 @@ use crate::spec::moir::field::{
 };
 use crate::spec::moir::table::TableId;
 use crate::spec::moir::varnode::VarNodeId;
+use serde::{
+    Deserialize,
+    Serialize,
+};
+use std::collections::{
+    BTreeSet,
+    HashMap,
+    HashSet,
+};
 
 // TODO: for now we assume each token to be of a maximum of 8 bytes, but this doesn't have to be
 // the case probably
 
 /// The simplest kind of matcher. It matches a single field against a value or another field.
-#[derive(Debug, Clone, PartialOrd, Ord, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialOrd, Ord, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FieldMatcher {
     // matches everything (TODO can this be removed? might be needed somewhere)
     Wildcard,
@@ -32,7 +35,7 @@ pub enum FieldMatcher {
 
 // Every symbol type that can appear in the bit pattern section. This is only used for
 // scope creation and verification and not for matching.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MatcherReference {
     Field(FieldId),
     Subtable(TableId),
@@ -74,7 +77,7 @@ impl Matching {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TokenList {
     /// This can be `None` for shallow references when recursion is used
     pub list: Vec<Option<MOIRFieldParent>>,
@@ -100,7 +103,7 @@ impl TokenList {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Matcher {
     // Each conjunction belongs to the corresponding MOIRFieldParent defined down below in
     // token_list.
@@ -117,7 +120,7 @@ pub struct Matcher {
     pub(crate) constructor_id: ConstructorId,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Clone, Ord, PartialOrd)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone, Ord, PartialOrd, Serialize, Deserialize)]
 pub(crate) struct Submatchers {
     pub table: TableId,
     /// Matchers is Some:
@@ -140,7 +143,7 @@ impl Submatchers {
     }
 }
 
-#[derive(Debug, Clone, PartialOrd, Ord, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialOrd, Ord, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub(crate) enum MatcherAtom {
     Field { field_id: FieldId, matcher: FieldMatcher },
     Submatchers(Submatchers),

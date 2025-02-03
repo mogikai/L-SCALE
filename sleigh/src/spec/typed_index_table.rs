@@ -1,3 +1,7 @@
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use std::marker::PhantomData;
 
 /// Creates a new symbol table identifier that can be used to index a [TypedIndexTable].
@@ -6,6 +10,7 @@ macro_rules! new_typed_index_table_id {
     ( $(#[$outer:meta])* $vis:vis struct $name:ident; $display_prefix:literal;) => {
         $(#[$outer])*
         #[derive(Debug, Eq, PartialEq, PartialOrd, Ord, Copy, Clone, Hash, Default)]
+        #[derive(serde::Serialize, serde::Deserialize)]
         #[repr(transparent)]
         $vis struct $name(usize);
         impl From<usize> for $name {
@@ -37,6 +42,7 @@ macro_rules! new_typed_index_table_id_16 {
     ( $(#[$outer:meta])* $vis:vis struct $name:ident; $display_prefix:literal;) => {
         $(#[$outer])*
         #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
+        #[derive(serde::Serialize, serde::Deserialize)]
         #[repr(transparent)]
         $vis struct $name(u16);
         impl From<usize> for $name {
@@ -61,7 +67,7 @@ macro_rules! new_typed_index_table_id_16 {
     };
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypedIndexTable<K, V>(Vec<V>, PhantomData<K>);
 impl<K, V> Default for TypedIndexTable<K, V> {
     fn default() -> Self {

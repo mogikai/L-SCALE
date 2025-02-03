@@ -11,15 +11,19 @@ use crate::spec::moir::scope::{
 };
 use crate::spec::moir::varnode::MOIRLocal;
 use crate::spec::typed_index_table::TypedIndexTable;
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MOIRTable {
     pub(crate) matchers: TypedIndexTable<MatcherId, Matcher>,
     pub constructors: Vec<ConstructorId>,
 }
 
 // TODO: This probably needs to look a little different than it does atm
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub enum MOIRExport {
     /// The location exported is the local varnode
     Local(MOIRLocal),

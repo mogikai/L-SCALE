@@ -60,8 +60,12 @@ use chumsky::{
     Parser,
     extra,
 };
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Default)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
 pub struct InputSpan {
     start: usize,
     end: usize,

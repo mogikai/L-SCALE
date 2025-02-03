@@ -3,12 +3,16 @@ use crate::spec::jir::instruction::JIRTempId;
 use crate::spec::moir::address_space::SpaceId;
 pub use crate::spec::moir::context::ContextId;
 pub use crate::spec::moir::varnode::VarNodeId;
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use std::fmt::{
     Display,
     Formatter,
 };
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct JIRVarNode {
     pub space_id: SpaceId,
     pub offset: u64,

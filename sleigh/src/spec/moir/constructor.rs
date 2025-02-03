@@ -26,11 +26,17 @@ use crate::spec::moir::scope::{
 use crate::spec::moir::table::MOIRExport;
 use crate::spec::moir::varnode::MOIRLocal;
 use crate::spec::{
-    ProcessorSpecResult, ProcessorSpecification, ProcessorSpecificationError
+    ProcessorSpecResult,
+    ProcessorSpecification,
+    ProcessorSpecificationError,
 };
 use crate::{
     jinst,
     new_typed_index_table_id,
+};
+use serde::{
+    Deserialize,
+    Serialize,
 };
 use std::iter::once;
 use string_interner::StringInterner;
@@ -38,7 +44,7 @@ use string_interner::backend::StringBackend;
 
 use super::field_extractor::FieldExtractor;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MOIRConstructor {
     pub local_scope: MOIRScope,
     pub instructions: Vec<MOIRInstruction>,

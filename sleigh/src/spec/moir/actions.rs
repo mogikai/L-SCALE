@@ -2,12 +2,19 @@ use crate::compiler::InternalCompilerResult;
 use crate::spec::jir::context_provider::ContextProvider;
 use crate::spec::jir::local_resolver::JIRResolver;
 use crate::spec::jir::trace_jir;
-use crate::spec::jir::values::{JIRConst, JIRValue};
+use crate::spec::jir::values::{
+    JIRConst,
+    JIRValue,
+};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 use super::field::FieldId;
 use super::scope::MOIRLocalId;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) enum MOIRPatternExpression {
     Add(Box<MOIRPatternExpression>, Box<MOIRPatternExpression>),
     Sub(Box<MOIRPatternExpression>, Box<MOIRPatternExpression>),
@@ -25,7 +32,7 @@ pub(crate) enum MOIRPatternExpression {
 
 /// Disassembly actions are used for dynamic calculations at disassembly time to for example
 /// calculate absolute addresses for relative branches based on the current instruction address.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct MOIRAction {
     local_id: MOIRLocalId,
     context_field: Option<FieldId>, // if this is Some, the context is modified
@@ -38,7 +45,11 @@ impl MOIRAction {
         context: Option<FieldId>,
         expression: MOIRPatternExpression,
     ) -> Self {
-        Self { local_id, context_field: context, expression }
+        Self {
+            local_id,
+            context_field: context,
+            expression,
+        }
     }
 
     pub(crate) fn evaluate(
@@ -52,8 +63,8 @@ impl MOIRAction {
         resolver.define_id(self.local_id, JIRValue::Const(JIRConst::new(value.into(), 0)));
 
         if let Some(context_field) = self.context_field {
-                trace_jir!("Action is setting context field {} := {}", context_field, value);
-                context_provider.set_field_value(context_field, value)?;
+            trace_jir!("Action is setting context field {} := {}", context_field, value);
+            context_provider.set_field_value(context_field, value)?;
         }
 
         Ok(())

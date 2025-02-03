@@ -14,6 +14,10 @@ use crate::spec::moir::scope::{
 };
 use crate::spec::moir::table::TableId;
 use mogi_utilities::new_map_key_16;
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use std::fmt::{
     Display,
     Formatter,
@@ -39,7 +43,7 @@ pub struct MOIRVarNode {
 }
 
 /// A slice of an existing varnode. The slice is at most as large as the original varnode.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct MOIRSlice {
     /// The slice refers to a symbol. This can be for example a varnode, a subtable export, or a field.
     pub reference: MOIRReference,
@@ -174,7 +178,7 @@ impl Display for MOIRSlice {
     }
 }
 
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MOIRReference {
     Field(FieldId),
     SubTable(TableId),
@@ -202,7 +206,7 @@ impl Display for MOIRReference {
 }
 
 /// A local either directly contains a constant value, or refers to a local stored in the scope.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub enum MOIRLocal {
     Local(MOIRLocalId),
     Const(MOIRConst),
@@ -319,7 +323,7 @@ impl MOIRLocal {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MOIRConst {
     Undetermined(u128),
     /// A generic const value with the specified size

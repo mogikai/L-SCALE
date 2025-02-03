@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 tracing = { version = "0.1.40", features = ["release_max_level_trace"] }
-slotmap = "1.0.*"
+slotmap = { version = "1.0.*", features = ["serde"] }
 thiserror = "2.0.3"
 ariadne = "0.5.0"
 chumsky = { features = ["pratt"], git = "https://github.com/zesterer/chumsky.git" }
@@ -13,11 +13,15 @@ string-interner = "0.18.0"
 num = "0.4.3"
 strum_macros = "0.26.4"
 itertools = "0.13.0"
-mogi_utilities = { path = "../utilities", version = "*" }
+mogi_utilities = { path = "../utilities", version = "*", features = ["serde"] }
 imbl = "3.0.0"
 petgraph = "0.7.0"
-rustc-hash = "2.1.0"
+rustc-hash = { version = "2.1.0" }
+serde-big-array = "0.5.1"
 fnv = "1.0.7"
+serde = { version = "1.0.217", features = ["derive"] }
+bincode = { version = "2.0.0-rc.3", features = ["serde"] }
+brotli = "7.0.0"
 
 [features]
 trace_build = []

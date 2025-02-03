@@ -1,12 +1,16 @@
 use crate::spec::builder::StringId;
 use crate::spec::moir::token::TokenId;
 use mogi_utilities::new_map_key;
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 use super::common::MOIRSize;
 use super::context::ContextId;
 use super::varnode::VarNodeId;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct MOIRBitRange {
     pub start: MOIRSize,
     pub end: MOIRSize,
@@ -76,13 +80,13 @@ impl std::ops::BitAnd for MOIRBitRange {
 
 // context and token fields are treated the same due to their similarity and are
 // only discernible by their respective parent (either a token or a context definition)
-#[derive(Debug, Hash, PartialOrd, Ord, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Hash, PartialOrd, Ord, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MOIRFieldParent {
     Token(TokenId),
     Context(ContextId),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MOIRField {
     /// The token or context this field is associated with.
     pub parent: MOIRFieldParent,

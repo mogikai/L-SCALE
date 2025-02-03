@@ -1,19 +1,27 @@
+use super::context_provider::ContextProvider;
+use super::local_resolver::JIRResolver;
+use super::values::JIRValue;
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
 use crate::new_typed_index_table_id;
 use crate::spec::jir::trace_jir;
 use crate::spec::moir::common::MOIRSize;
-use crate::spec::moir::constructor::{ConstructorId, MOIRConstructor};
+use crate::spec::moir::constructor::{
+    ConstructorId,
+    MOIRConstructor,
+};
 use crate::spec::moir::context::ContextId;
 use crate::spec::moir::table::TableId;
 use crate::spec::typed_index_table::TypedIndexTable;
+use fnv::FnvHashMap;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::SecondaryMap;
 use rustc_hash::FxHashMap;
-
-use super::context_provider::ContextProvider;
-use super::local_resolver::JIRResolver;
-use super::values::JIRValue;
+use serde::{
+    Deserialize,
+    Serialize,
+};
+use serde_big_array::BigArray;
 
 /// We need to do two passes for every constructor:
 /// * get the constructor id and execute disassembly actions
@@ -28,7 +36,7 @@ struct LocalMatching<'a> {
     tokens: Vec<u64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(crate) enum NextJumplistEntry {
     // consume self.bytes bytes and continue with next
     TrailingNext(JumplistId),
@@ -37,7 +45,7 @@ pub(crate) enum NextJumplistEntry {
     Constructor { cid: ConstructorId, tid: TableId },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct JumplistEntry {
     pub(crate) sublists: Vec<JumplistId>,
     pub(crate) next_entry: NextJumplistEntry,
@@ -53,29 +61,30 @@ impl JumplistEntry {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) enum JumplistContainer {
     // multiple alternatives are possible in case of a shared prefix
+    #[serde(with = "BigArray")]
     Small([Option<Vec<JumplistEntry>>; 256]),
-    Large(FxHashMap<u64, Vec<JumplistEntry>>),
+    Large(FnvHashMap<u64, Vec<JumplistEntry>>),
 }
 
 impl Default for JumplistContainer {
     fn default() -> Self {
-        JumplistContainer::Large(FxHashMap::default())
+        JumplistContainer::Large(Default::default())
     }
 }
 
 // Data can come from either the byte stream, an external context provider.
 // This needs to be accounted for when creating the lists.
-#[derive(Debug, Clone, Copy, PartialOrd, Ord, Hash, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialOrd, Ord, Hash, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub(crate) enum DataProvider {
     #[default]
     ByteStream,
     Context(ContextId),
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct Jumplist {
     container: JumplistContainer,
     mask: u64, // usually only a few bits are actually relevant for indexing into the list
@@ -92,7 +101,7 @@ impl Jumplist {
         let container = if bytes <= 1 {
             JumplistContainer::Small([const { None }; 256])
         } else {
-            JumplistContainer::Large(FxHashMap::default())
+            JumplistContainer::Large(Default::default())
         };
 
         Self {

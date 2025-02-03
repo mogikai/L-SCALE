@@ -8,7 +8,14 @@ use mogi_sleigh::lifter::Lifter;
 use mogi_sleigh::lifter::cache::LifterCache;
 use mogi_sleigh::lifter::source::DirectlyMappedBytes;
 use mogi_sleigh::preprocessor::SleighPreprocessorFactory;
+use mogi_sleigh::spec::ProcessorSpecification;
 use std::cell::RefCell;
+use std::env::current_dir;
+use std::fs::{
+    File,
+    OpenOptions,
+};
+use std::io::Write;
 use std::path::Path;
 use std::rc::Rc;
 use tracing_subscriber::filter::LevelFilter;
@@ -41,12 +48,27 @@ fn main() {
     let spec_path = Path::new("./cpu/Ghidra/Ghidra/Processors/x86/data/languages/x86-64.slaspec");
     // let spec_path = Path::new("./cpu/Ghidra/Ghidra/Processors/x86/data/languages/x86.slaspec");
     // let spec_path = Path::new("./sleigh/ia.sinc");
-    let spec_dir = spec_path.parent().unwrap();
-    let factory = SleighPreprocessorFactory::new().working_dir(spec_dir.to_path_buf());
-    let mut compiler = SleighCompilerBuilder::new()
-        .preprocessor_factory(factory)
-        .build();
-    let specification = compiler.compile(spec_path).unwrap();
+    let mut compiled_spec_path = current_dir().unwrap();
+    compiled_spec_path.push(".output/x86.mcs");
+    let mut file = File::open(&compiled_spec_path);
+    let specification = match file {
+        Ok(mut file) => ProcessorSpecification::load(&mut file),
+        Err(_) => {
+            let spec_dir = spec_path.parent().unwrap();
+            let factory = SleighPreprocessorFactory::new().working_dir(spec_dir.to_path_buf());
+            let mut compiler = SleighCompilerBuilder::new()
+                .preprocessor_factory(factory)
+                .build();
+            let specification = compiler.compile(spec_path).unwrap();
+            let mut file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(compiled_spec_path)
+                .unwrap();
+            specification.save(&mut file);
+            specification
+        }
+    };
     // println!("{:?}", specification.list_global_varnode_strings());
     println!("{:?}", specification.space_max_used_offset(3.into()).unwrap());
     specification.debug_space_allocation(3.into()).unwrap();

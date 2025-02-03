@@ -1,10 +1,24 @@
 use mogi_utilities::index_map::SecondaryMap;
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
-use crate::{compiler::{InternalCompilerResult, SleighCompilerResult}, spec::jir::{trace_jir, values::{JIRConst, JIRValue}}};
+use crate::compiler::{
+    InternalCompilerResult,
+    SleighCompilerResult,
+};
+use crate::spec::jir::trace_jir;
+use crate::spec::jir::values::{
+    JIRConst,
+    JIRValue,
+};
 
-use super::{common::MOIRSize, field::MOIRBitRange, scope::MOIRLocalId};
+use super::common::MOIRSize;
+use super::field::MOIRBitRange;
+use super::scope::MOIRLocalId;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct FieldExtractor {
     local_id: MOIRLocalId,
     local_size: MOIRSize,
@@ -19,7 +33,12 @@ impl FieldExtractor {
         token_index: usize,
         bits: MOIRBitRange,
     ) -> Self {
-        Self { local_id, local_size, token_index, bits }
+        Self {
+            local_id,
+            local_size,
+            token_index,
+            bits,
+        }
     }
 
     /// Extract parts of the field from `token_value` and insert into `fields`. Might need to be

@@ -7,8 +7,7 @@ use crate::spec::moir::field::{
     MOIRField,
     MOIRFieldParent,
 };
-use fnv::FnvHashMap;
-use tracing::debug;
+use mogi_utilities::index_map::SecondaryMap;
 
 #[derive(Debug, Default)]
 pub struct ContextProvider {
@@ -16,18 +15,18 @@ pub struct ContextProvider {
     // from this vector when saving and restoring state
     context_values: Vec<u64>,
     num_values: usize,
-    context_fields: FnvHashMap<FieldId, MOIRField>,
+    context_fields: SecondaryMap<FieldId, Option<MOIRField>>,
 }
 
 impl ContextProvider {
     pub(crate) fn new(specification: &ProcessorSpecification) -> Self {
         let mut highest_cid = ContextId::from(0);
-        let mut context_fields = FnvHashMap::default();
+        let mut context_fields = SecondaryMap::default();
 
         for (field_id, field) in specification.symbol_tables.fields.items() {
             if let MOIRFieldParent::Context(cid) = field.parent {
                 highest_cid = highest_cid.max(cid);
-                context_fields.insert(field_id, field.clone());
+                context_fields[field_id] = Some(field.clone());
             }
         }
 
@@ -39,19 +38,16 @@ impl ContextProvider {
         }
     }
 
-    /// Get the number of context fields stored in this context provider.
-    pub(crate) fn len(&self) -> usize {
-        self.context_fields.len()
-    }
-
     /// Get all stored `(FieldId, u64)` key-value pairs.
     pub(crate) fn values(&self) -> impl Iterator<Item = (FieldId, u64)> {
-        self.context_fields.iter().map(|(field_id, _)| {
-            (
-                *field_id,
-                self.field_value(*field_id)
-                    .expect("If we store the field we store the context"),
-            )
+        self.context_fields.items().filter_map(|(field_id, field)| {
+            field.as_ref().and_then(|_| {
+                Some((
+                    field_id,
+                    self.field_value(field_id)
+                        .expect("If we store the field we store the context"),
+                ))
+            })
         })
     }
 
@@ -95,9 +91,8 @@ impl ContextProvider {
         &self,
         field_id: FieldId,
     ) -> InternalCompilerResult<u64> {
-        let field = self
-            .context_fields
-            .get(&field_id)
+        let field = self.context_fields[field_id]
+            .as_ref()
             .ok_or_else(|| -> InternalError { todo!("Generate error report for missing context field") })?;
         let cid = match field.parent {
             MOIRFieldParent::Token(_) => panic!("We only store context fields"),
@@ -114,9 +109,8 @@ impl ContextProvider {
         field_id: FieldId,
         value: u64,
     ) -> InternalCompilerResult {
-        let field = self
-            .context_fields
-            .get(&field_id)
+        let field = self.context_fields[field_id]
+            .as_ref()
             .ok_or_else(|| -> InternalError { todo!("Generate error report for missing context field") })?;
         let cid = match field.parent {
             MOIRFieldParent::Token(_) => panic!("We only store context fields"),
@@ -128,7 +122,6 @@ impl ContextProvider {
         let context_value = self.context_value_mut(cid)?;
         let cleared = *context_value & !bits.shifted_mask();
         *context_value = cleared | bits.insert(value);
-        debug!("Set context field {field_id:?} to {value:?} ({context_value})");
         Ok(())
     }
 
@@ -139,7 +132,6 @@ impl ContextProvider {
         let start = self.context_values.len() - self.num_values;
 
         for i in 0..self.num_values {
-            debug!("Pushing state value {i}: {}", self.context_values[start + i]);
             self.context_values.push(self.context_values[start + i]);
         }
     }

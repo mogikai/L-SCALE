@@ -81,18 +81,28 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
             .map_err(|_| -> LifterError { todo!() })?;
 
         let root_jumplist = self.specification.jumplist_cache.get(0.into()).unwrap();
-        let count = 100_000;
+        let count = 10;
         let start = Instant::now();
         for _ in 0..count {
             let resolver = root_jumplist
-                .r#match(&bytes, &self.specification.jumplist_cache, &self.specification.symbol_tables.constructors, &mut self.context_provider)
+                .r#match(
+                    &bytes,
+                    &self.specification.jumplist_cache,
+                    &self.specification.symbol_tables.constructors,
+                    &mut self.context_provider,
+                )
                 .unwrap();
             black_box(resolver);
         }
         println!("Matching time: {:?}", start.elapsed() / count);
 
         let resolver = root_jumplist
-            .r#match(&bytes, &self.specification.jumplist_cache, &self.specification.symbol_tables.constructors, &mut self.context_provider)
+            .r#match(
+                &bytes,
+                &self.specification.jumplist_cache,
+                &self.specification.symbol_tables.constructors,
+                &mut self.context_provider,
+            )
             .unwrap();
 
         if let Some((_, resolver)) = resolver {

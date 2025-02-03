@@ -1,4 +1,8 @@
 use ariadne::Source;
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use slotmap::new_key_type;
 use std::fmt::{
     Debug,

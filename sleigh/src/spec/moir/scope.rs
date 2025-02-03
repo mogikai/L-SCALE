@@ -31,6 +31,10 @@ use mogi_utilities::{
     new_map_key,
     new_map_key_16,
 };
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use std::collections::hash_map::Entry;
 use std::collections::{
     HashMap,
@@ -46,7 +50,7 @@ use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 
 /// A scope for locals and labels used in constructors and macros
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct MOIRScope {
     /// A hashmap to keep track of label ids and the location of their first definition in the span.
     labels_definitions: HashMap<StringId, Spanned<LabelId>>,
@@ -97,7 +101,7 @@ new_map_key! { pub struct LabelId; "LBL"; }
 pub type InstructionId = usize;
 
 /// A small enum to keep track of whether the subtable is implicitly or explicitly built.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 enum SubTableBuild {
     Implicit(InstructionId),
     Explicit,
@@ -105,12 +109,12 @@ enum SubTableBuild {
 
 /// A temporary varnode. These have no backing varnode at this stage yet.
 /// They will be mapped to concrete varnodes once the constructor is called.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub(crate) struct MOIRTemporary {
     pub size: MOIRMaybeSize,
 }
 
-#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MOIRMaybeSize {
     Determined(MOIRSize),
     #[default]

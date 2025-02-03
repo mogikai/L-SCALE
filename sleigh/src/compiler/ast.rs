@@ -1,6 +1,10 @@
 use crate::compiler::ast::item::SASTItem;
 use crate::compiler::lexer::InputSpan;
 use crate::compiler::tokens::SleighToken;
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use std::ops::{
     Deref,
     DerefMut,
@@ -21,7 +25,7 @@ pub struct SleighAST {
 }
 
 pub type SpannedToken = (SleighToken, InputSpan);
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Spanned<T> {
     value: T,
     span: InputSpan,

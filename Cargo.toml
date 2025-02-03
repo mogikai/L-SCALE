@@ -43,9 +43,11 @@ debug = false
 
 [profile.dev.package.mogi_sleigh]
 opt-level = 3
+debug = true
 
 [profile.test.package.mogi_sleigh]
 opt-level = 3
+debug = true
 
 #[profile.test.package.mogi_neocpu]
 #opt-level = 0

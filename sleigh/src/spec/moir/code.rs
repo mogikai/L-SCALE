@@ -1,11 +1,15 @@
 use crate::spec::moir::varnode::MOIRLocal;
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use std::fmt::{
     Display,
     Formatter,
 };
 use std::ops::Deref;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MOIRInstruction {
     /// The output of the instruction. The output must always be a varnode, since it is written to.
     /// Some operations may have no output at all.
@@ -514,7 +518,7 @@ impl MOIRInstruction {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MOIROperation {
     /// Special build operation
     Build(TableId),
@@ -619,7 +623,7 @@ pub enum MOIROperation {
     FloatNegate,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum MOIRGotoType {
     Call,
     Return,

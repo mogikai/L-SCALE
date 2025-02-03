@@ -80,6 +80,10 @@ use chumsky::input::{
 };
 use chumsky::inspector::Inspector;
 use mogi_utilities::index_map::PrimaryMap;
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::fmt::{
@@ -97,7 +101,7 @@ use tracing::debug;
 
 mod transform;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 /// StringId given out by interner. The interner is used by the compiler
 /// to simplify string comparisons by mapping ids to strings.
 pub struct StringId(usize);
@@ -847,11 +851,14 @@ impl Default for ProcessorSpecificationBuilder {
             MOIRSpaceIsDefault::NotDefault,
         )
         .expect("This may not error at this point");
-        slf.define_varnode(Spanned::new(epsilon, InputSpan::default()), MOIRVarNode {
-            space: SpaceId::from(0),
-            offset: 0,
-            size: 0,
-        })
+        slf.define_varnode(
+            Spanned::new(epsilon, InputSpan::default()),
+            MOIRVarNode {
+                space: SpaceId::from(0),
+                offset: 0,
+                size: 0,
+            },
+        )
         .expect("This may not error at this point");
 
         // define epsilon as field belonging to a zero-sized token
@@ -861,13 +868,16 @@ impl Default for ProcessorSpecificationBuilder {
                 endianness_override: None,
             })
             .expect("This may not error at this point");
-        slf.define_field(Spanned::new(epsilon, InputSpan::default()), MOIRField {
-            parent: MOIRFieldParent::Token(zero_token),
-            bits: MOIRBitRange::new(0, 0),
-            variables: vec![],
-            values: vec![],
-            strings: vec![],
-        });
+        slf.define_field(
+            Spanned::new(epsilon, InputSpan::default()),
+            MOIRField {
+                parent: MOIRFieldParent::Token(zero_token),
+                bits: MOIRBitRange::new(0, 0),
+                variables: vec![],
+                values: vec![],
+                strings: vec![],
+            },
+        );
         slf
     }
 }
