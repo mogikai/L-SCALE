@@ -1,13 +1,14 @@
+use chumsky::Parser;
 use chumsky::prelude::{
     choice,
     none_of,
     via_parser,
 };
-use chumsky::Parser;
 
 use SASTPCodeStatement::Branch;
 use SleighKeyword::Call;
 
+use crate::compiler::ast::Spanned;
 use crate::compiler::ast::pcode::statement::SASTPCodeStatement::{
     BranchCall,
     BranchReturn,
@@ -16,16 +17,15 @@ use crate::compiler::ast::pcode::statement::{
     SASTPCodeBranchTarget,
     SASTPCodeStatement,
 };
-use crate::compiler::ast::Spanned;
 use crate::compiler::lexer::ParserInput;
 use crate::compiler::parser::helpers::spanned;
 use crate::compiler::parser::pcode::atomic_expressions::pcode_label;
 use crate::compiler::parser::pcode::expression::pcode_expression;
 use crate::compiler::parser::{
+    SleighParserExtra,
     sleigh_control,
     sleigh_keyword,
     whitespace_padded,
-    SleighParserExtra,
 };
 use crate::compiler::tokens::SleighControlCharacter::{
     CloseBracket,
@@ -97,10 +97,10 @@ pub fn pcode_branch_target<'tokens>()
 -> impl Parser<'tokens, ParserInput<'tokens>, Spanned<SASTPCodeBranchTarget>, SleighParserExtra<'tokens>> + Clone {
     choice((
         pcode_label().map(SASTPCodeBranchTarget::Label),
-        pcode_expression().map(SASTPCodeBranchTarget::Indirect),
+        pcode_expression().map(SASTPCodeBranchTarget::Direct),
         pcode_expression()
             .delimited_by(sleigh_control(OpenBracket), sleigh_control(CloseBracket))
-            .map(SASTPCodeBranchTarget::Direct),
+            .map(SASTPCodeBranchTarget::Indirect),
     ))
     .map_with(spanned)
     .boxed()
