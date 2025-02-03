@@ -159,7 +159,7 @@ impl Jumplist {
         match self.data_provider {
             DataProvider::ByteStream => {
                 let mut value_bytes = [0u8; 8];
-                for (bytei, byte) in bytes.iter().enumerate() {
+                for (bytei, byte) in bytes.iter().enumerate().take(self.bytes.into()) {
                     value_bytes[bytei] = *byte;
                 }
                 let value = u64::from_le_bytes(value_bytes);
@@ -192,9 +192,6 @@ impl Jumplist {
         let value_masked = value_unmasked & self.mask;
 
         if let Some(entries) = self.get(value_masked)? {
-            // store state for backtracking
-            accum.tokens.push(value_unmasked);
-
             for entry in entries {
                 // store state for backtracking
                 accum.sublists.push(&entry.sublists);
@@ -204,6 +201,7 @@ impl Jumplist {
                     NextJumplistEntry::Constructor { cid, tid } => {
                         trace_jir!("Reached leaf; cid={cid:?}, tid={tid:?}");
 
+                        accum.tokens.push(value_unmasked);
                         let result = self.process_local_matching(
                             jumplist_cache,
                             constructors,
@@ -220,7 +218,21 @@ impl Jumplist {
                             .get(*jlid)
                             .ok_or_else(|| -> InternalError { todo!("Generate error report for missing jumplist") })?;
 
-                        jumplist.match_local(jumplist_cache, constructors, context_provider, remaining_bytes, accum)?
+                        // store token only if we skip and consume something
+                        accum.tokens.push(value_unmasked);
+                        let result = jumplist.match_local(
+                            jumplist_cache,
+                            constructors,
+                            context_provider,
+                            remaining_bytes,
+                            accum,
+                        )?;
+                        if result.is_none() {
+                            // backtrack
+                            accum.tokens.pop();
+                        }
+
+                        result
                     }
                     NextJumplistEntry::TrailingSame(jlid) => {
                         let jumplist = jumplist_cache
@@ -240,9 +252,6 @@ impl Jumplist {
                 accum.sublists.pop();
                 accum.bytes.pop();
             }
-
-            // no complete match => backtrack and try next entry (from previous list)
-            accum.tokens.pop();
         }
 
         // no match
@@ -304,10 +313,6 @@ impl Jumplist {
             action.evaluate(&mut resolver, context_provider)?;
         }
 
-        // TODO what about the bytes consumed by the sublists? this doesn't really work since we
-        // can't delay that to the end since the amount of bytes consumed affects later matching
-        // (there are also some recursive dependencies when the sublist matching itself
-        // depends on a context variable set to a suffix of the sublist)
         let mut sublist_resolvers = Vec::new();
         for (sublist_ids, sublist_bytes) in local_matching
             .sublists

@@ -365,7 +365,7 @@ impl<'a> JumplistBuilder<'a> {
                 let jumplist_id = self.jumplist_cache.insert(jumplist);
                 jumplist_new.insert(
                     0,
-                    JumplistEntry::new(vec![], NextJumplistEntry::TrailingNext(jumplist_id)),
+                    JumplistEntry::new(vec![], NextJumplistEntry::TrailingSame(jumplist_id)),
                     false,
                 )?;
                 self.diagnostics.entry_count += 1;
@@ -439,7 +439,7 @@ impl<'a> JumplistBuilder<'a> {
             let mut jumplist_new = Jumplist::default();
             for jumplist in jumplists.into_iter() {
                 let jumplist_id = self.jumplist_cache.insert(jumplist);
-                let entry = JumplistEntry::new(vec![], NextJumplistEntry::TrailingNext(jumplist_id));
+                let entry = JumplistEntry::new(vec![], NextJumplistEntry::TrailingSame(jumplist_id));
                 jumplist_new.insert(0, entry, false)?;
                 self.diagnostics.entry_count += 1;
             }
