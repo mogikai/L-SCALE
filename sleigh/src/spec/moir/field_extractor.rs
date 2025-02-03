@@ -53,6 +53,8 @@ impl FieldExtractor {
             todo!("Generate error report for out of bounds token index");
         }
 
+        trace_jir!("Tokens: {:?}", tokens);
+        trace_jir!("Extracting field from token {:?} with bits {:?}", tokens[self.token_index], self.bits);
         let value = self.bits.extract(tokens[self.token_index]);
         trace_jir!("Defining local_id {} := {}", self.local_id, value);
 

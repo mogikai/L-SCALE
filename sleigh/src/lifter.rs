@@ -81,7 +81,7 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
             .map_err(|_| -> LifterError { todo!() })?;
 
         let root_jumplist = self.specification.jumplist_cache.get(0.into()).unwrap();
-        let count = 10;
+        let count = 100_000;
         let start = Instant::now();
         for _ in 0..count {
             let resolver = root_jumplist

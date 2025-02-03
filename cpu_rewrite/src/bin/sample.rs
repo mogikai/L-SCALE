@@ -72,14 +72,14 @@ fn main() {
     // println!("{:?}", specification.list_global_varnode_strings());
     println!("{:?}", specification.space_max_used_offset(3.into()).unwrap());
     specification.debug_space_allocation(3.into()).unwrap();
-    let source = DirectlyMappedBytes::from(b"\x01\xC1");
+    let source = DirectlyMappedBytes::from(b"\xA9\x67\x45\x23\x01");
     let mut cache = LifterCache::default();
     // mod=1
     let mut context_provider = specification.context_provider();
     // longMode=1
     *context_provider
         .context_value_mut(specification.context_id("contextreg").unwrap())
-        .unwrap() = 0x71;
+        .unwrap() = 0x51;
     let mut lifter = Lifter::new(&specification, &mut context_provider, &mut cache, &source);
     let (next, inst) = lifter.lift(0u64.into()).unwrap();
     // TODO: Disassemble at offset 0x0000000000001060

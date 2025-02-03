@@ -324,7 +324,7 @@ impl Jumplist {
                     .get(*sublist_id)
                     .ok_or_else(|| -> InternalError { todo!("Generate error report for missing jumplist") })?;
                 trace_jir!(
-                    "Descending into sublist {:#?} with bytes={:?} (from {})",
+                    "Descending into sublist {:#?} with bytes={:#x?} (from {})",
                     sublist_id,
                     *sublist_bytes,
                     constructor.display
