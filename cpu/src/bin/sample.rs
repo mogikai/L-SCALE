@@ -47,7 +47,7 @@ fn main() {
         )
         .init();
     // let test_exe = include_bytes!("./../../../emulator/systems/ubuntu2304/home/user/main");
-    let spec_path = Path::new("./cpu_legacy/Ghidra/Ghidra/Processors/x86/data/languages/x86-64.slaspec");
+    let spec_path = Path::new("./deps/Ghidra/Ghidra/Processors/x86/data/languages/x86-64.slaspec");
     // let spec_path = Path::new("./cpu/Ghidra/Ghidra/Processors/x86/data/languages/x86.slaspec");
     // let spec_path = Path::new("./sleigh/ia.sinc");
     let mut compiled_spec_path = current_dir().unwrap();
