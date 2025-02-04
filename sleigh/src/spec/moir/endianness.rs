@@ -1,5 +1,5 @@
-use crate::compiler::ast::define::SASTEndianness;
-use serde::{
+use mogi_sleigh_parser::ast::define::SASTEndianness;
+use serde_derive::{
     Deserialize,
     Serialize,
 };

@@ -11,7 +11,7 @@ use crate::spec::moir::scope::{
 };
 use crate::spec::moir::varnode::MOIRLocal;
 use crate::spec::typed_index_table::TypedIndexTable;
-use serde::{
+use serde_derive::{
     Deserialize,
     Serialize,
 };

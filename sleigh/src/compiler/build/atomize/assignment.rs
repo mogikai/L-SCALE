@@ -3,15 +3,15 @@ mod store;
 mod subpiece;
 mod variable;
 
-use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
-use crate::compiler::ast::pcode::target_expression::SASTPCodeTargetExpression;
-use crate::compiler::ast::Spanned;
 use crate::compiler::{
     InternalCompilerResult,
     SleighCompiler,
 };
 use crate::spec::moir::code::MOIRInstruction;
 use crate::spec::moir::scope::MOIRScope;
+use mogi_sleigh_parser::Spanned;
+use mogi_sleigh_parser::ast::pcode::expression::SASTPCodeExpression;
+use mogi_sleigh_parser::ast::pcode::target_expression::SASTPCodeTargetExpression;
 
 impl SleighCompiler {
     /// Process an assignment statement in the AST. The right hand side of the assignment will

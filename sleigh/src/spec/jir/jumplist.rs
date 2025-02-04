@@ -17,11 +17,11 @@ use fnv::FnvHashMap;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::SecondaryMap;
 use rustc_hash::FxHashMap;
-use serde::{
+use serde_big_array::BigArray;
+use serde_derive::{
     Deserialize,
     Serialize,
 };
-use serde_big_array::BigArray;
 
 /// We need to do two passes for every constructor:
 /// * get the constructor id and execute disassembly actions

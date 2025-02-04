@@ -4,19 +4,6 @@ use std::collections::{
     HashSet,
 };
 
-use chumsky::container::Container;
-use itertools::Itertools;
-use num::PrimInt;
-
-use crate::compiler::ast::Spanned;
-use crate::compiler::ast::common::SASTIdent;
-use crate::compiler::ast::constructor::bit_pattern_section::{
-    SASTBinaryOp,
-    SASTBitPatternConstraint,
-    SASTConstraintOp,
-    SASTConstraintPattern,
-    SASTUnaryOp,
-};
 use crate::compiler::build::constructor::matcher::{
     FieldMatcher,
     Matcher,
@@ -38,6 +25,18 @@ use crate::spec::moir::field::{
     MOIRFieldParent,
 };
 use crate::spec::moir::table::TableId;
+use chumsky::container::Container;
+use itertools::Itertools;
+use mogi_sleigh_parser::Spanned;
+use mogi_sleigh_parser::ast::common::SASTIdent;
+use mogi_sleigh_parser::ast::constructor::bit_pattern_section::{
+    SASTBinaryOp,
+    SASTBitPatternConstraint,
+    SASTConstraintOp,
+    SASTConstraintPattern,
+    SASTUnaryOp,
+};
+use num::PrimInt;
 
 use super::matcher::Submatchers;
 

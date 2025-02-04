@@ -1,4 +1,5 @@
 use super::actions::MOIRAction;
+use super::field_extractor::FieldExtractor;
 use crate::compiler::InternalCompilerResult;
 use crate::spec::jir::basic_block::TargetBasicBlockBuilder;
 use crate::spec::jir::instruction::TargetInstructionBuilder;
@@ -34,15 +35,14 @@ use crate::{
     jinst,
     new_typed_index_table_id,
 };
-use serde::{
+use mogi_sleigh_parser::SleighInterner;
+use serde_derive::{
     Deserialize,
     Serialize,
 };
 use std::iter::once;
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
-
-use super::field_extractor::FieldExtractor;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MOIRConstructor {
@@ -396,7 +396,7 @@ impl MOIRConstructor {
 
     pub fn mcode_debug_string(
         &self,
-        interner: &StringInterner<StringBackend>,
+        interner: &SleighInterner,
     ) -> String {
         use std::fmt::Write;
         let mut instructions_str = String::new();

@@ -17,18 +17,11 @@ use std::time::{
 };
 
 use clap::Parser;
-use mogi_cpu::cpu::builder::CpuBuilder;
-use mogi_cpu::cpu::cpuid::CpuId;
-use mogi_cpu::Triple;
-use rand::seq::SliceRandom;
-use tracing::debug;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{
-    fmt,
-    EnvFilter,
-};
-
+use mogi_cpu_legacy::Triple;
+use mogi_cpu_legacy::cpu::builder::CpuBuilder;
+use mogi_cpu_legacy::cpu::cpuid::CpuId;
+use mogi_emulator::LittleEndian;
+use mogi_emulator::emulator::GenericEmulator;
 use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
 use mogi_emulator::emulator::abstractions::kernel_task::KernelTask;
 use mogi_emulator::emulator::abstractions::network::{
@@ -45,6 +38,7 @@ use mogi_emulator::emulator::interface::network::tcp::{
 };
 use mogi_emulator::emulator::platform::linux::kernel::LinuxKernelTask;
 use mogi_emulator::emulator::platform::linux::scheduler::LinuxX86Scheduler;
+use mogi_emulator::emulator::system::System;
 use mogi_emulator::emulator::system::clock::Clock;
 use mogi_emulator::emulator::system::fd_map::FileDescriptorMap;
 use mogi_emulator::emulator::system::filesystem::Filesystem;
@@ -55,16 +49,21 @@ use mogi_emulator::emulator::system::memory::{
 };
 use mogi_emulator::emulator::system::prng::SeedablePrngMap;
 use mogi_emulator::emulator::system::task_manager::TaskManager;
-use mogi_emulator::emulator::system::System;
-use mogi_emulator::emulator::GenericEmulator;
-use mogi_emulator::LittleEndian;
 use mogi_fuzzer::io::tcp::TCP;
 use mogi_mem::mmu::MogiMMU;
-use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::components::cpu::CPU;
+use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::components::restore::Restorable;
 use mogi_system::errors::generic::GenericError;
 use mogi_utilities::error::memory::MemoryError;
+use rand::seq::SliceRandom;
+use tracing::debug;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{
+    EnvFilter,
+    fmt,
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -101,7 +100,10 @@ fn main() -> Result<(), GenericError> {
                 .optimize_block(false)
                 .optimize_instructions(false)
                 .target_triple(Triple::host())
-                .cpu_id(CpuId::from_file(PathBuf::from("./cpu/data/cpuid/intel/haswell.json5").as_path()).unwrap())
+                .cpu_id(
+                    CpuId::from_file(PathBuf::from("../../../cpu_legacy/data/cpuid/intel/haswell.json5").as_path())
+                        .unwrap(),
+                )
                 .build()
                 .unwrap(),
         ));

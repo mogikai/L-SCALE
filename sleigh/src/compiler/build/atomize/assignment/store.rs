@@ -1,18 +1,18 @@
-use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
-use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
-use crate::compiler::ast::Spanned;
 use crate::compiler::{
     InternalCompilerResult,
     SleighCompiler,
 };
 use crate::spec::moir::code::{
-    moir_instruction,
     MOIRInstruction,
+    moir_instruction,
 };
 use crate::spec::moir::scope::{
     MOIRMaybeSize,
     MOIRScope,
 };
+use mogi_sleigh_parser::Spanned;
+use mogi_sleigh_parser::ast::pcode::deref::SASTPCodeDeref;
+use mogi_sleigh_parser::ast::pcode::expression::SASTPCodeExpression;
 
 impl SleighCompiler {
     pub fn atomize_assignment_store(

@@ -1,5 +1,5 @@
 use crate::compiler::SleighCompiler;
-use crate::preprocessor::SleighPreprocessorFactory;
+use mogi_sleigh_parser::preprocessor::SleighPreprocessorFactory;
 
 #[derive(Default, Debug)]
 pub struct SleighCompilerBuilder {

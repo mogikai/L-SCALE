@@ -9,7 +9,7 @@ use crate::spec::moir::field::{
 };
 use crate::spec::moir::table::TableId;
 use crate::spec::moir::varnode::VarNodeId;
-use serde::{
+use serde_derive::{
     Deserialize,
     Serialize,
 };

@@ -1,5 +1,9 @@
 use crate::spec::moir::varnode::MOIRLocal;
-use serde::{
+use mogi_sleigh_parser::ast::pcode::expression::{
+    SASTPCodeBinaryOp,
+    SASTPCodeUnaryOp,
+};
+use serde_derive::{
     Deserialize,
     Serialize,
 };
@@ -298,10 +302,6 @@ macro_rules! moir_instruction {
     };
 }
 
-use crate::compiler::ast::pcode::expression::{
-    SASTPCodeBinaryOp,
-    SASTPCodeUnaryOp,
-};
 use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::custom_op::CustomOpId;
 use crate::spec::moir::scope::{

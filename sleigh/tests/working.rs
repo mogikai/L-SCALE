@@ -1,5 +1,5 @@
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
-use mogi_sleigh::preprocessor::SleighPreprocessorFactory;
+use mogi_sleigh_parser::preprocessor::SleighPreprocessorFactory;
 use std::path::PathBuf;
 
 #[test]

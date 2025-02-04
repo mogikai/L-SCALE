@@ -1,15 +1,12 @@
 use crate::compiler::InternalCompilerResult;
-use crate::compiler::ast::Spanned;
 use crate::compiler::error::{
     DuplicatedIdentifier,
     InternalError,
     InternalErrorType,
 };
-use crate::compiler::lexer::InputSpan;
 use crate::spec::builder::{
     CustomInterner,
     ProcessorSpecificationBuilder,
-    StringId,
 };
 use crate::spec::moir::code::{
     MOIRInstruction,
@@ -23,6 +20,13 @@ use crate::spec::moir::varnode::{
     MOIRReference,
     MOIRSlice,
 };
+use mogi_sleigh_parser::lexer::InputSpan;
+use mogi_sleigh_parser::{
+    ParserContext,
+    SleighInterner,
+    Spanned,
+    StringId,
+};
 use mogi_utilities::index_map::{
     PrimaryMap,
     SecondaryMap,
@@ -31,7 +35,7 @@ use mogi_utilities::{
     new_map_key,
     new_map_key_16,
 };
-use serde::{
+use serde_derive::{
     Deserialize,
     Serialize,
 };
@@ -760,7 +764,7 @@ impl MOIRScope {
 
     pub fn detailed_scope_display(
         &self,
-        interner: &StringInterner<StringBackend>,
+        interner: &SleighInterner,
     ) -> String {
         let mut already_printed = HashMap::new();
         for (ident, local_id) in self.locals.iter() {

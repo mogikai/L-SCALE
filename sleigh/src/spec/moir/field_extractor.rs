@@ -1,5 +1,5 @@
 use mogi_utilities::index_map::SecondaryMap;
-use serde::{
+use serde_derive::{
     Deserialize,
     Serialize,
 };

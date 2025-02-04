@@ -6,26 +6,6 @@ pub mod atomize;
 pub(crate) mod constructor;
 mod r#macro;
 
-use crate::compiler::ast::attach::SASTAttach;
-use crate::compiler::ast::define::{
-    SASTAddressSpace,
-    SASTAddressSpaceAttribute,
-    SASTAlignment,
-    SASTBitrangeRegister,
-    SASTContext,
-    SASTDefine,
-    SASTEndianness,
-    SASTToken,
-    SASTUserPcodeOp,
-    SASTVarnode,
-};
-use crate::compiler::ast::item::SASTItem;
-use crate::compiler::ast::with::SASTWith;
-use crate::compiler::ast::{
-    SleighAST,
-    Spanned,
-    TransmuteIntoVec,
-};
 use crate::compiler::error::{
     DuplicatedSpaceAttribute,
     InternalError,
@@ -49,6 +29,26 @@ use crate::spec::moir::field::{
 };
 use crate::spec::moir::token::MOIRToken;
 use crate::spec::moir::varnode::MOIRVarNode;
+use mogi_sleigh_parser::ast::attach::SASTAttach;
+use mogi_sleigh_parser::ast::define::{
+    SASTAddressSpace,
+    SASTAddressSpaceAttribute,
+    SASTAlignment,
+    SASTBitrangeRegister,
+    SASTContext,
+    SASTDefine,
+    SASTEndianness,
+    SASTToken,
+    SASTUserPcodeOp,
+    SASTVarnode,
+};
+use mogi_sleigh_parser::ast::item::SASTItem;
+use mogi_sleigh_parser::ast::with::SASTWith;
+use mogi_sleigh_parser::{
+    SleighAST,
+    Spanned,
+    TransmuteIntoVec,
+};
 use tracing::{
     debug,
     trace,
@@ -269,12 +269,13 @@ impl SleighCompiler {
         if bits % 8 != 0 {
             Err(ProcessorSpecificationError::TokenSizeNotAMultipleOfEightBit)?;
         }
-        let result = self
-            .spec_builder
-            .define_token(token.name.transmute(), MOIRToken {
+        let result = self.spec_builder.define_token(
+            token.name.transmute(),
+            MOIRToken {
                 bytes: MOIRSize::try_from(bits).map_err(|_| -> InternalError { todo!() })? / 8,
                 endianness_override: token.endian_override.map(|e| e.into_value().into()),
-            });
+            },
+        );
         if let Some(token_id) = self.report_error_or_unwrap(result)? {
             for field in token.fields.into_iter() {
                 let name = field.name.clone().transmute();

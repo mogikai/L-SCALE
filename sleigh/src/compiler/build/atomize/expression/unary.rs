@@ -1,8 +1,3 @@
-use crate::compiler::ast::pcode::expression::{
-    SASTPCodeExpression,
-    SASTPCodeUnaryOp,
-};
-use crate::compiler::ast::Spanned;
 use crate::compiler::build::atomize::expression::{
     from_bool,
     into_bool,
@@ -13,9 +8,9 @@ use crate::compiler::{
     SleighCompiler,
 };
 use crate::spec::moir::code::{
-    moir_instruction,
     MOIRInstruction,
     MOIROperation,
+    moir_instruction,
 };
 use crate::spec::moir::scope::{
     MOIRLocalId,
@@ -24,6 +19,11 @@ use crate::spec::moir::scope::{
 use crate::spec::moir::varnode::{
     MOIRConst,
     MOIRLocal,
+};
+use mogi_sleigh_parser::Spanned;
+use mogi_sleigh_parser::ast::pcode::expression::{
+    SASTPCodeExpression,
+    SASTPCodeUnaryOp,
 };
 
 impl SleighCompiler {

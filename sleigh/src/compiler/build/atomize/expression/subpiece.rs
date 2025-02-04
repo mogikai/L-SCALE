@@ -1,9 +1,3 @@
-use crate::compiler::ast::pcode::subpiece::{
-    SASTPCodeSubpiece,
-    SASTPCodeSubpieceSelector,
-    SASTPCodeSubpieceTarget,
-};
-use crate::compiler::ast::Spanned;
 use crate::compiler::error::InternalError;
 use crate::compiler::{
     InternalCompilerResult,
@@ -14,6 +8,12 @@ use crate::spec::moir::scope::{
     MOIRScope,
 };
 use crate::spec::moir::varnode::MOIRLocal;
+use mogi_sleigh_parser::Spanned;
+use mogi_sleigh_parser::ast::pcode::subpiece::{
+    SASTPCodeSubpiece,
+    SASTPCodeSubpieceSelector,
+    SASTPCodeSubpieceTarget,
+};
 
 impl SleighCompiler {
     /// The subpiece operation throws away the lower N bits.

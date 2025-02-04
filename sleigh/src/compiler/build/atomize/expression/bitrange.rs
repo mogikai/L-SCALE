@@ -1,12 +1,10 @@
-use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
-use crate::compiler::ast::Spanned;
 use crate::compiler::{
     InternalCompilerResult,
     SleighCompiler,
 };
 use crate::spec::moir::code::{
-    moir_instruction,
     MOIRInstruction,
+    moir_instruction,
 };
 use crate::spec::moir::scope::{
     MOIRLocalId,
@@ -16,6 +14,8 @@ use crate::spec::moir::varnode::{
     MOIRConst,
     MOIRLocal,
 };
+use mogi_sleigh_parser::Spanned;
+use mogi_sleigh_parser::ast::pcode::bitrange::SASTPCodeBitRange;
 
 impl SleighCompiler {
     pub fn atomize_bitrange(

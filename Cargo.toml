@@ -1,3 +1,6 @@
+[build]
+rustflags = ["-Z", "threads=8"]
+
 [workspace]
 members = [
     "emulator",
@@ -5,18 +8,18 @@ members = [
     "fuzzer",
     #    "gui",
     "samples",
-    "cpu",
-    "cpu_rewrite",
+    "cpu_legacy",
     "mem",
     "utilities",
     "system",
-    "cpu_rewrite",
+    "cpu",
     "sleigh",
+    "sleigh_parser",
 ]
 
 exclude = [
     "deps",
-    "cpu/Ghidra"
+    "cpu_legacy/Ghidra"
 ]
 
 resolver = "2"
@@ -42,6 +45,10 @@ opt-level = 3
 debug = false
 
 [profile.dev.package.mogi_sleigh]
+opt-level = 3
+debug = true
+
+[profile.dev.package.mogi_sleigh_parser]
 opt-level = 3
 debug = true
 

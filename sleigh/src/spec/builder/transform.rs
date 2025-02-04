@@ -1,6 +1,5 @@
 use crate::compiler::InternalCompilerResult;
 
-use crate::compiler::ast::Spanned;
 use crate::spec::builder::{
     CustomInterner,
     MOIRSymbolId,
@@ -45,6 +44,11 @@ use std::collections::HashMap;
 use self::jumplist::JumplistBuilder;
 
 mod jumplist;
+use mogi_sleigh_parser::{
+    ParserContext,
+    SleighInterner,
+    Spanned,
+};
 use string_interner::StringInterner;
 use string_interner::backend::StringBackend;
 use tracing::warn;
@@ -66,7 +70,7 @@ pub struct JIRData {
 
 #[derive(Debug)]
 struct MOIRData<'a> {
-    interner: &'a StringInterner<StringBackend>,
+    interner: &'a SleighInterner,
     symbol_ids: TypedIndexTable<Ident, MOIRSymbolId>,
     symbol_strings: HashMap<Ident, Spanned<StringId>>,
     symbol_tables: MOIRSymbolTables,
@@ -77,7 +81,7 @@ struct MOIRData<'a> {
 
 impl<'a> MOIRToJIRTransformer<'a> {
     pub fn new(
-        interner: &'a StringInterner<StringBackend>,
+        interner: &'a SleighInterner,
         symbol_ids: TypedIndexTable<Ident, MOIRSymbolId>,
         symbol_strings: HashMap<Ident, Spanned<StringId>>,
         symbol_tables: MOIRSymbolTables,
@@ -158,7 +162,7 @@ impl<'a> MOIRToJIRTransformer<'a> {
 }
 
 fn transform_custom_ops(
-    interner: &StringInterner<StringBackend>,
+    interner: &SleighInterner,
     custom_ops: PrimaryMap<CustomOpId, MOIRCustomOp>,
 ) -> InternalCompilerResult<PrimaryMap<CustomOpId, JIRCustomOp>> {
     Ok(custom_ops
@@ -172,12 +176,15 @@ fn transform_custom_ops(
                 warn!("Custom op '{name}' is declared but not defined. Ignoring.");
                 None
             }
-            MOIRCustomOp::Defined { name, .. } => Some((id, JIRCustomOp {
-                name: interner
-                    .string(*name)
-                    .expect("The string has to exist since we saved an id to it.")
-                    .to_string(),
-            })),
+            MOIRCustomOp::Defined { name, .. } => Some((
+                id,
+                JIRCustomOp {
+                    name: interner
+                        .string(*name)
+                        .expect("The string has to exist since we saved an id to it.")
+                        .to_string(),
+                },
+            )),
         })
         .collect::<PrimaryMap<CustomOpId, JIRCustomOp>>())
 }

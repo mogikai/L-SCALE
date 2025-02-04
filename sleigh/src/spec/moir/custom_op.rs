@@ -1,5 +1,5 @@
-use crate::spec::builder::StringId;
 use crate::spec::moir::scope::MOIRMaybeSize;
+use mogi_sleigh_parser::StringId;
 use mogi_utilities::new_map_key;
 
 /// A custom operation defined in the sleigh specification

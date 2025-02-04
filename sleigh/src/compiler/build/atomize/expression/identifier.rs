@@ -1,15 +1,17 @@
-use crate::compiler::ast::Spanned;
 use crate::compiler::build::trace_build;
 use crate::compiler::{
     InternalCompilerResult,
     SleighCompiler,
 };
-use crate::spec::builder::StringId;
 use crate::spec::moir::scope::{
     MOIRMaybeSize,
     MOIRScope,
 };
 use crate::spec::moir::varnode::MOIRLocal;
+use mogi_sleigh_parser::{
+    Spanned,
+    StringId,
+};
 
 impl SleighCompiler {
     /// Atomizing an identifier always returns a local since we don't want to simply copy this into an out local.

@@ -1,7 +1,7 @@
-use crate::compiler::ast::common::SASTIdent;
-use crate::compiler::ast::pcode::SASTPCode;
-use crate::compiler::ast::Spanned;
 use crate::new_typed_index_table_id;
+use mogi_sleigh_parser::Spanned;
+use mogi_sleigh_parser::ast::common::SASTIdent;
+use mogi_sleigh_parser::ast::pcode::SASTPCode;
 
 #[derive(Debug, Clone)]
 pub struct MOIRMacro {

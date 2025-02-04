@@ -3,12 +3,10 @@ use self::jir::jumplist::{
     JumplistId,
 };
 use self::moir::field::MOIRField;
-use crate::compiler::ast::Spanned;
 use crate::new_typed_index_table_id;
 use crate::spec::builder::{
     CustomInterner,
     MOIRSymbolId,
-    StringId,
 };
 use crate::spec::jir::context_provider::ContextProvider;
 use crate::spec::jir::custom_op::JIRCustomOp;
@@ -40,8 +38,14 @@ use brotli::{
     Decompressor,
     DecompressorWriter,
 };
+use mogi_sleigh_parser::{
+    ParserContext,
+    SleighInterner,
+    Spanned,
+    StringId,
+};
 use mogi_utilities::index_map::PrimaryMap;
-use serde::{
+use serde_derive::{
     Deserialize,
     Serialize,
 };
@@ -102,7 +106,7 @@ pub(crate) struct JIRSymbolTables {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProcessorSpecification {
-    pub(crate) interner: StringInterner<StringBackend>,
+    pub(crate) interner: SleighInterner,
 
     /// The main symbol map of the specification.
     /// Each identifier points to a specific symbol id.

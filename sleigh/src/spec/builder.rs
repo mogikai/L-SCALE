@@ -12,7 +12,7 @@ use super::moir::context::{
     ContextId,
     MOIRContext,
 };
-use crate::compiler::ast::Spanned;
+use crate::compiler::InternalCompilerResult;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::{
     DuplicateDefineType,
@@ -24,11 +24,6 @@ use crate::compiler::error::{
     UndefinedIdentifier,
     UndefinedSymbol,
     UnmappedIdentifier,
-};
-use crate::compiler::lexer::InputSpan;
-use crate::compiler::{
-    CompilerContext,
-    InternalCompilerResult,
 };
 use crate::spec::builder::transform::MOIRToJIRTransformer;
 use crate::spec::moir::address_space::{
@@ -79,8 +74,15 @@ use chumsky::input::{
     Input,
 };
 use chumsky::inspector::Inspector;
+use mogi_sleigh_parser::lexer::InputSpan;
+use mogi_sleigh_parser::{
+    ParserContext,
+    SleighInterner,
+    Spanned,
+    StringId,
+};
 use mogi_utilities::index_map::PrimaryMap;
-use serde::{
+use serde_derive::{
     Deserialize,
     Serialize,
 };
@@ -100,20 +102,6 @@ use strum_macros::Display;
 use tracing::debug;
 
 mod transform;
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
-/// StringId given out by interner. The interner is used by the compiler
-/// to simplify string comparisons by mapping ids to strings.
-pub struct StringId(usize);
-
-impl Display for StringId {
-    fn fmt(
-        &self,
-        f: &mut Formatter<'_>,
-    ) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
 
 #[derive(Debug, Clone, Copy, Display, PartialEq, Eq, Hash)]
 pub enum MOIRSymbolId {
@@ -146,7 +134,7 @@ pub(super) struct MOIRSymbolTables {
 
 #[derive(Debug)]
 pub struct ProcessorSpecificationBuilder {
-    interner: StringInterner<StringBackend>,
+    interner: SleighInterner,
 
     /// This hashmap simply keeps track of which string id is associated with which builtin operation.
     /// It is used to look up the operation type when resolving invocations.
@@ -188,8 +176,12 @@ pub struct ProcessorSpecificationBuilder {
 }
 
 impl ProcessorSpecificationBuilder {
-    pub(crate) fn interner(&self) -> &StringInterner<StringBackend> {
+    pub(crate) fn interner(&self) -> &SleighInterner {
         &self.interner
+    }
+
+    pub(crate) fn interner_mut(&mut self) -> &mut SleighInterner {
+        &mut self.interner
     }
 
     /// Define the endianness. If the endianness was previously defined, an error report is generated.
@@ -793,7 +785,7 @@ impl ProcessorSpecificationBuilder {
 
 impl Default for ProcessorSpecificationBuilder {
     fn default() -> Self {
-        let mut interner = StringInterner::new();
+        let mut interner = SleighInterner::default();
         let placeholder_ident = interner.intern("_");
         let epsilon = interner.intern("epsilon");
         let const_space = interner.intern("const");
@@ -860,24 +852,6 @@ impl Default for ProcessorSpecificationBuilder {
             },
         )
         .expect("This may not error at this point");
-
-        // define epsilon as field belonging to a zero-sized token
-        let zero_token = slf
-            .define_unnamed_token(MOIRToken {
-                bytes: 0,
-                endianness_override: None,
-            })
-            .expect("This may not error at this point");
-        slf.define_field(
-            Spanned::new(epsilon, InputSpan::default()),
-            MOIRField {
-                parent: MOIRFieldParent::Token(zero_token),
-                bits: MOIRBitRange::new(0, 0),
-                variables: vec![],
-                values: vec![],
-                strings: vec![],
-            },
-        );
         slf
     }
 }
@@ -958,31 +932,7 @@ pub trait CustomInterner {
     ) -> Option<&str>;
 }
 
-impl CustomInterner for StringInterner<StringBackend> {
-    fn intern<T: AsRef<str>>(
-        &mut self,
-        string: T,
-    ) -> StringId {
-        StringId(self.get_or_intern(string).to_usize())
-    }
-
-    fn lookup<T: AsRef<str>>(
-        &self,
-        string: T,
-    ) -> Option<StringId> {
-        self.get(string).map(|id| StringId(id.to_usize()))
-    }
-
-    /// Resolve a string id to the corresponding interned string.
-    fn string(
-        &self,
-        string_id: StringId,
-    ) -> Option<&str> {
-        self.resolve(<<StringBackend as Backend>::Symbol as Symbol>::try_from_usize(string_id.0)?)
-    }
-}
-
-impl CompilerContext for ProcessorSpecificationBuilder {
+impl CustomInterner for ProcessorSpecificationBuilder {
     fn intern<T: AsRef<str>>(
         &mut self,
         string: T,
@@ -1003,29 +953,6 @@ impl CompilerContext for ProcessorSpecificationBuilder {
         string_id: StringId,
     ) -> Option<&str> {
         self.interner.string(string_id)
-    }
-}
-
-impl<'src, I: Input<'src>> Inspector<'src, I> for ProcessorSpecificationBuilder {
-    type Checkpoint = ();
-
-    fn on_token(
-        &mut self,
-        _: &I::Token,
-    ) {
-    }
-
-    fn on_save<'parse>(
-        &self,
-        _: &Cursor<'src, 'parse, I>,
-    ) -> Self::Checkpoint {
-        ()
-    }
-
-    fn on_rewind<'parse>(
-        &mut self,
-        _: &Checkpoint<'src, 'parse, I, Self::Checkpoint>,
-    ) {
     }
 }
 

@@ -1,34 +1,20 @@
 [package]
 name = "mogi_cpu"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-thiserror = "1.*"
-addr_align = "0.1.0"
-cranelift = "0.106.0"
-cranelift-codegen = "0.106.0"
-cranelift-jit = "0.106.0"
-cranelift-module = "0.106.0"
-cranelift-native = "0.106.0"
-addr2line = "0.21.0"
-bitflags = { version = "2.3.3", features = ["serde"] }
-byteorder = "1.5.0"
-mogi_system = { path = "../system", version = "0.1.0" }
-mogi_derive = { path = "../derive", version = "0.1.0" }
+dynasmrt = "3.0.1"
+thiserror = "2.0.3"
 mogi_utilities = { path = "../utilities", version = "0.1.0" }
+mogi_sleigh = { path = "../sleigh", version = "0.1.0", features = [] }
 mogi_mem = { path = "../mem" }
-target-lexicon = "0.12.11"
 tracing = { version = "0.1.37", default-features = false }
-object = { version = "0.32.2", default-features = false, features = ["read_core", "elf", "pe"] }
-bytemuck = "1.13.1"
-hashbrown = "0.14.3"
-half = "2.3.1"
-memoffset = "0.9.0"
-serde = { version = "1.0.197", features = ["derive"] }
-serde-xml-rs = "0.6.0"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
-json5 = "0.4.1"
-
-[dev-dependencies]
-quickcheck = { version = "1.0.3", default-features = false }
+clap = { version = "4.5.18", features = ["derive"] }
+bitvec = "1.0.1"
+num_enum = "0.7.3"
+num-traits = "0.2.19"
+memmap2 = "0.9.5"
+libc = "0.2.159"
+fnv = "1.0.7"

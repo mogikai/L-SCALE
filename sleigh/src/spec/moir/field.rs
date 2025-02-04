@@ -1,14 +1,13 @@
-use crate::spec::builder::StringId;
-use crate::spec::moir::token::TokenId;
-use mogi_utilities::new_map_key;
-use serde::{
-    Deserialize,
-    Serialize,
-};
-
 use super::common::MOIRSize;
 use super::context::ContextId;
 use super::varnode::VarNodeId;
+use crate::spec::moir::token::TokenId;
+use mogi_sleigh_parser::StringId;
+use mogi_utilities::new_map_key;
+use serde_derive::{
+    Deserialize,
+    Serialize,
+};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct MOIRBitRange {

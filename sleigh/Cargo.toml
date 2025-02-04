@@ -19,13 +19,15 @@ petgraph = "0.7.0"
 rustc-hash = { version = "2.1.0" }
 serde-big-array = "0.5.1"
 fnv = "1.0.7"
-serde = { version = "1.0.217", features = ["derive"] }
+serde = "1.0.217"
+serde_derive = "1.0.217"
 bincode = { version = "2.0.0-rc.3", features = ["serde"] }
 brotli = "7.0.0"
+mogi_sleigh_parser = { path = "../sleigh_parser", version = "*" }
 
 [features]
 trace_build = []
-trace_pp = []
+trace_pp = ["mogi_sleigh_parser/trace_pp"]
 trace_jir = []
 
 [dev-dependencies]

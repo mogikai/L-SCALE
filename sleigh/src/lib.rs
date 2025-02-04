@@ -8,5 +8,6 @@ extern crate core;
 
 pub mod compiler;
 pub mod lifter;
-pub mod preprocessor;
 pub mod spec;
+
+pub use mogi_sleigh_parser::preprocessor::SleighPreprocessorFactory;

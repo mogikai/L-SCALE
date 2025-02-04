@@ -1,5 +1,20 @@
+use crate::compiler::error::{
+    InternalError,
+    InternalErrorType,
+    SleighCompilerError,
+};
+use crate::spec::ProcessorSpecification;
+use crate::spec::builder::ProcessorSpecificationBuilder;
 use ariadne::Source;
-use serde::{
+use mogi_sleigh_parser::inputcache::CompilerInputCache;
+use mogi_sleigh_parser::lexer::{
+    SleighLexer,
+    SleighTokens,
+};
+use mogi_sleigh_parser::parser::SleighParser;
+use mogi_sleigh_parser::preprocessor::SleighPreprocessorFactory;
+use mogi_sleigh_parser::preprocessor::error::PreprocessorError;
+use serde_derive::{
     Deserialize,
     Serialize,
 };
@@ -18,65 +33,9 @@ use tracing::{
     info,
 };
 
-use crate::compiler::error::{
-    InternalError,
-    InternalErrorType,
-    SleighCompilerError,
-};
-use crate::compiler::lexer::{
-    SleighLexer,
-    SleighTokens,
-};
-use crate::compiler::parser::SleighParser;
-use crate::preprocessor::SleighPreprocessorFactory;
-use crate::preprocessor::error::PreprocessorError;
-use crate::spec::ProcessorSpecification;
-use crate::spec::builder::{
-    ProcessorSpecificationBuilder,
-    StringId,
-};
-use inputcache::CompilerInputCache;
-
-pub mod ast;
 pub mod build;
 pub mod builder;
 pub mod error;
-pub mod inputcache;
-pub mod lexer;
-pub mod parser;
-pub mod tokens;
-
-new_key_type! { pub struct InputId; }
-
-impl Display for InputId {
-    fn fmt(
-        &self,
-        f: &mut Formatter<'_>,
-    ) -> std::fmt::Result {
-        Debug::fmt(self, f)
-    }
-}
-
-pub(crate) trait CompilerContext {
-    /// Intern the provided value that can be converted to a string.
-    /// If the value already exists, a key to that value is returned.
-    /// Otherwise, a new entry is created and the key to that is returned.
-    fn intern<T: AsRef<str>>(
-        &mut self,
-        string: T,
-    ) -> StringId;
-
-    /// Get the id for an interned string if it exists.
-    fn lookup<T: AsRef<str>>(
-        &self,
-        string: T,
-    ) -> Option<StringId>;
-
-    fn string(
-        &self,
-        string_id: StringId,
-    ) -> Option<&str>;
-}
 
 pub type InternalCompilerResult<T = ()> = Result<T, InternalError>;
 
@@ -114,7 +73,8 @@ impl SleighCompiler {
         info!("Parsing the abstract syntax tree.");
         let ast = self
             .parser
-            .parse(&mut self.input_cache, &mut self.spec_builder, tokens)?;
+            .parse(&mut self.input_cache, &mut self.spec_builder.interner_mut(), tokens)
+            .map_err(|e| -> SleighCompilerError { todo!("Correctly map errors") })?;
         info!("Building the specification from the AST.");
         let result = self.build(ast);
         // result should not be an error except StopOnFirstError, if result is an error
@@ -165,7 +125,8 @@ impl SleighCompiler {
                 // If the input was already tokenized, we can continue, otherwise tokenize now.
                 let tokens = self
                     .lexer
-                    .tokenize(&mut self.input_cache, &mut self.spec_builder, input_id)?;
+                    .tokenize(&mut self.input_cache, &mut self.spec_builder.interner_mut(), input_id)
+                    .map_err(|e| -> SleighCompilerError { todo!("Correctly map errors") })?;
                 debug!("Tokenized input {input_id:?}");
                 self.input_cache
                     .attach_tokens(input_id, tokens)
@@ -180,7 +141,7 @@ impl SleighCompiler {
                     SleighCompilerError::LexerError(InternalError::from(e).create_string(&mut self.input_cache))
                 })?;
             // Continue preprocessing
-            match preprocessor.preprocess(&mut self.input_cache, &mut self.spec_builder) {
+            match preprocessor.preprocess(&mut self.input_cache, &mut self.spec_builder.interner_mut()) {
                 Ok(tokens) => break tokens,
                 Err(PreprocessorError::LoadingRequired(id)) => input_id = id,
                 Err(e) => {

@@ -1,4 +1,4 @@
-use serde::{
+use serde_derive::{
     Deserialize,
     Serialize,
 };

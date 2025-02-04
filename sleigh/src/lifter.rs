@@ -37,7 +37,7 @@ pub struct Lifter<'a, 'cache, InstSourceT: TargetInstructionSource> {
     instruction_source: &'a InstSourceT,
 }
 
-impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, InstSourceT> {
+impl<'a, 'cache, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, InstSourceT> {
     pub fn new(
         specification: &'a ProcessorSpecification,
         context_provider: &'a mut ContextProvider,
@@ -57,11 +57,11 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
     /// To decode the entire target basic block, use [Self::lift_block] instead.
     /// One target instruction corresponds to multiple lifted instructions most of the time.
     /// See [TargetBasicBlock] for more detail.
-    pub fn lift(
+    pub fn lift_single(
         &mut self,
         addr: EVAddr,
     ) -> LifterResult<(EVAddr, &TargetBasicBlock)> {
-        // self.cache.flush_instruction(addr)?;
+        self.cache.flush_block(addr)?;
         // // Check the cache. If it contains the instruction we can simply return it.
         // if self.cache.is_instruction_cached(addr) {
         //     // TODO: Remove the outer check once the conditional control flow borrow checking lands
@@ -81,20 +81,6 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
             .map_err(|_| -> LifterError { todo!() })?;
 
         let root_jumplist = self.specification.jumplist_cache.get(0.into()).unwrap();
-        let count = 100_000;
-        let start = Instant::now();
-        for _ in 0..count {
-            let resolver = root_jumplist
-                .r#match(
-                    &bytes,
-                    &self.specification.jumplist_cache,
-                    &self.specification.symbol_tables.constructors,
-                    &mut self.context_provider,
-                )
-                .unwrap();
-            black_box(resolver);
-        }
-        println!("Matching time: {:?}", start.elapsed() / count);
 
         let resolver = root_jumplist
             .r#match(
@@ -107,8 +93,8 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
 
         if let Some((_, resolver)) = resolver {
             let mut block_builder = TargetBasicBlockBuilder::new(addr, self.specification.temp_space);
-            resolver.print_hierarchy(0);
-            resolver.print_mcode(&self.specification, 0);
+            // resolver.print_hierarchy(0);
+            // resolver.print_mcode(&self.specification, 0);
 
             resolver
                 .build(&self.specification, &mut block_builder)
@@ -118,7 +104,6 @@ impl<'a, 'cache: 'a, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, In
                 .finish()
                 .map_err(|_| -> LifterError { todo!() })?;
             let block = self.cache.cache_block(addr, block)?;
-            debug!("{block}");
             Ok((addr, block))
         } else {
             Err(LifterError::Unknown)

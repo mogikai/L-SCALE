@@ -1,11 +1,11 @@
-use crate::compiler::ast::pcode_macro::SASTPCodeMacro;
-use crate::compiler::ast::Spanned;
 use crate::compiler::build::trace_build;
 use crate::compiler::{
     InternalCompilerResult,
     SleighCompiler,
 };
 use crate::spec::moir::r#macro::MOIRMacro;
+use mogi_sleigh_parser::Spanned;
+use mogi_sleigh_parser::ast::pcode_macro::SASTPCodeMacro;
 
 impl SleighCompiler {
     pub fn process_pcode_macro(

@@ -1,15 +1,5 @@
-use crate::compiler::ast::define::SASTAddressSpaceAttribute;
-use crate::compiler::inputcache::{
-    CompilerInputCache,
-    InputCacheError,
-};
-use crate::compiler::lexer::InputSpan;
-use crate::preprocessor::error::PreprocessorError;
 use crate::spec::ProcessorSpecificationError;
-use crate::spec::builder::{
-    MOIRSymbolId,
-    StringId,
-};
+use crate::spec::builder::MOIRSymbolId;
 use crate::spec::moir::common::MOIRSize;
 use ariadne::{
     ColorGenerator,
@@ -18,6 +8,14 @@ use ariadne::{
     Report,
     ReportKind,
 };
+use mogi_sleigh_parser::StringId;
+use mogi_sleigh_parser::ast::define::SASTAddressSpaceAttribute;
+use mogi_sleigh_parser::inputcache::{
+    CompilerInputCache,
+    InputCacheError,
+};
+use mogi_sleigh_parser::lexer::InputSpan;
+use mogi_sleigh_parser::preprocessor::error::PreprocessorError;
 use std::collections::HashMap;
 use std::fmt::{
     Debug,

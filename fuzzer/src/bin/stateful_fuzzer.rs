@@ -9,32 +9,30 @@ use std::time::Duration;
 
 use clap::Parser;
 use core_affinity::CoreId;
-use mogi_cpu::cpu::builder::CpuBuilder;
-use mogi_cpu::cpu::cpuid::CpuId;
-use mogi_cpu::Triple;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{
-    fmt,
-    EnvFilter,
-};
-
+use mogi_cpu_legacy::Triple;
+use mogi_cpu_legacy::cpu::builder::CpuBuilder;
+use mogi_cpu_legacy::cpu::cpuid::CpuId;
+use mogi_emulator::LittleEndian;
+use mogi_emulator::emulator::GenericEmulator;
 use mogi_emulator::emulator::interface::emulator::Emulator;
 use mogi_emulator::emulator::platform::linux::kernel::LinuxKernelTask;
 use mogi_emulator::emulator::platform::linux::scheduler::LinuxX86Scheduler;
+use mogi_emulator::emulator::system::System;
 use mogi_emulator::emulator::system::clock::Clock;
 use mogi_emulator::emulator::system::fd_map::FileDescriptorMap;
 use mogi_emulator::emulator::system::filesystem::Filesystem;
-use mogi_emulator::emulator::system::hardware::unicorn::UCWrapper;
 use mogi_emulator::emulator::system::memory::Memory;
 use mogi_emulator::emulator::system::prng::SeedablePrngMap;
 use mogi_emulator::emulator::system::task_manager::TaskManager;
-use mogi_emulator::emulator::system::System;
-use mogi_emulator::emulator::GenericEmulator;
-use mogi_emulator::LittleEndian;
 use mogi_fuzzer::core::fuzzer::Fuzzer;
 use mogi_fuzzer::io::tcp::TCP;
 use mogi_mem::mmu::MogiMMU;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{
+    EnvFilter,
+    fmt,
+};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -70,7 +68,10 @@ fn main() {
             .optimize_instructions(false)
             .enable_shadow_stack(false)
             .target_triple(Triple::host())
-            .cpu_id(CpuId::from_file(PathBuf::from("./cpu/data/cpuid/intel/haswell.json5").as_path()).unwrap())
+            .cpu_id(
+                CpuId::from_file(PathBuf::from("../../../cpu_legacy/data/cpuid/intel/haswell.json5").as_path())
+                    .unwrap(),
+            )
             .build()
             .unwrap(),
     ));

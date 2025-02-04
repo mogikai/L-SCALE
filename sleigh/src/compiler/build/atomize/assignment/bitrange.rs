@@ -1,18 +1,11 @@
-use crate::compiler::ast::common::{
-    SASTIdent,
-    SASTSize,
-};
-use crate::compiler::ast::pcode::bitrange::SASTPCodeBitRange;
-use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
-use crate::compiler::ast::Spanned;
 use crate::compiler::{
     InternalCompilerResult,
     SleighCompiler,
 };
 use crate::spec::builder::ProcessorSpecificationBuilder;
 use crate::spec::moir::code::{
-    moir_instruction,
     MOIRInstruction,
+    moir_instruction,
 };
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::scope::{
@@ -24,6 +17,13 @@ use crate::spec::moir::varnode::{
     MOIRConst,
     MOIRLocal,
 };
+use mogi_sleigh_parser::Spanned;
+use mogi_sleigh_parser::ast::common::{
+    SASTIdent,
+    SASTSize,
+};
+use mogi_sleigh_parser::ast::pcode::bitrange::SASTPCodeBitRange;
+use mogi_sleigh_parser::ast::pcode::expression::SASTPCodeExpression;
 use std::cmp::Ordering;
 
 impl SleighCompiler {

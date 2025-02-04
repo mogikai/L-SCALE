@@ -3,7 +3,7 @@ use crate::spec::jir::instruction::JIRTempId;
 use crate::spec::moir::address_space::SpaceId;
 pub use crate::spec::moir::context::ContextId;
 pub use crate::spec::moir::varnode::VarNodeId;
-use serde::{
+use serde_derive::{
     Deserialize,
     Serialize,
 };

@@ -2,28 +2,19 @@ use self::matcher::{
     Matcher,
     MatcherAtom,
 };
-use crate::compiler::ast::Spanned;
-use crate::compiler::ast::common::SASTIdent;
-use crate::compiler::ast::constructor::SASTConstructor;
-use crate::compiler::ast::constructor::disassembly_section::{
-    SASTDisassemblySection,
-    SASTPatternExpression,
-};
 use crate::compiler::build::constructor::matcher::MatcherReference;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::{
     InternalError,
     InternalErrorType,
 };
-use crate::compiler::lexer::InputSpan;
 use crate::compiler::{
-    CompilerContext,
     InternalCompilerResult,
     SleighCompiler,
 };
 use crate::spec::builder::{
+    CustomInterner,
     MOIRSymbolId,
-    StringId,
 };
 use crate::spec::moir::actions::{
     MOIRAction,
@@ -47,6 +38,17 @@ use crate::spec::moir::varnode::{
     MOIRSlice,
 };
 use itertools::Itertools;
+use mogi_sleigh_parser::ast::common::SASTIdent;
+use mogi_sleigh_parser::ast::constructor::SASTConstructor;
+use mogi_sleigh_parser::ast::constructor::disassembly_section::{
+    SASTDisassemblySection,
+    SASTPatternExpression,
+};
+use mogi_sleigh_parser::lexer::InputSpan;
+use mogi_sleigh_parser::{
+    Spanned,
+    StringId,
+};
 use mogi_utilities::addresses::EVAddr;
 use std::collections::{
     BTreeSet,

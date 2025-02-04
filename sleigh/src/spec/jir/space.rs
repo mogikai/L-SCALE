@@ -1,5 +1,5 @@
 use crate::spec::jir::common::JIRSize;
-use serde::{
+use serde_derive::{
     Deserialize,
     Serialize,
 };

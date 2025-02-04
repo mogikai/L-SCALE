@@ -14,7 +14,7 @@ use crate::spec::moir::scope::{
 };
 use crate::spec::moir::table::TableId;
 use mogi_utilities::new_map_key_16;
-use serde::{
+use serde_derive::{
     Deserialize,
     Serialize,
 };

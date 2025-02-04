@@ -1,5 +1,3 @@
-use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
-use crate::compiler::ast::Spanned;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::InternalError;
 use crate::compiler::{
@@ -7,8 +5,8 @@ use crate::compiler::{
     SleighCompiler,
 };
 use crate::spec::moir::code::{
-    moir_instruction,
     MOIRInstruction,
+    moir_instruction,
 };
 use crate::spec::moir::scope::{
     MOIRLocalId,
@@ -16,6 +14,8 @@ use crate::spec::moir::scope::{
     MOIRScope,
 };
 use crate::spec::moir::varnode::MOIRLocal;
+use mogi_sleigh_parser::Spanned;
+use mogi_sleigh_parser::ast::pcode::deref::SASTPCodeDeref;
 use std::cmp::Ordering;
 
 impl SleighCompiler {

@@ -6,7 +6,7 @@ use crate::spec::jir::values::{
     JIRConst,
     JIRValue,
 };
-use serde::{
+use serde_derive::{
     Deserialize,
     Serialize,
 };

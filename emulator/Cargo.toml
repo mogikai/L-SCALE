@@ -21,7 +21,7 @@ samples = { path = "../samples" }
 [dependencies]
 addr_align = "0.1.0"
 mogi_system = { path = "../system", version = "0.1.0" }
-mogi_cpu = { path = "../cpu", version = "0.1.0" }
+mogi_cpu_legacy = { path = "../cpu_legacy", version = "0.1.0" }
 mogi_derive = { path = "../derive", version = "0.1.0" }
 mogi_utilities = { path = "../utilities", version = "0.1.0" }
 itertools = "0.12.*"

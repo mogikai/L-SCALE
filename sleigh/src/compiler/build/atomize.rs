@@ -3,21 +3,10 @@ mod expression;
 mod invocation;
 mod size_inference;
 
-use crate::compiler::ast::Spanned;
-use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
-use crate::compiler::ast::pcode::statement::{
-    SASTPCodeBranchTarget,
-    SASTPCodeStatement,
-};
-use crate::compiler::ast::pcode::{
-    SASTPCode,
-    SASTPCodeLabelledStatement,
-};
 use crate::compiler::{
     InternalCompilerResult,
     SleighCompiler,
 };
-use crate::spec::builder::StringId;
 use crate::spec::moir::code::{
     MOIRGotoType,
     MOIRInstruction,
@@ -30,8 +19,21 @@ use crate::spec::moir::scope::{
 };
 use crate::spec::moir::table::MOIRExport;
 use crate::spec::moir::varnode::MOIRReference;
+use mogi_sleigh_parser::ast::pcode::deref::SASTPCodeDeref;
+use mogi_sleigh_parser::ast::pcode::expression::SASTPCodeExpression;
+use mogi_sleigh_parser::ast::pcode::statement::{
+    SASTPCodeBranchTarget,
+    SASTPCodeStatement,
+};
+use mogi_sleigh_parser::ast::pcode::{
+    SASTPCode,
+    SASTPCodeLabelledStatement,
+};
+use mogi_sleigh_parser::{
+    Spanned,
+    StringId,
+};
 
-use crate::compiler::ast::pcode::deref::SASTPCodeDeref;
 use crate::compiler::build::trace_build;
 use crate::compiler::error::{
     InternalError,

@@ -1,0 +1,17 @@
+[package]
+name = "mogi_sleigh_parser"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde = "1.0.217"
+serde_derive = "1.0.217"
+ariadne = "0.5.0"
+chumsky = { version = "1.0.0-alpha.8", features = ["pratt"] }
+slotmap = { version = "1.0.7", features = ["serde"] }
+thiserror = "2.0.11"
+strum_macros = "0.26.4"
+string-interner = "0.18.0"
+
+[features]
+trace_pp = []

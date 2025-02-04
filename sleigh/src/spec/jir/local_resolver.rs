@@ -1,7 +1,6 @@
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
 use crate::jinst;
-use crate::spec::builder::StringId;
 use crate::spec::jir::basic_block::TargetBasicBlockBuilder;
 use crate::spec::jir::common::JIRSize;
 use crate::spec::jir::instruction::TargetInstructionBuilder;
@@ -35,6 +34,7 @@ use crate::spec::{
     ProcessorSpecificationError,
 };
 use fnv::FnvHashMap;
+use mogi_sleigh_parser::StringId;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::SecondaryMap;
 use tracing::debug;
@@ -359,10 +359,11 @@ impl<'a> JIRResolver<'a> {
                 if let JIRValue::Const(c) = value {
                     let field_value = c.value();
 
-                    let field =
-                        spec.symbol_tables.fields.get(field_id).ok_or_else(
-                            || -> ProcessorSpecificationError { todo!("Generate error for missing field") },
-                        )?;
+                    let field = spec
+                        .symbol_tables
+                        .fields
+                        .get(field_id)
+                        .ok_or_else(|| -> ProcessorSpecificationError { todo!("Generate error for missing field") })?;
                     if !field.variables.is_empty() {
                         // attach variables => resolve varnode
                         let varnode_id = field.variables[usize::try_from(field_value).unwrap()];
@@ -396,7 +397,6 @@ impl<'a> JIRResolver<'a> {
                     .get(&table_id)
                     .ok_or_else(|| todo!("Generate error: 'Failed to match subtable'"))?;
                 // Check the subtable resolver for the symbol that is exported and resolve it to a JIRValue.
-                debug!("Descending into subtable {table_id} to resolve export");
                 subtable_resolver.resolve_export(spec, instruction_builder)?
             }
         })

@@ -9,9 +9,6 @@ mod load;
 mod subpiece;
 mod unary;
 
-use crate::compiler::ast::common::SASTLiteral;
-use crate::compiler::ast::pcode::expression::SASTPCodeExpression;
-use crate::compiler::ast::Spanned;
 use crate::compiler::{
     InternalCompilerResult,
     SleighCompiler,
@@ -26,6 +23,9 @@ use crate::spec::moir::varnode::{
     MOIRConst,
     MOIRLocal,
 };
+use mogi_sleigh_parser::Spanned;
+use mogi_sleigh_parser::ast::common::SASTLiteral;
+use mogi_sleigh_parser::ast::pcode::expression::SASTPCodeExpression;
 
 impl SleighCompiler {
     /// Atomizes the expression into multiple MOIRInstructions.
