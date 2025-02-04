@@ -4,10 +4,7 @@ use crate::compiler::error::{
     InternalError,
     InternalErrorType,
 };
-use crate::spec::builder::{
-    CustomInterner,
-    ProcessorSpecificationBuilder,
-};
+use crate::spec::builder::ProcessorSpecificationBuilder;
 use crate::spec::moir::code::{
     MOIRInstruction,
     moir_instruction,
@@ -50,8 +47,6 @@ use std::fmt::{
     Formatter,
     Write,
 };
-use string_interner::StringInterner;
-use string_interner::backend::StringBackend;
 
 /// A scope for locals and labels used in constructors and macros
 #[derive(Clone, Serialize, Deserialize)]
@@ -275,7 +270,7 @@ impl MOIRScope {
             s,
         )
         .expect("This can't fail at this point");
-        let mut slf = Self {
+        Self {
             labels_definitions: Default::default(),
             locals,
             local_spans,
@@ -289,9 +284,7 @@ impl MOIRScope {
             labels: Default::default(),
             field_to_local: Default::default(),
             subtable_builds: Default::default(),
-        };
-
-        slf
+        }
     }
 
     /// Clears the namespace before calling the provided function and afterward restores it to its original state.

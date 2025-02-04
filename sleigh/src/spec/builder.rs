@@ -44,9 +44,7 @@ use crate::spec::moir::custom_op::{
 use crate::spec::moir::endianness::MOIREndianness;
 use crate::spec::moir::field::{
     FieldId,
-    MOIRBitRange,
     MOIRField,
-    MOIRFieldParent,
 };
 use crate::spec::moir::r#macro::MOIRMacro;
 use crate::spec::moir::table::MOIRTable;
@@ -68,12 +66,6 @@ use crate::spec::{
     SpaceId,
     TableId,
 };
-use chumsky::input::{
-    Checkpoint,
-    Cursor,
-    Input,
-};
-use chumsky::inspector::Inspector;
 use mogi_sleigh_parser::lexer::InputSpan;
 use mogi_sleigh_parser::{
     ParserContext,
@@ -82,22 +74,8 @@ use mogi_sleigh_parser::{
     StringId,
 };
 use mogi_utilities::index_map::PrimaryMap;
-use serde_derive::{
-    Deserialize,
-    Serialize,
-};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use std::fmt::{
-    Display,
-    Formatter,
-};
-use string_interner::StringInterner;
-use string_interner::backend::{
-    Backend,
-    StringBackend,
-};
-use string_interner::symbol::Symbol;
 use strum_macros::Display;
 use tracing::debug;
 

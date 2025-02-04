@@ -4,10 +4,7 @@ use serde_derive::{
     Serialize,
 };
 
-use crate::compiler::{
-    InternalCompilerResult,
-    SleighCompilerResult,
-};
+use crate::compiler::InternalCompilerResult;
 use crate::spec::jir::trace_jir;
 use crate::spec::jir::values::{
     JIRConst,

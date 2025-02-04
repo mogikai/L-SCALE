@@ -1,6 +1,5 @@
 use super::context_provider::ContextProvider;
 use super::local_resolver::JIRResolver;
-use super::values::JIRValue;
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
 use crate::new_typed_index_table_id;
@@ -16,7 +15,6 @@ use crate::spec::typed_index_table::TypedIndexTable;
 use fnv::FnvHashMap;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::SecondaryMap;
-use rustc_hash::FxHashMap;
 use serde_big_array::BigArray;
 use serde_derive::{
     Deserialize,

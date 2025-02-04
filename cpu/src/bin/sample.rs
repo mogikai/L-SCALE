@@ -16,7 +16,6 @@ use std::fs::{
     OpenOptions,
 };
 use std::hint::black_box;
-use std::io::Write;
 use std::path::Path;
 use std::rc::Rc;
 use std::time::Instant;

@@ -1,5 +1,4 @@
 use petgraph::graph::NodeIndex;
-use rustc_hash::FxHashMap;
 use std::collections::{
     BTreeMap,
     BTreeSet,
@@ -204,8 +203,8 @@ impl<'a> JumplistBuilder<'a> {
         //     trace_build!("(jumplist_id, jumplist) = {:#x?}", (jumplist_id, jumplist));
         // }
 
-        let root_jumplist = self.jumplist_cache.get(root_jumplist_id).unwrap();
-        trace_build!("(root_jumplist_id, root_jumplist) = {:#x?}", (root_jumplist_id, root_jumplist));
+        let _root_jumplist = self.jumplist_cache.get(root_jumplist_id).unwrap();
+        trace_build!("(root_jumplist_id, root_jumplist) = {:#x?}", (root_jumplist_id, _root_jumplist));
 
         save_graph(root_jumplist_id, &self.jumplist_cache);
 
@@ -802,7 +801,10 @@ fn partition_by_data_provider(rows: Vec<Row>) -> BTreeMap<DataProvider, Vec<Row>
 /// Merge rows into sets such that the set mask (the disjunction of all masks of this set)
 /// has a Hamming distance less than or equal than MASK_EXPAND_THRESHOLD from every mask in
 /// this set.
-fn merge_rows<'a>(rows: Vec<Row<'a>>, size_bits: MOIRBitRange) -> Vec<(u64, Vec<Row<'a>>)> {
+fn merge_rows<'a>(
+    rows: Vec<Row<'a>>,
+    size_bits: MOIRBitRange,
+) -> Vec<(u64, Vec<Row<'a>>)> {
     let mut sets = Vec::<(u64, Vec<Row<'a>>)>::new();
     'next_row: for row in rows.into_iter() {
         let row_mask = size_bits.extract(row.mask);

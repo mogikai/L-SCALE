@@ -1,7 +1,6 @@
 use crate::compiler::InternalCompilerResult;
 
 use crate::spec::builder::{
-    CustomInterner,
     MOIRSymbolId,
     MOIRSymbolTables,
     StringId,
@@ -49,8 +48,6 @@ use mogi_sleigh_parser::{
     SleighInterner,
     Spanned,
 };
-use string_interner::StringInterner;
-use string_interner::backend::StringBackend;
 use tracing::warn;
 
 #[derive(Debug)]

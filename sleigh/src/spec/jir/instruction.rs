@@ -93,7 +93,7 @@ impl<'a> TargetInstructionBuilder<'a> {
         *self.block_labels[label].get_or_insert_with(|| self.block_builder.reserve_block())
     }
 
-    pub fn finish(mut self) -> ProcessorSpecResult {
+    pub fn finish(self) -> ProcessorSpecResult {
         self.block_builder.end_instruction(self.next)?;
         Ok(())
     }

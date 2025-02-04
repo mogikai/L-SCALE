@@ -41,8 +41,6 @@ use serde_derive::{
     Serialize,
 };
 use std::iter::once;
-use string_interner::StringInterner;
-use string_interner::backend::StringBackend;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MOIRConstructor {

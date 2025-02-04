@@ -2,8 +2,6 @@ use crate::ast::item::SASTItem;
 use crate::inputcache::InputCacheError;
 use crate::lexer::InputSpan;
 use crate::tokens::SleighToken;
-use chumsky::input::Input;
-use chumsky::inspector::Inspector;
 use serde_derive::{
     Deserialize,
     Serialize,

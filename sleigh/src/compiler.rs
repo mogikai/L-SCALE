@@ -14,16 +14,7 @@ use mogi_sleigh_parser::lexer::{
 use mogi_sleigh_parser::parser::SleighParser;
 use mogi_sleigh_parser::preprocessor::SleighPreprocessorFactory;
 use mogi_sleigh_parser::preprocessor::error::PreprocessorError;
-use serde_derive::{
-    Deserialize,
-    Serialize,
-};
-use slotmap::new_key_type;
-use std::fmt::{
-    Debug,
-    Display,
-    Formatter,
-};
+use std::fmt::Debug;
 use std::path::{
     Path,
     PathBuf,
@@ -74,7 +65,7 @@ impl SleighCompiler {
         let ast = self
             .parser
             .parse(&mut self.input_cache, &mut self.spec_builder.interner_mut(), tokens)
-            .map_err(|e| -> SleighCompilerError { todo!("Correctly map errors") })?;
+            .map_err(|_| -> SleighCompilerError { todo!("Correctly map errors") })?;
         info!("Building the specification from the AST.");
         let result = self.build(ast);
         // result should not be an error except StopOnFirstError, if result is an error
@@ -126,7 +117,7 @@ impl SleighCompiler {
                 let tokens = self
                     .lexer
                     .tokenize(&mut self.input_cache, &mut self.spec_builder.interner_mut(), input_id)
-                    .map_err(|e| -> SleighCompilerError { todo!("Correctly map errors") })?;
+                    .map_err(|_| -> SleighCompilerError { todo!("Correctly map errors") })?;
                 debug!("Tokenized input {input_id:?}");
                 self.input_cache
                     .attach_tokens(input_id, tokens)

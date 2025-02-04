@@ -50,10 +50,7 @@ use mogi_sleigh_parser::{
     StringId,
 };
 use mogi_utilities::addresses::EVAddr;
-use std::collections::{
-    BTreeSet,
-    HashSet,
-};
+use std::collections::HashSet;
 use tracing::{
     debug,
     trace,

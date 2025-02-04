@@ -1,6 +1,3 @@
-use std::hint::black_box;
-use std::time::Instant;
-
 use crate::lifter::cache::LifterCache;
 use crate::spec::ProcessorSpecification;
 use crate::spec::jir::basic_block::{
@@ -11,7 +8,6 @@ use crate::spec::jir::context_provider::ContextProvider;
 use mogi_utilities::addresses::EVAddr;
 use source::TargetInstructionSource;
 use thiserror::Error;
-use tracing::debug;
 
 pub mod cache;
 pub mod source;
