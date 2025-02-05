@@ -226,7 +226,8 @@ where
         self.prng_map.borrow_mut().take_snapshot()?;
         self.fd_map.borrow_mut().take_snapshot()?;
         self.task_manager.borrow_mut().take_snapshot()?;
-        self.tcp.borrow_mut().take_snapshot()
+        self.tcp.borrow_mut().take_snapshot()?;
+        self.stdio.borrow_mut().take_snapshot()
     }
 
     fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
@@ -256,6 +257,9 @@ where
             .discard_current_and_restore_previous_snapshot()?;
         self.tcp
             .borrow_mut()
+            .discard_current_and_restore_previous_snapshot()?;
+        self.stdio
+            .borrow_mut()
             .discard_current_and_restore_previous_snapshot()
     }
 
@@ -268,6 +272,7 @@ where
         self.prng_map.borrow_mut().restore_snapshot()?;
         self.fd_map.borrow_mut().restore_snapshot()?;
         self.task_manager.borrow_mut().restore_snapshot()?;
-        self.tcp.borrow_mut().restore_snapshot()
+        self.tcp.borrow_mut().restore_snapshot()?;
+        self.stdio.borrow_mut().restore_snapshot()
     }
 }

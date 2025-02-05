@@ -1,3 +1,4 @@
+use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
 use crate::emulator::abstractions::file_descriptors::{
     FileDescriptorError,
     FileDescriptorOps,
@@ -7,6 +8,7 @@ use crate::emulator::abstractions::network::{
     ShutdownMethod,
     SocketAddress,
 };
+use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
 use crate::emulator::platform::linux::kernel::socket::Optval;
@@ -17,42 +19,74 @@ use std::cell::{
     RefCell,
 };
 use std::cmp::min;
-use std::collections::VecDeque;
 use std::rc::Rc;
-use tracing::info;
+use tracing::{
+    info,
+    trace,
+};
+
+#[derive(Debug, Default, Clone)]
+pub struct InternalStdioData {
+    stdin_data: Vec<u8>,
+    pub pos: usize,
+}
 
 #[derive(Debug)]
 pub struct Stdio {
-    stdin_data: VecDeque<u8>,
-    yield_reason: bool,
+    snapshots: Vec<InternalStdioData>,
+    pub data: InternalStdioData,
+}
+
+impl Restorable for Stdio {
+    fn take_snapshot(&mut self) -> Result<(), GenericError> {
+        self.snapshots.push(self.data.clone());
+        Ok(())
+    }
+
+    fn discard_current_and_restore_previous_snapshot(&mut self) -> Result<(), GenericError> {
+        if self.snapshots.len() <= 1 {
+            Err(GenericError::new(GenericErrorKind::Unknown, "No previous snapshot available"))?;
+        }
+        self.snapshots.pop();
+        self.restore_snapshot()
+    }
+
+    fn restore_snapshot(&mut self) -> Result<(), GenericError> {
+        self.data.clone_from(self.snapshots.last().unwrap_or(&Default::default()));
+        Ok(())
+    }
 }
 
 impl Stdio {
     pub fn new() -> Self {
         Self {
-            stdin_data: VecDeque::new(),
-            yield_reason: false,
+            snapshots: Vec::new(),
+            data: Default::default(),
         }
+    }
+
+    pub fn pos(&self) -> usize {
+        self.data.pos
     }
 
     pub fn stdin_read(
         &mut self,
         count: u64,
     ) -> Option<Vec<u8>> {
-        if self.stdin_data.is_empty() {
-            self.yield_reason = true;
+        if self.data.stdin_data.is_empty() || self.data.pos >= self.data.stdin_data.len() {
             return None;
         }
-        let n = min(count as usize, self.stdin_data.len());
-        Some(self.stdin_data.drain(0..n).collect())
+        let read_end = min(count as usize, self.data.stdin_data.len());
+        let data = self.data.stdin_data[self.data.pos..read_end].to_owned();
+        self.data.pos = read_end;
+        Some(data)
     }
 
     pub fn add_stdin_data(
         &mut self,
         data: &[u8],
     ) {
-        self.stdin_data.extend(data);
-        self.yield_reason = false
+        self.data.stdin_data.extend(data);
     }
 }
 
@@ -68,11 +102,15 @@ impl StdioData {
 }
 
 #[derive(Debug)]
-pub struct StdInputOps {}
+pub struct StdInputOps {
+    stat: RefCell<Stat>,
+}
 
 impl StdInputOps {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            stat: Default::default(),
+        }
     }
 }
 
@@ -99,6 +137,13 @@ impl FileDescriptorOps for StdInputOps {
         fd: &mut Self::D,
     ) -> Result<(), FileDescriptorError> {
         todo!()
+    }
+
+    fn stat<'a>(
+        &'a self,
+        fd: &'a mut Self::D,
+    ) -> Result<Ref<'a, Stat>, FileDescriptorError> {
+        Ok(self.stat.borrow())
     }
 
     fn read(
@@ -209,7 +254,7 @@ impl FileDescriptorOps for StdOutputOps {
         fd: &mut Self::D,
         data: &[u8],
     ) -> Result<usize, FileDescriptorError> {
-        info!("{:}", String::from_utf8_lossy(data));
+        trace!("STDOUT/ERR: {:}", String::from_utf8_lossy(data));
         Ok(data.len())
     }
 
