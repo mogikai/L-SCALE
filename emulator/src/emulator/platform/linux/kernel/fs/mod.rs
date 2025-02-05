@@ -344,11 +344,9 @@ where
     pub fn lseek(
         &self,
         fd: FD,
-        offset: i64,
+        offset: u64,
         whence: u64,
     ) -> SyscallResult {
-        trace!("FD LSEEK: {fd:?} {offset:?} {whence:?}");
-        panic!("please panic here");
         let mut fd_map = sys_component!(self, fd_map);
         let file = fd_map
             .get(&self.task_id, &fd)
@@ -356,15 +354,15 @@ where
 
         let mut stdio = sys_component_mut!(self, stdio);
         let pos = if let Some(_) = &file.data.stdio {
-            &mut stdio.pos
+            &mut stdio.data.pos
         } else {
             unimplemented!()
         };
         match whence {
-            0 => *pos = offset.abs() as usize,
+            0 => *pos = offset as usize,
             1 => {
-                if offset.is_negative() {
-                    *pos = pos.wrapping_sub(offset.abs() as usize)
+                if (offset as i64).is_negative() {
+                    *pos = pos.wrapping_sub((offset as i64).abs() as usize)
                 } else {
                     *pos += offset as usize
                 }
@@ -372,8 +370,7 @@ where
             2 => unimplemented!(),
             _ => return Err(LinuxKernelError::EINVAL.into())
         }
-        trace!("{:?}", stdio.pos);
-        Ok(0)
+        Ok(*pos as u64)
     }
 }
 
