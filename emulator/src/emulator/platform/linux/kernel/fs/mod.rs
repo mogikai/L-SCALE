@@ -339,6 +339,42 @@ where
         todo!();
         Err(LinuxKernelError::EINVAL.into())
     }
+
+    // TODO refactor
+    pub fn lseek(
+        &self,
+        fd: FD,
+        offset: i64,
+        whence: u64,
+    ) -> SyscallResult {
+        trace!("FD LSEEK: {fd:?} {offset:?} {whence:?}");
+        panic!("please panic here");
+        let mut fd_map = sys_component!(self, fd_map);
+        let file = fd_map
+            .get(&self.task_id, &fd)
+            .ok_or(LinuxKernelError::EBADF)?;
+
+        let mut stdio = sys_component_mut!(self, stdio);
+        let pos = if let Some(_) = &file.data.stdio {
+            &mut stdio.pos
+        } else {
+            unimplemented!()
+        };
+        match whence {
+            0 => *pos = offset.abs() as usize,
+            1 => {
+                if offset.is_negative() {
+                    *pos = pos.wrapping_sub(offset.abs() as usize)
+                } else {
+                    *pos += offset as usize
+                }
+            }
+            2 => unimplemented!(),
+            _ => return Err(LinuxKernelError::EINVAL.into())
+        }
+        trace!("{:?}", stdio.pos);
+        Ok(0)
+    }
 }
 
 /// Get the fs entry id for the supplied file descriptor if it is a directory.

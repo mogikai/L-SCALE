@@ -132,6 +132,7 @@ where
         CLOSE => do_syscall!(1, system, kernel::close, debug_str),
         STAT => do_syscall!(2, system, kernel::stat, debug_str),
         FSTAT => do_syscall!(2, system, kernel::fstat, debug_str),
+        LSEEK => do_syscall!(3, system, kernel::lseek, debug_str),
         MMAP => do_syscall!(6, system, kernel::mmap, debug_str),
         MPROTECT => do_syscall!(3, system, kernel::mprotect, debug_str),
         MUNMAP => do_syscall!(2, system, kernel::munmap, debug_str),
