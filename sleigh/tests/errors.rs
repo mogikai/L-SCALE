@@ -44,7 +44,6 @@ fn duplicate_space_default() {
     common::setup_test();
     let path = SPACE_ATTRS_PATH.to_string() + "default.sinc";
     let err = build(path).expect_err("expected error");
-    println!("{:?}", err);
     assert!(matches!(err, SleighCompilerError::SemanticError(_)));
     if let SleighCompilerError::SemanticError(string) = err {
         assert!(string.contains("Space attribute 'IsDefault' is duplicated"))

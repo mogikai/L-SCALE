@@ -15,7 +15,6 @@ use crate::compiler::{
     InternalCompilerResult,
     SleighCompiler,
 };
-use crate::spec::ProcessorSpecificationError;
 use crate::spec::moir::address_space::{
     MOIRSpace,
     MOIRSpaceIsDefault,
@@ -29,6 +28,7 @@ use crate::spec::moir::field::{
 };
 use crate::spec::moir::token::MOIRToken;
 use crate::spec::moir::varnode::MOIRVarNode;
+use crate::spec::ProcessorSpecificationError;
 use mogi_sleigh_parser::ast::attach::SASTAttach;
 use mogi_sleigh_parser::ast::define::{
     SASTAddressSpace,
@@ -269,13 +269,12 @@ impl SleighCompiler {
         if bits % 8 != 0 {
             Err(ProcessorSpecificationError::TokenSizeNotAMultipleOfEightBit)?;
         }
-        let result = self.spec_builder.define_token(
-            token.name.transmute(),
-            MOIRToken {
+        let result = self
+            .spec_builder
+            .define_token(token.name.transmute(), MOIRToken {
                 bytes: MOIRSize::try_from(bits).map_err(|_| -> InternalError { todo!() })? / 8,
                 endianness_override: token.endian_override.map(|e| e.into_value().into()),
-            },
-        );
+            });
         if let Some(token_id) = self.report_error_or_unwrap(result)? {
             for field in token.fields.into_iter() {
                 let name = field.name.clone().transmute();
@@ -284,7 +283,10 @@ impl SleighCompiler {
                     MOIRSize::try_from(*field.start.value()).unwrap(),
                     MOIRSize::try_from(*field.end.value() + 1).unwrap(),
                 );
-                if let Some(field) = self.make_field(MOIRFieldParent::Token(token_id), bits, range)? {
+                if let Some(field) = self
+                    .make_field(MOIRFieldParent::Token(token_id), bits, range)
+                    .map_err(|e| e.span("field", field.span().clone()))?
+                {
                     let result = self.spec_builder.define_field(name, field);
                     self.report_error_or_unwrap(result)?;
                 }
@@ -306,7 +308,10 @@ impl SleighCompiler {
                 MOIRSize::try_from(*field.start.value()).unwrap(),
                 MOIRSize::try_from(*field.end.value() + 1).unwrap(),
             );
-            if let Some(moir_field) = self.make_field(MOIRFieldParent::Context(context_id), bits, range)? {
+            if let Some(moir_field) = self
+                .make_field(MOIRFieldParent::Context(context_id), bits, range)
+                .map_err(|e| e.span("field", field.span().clone()))?
+            {
                 let result = self
                     .spec_builder
                     .define_field(field.name.clone().transmute(), moir_field);
