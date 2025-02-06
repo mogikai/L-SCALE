@@ -6,19 +6,27 @@ use std::cell::RefCell;
 use std::fmt::Debug;
 use std::rc::Rc;
 
-use mogi_mem::mmu::MogiMMU;
-use mogi_sleigh::jinst;
-use mogi_sleigh::spec::ProcessorSpecification;
-use mogi_utilities::addresses::EVAddr;
-use thiserror::Error;
-use tracing::trace;
-
 use crate::jit::api::{
     JITPathChoice,
     JITTaskRuntimeContext,
     JitError,
     MogiJit,
     RuntimeError,
+};
+use crate::new_cpu_trait::{
+    CPU,
+    CPUResult,
+    RunLimit,
+};
+use mogi_sleigh::spec::ProcessorSpecification;
+use mogi_system::components::mmu::MMU;
+use mogi_utilities::addresses::EVAddr;
+use thiserror::Error;
+use zerocopy::{
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
 };
 
 #[derive(Error, Debug)]
@@ -43,7 +51,7 @@ enum MustInterpret {
 }
 
 #[repr(C)]
-pub struct CPU<JitT>
+pub struct MogiCPU<JitT, MmuT, LifterT>
 where
     JitT: MogiJit,
 {
@@ -56,32 +64,45 @@ where
     /// The jit is behind a refcell, so we can guarantee that the cpu can be mutably accessed by the jited code,
     /// but the jit itself may not be modified during the codes runtime.
     jit: RefCell<JitT>,
-    mmu: Rc<RefCell<MogiMMU>>,
+    mmu: Rc<RefCell<MmuT>>,
+    lifter: LifterT,
     processor_specification: Rc<RefCell<ProcessorSpecification>>,
     mir_cache: (),
 }
 
-impl<JitT> CPU<JitT>
+impl<JitT, MmuT, LifterT> MogiCPU<JitT, MmuT, LifterT>
 where
     JitT: MogiJit,
+    MmuT: MMU,
 {
     pub fn new(
         mut jit: JitT,
         processor_specification: Rc<RefCell<ProcessorSpecification>>,
-        mmu: Rc<RefCell<MogiMMU>>,
+        mmu: Rc<RefCell<MmuT>>,
+        lifter: LifterT,
     ) -> Self {
         Self {
             runtime_context: Box::new(jit.new_runtime_context()),
             jit: RefCell::new(jit),
             mmu,
+            lifter,
             processor_specification,
             mir_cache: (),
         }
     }
+}
 
-    /// Runs the CPU until it encounters a stop condition.
-    /// This can be an instruction count limit or an interrupt.
-    pub fn run(&mut self) -> Result<(), StopReason> {
+impl<JitT, MmuT, LifterT> CPU for MogiCPU<JitT, MmuT, LifterT>
+where
+    JitT: MogiJit,
+{
+    fn run(
+        &mut self,
+        limit: RunLimit,
+    ) -> Result<(), StopReason> {
+        let RunLimit::Unlimited = limit else {
+            todo!("RunLimit is currently not yet implemented")
+        };
         loop {
             self.handle_interrupt()?;
             // This populates the jit block cache for the next instruction(s)
@@ -94,24 +115,52 @@ where
                     if let Some(error) = self.runtime_context.runtime_error() {
                         Err(error)?
                     }
-                    let ecx = self
-                        .processor_specification
-                        .borrow()
-                        .varnode_id_by_string("EAX")
-                        .unwrap();
-                    let data = jit.varnode(&self.runtime_context, ecx)?;
-                    trace!("EAX: {:#04x}({0})", u32::from_le_bytes(data.try_into().unwrap()));
-                    trace!("EAX(signed): {:#04x}({0})", i32::from_le_bytes(data.try_into().unwrap()));
                 }
                 MustInterpret::Yes => {
-                    todo!()
+                    todo!("Interpreter is currently not yet implemented")
                 }
             }
         }
     }
+
+    fn register<T>(
+        &self,
+        name: &str,
+    ) -> CPUResult<&T>
+    where
+        T: FromBytes + KnownLayout + Immutable + IntoBytes,
+    {
+        let varnode_id = self
+            .processor_specification
+            .borrow()
+            .varnode_id_by_string(name)
+            .unwrap();
+        let jit = self.jit.borrow();
+        let data = jit.varnode(&self.runtime_context, varnode_id).unwrap();
+        Ok(T::ref_from_bytes(data).unwrap())
+    }
+
+    fn register_mut<T>(
+        &mut self,
+        name: &str,
+    ) -> CPUResult<&mut T>
+    where
+        T: FromBytes + KnownLayout + Immutable + IntoBytes,
+    {
+        let varnode_id = self
+            .processor_specification
+            .borrow()
+            .varnode_id_by_string(name)
+            .unwrap();
+        let jit = self.jit.borrow();
+        let data = jit
+            .varnode_mut(&mut self.runtime_context, varnode_id)
+            .unwrap();
+        Ok(T::mut_from_bytes(data).unwrap())
+    }
 }
 
-impl<JitT> CPU<JitT>
+impl<JitT, MmuT, LifterT> MogiCPU<JitT, MmuT, LifterT>
 where
     JitT: MogiJit,
 {
@@ -142,44 +191,7 @@ where
             }
             jit.new_target_block(EVAddr::null(), Some(EVAddr::null()))?;
             // TODO: Insert instructions into block.
-            let r8d = self
-                .processor_specification
-                .borrow()
-                .varnode_slice_by_string("R8D")
-                .unwrap();
-            let r9d = self
-                .processor_specification
-                .borrow()
-                .varnode_slice_by_string("R9D")
-                .unwrap();
-            let result = self
-                .processor_specification
-                .borrow()
-                .varnode_slice_by_string("EAX")
-                .unwrap();
 
-            // Copy to r9
-            self.runtime_context
-                .slice_mut(r9d)
-                .map_err(JitError::from)?
-                .copy_from_slice((0b1000i32).to_le_bytes().as_slice());
-
-            // Copy to r8
-            self.runtime_context
-                .slice_mut(r8d)
-                .map_err(JitError::from)?
-                .copy_from_slice((0b1101i32).to_le_bytes().as_slice());
-
-            let instructions = vec![
-                jinst!(result = 0b1001i32),
-                jinst!(r9d = r9d & r8d),
-                jinst!(r9d = r9d),
-                jinst!(r9d = r9d),
-                jinst!(result = r9d),
-            ];
-            for instruction in instructions {
-                jit.emit_jinst(&instruction)?;
-            }
             jit.finalize_block()?;
             jit.chain_blocks(EVAddr::null(), EVAddr::null(), JITPathChoice::Main)?;
             Ok(())

@@ -7,6 +7,10 @@ use crate::spec::jir::basic_block::{
 use crate::spec::jir::context_provider::ContextProvider;
 use mogi_utilities::addresses::EVAddr;
 use source::TargetInstructionSource;
+use std::time::{
+    Duration,
+    Instant,
+};
 use thiserror::Error;
 
 pub mod cache;
@@ -26,27 +30,52 @@ pub enum LifterError {
     MissingCacheEntry(EVAddr),
 }
 
-pub struct Lifter<'a, 'cache, InstSourceT: TargetInstructionSource> {
-    specification: &'a ProcessorSpecification,
+pub struct Lifter<'a, InstSourceT: TargetInstructionSource> {
     context_provider: &'a mut ContextProvider,
-    cache: &'cache mut LifterCache,
+    cache: LifterCache,
     instruction_source: &'a InstSourceT,
+    diagnostics: LifterDiagnostics,
 }
 
-impl<'a, 'cache, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, InstSourceT> {
+#[derive(Debug, Default)]
+pub struct LifterDiagnostics {
+    total_time_match: Duration,
+    total_time_build: Duration,
+    inst_lifted_since_last_reset: u32,
+}
+
+impl LifterDiagnostics {
+    pub fn match_avg(&self) -> Duration {
+        self.total_time_match / self.inst_lifted_since_last_reset
+    }
+
+    pub fn build_avg(&self) -> Duration {
+        self.total_time_build / self.inst_lifted_since_last_reset
+    }
+}
+
+impl<'a, InstSourceT: TargetInstructionSource> Lifter<'a, InstSourceT> {
     pub fn new(
-        specification: &'a ProcessorSpecification,
         context_provider: &'a mut ContextProvider,
-        cache: &'cache mut LifterCache,
+        cache: LifterCache,
         instruction_source: &'a InstSourceT,
     ) -> Self {
         Self {
-            specification,
             context_provider,
             cache,
             instruction_source,
+            diagnostics: LifterDiagnostics::default(),
         }
     }
+
+    pub fn diagnostics(&self) -> &LifterDiagnostics {
+        &self.diagnostics
+    }
+
+    pub fn diagnostics_mut(&mut self) -> &mut LifterDiagnostics {
+        &mut self.diagnostics
+    }
+
     /// Lift a single instruction if possible, by fetching the bytes for the instruction from
     /// `source`. Returns the address of the next instruction, and the lifted basic block,
     /// containing only this single instruction.
@@ -55,6 +84,7 @@ impl<'a, 'cache, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, InstSo
     /// See [TargetBasicBlock] for more detail.
     pub fn lift_single(
         &mut self,
+        specification: &ProcessorSpecification,
         addr: EVAddr,
     ) -> LifterResult<(EVAddr, &TargetBasicBlock)> {
         self.cache.flush_block(addr)?;
@@ -70,36 +100,41 @@ impl<'a, 'cache, InstSourceT: TargetInstructionSource> Lifter<'a, 'cache, InstSo
         //     }
         // }
         // // No cache entry? Fetch data now.
+        self.diagnostics.inst_lifted_since_last_reset += 1;
 
         let bytes = self
             .instruction_source
             .load(addr)
             .map_err(|_| -> LifterError { todo!() })?;
 
-        let root_jumplist = self.specification.jumplist_cache.get(0.into()).unwrap();
+        let now = Instant::now();
+        let root_jumplist = specification.jumplist_cache.get(0.into()).unwrap();
 
         let resolver = root_jumplist
             .r#match(
                 &bytes,
-                &self.specification.jumplist_cache,
-                &self.specification.symbol_tables.constructors,
+                &specification.jumplist_cache,
+                &specification.symbol_tables.constructors,
                 &mut self.context_provider,
             )
             .unwrap();
+        self.diagnostics.total_time_match += now.elapsed();
 
+        let now = Instant::now();
         if let Some((_, resolver)) = resolver {
-            let mut block_builder = TargetBasicBlockBuilder::new(addr, self.specification.temp_space);
+            let mut block_builder = TargetBasicBlockBuilder::new(addr, specification.temp_space);
             // resolver.print_hierarchy(0);
             // resolver.print_mcode(&self.specification, 0);
 
             resolver
-                .build(&self.specification, &mut block_builder)
+                .build(specification, &mut block_builder)
                 .map_err(|_| -> LifterError { todo!() })?;
 
             let block = block_builder
                 .finish()
                 .map_err(|_| -> LifterError { todo!() })?;
             let block = self.cache.cache_block(addr, block)?;
+            self.diagnostics.total_time_build += now.elapsed();
             Ok((addr, block))
         } else {
             Err(LifterError::Unknown)

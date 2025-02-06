@@ -44,6 +44,7 @@ use serde_derive::{
     Serialize,
 };
 use std::collections::HashMap;
+use std::fmt;
 use std::io::{
     Read,
     Write,
@@ -84,7 +85,7 @@ pub enum JIRSymbolId {
 pub(crate) struct JIRSymbolTables {
     // macros: TypedIndexTable<MOIRMacroId, MOIRMacro>,
     pub(crate) spaces: TypedIndexTable<SpaceId, JIRSpace>,
-    pub(crate) tables: TypedIndexTable<TableId, MOIRTable>,
+    // pub(crate) tables: TypedIndexTable<TableId, MOIRTable>,
     pub(crate) constructors: TypedIndexTable<ConstructorId, MOIRConstructor>,
     pub(crate) varnodes: PrimaryMap<VarNodeId, JIRVarNode>,
     pub(crate) fields: PrimaryMap<FieldId, MOIRField>,
@@ -93,6 +94,16 @@ pub(crate) struct JIRSymbolTables {
     custom_ops: PrimaryMap<CustomOpId, JIRCustomOp>,
     // bitrange registers are treated more like placeholders for the corresponding pcode operations to realize access
     // bitrange_registers: TypedIndexTable<MOIRBitrangeRegisterId, MOIRTBitrangeRegister>,
+}
+
+impl JIRSymbolTables {
+    pub fn shrink_to_fit(&mut self) {
+        self.spaces.shrink_to_fit();
+        self.constructors.shrink_to_fit();
+        self.varnodes.shrink_to_fit();
+        self.fields.shrink_to_fit();
+        self.custom_ops.shrink_to_fit();
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -320,16 +331,27 @@ impl ProcessorSpecification {
             .collect()
     }
 
+    pub fn shrink(&mut self) {
+        self.interner.shrink_to_fit();
+        self.symbol_ids.shrink_to_fit();
+        self.symbol_strings.shrink_to_fit();
+        self.symbol_tables.shrink_to_fit();
+        self.contexts.shrink_to_fit();
+        self.string_to_ident_mapping.shrink_to_fit();
+        self.jumplist_cache.shrink_to_fit();
+    }
+
+    /// Saves the processor specification to the target writer.
     pub fn save<W: Write>(
         &self,
-        write: &mut W,
+        writer: &mut W,
     ) {
-        let mut writer = brotli::CompressorWriter::new(write, 4096, 11, 20);
+        let mut writer = brotli::CompressorWriter::new(writer, 4096 * 1000, 5, 22);
         bincode::serde::encode_into_std_write(self, &mut writer, bincode::config::standard()).unwrap();
     }
 
-    pub fn load<R: Read>(read: &mut R) -> ProcessorSpecification {
-        let mut reader = Decompressor::new(read, 4096);
+    pub fn load<R: Read>(reader: &mut R) -> ProcessorSpecification {
+        let mut reader = Decompressor::new(reader, 4096 * 1000);
         bincode::serde::decode_from_std_read(&mut reader, bincode::config::standard()).unwrap()
     }
 }

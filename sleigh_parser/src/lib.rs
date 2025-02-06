@@ -62,6 +62,12 @@ pub trait ParserContext {
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct SleighInterner(StringInterner<StringBackend>);
 
+impl SleighInterner {
+    pub fn shrink_to_fit(&mut self) {
+        self.0.shrink_to_fit();
+    }
+}
+
 impl ParserContext for SleighInterner {
     fn intern<T: AsRef<str>>(
         &mut self,

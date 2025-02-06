@@ -128,6 +128,9 @@ pub struct PrimaryMap<K: MapKey, V> {
 }
 
 impl<K: MapKey, V> PrimaryMap<K, V> {
+    pub fn shrink_to_fit(&mut self) {
+        self.data.shrink_to_fit();
+    }
     /// Gets the next key that will be used when inserting a value.
     pub fn next_key(&self) -> K {
         K::try_from_index(self.data.len()).expect("Index out of range")

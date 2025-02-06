@@ -147,7 +147,6 @@ impl<'a> MOIRToJIRTransformer<'a> {
 
         self.jir.symbol_tables = JIRSymbolTables {
             spaces: transform_spaces(self.moir.symbol_tables.spaces)?,
-            tables: self.moir.symbol_tables.tables,
             constructors: self.moir.symbol_tables.constructors,
             varnodes: transform_varnodes(self.moir.symbol_tables.varnodes)?,
             custom_ops: transform_custom_ops(self.moir.interner, self.moir.symbol_tables.custom_ops)?,

@@ -1,7 +1,11 @@
 #![allow(dead_code, unused_variables, unused_mut)]
 use clap::Parser;
-use mogi_cpu::cpu::CPU;
+use mogi_cpu::cpu::MogiCPU;
 use mogi_cpu::jit::x86::X86MogiJit;
+use mogi_cpu::new_cpu_trait::{
+    CPU,
+    RunLimit,
+};
 use mogi_mem::mmu::MogiMMU;
 use mogi_sleigh::SleighPreprocessorFactory;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
@@ -19,6 +23,7 @@ use std::hint::black_box;
 use std::path::Path;
 use std::rc::Rc;
 use std::time::Instant;
+use tracing::info;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -53,20 +58,29 @@ fn main() {
     compiled_spec_path.push(".output/x86.mcs");
     let mut file = File::open(&compiled_spec_path);
     let specification = match file {
-        Ok(mut file) => ProcessorSpecification::load(&mut file),
+        Ok(mut file) => {
+            info!("Loading compiled spec from {compiled_spec_path:?}");
+            let now = Instant::now();
+            let spec = ProcessorSpecification::load(&mut file);
+            info!("Loading took {:?}", now.elapsed());
+            spec
+        }
         Err(_) => {
             let spec_dir = spec_path.parent().unwrap();
             let factory = SleighPreprocessorFactory::new().working_dir(spec_dir.to_path_buf());
             let mut compiler = SleighCompilerBuilder::new()
                 .preprocessor_factory(factory)
                 .build();
-            let specification = compiler.compile(spec_path).unwrap();
+            let mut specification = compiler.compile(spec_path).unwrap();
+            info!("Saving compiled spec to {compiled_spec_path:?}");
+            let now = Instant::now();
             let mut file = OpenOptions::new()
                 .create(true)
                 .write(true)
                 .open(compiled_spec_path)
                 .unwrap();
             specification.save(&mut file);
+            info!("Saving took {:?}", now.elapsed());
             specification
         }
     };
@@ -81,22 +95,22 @@ fn main() {
     *context_provider
         .context_value_mut(specification.context_id("contextreg").unwrap())
         .unwrap() = 0x51;
-    let mut lifter = Lifter::new(&specification, &mut context_provider, &mut cache, &source);
-    lift(&mut lifter);
+    let mut lifter = Lifter::new(&mut context_provider, cache, &source);
+    // lift(&mut lifter);
     // TODO: Disassemble at offset 0x0000000000001060
     let mmu = Rc::new(RefCell::new(MogiMMU::new()));
     let specification = Rc::new(RefCell::new(specification));
-    let mut cpu = CPU::new(X86MogiJit::new(specification.clone(), mmu.clone(), false), specification, mmu);
-    // cpu.run().unwrap();
+    let jit = X86MogiJit::new(specification.clone(), mmu.clone(), false);
+    let mut cpu = MogiCPU::new(jit, specification, mmu, lifter);
+    cpu.run(RunLimit::Unlimited).unwrap();
 }
 
-fn lift(lifter: &mut Lifter<DirectlyMappedBytes>) {
-    let count = 100_000;
-    let start = Instant::now();
-    for _ in 0..count {
-        let (next, inst) = lifter.lift_single(0u64.into()).unwrap();
-        black_box(inst);
-    }
-    let duration = start.elapsed();
-    println!("Lifting time: {:?}", duration / count);
-}
+// fn lift(lifter: &mut Lifter<DirectlyMappedBytes>) {
+//     let count = 100_000;
+//     for _ in 0..count {
+//         let (next, inst) = lifter.lift_single(0u64.into()).unwrap();
+//         black_box(inst);
+//     }
+//     println!("Match avg: {:?}", lifter.diagnostics().match_avg());
+//     println!("Build avg: {:?}", lifter.diagnostics().build_avg());
+// }

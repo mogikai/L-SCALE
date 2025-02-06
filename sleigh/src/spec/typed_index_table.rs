@@ -98,6 +98,10 @@ impl<K, V> TypedIndexTable<K, V> {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
+
+    pub fn shrink_to_fit(&mut self) {
+        self.0.shrink_to_fit();
+    }
 }
 
 impl<K, V> TypedIndexTable<K, V>

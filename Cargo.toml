@@ -52,6 +52,16 @@ debug = true
 opt-level = 3
 debug = true
 
+[profile.dev.package.brotli]
+opt-level = 3
+debug = false
+
+[profile.dev.package.serde]
+opt-level = 3
+
+[profile.dev.package.serde_derive]
+opt-level = 3
+
 [profile.test.package.mogi_sleigh]
 opt-level = 3
 debug = true
