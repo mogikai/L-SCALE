@@ -56,6 +56,7 @@ use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::components::restore::Restorable;
 use mogi_system::errors::generic::GenericError;
 use mogi_utilities::error::memory::MemoryError;
+use rand::prelude::IndexedRandom;
 use rand::seq::SliceRandom;
 use tracing::debug;
 use tracing_subscriber::layer::SubscriberExt;
@@ -228,7 +229,7 @@ fn main() -> Result<(), GenericError> {
             // data.push_front(hex::decode("48454c463800000000000000ffff0000ffff00000000000000000000180000006f70632e7463703a2f2f6c6f63616c686f73743a34383430").unwrap());
             // data.push_front(hex::decode("4f504e4684000000000000002f000000687474703a2f2f6f7063666f756e646174696f6e2e6f72672f55412f5365637572697479506f6c696379234e6f6e65ffffffffffffffff01000000010000000100be0100005d738f5c000000000000000000000000ffffffff00000000000000000000000000000001000000ffffffffc0270900").unwrap());
 
-            if let Some(sock) = active_connections.choose(&mut rand::thread_rng()) {
+            if let Some(sock) = active_connections.choose(&mut rand::rng()) {
                 let socket = tcp.socket_mut(*sock).unwrap();
                 socket.push_data(
                     hex::decode("48454c463800000000000000ffff0000ffff00000000000000000000180000006f70632e7463703a2f2f6c6f63616c686f73743a34383430").unwrap().as_slice()
