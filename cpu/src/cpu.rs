@@ -13,15 +13,18 @@ use crate::jit::api::{
     MogiJit,
     RuntimeError,
 };
+use crate::jit::trace_jit;
 use crate::new_cpu_trait::{
     CPU,
     CPUResult,
     RunLimit,
 };
+use mogi_sleigh::lifter::Lifter;
+use mogi_sleigh::lifter::source::TargetInstructionSource;
 use mogi_sleigh::spec::ProcessorSpecification;
-use mogi_system::components::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
 use thiserror::Error;
+use tracing::trace;
 use zerocopy::{
     FromBytes,
     Immutable,
@@ -51,7 +54,7 @@ enum MustInterpret {
 }
 
 #[repr(C)]
-pub struct MogiCPU<JitT, MmuT, LifterT>
+pub struct MogiCPU<JitT, MmuT>
 where
     JitT: MogiJit,
 {
@@ -65,36 +68,33 @@ where
     /// but the jit itself may not be modified during the codes runtime.
     jit: RefCell<JitT>,
     mmu: Rc<RefCell<MmuT>>,
-    lifter: LifterT,
     processor_specification: Rc<RefCell<ProcessorSpecification>>,
     mir_cache: (),
 }
 
-impl<JitT, MmuT, LifterT> MogiCPU<JitT, MmuT, LifterT>
+impl<JitT, MmuT> MogiCPU<JitT, MmuT>
 where
     JitT: MogiJit,
-    MmuT: MMU,
 {
     pub fn new(
         mut jit: JitT,
         processor_specification: Rc<RefCell<ProcessorSpecification>>,
         mmu: Rc<RefCell<MmuT>>,
-        lifter: LifterT,
     ) -> Self {
         Self {
             runtime_context: Box::new(jit.new_runtime_context()),
             jit: RefCell::new(jit),
             mmu,
-            lifter,
             processor_specification,
             mir_cache: (),
         }
     }
 }
 
-impl<JitT, MmuT, LifterT> CPU for MogiCPU<JitT, MmuT, LifterT>
+impl<JitT, MmuT> CPU for MogiCPU<JitT, MmuT>
 where
     JitT: MogiJit,
+    MmuT: TargetInstructionSource,
 {
     fn run(
         &mut self,
@@ -104,11 +104,12 @@ where
             todo!("RunLimit is currently not yet implemented")
         };
         loop {
+            trace_jit!("Next block");
             self.handle_interrupt()?;
-            // This populates the jit block cache for the next instruction(s)
-            self.translate_blocks()?;
             match self.must_interpret() {
                 MustInterpret::No => {
+                    // This populates the jit block cache for the next instruction(s)
+                    self.translate_blocks()?;
                     let jit = self.jit.borrow();
                     let ip = jit.instruction_pointer(&self.runtime_context)?;
                     jit.execute(&mut self.runtime_context, ip)?;
@@ -160,9 +161,10 @@ where
     }
 }
 
-impl<JitT, MmuT, LifterT> MogiCPU<JitT, MmuT, LifterT>
+impl<JitT, MmuT> MogiCPU<JitT, MmuT>
 where
     JitT: MogiJit,
+    MmuT: TargetInstructionSource,
 {
     fn handle_interrupt(&mut self) -> Result<(), StopReason> {
         Ok(())
@@ -185,15 +187,27 @@ where
         {
             // TODO: Remove demo block
             let mut jit = self.jit.borrow_mut();
-            if jit.is_cached(jit.instruction_pointer(&self.runtime_context)?) {
+            let mmu = self.mmu.borrow();
+            let current_addr = jit.instruction_pointer(&self.runtime_context)?;
+            trace_jit!("Translating block at {:?}", current_addr);
+            if jit.is_cached(current_addr) {
+                trace_jit!("Block is already cached");
                 // The block is already translated. Return
                 return Ok(());
             }
-            jit.new_target_block(EVAddr::null(), Some(EVAddr::null()))?;
+            let (next_addr, block) = self
+                .processor_specification
+                .borrow()
+                .lift_instruction(&*mmu, current_addr)
+                .unwrap();
+            trace_jit!("{}", block);
+            trace_jit!("Next: {:?}", next_addr);
+            // TODO: What about caching?
+            jit.new_target_block(current_addr, Some(EVAddr::null()))?;
             // TODO: Insert instructions into block.
 
             jit.finalize_block()?;
-            jit.chain_blocks(EVAddr::null(), EVAddr::null(), JITPathChoice::Main)?;
+            jit.chain_blocks(current_addr, current_addr, JITPathChoice::Main)?;
             Ok(())
         }
     }

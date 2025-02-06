@@ -3,15 +3,15 @@
 
 pub mod basic_block;
 pub mod common;
+pub mod context_stack;
 pub mod custom_op;
 pub mod instruction;
 pub mod jcode;
 pub mod jir_block;
+pub mod jumplist;
 pub mod local_resolver;
 pub mod space;
 pub mod values;
-pub mod jumplist;
-pub mod context_provider;
 
 #[cfg(feature = "trace_jir")]
 macro_rules! trace_jir {

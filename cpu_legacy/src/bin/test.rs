@@ -12,12 +12,12 @@
 // };
 //
 // use mogi_cpu::cpu::builder::CpuBuilder;
-// use mogi_mem::perm::{
+// use mogi_mem_legacy::perm::{
 //     EXEC,
 //     READ,
 //     WRITE,
 // };
-// use mogi_mem::{
+// use mogi_mem_legacy::{
 //     AllocLayout,
 //     Mmu,
 //     UnallocatedMemory,

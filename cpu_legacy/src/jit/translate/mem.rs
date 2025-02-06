@@ -15,15 +15,15 @@ use cranelift::prelude::{
 };
 use cranelift_codegen::ir::Endianness;
 use memoffset::offset_of;
-use mogi_mem::physical::page::PageData;
-use mogi_mem::tlb::entry::TLBEntry;
-use mogi_mem::tlb::tlb::TLB;
-use mogi_mem::tlb::{
+use mogi_mem_legacy::physical::page::PageData;
+use mogi_mem_legacy::tlb::entry::TLBEntry;
+use mogi_mem_legacy::tlb::tlb::TLB;
+use mogi_mem_legacy::tlb::{
     PageIndex,
     PageTag,
     TLB_INDEX_BITS,
 };
-use mogi_mem::PAGE_OFFSET_BITS;
+use mogi_mem_legacy::PAGE_OFFSET_BITS;
 use mogi_system::components::mmu::Permission;
 use mogi_utilities::addresses::EVAddr;
 

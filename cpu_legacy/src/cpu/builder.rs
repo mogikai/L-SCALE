@@ -9,7 +9,7 @@ use crate::exec::helpers;
 use crate::lifter;
 use crate::sleigh::compile::from_path;
 use crate::sleigh::runtime::SleighData;
-use mogi_mem::mmu::MogiMMU;
+use mogi_mem_legacy::mmu::MogiMMU;
 use mogi_utilities::addresses::EVAddr;
 use std::cell::RefCell;
 use std::rc::Rc;

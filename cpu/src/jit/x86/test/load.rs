@@ -10,8 +10,8 @@ use crate::jit::x86::test::{
     set_slice,
     setup,
 };
-use mogi_mem::PageOffset;
-use mogi_mem::physical::page::PageData;
+use mogi_mem_legacy::PageOffset;
+use mogi_mem_legacy::physical::page::PageData;
 use mogi_sleigh::jinst;
 use mogi_sleigh::spec::SpaceId;
 use mogi_utilities::addresses::{

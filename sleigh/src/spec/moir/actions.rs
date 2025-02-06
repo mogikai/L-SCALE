@@ -1,5 +1,5 @@
 use crate::compiler::InternalCompilerResult;
-use crate::spec::jir::context_provider::ContextProvider;
+use crate::spec::jir::context_stack::ContextStack;
 use crate::spec::jir::local_resolver::JIRResolver;
 use crate::spec::jir::trace_jir;
 use crate::spec::jir::values::{
@@ -55,7 +55,7 @@ impl MOIRAction {
     pub(crate) fn evaluate(
         &self,
         resolver: &mut JIRResolver,
-        context_provider: &mut ContextProvider,
+        context_provider: &mut ContextStack,
     ) -> InternalCompilerResult {
         let value = self.expression.evaluate(resolver)?;
 

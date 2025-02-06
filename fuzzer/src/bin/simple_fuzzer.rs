@@ -50,7 +50,7 @@ use mogi_emulator::emulator::system::memory::{
 use mogi_emulator::emulator::system::prng::SeedablePrngMap;
 use mogi_emulator::emulator::system::task_manager::TaskManager;
 use mogi_fuzzer::io::tcp::TCP;
-use mogi_mem::mmu::MogiMMU;
+use mogi_mem_legacy::mmu::MogiMMU;
 use mogi_system::components::cpu::CPU;
 use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::components::restore::Restorable;

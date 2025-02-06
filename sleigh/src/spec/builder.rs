@@ -74,6 +74,7 @@ use mogi_sleigh_parser::{
     StringId,
 };
 use mogi_utilities::index_map::PrimaryMap;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use strum_macros::Display;
@@ -888,6 +889,7 @@ impl ProcessorSpecificationBuilder {
                 .into_value(),
             // The default alignment is 1
             alignment: self.alignment.map(Spanned::into_value).unwrap_or(1),
+            lifter_diagnostics: RefCell::new(Default::default()),
         };
 
         Ok(spec)

@@ -15,7 +15,7 @@ use cranelift_module::{
     Module,
     ModuleResult,
 };
-use mogi_mem::tlb::tlb::TLB;
+use mogi_mem_legacy::tlb::tlb::TLB;
 use mogi_utilities::addresses::EVAddr;
 
 use crate::jit::translate::TranslatorCtx;

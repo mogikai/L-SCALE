@@ -26,7 +26,7 @@ use mogi_emulator::emulator::system::prng::SeedablePrngMap;
 use mogi_emulator::emulator::system::task_manager::TaskManager;
 use mogi_fuzzer::core::fuzzer::Fuzzer;
 use mogi_fuzzer::io::tcp::TCP;
-use mogi_mem::mmu::MogiMMU;
+use mogi_mem_legacy::mmu::MogiMMU;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{

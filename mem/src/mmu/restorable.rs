@@ -15,8 +15,8 @@ pub(super) struct Snapshot {
 impl Restorable for MogiMMU {
     fn take_snapshot(&mut self) -> Result<(), GenericError> {
         self.snapshots.push(Snapshot {
-            memory_context: self.memory_context.clone(),
-            physical_memory: self.physical_memory.clone(),
+            memory_context: self.memory_context.borrow().clone(),
+            physical_memory: self.physical_memory.borrow().clone(),
         });
         self.flush_all()?;
         Ok(())
@@ -29,8 +29,12 @@ impl Restorable for MogiMMU {
 
     fn restore_snapshot(&mut self) -> Result<(), GenericError> {
         let snapshot = self.snapshots.last().ok_or(GenericError::unknown())?;
-        self.memory_context.clone_from(&snapshot.memory_context);
-        self.physical_memory.clone_from(&snapshot.physical_memory);
+        self.memory_context
+            .borrow_mut()
+            .clone_from(&snapshot.memory_context);
+        self.physical_memory
+            .borrow_mut()
+            .clone_from(&snapshot.physical_memory);
         Ok(())
     }
 }

@@ -9,6 +9,7 @@ members = [
     #    "gui",
     "samples",
     "cpu_legacy",
+    "mem_legacy",
     "mem",
     "utilities",
     "system",

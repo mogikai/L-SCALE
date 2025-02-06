@@ -10,7 +10,7 @@ use crate::jit::api::{
     MogiJit,
 };
 use crate::jit::x86::X86MogiJit;
-use mogi_mem::mmu::MogiMMU;
+use mogi_mem_legacy::mmu::MogiMMU;
 use mogi_sleigh::SleighPreprocessorFactory;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
 use mogi_sleigh::spec::ProcessorSpecification;

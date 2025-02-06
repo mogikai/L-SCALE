@@ -15,7 +15,6 @@ use crate::jit::api::{
 use dynasmrt::dynasm;
 use dynasmrt::x64::X64Relocation;
 use memmap2::MmapOptions;
-use mogi_mem::mmu::MogiMMU;
 use mogi_sleigh::spec::jir::jcode::{
     JIRInstruction,
     JIROperation,
@@ -83,6 +82,7 @@ macro_rules! assemble {
 }
 
 use assemble;
+use mogi_mem::mmu::MogiMMU;
 
 pub struct X86MogiJit {
     code_buffer: CodeBuffer<X64Relocation>,

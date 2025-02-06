@@ -12,6 +12,7 @@ use crate::{
     PAGE_SIZE,
     PageOffset,
 };
+use mogi_sleigh::lifter::source::TargetInstructionSource;
 use mogi_system::components::mmu::{
     MMU,
     MemoryAction,
@@ -24,7 +25,10 @@ use mogi_utilities::addresses::{
     EVAddr,
 };
 use mogi_utilities::error::memory::MemoryError;
-use std::cell::RefCell;
+use std::cell::{
+    Ref,
+    RefCell,
+};
 use std::cmp::min;
 use std::fmt::{
     Debug,
@@ -64,8 +68,8 @@ impl MemoryContext {
 pub struct MogiMMU {
     /// The currently active memory context. This can be swapped out for example when performing multitasking.
     /// This way, each process can have its own tlb and page table.
-    memory_context: MemoryContext,
-    physical_memory: PhysicalMemory,
+    memory_context: RefCell<MemoryContext>,
+    physical_memory: RefCell<PhysicalMemory>,
     // TODO this is bad. find better solution for ownership
     page_fault_callback: Rc<RefCell<PageFaultCallback<MemoryContext>>>,
     snapshots: Vec<Snapshot>,
@@ -86,73 +90,45 @@ impl Debug for MogiMMU {
 impl MogiMMU {
     pub fn new() -> Self {
         Self {
-            memory_context: MemoryContext::new(),
-            physical_memory: PhysicalMemory::new(1_000_000),
+            memory_context: RefCell::new(MemoryContext::new()),
+            physical_memory: RefCell::new(PhysicalMemory::new(1_000_000)),
             page_fault_callback: Rc::new(RefCell::new(Box::new(|_, _, _| ()))),
             snapshots: vec![],
         }
     }
 
     pub fn debug_tlb(&self) {
-        debug!("{:?}", self.memory_context.tlb);
+        debug!("{:?}", self.memory_context.borrow().tlb);
     }
 
-    pub fn physical_memory(&self) -> &PhysicalMemory {
-        &self.physical_memory
-    }
-
-    pub fn physical_memory_mut(&mut self) -> &mut PhysicalMemory {
-        &mut self.physical_memory
-    }
-
-    pub fn tlb_ptr(&mut self) -> *mut TLB {
-        self.memory_context.tlb.as_mut()
-    }
+    // pub fn physical_memory(&self) -> &PhysicalMemory {
+    //     &self.physical_memory
+    // }
+    //
+    // pub fn physical_memory_mut(&mut self) -> &mut PhysicalMemory {
+    //     &mut self.physical_memory
+    // }
 
     /// Resolves the provided EV address to a page id. If no entry is found in the page table,
     /// the OS is queried, and if a mapping is returned, it is inserted in the page table.
     /// TODO: Remove and use resolve_to_page, and move check_permissions to page resolving
     /// such that we can fault on invalid permissions, and get the newly mapped page.
     fn resolve_to_page_id(
-        &mut self,
+        &self,
         addr: EVAddr,
         action: MemoryAction,
     ) -> Result<PageId, MemoryError> {
-        self.memory_context.page_table.translate(addr).or_else(|_| {
-            let callback = self.page_fault_callback.clone();
-            let mut callback = callback.borrow_mut();
-            callback(self, addr, action);
-            self.memory_context.page_table.translate(addr)
-        })
-    }
-
-    #[allow(dead_code)]
-    fn resolve_to_page(
-        &mut self,
-        addr: EVAddr,
-        action: MemoryAction,
-    ) -> Result<&Page, MemoryError> {
-        let id = self
-            .memory_context
+        self.memory_context
+            .borrow()
             .page_table
             .translate(addr)
             .or_else(|_| {
                 let callback = self.page_fault_callback.clone();
-                let mut callback = callback.borrow_mut();
-                callback(self, addr, action);
-                self.memory_context.page_table.translate(addr)
-            })?;
-
-        self.physical_memory.page_by_id(id)
-
-        // let result = check_permissions(page...);
-        // if let Err(e) = result {
-        //      let paddr = page_fault_callback()?;
-        //      let page_id = self.physical_memory.page_id(paddr);
-        //      self.physical_memory.page_by_id(page_id)
-        // } else {
-        //      page
-        // }
+                // TODO: What to do about the callback. We cannot pass a mutable reference here.
+                // let mut callback = callback.borrow_mut();
+                // callback(self, addr, action);
+                self.memory_context.borrow().page_table.translate(addr)
+            })
     }
 
     // pub fn insert_page_table_entry(
@@ -172,26 +148,26 @@ impl MogiMMU {
     // }
 
     fn read_internal(
-        &mut self,
+        &self,
         mut addr: EVAddr,
         buffer: &mut [u8],
         action: MemoryAction,
     ) -> Result<(), MemoryError> {
         let size = buffer.len();
-        // TODO: Use interior mutability to make read accept &self?
         let mut i = 0;
         let mut len = size;
         // Read in page sized chunks
         while len > 0 {
             let page_id = self.resolve_to_page_id(addr, action)?;
+            let mut physical = self.physical_memory.borrow_mut();
             let page = if let MemoryAction::FETCH = action {
-                let page = self.physical_memory.page_by_id_mut(page_id)?;
+                let page = physical.page_by_id_mut(page_id)?;
                 page.executed = true;
                 &*page
             } else {
-                self.physical_memory.page_by_id(page_id)?
+                physical.page_by_id(page_id)?
             };
-            populate_tlb(&mut self.memory_context.tlb, addr, page, action);
+            populate_tlb(&mut self.memory_context.borrow_mut().tlb, addr, page, action);
             let size = min(len, PAGE_SIZE - addr.page_offset());
             let page_start = addr.page_offset();
             let page_end = page_start + size;
@@ -217,7 +193,8 @@ impl MogiMMU {
         // Read in page sized chunks
         while len > 0 {
             // TODO: This could maybe be optimized a bit, so we dont have to look up each page individually
-            let page = self.physical_memory.page(addr)?;
+            let physical = self.physical_memory.borrow();
+            let page = physical.page(addr)?;
             let size = min(len, PAGE_SIZE - addr.page_offset());
             let page_start = addr.page_offset();
             let page_end = page_start + size;
@@ -240,14 +217,14 @@ impl MMU for MogiMMU {
     }
 
     fn clone_context(&self) -> MemoryContext {
-        self.memory_context.clone()
+        self.memory_context.borrow().clone()
     }
 
     fn load_context(
         &mut self,
         context: &MemoryContext,
     ) -> MemoryContext {
-        std::mem::replace(&mut self.memory_context, context.clone())
+        std::mem::replace(&mut self.memory_context.borrow_mut(), context.clone())
     }
 
     fn flush_vaddr(
@@ -259,8 +236,8 @@ impl MMU for MogiMMU {
     }
 
     fn flush_all(&mut self) -> MmuResult<()> {
-        self.memory_context.page_table.flush();
-        self.memory_context.tlb.flush();
+        self.memory_context.borrow_mut().page_table.flush();
+        self.memory_context.borrow_mut().tlb.flush();
 
         Ok(())
     }
@@ -271,9 +248,13 @@ impl MMU for MogiMMU {
         paddr: EPAddr,
         permissions: Permission,
     ) -> MmuResult<()> {
-        let page_id = self.physical_memory.page_id(paddr)?;
-        self.memory_context.page_table.insert(addr, page_id); // override existing
+        let page_id = self.physical_memory.borrow().page_id(paddr)?;
+        self.memory_context
+            .borrow_mut()
+            .page_table
+            .insert(addr, page_id); // override existing
         self.physical_memory
+            .borrow_mut()
             .page_by_id_mut(page_id)?
             .permissions_mut()
             .iter_mut()
@@ -286,8 +267,8 @@ impl MMU for MogiMMU {
         &mut self,
         addr: EVAddr,
     ) -> MmuResult<()> {
-        self.memory_context.page_table.clear(addr);
-        self.memory_context.tlb.remove(addr);
+        self.memory_context.borrow_mut().page_table.clear(addr);
+        self.memory_context.borrow_mut().tlb.remove(addr);
 
         Ok(())
     }
@@ -310,7 +291,8 @@ impl MMU for MogiMMU {
         let mut len = data.len();
         // Write in page sized chunks
         while len > 0 {
-            let page = self.physical_memory.page_mut(addr)?;
+            let mut physical = self.physical_memory.borrow_mut();
+            let page = physical.page_mut(addr)?;
             let size = min(len, PAGE_SIZE - addr.page_offset());
             let page_start = addr.page_offset();
             let page_end = page_start + size;
@@ -350,13 +332,14 @@ impl MMU for MogiMMU {
         // Write in page sized chunks
         while len > 0 {
             let page_id = self.resolve_to_page_id(addr, MemoryAction::WRITE)?;
-            let page = self.physical_memory.page_by_id_mut(page_id)?;
+            let mut physical = self.physical_memory.borrow_mut();
+            let page = physical.page_by_id_mut(page_id)?;
             let size = min(len, PAGE_SIZE - addr.page_offset());
             let page_start = addr.page_offset();
             let page_end = page_start + size;
             check_permissions(&page.permissions()[page_start..page_end], MemoryAction::WRITE.required_permissions())?;
             page.data_mut()[page_start..page_end].copy_from_slice(&data[i..i + size]);
-            populate_tlb(&mut self.memory_context.tlb, addr, page, MemoryAction::WRITE);
+            populate_tlb(&mut self.memory_context.borrow_mut().tlb, addr, page, MemoryAction::WRITE);
             i += size;
             addr += size;
             len -= size;
@@ -379,6 +362,7 @@ impl MMU for MogiMMU {
         size: usize,
     ) -> MmuResult<()> {
         self.physical_memory
+            .borrow_mut()
             .alloc(addr, size, Permission::ALL)
             .map(|_| ())
     }
@@ -388,7 +372,7 @@ impl MMU for MogiMMU {
         addr: EPAddr,
         size: usize,
     ) -> MmuResult<()> {
-        self.physical_memory.free(addr, size)
+        self.physical_memory.borrow_mut().free(addr, size)
     }
 
     fn set_page_fault_callback(
@@ -398,6 +382,18 @@ impl MMU for MogiMMU {
         self.page_fault_callback = Rc::new(RefCell::new(callback));
 
         Ok(())
+    }
+}
+
+impl TargetInstructionSource for MogiMMU {
+    type Error = MemoryError;
+
+    fn load(
+        &self,
+        addr: EVAddr,
+        buffer: &mut [u8],
+    ) -> Result<(), Self::Error> {
+        self.read_internal(addr, buffer, MemoryAction::FETCH)
     }
 }
 
@@ -456,9 +452,9 @@ mod test {
         for byte in buffer {
             assert_eq!(byte, b'A');
         }
-        let result = mmu.physical_memory.page(0x8000u64.into());
+        let result = mmu.physical_memory.borrow().page(0x8000u64.into());
         println!("{:?}", result);
-        let result = mmu.physical_memory.page(0x9000u64.into());
+        let result = mmu.physical_memory.borrow().page(0x9000u64.into());
         println!("{:?}", result);
     }
 }

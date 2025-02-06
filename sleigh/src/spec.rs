@@ -3,9 +3,10 @@ use self::jir::jumplist::{
     JumplistId,
 };
 use self::moir::field::MOIRField;
+use crate::lifter::LifterDiagnostics;
 use crate::new_typed_index_table_id;
 use crate::spec::builder::MOIRSymbolId;
-use crate::spec::jir::context_provider::ContextProvider;
+use crate::spec::jir::context_stack::ContextStack;
 use crate::spec::jir::custom_op::JIRCustomOp;
 use crate::spec::jir::jir_block::JIRBlockId;
 use crate::spec::jir::space::JIRSpace;
@@ -43,6 +44,7 @@ use serde_derive::{
     Deserialize,
     Serialize,
 };
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
 use std::io::{
@@ -56,6 +58,7 @@ use tracing::debug;
 
 pub mod builder;
 pub mod jir;
+mod lifter;
 pub mod moir;
 pub mod typed_index_table;
 
@@ -140,14 +143,11 @@ pub struct ProcessorSpecification {
     pub(crate) endianness: MOIREndianness,
     /// The alignment of instructions. This defaults to 1 if no alignment is specified.
     pub(crate) alignment: u16,
+    #[serde(skip_serializing, skip_deserializing)]
+    lifter_diagnostics: RefCell<LifterDiagnostics>,
 }
 
 impl ProcessorSpecification {
-    /// Create a new context provider for the context fields in this specification.
-    pub fn context_provider(&self) -> ContextProvider {
-        ContextProvider::new(self)
-    }
-
     pub fn context_id(
         &self,
         context_name: &str,

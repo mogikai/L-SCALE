@@ -1,4 +1,3 @@
-#![allow(dead_code, unused_variables, unused_mut)]
 use clap::Parser;
 use mogi_cpu::cpu::MogiCPU;
 use mogi_cpu::jit::x86::X86MogiJit;
@@ -9,10 +8,13 @@ use mogi_cpu::new_cpu_trait::{
 use mogi_mem::mmu::MogiMMU;
 use mogi_sleigh::SleighPreprocessorFactory;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
-use mogi_sleigh::lifter::Lifter;
 use mogi_sleigh::lifter::cache::LifterCache;
 use mogi_sleigh::lifter::source::DirectlyMappedBytes;
 use mogi_sleigh::spec::ProcessorSpecification;
+use mogi_system::components::mmu::{
+    MMU,
+    Permission,
+};
 use std::cell::RefCell;
 use std::env::current_dir;
 use std::fs::{
@@ -32,15 +34,7 @@ use tracing_subscriber::{
     fmt,
 };
 
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Args {
-    #[arg(short, default_value = "0")]
-    constructor_id: usize,
-}
-
 fn main() {
-    let args = Args::parse();
     tracing_subscriber::registry()
         .with(fmt::layer())
         .with(
@@ -54,6 +48,38 @@ fn main() {
     let spec_path = Path::new("./deps/Ghidra/Ghidra/Processors/x86/data/languages/x86-64.slaspec");
     // let spec_path = Path::new("./cpu/Ghidra/Ghidra/Processors/x86/data/languages/x86.slaspec");
     // let spec_path = Path::new("./sleigh/ia.sinc");
+    let specification = load_specification(spec_path);
+    // println!("{:?}", specification.list_global_varnode_strings());
+    println!("{:?}", specification.space_max_used_offset(3.into()).unwrap());
+    specification.debug_space_allocation(3.into()).unwrap();
+    let specification = Rc::new(RefCell::new(specification));
+    // Set up the mmu.
+    let mmu = Rc::new(RefCell::new(MogiMMU::new()));
+    {
+        let mut mmu = mmu.borrow_mut();
+        // We allocate 1000 bytes of physical memory
+        mmu.alloc_physical(0x8_000u64.into(), 0x1_000).unwrap();
+        // And link the virtual address 0xffaa00 to the allocated physical memory.
+        mmu.set_page_table_entry(0xffaa00u64.into(), 0x8_000u64.into(), Permission::ALL)
+            .unwrap();
+        // And then write the instruction to the allocated memory.
+        mmu.write(0xffaa00u64.into(), b"\x21\xD8").unwrap();
+    }
+
+    // Set up the just in time compiler. TODO: Maybe we can refactor this such that the jit doesn't need the spec.
+    let jit = X86MogiJit::new(specification.clone(), mmu.clone(), false);
+
+    // Set up the cpu emulator
+    let mut cpu = MogiCPU::new(jit, specification, mmu);
+
+    // Set the instruction pointer to the address we want to start executing at.
+    *cpu.register_mut("RIP").unwrap() = 0xffaa00u64;
+
+    // Now lets roll! (forever :>)
+    cpu.run(RunLimit::Unlimited).unwrap();
+}
+
+fn load_specification(spec_path: &Path) -> ProcessorSpecification {
     let mut compiled_spec_path = current_dir().unwrap();
     compiled_spec_path.push(".output/x86.mcs");
     let mut file = File::open(&compiled_spec_path);
@@ -84,33 +110,5 @@ fn main() {
             specification
         }
     };
-    // println!("{:?}", specification.list_global_varnode_strings());
-    println!("{:?}", specification.space_max_used_offset(3.into()).unwrap());
-    specification.debug_space_allocation(3.into()).unwrap();
-    let source = DirectlyMappedBytes::from(b"\x21\xD8");
-    let mut cache = LifterCache::default();
-    // mod=1
-    let mut context_provider = specification.context_provider();
-    // longMode=1
-    *context_provider
-        .context_value_mut(specification.context_id("contextreg").unwrap())
-        .unwrap() = 0x51;
-    let mut lifter = Lifter::new(&mut context_provider, cache, &source);
-    // lift(&mut lifter);
-    // TODO: Disassemble at offset 0x0000000000001060
-    let mmu = Rc::new(RefCell::new(MogiMMU::new()));
-    let specification = Rc::new(RefCell::new(specification));
-    let jit = X86MogiJit::new(specification.clone(), mmu.clone(), false);
-    let mut cpu = MogiCPU::new(jit, specification, mmu, lifter);
-    cpu.run(RunLimit::Unlimited).unwrap();
+    specification
 }
-
-// fn lift(lifter: &mut Lifter<DirectlyMappedBytes>) {
-//     let count = 100_000;
-//     for _ in 0..count {
-//         let (next, inst) = lifter.lift_single(0u64.into()).unwrap();
-//         black_box(inst);
-//     }
-//     println!("Match avg: {:?}", lifter.diagnostics().match_avg());
-//     println!("Build avg: {:?}", lifter.diagnostics().build_avg());
-// }

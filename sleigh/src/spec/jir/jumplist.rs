@@ -1,4 +1,4 @@
-use super::context_provider::ContextProvider;
+use super::context_stack::ContextStack;
 use super::local_resolver::JIRResolver;
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
@@ -151,7 +151,7 @@ impl Jumplist {
     fn decode_value<'a>(
         &'a self,
         bytes: &'a [u8],
-        context_provider: &ContextProvider,
+        context_provider: &ContextStack,
     ) -> InternalCompilerResult<Option<(u64, &'a [u8])>> {
         // TODO return value
         match self.data_provider {
@@ -178,7 +178,7 @@ impl Jumplist {
         &'b self,
         jumplist_cache: &'b TypedIndexTable<JumplistId, Jumplist>,
         constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
-        context_provider: &mut ContextProvider,
+        context_provider: &mut ContextStack,
         bytes: &'b [u8],
         accum: &mut LocalMatching<'b>,
     ) -> InternalCompilerResult<Option<(TableId, JIRResolver<'a>)>> {
@@ -260,7 +260,7 @@ impl Jumplist {
         &'b self,
         jumplist_cache: &TypedIndexTable<JumplistId, Jumplist>,
         constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
-        context_provider: &mut ContextProvider,
+        context_provider: &mut ContextStack,
         local_matching: &LocalMatching<'b>,
         constructor_id: ConstructorId,
         table_id: TableId,
@@ -366,7 +366,7 @@ impl Jumplist {
         bytes: &'b [u8],
         jumplist_cache: &'b TypedIndexTable<JumplistId, Jumplist>,
         constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
-        context_provider: &mut ContextProvider,
+        context_provider: &mut ContextStack,
     ) -> InternalCompilerResult<Option<(TableId, JIRResolver<'a>)>> {
         let mut accum = LocalMatching::default();
         self.match_local(jumplist_cache, constructors, context_provider, bytes, &mut accum)

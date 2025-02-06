@@ -6,7 +6,7 @@ use crate::cpu::{
     Cpu,
     Snapshot,
 };
-use mogi_mem::mmu::MemoryContext;
+use mogi_mem_legacy::mmu::MemoryContext;
 use mogi_system::components::cpu::hooks::{
     BlockHook,
     CodeHook,
@@ -20,7 +20,10 @@ use mogi_system::components::cpu::{
     CPU,
 };
 use mogi_system::components::mmu::{
-    MmuResult, PageFaultCallback, Permission, MMU
+    MmuResult,
+    PageFaultCallback,
+    Permission,
+    MMU,
 };
 use mogi_system::components::restore::Restorable;
 use mogi_system::errors::cpu::{
@@ -38,21 +41,17 @@ use std::time::Duration;
 impl MMU for Cpu {
     type MemoryContext = MemoryContext;
 
-    fn new_context(
-        &self
-    ) -> Self::MemoryContext {
+    fn new_context(&self) -> Self::MemoryContext {
         self.core.mem.borrow().new_context()
     }
 
-    fn clone_context(
-        &self
-    ) -> Self::MemoryContext {
+    fn clone_context(&self) -> Self::MemoryContext {
         self.core.mem.borrow().clone_context()
     }
 
     fn load_context(
         &mut self,
-        context: &Self::MemoryContext
+        context: &Self::MemoryContext,
     ) -> Self::MemoryContext {
         self.core.mem.borrow_mut().load_context(context)
     }
@@ -60,14 +59,12 @@ impl MMU for Cpu {
     fn flush_vaddr(
         &mut self,
         addr: EVAddr,
-        len: usize
+        len: usize,
     ) -> MmuResult<MemoryError> {
         todo!()
     }
 
-    fn flush_all(
-        &mut self
-    ) -> MmuResult<()> {
+    fn flush_all(&mut self) -> MmuResult<()> {
         self.core.mem.borrow_mut().flush_all()
     }
 
@@ -77,7 +74,10 @@ impl MMU for Cpu {
         paddr: EPAddr,
         permissions: Permission,
     ) -> MmuResult<()> {
-        self.core.mem.borrow_mut().set_page_table_entry(addr, paddr, permissions)
+        self.core
+            .mem
+            .borrow_mut()
+            .set_page_table_entry(addr, paddr, permissions)
     }
 
     fn clear_page_table_entry(
@@ -90,7 +90,7 @@ impl MMU for Cpu {
     fn read_physical(
         &mut self,
         addr: EPAddr,
-        buffer: &mut [u8]
+        buffer: &mut [u8],
     ) -> MmuResult<()> {
         self.core.mem.borrow_mut().read_physical(addr, buffer)
     }
@@ -98,7 +98,7 @@ impl MMU for Cpu {
     fn write_physical(
         &mut self,
         addr: EPAddr,
-        data: &[u8]
+        data: &[u8],
     ) -> MmuResult<()> {
         self.core.mem.borrow_mut().write_physical(addr, data)
     }
@@ -114,7 +114,7 @@ impl MMU for Cpu {
     fn read(
         &mut self,
         addr: EVAddr,
-        buffer: &mut [u8]
+        buffer: &mut [u8],
     ) -> MmuResult<()> {
         self.core.mem.borrow_mut().read(addr, buffer)
     }
@@ -122,7 +122,7 @@ impl MMU for Cpu {
     fn write(
         &mut self,
         addr: EVAddr,
-        data: &[u8]
+        data: &[u8],
     ) -> MmuResult<()> {
         self.core.mem.borrow_mut().write(addr, data)
     }
@@ -138,7 +138,7 @@ impl MMU for Cpu {
     fn alloc_physical(
         &mut self,
         addr: EPAddr,
-        size: usize
+        size: usize,
     ) -> MmuResult<()> {
         self.core.mem.borrow_mut().alloc_physical(addr, size)
     }
@@ -146,14 +146,14 @@ impl MMU for Cpu {
     fn free_physical(
         &mut self,
         addr: EPAddr,
-        size: usize
+        size: usize,
     ) -> MmuResult<()> {
         self.core.mem.borrow_mut().free_physical(addr, size)
     }
 
     fn set_page_fault_callback(
         &mut self,
-        callback: PageFaultCallback<MemoryContext>
+        callback: PageFaultCallback<MemoryContext>,
     ) -> MmuResult<()> {
         self.core.mem.borrow_mut().set_page_fault_callback(callback)
     }

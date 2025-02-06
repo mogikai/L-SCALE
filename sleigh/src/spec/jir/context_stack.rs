@@ -10,7 +10,7 @@ use crate::spec::moir::field::{
 use mogi_utilities::index_map::SecondaryMap;
 
 #[derive(Debug, Default)]
-pub struct ContextProvider {
+pub struct ContextStack {
     // context ids are assumed to be contiguous and therefore pushed onto and popped
     // from this vector when saving and restoring state
     context_values: Vec<u64>,
@@ -18,7 +18,7 @@ pub struct ContextProvider {
     context_fields: SecondaryMap<FieldId, Option<MOIRField>>,
 }
 
-impl ContextProvider {
+impl ContextStack {
     pub(crate) fn new(specification: &ProcessorSpecification) -> Self {
         let mut highest_cid = ContextId::from(0);
         let mut context_fields = SecondaryMap::default();

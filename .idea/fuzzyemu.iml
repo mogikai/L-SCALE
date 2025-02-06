@@ -23,6 +23,7 @@
       <sourceFolder url="file://$MODULE_DIR$/sleigh_deprecated/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/sleigh/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/cpu_legacy/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/mem_legacy/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/sleigh_parser/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/sleigh_parser/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/deps/LibAFL/fuzzers/baby_fuzzer/target" />

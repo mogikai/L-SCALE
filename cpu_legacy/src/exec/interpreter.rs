@@ -1,5 +1,5 @@
 use half::f16;
-use mogi_mem::mmu::MemResult;
+use mogi_mem_legacy::mmu::MemResult;
 use mogi_utilities::addresses::EVAddr;
 
 use crate::core::regs::{

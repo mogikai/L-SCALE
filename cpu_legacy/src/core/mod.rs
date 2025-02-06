@@ -1,4 +1,7 @@
-use mogi_mem::mmu::{MogiMMU, MemResult};
+use mogi_mem_legacy::mmu::{
+    MemResult,
+    MogiMMU,
+};
 use mogi_system::components::mmu::MMU;
 use mogi_system::errors::cpu::StopReason;
 use mogi_utilities::addresses::EVAddr;
