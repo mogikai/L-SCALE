@@ -1,4 +1,7 @@
-use crate::emulator::abstractions::errors::{GenericError, GenericErrorKind};
+use crate::emulator::abstractions::errors::{
+    GenericError,
+    GenericErrorKind,
+};
 use crate::emulator::abstractions::file_descriptors::{
     FileDescriptorError,
     FileDescriptorOps,
@@ -10,6 +13,7 @@ use crate::emulator::abstractions::network::{
 };
 use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
+use crate::emulator::platform::linux::kernel::fs::Whence;
 use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
 use crate::emulator::platform::linux::kernel::socket::Optval;
 use crate::emulator::system::fd_map::FileDescriptor;
@@ -26,15 +30,15 @@ use tracing::{
 };
 
 #[derive(Debug, Default, Clone)]
-pub struct InternalStdioData {
+pub struct StdioSnapshot {
     stdin_data: Vec<u8>,
-    pub pos: usize,
+    pos: usize,
 }
 
 #[derive(Debug)]
 pub struct Stdio {
-    snapshots: Vec<InternalStdioData>,
-    pub data: InternalStdioData,
+    snapshots: Vec<StdioSnapshot>,
+    data: StdioSnapshot,
 }
 
 impl Restorable for Stdio {
@@ -52,7 +56,8 @@ impl Restorable for Stdio {
     }
 
     fn restore_snapshot(&mut self) -> Result<(), GenericError> {
-        self.data.clone_from(self.snapshots.last().unwrap_or(&Default::default()));
+        self.data
+            .clone_from(self.snapshots.last().unwrap_or(&Default::default()));
         Ok(())
     }
 }
@@ -87,6 +92,27 @@ impl Stdio {
         data: &[u8],
     ) {
         self.data.stdin_data.extend(data);
+    }
+
+    pub fn lseek(
+        &mut self,
+        whence: Whence,
+        offset: i64,
+    ) -> usize {
+        match whence {
+            Whence::SEEK_SET => self.data.pos = offset as usize,
+            Whence::SEEK_CUR => {
+                self.data.pos = if offset.is_negative() {
+                    self.data.pos.wrapping_sub(offset.abs() as usize)
+                } else {
+                    self.data.pos.wrapping_add(offset.abs() as usize)
+                }
+            }
+            Whence::SEEK_END => {
+                unimplemented!()
+            }
+        }
+        self.data.pos
     }
 }
 

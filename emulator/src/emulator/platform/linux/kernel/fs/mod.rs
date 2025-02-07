@@ -5,7 +5,6 @@ use bitflags::{
     bitflags,
 };
 use byteorder::ByteOrder;
-
 use mogi_derive::unfinished;
 use mogi_system::components::cpu::CPU;
 
@@ -340,37 +339,26 @@ where
         Err(LinuxKernelError::EINVAL.into())
     }
 
-    // TODO refactor
     pub fn lseek(
         &self,
         fd: FD,
         offset: u64,
-        whence: u64,
+        whence: Whence,
     ) -> SyscallResult {
-        let mut fd_map = sys_component!(self, fd_map);
+        let mut fd_map = sys_component_mut!(self, fd_map);
         let file = fd_map
-            .get(&self.task_id, &fd)
+            .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADF)?;
 
-        let mut stdio = sys_component_mut!(self, stdio);
-        let pos = if let Some(_) = &file.data.stdio {
-            &mut stdio.data.pos
+        let new_pos = if file.data.stdio.is_some() {
+            let mut stdio = sys_component_mut!(self, stdio);
+            stdio.lseek(whence, offset as i64)
+        } else if file.data.file.is_some() {
+            file.data.file.as_mut().unwrap().lseek(whence, offset as i64)
         } else {
             unimplemented!()
         };
-        match whence {
-            0 => *pos = offset as usize,
-            1 => {
-                if (offset as i64).is_negative() {
-                    *pos = pos.wrapping_sub((offset as i64).abs() as usize)
-                } else {
-                    *pos += offset as usize
-                }
-            }
-            2 => unimplemented!(),
-            _ => return Err(LinuxKernelError::EINVAL.into())
-        }
-        Ok(*pos as u64)
+        Ok(new_pos as u64)
     }
 }
 
@@ -403,6 +391,39 @@ pub struct FileData {
     path: Option<PathBuf>,
 }
 
+impl FileData {
+    pub fn lseek(
+        &mut self,
+        whence: Whence,
+        offset: i64,
+    ) -> usize {
+        match whence {
+            Whence::SEEK_SET => self.pos = offset as usize,
+            Whence::SEEK_CUR => {
+                self.pos = if offset.is_negative() {
+                    self.pos.wrapping_sub(offset.abs() as usize)
+                } else {
+                    self.pos.wrapping_add(offset.abs() as usize)
+                }
+            }
+            Whence::SEEK_END => {
+                self.pos = self
+                    .filesystem
+                    .borrow_mut()
+                    .read_all(self.fse_id)
+                    .expect("file should exist, else fd cannot be open")
+                    .len();
+                self.pos = if offset.is_negative() {
+                    self.pos.wrapping_sub(offset.abs() as usize)
+                } else {
+                    self.pos.wrapping_add(offset.abs() as usize)
+                }
+            }
+        }
+        self.pos
+    }
+}
+
 impl Debug for FileData {
     fn fmt(
         &self,
@@ -432,6 +453,14 @@ impl FileData {
     pub fn get_path(&self) -> Option<&Path> {
         self.path.as_ref().map(|p| p.as_path())
     }
+}
+
+#[derive(Debug, Copy, Clone, TryFromPrimitive)]
+#[repr(u64)]
+pub enum Whence {
+    SEEK_SET,
+    SEEK_CUR,
+    SEEK_END,
 }
 
 const AT_FDCWD: u64 = -100i32 as u64; /* Special value used to indicate the *at functions should use the current working directory. */
