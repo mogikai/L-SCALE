@@ -1,11 +1,12 @@
 //! This module contains all the functions that are used to emit code for [JIRInstruction]s
 
 mod arithmetic;
+mod extend;
 mod flow;
 mod host_call;
 mod logic;
 mod mmu;
-mod slice_load;
+pub(super) mod slice_load;
 #[cfg(test)]
 mod test;
 

@@ -205,7 +205,9 @@ where
             // TODO: What about caching?
             jit.new_target_block(current_addr, Some(EVAddr::null()))?;
             // TODO: Insert instructions into block.
-
+            for inst in block.instructions() {
+                jit.emit_jinst(inst)?;
+            }
             jit.finalize_block()?;
             jit.chain_blocks(current_addr, current_addr, JITPathChoice::Main)?;
             Ok(())

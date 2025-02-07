@@ -2,6 +2,7 @@ use crate::jit::api::{
     JITResult,
     JitError,
 };
+use crate::jit::trace_jit;
 use crate::jit::x86::regalloc::{
     RegisterAllocationType,
     SliceType,
@@ -25,6 +26,15 @@ use mogi_sleigh::spec::jir::values::{
 };
 use std::cmp::min;
 use tracing::trace;
+
+#[derive(Debug)]
+pub enum CopyExtendMode {
+    /// Extend to the provided size
+    ZeroExtend(JIRSize),
+    /// Sign extend to the provided size.
+    SignExtend(JIRSize),
+    None,
+}
 
 impl X86MogiJit {
     /// Emit code to load the requested slice into a [GPRegister] if necessary.
@@ -58,6 +68,7 @@ impl X86MogiJit {
             .expect("Since we directed the allocation to spill if no space is available, this has to succeed");
         match register {
             RegisterLoadInfo::Unloaded(register) => {
+                trace!("Loading slice {slice:?} into GP register {register:?}");
                 self.load_slice_from_runtime_context(register, slice);
                 register
             }
@@ -173,7 +184,7 @@ impl X86MogiJit {
             //       I.e. if the slice is not loaded yet, use the provided hint, and otherwise
             //       we just return the gpr to which the slice was already loaded.
             let reg = self.load_slice_gpr_with_hint(Some(target_reg), slice, slice_type);
-            self.copy_gpr_to_gpr(target_reg, reg, size)?;
+            self.copy_gpr_to_gpr(target_reg, reg, size, CopyExtendMode::None)?;
         } else {
             todo!("Support sizes > 8")
         }
@@ -186,25 +197,41 @@ impl X86MogiJit {
         target: GPRegister,
         source: GPRegister,
         size: JIRSize,
+        extend_mode: CopyExtendMode,
     ) -> JITResult {
-        // Only emit a copy instruction, if target and source are different.
-        if target == source {
-            return Ok(());
-        }
-        match size {
-            1..=4 => {
-                assemble!(self.block_mut()?.assembler();
-                    ; mov Rd(target as u8), Rd(source as u8)
-                );
+        match extend_mode {
+            CopyExtendMode::ZeroExtend(new_size) => {
+                if target == source && size == new_size {
+                    trace_jit!("Zero extend with equal sizes: no-op");
+                    return Ok(());
+                }
+                trace_jit!("Zero extending from {source:?}:{size} to {target:?}:{new_size}");
+                Ok(())
             }
-            5..=8 => {
-                assemble!(self.block_mut()?.assembler();
-                    ; mov Rq(target as u8), Rq(source as u8)
-                );
+            CopyExtendMode::SignExtend(new_size) => {
+                todo!()
             }
-            _ => unimplemented!("Unsupported size for gpr copy"),
+            CopyExtendMode::None => {
+                // Only emit a copy instruction, if target and source are different.
+                if target == source {
+                    return Ok(());
+                }
+                match size {
+                    1..=4 => {
+                        assemble!(self.block_mut()?.assembler();
+                            ; mov Rd(target as u8), Rd(source as u8)
+                        );
+                    }
+                    5..=8 => {
+                        assemble!(self.block_mut()?.assembler();
+                            ; mov Rq(target as u8), Rq(source as u8)
+                        );
+                    }
+                    _ => unimplemented!("Unsupported size for gpr copy"),
+                }
+                Ok(())
+            }
         }
-        Ok(())
     }
 
     /// Emit an instruction that loads the provided constant into the provided target gp register.

@@ -377,10 +377,10 @@ impl MogiJit for X86MogiJit {
         let input_a = jinst.input_a.ok_or(RuntimeError::MissingInput);
         let input_b = jinst.input_b.ok_or(RuntimeError::MissingInput);
         match jinst.operation {
-            JIROperation::BlockStart(block_id) => {}
-            JIROperation::BlockEnd(block_id) => {}
-            JIROperation::InstructionStart(addr) => {}
-            JIROperation::InstructionEnd(addr) => {}
+            JIROperation::BlockStart(block_id) => return Ok(()),
+            JIROperation::BlockEnd(block_id) => return Ok(()),
+            JIROperation::InstructionStart(addr) => return Ok(()),
+            JIROperation::InstructionEnd(addr) => return Ok(()),
             JIROperation::Copy => return self.emit_copy(output?, input_a?),
             JIROperation::Load(space_id) => return self.emit_load(output?, input_a?, space_id),
             JIROperation::Store(space_id) => return self.emit_store(input_a?, space_id, input_b?),
@@ -436,7 +436,7 @@ impl MogiJit for X86MogiJit {
             JIROperation::JCodeGotoIf(block_id) => {}
             JIROperation::PopCount => {}
             JIROperation::LZCount => {}
-            JIROperation::ZeroExtend => {}
+            JIROperation::ZeroExtend => return self.emit_zero_extend(output?, input_a?),
             JIROperation::SignExtend => {}
             JIROperation::Carry => {}
             JIROperation::SignCarry => {}
@@ -454,7 +454,7 @@ impl MogiJit for X86MogiJit {
                 return self.emit_custom_op_call(op_id, output, input_a, input_b, extra_args.as_slice());
             }
         }
-        todo!()
+        todo!("Instruction not yet implemented: {jinst}")
     }
 
     fn emit_flush_slices(&mut self) -> JITResult {

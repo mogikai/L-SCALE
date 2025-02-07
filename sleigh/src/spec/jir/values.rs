@@ -131,6 +131,17 @@ impl JIRConst {
     pub fn size(&self) -> JIRSize {
         self.size
     }
+
+    pub fn zext(
+        self,
+        new_size: JIRSize,
+    ) -> Option<JIRConst> {
+        if self.size <= new_size {
+            Some(JIRConst::new(self.value, new_size))
+        } else {
+            None
+        }
+    }
 }
 
 impl JIRSlice {

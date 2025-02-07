@@ -199,7 +199,11 @@ impl TargetBasicBlockBuilder {
 #[derive(Debug, Clone)]
 pub struct TargetBasicBlock(Rc<TargetBasicBlockInner>);
 
-impl TargetBasicBlock {}
+impl TargetBasicBlock {
+    pub fn instructions(&self) -> impl Iterator<Item = &JIRInstruction> {
+        self.0.jir_instructions.iter()
+    }
+}
 
 #[derive(Debug, Clone)]
 struct TargetBasicBlockInner {

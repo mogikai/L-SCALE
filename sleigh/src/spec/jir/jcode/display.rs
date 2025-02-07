@@ -13,6 +13,10 @@ impl Display for JIRInstruction {
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
         match &self.operation {
+            JIROperation::BlockStart(label) => write!(f, "block_start <{}>", label),
+            JIROperation::BlockEnd(label) => write!(f, "block_end <{}>", label),
+            JIROperation::InstructionStart(addr) => write!(f, "instruction_start <{:?}>", addr),
+            JIROperation::InstructionEnd(addr) => write!(f, "instruction_end <{:?}>", addr),
             JIROperation::PopCount
             | JIROperation::LZCount
             | JIROperation::ZeroExtend

@@ -2,6 +2,8 @@ use crate::jit::api::{
     JITResult,
     JitError,
 };
+use crate::jit::trace_jit;
+use crate::jit::x86::emit::slice_load::CopyExtendMode;
 use crate::jit::x86::registers::{
     GPRegister,
     RegisterAllocation,
@@ -97,7 +99,7 @@ impl X86MogiJit {
         match self.allocate_gp(None, RegisterAllocationType::Realloc(slice), SpillBehavior::Fail) {
             Ok(RegisterLoadInfo::NeedRelocation { from, to }) => {
                 // An empty register is available and we can move the slice to this gpr.
-                self.copy_gpr_to_gpr(to, from, slice.size())?;
+                self.copy_gpr_to_gpr(to, from, slice.size(), CopyExtendMode::None)?;
                 Ok(())
             }
             Err(JitError::NoRegistersAvailable) => {
@@ -177,8 +179,14 @@ impl X86MogiJit {
             .allocate_gp(None, allocation_type, SpillBehavior::Spill)
             .expect("Since spill was provided, the register allocation must not fail.");
         match register {
-            RegisterLoadInfo::Unloaded(register) => register,
-            RegisterLoadInfo::Loaded(register) => register,
+            RegisterLoadInfo::Unloaded(register) => {
+                trace_jit!("Allocated slice {slice:?} to GP register {register:?} without loading");
+                register
+            }
+            RegisterLoadInfo::Loaded(register) => {
+                trace_jit!("Allocated slice {slice:?} to GP register {register:?} without loading");
+                register
+            }
             RegisterLoadInfo::NeedRelocation { .. } => panic!("This case cannot happen when allocating a slice"),
         }
     }
@@ -218,18 +226,14 @@ impl X86MogiJit {
                 }
                 RegisterAllocation::Reserved | RegisterAllocation::OccupiedTemp => {}
                 RegisterAllocation::Occupied(entry) | RegisterAllocation::OccupiedDirty(entry) => match alloc_type {
-                    RegisterAllocationType::Slice(slice) if *entry == slice => {
-                        trace!("Slice {slice:?} is already loaded in GP register {register:?}");
+                    RegisterAllocationType::Slice(slice) if entry.varnode_id == slice.varnode_id => {
                         return Ok(RegisterLoadInfo::Loaded(register));
                     }
-                    RegisterAllocationType::OutSlice(slice) if *entry == slice => {
-                        trace!(
-                            "Slice {slice:?} is already loaded in GP register {register:?}. Promoting it to OutSlice..."
-                        );
+                    RegisterAllocationType::OutSlice(slice) if entry.varnode_id == slice.varnode_id => {
                         old_gpr = Some(register);
                         break;
                     }
-                    RegisterAllocationType::Realloc(slice) if *entry == slice => {
+                    RegisterAllocationType::Realloc(slice) if entry.varnode_id == slice.varnode_id => {
                         old_gpr = Some(register);
                     }
                     _ => {}
@@ -243,7 +247,6 @@ impl X86MogiJit {
                     Ok(RegisterLoadInfo::Loaded(free_gpr))
                 }
                 RegisterAllocationType::Slice(slice) => {
-                    trace!("Allocating new GP register {free_gpr:?} for slice {slice:?}");
                     self.register_tracker.gp[free_gpr] = RegisterAllocation::Occupied(slice);
                     Ok(RegisterLoadInfo::Unloaded(free_gpr))
                 }
@@ -261,7 +264,6 @@ impl X86MogiJit {
                     let Some(old_gpr) = old_gpr else {
                         Err(JitError::SliceNotLoaded)?
                     };
-                    trace!("Reallocating slice {slice:?} from gpr {old_gpr:?} to {free_gpr:?}...");
                     self.register_tracker.gp[old_gpr] = RegisterAllocation::Free;
                     self.register_tracker.gp[free_gpr] = RegisterAllocation::Occupied(slice);
                     Ok(RegisterLoadInfo::NeedRelocation {
