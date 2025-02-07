@@ -71,7 +71,7 @@ pub struct MogiMMU {
     memory_context: RefCell<MemoryContext>,
     physical_memory: RefCell<PhysicalMemory>,
     // TODO this is bad. find better solution for ownership
-    page_fault_callback: Rc<RefCell<PageFaultCallback<MemoryContext>>>,
+    page_fault_callback: Rc<RefCell<PageFaultCallback>>,
     snapshots: Vec<Snapshot>,
 }
 
@@ -92,7 +92,7 @@ impl MogiMMU {
         Self {
             memory_context: RefCell::new(MemoryContext::new()),
             physical_memory: RefCell::new(PhysicalMemory::new(1_000_000)),
-            page_fault_callback: Rc::new(RefCell::new(Box::new(|_, _, _| ()))),
+            page_fault_callback: Rc::new(RefCell::new(Box::new(|_, _| None))),
             snapshots: vec![],
         }
     }
@@ -118,17 +118,16 @@ impl MogiMMU {
         addr: EVAddr,
         action: MemoryAction,
     ) -> Result<PageId, MemoryError> {
-        self.memory_context
-            .borrow()
-            .page_table
-            .translate(addr)
-            .or_else(|_| {
-                let callback = self.page_fault_callback.clone();
-                // TODO: What to do about the callback. We cannot pass a mutable reference here.
-                // let mut callback = callback.borrow_mut();
-                // callback(self, addr, action);
-                self.memory_context.borrow().page_table.translate(addr)
-            })
+        let id = self.memory_context.borrow().page_table.translate(addr);
+        id.or_else(|_| {
+            let callback = self.page_fault_callback.clone();
+            // TODO: What to do about the callback. We cannot pass a mutable reference here.
+            let mut callback = callback.borrow_mut();
+            if let Some((addr, paddr, perms)) = callback(addr, action) {
+                self._set_page_table_entry(addr, paddr, perms)?;
+            }
+            self.memory_context.borrow().page_table.translate(addr)
+        })
     }
 
     // pub fn insert_page_table_entry(
@@ -206,6 +205,27 @@ impl MogiMMU {
         }
         Ok(())
     }
+
+    fn _set_page_table_entry(
+        &self,
+        addr: EVAddr,
+        paddr: EPAddr,
+        permissions: Permission,
+    ) -> MmuResult<()> {
+        let page_id = self.physical_memory.borrow().page_id(paddr)?;
+        self.memory_context
+            .borrow_mut()
+            .page_table
+            .insert(addr, page_id); // override existing
+        self.physical_memory
+            .borrow_mut()
+            .page_by_id_mut(page_id)?
+            .permissions_mut()
+            .iter_mut()
+            .for_each(|p| *p = permissions);
+
+        Ok(())
+    }
 }
 
 // main trait implementation
@@ -248,19 +268,7 @@ impl MMU for MogiMMU {
         paddr: EPAddr,
         permissions: Permission,
     ) -> MmuResult<()> {
-        let page_id = self.physical_memory.borrow().page_id(paddr)?;
-        self.memory_context
-            .borrow_mut()
-            .page_table
-            .insert(addr, page_id); // override existing
-        self.physical_memory
-            .borrow_mut()
-            .page_by_id_mut(page_id)?
-            .permissions_mut()
-            .iter_mut()
-            .for_each(|p| *p = permissions);
-
-        Ok(())
+        self._set_page_table_entry(addr, paddr, permissions)
     }
 
     fn clear_page_table_entry(
@@ -377,7 +385,7 @@ impl MMU for MogiMMU {
 
     fn set_page_fault_callback(
         &mut self,
-        callback: PageFaultCallback<MemoryContext>,
+        callback: PageFaultCallback,
     ) -> Result<(), MemoryError> {
         self.page_fault_callback = Rc::new(RefCell::new(callback));
 
@@ -441,9 +449,8 @@ mod test {
         mmu.alloc_physical(0x8000u64.into(), 10000.align_up(PAGE_SIZE))
             .unwrap();
         // 1 to 1 mapping
-        mmu.set_page_fault_callback(Box::new(|mmu, addr, action| {
-            mmu.set_page_table_entry(addr, EPAddr::from(u64::from(addr)), Permission::ALL)
-                .unwrap();
+        mmu.set_page_fault_callback(Box::new(|addr, action| {
+            Some((addr, EPAddr::from(u64::from(addr)), Permission::ALL))
         }))
         .unwrap();
         mmu.write(0x8ff0u64.into(), &[b'A'; 8000]).unwrap();
@@ -452,9 +459,10 @@ mod test {
         for byte in buffer {
             assert_eq!(byte, b'A');
         }
-        let result = mmu.physical_memory.borrow().page(0x8000u64.into());
+        let physical = mmu.physical_memory.borrow();
+        let result = physical.page(0x8000u64.into());
         println!("{:?}", result);
-        let result = mmu.physical_memory.borrow().page(0x9000u64.into());
+        let result = physical.page(0x9000u64.into());
         println!("{:?}", result);
     }
 }

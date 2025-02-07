@@ -1,4 +1,8 @@
-use mogi_system::{components::mmu::{MemoryAction, MMU}, errors::cpu::CPUError};
+use mogi_system::components::mmu::{
+    MMU,
+    MemoryAction,
+};
+use mogi_system::errors::cpu::CPUError;
 use mogi_utilities::addresses::EVAddr;
 use tracing::{
     debug,
@@ -43,7 +47,7 @@ where
         let mut mmu = self.system.mmu.borrow_mut();
         let vtlb_memory = self.system.memory.clone();
         let vtlb_task_manager = self.system.task_manager.clone();
-        mmu.set_page_fault_callback(Box::new(move |mmu, addr, action| {
+        mmu.set_page_fault_callback(Box::new(move |addr, action| {
             // page fault either due to 1. unmapped memory or 2. invalid permissions
             let task_manager = vtlb_task_manager.borrow();
             let current_task = task_manager
@@ -52,11 +56,13 @@ where
             vtlb_memory
                 .borrow_mut()
                 .translate_vaddr(current_task.task_id(), addr)
+                .ok()
                 .and_then(|mapping| {
                     // TODO COW (find out if mapping did exist and match permissions)
-                    mmu.set_page_table_entry(addr, mapping.physical_address, mapping.permissions)
-                }).expect("Page fault on non-mapped address");
-        })).map_err(|_| SchedulerError::CPUError(CPUError::Unknown))?;
+                    Some((addr, mapping.physical_address, mapping.permissions))
+                })
+        }))
+        .map_err(|_| SchedulerError::CPUError(CPUError::Unknown))?;
 
         Ok(())
     }

@@ -14,7 +14,7 @@ use bitflags::bitflags;
 pub type MmuResult<T> = Result<T, MemoryError>;
 
 // can this be simplified?
-pub type PageFaultCallback<MC> = Box<dyn FnMut(&mut dyn MMU<MemoryContext = MC>, EVAddr, MemoryAction) -> ()>;
+pub type PageFaultCallback = Box<dyn FnMut(EVAddr, MemoryAction) -> Option<(EVAddr, EPAddr, Permission)>>;
 
 /// This trait represents a barebones abstraction of physical as well as virtual memory mapping
 /// and read/write accessing. Through it, memory can be read using `EVAddr` as well as `EPAddr` and
@@ -126,7 +126,7 @@ pub trait MMU {
     /// - a readonly page is written to
     fn set_page_fault_callback(
         &mut self,
-        callback: PageFaultCallback<Self::MemoryContext>,
+        callback: PageFaultCallback,
     ) -> MmuResult<()>;
 }
 

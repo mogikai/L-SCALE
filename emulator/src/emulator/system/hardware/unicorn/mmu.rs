@@ -1,13 +1,20 @@
 use mogi_system::components::mmu::{
-    MemoryAction, MmuResult, PageFaultCallback, Permission, MMU
+    MMU,
+    MemoryAction,
+    MmuResult,
+    PageFaultCallback,
+    Permission,
 };
-use mogi_utilities::addresses::{EPAddr, EVAddr};
+use mogi_utilities::addresses::{
+    EPAddr,
+    EVAddr,
+};
 use mogi_utilities::error::memory::MemoryError;
 use tracing::trace;
 use unicorn_engine::unicorn_const as uc_const;
 use unicorn_engine::unicorn_const::{
-    uc_error,
     MemType,
+    uc_error,
 };
 
 use crate::emulator::system::hardware::unicorn::UCWrapper;
@@ -15,21 +22,17 @@ use crate::emulator::system::hardware::unicorn::UCWrapper;
 impl MMU for UCWrapper<'_> {
     type MemoryContext = u64; // TODO
 
-    fn new_context(
-        &self
-    ) -> Self::MemoryContext {
+    fn new_context(&self) -> Self::MemoryContext {
         todo!()
     }
 
-    fn clone_context(
-        &self
-    ) -> Self::MemoryContext {
+    fn clone_context(&self) -> Self::MemoryContext {
         todo!()
     }
 
     fn load_context(
         &mut self,
-        context: &Self::MemoryContext
+        context: &Self::MemoryContext,
     ) -> Self::MemoryContext {
         todo!()
     }
@@ -37,14 +40,12 @@ impl MMU for UCWrapper<'_> {
     fn flush_vaddr(
         &mut self,
         addr: EVAddr,
-        len: usize
+        len: usize,
     ) -> MmuResult<MemoryError> {
         todo!()
     }
 
-    fn flush_all(
-        &mut self
-    ) -> MmuResult<()> {
+    fn flush_all(&mut self) -> MmuResult<()> {
         todo!()
     }
 
@@ -67,7 +68,7 @@ impl MMU for UCWrapper<'_> {
     fn read_physical(
         &mut self,
         addr: EPAddr,
-        buffer: &mut [u8]
+        buffer: &mut [u8],
     ) -> MmuResult<()> {
         todo!()
     }
@@ -75,7 +76,7 @@ impl MMU for UCWrapper<'_> {
     fn write_physical(
         &mut self,
         addr: EPAddr,
-        data: &[u8]
+        data: &[u8],
     ) -> MmuResult<()> {
         todo!()
     }
@@ -91,7 +92,7 @@ impl MMU for UCWrapper<'_> {
     fn read(
         &mut self,
         addr: mogi_utilities::addresses::EVAddr,
-        buffer: &mut [u8]
+        buffer: &mut [u8],
     ) -> MmuResult<()> {
         todo!()
     }
@@ -99,7 +100,7 @@ impl MMU for UCWrapper<'_> {
     fn write(
         &mut self,
         addr: mogi_utilities::addresses::EVAddr,
-        data: &[u8]
+        data: &[u8],
     ) -> MmuResult<()> {
         todo!()
     }
@@ -115,7 +116,7 @@ impl MMU for UCWrapper<'_> {
     fn alloc_physical(
         &mut self,
         addr: EPAddr,
-        size: usize
+        size: usize,
     ) -> MmuResult<()> {
         todo!()
     }
@@ -123,14 +124,14 @@ impl MMU for UCWrapper<'_> {
     fn free_physical(
         &mut self,
         addr: EPAddr,
-        size: usize
+        size: usize,
     ) -> MmuResult<()> {
         todo!()
     }
 
     fn set_page_fault_callback(
         &mut self,
-        callback: PageFaultCallback<u64> // TODO
+        callback: PageFaultCallback, // TODO
     ) -> MmuResult<()> {
         todo!()
     }

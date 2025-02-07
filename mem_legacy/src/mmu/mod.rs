@@ -67,7 +67,7 @@ pub struct MogiMMU {
     memory_context: MemoryContext,
     physical_memory: PhysicalMemory,
     // TODO this is bad. find better solution for ownership
-    page_fault_callback: Rc<RefCell<PageFaultCallback<MemoryContext>>>,
+    page_fault_callback: Rc<RefCell<PageFaultCallback>>,
     snapshots: Vec<Snapshot>,
 }
 
@@ -88,7 +88,7 @@ impl MogiMMU {
         Self {
             memory_context: MemoryContext::new(),
             physical_memory: PhysicalMemory::new(1_000_000),
-            page_fault_callback: Rc::new(RefCell::new(Box::new(|_, _, _| ()))),
+            page_fault_callback: Rc::new(RefCell::new(Box::new(|_, _| None))),
             snapshots: vec![],
         }
     }
@@ -121,7 +121,9 @@ impl MogiMMU {
         self.memory_context.page_table.translate(addr).or_else(|_| {
             let callback = self.page_fault_callback.clone();
             let mut callback = callback.borrow_mut();
-            callback(self, addr, action);
+            if let Some((addr, paddr, perms)) = callback(addr, action) {
+                self.set_page_table_entry(addr, paddr, perms)?;
+            }
             self.memory_context.page_table.translate(addr)
         })
     }
@@ -139,7 +141,9 @@ impl MogiMMU {
             .or_else(|_| {
                 let callback = self.page_fault_callback.clone();
                 let mut callback = callback.borrow_mut();
-                callback(self, addr, action);
+                if let Some((addr, paddr, perms)) = callback(addr, action) {
+                    self.set_page_table_entry(addr, paddr, perms)?;
+                }
                 self.memory_context.page_table.translate(addr)
             })?;
 
@@ -393,7 +397,7 @@ impl MMU for MogiMMU {
 
     fn set_page_fault_callback(
         &mut self,
-        callback: PageFaultCallback<MemoryContext>,
+        callback: PageFaultCallback,
     ) -> Result<(), MemoryError> {
         self.page_fault_callback = Rc::new(RefCell::new(callback));
 
@@ -445,9 +449,8 @@ mod test {
         mmu.alloc_physical(0x8000u64.into(), 10000.align_up(PAGE_SIZE))
             .unwrap();
         // 1 to 1 mapping
-        mmu.set_page_fault_callback(Box::new(|mmu, addr, action| {
-            mmu.set_page_table_entry(addr, EPAddr::from(u64::from(addr)), Permission::ALL)
-                .unwrap();
+        mmu.set_page_fault_callback(Box::new(|addr, action| {
+            Some((addr, EPAddr::from(u64::from(addr)), Permission::ALL))
         }))
         .unwrap();
         mmu.write(0x8ff0u64.into(), &[b'A'; 8000]).unwrap();

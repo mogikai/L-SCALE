@@ -153,7 +153,7 @@ impl MMU for Cpu {
 
     fn set_page_fault_callback(
         &mut self,
-        callback: PageFaultCallback<MemoryContext>,
+        callback: PageFaultCallback,
     ) -> MmuResult<()> {
         self.core.mem.borrow_mut().set_page_fault_callback(callback)
     }
@@ -311,8 +311,9 @@ impl Hooks for Cpu {
             self.core
                 .mem
                 .borrow_mut()
-                .set_page_fault_callback(Box::new(move |mmu, addr, action| {
+                .set_page_fault_callback(Box::new(move |addr, action| {
                     hook(&mut *slfptr, addr, action);
+                    None
                 }));
         }
         Ok(())
