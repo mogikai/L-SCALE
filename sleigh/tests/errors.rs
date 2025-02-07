@@ -121,3 +121,16 @@ fn stop_on_first_error() {
         assert!(!string.contains("field range ends before its starting"));
     }
 }
+
+
+#[test]
+fn parser_error() {
+    common::setup_test();
+    let path = ASSETS_PATH.to_string() + "parser_error.sinc";
+    let err = build(path).expect_err("expected error");
+    assert!(matches!(err, SleighCompilerError::ParserError(_)));
+    if let SleighCompilerError::ParserError(string) = err {
+        assert!(string.contains("found 'Decimal(StringId(20))' expected"));
+        assert!(string.contains("found 'Operation(Equals)'"));
+    }
+}

@@ -3,8 +3,8 @@ use crate::compiler::error::{
     InternalErrorType,
     SleighCompilerError,
 };
-use crate::spec::ProcessorSpecification;
 use crate::spec::builder::ProcessorSpecificationBuilder;
+use crate::spec::ProcessorSpecification;
 use ariadne::Source;
 use mogi_sleigh_parser::inputcache::CompilerInputCache;
 use mogi_sleigh_parser::lexer::{
@@ -12,8 +12,9 @@ use mogi_sleigh_parser::lexer::{
     SleighTokens,
 };
 use mogi_sleigh_parser::parser::SleighParser;
-use mogi_sleigh_parser::preprocessor::SleighPreprocessorFactory;
 use mogi_sleigh_parser::preprocessor::error::PreprocessorError;
+use mogi_sleigh_parser::preprocessor::error::PreprocessorError::ParseError;
+use mogi_sleigh_parser::preprocessor::SleighPreprocessorFactory;
 use std::fmt::Debug;
 use std::path::{
     Path,
@@ -65,7 +66,7 @@ impl SleighCompiler {
         let ast = self
             .parser
             .parse(&mut self.input_cache, &mut self.spec_builder.interner_mut(), tokens)
-            .map_err(|_| -> SleighCompilerError { todo!("Correctly map errors") })?;
+            .map_err(|e| SleighCompilerError::from(e))?;
         info!("Building the specification from the AST.");
         let result = self.build(ast);
         // result should not be an error except StopOnFirstError, if result is an error
@@ -106,9 +107,7 @@ impl SleighCompiler {
         let mut input_id = self
             .input_cache
             .load_input_from_file(file.as_path())
-            .map_err(|e| {
-                SleighCompilerError::LexerError(InternalError::from(e).create_string(&mut self.input_cache))
-            })?;
+            .map_err(|e| SleighCompilerError::LexerError(e.to_string()))?;
         debug!("Loading initial file {file:?} as {input_id:?}");
         let tokens = loop {
             // Check if requested input is already tokenized
@@ -117,27 +116,21 @@ impl SleighCompiler {
                 let tokens = self
                     .lexer
                     .tokenize(&mut self.input_cache, &mut self.spec_builder.interner_mut(), input_id)
-                    .map_err(|_| -> SleighCompilerError { todo!("Correctly map errors") })?;
+                    .map_err(|e| SleighCompilerError::from(e))?;
                 debug!("Tokenized input {input_id:?}");
                 self.input_cache
                     .attach_tokens(input_id, tokens)
-                    .map_err(|e| {
-                        SleighCompilerError::LexerError(InternalError::from(e).create_string(&mut self.input_cache))
-                    })?;
+                    .map_err(|e| SleighCompilerError::LexerError(e.to_string()))?;
             }
             // Parse the input that was loaded
             preprocessor
                 .parse_input(&mut self.input_cache, input_id)
-                .map_err(|e| {
-                    SleighCompilerError::LexerError(InternalError::from(e).create_string(&mut self.input_cache))
-                })?;
+                .map_err(|e| SleighCompilerError::LexerError(e.to_string()))?;
             // Continue preprocessing
             match preprocessor.preprocess(&mut self.input_cache, &mut self.spec_builder.interner_mut()) {
                 Ok(tokens) => break tokens,
                 Err(PreprocessorError::LoadingRequired(id)) => input_id = id,
-                Err(e) => {
-                    Err(SleighCompilerError::LexerError(InternalError::from(e).create_string(&mut self.input_cache)))?
-                }
+                Err(e) => Err(SleighCompilerError::LexerError(e.to_string()))?,
             }
         };
         Ok(tokens)

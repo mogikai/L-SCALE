@@ -1,6 +1,6 @@
-use crate::spec::ProcessorSpecificationError;
 use crate::spec::builder::MOIRSymbolId;
 use crate::spec::moir::common::MOIRSize;
+use crate::spec::ProcessorSpecificationError;
 use ariadne::{
     ColorGenerator,
     Fmt,
@@ -8,14 +8,14 @@ use ariadne::{
     Report,
     ReportKind,
 };
-use mogi_sleigh_parser::StringId;
 use mogi_sleigh_parser::ast::define::SASTAddressSpaceAttribute;
-use mogi_sleigh_parser::inputcache::{
-    CompilerInputCache,
-    InputCacheError,
-};
+use mogi_sleigh_parser::inputcache::CompilerInputCache;
 use mogi_sleigh_parser::lexer::InputSpan;
 use mogi_sleigh_parser::preprocessor::error::PreprocessorError;
+use mogi_sleigh_parser::{
+    ParseError,
+    StringId,
+};
 use std::collections::HashMap;
 use std::fmt::{
     Debug,
@@ -126,8 +126,6 @@ pub struct DuplicatedSpaceAttribute {
 pub enum InternalErrorType {
     #[error("The preprocessor encountered an error: {0}")]
     PreprocessorError(#[from] PreprocessorError),
-    #[error("The input cache encountered an error: {0}")]
-    InputCacheError(#[from] InputCacheError),
     #[error("The processor specification encountered an error: {0}")]
     ProcessorSpecificationError(#[from] ProcessorSpecificationError),
     #[error("The compiler was configured to stop on the first error encountered.")]
@@ -193,24 +191,6 @@ impl From<InternalErrorType> for InternalError {
 
 impl From<ProcessorSpecificationError> for InternalError {
     fn from(value: ProcessorSpecificationError) -> Self {
-        InternalError::from_error(value.into())
-    }
-}
-
-impl From<InputCacheError> for InternalError {
-    fn from(value: InputCacheError) -> Self {
-        InternalError::from_error(value.into())
-    }
-}
-
-impl From<PreprocessorError> for InternalError {
-    fn from(value: PreprocessorError) -> Self {
-        InternalError::from_error(value.into())
-    }
-}
-
-impl From<WrongConstSize> for InternalError {
-    fn from(value: WrongConstSize) -> Self {
         InternalError::from_error(value.into())
     }
 }
@@ -290,7 +270,6 @@ impl InternalError {
         match &self.error {
             InternalErrorType::ProcessorSpecificationError(e) => return e.to_string(),
             InternalErrorType::PreprocessorError(e) => return e.to_string(),
-            InternalErrorType::InputCacheError(e) => return e.to_string(),
             _ => self
                 .as_report()
                 .write(&mut input_cache, &mut str)
@@ -389,6 +368,16 @@ pub enum SleighCompilerError {
     LexerError(String),
     Unknown,
     ErrorHandlingFailure,
+}
+
+impl From<ParseError> for SleighCompilerError {
+    fn from(e: ParseError) -> Self {
+        match e {
+            ParseError::LexerError(msg) => SleighCompilerError::LexerError(msg),
+            ParseError::InputCacheError(e) => SleighCompilerError::ParserError(e.to_string()),
+            ParseError::ParserError(msg) => SleighCompilerError::ParserError(msg),
+        }
+    }
 }
 
 impl Debug for SleighCompilerError {

@@ -8,9 +8,9 @@ use crate::compiler::{
     SleighCompiler,
 };
 use crate::spec::moir::code::{
+    moir_instruction,
     MOIRInstruction,
     MOIROperation,
-    moir_instruction,
 };
 use crate::spec::moir::custom_op::MOIRCustomOp;
 use crate::spec::moir::r#macro::MOIRMacro;
@@ -20,8 +20,8 @@ use crate::spec::moir::scope::{
     MOIRScope,
 };
 use crate::spec::moir::varnode::MOIRLocal;
-use itertools::Itertools;
 use itertools::traits::HomogeneousTuple;
+use itertools::Itertools;
 use mogi_sleigh_parser::ast::common::SASTIdent;
 use mogi_sleigh_parser::ast::pcode::expression::SASTPCodeExpression;
 use mogi_sleigh_parser::ast::pcode::invocation::SASTPCodeInvocation;
@@ -229,7 +229,7 @@ where
 {
     args.into_iter()
         .collect_tuple()
-        .ok_or(InternalError::from_error(InternalErrorType::InvalidArgumentCount))
+        .ok_or(InternalErrorType::InvalidArgumentCount.into())
 }
 
 /// Resolves the provided args to the argument names in the macro definition.
