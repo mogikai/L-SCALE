@@ -52,7 +52,6 @@ use crate::spec::moir::varnode::{
     VarNodeId,
 };
 use crate::spec::typed_index_table::TypedIndexTable;
-use chumsky::container::Seq;
 use itertools::Itertools;
 use mogi_utilities::index_map::PrimaryMap;
 use petgraph::Graph;

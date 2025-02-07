@@ -25,7 +25,6 @@ use crate::spec::moir::field::{
     MOIRFieldParent,
 };
 use crate::spec::moir::table::TableId;
-use chumsky::container::Container;
 use itertools::Itertools;
 use mogi_sleigh_parser::Spanned;
 use mogi_sleigh_parser::ast::common::SASTIdent;
@@ -426,12 +425,12 @@ impl SleighCompiler {
             .ok_or_else(|| -> InternalError { todo!("Generate error report for symbol undeclared") })?;
 
         let mut references = HashSet::new();
-        references.push(MatcherReference::Field(field_id));
+        references.insert(MatcherReference::Field(field_id));
 
         let conjunctions = match pattern {
             SASTConstraintPattern::Ident(ident) => {
                 let other_id = self.spec_builder.field_id_by_ident(&ident.transmute())?;
-                references.push(MatcherReference::Field(other_id));
+                references.insert(MatcherReference::Field(other_id));
                 let other = self
                     .spec_builder
                     .field_by_symbol_id(other_id)
