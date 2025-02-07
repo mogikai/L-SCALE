@@ -19,7 +19,7 @@ use super::scope::MOIRLocalId;
 pub(crate) struct FieldExtractor {
     local_id: MOIRLocalId,
     local_size: MOIRSize,
-    token_index: usize,
+    byte_index: usize,
     bits: MOIRBitRange,
 }
 
@@ -27,35 +27,42 @@ impl FieldExtractor {
     pub(crate) fn new(
         local_id: MOIRLocalId,
         local_size: MOIRSize,
-        token_index: usize,
+        byte_index: usize,
         bits: MOIRBitRange,
     ) -> Self {
         Self {
             local_id,
             local_size,
-            token_index,
+            byte_index,
             bits,
         }
     }
 
-    /// Extract parts of the field from `token_value` and insert into `fields`. Might need to be
-    /// called multiple times since fields that cross byte boundaries can be fragmented across
-    /// multiple jumplists.
+    /// Extract the field value from the provided byte slice.
     pub(crate) fn process_value(
         &self,
-        tokens: &Vec<u64>,
+        bytes: &[u8],
         values: &mut SecondaryMap<MOIRLocalId, Option<JIRValue>>,
     ) -> InternalCompilerResult {
-        if tokens.len() <= self.token_index {
+        if bytes.len() <= self.byte_index + usize::from(self.bits.bits().checked_sub(1).unwrap_or(0) / 8) {
             todo!("Generate error report for out of bounds token index");
         }
 
-        trace_jir!("Tokens: {:?}", tokens);
-        trace_jir!("Extracting field from token {:?} with bits {:?}", tokens[self.token_index], self.bits);
-        let value = self.bits.extract(tokens[self.token_index]);
-        trace_jir!("Defining local_id {} := {}", self.local_id, value);
+        let mut value_bytes = [0u8; 8];
+        for (bytei, byte) in bytes[self.byte_index..]
+            .iter()
+            .enumerate()
+            .take(self.bits.end.div_ceil(8).into())
+        {
+            value_bytes[bytei] = *byte;
+        }
 
-        values[self.local_id] = Some(JIRValue::Const(JIRConst::new(value.into(), self.local_size)));
+        let value = u64::from_le_bytes(value_bytes);
+        let extracted_value = self.bits.extract(value);
+
+        trace_jir!("Defining local_id {} := {}", self.local_id, extracted_value);
+
+        values[self.local_id] = Some(JIRValue::Const(JIRConst::new(extracted_value.into(), self.local_size)));
 
         Ok(())
     }

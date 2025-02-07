@@ -37,7 +37,10 @@ use crate::spec::moir::varnode::{
     MOIRReference,
     MOIRSlice,
 };
-use itertools::Itertools;
+use itertools::{
+    FoldWhile,
+    Itertools,
+};
 use mogi_sleigh_parser::ast::common::SASTIdent;
 use mogi_sleigh_parser::ast::constructor::SASTConstructor;
 use mogi_sleigh_parser::ast::constructor::disassembly_section::{
@@ -50,7 +53,10 @@ use mogi_sleigh_parser::{
     StringId,
 };
 use mogi_utilities::addresses::EVAddr;
-use std::collections::HashSet;
+use std::collections::{
+    BTreeSet,
+    HashSet,
+};
 use tracing::{
     debug,
     trace,
@@ -356,8 +362,10 @@ impl SleighCompiler {
                 matches!(field.parent, MOIRFieldParent::Token(_))
             })
             .map(|(field_id, local_id)| {
-                // find token index where field is present
-                let token_index = matcher
+                // find byte index where field is present
+                let mut byte_index = 0;
+                let mut found = false;
+                'outer: for (conjunction, token) in matcher
                     .conjunctions
                     .iter()
                     .zip(matcher.token_list.list.iter())
@@ -365,31 +373,48 @@ impl SleighCompiler {
                         // ignore context tokens
                         token.is_some_and(|token| matches!(token, MOIRFieldParent::Context(_)))
                     })
-                    .enumerate()
-                    .find_map(|(index, (conjunction, _))| {
-                        for atom in conjunction.iter() {
-                            if let MatcherAtom::Field {
-                                field_id: atom_field_id,
-                                matcher: _,
-                            } = atom
-                            {
-                                // field present in atom
-                                if *atom_field_id == field_id {
-                                    return Some(index);
-                                }
+                {
+                    for atom in conjunction.iter() {
+                        if let MatcherAtom::Field {
+                            field_id: atom_field_id,
+                            matcher: _,
+                        } = atom
+                        {
+                            // field present in atom => finished
+                            if *atom_field_id == field_id {
+                                found = true;
+                                break 'outer;
                             }
                         }
+                    }
 
-                        // field not present in atom
-                        None
-                    })
-                    .expect("Field id present in scope but not in matcher");
+                    // field not present in atom => continue
+                    let token_size = match token {
+                        None => panic!("None token in field extractor creation encountered"),
+                        Some(token) => {
+                            let MOIRFieldParent::Token(token) = token else {
+                                panic!("We checked for this above");
+                            };
+
+                            self.spec_builder
+                                .token_by_symbol_id(*token)
+                                .expect("There must be a token")
+                                .bytes
+                        }
+                    };
+
+                    byte_index += token_size;
+                }
+
+                if !found {
+                    panic!("Field id {} not in matcher {:#?}", field_id, matcher);
+                }
 
                 let field = self
                     .spec_builder
                     .field_by_symbol_id(field_id)
                     .expect("Missing field id");
-                FieldExtractor::new(local_id, 0, token_index, field.bits)
+                FieldExtractor::new(local_id, 0, byte_index.into(), field.bits)
             })
             .collect_vec()
     }

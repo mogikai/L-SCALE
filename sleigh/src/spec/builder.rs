@@ -623,6 +623,13 @@ impl ProcessorSpecificationBuilder {
         self.symbol_tables.spaces.get(symbol_id)
     }
 
+    pub fn token_by_symbol_id(
+        &self,
+        token_id: TokenId,
+    ) -> Option<&MOIRToken> {
+        self.symbol_tables.tokens.get(token_id)
+    }
+
     pub fn constructor_by_symbol_id(
         &self,
         symbol_id: ConstructorId,
