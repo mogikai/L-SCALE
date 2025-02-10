@@ -135,12 +135,12 @@ impl X86MogiJit {
         match slice.size() {
             1 => {
                 assemble!(self.block_mut().unwrap().assembler();
-                    ; movzx Rq(register as u8), BYTE [cpu_context + varnode_offset as _]
+                    ; movzx Rd(register as u8), BYTE [cpu_context + varnode_offset as _]
                 );
             }
             2 => {
                 assemble!(self.block_mut().unwrap().assembler();
-                    ; movzx Rq(register as u8), WORD [cpu_context + varnode_offset as _]
+                    ; movzx Rd(register as u8), WORD [cpu_context + varnode_offset as _]
                 );
             }
             4 => {

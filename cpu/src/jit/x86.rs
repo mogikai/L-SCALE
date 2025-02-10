@@ -128,7 +128,7 @@ pub struct Space([u8; 0x3000]);
 
 impl Space {
     fn new() -> Self {
-        Self([0; 0x3000])
+        Self([0x41; 0x3000])
     }
 
     /// Get a reference to the data referred to by the provided slice.
@@ -392,8 +392,8 @@ impl MogiJit for X86MogiJit {
             JIROperation::IntRemainder => return self.emit_remainder(output?, input_a?, input_b?),
             JIROperation::IntSRemainder => return self.emit_signed_remainder(output?, input_a?, input_b?),
             JIROperation::IntLeft => return self.emit_shift_left(output?, input_a?, input_b?),
-            JIROperation::IntRight => {}
-            JIROperation::IntSRight => {}
+            JIROperation::IntRight => return self.emit_shift_right(output?, input_a?, input_b?),
+            JIROperation::IntSRight => return self.emit_shift_right_signed(output?, input_a?, input_b?),
             JIROperation::IntOr => return self.emit_bitwise_or(output?, input_a?, input_b?),
             JIROperation::IntAnd => return self.emit_bitwise_and(output?, input_a?, input_b?),
             JIROperation::IntXor => return self.emit_bitwise_xor(output?, input_a?, input_b?),
