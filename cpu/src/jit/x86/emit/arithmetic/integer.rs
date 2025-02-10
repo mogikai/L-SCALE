@@ -2,6 +2,7 @@ mod add;
 mod divide;
 mod multiply;
 mod negate;
+mod shift;
 mod subtract;
 #[cfg(test)]
 mod test;

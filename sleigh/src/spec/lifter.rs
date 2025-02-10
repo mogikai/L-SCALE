@@ -60,7 +60,7 @@ impl Lifter for ProcessorSpecification {
         let now = Instant::now();
         if let Some((_, resolver)) = resolver {
             let mut block_builder = TargetBasicBlockBuilder::new(addr, self.temp_space);
-            // resolver.print_hierarchy(0);
+            resolver.print_hierarchy(0);
             // resolver.print_mcode(&self.specification, 0);
 
             resolver

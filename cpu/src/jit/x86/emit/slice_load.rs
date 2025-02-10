@@ -50,6 +50,21 @@ impl X86MogiJit {
         self.load_slice_gpr_with_hint(None, slice, slice_type)
     }
 
+    /// Load the provided slice to the given gp register. If the register is already occupied, we free
+    /// the register by either moving it to a different register, or by flushing it if no registers are
+    /// available.
+    #[inline]
+    pub(super) fn load_slice_to_gpr(
+        &mut self,
+        gpr: GPRegister,
+        slice: JIRSlice,
+        slice_type: SliceType,
+    ) -> JITResult {
+        self.move_slice_from_gp(gpr)?;
+        self.emit_load_slice_to_gpr(gpr, slice, slice_type)?;
+        Ok(())
+    }
+
     /// Works like [load_slice_gpr], but tries to load the [JIRSlice] to
     /// the provided hint [GPRegister] if it is available.
     #[inline]

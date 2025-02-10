@@ -92,9 +92,18 @@ impl X86MogiJit {
         &mut self,
         gpr: GPRegister,
     ) -> JITResult {
-        let RegisterAllocation::Occupied(slice) = self.register_tracker.gp[gpr] else {
-            // We can only move from the gp if it contains a slice.
-            Err(JitError::CannotMoveNonSlice)?
+        let slice = match self.register_tracker.gp[gpr] {
+            RegisterAllocation::Free => {
+                // Nothing to do here, since the slot is already free.
+                return Ok(());
+            }
+            RegisterAllocation::Reserved | RegisterAllocation::OccupiedTemp => {
+                // We can only move from the gp if it contains a slice.
+                println!("Cannot move slice from gp {gpr:?} since it contains {:?}", self.register_tracker.gp[gpr]);
+                Err(JitError::CannotMoveNonSlice)?
+            }
+            RegisterAllocation::Occupied(slice) => slice,
+            RegisterAllocation::OccupiedDirty(slice) => slice,
         };
         match self.allocate_gp(None, RegisterAllocationType::Realloc(slice), SpillBehavior::Fail) {
             Ok(RegisterLoadInfo::NeedRelocation { from, to }) => {

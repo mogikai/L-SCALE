@@ -391,7 +391,7 @@ impl MogiJit for X86MogiJit {
             JIROperation::IntSDiv => return self.emit_signed_divide(output?, input_a?, input_b?),
             JIROperation::IntRemainder => return self.emit_remainder(output?, input_a?, input_b?),
             JIROperation::IntSRemainder => return self.emit_signed_remainder(output?, input_a?, input_b?),
-            JIROperation::IntLeft => {}
+            JIROperation::IntLeft => return self.emit_shift_left(output?, input_a?, input_b?),
             JIROperation::IntRight => {}
             JIROperation::IntSRight => {}
             JIROperation::IntOr => return self.emit_bitwise_or(output?, input_a?, input_b?),
