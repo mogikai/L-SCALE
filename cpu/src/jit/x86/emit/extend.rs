@@ -16,7 +16,7 @@ impl X86MogiJit {
         match input {
             JIRValue::Slice(slice) => {
                 let in_gpr = self.load_slice_gpr(slice, SliceType::Input);
-                let out_gpr = self.get_slice_gp(output, SliceType::Output);
+                let out_gpr = self.allocate_slice_gpr(output, SliceType::Output);
                 self.copy_gpr_to_gpr(out_gpr, in_gpr, input.size(), CopyExtendMode::ZeroExtend(output.size()))?;
             }
             JIRValue::Const(value) => {

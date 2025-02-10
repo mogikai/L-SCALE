@@ -187,7 +187,7 @@ impl X86MogiJit {
     ) -> JITResult {
         // TODO: Make sure the load does not cross page boundaries.
         // Allocate the output slice gpr, or get an existing one.
-        let out_gpr = self.get_slice_gp(output, SliceType::Output);
+        let out_gpr = self.allocate_slice_gpr(output, SliceType::Output);
         match output.size() {
             1 => {
                 assemble!(self.block_mut()?.assembler();

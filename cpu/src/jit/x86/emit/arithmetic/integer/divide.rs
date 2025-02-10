@@ -48,9 +48,9 @@ impl X86MogiJit {
         // Since we only deal with 64-bit numbers currently, it is enough to load A and zero D
         let dividend_lower_gpr = GPRegister::AX;
         let dividend_upper_gpr = GPRegister::DX;
-        self.emit_load_value_to_gpr(dividend_lower_gpr, dividend)?;
         // Make sure we have the D register and potentially flush existing contents to memory.
         self.reserve_gp_as_temp(dividend_upper_gpr)?;
+        self.emit_load_value_to_gpr(dividend_lower_gpr, dividend)?;
         match division_type {
             DivisionType::Signed => {
                 // Sign extend rax to rdx:rax
@@ -76,7 +76,7 @@ impl X86MogiJit {
         };
 
         // Fetch the output gpr and perform the division.
-        let output_gpr = self.get_slice_gp(output, SliceType::Output);
+        let output_gpr = self.allocate_slice_gpr(output, SliceType::Output);
         match division_type {
             DivisionType::Signed => {
                 assemble!(self.block_mut()?.assembler();

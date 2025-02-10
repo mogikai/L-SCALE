@@ -73,7 +73,7 @@ impl X86MogiJit {
             // Move input_a to output (possibly loading the slice if it is still unloaded)
             self.emit_copy(output, input_a)?;
             // Get the output gp register (it is loaded, since we just copied to it).
-            let output_gp = self.get_slice_gp(output, SliceType::Output);
+            let output_gp = self.allocate_slice_gpr(output, SliceType::Output);
             // Subtract input_b=output ,which is stored in the temporary register, from the output (output=input_a).
             assemble!(self.block_mut()?.assembler();
                 ; sub Rq(output_gp as u8), Rq(temp_gp as u8)
@@ -105,7 +105,7 @@ impl X86MogiJit {
         if output != input_b {
             // If the output register does not appear on the rhs, we can use it to load the constant
             // We use get_slice_gp here, since the value is overwritten anyway. No need to load here.
-            let output_gp = self.get_slice_gp(output, SliceType::Output);
+            let output_gp = self.allocate_slice_gpr(output, SliceType::Output);
             let input_b_gp = self.load_slice_gpr(input_b, SliceType::Input);
             self.emit_load_const_to_gpr(output_gp, input_a)?;
             // and then just subtract the operand register from the constant in the output register.
@@ -120,7 +120,7 @@ impl X86MogiJit {
             // Load the constant into the output
             self.emit_copy(output, input_a)?;
             // Get the output gp register.
-            let output_gp = self.get_slice_gp(output, SliceType::Output);
+            let output_gp = self.allocate_slice_gpr(output, SliceType::Output);
             // Subtract input_b=output ,which is stored in the temporary register, from the output (output=const).
             assemble!(self.block_mut()?.assembler();
                 ; sub Rq(output_gp as u8), Rq(temp_gp as u8)

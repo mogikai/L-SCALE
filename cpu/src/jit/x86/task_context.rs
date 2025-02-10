@@ -71,7 +71,6 @@ impl X86TaskContext {
         // TODO: We need to either make sure in the spec generation, that space_id is in range, or
         //       perform some kind of mapping.
         assert!(usize::from(slice.space_id) < Self::max_spaces());
-        trace!("Loading slice {slice:?} that refers to varnode {:?} into GP register", slice.varnode_id);
         // space = spaces[varnode.space_id]
         let space_offset = offset_of!(Self, spaces) + usize::from(slice.space_id) * size_of::<Space>();
         // space[slice.offset]

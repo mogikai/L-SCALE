@@ -115,23 +115,27 @@ pub(super) fn exec_instructions<T: MogiJit>(
         .unwrap();
 }
 
-pub(super) fn test_instruction_generic<T, U>(
+pub(super) fn test_instruction_generic<T, U, V>(
     processor_spec: &Rc<RefCell<ProcessorSpecification>>,
     jit: &mut T,
     context: &mut T::RuntimeContext,
-    instruction_builder: impl FnOnce(JIRSlice, JIRSlice, JIRSlice, U, U) -> (JIRInstruction, JIRSlice),
-    verify_op: impl FnOnce(U, U) -> U,
+    instruction_builder: impl FnOnce(JIRSlice, JIRSlice, JIRSlice, U, V) -> (JIRInstruction, JIRSlice),
+    verify_op: impl FnOnce(U, V) -> U,
     reg_out: &str,
     reg_a: &str,
     reg_b: &str,
     a: U,
-    b: U,
+    b: V,
 ) where
     T: MogiJit,
     U: ToBytes + FromBytes + PartialEq + Debug + LowerHex + Copy,
     for<'a> &'a [u8]: TryInto<<U as FromBytes>::Bytes>,
     for<'a> <&'a [u8] as TryInto<<U as FromBytes>::Bytes>>::Error: Debug,
     <U as FromBytes>::Bytes: Sized,
+    V: ToBytes + FromBytes + PartialEq + Debug + LowerHex + Copy,
+    for<'a> &'a [u8]: TryInto<<V as FromBytes>::Bytes>,
+    for<'a> <&'a [u8] as TryInto<<V as FromBytes>::Bytes>>::Error: Debug,
+    <V as FromBytes>::Bytes: Sized,
 {
     let result = get_reg_slice(&processor_spec, reg_out);
     let slice_a = get_reg_slice(&processor_spec, reg_a);
@@ -152,7 +156,7 @@ pub(super) fn test_instruction_generic<T, U>(
 
     // Check that r8 and r9 have not been touched
     let a_value: U = get_slice_value(context, &processor_spec, slice_a);
-    let b_value: U = get_slice_value(context, &processor_spec, slice_b);
+    let b_value: V = get_slice_value(context, &processor_spec, slice_b);
     if result != slice_a {
         assert_eq!(a_value, a);
     }
@@ -183,6 +187,49 @@ pub(super) fn test_multiple_binary_instruction_generic<T, U, B, V>(
 {
     for a in value_iter.clone() {
         for b in value_iter.clone() {
+            test_instruction_generic(
+                processor_spec,
+                jit,
+                context,
+                instruction_builder,
+                verify_op,
+                reg_out,
+                reg_a,
+                reg_b,
+                a,
+                b,
+            );
+        }
+    }
+}
+
+/// Test all combinations of values when iterating over the type, using the provided step size.
+pub(super) fn test_multiple_binary_instruction_generic_different_sizes<T, U1, U2, B, V>(
+    processor_spec: &Rc<RefCell<ProcessorSpecification>>,
+    jit: &mut T,
+    context: &mut T::RuntimeContext,
+    instruction_builder: B,
+    verify_op: V,
+    value_iter1: impl IntoIterator<Item = U1>,
+    value_iter2: impl IntoIterator<Item = U2> + Clone,
+    reg_out: &str,
+    reg_a: &str,
+    reg_b: &str,
+) where
+    T: MogiJit,
+    B: FnOnce(JIRSlice, JIRSlice, JIRSlice, U1, U2) -> (JIRInstruction, JIRSlice) + Copy,
+    V: FnOnce(U1, U2) -> U1 + Copy,
+    U1: ToBytes + FromBytes + PartialEq + Debug + LowerHex + Copy,
+    for<'a> &'a [u8]: TryInto<<U1 as FromBytes>::Bytes>,
+    for<'a> <&'a [u8] as TryInto<<U1 as FromBytes>::Bytes>>::Error: Debug,
+    <U1 as FromBytes>::Bytes: Sized,
+    U2: ToBytes + FromBytes + PartialEq + Debug + LowerHex + Copy,
+    for<'a> &'a [u8]: TryInto<<U2 as FromBytes>::Bytes>,
+    for<'a> <&'a [u8] as TryInto<<U2 as FromBytes>::Bytes>>::Error: Debug,
+    <U2 as FromBytes>::Bytes: Sized,
+{
+    for a in value_iter1 {
+        for b in value_iter2.clone() {
             test_instruction_generic(
                 processor_spec,
                 jit,

@@ -4,6 +4,7 @@ use crate::jit::api::{
 };
 use crate::jit::trace_jit;
 use crate::jit::x86::regalloc::{
+    RegisterAllocationHint,
     RegisterAllocationType,
     SliceType,
     SpillBehavior,
@@ -47,22 +48,7 @@ impl X86MogiJit {
         slice: JIRSlice,
         slice_type: SliceType,
     ) -> GPRegister {
-        self.load_slice_gpr_with_hint(None, slice, slice_type)
-    }
-
-    /// Load the provided slice to the given gp register. If the register is already occupied, we free
-    /// the register by either moving it to a different register, or by flushing it if no registers are
-    /// available.
-    #[inline]
-    pub(super) fn load_slice_to_gpr(
-        &mut self,
-        gpr: GPRegister,
-        slice: JIRSlice,
-        slice_type: SliceType,
-    ) -> JITResult {
-        self.move_slice_from_gp(gpr)?;
-        self.emit_load_slice_to_gpr(gpr, slice, slice_type)?;
-        Ok(())
+        self.load_slice_gpr_with_hint(RegisterAllocationHint::None, slice, slice_type)
     }
 
     /// Works like [load_slice_gpr], but tries to load the [JIRSlice] to
@@ -70,7 +56,7 @@ impl X86MogiJit {
     #[inline]
     pub(super) fn load_slice_gpr_with_hint(
         &mut self,
-        hint: Option<GPRegister>,
+        hint: RegisterAllocationHint,
         slice: JIRSlice,
         slice_type: SliceType,
     ) -> GPRegister {
@@ -79,11 +65,10 @@ impl X86MogiJit {
             SliceType::Output => RegisterAllocationType::OutSlice(slice),
         };
         let register = self
-            .allocate_gp(hint, alloc_type, SpillBehavior::Spill)
+            .allocate_gpr(hint, alloc_type, SpillBehavior::Spill)
             .expect("Since we directed the allocation to spill if no space is available, this has to succeed");
         match register {
             RegisterLoadInfo::Unloaded(register) => {
-                trace!("Loading slice {slice:?} into GP register {register:?}");
                 self.load_slice_from_runtime_context(register, slice);
                 register
             }
@@ -97,6 +82,43 @@ impl X86MogiJit {
         }
     }
 
+    /// Directly load the provided [JIRSlice] into the provided target [GPRegister].
+    /// This moves any existing slice ot of the target [GPRegister], potentially spilling it.
+    /// Any existing references to registers may be invalidated by this operation, so you
+    /// have to fetch these references again to avoid accessing invalid registers.
+    #[inline]
+    pub(super) fn load_slice_gpr_exact(
+        &mut self,
+        gpr: GPRegister,
+        slice: JIRSlice,
+        slice_type: SliceType,
+    ) -> JITResult<GPRegister> {
+        // Make sure the target gpr is free for our allocation.
+        self.move_slice_from_gp(gpr)?;
+        let alloc_type = match slice_type {
+            SliceType::Input => RegisterAllocationType::Slice(slice),
+            SliceType::Output => RegisterAllocationType::OutSlice(slice),
+        };
+        let register = self
+            .allocate_gpr(RegisterAllocationHint::Reallocate(gpr), alloc_type, SpillBehavior::Fail)
+            .expect("This cannot fail, since we just made sure that the gpr is free by moving out of it.");
+        Ok(match register {
+            RegisterLoadInfo::Unloaded(register) => {
+                self.load_slice_from_runtime_context(register, slice);
+                register
+            }
+            RegisterLoadInfo::Loaded(register) => {
+                trace_jit!("Slice {slice:?} is already loaded in GP register {register:?}");
+                register
+            }
+            RegisterLoadInfo::NeedRelocation { from, to } => {
+                trace_jit!("Slice {slice:?} needs to be relocated: {to:?}<-{from:?}");
+                self.copy_gpr_to_gpr(to, from, slice.size(), CopyExtendMode::None)?;
+                to
+            }
+        })
+    }
+
     /// Emit instructions to move the provided slice from the runtime context to the provided gpr.
     #[inline]
     fn load_slice_from_runtime_context(
@@ -108,6 +130,7 @@ impl X86MogiJit {
         // We need to insert an instruction that loads it from context.
         // For that we first need to calculate the offset in the cpu context.
         let varnode_offset = X86TaskContext::varnode_offset(slice);
+        trace!("Loading slice {slice:?} that refers to varnode {:?} into {register:?}", slice.varnode_id);
         // Emit the instruction that loads the varnode from the specified space in the context.
         match slice.size() {
             1 => {
@@ -157,7 +180,7 @@ impl X86MogiJit {
 
         // Allocate and associate a GP register with the slice.
         // No load is needed, since we overwrite the data anyway for a copy.
-        let target_reg = self.get_slice_gp(target, SliceType::Output);
+        let target_reg = self.allocate_slice_gpr(target, SliceType::Output);
         self.emit_load_value_to_gpr(target_reg, source)
     }
 
@@ -198,7 +221,7 @@ impl X86MogiJit {
             //       We could omit a few mov instructions in some cases that way.
             //       I.e. if the slice is not loaded yet, use the provided hint, and otherwise
             //       we just return the gpr to which the slice was already loaded.
-            let reg = self.load_slice_gpr_with_hint(Some(target_reg), slice, slice_type);
+            let reg = self.load_slice_gpr_with_hint(RegisterAllocationHint::Allocate(target_reg), slice, slice_type);
             self.copy_gpr_to_gpr(target_reg, reg, size, CopyExtendMode::None)?;
         } else {
             todo!("Support sizes > 8")
