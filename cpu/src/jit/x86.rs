@@ -434,7 +434,7 @@ impl MogiJit for X86MogiJit {
             JIROperation::GotoIndirectIf => {}
             JIROperation::JCodeGoto(block_id) => {}
             JIROperation::JCodeGotoIf(block_id) => {}
-            JIROperation::PopCount => {}
+            JIROperation::PopCount => return self.emit_popcount(output?, input_a?),
             JIROperation::LZCount => {}
             JIROperation::ZeroExtend => return self.emit_zero_extend(output?, input_a?),
             JIROperation::SignExtend => {}

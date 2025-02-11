@@ -141,14 +141,14 @@ impl X86MogiJit {
         }
     }
 
+    /// Free a temporary register. If the register is not a temporary, this function does nothing.
     pub(super) fn temp_free(
         &mut self,
         gpr: GPRegister,
     ) -> JITResult {
-        let RegisterAllocation::OccupiedTemp = self.register_tracker.gp[gpr] else {
-            Err(JitError::InvalidTempFree)?
+        if let RegisterAllocation::OccupiedTemp = self.register_tracker.gp[gpr] {
+            self.register_tracker.gp[gpr] = RegisterAllocation::Free;
         };
-        self.register_tracker.gp[gpr] = RegisterAllocation::Free;
         Ok(())
     }
 
