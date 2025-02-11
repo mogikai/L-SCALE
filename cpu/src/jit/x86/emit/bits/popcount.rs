@@ -1,4 +1,5 @@
 use crate::jit::api::JITResult;
+use crate::jit::x86::emit::slice_load::CopyExtendMode;
 use crate::jit::x86::regalloc::SliceType;
 use crate::jit::x86::{
     X86MogiJit,
@@ -25,12 +26,23 @@ impl X86MogiJit {
         };
         let out_gpr = self.allocate_slice_gpr(output, SliceType::Output);
         match input.size() {
-            ..=4 => {
+            1 => {
+                self.copy_gpr_to_gpr(out_gpr, input_gpr, 1, CopyExtendMode::ZeroExtend(2))?;
+                assemble!(self.block_mut()?.assembler();
+                    ; popcnt Rw(out_gpr as u8), Rw(out_gpr as u8)
+                );
+            }
+            2 => {
+                assemble!(self.block_mut()?.assembler();
+                    ; popcnt Rw(out_gpr as u8), Rw(input_gpr as u8)
+                );
+            }
+            4 => {
                 assemble!(self.block_mut()?.assembler();
                     ; popcnt Rd(out_gpr as u8), Rd(input_gpr as u8)
                 );
             }
-            ..=8 => {
+            8 => {
                 assemble!(self.block_mut()?.assembler();
                     ; popcnt Rq(out_gpr as u8), Rq(input_gpr as u8)
                 );

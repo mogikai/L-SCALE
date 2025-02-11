@@ -9,7 +9,7 @@ const TEST_STEP_32: usize = 1 << 26;
 const TEST_STEP_16: usize = 1 << 10;
 
 #[test]
-fn test_equals_slice_64bit() {
+fn test_popcount_slice_64bit() {
     let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_unary_instruction_generic(
         &processor_spec,
@@ -24,7 +24,7 @@ fn test_equals_slice_64bit() {
 }
 
 #[test]
-fn test_equals_slice_same_output_64bit() {
+fn test_popcount_slice_same_output_64bit() {
     let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_unary_instruction_generic(
         &processor_spec,
@@ -39,7 +39,7 @@ fn test_equals_slice_same_output_64bit() {
 }
 
 #[test]
-fn test_equals_const_64bit() {
+fn test_popcount_const_64bit() {
     let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_unary_instruction_generic(
         &processor_spec,
@@ -54,7 +54,7 @@ fn test_equals_const_64bit() {
 }
 
 #[test]
-fn test_equals_slice_32bit() {
+fn test_popcount_slice_32bit() {
     let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_unary_instruction_generic(
         &processor_spec,
@@ -69,7 +69,7 @@ fn test_equals_slice_32bit() {
 }
 
 #[test]
-fn test_equals_slice_same_output_32bit() {
+fn test_popcount_slice_same_output_32bit() {
     let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_unary_instruction_generic(
         &processor_spec,
@@ -84,7 +84,7 @@ fn test_equals_slice_same_output_32bit() {
 }
 
 #[test]
-fn test_equals_const_32bit() {
+fn test_popcount_const_32bit() {
     let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_unary_instruction_generic(
         &processor_spec,
@@ -99,7 +99,7 @@ fn test_equals_const_32bit() {
 }
 
 #[test]
-fn test_equals_slice_16bit() {
+fn test_popcount_slice_16bit() {
     let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_unary_instruction_generic(
         &processor_spec,
@@ -114,7 +114,7 @@ fn test_equals_slice_16bit() {
 }
 
 #[test]
-fn test_equals_slice_same_output_16bit() {
+fn test_popcount_slice_same_output_16bit() {
     let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_unary_instruction_generic(
         &processor_spec,
@@ -129,7 +129,7 @@ fn test_equals_slice_same_output_16bit() {
 }
 
 #[test]
-fn test_equals_const_16bit() {
+fn test_popcount_const_16bit() {
     let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_unary_instruction_generic(
         &processor_spec,
@@ -144,7 +144,7 @@ fn test_equals_const_16bit() {
 }
 
 #[test]
-fn test_equals_slice_8bit() {
+fn test_popcount_slice_8bit() {
     let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_unary_instruction_generic(
         &processor_spec,
@@ -152,14 +152,14 @@ fn test_equals_slice_8bit() {
         &mut context,
         |result, a, _| (jinst!(result = popcount(a)), result),
         |a| a.count_ones() as u8,
-        (u8::MIN..u8::MAX).step_by(1), // No need for large step for 8-bit
+        u8::MIN..u8::MAX,
         "AL",
         "BL",
     );
 }
 
 #[test]
-fn test_equals_slice_same_output_8bit() {
+fn test_popcount_slice_same_output_8bit() {
     let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_unary_instruction_generic(
         &processor_spec,
@@ -167,14 +167,14 @@ fn test_equals_slice_same_output_8bit() {
         &mut context,
         |result, a, _| (jinst!(result = popcount(a)), result),
         |a| a.count_ones() as u8,
-        (u8::MIN..u8::MAX).step_by(1), // No need for large step for 8-bit
+        u8::MIN..u8::MAX,
         "AL",
         "AL",
     );
 }
 
 #[test]
-fn test_equals_const_8bit() {
+fn test_popcount_const_8bit() {
     let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_unary_instruction_generic(
         &processor_spec,
@@ -182,7 +182,7 @@ fn test_equals_const_8bit() {
         &mut context,
         |result, _, a| (jinst!(result = popcount(a)), result),
         |a| a.count_ones() as u8,
-        (u8::MIN..u8::MAX).step_by(1), // No need for large step for 8-bit
+        u8::MIN..u8::MAX,
         "AL",
         "BL",
     );

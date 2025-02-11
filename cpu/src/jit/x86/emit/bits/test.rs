@@ -1,1 +1,2 @@
+mod lzcount;
 mod popcount;

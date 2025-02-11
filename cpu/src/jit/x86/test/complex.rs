@@ -72,3 +72,61 @@ fn test_complex() {
     let program_counter = jit.instruction_pointer(context.as_ref()).unwrap();
     assert_eq!(u64::from(program_counter), 0x1234u64)
 }
+
+#[test]
+fn test_add_overflow_then_popcount() {
+    let (mut jit, spec, mut context) = setup(false);
+    let reg_out = "AL";
+    let reg_a = "BL";
+    let reg_b = "CL";
+    let a = 0xffu8;
+    let b = 0x0fu8;
+    let result = get_reg_slice(&spec, reg_out);
+    let slice_a = get_reg_slice(&spec, reg_a);
+    let slice_b = get_reg_slice(&spec, reg_b);
+    set_slice(&mut *context, slice_a, a);
+    set_slice(&mut *context, slice_b, b);
+
+    let instructions = vec![
+        //
+        jinst!(result = slice_a + slice_b),
+        jinst!(result = popcount(result)),
+    ];
+    exec_instructions(&mut jit, &mut context, &instructions);
+    let actual: u8 = get_slice_value(context.as_ref(), &spec, result);
+
+    let result = a.wrapping_add(b);
+    let expected = result.count_ones() as u8;
+    assert_eq!(actual, expected, "Got {:#x} but expected {:#x}. Operands: {:#x}, {:#x}", actual, expected, a, b);
+    let program_counter = jit.instruction_pointer(context.as_ref()).unwrap();
+    assert_eq!(u64::from(program_counter), 0x800200u64)
+}
+
+#[test]
+fn test_add_overflow_then_lzcount() {
+    let (mut jit, spec, mut context) = setup(false);
+    let reg_out = "AL";
+    let reg_a = "BL";
+    let reg_b = "CL";
+    let a = 0xffu8;
+    let b = 0x0fu8;
+    let result = get_reg_slice(&spec, reg_out);
+    let slice_a = get_reg_slice(&spec, reg_a);
+    let slice_b = get_reg_slice(&spec, reg_b);
+    set_slice(&mut *context, slice_a, a);
+    set_slice(&mut *context, slice_b, b);
+
+    let instructions = vec![
+        //
+        jinst!(result = slice_a + slice_b),
+        jinst!(result = lzcount(result)),
+    ];
+    exec_instructions(&mut jit, &mut context, &instructions);
+    let actual: u8 = get_slice_value(context.as_ref(), &spec, result);
+
+    let result = a.wrapping_add(b);
+    let expected = result.leading_zeros() as u8;
+    assert_eq!(actual, expected, "Got {:#x} but expected {:#x}. Operands: {:#x}, {:#x}", actual, expected, a, b);
+    let program_counter = jit.instruction_pointer(context.as_ref()).unwrap();
+    assert_eq!(u64::from(program_counter), 0x800200u64)
+}
