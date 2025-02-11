@@ -15,7 +15,10 @@ use crate::jit::x86::{
     assemble,
 };
 use mogi_sleigh::spec::jir::values::JIRSlice;
-use tracing::trace;
+use tracing::{
+    trace,
+    warn,
+};
 
 #[derive(Debug, Copy, Clone)]
 pub(super) enum RegisterAllocationType {
@@ -200,7 +203,10 @@ impl X86MogiJit {
         slice_type: SliceType,
     ) -> GPRegister {
         let allocation_type = match slice_type {
-            SliceType::Input => RegisterAllocationType::Slice(slice),
+            SliceType::Input => {
+                warn!("Allocating input slice without loading. Is this intended?");
+                RegisterAllocationType::Slice(slice)
+            }
             SliceType::Output => RegisterAllocationType::OutSlice(slice),
         };
         let register = self

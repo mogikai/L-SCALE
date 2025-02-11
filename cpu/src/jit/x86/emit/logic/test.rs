@@ -1,5 +1,12 @@
 mod and;
 mod bitnegate;
+mod equals;
+mod greater;
+mod greaterequals;
+mod less;
+mod lessequals;
 mod negate;
+mod notequals;
 mod or;
+mod signed;
 mod xor;

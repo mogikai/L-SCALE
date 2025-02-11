@@ -191,8 +191,7 @@ impl<'a> JumplistBuilder<'a> {
             self.sublist_cache.len(),
         );
 
-        // trace_build!("Jumplist diagnostics: {:#?}", self.diagnostics);
-        eprintln!("Jumplist diagnostics: {:#?}", self.diagnostics);
+        trace_build!("Jumplist diagnostics: {:#?}", self.diagnostics);
 
         // for (jumplist_id, jumplist) in self.jumplist_cache.iter() {
         //     if jumplist_id == root_jumplist_id {
