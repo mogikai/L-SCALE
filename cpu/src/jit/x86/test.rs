@@ -258,12 +258,12 @@ pub(super) fn test_multiple_binary_instruction_generic_different_sizes<T, U1, U2
     }
 }
 
-pub(super) fn test_unary_instruction_generic<T, U>(
+pub(super) fn test_unary_instruction_generic<T, U, R>(
     processor_spec: &Rc<RefCell<ProcessorSpecification>>,
     jit: &mut T,
     context: &mut T::RuntimeContext,
     instruction_builder: impl FnOnce(JIRSlice, JIRSlice, U) -> (JIRInstruction, JIRSlice),
-    verify_op: impl FnOnce(U) -> U,
+    verify_op: impl FnOnce(U) -> R,
     reg_out: &str,
     reg_a: &str,
     a: U,
@@ -273,6 +273,10 @@ pub(super) fn test_unary_instruction_generic<T, U>(
     for<'a> &'a [u8]: TryInto<<U as FromBytes>::Bytes>,
     for<'a> <&'a [u8] as TryInto<<U as FromBytes>::Bytes>>::Error: Debug,
     <U as FromBytes>::Bytes: Sized,
+    R: ToBytes + FromBytes + PartialEq + Debug + LowerHex + Copy,
+    for<'a> &'a [u8]: TryInto<<R as FromBytes>::Bytes>,
+    for<'a> <&'a [u8] as TryInto<<R as FromBytes>::Bytes>>::Error: Debug,
+    <R as FromBytes>::Bytes: Sized,
 {
     let result = get_reg_slice(&processor_spec, reg_out);
     let slice_a = get_reg_slice(&processor_spec, reg_a);
@@ -284,7 +288,7 @@ pub(super) fn test_unary_instruction_generic<T, U>(
         instruction,
     ];
     exec_instructions(jit, context, &instructions);
-    let actual: U = get_slice_value(context, &processor_spec, result);
+    let actual: R = get_slice_value(context, &processor_spec, result);
 
     let expected = verify_op(a);
     assert_eq!(actual, expected, "Got {:#x} but expected {:#x}. Operands: {:#x}", actual, expected, a);
@@ -297,7 +301,7 @@ pub(super) fn test_unary_instruction_generic<T, U>(
 }
 
 /// Test all combinations of values when iterating over the type, using the provided step size.
-pub(super) fn test_multiple_unary_instruction_generic<T, U, B, V>(
+pub(super) fn test_multiple_unary_instruction_generic<T, U, R, B, V>(
     processor_spec: &Rc<RefCell<ProcessorSpecification>>,
     jit: &mut T,
     context: &mut T::RuntimeContext,
@@ -309,11 +313,15 @@ pub(super) fn test_multiple_unary_instruction_generic<T, U, B, V>(
 ) where
     T: MogiJit,
     B: FnOnce(JIRSlice, JIRSlice, U) -> (JIRInstruction, JIRSlice) + Copy,
-    V: FnOnce(U) -> U + Copy,
+    V: FnOnce(U) -> R + Copy,
     U: ToBytes + FromBytes + PartialEq + Debug + LowerHex + Copy,
     for<'a> &'a [u8]: TryInto<<U as FromBytes>::Bytes>,
     for<'a> <&'a [u8] as TryInto<<U as FromBytes>::Bytes>>::Error: Debug,
     <U as FromBytes>::Bytes: Sized,
+    R: ToBytes + FromBytes + PartialEq + Debug + LowerHex + Copy,
+    for<'a> &'a [u8]: TryInto<<R as FromBytes>::Bytes>,
+    for<'a> <&'a [u8] as TryInto<<R as FromBytes>::Bytes>>::Error: Debug,
+    <R as FromBytes>::Bytes: Sized,
 {
     for a in value_iter.clone() {
         for b in value_iter.clone() {

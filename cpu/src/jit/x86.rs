@@ -437,7 +437,7 @@ impl MogiJit for X86MogiJit {
             JIROperation::PopCount => return self.emit_popcount(output?, input_a?),
             JIROperation::LZCount => return self.emit_lzcount(output?, input_a?),
             JIROperation::ZeroExtend => return self.emit_zero_extend(output?, input_a?),
-            JIROperation::SignExtend => {}
+            JIROperation::SignExtend => return self.emit_sign_extend(output?, input_a?),
             JIROperation::Carry => {}
             JIROperation::SignCarry => {}
             JIROperation::SignBorrow => {}

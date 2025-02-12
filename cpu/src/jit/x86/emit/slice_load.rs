@@ -132,6 +132,7 @@ impl X86MogiJit {
         let varnode_offset = X86TaskContext::varnode_offset(slice);
         trace!("Loading slice {slice:?} that refers to varnode {:?} into {register:?}", slice.varnode_id);
         // Emit the instruction that loads the varnode from the specified space in the context.
+        // We always load to a 32 bit register. This avoids false dependencies.
         match slice.size() {
             1 => {
                 assemble!(self.block_mut().unwrap().assembler();
@@ -248,7 +249,13 @@ impl X86MogiJit {
                 Ok(())
             }
             CopyExtendMode::SignExtend(new_size) => {
-                todo!()
+                if target == source && size == new_size {
+                    trace_jit!("Sign extend with equal sizes: no-op");
+                    return Ok(());
+                }
+                trace_jit!("Sign extending from {source:?}:{size} to {target:?}:{new_size}");
+                self.copy_gpr_to_gpr_sext(source, target, size, new_size)?;
+                Ok(())
             }
             CopyExtendMode::None => {
                 // Only emit a copy instruction, if target and source are different.
@@ -315,6 +322,58 @@ impl X86MogiJit {
                 ),
                 4 => assemble!(self.block_mut()?.assembler();
                     ; mov Rd(target as u8), Rd(source as u8)
+                ),
+                8 => (/* zext size 8 to 8 is a no-op */),
+                9.. => todo!("Narrowing zero extend makes no sense"),
+                _ => todo!("Unsupported zero extend size"),
+            },
+            _ => todo!("Unsupported zero extend target"),
+        }
+        Ok(())
+    }
+
+    fn copy_gpr_to_gpr_sext(
+        &mut self,
+        source: GPRegister,
+        target: GPRegister,
+        source_size: JIRSize,
+        target_size: JIRSize,
+    ) -> JITResult {
+        match target_size {
+            1 => match source_size {
+                1 => (),
+                2.. => todo!("Narrowing zero extend makes no sense"),
+                _ => todo!("Unsupported zero extend size"),
+            },
+            2 => match source_size {
+                1 => assemble!(self.block_mut()?.assembler();
+                    ; movsx Rw(target as u8), Rb(source as u8)
+                ),
+                2 => (/* zext size 4 to 4 is a no-op */),
+                3.. => todo!("Narrowing zero extend makes no sense"),
+                _ => todo!("Unsupported zero extend size"),
+            },
+            4 => match source_size {
+                1 => assemble!(self.block_mut()?.assembler();
+                    ; movsx Rd(target as u8), Rb(source as u8)
+                ),
+                2 => assemble!(self.block_mut()?.assembler();
+                    ; movsx Rd(target as u8), Rw(source as u8)
+                ),
+                4 => (/* zext size 4 to 4 is a no-op*/),
+                5.. => todo!("Narrowing zero extend makes no sense"),
+                _ => todo!("Unsupported zero extend size"),
+            },
+            8 => match source_size {
+                // moving to the lower 32 bit automatically zeros the upper 32 bit.
+                1 => assemble!(self.block_mut()?.assembler();
+                    ; movsx Rq(target as u8), Rb(source as u8)
+                ),
+                2 => assemble!(self.block_mut()?.assembler();
+                    ; movsx Rq(target as u8), Rw(source as u8)
+                ),
+                4 => assemble!(self.block_mut()?.assembler();
+                    ; movsx Rq(target as u8), Rd(source as u8)
                 ),
                 8 => (/* zext size 8 to 8 is a no-op */),
                 9.. => todo!("Narrowing zero extend makes no sense"),
