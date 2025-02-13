@@ -438,8 +438,8 @@ impl MogiJit for X86MogiJit {
             JIROperation::LZCount => return self.emit_lzcount(output?, input_a?),
             JIROperation::ZeroExtend => return self.emit_zero_extend(output?, input_a?),
             JIROperation::SignExtend => return self.emit_sign_extend(output?, input_a?),
-            JIROperation::Carry => {}
-            JIROperation::SignCarry => {}
+            JIROperation::Carry => return self.emit_carry(output?, input_a?, input_b?),
+            JIROperation::SignCarry => return self.emit_scarry(output?, input_a?, input_b?),
             JIROperation::SignBorrow => {}
             JIROperation::Nan => {}
             JIROperation::Abs => {}

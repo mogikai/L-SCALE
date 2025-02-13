@@ -3,6 +3,7 @@
 mod arithmetic;
 mod bits;
 mod extend;
+mod flags;
 mod flow;
 mod host_call;
 mod logic;
