@@ -51,7 +51,7 @@ impl Lifter for ProcessorSpecification {
         // longMode=1, addrSize=1, opSize=1
         *context_stack
             .context_value_mut(self.context_id("contextreg").unwrap())
-            .unwrap() = 0x51;
+            .unwrap() = 0x21;
         let resolver = root_jumplist
             .r#match(&buffer, &self.jumplist_cache, &self.symbol_tables.constructors, &mut context_stack)
             .unwrap();
@@ -61,7 +61,6 @@ impl Lifter for ProcessorSpecification {
         if let Some((_, resolver)) = resolver {
             let mut block_builder = TargetBasicBlockBuilder::new(addr, self.temp_space);
             resolver.print_hierarchy(0);
-            // resolver.print_mcode(&self.specification, 0);
 
             resolver
                 .build(self, &mut block_builder)

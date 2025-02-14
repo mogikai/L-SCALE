@@ -11,6 +11,7 @@ use crate::compiler::build::constructor::matcher::{
     MatcherReference,
     TokenList,
 };
+use crate::compiler::build::trace_build;
 use crate::compiler::error::InternalError;
 use crate::compiler::{
     InternalCompilerResult,
@@ -105,7 +106,7 @@ impl SleighCompiler {
                     let atom = MatcherAtom::Submatchers(Submatchers::new(*tid, None));
                     let conjunctions = vec![BTreeSet::from([atom])];
                     let references = HashSet::from([MatcherReference::Subtable(*tid)]);
-                    let token_list = TokenList::new(vec![None], false, false);
+                    let token_list = TokenList::new(vec![None], true, false);
                     vec![Matcher::new(
                         conjunctions,
                         token_list,
@@ -135,18 +136,45 @@ impl SleighCompiler {
                         .into_iter()
                         .map(|(token_list, matchers)| {
                             // associate all matchers with equal token_list with a new matcher
+
+                            // we need to include context tokens in the token list,
+                            // but actual subtables are never placed there so if
+                            // token list does not contain a regular token (i.e. if it's
+                            // empty or only has context) or a None token we need to add a None token
                             let atom = MatcherAtom::Submatchers(Submatchers::new(*tid, Some(matchers)));
-                            let mut conjunctions = vec![BTreeSet::from([atom])];
-                            if let Some(padding) = token_list.len().checked_sub(1) {
-                                conjunctions.append(&mut vec![BTreeSet::new(); padding]);
-                            }
-                            let token_list = if token_list.is_empty() {
-                                // if token_list is empty, we have no information => use None and
-                                // pad
-                                TokenList::new(vec![None], false, false)
-                            } else {
-                                // if token_list is not empty, we know the tokens
-                                TokenList::new(token_list.clone(), false, false)
+
+                            let sublist_index = token_list.iter().enumerate().find_map(|(index, token)| {
+                                if let Some(token) = token {
+                                    if matches!(token, MOIRFieldParent::Token(_)) {
+                                        Some(index)
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    Some(index)
+                                }
+                            });
+
+                            let (token_list, conjunctions) = match sublist_index {
+                                Some(index) => {
+                                    // there is a non-context token => insert sublist there
+                                    let mut conjunctions = vec![BTreeSet::new(); index];
+                                    conjunctions.push(BTreeSet::from([atom]));
+                                    // pad so that conjunctions.len() == token_list.len()
+                                    for _ in 0..(token_list.len() - conjunctions.len()) {
+                                        conjunctions.push(BTreeSet::new());
+                                    }
+
+                                    (TokenList::new(token_list.clone(), false, false), conjunctions)
+                                }
+                                None => {
+                                    // there is no non-context token => add None token
+                                    let mut new_token_list = token_list.clone();
+                                    new_token_list.push(None);
+                                    let mut conjunctions = vec![BTreeSet::new(); token_list.len()];
+                                    conjunctions.push(BTreeSet::from([atom]));
+                                    (TokenList::new(new_token_list, true, false), conjunctions)
+                                }
                             };
 
                             let references = HashSet::from([MatcherReference::Subtable(*tid)]);
@@ -228,10 +256,7 @@ impl SleighCompiler {
                         // decided to use & and not ; to separate context from regular tokens.
                         let mut matcher_lhs_nc = matcher_lhs.clone();
                         let mut matcher_rhs_nc = matcher_rhs.clone();
-                        // eprintln!("matcher_lhs_nc = {:#?}", matcher_lhs_nc);
-                        // eprintln!("matcher_rhs_nc = {:#?}", matcher_rhs_nc);
                         let context_matcher = extract_context(&mut matcher_lhs_nc, Some(&mut matcher_rhs_nc));
-                        // eprintln!("context_matcher = {:#?}", context_matcher);
 
                         // Make sure tokens are the same (since lhs and rhs can be inconsistent in
                         // case a subtable with multiple constructors was used). If this is the
@@ -644,28 +669,32 @@ impl SleighCompiler {
     }
 }
 
+/// Combine two tokens in the following manner:
+/// - if one if them is None, return the other
+/// - if both are Some, return Some if they are the same
 fn combine_tokens(
     left: Option<MOIRFieldParent>,
     right: Option<MOIRFieldParent>,
-) -> Option<Option<MOIRFieldParent>> {
+) -> Option<MOIRFieldParent> {
     match left {
         Some(l) => match right {
             Some(r) => {
                 if l == r {
-                    Some(Some(l))
+                    Some(l)
                 } else {
                     None
                 }
             }
-            None => Some(Some(l)),
+            None => Some(l),
         },
-        None => Some(right),
+        None => right,
     }
 }
 
 /// Merge two token lists by checking whether they are compatible with one another, i.e. if they
 /// are equal taking potential left/right justification for different lengths into account, and
 /// by filling potential None tokens. Two lists are always compatible if one of them is empty.
+/// The resulting list is guaranteed to not contain any None tokens.
 ///
 /// # Return
 /// - Some(list) if the lists are compatible with `list` being the more specific (i.e. longer) one
@@ -674,152 +703,96 @@ pub(crate) fn merge_token_lists(
     lhs: &TokenList,
     rhs: &TokenList,
 ) -> Option<TokenList> {
-    // lists can only be empty for epsilon matchers
-    if lhs.list.is_empty() {
-        return Some(TokenList::new(rhs.list.clone(), false, false));
-    } else if rhs.list.is_empty() {
-        return Some(TokenList::new(lhs.list.clone(), false, false));
+    // only one can be justified either left or right or both
+    debug_assert!(!(lhs.justify_left && lhs.justify_right));
+    debug_assert!(!(rhs.justify_left && rhs.justify_right));
+    // debug_assert!(!(lhs.justify_left && rhs.justify_left));
+    // debug_assert!(!(rhs.justify_right && lhs.justify_right));
+
+    // return if empty or just None (this is a special case, the more general one
+    // is not yet implemented)
+    if lhs.list.is_empty() || lhs.list.len() == 1 && lhs.list[0] == None {
+        return Some(rhs.clone());
+    } else if rhs.list.is_empty() || rhs.list.len() == 1 && rhs.list[0] == None {
+        return Some(lhs.clone());
     }
 
-    // None handling isn't correctly implemented yet since the general case is
-    // extremely ugly and this should suffice for now
+    // - if both are non-justified, the order doesn't matter
+    // - if one is justified but the other is not, list_0 equals the justified one
+    // - if both are justified, list_0 equals the longer one
 
-    let mut result_list = Vec::new();
+    let left_justified = lhs.justify_left || lhs.justify_right;
+    let right_justified = rhs.justify_left || rhs.justify_right;
 
-    if lhs.justify_left && rhs.justify_left {
-        // find greatest common start
-        for i in 0..lhs.list.len().min(rhs.list.len()) {
-            if lhs.list[i].is_none() {
-                // None found => add all other tokens from rhs and finish
-                result_list.extend(rhs.list[i..].iter());
-                break;
-            } else if rhs.list[i].is_none() {
-                // None found => add all other tokens from lhs and finish
-                result_list.extend(lhs.list[i..].iter());
-                break;
-            }
-
-            match combine_tokens(lhs.list[i], rhs.list[i]) {
-                Some(combined) => result_list.push(combined),
-                None => break,
-            }
+    let (list_0, list_1) = if left_justified && right_justified {
+        // both are justified
+        if lhs.list.len() > rhs.list.len() {
+            // both are justified, but left is longer
+            (lhs, rhs)
+        } else {
+            // both are justified, but right is longer
+            (rhs, lhs)
         }
-
-        return Some(TokenList::new(result_list, false, false));
-    }
-
-    if lhs.justify_right && rhs.justify_right {
-        // find greatest common end
-        for i in 0..lhs.list.len().min(rhs.list.len()) {
-            let il = lhs.list.len() - i - 1;
-            let ir = rhs.list.len() - i - 1;
-
-            if lhs.list[il].is_none() {
-                // None found => add all other tokens from rhs and finish
-                for er in rhs.list[0usize..=ir].iter().rev() {
-                    result_list.push(*er);
-                }
-
-                result_list.reverse();
-                return Some(TokenList::new(result_list, false, false));
-            } else if rhs.list[rhs.list.len() - i - 1].is_none() {
-                // None found => add all other tokens from lhs and finish
-                for el in lhs.list[0usize..=il].iter().rev() {
-                    result_list.push(*el);
-                }
-
-                result_list.reverse();
-                return Some(TokenList::new(result_list, false, false));
-            }
-
-            match combine_tokens(lhs.list[il], rhs.list[ir]) {
-                Some(combined) => result_list.push(combined),
-                None => break,
-            }
-        }
-    }
-
-    // padded one contained in longer? (start/end/middle)
-    let (padded, non_padded) = if lhs.justify_right || lhs.justify_left {
+    } else if left_justified {
+        // left is justified
         (lhs, rhs)
     } else {
+        // right may or may not be justified
         (rhs, lhs)
     };
 
-    if (padded.justify_left || padded.justify_right) && padded.list.len() > non_padded.list.len() {
-        todo!("Generate error report for padded length greater than non-padded length");
-    }
+    let mut result_list = Vec::new();
 
-    if padded.justify_right && padded.justify_left {
-        // both padded => is padded list contained in non_padded?
-        'next: for si in 0..(non_padded.list.len() - padded.list.len()) {
-            for (v0, v1) in padded.list[..]
-                .iter()
-                .zip(non_padded.list[si..(si + padded.list.len())].iter())
-            {
-                if v0.is_some_and(|v0| v1.is_some_and(|v1| v0 != v1)) {
-                    // only skip if both are Some and not equal
-                    continue 'next;
-                }
+    if list_0.justify_left {
+        // left-justified => find common prefix while combining None tokens
+        for i in 0..list_0.list.len().max(list_1.list.len()) {
+            let token_lhs = list_0
+                .list
+                .get(i)
+                .map(|inner| inner.as_ref().copied())
+                .flatten();
+            let token_rhs = list_1
+                .list
+                .get(i)
+                .map(|inner| inner.as_ref().copied())
+                .flatten();
+            match combine_tokens(token_lhs, token_rhs) {
+                Some(token) => result_list.push(Some(token)),
+                None => return None,
             }
-
-            // compatible => collect into new list while filling None values
-            let list = padded.list[..]
-                .iter()
-                .zip(non_padded.list[si..(si + padded.list.len())].iter())
-                .map(|(v0, v1)| v0.clone().or(v1.clone()))
-                .collect_vec();
-            return Some(TokenList::new(list, false, false));
         }
-    } else if padded.justify_right {
-        // start padded => is smaller list present at end of larger?
-        if &padded.list[..] == &non_padded.list[(non_padded.list.len() - padded.list.len())..] {
-            // compatible => collect into new list while filling None values
-            let list = padded.list[..]
-                .iter()
-                .zip(non_padded.list[(non_padded.list.len() - padded.list.len())..].iter())
-                .map(|(v0, v1)| v0.clone().or(v1.clone()))
-                .collect_vec();
-            return Some(TokenList::new(list, false, false));
-        }
-    } else if padded.justify_left {
-        // end padded => is smaller list present at start of larger?
-        if &padded.list[..] == &non_padded.list[..padded.list.len()] {
-            // compatible => collect into new list while filling None values
-            let list = padded.list[..]
-                .iter()
-                .zip(non_padded.list[..padded.list.len()].iter())
-                .map(|(v0, v1)| v0.clone().or(v1.clone()))
-                .collect_vec();
-            return Some(TokenList::new(list, false, false));
-        }
-    }
-
-    // nothing padded => regular full-length search
-    // lengths don't have to match since we also have None tokens that right
-    // now just absorb everything after them
-    for i in 0..padded.list.len().min(non_padded.list.len()) {
-        if padded.list[i].is_none() {
-            // None found => add all other tokens from rhs and finish
-            result_list.extend(non_padded.list[i..].iter());
-            return Some(TokenList::new(result_list, false, false));
-        } else if non_padded.list[i].is_none() {
-            // None found => add all other tokens from lhs and finish
-            result_list.extend(padded.list[i..].iter());
-            return Some(TokenList::new(result_list, false, false));
+    } else if list_0.justify_right {
+        // right-justified => find common suffix while combining None tokens
+        for i in 0..list_0.list.len().max(list_1.list.len()) {
+            let token_lhs = list_0
+                .list
+                .get(lhs.list.len() - i - 1)
+                .map(|inner| inner.as_ref().copied())
+                .flatten();
+            let token_rhs = list_1
+                .list
+                .get(rhs.list.len() - i - 1)
+                .map(|inner| inner.as_ref().copied())
+                .flatten();
+            match combine_tokens(token_lhs, token_rhs) {
+                Some(token) => result_list.push(Some(token)),
+                None => return None,
+            }
         }
 
-        match combine_tokens(lhs.list[i], rhs.list[i]) {
-            Some(combined) => result_list.push(combined),
-            None => return None,
-        }
-    }
-
-    // add missing tokens
-    if padded.list.len() < non_padded.list.len() {
-        result_list.extend(non_padded.list[padded.list.len()..].iter());
+        result_list.reverse();
     } else {
-        result_list.extend(padded.list[non_padded.list.len()..].iter());
+        // nothing is justified => lists must be the same
+        if list_0.list.len() != list_1.list.len() {
+            return None;
+        }
+
+        for (&token_lhs, &token_rhs) in list_0.list.iter().zip(list_1.list.iter()) {
+            match combine_tokens(token_lhs, token_rhs) {
+                Some(token) => result_list.push(Some(token)),
+                None => return None,
+            }
+        }
     }
 
     Some(TokenList::new(result_list, false, false))

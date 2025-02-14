@@ -20,7 +20,10 @@ use crate::spec::moir::actions::{
     MOIRAction,
     MOIRPatternExpression,
 };
-use crate::spec::moir::constructor::MOIRConstructor;
+use crate::spec::moir::constructor::{
+    ConstructorId,
+    MOIRConstructor,
+};
 use crate::spec::moir::field::{
     FieldId,
     MOIRFieldParent,
@@ -37,6 +40,7 @@ use crate::spec::moir::varnode::{
     MOIRReference,
     MOIRSlice,
 };
+use chumsky::container::Seq;
 use itertools::{
     FoldWhile,
     Itertools,
@@ -112,6 +116,7 @@ impl SleighCompiler {
             field_extractors: Vec::new(),
             export: None,
         };
+
         trace_build!("{}", moir_constructor.debug_scope());
 
         // The semantic section contains pcode which has to be converted into an atomic form.

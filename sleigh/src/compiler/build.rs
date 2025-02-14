@@ -63,7 +63,6 @@ impl SleighCompiler {
     ) -> InternalCompilerResult {
         debug!("The AST has {} toplevel items", ast.items.len());
         self.process_items(ast.items)
-        // TODO add pass after all items have been processed to deal with recursive tables
     }
 
     fn process_items(
