@@ -23,6 +23,7 @@ use std::cell::{
     RefCell,
 };
 use std::cmp::min;
+use std::default::Default;
 use std::rc::Rc;
 use tracing::{
     info,
@@ -31,14 +32,17 @@ use tracing::{
 
 #[derive(Debug, Default, Clone)]
 pub struct StdioSnapshot {
-    stdin_data: Vec<u8>,
-    pos: usize,
+    in_data: Vec<u8>,
+    in_pos: usize,
+    out_buf: Vec<u8>,
+    err_buf: Vec<u8>,
 }
 
 #[derive(Debug)]
 pub struct Stdio {
     snapshots: Vec<StdioSnapshot>,
     data: StdioSnapshot,
+    buffered: bool,
 }
 
 impl Restorable for Stdio {
@@ -63,27 +67,28 @@ impl Restorable for Stdio {
 }
 
 impl Stdio {
-    pub fn new() -> Self {
+    pub fn new(buffered: bool) -> Self {
         Self {
             snapshots: Vec::new(),
             data: Default::default(),
+            buffered,
         }
     }
 
     pub fn pos(&self) -> usize {
-        self.data.pos
+        self.data.in_pos
     }
 
     pub fn stdin_read(
         &mut self,
         count: u64,
     ) -> Option<Vec<u8>> {
-        if self.data.stdin_data.is_empty() || self.data.pos >= self.data.stdin_data.len() {
+        if self.data.in_data.is_empty() || self.data.in_pos >= self.data.in_data.len() {
             return None;
         }
-        let read_end = min(count as usize, self.data.stdin_data.len());
-        let data = self.data.stdin_data[self.data.pos..read_end].to_owned();
-        self.data.pos = read_end;
+        let read_end = min(count as usize, self.data.in_data.len());
+        let data = self.data.in_data[self.data.in_pos..read_end].to_owned();
+        self.data.in_pos = read_end;
         Some(data)
     }
 
@@ -91,7 +96,7 @@ impl Stdio {
         &mut self,
         data: &[u8],
     ) {
-        self.data.stdin_data.extend(data);
+        self.data.in_data.extend(data);
     }
 
     pub fn lseek(
@@ -100,19 +105,40 @@ impl Stdio {
         offset: i64,
     ) -> usize {
         match whence {
-            Whence::SEEK_SET => self.data.pos = offset as usize,
+            Whence::SEEK_SET => self.data.in_pos = offset as usize,
             Whence::SEEK_CUR => {
-                self.data.pos = if offset.is_negative() {
-                    self.data.pos.wrapping_sub(offset.abs() as usize)
+                self.data.in_pos = if offset.is_negative() {
+                    self.data.in_pos.wrapping_sub(offset.abs() as usize)
                 } else {
-                    self.data.pos.wrapping_add(offset.abs() as usize)
+                    self.data.in_pos.wrapping_add(offset.abs() as usize)
                 }
             }
             Whence::SEEK_END => {
                 unimplemented!()
             }
         }
-        self.data.pos
+        self.data.in_pos
+    }
+
+    pub fn output(
+        &mut self,
+        data: &[u8],
+        output_type: StdOutputType,
+    ) {
+        if !self.buffered {
+            trace!("{:?}: {:}", output_type, String::from_utf8_lossy(data));
+            return;
+        }
+        let buffer = match output_type {
+            StdOutputType::Out => &mut self.data.out_buf,
+            StdOutputType::Err => &mut self.data.err_buf,
+        };
+        if data.ends_with("\n".as_bytes()) {
+            trace!("{:?}: {:}{:}", output_type, String::from_utf8_lossy(buffer), String::from_utf8_lossy(data));
+            buffer.clear();
+        } else {
+            buffer.extend_from_slice(data);
+        }
     }
 }
 
@@ -230,15 +256,23 @@ impl FileDescriptorOps for StdInputOps {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum StdOutputType {
+    Out,
+    Err,
+}
+
 #[derive(Debug)]
 pub struct StdOutputOps {
     stat: RefCell<Stat>,
+    output_type: StdOutputType,
 }
 
 impl StdOutputOps {
-    pub fn new() -> Self {
+    pub fn new(output_type: StdOutputType) -> Self {
         Self {
             stat: Default::default(),
+            output_type,
         }
     }
 }
@@ -280,7 +314,8 @@ impl FileDescriptorOps for StdOutputOps {
         fd: &mut Self::D,
         data: &[u8],
     ) -> Result<usize, FileDescriptorError> {
-        trace!("STDOUT/ERR: {:}", String::from_utf8_lossy(data));
+        let stdio = &fd.stdio.as_ref().unwrap().stdio;
+        stdio.borrow_mut().output(data, self.output_type.clone());
         Ok(data.len())
     }
 

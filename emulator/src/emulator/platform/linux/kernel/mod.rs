@@ -443,11 +443,11 @@ where
         stdin.data.stdio = Some(StdioData::new(self.system.stdio.clone()));
         file_descriptor_map.insert_at(&self.task_id, 0.into(), stdin);
 
-        let mut stdout = FileDescriptor::new(Box::new(StdOutputOps::new()));
+        let mut stdout = FileDescriptor::new(Box::new(StdOutputOps::new(StdOutputType::Out)));
         stdout.data.stdio = Some(StdioData::new(self.system.stdio.clone()));
         file_descriptor_map.insert_at(&self.task_id, 1.into(), stdout);
 
-        let mut stderr = FileDescriptor::new(Box::new(StdOutputOps::new()));
+        let mut stderr = FileDescriptor::new(Box::new(StdOutputOps::new(StdOutputType::Err)));
         stderr.data.stdio = Some(StdioData::new(self.system.stdio.clone()));
         file_descriptor_map.insert_at(&self.task_id, 2.into(), stderr);
     }
