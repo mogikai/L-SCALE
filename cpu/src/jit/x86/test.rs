@@ -2,8 +2,6 @@ mod bitand;
 mod bitor;
 mod bitxor;
 mod complex;
-mod load;
-mod store;
 
 use crate::jit::api::{
     JITTaskRuntimeContext,
