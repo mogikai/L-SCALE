@@ -37,7 +37,7 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
         out: Option<MOIRLocalId>,
         invocation: Spanned<SASTPCodeInvocation>,
-    ) -> InternalCompilerResult<Option<MOIRLocal>> {
+    ) -> InternalCompilerResult<(Option<MOIRLocal>, bool)> {
         trace_build!("Atomizing invocation with {} arguments.", invocation.value().arguments.len());
         let (invocation, _) = invocation.into_tuple();
 
@@ -45,11 +45,11 @@ impl SleighCompiler {
 
         let name = invocation.name.transmute();
         if let Some(op) = self.spec_builder.builtin_op_by_ident(&name) {
-            self.atomize_builtin_op_invocation(scope, instructions, out, args, op)
+            Ok((self.atomize_builtin_op_invocation(scope, instructions, out, args, op)?, false))
         } else if let Some(moir_macro) = self.spec_builder.macro_by_ident(&name).cloned() {
             self.atomize_macro_invocation(scope, instructions, args, moir_macro)
         } else {
-            self.atomize_custom_op_invocation(scope, instructions, out, args, name)
+            Ok((self.atomize_custom_op_invocation(scope, instructions, out, args, name)?, false))
         }
     }
 
@@ -205,7 +205,7 @@ impl SleighCompiler {
         instructions: &mut Vec<MOIRInstruction>,
         args: Vec<MOIRLocal>,
         moir_macro: MOIRMacro,
-    ) -> InternalCompilerResult<Option<MOIRLocal>> {
+    ) -> InternalCompilerResult<(Option<MOIRLocal>, bool)> {
         // We need to create a new namespace that is only used for this macro invocation.
         // Effectively, the macro just writes its instructions into the same scope and
         // instruction list as that of the constructor, but uses its own name resolution
@@ -214,11 +214,11 @@ impl SleighCompiler {
         scope.with_empty_namespace(|scope| {
             process_macro_arguments(scope, instructions, args, moir_macro.arguments)?;
             // Process the individual statements of the macro and insert them in the instructions list.
-            let export = self.atomize_statements(scope, instructions, moir_macro.pcode.statements)?;
+            let (export, block_end) = self.atomize_statements(scope, instructions, moir_macro.pcode.statements)?;
             if export.is_some() {
                 todo!("Generate error report for export used in macro where it is not allowed")
             }
-            Ok(None)
+            Ok((None, block_end))
         })
     }
 }

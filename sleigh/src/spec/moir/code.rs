@@ -751,12 +751,18 @@ impl MOIROperation {
             | Load(_)
             | Store(_)
             | AddressOf => MOIROpCategory::Special,
-            GotoDirect(_) | GotoIndirect(_) | GotoLabel(..) | GotoDirectIf | GotoIndirectIf | GotoLabelIf(_) => {
-                MOIROpCategory::Branch
+            GotoDirect(_) | GotoIndirect(_) | GotoDirectIf | GotoIndirectIf => {
+                MOIROpCategory::Branch(MOIRBranchCategory::External)
             }
+            GotoLabel(..) | GotoLabelIf(_) => MOIROpCategory::Branch(MOIRBranchCategory::Internal),
             _ => MOIROpCategory::Regular,
         }
     }
+}
+
+pub enum MOIRBranchCategory {
+    Internal,
+    External,
 }
 
 pub enum MOIROpCategory {
@@ -773,7 +779,7 @@ pub enum MOIROpCategory {
     /// operation.
     Special,
     /// Branching operations
-    Branch,
+    Branch(MOIRBranchCategory),
     /// A regular instruction with no special handling.
     Regular,
 }

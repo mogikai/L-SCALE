@@ -40,7 +40,6 @@ use crate::spec::moir::varnode::{
     MOIRReference,
     MOIRSlice,
 };
-use chumsky::container::Seq;
 use itertools::{
     FoldWhile,
     Itertools,
@@ -94,6 +93,7 @@ impl SleighCompiler {
 
         let constructor_id = self.spec_builder.next_constructor_id();
         let matchers = self.create_matchers(&constructor.bit_pattern_section.constraint, table_id, constructor_id)?;
+        trace_build!("Created {} matchers", matchers.len());
 
         let mut references = HashSet::new();
         matchers.iter().for_each(|matcher| {
@@ -110,6 +110,7 @@ impl SleighCompiler {
         let mut moir_constructor = MOIRConstructor {
             local_scope: scope,
             instructions: vec![],
+            block_end: false,
             display: display_section.display_str.into_value(),
             actions,
             modifies_context,
@@ -122,7 +123,7 @@ impl SleighCompiler {
         // The semantic section contains pcode which has to be converted into an atomic form.
         // Pcode can contain complex statements (e.g. x = (a+b) * c)) which have to be translated
         // into a form that consists only of atomic expressions (e.g. tmp = a + b; x = tmp * c;)
-        moir_constructor.export = self.atomize_pcode(
+        (moir_constructor.export, moir_constructor.block_end) = self.atomize_pcode(
             &mut moir_constructor.local_scope,
             &mut moir_constructor.instructions,
             constructor.semantic_section.into_value().0,
@@ -395,7 +396,7 @@ impl SleighCompiler {
 
                     // field not present in atom => continue
                     let token_size = match token {
-                        None => panic!("None token in field extractor creation encountered"),
+                        None => 0,
                         Some(token) => {
                             let MOIRFieldParent::Token(token) = token else {
                                 panic!("We checked for this above");

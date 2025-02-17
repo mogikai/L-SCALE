@@ -82,7 +82,7 @@ fn infer_size(
         MOIROpCategory::Regular => {
             infer_regular(scope, instruction)?;
         }
-        MOIROpCategory::Branch => {
+        MOIROpCategory::Branch(_) => {
             // Probably no need to do anything?
         }
         MOIROpCategory::Special => {

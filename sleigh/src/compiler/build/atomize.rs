@@ -3,14 +3,14 @@ mod expression;
 mod invocation;
 mod size_inference;
 
+use std::collections::HashMap;
+
 use crate::compiler::{
     InternalCompilerResult,
     SleighCompiler,
 };
 use crate::spec::moir::code::{
-    MOIRGotoType,
-    MOIRInstruction,
-    moir_instruction,
+    moir_instruction, MOIRBranchCategory, MOIRGotoType, MOIRInstruction, MOIROpCategory
 };
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::scope::{
@@ -29,6 +29,7 @@ use mogi_sleigh_parser::ast::pcode::{
     SASTPCode,
     SASTPCodeLabelledStatement,
 };
+use mogi_sleigh_parser::lexer::InputSpan;
 use mogi_sleigh_parser::{
     Spanned,
     StringId,
@@ -46,13 +47,13 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         pcode: Spanned<SASTPCode>,
-    ) -> InternalCompilerResult<Option<MOIRExport>> {
+    ) -> InternalCompilerResult<(Option<MOIRExport>, bool)> {
         // TODO: Create table of locals? Lookup global identifiers?
         let (pcode, _) = pcode.into_tuple();
         scope.make_implicit_builds(instructions)?;
-        let export = self.atomize_statements(scope, instructions, pcode.statements)?;
+        let (export, block_end) = self.atomize_statements(scope, instructions, pcode.statements)?;
         self.infer_sizes(scope, instructions)?;
-        Ok(export.map(Spanned::into_value))
+        Ok((export.map(Spanned::into_value), block_end))
     }
 
     pub fn atomize_statements(
@@ -60,8 +61,9 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         instructions: &mut Vec<MOIRInstruction>,
         statements: Vec<Spanned<SASTPCodeLabelledStatement>>,
-    ) -> InternalCompilerResult<Option<Spanned<MOIRExport>>> {
+    ) -> InternalCompilerResult<(Option<Spanned<MOIRExport>>, bool)> {
         let mut export: Option<Spanned<MOIRExport>> = None;
+        let mut block_end = false;
         for ((label, statement), _) in statements.into_iter().map(Spanned::into_tuple) {
             let label = if let Some(label) = label {
                 // If we have a label, we define it to point to the first instruction of the atomized statement.
@@ -86,8 +88,8 @@ impl SleighCompiler {
                 SASTPCodeStatement::Invocation(invocation) => {
                     // We ignore the output, since top level invocations do not output anything.
                     // TODO: Maybe it makes sense to update the pcodeop definition here to "no output"?
-                    self.atomize_invocation(scope, instructions, None, invocation)
-                        .map(|_| ())
+                    (_, block_end) = self.atomize_invocation(scope, instructions, None, invocation)?;
+                    Ok(())
                 }
                 SASTPCodeStatement::Build(table) => self.atomize_build(scope, instructions, table.transmute()),
                 SASTPCodeStatement::Export(expression) => {
@@ -127,8 +129,14 @@ impl SleighCompiler {
                 // If we defined a label for the first instruction, we want to add this information to the first instruction now.
                 instructions[label_id].label = Some(label);
             }
+
+            if let Some(last_instruction) = instructions.last() {
+                if matches!(last_instruction.operation.op_category(), MOIROpCategory::Branch(MOIRBranchCategory::External)) {
+                    block_end = true;
+                }
+            }
         }
-        Ok(export)
+        Ok((export, block_end))
     }
 
     fn atomize_export(

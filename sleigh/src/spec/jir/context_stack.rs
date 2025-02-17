@@ -8,6 +8,7 @@ use crate::spec::moir::field::{
     MOIRFieldParent,
 };
 use mogi_utilities::index_map::SecondaryMap;
+use num::PrimInt;
 
 #[derive(Debug, Default)]
 pub struct ContextStack {
@@ -100,7 +101,7 @@ impl ContextStack {
         };
 
         let context_value = self.context_value(cid)?;
-        Ok(field.bits.extract(context_value))
+        Ok(field.bits.extract(context_value).reverse_bits())
     }
 
     /// Set the value of context field `field_id` to `new_value`. Return an error if `field_id` does not point to a context field.

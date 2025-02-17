@@ -46,6 +46,9 @@ use std::iter::once;
 pub struct MOIRConstructor {
     pub local_scope: MOIRScope,
     pub instructions: Vec<MOIRInstruction>,
+    /// block_end is set to true if the last instruction branches to another block.
+    /// No other instructions may follow.
+    pub block_end: bool,
     pub display: String,
     pub(crate) actions: Vec<MOIRAction>,
     pub(crate) modifies_context: bool,
@@ -116,7 +119,7 @@ impl MOIRConstructor {
         );
         resolver.realize_temporaries(&mut target_inst)?;
         for block in self.instructions.chunk_by(|inst, next_inst| {
-            !matches!(inst.operation.op_category(), MOIROpCategory::Branch) && next_inst.label.is_none()
+            !matches!(inst.operation.op_category(), MOIROpCategory::Branch(_)) && next_inst.label.is_none()
         }) {
             if let Some(label) = block.first().expect("Blocks must not be empty").label {
                 target_inst.start_labeled_block(label)?
@@ -146,7 +149,7 @@ impl MOIRConstructor {
         for (i, block) in self
             .instructions
             .chunk_by(|inst, next_inst| {
-                !matches!(inst.operation.op_category(), MOIROpCategory::Branch) && next_inst.label.is_none()
+                !matches!(inst.operation.op_category(), MOIROpCategory::Branch(_)) && next_inst.label.is_none()
             })
             .enumerate()
         {
