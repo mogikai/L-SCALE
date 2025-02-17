@@ -243,6 +243,21 @@ impl ProcessorSpecification {
         Some(*varnode_id)
     }
 
+    /// Look up a field by its string identifier.
+    pub fn field_id_by_string(
+        &self,
+        name: &str
+    ) -> Option<FieldId> {
+        let name = self.interner.lookup(name)?;
+        let ident = self.string_to_ident_mapping.get(&name)?;
+        match self.symbol_ids.get(*ident)? {
+            JIRSymbolId::Field(field_id) => {
+                Some(*field_id)
+            },
+            _ => None
+        }
+    }
+
     pub fn varnode_by_id(
         &self,
         varnode_id: VarNodeId,

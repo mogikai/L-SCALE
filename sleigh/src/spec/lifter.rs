@@ -1,3 +1,4 @@
+use crate::lifter::context_provider::ContextProvider;
 use crate::lifter::source::TargetInstructionSource;
 use crate::lifter::{
     Lifter,
@@ -19,9 +20,10 @@ use std::cell::Ref;
 use std::time::Instant;
 
 impl Lifter for ProcessorSpecification {
-    fn lift_instruction<S: TargetInstructionSource>(
+    fn lift_instruction<S: TargetInstructionSource, C: ContextProvider>(
         &self,
         source: &S,
+        context_provider: &mut C,
         addr: EVAddr,
     ) -> LifterResult<(EVAddr, TargetBasicBlock)> {
         // // Check the cache. If it contains the instruction we can simply return it.
@@ -49,12 +51,7 @@ impl Lifter for ProcessorSpecification {
         let now = Instant::now();
         let root_jumplist = self.jumplist_cache.get(0.into()).unwrap();
 
-        let mut context_stack = ContextStack::new(self);
-        // TODO: Initially fill the context stack with the value from the context provider that needs to be passed in.
-        // longMode=1, addrSize=1, opSize=1
-        *context_stack
-            .context_value_mut(self.context_id("contextreg").unwrap())
-            .unwrap() = 0x61;
+        let mut context_stack = ContextStack::new(self, context_provider).expect("Couldn't create context stack");
         let matching_result = root_jumplist
             .r#match(&buffer, addr, &self.jumplist_cache, &self.symbol_tables.constructors, &mut context_stack)
             .unwrap();
@@ -85,9 +82,10 @@ impl Lifter for ProcessorSpecification {
         }
     }
 
-    fn lift_block<S: TargetInstructionSource>(
+    fn lift_block<S: TargetInstructionSource, C: ContextProvider>(
         &self,
         source: &S,
+        context_provider: &mut C,
         mut addr: EVAddr,
     ) -> LifterResult<(EVAddr, TargetBasicBlock)> {
         // TODO: Allocate buffer size depending on the target instruction sets maximum instruction size.
@@ -103,12 +101,10 @@ impl Lifter for ProcessorSpecification {
                 .load(addr, &mut buffer)
                 .map_err(|_| -> LifterError { todo!() })?;
 
-            let mut context_stack = ContextStack::new(self);
+            // TODO error type
+            let mut context_stack = ContextStack::new(self, context_provider).expect("Couldn't create context stack");
             // TODO: Initially fill the context stack with the value from the context provider that needs to be passed in.
             // longMode=1, addrSize=1, opSize=1
-            *context_stack
-                .context_value_mut(self.context_id("contextreg").unwrap())
-                .unwrap() = 0x61;
 
             let matching_result = root_jumplist
                 .r#match(&buffer, addr, &self.jumplist_cache, &self.symbol_tables.constructors, &mut context_stack)

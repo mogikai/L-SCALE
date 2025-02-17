@@ -20,6 +20,10 @@ use crate::new_cpu_trait::{
     RunLimit,
 };
 use mogi_sleigh::lifter::Lifter;
+use mogi_sleigh::lifter::context_provider::{
+    ContextProvider,
+    SimpleContextProvider,
+};
 use mogi_sleigh::lifter::source::TargetInstructionSource;
 use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_utilities::addresses::EVAddr;
@@ -184,6 +188,13 @@ where
         // // Translate to host blocks
         // let blocks = new_blocks.translate();
         // self.jit_cache.populate(blocks);
+
+        // TODO put this somewhere better
+        let mut context_provider = SimpleContextProvider::default();
+        context_provider.set("longMode", 1);
+        context_provider.set("addrsize", 2);
+        context_provider.set("opsize", 2);
+
         {
             // TODO: Remove demo block
             let mut jit = self.jit.borrow_mut();
@@ -198,7 +209,7 @@ where
             let (next_addr, block) = self
                 .processor_specification
                 .borrow()
-                .lift_instruction(&*mmu, current_addr)
+                .lift_block(&*mmu, &mut context_provider, current_addr)
                 .unwrap();
             trace_jit!("{}", block);
             trace_jit!("Next: {:?}", next_addr);

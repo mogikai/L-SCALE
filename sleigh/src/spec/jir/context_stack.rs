@@ -1,5 +1,6 @@
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
+use crate::lifter::context_provider::ContextProvider;
 use crate::spec::ProcessorSpecification;
 use crate::spec::moir::context::ContextId;
 use crate::spec::moir::field::{
@@ -8,7 +9,6 @@ use crate::spec::moir::field::{
     MOIRFieldParent,
 };
 use mogi_utilities::index_map::SecondaryMap;
-use num::PrimInt;
 
 #[derive(Debug, Default)]
 pub struct ContextStack {
@@ -20,7 +20,7 @@ pub struct ContextStack {
 }
 
 impl ContextStack {
-    pub(crate) fn new(specification: &ProcessorSpecification) -> Self {
+    pub(crate) fn new<C: ContextProvider>(specification: &ProcessorSpecification, context_provider: &C) -> InternalCompilerResult<Self> {
         let mut highest_cid = ContextId::from(0);
         let mut context_fields = SecondaryMap::default();
 
@@ -31,12 +31,24 @@ impl ContextStack {
             }
         }
 
-        Self {
+        let mut slf = Self {
             // initialize default layer with zeroes
             context_values: vec![0; usize::from(highest_cid) + 1],
             num_values: usize::from(highest_cid) + 1,
             context_fields,
+        };
+
+
+        // fill initial values from the context provider
+        for (name, value) in context_provider.values() {
+            let field_id = specification.field_id_by_string(name).ok_or_else(|| -> InternalError {
+                todo!("Generate error report for global context value without any context fields (name: {})", name);
+            })?;
+
+            slf.set_field_value(field_id, *value)?;
         }
+
+        Ok(slf)
     }
 
     /// Get all stored `(FieldId, u64)` key-value pairs.

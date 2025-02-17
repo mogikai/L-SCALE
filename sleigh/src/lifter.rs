@@ -5,8 +5,11 @@ use std::cell::Ref;
 use std::time::Duration;
 use thiserror::Error;
 
+use self::context_provider::ContextProvider;
+
 pub mod cache;
 pub mod source;
+pub mod context_provider;
 
 pub type LifterResult<T = ()> = Result<T, LifterError>;
 
@@ -34,23 +37,23 @@ pub trait Lifter {
     /// To decode the entire target basic block, use [Self::lift_block] instead.
     /// One target instruction corresponds to multiple lifted instructions most of the time.
     /// See [TargetBasicBlock] for more detail.
-    fn lift_instruction<S: TargetInstructionSource>(
+    fn lift_instruction<S: TargetInstructionSource, C: ContextProvider>(
         &self,
         source: &S,
+        context_provider: &mut C,
         addr: EVAddr,
     ) -> LifterResult<(EVAddr, TargetBasicBlock)>;
 
-    fn lift_block<S: TargetInstructionSource>(
+    fn lift_block<S: TargetInstructionSource, C: ContextProvider>(
         &self,
         source: &S,
+        context_provider: &mut C,
         addr: EVAddr,
     ) -> LifterResult<(EVAddr, TargetBasicBlock)>;
 
     fn diagnostics(&self) -> Ref<LifterDiagnostics>;
     fn reset_diagnostics(&mut self);
 }
-
-pub trait ContextProviderr {}
 
 #[derive(Debug, Default)]
 pub struct LifterDiagnostics {
