@@ -82,12 +82,16 @@ impl Lifter for ProcessorSpecification {
         }
     }
 
-    fn lift_block<S: TargetInstructionSource, C: ContextProvider>(
+    fn lift_block<S, C>(
         &self,
         source: &S,
         context_provider: &mut C,
         mut addr: EVAddr,
-    ) -> LifterResult<(EVAddr, TargetBasicBlock)> {
+    ) -> LifterResult<(EVAddr, TargetBasicBlock)>
+    where
+        S: TargetInstructionSource,
+        C: ContextProvider,
+    {
         // TODO: Allocate buffer size depending on the target instruction sets maximum instruction size.
         let mut buffer = [0u8; 16];
 

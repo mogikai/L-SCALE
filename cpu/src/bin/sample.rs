@@ -40,7 +40,7 @@ fn main() {
         .with(
             EnvFilter::builder()
                 .with_default_directive(LevelFilter::INFO.into())
-                .with_env_var("FUZE_LOG")
+                .with_env_var("MOGI_LOG")
                 .from_env_lossy(),
         )
         .init();
@@ -63,7 +63,8 @@ fn main() {
         mmu.set_page_table_entry(0xffaa00u64.into(), 0x8_000u64.into(), Permission::ALL)
             .unwrap();
         // And then write the instruction to the allocated memory.
-        mmu.write(0xffaa00u64.into(), b"\xD3\xE0").unwrap();
+        mmu.write(0xffaa00u64.into(), b"\xD3\xE0\xC3\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00")
+            .unwrap();
     }
 
     // Set up the just in time compiler. TODO: Maybe we can refactor this such that the jit doesn't need the spec.

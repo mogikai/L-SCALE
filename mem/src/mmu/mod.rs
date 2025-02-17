@@ -12,6 +12,7 @@ use crate::{
     PAGE_SIZE,
     PageOffset,
 };
+use addr_align::Align;
 use mogi_sleigh::lifter::source::TargetInstructionSource;
 use mogi_system::components::mmu::{
     MMU,
@@ -212,6 +213,7 @@ impl MogiMMU {
         paddr: EPAddr,
         permissions: Permission,
     ) -> MmuResult<()> {
+        let addr = addr.align_down(PAGE_SIZE as u64);
         let page_id = self.physical_memory.borrow().page_id(paddr)?;
         self.memory_context
             .borrow_mut()

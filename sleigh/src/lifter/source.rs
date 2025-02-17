@@ -50,19 +50,21 @@ impl<'a, const N: usize> From<&'a [u8; N]> for DirectlyMappedBytes<'a> {
 }
 
 impl<'a> TargetInstructionSource for DirectlyMappedBytes<'a> {
-    type Error = ();
+    type Error = String;
 
     fn load(
         &self,
         addr: EVAddr,
         buffer: &mut [u8],
     ) -> Result<(), Self::Error> {
-        let offset = addr.checked_sub(&self.base).ok_or(())?;
+        let offset = addr
+            .checked_sub(&self.base)
+            .ok_or("Could not calculate offset".to_string())?;
         let data = self
             .data
             .split_at_checked(offset)
             .map(|(_, x)| x)
-            .ok_or(())?;
+            .ok_or("Failed to load more bytes".to_string())?;
         buffer.copy_from_slice(data);
         Ok(())
     }

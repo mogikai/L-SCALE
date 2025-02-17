@@ -1,5 +1,5 @@
-use crate::physical::PageId;
 use crate::PAGE_SIZE;
+use crate::physical::PageId;
 use addr_align::Align;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::error::memory::MemoryError;
@@ -47,7 +47,7 @@ impl PageTable {
         &self,
         addr: EVAddr,
     ) -> Result<PageId, MemoryError> {
-        addr.align_down(PAGE_SIZE as u64);
+        let addr = addr.align_down(PAGE_SIZE as u64);
         self.table.get(&addr).copied().ok_or(MemoryError::PageFault)
     }
 }
