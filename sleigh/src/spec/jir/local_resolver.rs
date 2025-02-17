@@ -76,33 +76,42 @@ pub struct JIRResolver<'a> {
 impl<'a> JIRResolver<'a> {
     pub fn new(
         constructor: &'a MOIRConstructor,
-        mut values: SecondaryMap<MOIRLocalId, Option<JIRValue>>,
-        // TODO do we need this at construction time? or can we set this later?
-        inst_start: EVAddr,
-        inst_next: EVAddr,
-        inst_next2: Option<EVAddr>,
+        values: SecondaryMap<MOIRLocalId, Option<JIRValue>>,
     ) -> Self {
-        let local_inst_start = constructor.local_scope.inst_start();
-        let local_inst_next = constructor.local_scope.inst_next();
-        let local_inst_next2 = constructor.local_scope.inst_next2();
-
-        // TODO correct generic
-        let addr_bytes = EVAddr::<u8>::bits() / 8;
-
-        values[local_inst_start] =
-            Some(JIRValue::Const(JIRConst::new(inst_start.try_into().unwrap(), addr_bytes.try_into().unwrap())));
-        values[local_inst_next] =
-            Some(JIRValue::Const(JIRConst::new(inst_next.try_into().unwrap(), addr_bytes.try_into().unwrap())));
-
-        if let Some(inst_next2) = inst_next2 {
-            values[local_inst_next2] =
-                Some(JIRValue::Const(JIRConst::new(inst_next2.try_into().unwrap(), addr_bytes.try_into().unwrap())));
-        }
-
         Self {
             constructor,
             values,
             subtables: Default::default(),
+        }
+    }
+
+    /// Set `inst_start`, `inst_next` and `inst_next2`.
+    pub(crate) fn set_inst_addresses(
+        &mut self,
+        inst_start: EVAddr,
+        inst_next: EVAddr,
+        inst_next2: Option<EVAddr>,
+    ) {
+        let local_inst_start = self.constructor.local_scope.inst_start();
+        let local_inst_next = self.constructor.local_scope.inst_next();
+        let local_inst_next2 = self.constructor.local_scope.inst_next2();
+
+        // TODO correct generic
+        let addr_bytes = EVAddr::<u8>::bits() / 8;
+
+        self.values[local_inst_start] =
+            Some(JIRValue::Const(JIRConst::new(inst_start.try_into().unwrap(), addr_bytes.try_into().unwrap())));
+        self.values[local_inst_next] =
+            Some(JIRValue::Const(JIRConst::new(inst_next.try_into().unwrap(), addr_bytes.try_into().unwrap())));
+
+        if let Some(inst_next2) = inst_next2 {
+            self.values[local_inst_next2] =
+                Some(JIRValue::Const(JIRConst::new(inst_next2.try_into().unwrap(), addr_bytes.try_into().unwrap())));
+        }
+
+        // set recursively
+        for subresolver in self.subtables.values_mut() {
+            subresolver.set_inst_addresses(inst_start, inst_next, inst_next2);
         }
     }
 
@@ -333,16 +342,20 @@ impl<'a> JIRResolver<'a> {
             .map_err(|_| todo!("Map error correctly"))?;
         trace_jir!("Local {local} is {value:?}");
         let start = value.start;
-        let end = value
-            .end
-            .ok_or_else(|| todo!("Generate error for undefined size"))?;
+        let end = value.end;
         Ok(match value.reference {
             MOIRReference::VarNode(varnode_id) => {
                 if self.values[local].is_some() {
                     todo!("Generate error for overridden varnode.")
                 }
                 let varnode = spec.varnode_slice_by_id(varnode_id)?;
-                JIRSlice::new(varnode_id, varnode.space_id, varnode.offset + start, end).into()
+                JIRSlice::new(
+                    varnode_id,
+                    varnode.space_id,
+                    varnode.offset + start,
+                    end.ok_or_else(|| todo!("Generate error for undefined size"))?,
+                )
+                .into()
             }
             MOIRReference::Temporary(_) | MOIRReference::Const(_) => match self.values[local] {
                 None => todo!("Generate error for unresolved temporary."),

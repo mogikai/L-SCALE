@@ -15,7 +15,6 @@ use crate::spec::typed_index_table::TypedIndexTable;
 use fnv::FnvHashMap;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::SecondaryMap;
-use serde_big_array::BigArray;
 use serde_derive::{
     Deserialize,
     Serialize,
@@ -31,6 +30,18 @@ use serde_derive::{
 struct LocalMatching<'a> {
     sublists: Vec<&'a Vec<JumplistId>>,
     byte_offsets: Vec<usize>,
+}
+
+#[derive(Debug)]
+pub(crate) enum MatcherResult<'a> {
+    // TODO should this result in an early return or in a continuation of matching?
+    EndOfByteStream,
+    None,
+    Some {
+        table: TableId,
+        resolver: JIRResolver<'a>,
+        bytes_consumed: usize,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -61,8 +72,7 @@ impl JumplistEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) enum JumplistContainer {
     // multiple alternatives are possible in case of a shared prefix
-    #[serde(with = "BigArray")]
-    Small([Option<Vec<JumplistEntry>>; 256]),
+    Small(Vec<Option<Vec<JumplistEntry>>>),
     Large(FnvHashMap<u64, Vec<JumplistEntry>>),
 }
 
@@ -95,8 +105,8 @@ impl Jumplist {
         bytes: MOIRSize,
         data_provider: DataProvider,
     ) -> Self {
-        let container = if bytes <= 1 {
-            JumplistContainer::Small([const { None }; 256])
+        let container = if bytes == 1 {
+            JumplistContainer::Small(vec![None; 256])
         } else {
             JumplistContainer::Large(Default::default())
         };
@@ -182,13 +192,14 @@ impl Jumplist {
     /// we return a list ordered by priority with the most specific ones first.
     fn match_local<'a, 'b>(
         &'b self,
+        bytes: &[u8],
+        addr: EVAddr,
         jumplist_cache: &'b TypedIndexTable<JumplistId, Jumplist>,
         constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
         context_stack: &mut ContextStack,
-        bytes: &[u8],
         consumed_so_far: usize,
         accum: &mut LocalMatching<'b>,
-    ) -> InternalCompilerResult<Option<(TableId, JIRResolver<'a>)>> {
+    ) -> InternalCompilerResult<MatcherResult<'a>> {
         let (value_masked, consumed) = self
             .decode_value(bytes, consumed_so_far, context_stack)?
             .expect("Couldn't decode value");
@@ -204,10 +215,11 @@ impl Jumplist {
                         trace_jir!("Reached leaf; cid={cid:?}, tid={tid:?}");
 
                         self.process_local_matching(
+                            bytes,
+                            addr,
                             jumplist_cache,
                             constructors,
                             context_stack,
-                            bytes,
                             consumed_so_far + consumed,
                             accum,
                             *cid,
@@ -220,10 +232,11 @@ impl Jumplist {
                             .ok_or_else(|| -> InternalError { todo!("Generate error report for missing jumplist") })?;
 
                         jumplist.match_local(
+                            bytes,
+                            addr,
                             jumplist_cache,
                             constructors,
                             context_stack,
-                            bytes,
                             consumed_so_far + consumed,
                             accum,
                         )?
@@ -234,42 +247,45 @@ impl Jumplist {
                             .ok_or_else(|| -> InternalError { todo!("Generate error report for missing jumplist") })?;
 
                         jumplist.match_local(
+                            bytes,
+                            addr,
                             jumplist_cache,
                             constructors,
                             context_stack,
-                            bytes,
                             consumed_so_far,
                             accum,
                         )?
                     }
                 };
 
-                if let Some(result) = result {
-                    // successful termination (including subtables) => end
-                    return Ok(Some(result));
+                match result {
+                    MatcherResult::None => {
+                        // no complete match => backtrack and try next entry
+                        accum.sublists.pop();
+                        accum.byte_offsets.pop();
+                    }
+                    // complete match or end of stream => return
+                    _ => return Ok(result),
                 }
-
-                // no complete match => backtrack and try next entry
-                accum.sublists.pop();
-                accum.byte_offsets.pop();
             }
         }
 
         // no match
-        Ok(None)
+        Ok(MatcherResult::None)
     }
 
     fn process_local_matching<'a, 'b>(
         &'b self,
+        bytes: &'b [u8],
+        addr: EVAddr,
         jumplist_cache: &TypedIndexTable<JumplistId, Jumplist>,
         constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
         context_stack: &mut ContextStack,
-        bytes: &'b [u8],
         consumed_so_far: usize,
         local_matching: &LocalMatching<'b>,
         constructor_id: ConstructorId,
         table_id: TableId,
-    ) -> InternalCompilerResult<Option<(TableId, JIRResolver<'a>)>> {
+    ) -> InternalCompilerResult<MatcherResult<'a>> {
         // entry matches with constructor => extract fields, execute actions, save values
         // and descent into sublists
 
@@ -280,10 +296,11 @@ impl Jumplist {
             })?;
 
         trace_jir!(
-            "Got constructor {} with {} actions and {} field extractors",
+            "Got constructor {} with {} actions and {} field extractors, consumed {} bytes",
             constructor.display,
             constructor.actions.len(),
-            constructor.field_extractors.len()
+            constructor.field_extractors.len(),
+            consumed_so_far,
         );
 
         // extract token and context fields
@@ -295,13 +312,10 @@ impl Jumplist {
 
         // the resolver with all local values is needed for the actions so we
         // instantiate it here
-        let mut resolver = JIRResolver::new(
-            constructor,
-            values,
-            EVAddr::from(0xDEADBEEFu64),
-            EVAddr::from(0xDEADBEEFu64),
-            Some(EVAddr::from(0xDEADBEEFu64)),
-        );
+        let mut resolver = JIRResolver::new(constructor, values);
+
+        // `inst_next` etc. has to be set at this point already since actions might use it
+        resolver.set_inst_addresses(addr, addr + consumed_so_far, None);
 
         for (context_field_id, context_field_value) in context_stack.values() {
             if resolver.has_field(context_field_id) {
@@ -316,7 +330,9 @@ impl Jumplist {
             action.evaluate(&mut resolver, context_stack)?;
         }
 
-        let mut sublist_resolvers = Vec::new();
+        // sublists might consume bytes that the main match tree does not so we take the maximum
+        let mut consumed_so_far_max = consumed_so_far;
+
         for (sublist_ids, sublist_byte_offset) in local_matching
             .sublists
             .iter()
@@ -334,49 +350,51 @@ impl Jumplist {
                     sublist_bytes,
                     constructor.display
                 );
-                let (table_id, resolver) =
-                    match sublist.r#match(sublist_bytes, jumplist_cache, constructors, context_stack)? {
-                        Some(resolver) => resolver,
-                        None => {
-                            // no match => try next
-                            trace_jir!("No match, trying next (if existing)");
-                            context_stack.pop_state()?;
-                            return Ok(None);
-                        }
-                    };
-                sublist_resolvers.push((table_id, resolver));
 
-                trace_jir!("Sublist {sublist_id} matches");
+                let result = sublist.r#match(sublist_bytes, addr, jumplist_cache, constructors, context_stack)?;
+                match result {
+                    MatcherResult::Some {
+                        table: table_id,
+                        resolver: sublist_resolver,
+                        bytes_consumed: bytes_consumed_sublist,
+                    } => {
+                        // sublist matches => add resolver
+                        trace_jir!("Sublist consumed {} additional bytes", bytes_consumed_sublist);
+                        trace_jir!("Adding subtable resolver {table_id:?}");
+                        consumed_so_far_max = consumed_so_far_max.max(sublist_byte_offset + bytes_consumed_sublist);
+                        resolver.define_subtable_resolver(table_id, sublist_resolver)?;
+                    }
+                    // sublist did not match => return
+                    _ => return Ok(result),
+                }
             }
         }
 
-        trace_jir!("Got a complete match");
-
         // everything matched
+        trace_jir!("Got a complete match");
 
         // TODO handle context flow
         context_stack.pop_state()?;
 
-        // finish resolver
-        for (table_id, sublist_resolver) in sublist_resolvers {
-            // TODO somehow get the table id to here
-            trace_jir!("Adding subtable resolver {table_id:?}");
-            resolver.define_subtable_resolver(table_id, sublist_resolver)?;
-        }
-
-        return Ok(Some((table_id, resolver)));
+        return Ok(MatcherResult::Some { table: table_id, resolver, bytes_consumed: consumed_so_far_max });
     }
 
-    // TODO correct return type
+    /// Match a given byte sequence into a constructor while resolving fields and setting context.
+    /// The resulting [JIRResolver] contains all necessary information for building the final.
+    ///
+    /// # Return value
+    ///
+    /// - None if nothing was matched
     pub(crate) fn r#match<'a, 'b>(
         &'b self,
         bytes: &[u8],
+        addr: EVAddr,
         jumplist_cache: &'b TypedIndexTable<JumplistId, Jumplist>,
         constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
         context_stack: &mut ContextStack,
-    ) -> InternalCompilerResult<Option<(TableId, JIRResolver<'a>)>> {
+    ) -> InternalCompilerResult<MatcherResult<'a>> {
         let mut accum = LocalMatching::default();
-        self.match_local(jumplist_cache, constructors, context_stack, bytes, 0, &mut accum)
+        self.match_local(bytes, addr, jumplist_cache, constructors, context_stack, 0, &mut accum)
     }
 
     pub(crate) fn get(
