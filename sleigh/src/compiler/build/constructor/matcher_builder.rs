@@ -25,6 +25,7 @@ use crate::spec::moir::field::{
     MOIRFieldParent,
 };
 use crate::spec::moir::table::TableId;
+use itertools::Itertools;
 use mogi_sleigh_parser::Spanned;
 use mogi_sleigh_parser::ast::common::SASTIdent;
 use mogi_sleigh_parser::ast::constructor::bit_pattern_section::{
@@ -34,6 +35,7 @@ use mogi_sleigh_parser::ast::constructor::bit_pattern_section::{
     SASTConstraintPattern,
     SASTUnaryOp,
 };
+use num::PrimInt;
 
 use super::matcher::Submatchers;
 
@@ -99,90 +101,19 @@ impl SleighCompiler {
 
         let matchers = match symbol {
             MOIRSymbolId::Table(tid) => {
-                // TODO theoretically, we don't need to concretize right away,
-                // but the majority of cases demands it anyway so we might as well
-                if *tid == table_id {
-                    // recursion => shallow reference and token list with None
-                    let atom = MatcherAtom::Submatchers(Submatchers::new(*tid, None));
-                    let conjunctions = vec![BTreeSet::from([atom])];
-                    let references = HashSet::from([MatcherReference::Subtable(*tid)]);
-                    let token_list = TokenList::new(vec![None], true, false);
-                    vec![Matcher::new(
-                        conjunctions,
-                        token_list,
-                        references,
-                        table_id,
-                        constructor_id,
-                    )]
-                } else {
-                    // no recursion => hoist up
-                    let table = self
-                        .spec_builder
-                        .table_by_symbol_id(*tid)
-                        .ok_or_else(|| -> InternalError { todo!("Generate error report for missing symbol") })?;
-
-                    // partition table matchers by token list
-                    let mut partition = BTreeMap::<_, Vec<_>>::new();
-                    table.matchers.iter().for_each(|(id, matcher)| {
-                        if let Some(list) = partition.get_mut(&matcher.token_list.list) {
-                            list.push(id);
-                        } else {
-                            partition.insert(&matcher.token_list.list, vec![id]);
-                        }
-                    });
-
-                    // create a new matcher for each bin with the respective submatchers
-                    partition
-                        .into_iter()
-                        .map(|(token_list, matchers)| {
-                            // associate all matchers with equal token_list with a new matcher
-
-                            // we need to include context tokens in the token list,
-                            // but actual subtables are never placed there so if
-                            // token list does not contain a regular token (i.e. if it's
-                            // empty or only has context) or a None token we need to add a None token
-                            let atom = MatcherAtom::Submatchers(Submatchers::new(*tid, Some(matchers)));
-
-                            let sublist_index = token_list.iter().enumerate().find_map(|(index, token)| {
-                                if let Some(token) = token {
-                                    if matches!(token, MOIRFieldParent::Token(_)) {
-                                        Some(index)
-                                    } else {
-                                        None
-                                    }
-                                } else {
-                                    Some(index)
-                                }
-                            });
-
-                            let (token_list, conjunctions) = match sublist_index {
-                                Some(index) => {
-                                    // there is a non-context token => insert sublist there
-                                    let mut conjunctions = vec![BTreeSet::new(); index];
-                                    conjunctions.push(BTreeSet::from([atom]));
-                                    // pad so that conjunctions.len() == token_list.len()
-                                    for _ in 0..(token_list.len() - conjunctions.len()) {
-                                        conjunctions.push(BTreeSet::new());
-                                    }
-
-                                    (TokenList::new(token_list.clone(), false, false), conjunctions)
-                                }
-                                None => {
-                                    // there is no non-context token => add None token
-                                    let mut new_token_list = token_list.clone();
-                                    new_token_list.push(None);
-                                    let mut conjunctions = vec![BTreeSet::new(); token_list.len()];
-                                    conjunctions.push(BTreeSet::from([atom]));
-                                    (TokenList::new(new_token_list, true, false), conjunctions)
-                                }
-                            };
-
-                            let references = HashSet::from([MatcherReference::Subtable(*tid)]);
-
-                            Matcher::new(conjunctions, token_list, references, table_id, constructor_id)
-                        })
-                        .collect_vec()
-                }
+                // all table references start as unconstrained and are only constrained
+                // as needed
+                let atom = MatcherAtom::Submatchers(Submatchers::new(*tid, None));
+                let conjunctions = vec![BTreeSet::from([atom])];
+                let references = HashSet::from([MatcherReference::Subtable(*tid)]);
+                let token_list = TokenList::new(vec![None], true, false);
+                vec![Matcher::new(
+                    conjunctions,
+                    token_list,
+                    references,
+                    table_id,
+                    constructor_id,
+                )]
             }
             MOIRSymbolId::Field(fid) => {
                 // create a wildcard field matcher to extract value later on
@@ -264,14 +195,17 @@ impl SleighCompiler {
                         if let Some(merged_tokens) =
                             merge_token_lists(&matcher_lhs_nc.token_list, &matcher_rhs_nc.token_list)
                         {
+                            let mut merged_conjunctions =
+                                merge_conjunctions(&matcher_lhs_nc.conjunctions, &matcher_rhs_nc.conjunctions);
+
+                            // constrain submatchers (technically necessary but idk)
+                            // self.constrain_submatchers(&mut merged_conjunctions, &merged_tokens.list);
+
                             let mut token_list = context_matcher.token_list;
                             token_list.list.extend(merged_tokens.list);
 
                             let mut conjunctions = context_matcher.conjunctions;
-                            conjunctions.append(&mut merge_conjunctions(
-                                &matcher_lhs_nc.conjunctions,
-                                &matcher_rhs_nc.conjunctions,
-                            ));
+                            conjunctions.append(&mut merged_conjunctions);
 
                             let mut references = matcher_lhs.references.clone();
                             references.extend(matcher_rhs.references.clone().into_iter());
@@ -667,27 +601,50 @@ impl SleighCompiler {
             })
             .collect::<Vec<_>>()
     }
+
+    /// Eliminate all submatchers that don't fit the given token list.
+    ///
+    /// Submatchers start out as unconstrained but might get constrained along the way.
+    /// Consider the following:
+    ///
+    /// `:LEA reg_a, reg_b is (byte=0x8D; mod=3) & (byte=0x8D; addr64) { ... } `
+    ///
+    /// `addr64` starts out as being unconstrained but then gets constrained to the tokens `[byte, mod]`.
+    /// This eliminates any constructors of `addr64` that use different tokens. Since this
+    /// influences matching semantics, it should be accounted for.
+    fn constrain_submatchers(
+        &self,
+        merged_conjunctions: &mut Vec<BTreeSet<MatcherAtom>>,
+        merged_tokens: &Vec<Option<MOIRFieldParent>>,
+    ) {
+        todo!("Constrain submatchers")
+    }
 }
 
 /// Combine two tokens in the following manner:
 /// - if one if them is None, return the other
-/// - if both are Some, return Some if they are the same
+/// - if both are Some, return Some(Some()) if they are the same
+/// - if both are Some but are not the same, return None
 fn combine_tokens(
     left: Option<MOIRFieldParent>,
     right: Option<MOIRFieldParent>,
-) -> Option<MOIRFieldParent> {
+) -> Option<Option<MOIRFieldParent>> {
     match left {
         Some(l) => match right {
             Some(r) => {
                 if l == r {
-                    Some(l)
+                    // Some(left) and Some(right) and left == right => Some(left)
+                    Some(Some(l))
                 } else {
+                    // Some(left) and Some(right) and left != right => None
                     None
                 }
             }
-            None => Some(l),
+            // Some(left) and None(right) => Some(left)
+            None => Some(Some(l)),
         },
-        None => right,
+        // None(left) => Some(right)
+        None => Some(right),
     }
 }
 
@@ -757,7 +714,7 @@ pub(crate) fn merge_token_lists(
                 .map(|inner| inner.as_ref().copied())
                 .flatten();
             match combine_tokens(token_lhs, token_rhs) {
-                Some(token) => result_list.push(Some(token)),
+                Some(token) => result_list.push(token),
                 None => return None,
             }
         }
@@ -775,7 +732,7 @@ pub(crate) fn merge_token_lists(
                 .map(|inner| inner.as_ref().copied())
                 .flatten();
             match combine_tokens(token_lhs, token_rhs) {
-                Some(token) => result_list.push(Some(token)),
+                Some(token) => result_list.push(token),
                 None => return None,
             }
         }
@@ -789,7 +746,7 @@ pub(crate) fn merge_token_lists(
 
         for (&token_lhs, &token_rhs) in list_0.list.iter().zip(list_1.list.iter()) {
             match combine_tokens(token_lhs, token_rhs) {
-                Some(token) => result_list.push(Some(token)),
+                Some(token) => result_list.push(token),
                 None => return None,
             }
         }

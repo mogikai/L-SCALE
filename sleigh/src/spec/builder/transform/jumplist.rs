@@ -326,7 +326,10 @@ impl<'a> JumplistBuilder<'a> {
 
                                 (data_provider, token_size)
                             }
-                            // None => we don't know the size (recursion)
+                            // None => we don't know the size (unconstrained subtable).
+                            // More tokens can follow but since all tokens are matched
+                            // before descending, this probably won't do what you would
+                            // expect it to.
                             None => (DataProvider::ByteStream, 0),
                         };
 
@@ -423,11 +426,7 @@ impl<'a> JumplistBuilder<'a> {
 
         // sort by mask so submask relations are satisfied which allows us to repeatedly
         // iterate over and remove rows
-        rows.sort_by(|lhs, rhs| {
-            size_bits
-                .extract(lhs.mask)
-                .cmp(&size_bits.extract(rhs.mask))
-        });
+        rows.sort_by_key(|row| row.mask);
 
         let jumplists = self.create_jumplist_mask(rows, token_index, bytes_consumed, size_bits)?;
 
@@ -483,6 +482,8 @@ impl<'a> JumplistBuilder<'a> {
 
         let hierarchy = arrange_into_hierarchy(merged_rows);
         self.diagnostics.unique_mask_paths += hierarchy.len();
+
+        // we still need to sort the hierarchy by mask so higher masks have higher priority
 
         // collect child jumplists and then either use directly if only one is created
         // or combine using a dummy list
