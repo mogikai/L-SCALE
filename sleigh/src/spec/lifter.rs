@@ -130,6 +130,7 @@ impl Lifter for ProcessorSpecification {
                     addr += bytes_consumed;
 
                     let block_end = resolver.constructor().block_end;
+                    resolver.print_mcode(&self, 0);
                     resolver
                         .build(self, &mut block_builder)
                         .map_err(|_| -> LifterError { todo!() })?;

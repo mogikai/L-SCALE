@@ -181,37 +181,37 @@ macro_rules! moir_instruction {
         MOIRInstruction::store($addr, $space, $value)
     };
     (if ($cond:tt) goto [$target:tt]) => {
-        MOIRInstruction::goto_direct_if($target, $cond)
+        MOIRInstruction::goto_indirect_if($target, $cond)
     };
     (if ($cond:tt) goto $target:tt) => {
-        MOIRInstruction::goto_indirect_if($target, $cond)
+        MOIRInstruction::goto_direct_if($target, $cond)
     };
     (if ($cond:tt) goto <$target:tt>) => {
         MOIRInstruction::goto_label_if($target, $cond)
     };
     (goto [$target:tt]) => {
-        MOIRInstruction::goto_direct($target, crate::spec::moir::code::MOIRGotoType::Regular)
+        MOIRInstruction::goto_indirect($target, crate::spec::moir::code::MOIRGotoType::Regular)
     };
     (goto $target:tt) => {
-        MOIRInstruction::goto_indirect($target, crate::spec::moir::code::MOIRGotoType::Regular)
+        MOIRInstruction::goto_direct($target, crate::spec::moir::code::MOIRGotoType::Regular)
     };
     (goto <$target:tt>) => {
         MOIRInstruction::goto_label($target, crate::spec::moir::code::MOIRGotoType::Regular)
     };
     (call [$target:tt]) => {
-        MOIRInstruction::goto_direct($target, crate::spec::moir::code::MOIRGotoType::Call)
+        MOIRInstruction::goto_indirect($target, crate::spec::moir::code::MOIRGotoType::Call)
     };
     (call $target:tt) => {
-        MOIRInstruction::goto_indirect($target, crate::spec::moir::code::MOIRGotoType::Call)
+        MOIRInstruction::goto_direct($target, crate::spec::moir::code::MOIRGotoType::Call)
     };
     (call <$target:tt>) => {
         MOIRInstruction::goto_label($target, crate::spec::moir::code::MOIRGotoType::Call)
     };
     (return [$target:tt]) => {
-        MOIRInstruction::goto_direct($target, crate::spec::moir::code::MOIRGotoType::Return)
+        MOIRInstruction::goto_indirect($target, crate::spec::moir::code::MOIRGotoType::Return)
     };
     (return $target:tt) => {
-        MOIRInstruction::goto_indirect($target, crate::spec::moir::code::MOIRGotoType::Return)
+        MOIRInstruction::goto_direct($target, crate::spec::moir::code::MOIRGotoType::Return)
     };
     (return <$target:tt>) => {
         MOIRInstruction::goto_label($target, crate::spec::moir::code::MOIRGotoType::Return)

@@ -4,6 +4,8 @@ use num_enum::{
     IntoPrimitive,
     TryFromPrimitive,
 };
+use std::fmt::Debug;
+use std::marker::PhantomData;
 use std::ops::{
     Index,
     IndexMut,
@@ -12,6 +14,13 @@ use std::{
     array,
     mem,
 };
+
+trait Register: TryFrom<Self::Primitive, Error: Debug> {
+    type Primitive: TryFrom<usize, Error: Debug>;
+    const NUMBER: usize;
+    /// Return the initial allocation for the specified register.
+    fn initial_allocation(&self) -> RegisterAllocation;
+}
 
 #[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive, PartialEq, Eq)]
 #[repr(u8)]
@@ -32,6 +41,27 @@ pub enum GPRegister {
     R13 = 13,
     R14 = 14,
     R15 = 15,
+}
+
+impl Register for GPRegister {
+    type Primitive = u8;
+    const NUMBER: usize = 16;
+
+    fn initial_allocation(&self) -> RegisterAllocation {
+        match self {
+            // we reserve RAX as temporary since there are some instructions that can only use RAX
+            GPRegister::AX => RegisterAllocation::Reserved,
+            // RBP is reserved for the cpu_context
+            GPRegister::BP => RegisterAllocation::Reserved,
+            // We don't want to mess with the stack pointer.
+            // TODO: It may make sense to keep the emulated stack pointer loaded in some register.
+            //       This might even be the host SP register, but we will have to save the value somewhere.
+            //       Maybe it even makes sense to provide an api where one can specify target registers
+            //       that should be loaded into fixed host registers upon entering the jit. (SP?, FLAGS?)
+            GPRegister::SP => RegisterAllocation::Reserved,
+            _ => RegisterAllocation::Free,
+        }
+    }
 }
 
 impl From<GPRegister> for usize {
@@ -121,30 +151,30 @@ pub struct UsedRegisters {
 }
 
 #[derive(Debug)]
-pub struct GPRegisterAllocations([RegisterAllocation; 16]);
+pub struct RegisterAllocations<T, const N: usize>([RegisterAllocation; N], PhantomData<T>)
+where
+    T: Register;
 
-impl Default for GPRegisterAllocations {
+impl<T, const N: usize> Default for RegisterAllocations<T, N>
+where
+    T: Register,
+{
     fn default() -> Self {
-        Self(array::from_fn(|i| {
-            let reg = GPRegister::try_from(i as u8).expect("We expect the GP registers to be 0..16");
-            match reg {
-                // we reserve RAX as temporary since there are some instructions that can only use RAX
-                GPRegister::AX => RegisterAllocation::Reserved,
-                // RBP is reserved for the cpu_context
-                GPRegister::BP => RegisterAllocation::Reserved,
-                // We don't want to mess with the stack pointer.
-                // TODO: It may make sense to keep the emulated stack pointer loaded in some register.
-                //       This might even be the host SP register, but we will have to save the value somewhere.
-                //       Maybe it even makes sense to provide an api where one can specify target registers
-                //       that should be loaded into fixed host registers upon entering the jit. (SP?, FLAGS?)
-                GPRegister::SP => RegisterAllocation::Reserved,
-                _ => RegisterAllocation::Free,
-            }
-        }))
+        Self(
+            array::from_fn(|i| {
+                T::try_from(T::Primitive::try_from(i).expect("T::Primitive must fit into N"))
+                    .expect("T::Primitive must fit into N")
+                    .initial_allocation()
+            }),
+            Default::default(),
+        )
     }
 }
 
-impl GPRegisterAllocations {
+impl<T, const N: usize> RegisterAllocations<T, N>
+where
+    T: Register,
+{
     pub fn iter(&self) -> impl Iterator<Item = (GPRegister, &RegisterAllocation)> {
         self.0.iter().enumerate().map(|(i, entry)| {
             (GPRegister::try_from(i as u8).expect("We iterate over the GP ids, hence this must not error"), entry)
@@ -158,7 +188,10 @@ impl GPRegisterAllocations {
     }
 }
 
-impl Index<GPRegister> for GPRegisterAllocations {
+impl<T, const N: usize> Index<GPRegister> for RegisterAllocations<T, N>
+where
+    T: Register,
+{
     type Output = RegisterAllocation;
 
     fn index(
@@ -169,7 +202,10 @@ impl Index<GPRegister> for GPRegisterAllocations {
     }
 }
 
-impl IndexMut<GPRegister> for GPRegisterAllocations {
+impl<T, const N: usize> IndexMut<GPRegister> for RegisterAllocations<T, N>
+where
+    T: Register,
+{
     fn index_mut(
         &mut self,
         index: GPRegister,
@@ -194,7 +230,8 @@ pub enum RegisterAllocation {
 /// TODO: This most likely needs to be optimized for size.
 #[derive(Debug, Default)]
 pub struct RegisterTracker {
-    pub gp: GPRegisterAllocations,
+    // TODO: Use GPRegister::NUMBER once generic_const_exprs is stable.
+    pub gp: RegisterAllocations<GPRegister, 16>,
     fp: [Option<JIRSlice>; 8],
     mmx: [Option<JIRSlice>; 8],
     xmm: [Option<JIRSlice>; 16],
@@ -204,7 +241,7 @@ pub struct RegisterTracker {
 impl RegisterTracker {
     /// Resets all GP register slots to empty and returns the array of slices that were previously associated with
     /// the registers. This can be used to emit the flush instructions.
-    pub fn reset_gp(&mut self) -> GPRegisterAllocations {
+    pub fn reset_gp(&mut self) -> RegisterAllocations<GPRegister, 16> {
         mem::take(&mut self.gp)
     }
 }
