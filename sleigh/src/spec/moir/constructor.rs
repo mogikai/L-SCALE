@@ -10,6 +10,7 @@ use crate::spec::jir::local_resolver::{
 };
 use crate::spec::jir::trace_jir;
 use crate::spec::jir::values::{
+    JIRConst,
     JIRSlice,
     JIRValue,
 };
@@ -183,12 +184,15 @@ impl MOIRConstructor {
             None => (Err(ProcessorSpecificationError::MissingOutput), None),
             Some((output, output_store)) => (Ok(output), output_store),
         };
-        let input_a = self
-            .resolve_input(spec, target_inst, resolver, &inst.input_a)?
-            .ok_or(ProcessorSpecificationError::MissingInput);
-        let input_b = self
-            .resolve_input(spec, target_inst, resolver, &inst.input_b)?
-            .ok_or(ProcessorSpecificationError::MissingInput);
+        let (input_a, input_b) = if matches!(inst.operation.op_category(), MOIROpCategory::Branch(_)) {
+            let input_a = self.resolve_branch_target(spec, target_inst, resolver, &inst.input_a);
+            let input_b = self.resolve_input(spec, target_inst, resolver, &inst.input_b);
+            (input_a, input_b)
+        } else {
+            let input_a = self.resolve_input(spec, target_inst, resolver, &inst.input_a);
+            let input_b = self.resolve_input(spec, target_inst, resolver, &inst.input_b);
+            (input_a, input_b)
+        };
         trace_jir!("Generating instruction {inst}\n");
         trace_jir!("Resolved inputs: {input_a:?} {input_b:?}");
         let inst = match &inst.operation {
@@ -374,13 +378,45 @@ impl MOIRConstructor {
             .transpose()
     }
 
+    fn resolve_branch_target(
+        &self,
+        spec: &ProcessorSpecification,
+        instruction_builder: &mut TargetInstructionBuilder,
+        resolver: &JIRResolver,
+        input: &Option<MOIRLocal>,
+    ) -> ProcessorSpecResult<JIRValue> {
+        input
+            .map(|input| {
+                resolver
+                    .resolve_local(spec, instruction_builder, input)
+                    .and_then(|resolved| match resolved {
+                        JIRResolvedValue::Value(value) => match value {
+                            JIRValue::Slice(_) => todo!("This should not happen?"),
+                            JIRValue::Const(_) => Ok(value),
+                        },
+                        JIRResolvedValue::Reference { address, space, size } => match address {
+                            JIRValue::Slice(slice) => {
+                                todo!("Handle non const addresses")
+                            }
+                            JIRValue::Const(value) => {
+                                // We construct a new const with the size provided in the reference, since this
+                                // is the actual size used for the load.
+                                // TODO: Why is the size of `value` zero here?
+                                Ok(JIRConst::new(value.value(), size).into())
+                            }
+                        },
+                    })
+            })
+            .ok_or(ProcessorSpecificationError::MissingInput)?
+    }
+
     fn resolve_input(
         &self,
         spec: &ProcessorSpecification,
         instruction_builder: &mut TargetInstructionBuilder,
         resolver: &JIRResolver,
         input: &Option<MOIRLocal>,
-    ) -> ProcessorSpecResult<Option<JIRValue>> {
+    ) -> ProcessorSpecResult<JIRValue> {
         input
             .map(|input| {
                 resolver
@@ -392,7 +428,7 @@ impl MOIRConstructor {
                             .map(JIRValue::from),
                     })
             })
-            .transpose()
+            .ok_or(ProcessorSpecificationError::MissingInput)?
     }
 
     pub fn mcode_debug_string(

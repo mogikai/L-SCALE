@@ -273,6 +273,7 @@ pub enum JIROperation {
     // Unary operations
     BoolNegate,
     // ------------------------- BRANCHING OPERATIONS -------------------------
+    // TODO: Add space id for jump instructions
     // Same as goto, but semantically different for analysis purposes.
     CallDirect,
     CallIndirect,
