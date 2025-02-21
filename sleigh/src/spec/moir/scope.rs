@@ -307,7 +307,7 @@ impl MOIRScope {
         result
     }
 
-    pub(crate) fn iter_used_temps(&self) -> impl Iterator<Item = (MOIRLocalId, MOIRTemporary)> {
+    pub(crate) fn iter_used_temps(&self) -> impl Iterator<Item = (MOIRTemporaryId, MOIRTemporary)> {
         self.used_locals.iter().copied().filter_map(|local_id| {
             match self
                 .slices
@@ -316,7 +316,7 @@ impl MOIRScope {
                 .reference
             {
                 MOIRReference::Temporary(temp_id) => Some((
-                    local_id,
+                    temp_id,
                     self.temporaries[temp_id]
                         .expect("This must exist. Otherwise we have a logic error in the Scope struct"),
                 )),

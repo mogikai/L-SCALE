@@ -1,7 +1,7 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Run sample" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
     <option name="buildProfileId" value="dev" />
-    <option name="command" value="run --features trace_jit --package mogi_cpu --bin sample" />
+    <option name="command" value="run --features=&quot;trace_jit&quot; --package mogi_cpu --bin sample" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <envs>
       <env name="MOGI_LOG" value="trace" />

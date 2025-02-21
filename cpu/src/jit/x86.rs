@@ -49,7 +49,7 @@ use crate::jit::x86::scaffolding::{
 use emit::CustomOpCallback;
 use mogi_utilities::index_map::SecondaryMap;
 use registers::{
-    RegisterAllocation,
+    RegAlloc,
     RegisterTracker,
 };
 use task_context::X86TaskContext;
@@ -81,6 +81,7 @@ macro_rules! assemble {
     };
 }
 
+use crate::jit::x86::registers::RegAllocType;
 use assemble;
 use mogi_mem::mmu::MogiMMU;
 
@@ -370,6 +371,7 @@ impl MogiJit for X86MogiJit {
         jinst: &JIRInstruction,
     ) -> JITResult {
         trace!("Emitting {jinst}");
+        self.register_tracker.new_alloc_version();
         // TODO: Maybe we can "allocate" the registers ahead of time and provide some hints
         //       or something similar. Allocating the registers when having a complete
         //       view on all relevant instructions may be more efficient.
@@ -459,10 +461,9 @@ impl MogiJit for X86MogiJit {
 
     fn emit_flush_slices(&mut self) -> JITResult {
         // Iterate over the loaded slices and flush them to memory
-        // TODO: Do not insert flush instructions for dead registers.
-        for (register, slice) in self.register_tracker.reset_gp().iter() {
-            if let RegisterAllocation::OccupiedDirty(slice) = slice {
-                self.emit_flush_register_to_slice(register, *slice)?;
+        for (register, alloc) in self.register_tracker.reset_gp().iter() {
+            if let RegAllocType::OccupiedDirty(slice) = &alloc.ty {
+                Self::emit_flush_register_to_slice(self.block_mut()?.assembler(), register, *slice)?;
             }
         }
         Ok(())
@@ -541,15 +542,6 @@ impl MogiJit for X86MogiJit {
         }
         origin_block.commit()?;
         Ok(())
-        // // This is safe, since we only relocate the target block if we need to update the code.
-        // // This requires unchaining the block, which will remove this address and replace it with
-        // // the epilogue.
-        // let target_address = unsafe {
-        //     self.jit_cache
-        //         .get_block_code(target_block_address)?
-        //         .raw_ptr()
-        // };
-        // self.chain_blocks_direct(origin_block_address, target_address)
     }
 
     fn finalize_block(&mut self) -> JITResult {

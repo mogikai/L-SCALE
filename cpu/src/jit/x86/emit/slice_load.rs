@@ -4,14 +4,15 @@ use crate::jit::api::{
 };
 use crate::jit::trace_jit;
 use crate::jit::x86::regalloc::{
-    RegisterAllocationHint,
-    RegisterAllocationType,
+    RegAllocHint,
+    RegAllocIntention,
     SliceType,
     SpillBehavior,
 };
 use crate::jit::x86::registers::{
     GPRegister,
-    RegisterAllocation,
+    RegAlloc,
+    RegAllocType,
     RegisterLoadInfo,
 };
 use crate::jit::x86::task_context::X86TaskContext;
@@ -48,7 +49,7 @@ impl X86MogiJit {
         slice: JIRSlice,
         slice_type: SliceType,
     ) -> GPRegister {
-        self.load_slice_gpr_with_hint(RegisterAllocationHint::None, slice, slice_type)
+        self.load_slice_gpr_with_hint(RegAllocHint::None, slice, slice_type)
     }
 
     /// Works like [load_slice_gpr], but tries to load the [JIRSlice] to
@@ -56,13 +57,13 @@ impl X86MogiJit {
     #[inline]
     pub(super) fn load_slice_gpr_with_hint(
         &mut self,
-        hint: RegisterAllocationHint,
+        hint: RegAllocHint,
         slice: JIRSlice,
         slice_type: SliceType,
     ) -> GPRegister {
         let alloc_type = match slice_type {
-            SliceType::Input => RegisterAllocationType::Slice(slice),
-            SliceType::Output => RegisterAllocationType::OutSlice(slice),
+            SliceType::Input => RegAllocIntention::Slice(slice),
+            SliceType::Output => RegAllocIntention::OutSlice(slice),
         };
         let register = self
             .allocate_gpr(hint, alloc_type, SpillBehavior::Spill)
@@ -93,14 +94,18 @@ impl X86MogiJit {
         slice: JIRSlice,
         slice_type: SliceType,
     ) -> JITResult<GPRegister> {
+        if self.register_tracker.slice_loaded_in_gpr(slice, gpr) {
+            // If the slice is already loaded in the target register, we don't need to do anything.
+            return Ok(gpr);
+        }
         // Make sure the target gpr is free for our allocation.
         self.move_slice_from_gp(gpr)?;
         let alloc_type = match slice_type {
-            SliceType::Input => RegisterAllocationType::Slice(slice),
-            SliceType::Output => RegisterAllocationType::OutSlice(slice),
+            SliceType::Input => RegAllocIntention::Slice(slice),
+            SliceType::Output => RegAllocIntention::OutSlice(slice),
         };
         let register = self
-            .allocate_gpr(RegisterAllocationHint::Reallocate(gpr), alloc_type, SpillBehavior::Fail)
+            .allocate_gpr(RegAllocHint::Reallocate(gpr), alloc_type, SpillBehavior::Fail)
             .expect("This cannot fail, since we just made sure that the gpr is free by moving out of it.");
         Ok(match register {
             RegisterLoadInfo::Unloaded(register) => {
@@ -222,7 +227,7 @@ impl X86MogiJit {
             //       We could omit a few mov instructions in some cases that way.
             //       I.e. if the slice is not loaded yet, use the provided hint, and otherwise
             //       we just return the gpr to which the slice was already loaded.
-            let reg = self.load_slice_gpr_with_hint(RegisterAllocationHint::Allocate(target_reg), slice, slice_type);
+            let reg = self.load_slice_gpr_with_hint(RegAllocHint::Allocate(target_reg), slice, slice_type);
             self.copy_gpr_to_gpr(target_reg, reg, size, CopyExtendMode::None)?;
         } else {
             todo!("Support sizes > 8")
@@ -484,7 +489,7 @@ impl X86MogiJit {
         // Iterate over the loaded slices and flush them to memory
         // TODO: Do not insert flush instructions for dead registers.
         for (register, allocation) in self.register_tracker.reset_gp().iter() {
-            if let RegisterAllocation::Occupied(slice) = allocation {
+            if let RegAllocType::Occupied(slice) = &allocation.ty {
                 match register {
                     GPRegister::AX
                     | GPRegister::CX
@@ -496,7 +501,7 @@ impl X86MogiJit {
                     | GPRegister::R10
                     | GPRegister::R11 => {
                         // preserved by caller.
-                        self.emit_flush_register_to_slice(register, *slice)?;
+                        Self::emit_flush_register_to_slice(self.block_mut()?.assembler(), register, *slice)?;
                     }
                     GPRegister::BX
                     | GPRegister::SP

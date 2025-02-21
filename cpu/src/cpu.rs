@@ -193,7 +193,7 @@ where
         let mut context_provider = SimpleContextProvider::default();
         context_provider.set("longMode", 1);
         context_provider.set("addrsize", 2);
-        context_provider.set("opsize", 2);
+        context_provider.set("opsize", 1);
 
         {
             // TODO: Remove demo block

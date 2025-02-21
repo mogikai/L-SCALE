@@ -2,11 +2,13 @@ use crate::jit::api::{
     JITResult,
     JitError,
 };
+use crate::jit::assembler::MogiAssembler;
 use crate::jit::trace_jit;
 use crate::jit::x86::emit::slice_load::CopyExtendMode;
 use crate::jit::x86::registers::{
     GPRegister,
-    RegisterAllocation,
+    RegAlloc,
+    RegAllocType,
     RegisterLoadInfo,
 };
 use crate::jit::x86::task_context::X86TaskContext;
@@ -14,6 +16,7 @@ use crate::jit::x86::{
     X86MogiJit,
     assemble,
 };
+use dynasmrt::x64::X64Relocation;
 use mogi_sleigh::spec::jir::values::JIRSlice;
 use tracing::{
     debug,
@@ -22,12 +25,12 @@ use tracing::{
 };
 
 #[derive(Debug, Copy, Clone)]
-pub(super) enum RegisterAllocationType {
+pub(super) enum RegAllocIntention {
     /// Allocate a temporary
     Temp,
     /// Allocate a slice. This slice is used for inputs and is not flushed to context.
     /// Spilling these slices is usually cheaper because they do not have to be written to context.
-    /// The slice can be promoted to an [OutSlice](RegisterAllocationType::OutSlice) which will cause
+    /// The slice can be promoted to an [OutSlice](RegAllocIntention::OutSlice) which will cause
     /// it to get flushed to context upon de-allocation.
     Slice(JIRSlice),
     /// Allocate a slice that is flushed back to context
@@ -36,7 +39,8 @@ pub(super) enum RegisterAllocationType {
     Realloc(JIRSlice),
 }
 
-pub(super) enum RegisterAllocationHint {
+#[derive(Debug, Copy, Clone)]
+pub(super) enum RegAllocHint {
     /// No hint. The allocator may choose the register freely.
     None,
     /// Allocate to the provided hint register. If an allocation already exists, the existing one is used.
@@ -62,7 +66,7 @@ impl X86MogiJit {
     #[must_use]
     pub(super) fn temp_alloc(&mut self) -> GPRegister {
         let load_info = self
-            .allocate_gpr(RegisterAllocationHint::None, RegisterAllocationType::Temp, SpillBehavior::Spill)
+            .allocate_gpr(RegAllocHint::None, RegAllocIntention::Temp, SpillBehavior::Spill)
             .expect("Since spill was provided, this must not fail");
         // It doesn't matter if the register is loaded or unloaded, since this is a
         // temporary, and it has no backing storage
@@ -80,15 +84,14 @@ impl X86MogiJit {
         &mut self,
         gpr: GPRegister,
     ) -> JITResult<GPRegister> {
-        let allocation = self.register_tracker.gp[gpr];
-        match allocation {
-            RegisterAllocation::Occupied(slice) | RegisterAllocation::OccupiedDirty(slice) => {
+        match self.register_tracker.gp[gpr].ty {
+            RegAllocType::Occupied(_) | RegAllocType::OccupiedDirty(_) => {
                 self.move_slice_from_gp(gpr)?;
-                self.register_tracker.gp[gpr] = RegisterAllocation::OccupiedTemp;
+                self.register_tracker.gp[gpr].ty = RegAllocType::OccupiedTemp;
                 Ok(gpr)
             }
-            RegisterAllocation::Free => {
-                self.register_tracker.gp[gpr] = RegisterAllocation::OccupiedTemp;
+            RegAllocType::Free => {
+                self.register_tracker.gp[gpr].ty = RegAllocType::OccupiedTemp;
                 Ok(gpr)
             }
             _ => {
@@ -109,26 +112,22 @@ impl X86MogiJit {
         &mut self,
         gpr: GPRegister,
     ) -> JITResult {
-        let slice = match self.register_tracker.gp[gpr] {
-            RegisterAllocation::Free => {
+        let slice = match self.register_tracker.gp[gpr].ty {
+            RegAllocType::Free => {
                 trace!("Moving slice from gp {gpr:?} to free register, but the register is already free.");
                 // Nothing to do here, since the slot is already free.
                 return Ok(());
             }
-            RegisterAllocation::Reserved | RegisterAllocation::OccupiedTemp => {
+            RegAllocType::Reserved | RegAllocType::OccupiedTemp => {
                 // We can only move from the gp if it contains a slice.
                 trace_jit!("Cannot move slice from gp {gpr:?} since it contains {:?}", self.register_tracker.gp[gpr]);
                 Err(JitError::CannotMoveNonSlice)?
             }
-            RegisterAllocation::Occupied(slice) => slice,
-            RegisterAllocation::OccupiedDirty(slice) => slice,
+            RegAllocType::Occupied(slice) => slice,
+            RegAllocType::OccupiedDirty(slice) => slice,
         };
         trace_jit!("Moving slice {slice:?} from gp {gpr:?} to free register");
-        match self.allocate_gpr(
-            RegisterAllocationHint::None,
-            RegisterAllocationType::Realloc(slice),
-            SpillBehavior::Fail,
-        ) {
+        match self.allocate_gpr(RegAllocHint::None, RegAllocIntention::Realloc(slice), SpillBehavior::Fail) {
             Ok(RegisterLoadInfo::NeedRelocation { from, to }) => {
                 // An empty register is available and we can move the slice to this gpr.
                 self.copy_gpr_to_gpr(to, from, slice.size(), CopyExtendMode::None)?;
@@ -136,7 +135,7 @@ impl X86MogiJit {
             }
             Err(JitError::NoRegistersAvailable) => {
                 // If we have no registers available to move to, we flush the slice to memory.
-                self.emit_flush_register_to_slice(gpr, slice)
+                Self::emit_flush_register_to_slice(self.block_mut()?.assembler(), gpr, slice)
             }
             _ => panic!("Programming error"),
         }
@@ -147,20 +146,19 @@ impl X86MogiJit {
         &mut self,
         gpr: GPRegister,
     ) -> JITResult {
-        if let RegisterAllocation::OccupiedTemp = self.register_tracker.gp[gpr] {
-            self.register_tracker.gp[gpr] = RegisterAllocation::Free;
+        if let RegAllocType::OccupiedTemp = self.register_tracker.gp[gpr].ty {
+            self.register_tracker.gp[gpr].ty = RegAllocType::Free;
         };
         Ok(())
     }
 
     /// Emit code to flush the provided [GPRegister] to the provided slice.
     pub(super) fn emit_flush_register_to_slice(
-        &mut self,
+        assembler: &mut MogiAssembler<X64Relocation>,
         register: GPRegister,
         slice: JIRSlice,
     ) -> JITResult {
         let varnode_offset = X86TaskContext::varnode_offset(slice);
-        let assembler = &mut self.block_mut()?.assembler();
         // Emit the instruction that loads the varnode from the specified space in the context.
         match slice.size() {
             1 => {
@@ -206,12 +204,12 @@ impl X86MogiJit {
         let allocation_type = match slice_type {
             SliceType::Input => {
                 warn!("Allocating input slice without loading. Is this intended?");
-                RegisterAllocationType::Slice(slice)
+                RegAllocIntention::Slice(slice)
             }
-            SliceType::Output => RegisterAllocationType::OutSlice(slice),
+            SliceType::Output => RegAllocIntention::OutSlice(slice),
         };
         let register = self
-            .allocate_gpr(RegisterAllocationHint::None, allocation_type, SpillBehavior::Spill)
+            .allocate_gpr(RegAllocHint::None, allocation_type, SpillBehavior::Spill)
             .expect("Since spill was provided, the register allocation must not fail.");
         match register {
             RegisterLoadInfo::Unloaded(register) => {
@@ -226,6 +224,26 @@ impl X86MogiJit {
         }
     }
 
+    pub(super) fn allocate_gpr(
+        &mut self,
+        hint: RegAllocHint,
+        alloc_intention: RegAllocIntention,
+        spill_behavior: SpillBehavior,
+    ) -> JITResult<RegisterLoadInfo<GPRegister>> {
+        let assembler = self
+            .code_buffer
+            .block_mut(self.current_block.ok_or(JitError::NoActiveBlock)?)
+            .expect("The block must exist")
+            .assembler();
+        self.register_tracker.allocate_gpr(
+            assembler,
+            Self::emit_flush_register_to_slice,
+            hint,
+            alloc_intention,
+            spill_behavior,
+        )
+    }
+
     /// Gets the register associated with the provided slice, if it is allocated.
     /// This does not allocate and only serves as a lookup to check if a slice is already loaded.
     #[must_use]
@@ -235,8 +253,8 @@ impl X86MogiJit {
         slice: JIRSlice,
     ) -> Option<GPRegister> {
         for (register, entry) in self.register_tracker.gp.iter() {
-            match entry {
-                RegisterAllocation::Occupied(entry) | RegisterAllocation::OccupiedDirty(entry) => {
+            match &entry.ty {
+                RegAllocType::Occupied(entry) | RegAllocType::OccupiedDirty(entry) => {
                     if entry.varnode_id == slice.varnode_id {
                         return Some(register);
                     }
@@ -245,195 +263,6 @@ impl X86MogiJit {
             }
         }
         None
-    }
-
-    /// Allocate a gp register for use as a temporary or slice, depending on `alloc_type`.
-    /// If a slice is already loaded, the corresponding GPR is returned.
-    /// If a slice has not been loaded previously, a free GPR is returned, but no load is performed.
-    /// The [RegisterLoadInfo] indicates, whether the GPR is loaded or not.
-    /// Unloaded GPRs can be used if the slice appears as output, since we will overwrite the value anyway.
-    pub(super) fn allocate_gpr(
-        &mut self,
-        hint: RegisterAllocationHint,
-        alloc_type: RegisterAllocationType,
-        spill_behavior: SpillBehavior,
-    ) -> JITResult<RegisterLoadInfo<GPRegister>> {
-        // TODO: This whole function is spaghetti and needs to be reworked.
-        let mut free_gpr = if let RegisterAllocationHint::Reallocate(hint) = hint {
-            // If the alloc hint is set to realloc, we simply set the provided register as free.
-            // The caller needs to make sure that it is actually free.
-            Some(hint)
-        } else {
-            None
-        };
-        let mut existing_gpr = None;
-        // TODO: We need to check if two slices refer to the same memory.
-        //       This needs to be done because there might be a slice to e.g. EAX loaded, but another
-        //       instruction refers to RAX. The RAX load then needs to be performed from the loaded
-        //       EAX, instead of from the space, or it needs to be flushed first.
-        // Search for existing register, and otherwise take the first available GP register.
-        for (register, entry) in self.register_tracker.gp.iter() {
-            match entry {
-                RegisterAllocation::Free => {
-                    if let RegisterAllocationHint::Allocate(hint) = hint
-                        && hint == register
-                    {
-                        // If the hinted register is free, we set it as the chosen register
-                        // even if another free register was already found.
-                        free_gpr = Some(register);
-                    }
-                    if free_gpr.is_none() {
-                        // Save the first free register
-                        free_gpr = Some(register)
-                    }
-                }
-                RegisterAllocation::Reserved | RegisterAllocation::OccupiedTemp => {}
-                RegisterAllocation::Occupied(entry) | RegisterAllocation::OccupiedDirty(entry) => match alloc_type {
-                    RegisterAllocationType::Slice(slice) if entry.varnode_id == slice.varnode_id => {
-                        if entry.size() != slice.size() {
-                            todo!("Aliasing varnodes are currently not supported yet")
-                        }
-                        if let RegisterAllocationHint::Reallocate(_) = hint {
-                            // We found an existing register and can now break to reallocate existing to hint.
-                            existing_gpr = Some(register);
-                            break;
-                        } else {
-                            // We found an existing register and do not want to move the slice, so we just return.
-                            return Ok(RegisterLoadInfo::Loaded(register));
-                        }
-                    }
-                    RegisterAllocationType::OutSlice(slice) if entry.varnode_id == slice.varnode_id => {
-                        if entry.size() != slice.size() {
-                            todo!("Aliasing varnodes are currently not supported yet")
-                        }
-                        existing_gpr = Some(register);
-                        if matches!(hint, RegisterAllocationHint::Reallocate(_)) {
-                            // When moving, we can now break since we have all needed information.
-                            break;
-                        };
-                    }
-                    RegisterAllocationType::Realloc(slice) if entry.varnode_id == slice.varnode_id => {
-                        if entry.size() != slice.size() {
-                            todo!("Aliasing varnodes are currently not supported yet")
-                        }
-                        existing_gpr = Some(register);
-                    }
-                    _ => {}
-                },
-            }
-        }
-
-        if let Some(free_gpr) = free_gpr {
-            self.perform_alloc(hint, alloc_type, existing_gpr, free_gpr)
-        } else {
-            match spill_behavior {
-                SpillBehavior::Spill => {
-                    // TODO: In some cases we dont really need to spill here. Probably need to rework the alloc function
-                    let free_gpr = self.spill_one_register()?;
-                    self.perform_alloc(hint, alloc_type, existing_gpr, free_gpr)
-                }
-                SpillBehavior::Fail => Err(JitError::NoRegistersAvailable),
-            }
-        }
-    }
-
-    fn perform_alloc(
-        &mut self,
-        hint: RegisterAllocationHint,
-        alloc_type: RegisterAllocationType,
-        existing_gpr: Option<GPRegister>,
-        free_gpr: GPRegister,
-    ) -> JITResult<RegisterLoadInfo<GPRegister>> {
-        match alloc_type {
-            RegisterAllocationType::Temp => {
-                self.register_tracker.gp[free_gpr] = RegisterAllocation::OccupiedTemp;
-                Ok(RegisterLoadInfo::Loaded(free_gpr))
-            }
-            RegisterAllocationType::Slice(slice) => {
-                let Some(existing_gpr) = existing_gpr else {
-                    // The out slice is not loaded yet, we need to load it now.
-                    self.register_tracker.gp[free_gpr] = RegisterAllocation::Occupied(slice);
-                    return Ok(RegisterLoadInfo::Unloaded(free_gpr));
-                };
-                if matches!(hint, RegisterAllocationHint::Reallocate(_)) {
-                    // The out slice is already loaded. Move the slice if necessary
-                    self.realloc(free_gpr, existing_gpr)
-                } else {
-                    panic!("This case cannot happen")
-                }
-            }
-            RegisterAllocationType::OutSlice(slice) => {
-                let Some(existing_gpr) = existing_gpr else {
-                    // The out slice is not loaded yet, we need to load it now.
-                    self.register_tracker.gp[free_gpr] = RegisterAllocation::OccupiedDirty(slice);
-                    return Ok(RegisterLoadInfo::Unloaded(free_gpr));
-                };
-                // Promote old gpr to occupied dirty such that it is flushed correctly.
-                self.register_tracker.gp[existing_gpr] = RegisterAllocation::OccupiedDirty(slice);
-                if matches!(hint, RegisterAllocationHint::Reallocate(_)) {
-                    // The out slice is already loaded. Move the slice if necessary
-                    self.realloc(free_gpr, existing_gpr)
-                } else {
-                    // If we dont want to reallocate we just signal that the slice is still loaded
-                    // after we have marked it dirty.
-                    Ok(RegisterLoadInfo::Loaded(existing_gpr))
-                }
-            }
-            RegisterAllocationType::Realloc(slice) => {
-                let Some(old_gpr) = existing_gpr else {
-                    Err(JitError::SliceNotLoaded)?
-                };
-                self.realloc(free_gpr, old_gpr)
-            }
-        }
-    }
-
-    fn spill_one_register(&mut self) -> JITResult<GPRegister> {
-        let to_spill = self.find_register_to_spill();
-        if to_spill.2 {
-            self.emit_flush_register_to_slice(to_spill.0, to_spill.1)?;
-        }
-        self.register_tracker.gp[to_spill.0] = RegisterAllocation::Free;
-        Ok(to_spill.0)
-    }
-
-    fn find_register_to_spill(&mut self) -> (GPRegister, JIRSlice, bool) {
-        // TODO: Use more sophisticated spilling heuristic. For example, LU + FIFO
-        let mut iter = self.register_tracker.gp.iter_mut();
-        let mut write_occupied = None;
-        let to_flush = loop {
-            match iter.next() {
-                None => break write_occupied,
-                Some((gpr, alloc)) => match alloc {
-                    RegisterAllocation::Occupied(slice) => break Some((gpr, slice.clone(), false)),
-                    RegisterAllocation::OccupiedDirty(slice) => {
-                        write_occupied.get_or_insert((gpr, slice.clone(), true));
-                    }
-                    _ => {}
-                },
-            }
-        }
-        .expect("At least one register must be occupied");
-        // to_flush
-        todo!()
-    }
-
-    fn realloc(
-        &mut self,
-        free_gpr: GPRegister,
-        old_gpr: GPRegister,
-    ) -> Result<RegisterLoadInfo<GPRegister>, JitError> {
-        if free_gpr == old_gpr {
-            // No move necessary, if new = old
-            return Ok(RegisterLoadInfo::Loaded(free_gpr));
-        }
-        // Set the same allocation as previously. If it was dirty we want to keep it that way.
-        self.register_tracker.gp[free_gpr] = self.register_tracker.gp[old_gpr];
-        self.register_tracker.gp[old_gpr] = RegisterAllocation::Free;
-        Ok(RegisterLoadInfo::NeedRelocation {
-            from: old_gpr,
-            to: free_gpr,
-        })
     }
 
     /// Return the temporary [GPRegister].

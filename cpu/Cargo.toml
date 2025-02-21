@@ -24,3 +24,4 @@ zerocopy = "0.9.0-alpha.0"
 [features]
 trace_jit = []
 trace_jir = ["mogi_sleigh/trace_jir"]
+trace_build = ["mogi_sleigh/trace_build"]

@@ -63,8 +63,11 @@ fn main() {
         mmu.set_page_table_entry(0xffaa00u64.into(), 0x8_000u64.into(), Permission::ALL)
             .unwrap();
         // And then write the instruction to the allocated memory.
-        mmu.write(0xffaa00u64.into(), b"\xD3\xE0\xE9\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00")
-            .unwrap();
+        mmu.write(
+            0xffaa00u64.into(),
+            b"\x01\xD8\xF7\xE3\xE9\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+        )
+        .unwrap();
     }
 
     // Set up the just in time compiler. TODO: Maybe we can refactor this such that the jit doesn't need the spec.

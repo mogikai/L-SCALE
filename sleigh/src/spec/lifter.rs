@@ -108,7 +108,6 @@ impl Lifter for ProcessorSpecification {
             // TODO error type
             let mut context_stack = ContextStack::new(self, context_provider).expect("Couldn't create context stack");
             // TODO: Initially fill the context stack with the value from the context provider that needs to be passed in.
-            // longMode=1, addrSize=1, opSize=1
 
             let matching_result = root_jumplist
                 .r#match(&buffer, addr, &self.jumplist_cache, &self.symbol_tables.constructors, &mut context_stack)

@@ -104,6 +104,17 @@ impl JIRValue {
             }
         }
     }
+
+    pub fn slice(
+        self,
+        start: JIRSize,
+        size: JIRSize,
+    ) -> JIRValue {
+        match self {
+            JIRValue::Slice(slice) => slice.slice(start, size).into(),
+            JIRValue::Const(value) => value.slice(start, size).into(),
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -130,6 +141,14 @@ impl JIRConst {
 
     pub fn size(&self) -> JIRSize {
         self.size
+    }
+
+    pub fn slice(
+        self,
+        offset: JIRSize,
+        size: JIRSize,
+    ) -> JIRConst {
+        todo!()
     }
 
     pub fn zext(
@@ -169,6 +188,22 @@ impl JIRSlice {
             varnode_id: JIRVarNodeId::Temp(temp_id),
             space_id,
             offset,
+            size,
+        }
+    }
+
+    pub fn slice(
+        self,
+        start: JIRSize,
+        size: JIRSize,
+    ) -> JIRSlice {
+        if self.end() < start {
+            todo!()
+        }
+        Self {
+            varnode_id: self.varnode_id,
+            space_id: self.space_id,
+            offset: self.offset + start,
             size,
         }
     }
@@ -273,7 +308,7 @@ impl Display for JIRSlice {
         &self,
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
-        write!(f, "{}", self.varnode_id)
+        write!(f, "{}:{}", self.varnode_id, self.size)
     }
 }
 
@@ -282,6 +317,6 @@ impl Display for JIRConst {
         &self,
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
-        write!(f, "{:#0x}", self.value)
+        write!(f, "{:#0x}:{}", self.value, self.size)
     }
 }

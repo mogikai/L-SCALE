@@ -18,6 +18,7 @@ use crate::spec::moir::field::FieldId;
 use crate::spec::moir::scope::{
     MOIRLocalId,
     MOIRMaybeSize,
+    MOIRTemporaryId,
 };
 use crate::spec::moir::table::{
     MOIRExport,
@@ -70,6 +71,7 @@ impl From<JIRValue> for JIRResolvedValue {
 pub struct JIRResolver<'a> {
     constructor: &'a MOIRConstructor,
     values: SecondaryMap<MOIRLocalId, Option<JIRValue>>,
+    temporaries: SecondaryMap<MOIRTemporaryId, Option<JIRSlice>>,
     subtables: FnvHashMap<TableId, JIRResolver<'a>>,
 }
 
@@ -81,6 +83,7 @@ impl<'a> JIRResolver<'a> {
         Self {
             constructor,
             values,
+            temporaries: Default::default(),
             subtables: Default::default(),
         }
     }
@@ -153,12 +156,12 @@ impl<'a> JIRResolver<'a> {
         &mut self,
         instruction_builder: &mut TargetInstructionBuilder,
     ) -> ProcessorSpecResult {
-        for (local, temp) in self.constructor.local_scope.iter_used_temps() {
+        for (temp_id, temp) in self.constructor.local_scope.iter_used_temps() {
             let MOIRMaybeSize::Determined(size) = temp.size else {
                 todo!("Generate error for undetermined temporary size")
             };
             let tmp_slice = instruction_builder.alloc_temporary(size)?;
-            self.values[local] = Some(tmp_slice.into());
+            self.temporaries[temp_id] = Some(tmp_slice.into());
         }
         Ok(())
     }
@@ -357,7 +360,13 @@ impl<'a> JIRResolver<'a> {
                 )
                 .into()
             }
-            MOIRReference::Temporary(_) | MOIRReference::Const(_) => match self.values[local] {
+            MOIRReference::Temporary(temp_id) => match self.temporaries[temp_id] {
+                None => todo!("Generate error for unresolved temporary."),
+                Some(value) => value
+                    .slice(start, end.ok_or_else(|| todo!("Generate error for undefined size"))? - start)
+                    .into(),
+            },
+            MOIRReference::Const(_) => match self.values[local] {
                 None => todo!("Generate error for unresolved temporary."),
                 Some(value) => value.into(),
             },
