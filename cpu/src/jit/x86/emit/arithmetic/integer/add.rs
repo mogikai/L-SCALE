@@ -13,7 +13,7 @@ use mogi_sleigh::spec::jir::values::{
 };
 use tracing::trace;
 
-impl X86MogiJit {
+impl<PageDataT> X86MogiJit<PageDataT> {
     /// Emit instructions that add `a` and `b` and store the result in `output`.
     /// Since JIR operations do not have side effects, most of the time this will
     /// result in some kind of lea operation.

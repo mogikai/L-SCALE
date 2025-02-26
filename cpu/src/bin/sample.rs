@@ -1,20 +1,28 @@
-use clap::Parser;
 use mogi_cpu::cpu::MogiCPU;
+use mogi_cpu::jit::api::{
+    JITTaskRuntimeContext,
+    MogiJit,
+};
 use mogi_cpu::jit::x86::X86MogiJit;
 use mogi_cpu::new_cpu_trait::{
     CPU,
     RunLimit,
 };
+use mogi_cpu::tlb::{
+    PageData,
+    PageIndex,
+    PageMetaInfo,
+    PageTag,
+};
 use mogi_mem::mmu::MogiMMU;
 use mogi_sleigh::SleighPreprocessorFactory;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
-use mogi_sleigh::lifter::cache::LifterCache;
-use mogi_sleigh::lifter::source::DirectlyMappedBytes;
 use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_system::components::mmu::{
     MMU,
     Permission,
 };
+use mogi_utilities::addresses::HVAddr;
 use std::cell::RefCell;
 use std::env::current_dir;
 use std::fs::{
@@ -63,21 +71,36 @@ fn main() {
         mmu.set_page_table_entry(0xffaa00u64.into(), 0x8_000u64.into(), Permission::ALL)
             .unwrap();
         // And then write the instruction to the allocated memory.
-        mmu.write(
-            0xffaa00u64.into(),
-            b"\x01\xD8\xF7\xE3\xE9\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
-        )
-        .unwrap();
+        mmu.write(0xffaa00u64.into(), b"\x58\x5B\x48\x01\xD8\x53\x50\xE9\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00")
+            .unwrap();
     }
 
+    let mut stack_page = Box::new(PageData::zero());
+    let stack_page_addr = unsafe { HVAddr::new_unchecked(stack_page.as_mut() as *mut _) };
+
     // Set up the just in time compiler. TODO: Maybe we can refactor this such that the jit doesn't need the spec.
-    let jit = X86MogiJit::new(specification.clone(), mmu.clone(), false);
+    let mut jit = X86MogiJit::new(specification.clone(), mmu.clone(), false);
+
+    jit.register_tlb_read_miss_callback(|ctx, addr, size, space| {
+        let tlb = ctx.tlb_mut();
+        tlb.insert_read(addr, stack_page_addr);
+        unsafe { Ok(stack_page_addr.byte_offset(PageData::page_offset(addr) as isize)) }
+    })
+    .unwrap();
+
+    jit.register_tlb_write_miss_callback(|ctx, addr, size, space| {
+        let tlb = ctx.tlb_mut();
+        tlb.insert_write(addr, stack_page_addr);
+        unsafe { Ok(stack_page_addr.byte_offset(PageData::page_offset(addr) as isize)) }
+    })
+    .unwrap();
 
     // Set up the cpu emulator
     let mut cpu = MogiCPU::new(jit, specification, mmu);
 
     // Set the instruction pointer to the address we want to start executing at.
     *cpu.register_mut("RIP").unwrap() = 0xffaa00u64;
+    *cpu.register_mut("RSP").unwrap() = 0xffff_ffff_ffff_0220u64;
 
     // Now lets roll! (forever :>)
     cpu.run(RunLimit::Unlimited).unwrap();

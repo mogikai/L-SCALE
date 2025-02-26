@@ -12,7 +12,7 @@ use mogi_sleigh::spec::jir::values::{
     JIRValue,
 };
 
-impl X86MogiJit {
+impl<PageDataT> X86MogiJit<PageDataT> {
     pub fn emit_bitwise_and(
         &mut self,
         output: JIRSlice,
@@ -160,8 +160,8 @@ impl X86MogiJit {
         input_a: JIRValue,
         input_b: JIRValue,
         op_const: fn(JIRConst, JIRConst) -> JIRConst,
-        op_gp_imm: fn(&mut X86MogiJit, GPRegister, u128, JIRSize) -> JITResult,
-        op_gp_gp: fn(&mut X86MogiJit, GPRegister, GPRegister, JIRSize) -> JITResult,
+        op_gp_imm: fn(&mut X86MogiJit<PageDataT>, GPRegister, u128, JIRSize) -> JITResult,
+        op_gp_gp: fn(&mut X86MogiJit<PageDataT>, GPRegister, GPRegister, JIRSize) -> JITResult,
     ) -> JITResult {
         assert_eq!(input_a.size(), input_b.size());
         // TODO: It might make sense to directly put the memory reference into the instruction, instead of loading

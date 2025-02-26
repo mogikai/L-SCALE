@@ -7,12 +7,16 @@ use crate::jit::x86::{
     X86MogiJit,
     assemble,
 };
+use crate::tlb::PageMetaInfo;
 use mogi_sleigh::spec::jir::values::{
     JIRConst,
     JIRValue,
 };
 
-impl X86MogiJit {
+impl<PageDataT> X86MogiJit<PageDataT>
+where
+    PageDataT: PageMetaInfo,
+{
     /// Emit a goto instruction that jumps to the target address.
     /// Goto is implemented by writing the desired jump target to the program counter and then jumping to the
     /// exit_success target. This will either return into the jit main loop, where the next block is fetched,

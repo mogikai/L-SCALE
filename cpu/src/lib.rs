@@ -29,3 +29,4 @@ pub mod cpu;
 pub mod jit;
 pub mod new_cpu_trait;
 mod optimizer;
+pub mod tlb;

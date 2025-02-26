@@ -10,8 +10,10 @@ use crate::jit::x86::test::{
     set_slice,
     setup,
 };
-use mogi_mem::PageOffset;
-use mogi_mem::physical::page::PageData;
+use crate::tlb::{
+    PageData,
+    PageMetaInfo,
+};
 use mogi_sleigh::jinst;
 use mogi_sleigh::spec::SpaceId;
 use mogi_utilities::addresses::{
@@ -35,7 +37,7 @@ fn test_load_tlb_hit() {
     set_slice(&mut *context, addr_slice, a);
 
     let mut page = Box::new(PageData::zero());
-    page.data[0xfa0..0xfa0 + 8].copy_from_slice(&value.to_le_bytes());
+    page.data_mut()[0xfa0..0xfa0 + 8].copy_from_slice(&value.to_le_bytes());
 
     let addr = EVAddr::from(a);
     unsafe {
@@ -65,12 +67,12 @@ fn test_load_tlb_miss_success() {
     let addr_slice = get_reg_slice(&spec, addr_reg);
 
     let mut page = Box::new(PageData::zero());
-    page.data[0xfaf..0xfaf + 8].copy_from_slice(&value.to_le_bytes());
+    page.data_mut()[0xfaf..0xfaf + 8].copy_from_slice(&value.to_le_bytes());
 
     let page_addr = unsafe { HVAddr::new_unchecked(page.as_mut() as *mut _) };
     // for this test we simply return a fixed address.
     jit.register_tlb_read_miss_callback(|context, evaddr, size, space_id| unsafe {
-        Ok(page_addr.byte_offset(evaddr.page_offset() as isize))
+        Ok(page_addr.byte_offset(PageData::page_offset(evaddr) as isize))
     })
     .unwrap();
 
@@ -98,7 +100,7 @@ fn test_load_tlb_miss_failure() {
     let addr_slice = get_reg_slice(&spec, addr_reg);
 
     let mut page = Box::new(PageData::zero());
-    page.data[0xfaf..0xfaf + 8].copy_from_slice(&value.to_le_bytes());
+    page.data_mut()[0xfaf..0xfaf + 8].copy_from_slice(&value.to_le_bytes());
 
     let page_addr = unsafe { HVAddr::new_unchecked(page.as_mut() as *mut _) };
     // for this test we simply return a fixed address.

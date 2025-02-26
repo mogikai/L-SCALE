@@ -82,10 +82,11 @@ macro_rules! assemble {
 }
 
 use crate::jit::x86::registers::RegAllocType;
+use crate::tlb::PageMetaInfo;
 use assemble;
 use mogi_mem::mmu::MogiMMU;
 
-pub struct X86MogiJit {
+pub struct X86MogiJit<PageDataT> {
     code_buffer: CodeBuffer<X64Relocation>,
     processor_specification: Rc<RefCell<ProcessorSpecification>>,
     current_block: Option<EVAddr>,
@@ -105,18 +106,17 @@ pub struct X86MogiJit {
     /// If all registers are occupied, one of the registers must be spilled into memory, to free
     /// up space for the current operation.
     register_tracker: RegisterTracker,
-    mmu: Rc<RefCell<MogiMMU>>,
     /// The global context pointer is baked into translated blocks for, e.g., custom op callbacks.
     /// Since the pointer is unmovable as lang as the jit exists, and the block cache is deleted
     /// along with the jit, this is safe to access.
-    global_context: Pin<Box<X86GlobalContext>>,
+    global_context: Pin<Box<X86GlobalContext<PageDataT>>>,
 }
 
 /// The global jit context. Each task context contains a pointer to this context.
-pub struct X86GlobalContext {
-    custom_op_impls: SecondaryMap<CustomOpId, Option<CustomOpCallback<X86TaskContext>>>,
-    tlb_miss_read_callback: Option<TlbMissCallback<X86TaskContext>>,
-    tlb_miss_write_callback: Option<TlbMissCallback<X86TaskContext>>,
+pub struct X86GlobalContext<PageDataT> {
+    custom_op_impls: SecondaryMap<CustomOpId, Option<CustomOpCallback<X86TaskContext<PageDataT>>>>,
+    tlb_miss_read_callback: Option<TlbMissCallback<X86TaskContext<PageDataT>>>,
+    tlb_miss_write_callback: Option<TlbMissCallback<X86TaskContext<PageDataT>>>,
 }
 
 #[repr(transparent)]
@@ -165,7 +165,7 @@ impl Space {
     }
 }
 
-impl Default for X86GlobalContext {
+impl<PageDataT> Default for X86GlobalContext<PageDataT> {
     fn default() -> Self {
         Self {
             custom_op_impls: Default::default(),
@@ -175,9 +175,9 @@ impl Default for X86GlobalContext {
     }
 }
 
-impl JITGlobalRuntimeContext for X86GlobalContext {}
+impl<PageDataT> JITGlobalRuntimeContext for X86GlobalContext<PageDataT> {}
 
-impl X86MogiJit {
+impl<PageDataT> X86MogiJit<PageDataT> {
     // TODO: Make MMU generic (put behind trait)
     pub fn new(
         processor_specification: Rc<RefCell<ProcessorSpecification>>,
@@ -196,13 +196,12 @@ impl X86MogiJit {
             jit_prelude: prelude,
             jit_epilogue_block: epilogue_block,
             register_tracker: Default::default(),
-            mmu,
             global_context: Box::pin(X86GlobalContext::default()),
         }
     }
 }
 
-impl X86MogiJit {
+impl<PageDataT> X86MogiJit<PageDataT> {
     /// Directly chain a target address to the block at the provided EVAddr.
     fn chain_blocks_direct(
         &mut self,
@@ -279,9 +278,12 @@ impl X86MogiJit {
     }
 }
 
-impl MogiJit for X86MogiJit {
-    type RuntimeContext = X86TaskContext;
-    type GlobalContext = X86GlobalContext;
+impl<PageDataT> MogiJit for X86MogiJit<PageDataT>
+where
+    PageDataT: PageMetaInfo,
+{
+    type RuntimeContext = X86TaskContext<PageDataT>;
+    type GlobalContext = X86GlobalContext<PageDataT>;
 
     fn new_runtime_context(&mut self) -> Self::RuntimeContext {
         X86TaskContext::new(

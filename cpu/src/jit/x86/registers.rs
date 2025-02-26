@@ -28,7 +28,7 @@ use std::{
 pub trait FlushEmitter<AssemblerT>: Fn(&mut AssemblerT, GPRegister, JIRSlice) -> JITResult {}
 impl<AssemblerT, T> FlushEmitter<AssemblerT> for T where T: Fn(&mut AssemblerT, GPRegister, JIRSlice) -> JITResult {}
 
-trait Register: TryFrom<Self::Primitive, Error: Debug> {
+pub trait Register: TryFrom<Self::Primitive, Error: Debug> {
     type Primitive: TryFrom<usize, Error: Debug>;
     const NUMBER: usize;
     /// Return the initial allocation for the specified register.
@@ -37,6 +37,9 @@ trait Register: TryFrom<Self::Primitive, Error: Debug> {
 
 #[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive, PartialEq, Eq)]
 #[repr(u8)]
+/// Represents all general purpose registers available on x64.
+/// The size of the register is not encoded here. This enum only
+/// serves as a selector for the register and not for its size.
 pub enum GPRegister {
     AX  = 0,
     CX  = 1,
@@ -84,38 +87,15 @@ impl From<GPRegister> for usize {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive, PartialEq, Eq)]
 #[repr(u8)]
-enum FPRegister {
-    ST0 = 0,
-    ST1 = 1,
-    ST2 = 2,
-    ST3 = 3,
-    ST4 = 4,
-    ST5 = 5,
-    ST6 = 6,
-    ST7 = 7,
-}
-
-#[derive(Debug, Copy, Clone)]
-#[repr(u8)]
-enum MMXRegister {
-    MMX0 = 0,
-    MMX1 = 1,
-    MMX2 = 2,
-    MMX3 = 3,
-    MMX4 = 4,
-    MMX5 = 5,
-    MMX6 = 6,
-    MMX7 = 7,
-}
-
-#[derive(Debug, Copy, Clone)]
-#[repr(u8)]
+/// This enum represents the available XMM, YMM, and ZMM Registers. (YMM and ZMM are extensions of XMM)
+/// These registers are primarily used for floating point arithmetic and simd operations.
 enum XMMRegister {
     XMM0  = 0,
     XMM1  = 1,
     XMM2  = 2,
+    XMM3  = 3,
     XMM4  = 4,
     XMM5  = 5,
     XMM6  = 6,
@@ -130,38 +110,22 @@ enum XMMRegister {
     XMM15 = 15,
 }
 
-#[derive(Debug, Copy, Clone)]
-#[repr(u8)]
-enum YMMRegister {
-    YMM0  = 0,
-    YMM1  = 1,
-    YMM2  = 2,
-    YMM4  = 4,
-    YMM5  = 5,
-    YMM6  = 6,
-    YMM7  = 7,
-    YMM8  = 8,
-    YMM9  = 9,
-    YMM10 = 10,
-    YMM11 = 11,
-    YMM12 = 12,
-    YMM13 = 13,
-    YMM14 = 14,
-    YMM15 = 15,
+impl From<XMMRegister> for usize {
+    fn from(value: XMMRegister) -> Self {
+        usize::from(u8::from(value))
+    }
 }
 
-#[derive(Debug, Default)]
-pub struct UsedRegisters {
-    /// 16 GP registers
-    gp: BitArray<[u16; 1]>,
-    /// 8 FP registers
-    fp: BitArray<[u8; 1]>,
-    /// 8 MMX registers
-    mmx: BitArray<[u8; 1]>,
-    /// 16 XMM registers
-    xmm: BitArray<[u16; 1]>,
-    /// 16 YMM registers
-    ymm: BitArray<[u16; 1]>,
+impl Register for XMMRegister {
+    type Primitive = u8;
+    const NUMBER: usize = 16;
+
+    fn initial_allocation(&self) -> RegAlloc {
+        let ty = match self {
+            _ => RegAllocType::Free,
+        };
+        RegAlloc { ty, version: 0 }
+    }
 }
 
 #[derive(Debug)]
@@ -254,10 +218,7 @@ pub enum RegAllocType {
 pub struct RegisterTracker {
     // TODO: Use GPRegister::NUMBER once generic_const_exprs is stable.
     pub gp: RegisterAllocations<GPRegister, 16>,
-    fp: [Option<JIRSlice>; 8],
-    mmx: [Option<JIRSlice>; 8],
-    xmm: [Option<JIRSlice>; 16],
-    ymm: [Option<JIRSlice>; 16],
+    xmm: RegisterAllocations<XMMRegister, 16>,
     /// The allocation version. Anything with this current version may not be flushed when allocating.
     /// The version can also be used to determine how far into the past a register was allocated.
     version: usize,

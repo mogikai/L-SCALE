@@ -16,7 +16,7 @@ enum DivisionType {
     Unsigned,
 }
 
-impl X86MogiJit {
+impl<PageDataT> X86MogiJit<PageDataT> {
     /// Unsigned integer division.
     #[inline]
     pub fn emit_divide(

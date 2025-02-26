@@ -19,7 +19,7 @@ enum AddSub {
     Sub,
 }
 
-impl X86MogiJit {
+impl<PageDataT> X86MogiJit<PageDataT> {
     pub fn emit_remainder(
         &mut self,
         output: JIRSlice,

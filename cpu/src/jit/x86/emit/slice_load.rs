@@ -38,7 +38,7 @@ pub enum CopyExtendMode {
     None,
 }
 
-impl X86MogiJit {
+impl<PageDataT> X86MogiJit<PageDataT> {
     /// Emit code to load the requested slice into a [GPRegister] if necessary.
     /// If the slice is already loaded, the register is returned.
     /// Otherwise, code is emitted that loads the slice into a free register,
@@ -134,7 +134,7 @@ impl X86MogiJit {
         // The register has not been loaded before.
         // We need to insert an instruction that loads it from context.
         // For that we first need to calculate the offset in the cpu context.
-        let varnode_offset = X86TaskContext::varnode_offset(slice);
+        let varnode_offset = X86TaskContext::<PageDataT>::varnode_offset(slice);
         trace!("Loading slice {slice:?} that refers to varnode {:?} into {register:?}", slice.varnode_id);
         // Emit the instruction that loads the varnode from the specified space in the context.
         // We always load to a 32 bit register. This avoids false dependencies.
@@ -489,7 +489,7 @@ impl X86MogiJit {
         // Iterate over the loaded slices and flush them to memory
         // TODO: Do not insert flush instructions for dead registers.
         for (register, allocation) in self.register_tracker.reset_gp().iter() {
-            if let RegAllocType::Occupied(slice) = &allocation.ty {
+            if let RegAllocType::OccupiedDirty(slice) = &allocation.ty {
                 match register {
                     GPRegister::AX
                     | GPRegister::CX
@@ -500,6 +500,7 @@ impl X86MogiJit {
                     | GPRegister::R9
                     | GPRegister::R10
                     | GPRegister::R11 => {
+                        trace_jit!("Preserve register {register:?} for slice {slice:?}");
                         // preserved by caller.
                         Self::emit_flush_register_to_slice(self.block_mut()?.assembler(), register, *slice)?;
                     }
@@ -513,9 +514,6 @@ impl X86MogiJit {
                         // preserved by callee
                     }
                 }
-            } else {
-                // Copy over old allocation (temps)
-                self.register_tracker.gp[register] = *allocation;
             }
         }
         Ok(())

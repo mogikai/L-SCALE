@@ -13,7 +13,7 @@ use mogi_sleigh::spec::jir::values::{
     JIRValue,
 };
 
-impl X86MogiJit {
+impl<PageDataT> X86MogiJit<PageDataT> {
     pub fn emit_compare_eq(
         &mut self,
         output: JIRSlice,

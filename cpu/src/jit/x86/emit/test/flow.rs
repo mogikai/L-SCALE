@@ -11,6 +11,7 @@ use crate::jit::x86::test::{
     set_slice,
     setup,
 };
+use crate::tlb::PageData;
 use mogi_sleigh::jinst;
 use mogi_sleigh::spec::jir::values::JIRSlice;
 use mogi_utilities::addresses::EVAddr;
@@ -117,8 +118,8 @@ fn test_goto_direct_if_false_chained() {
 }
 
 fn setup_blocks(
-    jit: &mut X86MogiJit,
-    mut context: &mut Box<X86TaskContext>,
+    jit: &mut X86MogiJit<PageData>,
+    mut context: &mut Box<X86TaskContext<PageData>>,
     slice_cond: JIRSlice,
     slice_addr: JIRSlice,
     slice_result: JIRSlice,

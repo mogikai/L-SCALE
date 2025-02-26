@@ -10,6 +10,7 @@ use crate::jit::x86::{
     X86MogiJit,
     assemble,
 };
+use crate::tlb::PageMetaInfo;
 use mogi_sleigh::spec::CustomOpId;
 use mogi_sleigh::spec::jir::values::{
     JIRSlice,
@@ -17,7 +18,10 @@ use mogi_sleigh::spec::jir::values::{
 };
 use std::marker::PhantomData;
 
-impl X86MogiJit {
+impl<PageDataT> X86MogiJit<PageDataT>
+where
+    PageDataT: PageMetaInfo,
+{
     pub fn emit_custom_op_call(
         &mut self,
         op_id: CustomOpId,

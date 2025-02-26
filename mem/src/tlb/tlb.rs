@@ -36,10 +36,14 @@ impl Display for AccessType {
         &self,
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            AccessType::Load => "load",
-            AccessType::Store => "store",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                AccessType::Load => "load",
+                AccessType::Store => "store",
+            }
+        )
     }
 }
 

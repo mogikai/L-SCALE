@@ -10,7 +10,7 @@ use mogi_sleigh::spec::jir::values::{
     JIRValue,
 };
 
-impl X86MogiJit {
+impl<PageDataT> X86MogiJit<PageDataT> {
     /// Emit instructions to normalize the boolean inputs
     fn emit_normalize_boolean_inputs(
         &mut self,

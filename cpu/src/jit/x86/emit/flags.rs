@@ -18,7 +18,7 @@ enum FlagType {
     Zero,
 }
 
-impl X86MogiJit {
+impl<PageDataT> X86MogiJit<PageDataT> {
     pub fn emit_scarry(
         &mut self,
         output: JIRSlice,

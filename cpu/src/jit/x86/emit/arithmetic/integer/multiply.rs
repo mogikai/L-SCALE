@@ -14,7 +14,7 @@ use mogi_sleigh::spec::jir::values::{
 };
 use std::cmp::min;
 
-impl X86MogiJit {
+impl<PageDataT> X86MogiJit<PageDataT> {
     #[inline]
     pub fn emit_multiply(
         &mut self,

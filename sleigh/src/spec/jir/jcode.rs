@@ -210,6 +210,10 @@ pub enum JIROperation {
     BlockEnd(JIRBlockId),
     InstructionStart(EVAddr),
     InstructionEnd(EVAddr),
+    // -------
+    // TODO: Host Load
+    // TODO: Host Store
+    // TODO: Trigger interrupt
     // -------------------------- GENERIC LOAD/STORE --------------------------
     Copy,
     /// output: The target slice to load into <br>

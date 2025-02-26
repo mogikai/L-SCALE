@@ -10,7 +10,7 @@ use mogi_sleigh::spec::jir::values::{
     JIRValue,
 };
 
-impl X86MogiJit {
+impl<PageDataT> X86MogiJit<PageDataT> {
     pub fn emit_popcount(
         &mut self,
         output: JIRSlice,

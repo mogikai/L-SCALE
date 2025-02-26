@@ -10,7 +10,7 @@ use mogi_sleigh::spec::jir::values::{
     JIRValue,
 };
 
-impl X86MogiJit {
+impl<PageDataT> X86MogiJit<PageDataT> {
     /// Emit x86 assembly to perform an integer negation on the provided [JIRValue].
     /// The result is stored inside the output [JIRSlice].
     /// Providing a constant input will most likely result in a move of the already negated value.

@@ -5,7 +5,7 @@ use std::ptr::NonNull;
 mod r#impl;
 
 /// A marker trait for the possible address types.
-trait Address {}
+pub trait Address {}
 
 /// This trait can be implemented on objects that have an address.
 /// The type of the address is specified in the generic parameter `T`.

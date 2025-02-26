@@ -8,6 +8,7 @@ use crate::jit::api::{
     MogiJit,
 };
 use crate::jit::x86::X86MogiJit;
+use crate::tlb::PageData;
 use mogi_mem::mmu::MogiMMU;
 use mogi_sleigh::SleighPreprocessorFactory;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
@@ -29,7 +30,11 @@ use std::rc::Rc;
 
 pub(super) fn setup(
     debug: bool
-) -> (X86MogiJit, Rc<RefCell<ProcessorSpecification>>, Box<<X86MogiJit as MogiJit>::RuntimeContext>) {
+) -> (
+    X86MogiJit<PageData>,
+    Rc<RefCell<ProcessorSpecification>>,
+    Box<<X86MogiJit<PageData> as MogiJit>::RuntimeContext>,
+) {
     let mut spec_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     spec_path.push("resources/test/x86/x86-64.slaspec");
     let spec_dir = spec_path.parent().unwrap();

@@ -5,11 +5,10 @@ use crate::jit::api::{
 use crate::jit::x86::test::{
     exec_instructions,
     get_reg_slice,
-    get_slice_value,
     set_slice,
     setup,
 };
-use mogi_mem::physical::page::PageData;
+use crate::tlb::PageData;
 use mogi_sleigh::jinst;
 use mogi_sleigh::spec::{
     CustomOpId,
@@ -53,7 +52,7 @@ fn test_store_tlb_hit() {
     ];
     exec_instructions(&mut jit, &mut context, &instructions);
 
-    let actual = u64::from_le_bytes(page.data[0xfa0..0xfa0 + 8].try_into().unwrap());
+    let actual = u64::from_le_bytes(page.data()[0xfa0..0xfa0 + 8].try_into().unwrap());
 
     let expected = value;
     assert_eq!(actual, expected, "Got {:#x} but expected {:#x}. Operands: {:#x}", actual, expected, a);

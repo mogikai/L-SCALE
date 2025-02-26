@@ -7,7 +7,6 @@ use crate::jit::trace_jit;
 use crate::jit::x86::emit::slice_load::CopyExtendMode;
 use crate::jit::x86::registers::{
     GPRegister,
-    RegAlloc,
     RegAllocType,
     RegisterLoadInfo,
 };
@@ -19,7 +18,6 @@ use crate::jit::x86::{
 use dynasmrt::x64::X64Relocation;
 use mogi_sleigh::spec::jir::values::JIRSlice;
 use tracing::{
-    debug,
     trace,
     warn,
 };
@@ -62,7 +60,7 @@ pub(super) enum SpillBehavior {
     Fail,
 }
 
-impl X86MogiJit {
+impl<PageDataT> X86MogiJit<PageDataT> {
     #[must_use]
     pub(super) fn temp_alloc(&mut self) -> GPRegister {
         let load_info = self
@@ -158,7 +156,7 @@ impl X86MogiJit {
         register: GPRegister,
         slice: JIRSlice,
     ) -> JITResult {
-        let varnode_offset = X86TaskContext::varnode_offset(slice);
+        let varnode_offset = X86TaskContext::<PageDataT>::varnode_offset(slice);
         // Emit the instruction that loads the varnode from the specified space in the context.
         match slice.size() {
             1 => {

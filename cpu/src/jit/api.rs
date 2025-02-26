@@ -1,11 +1,10 @@
 use crate::jit::cache::JitCacheError;
 use crate::jit::code_buffer::CodeBufferError;
-use dynasmrt::DynasmError;
-use mogi_mem::physical::page::PageData;
-use mogi_mem::tlb::tlb::{
+use crate::tlb::{
     AccessType,
     TLB,
 };
+use dynasmrt::DynasmError;
 use mogi_sleigh::spec::jir::jcode::JIRInstruction;
 use mogi_sleigh::spec::jir::values::{
     JIRSlice,
@@ -190,6 +189,8 @@ pub trait MogiJit {
 /// The context also owns the [TLB] which the mmu can access to populate entries.
 /// This context is task specific. I.e. each task has its own context.
 pub trait JITTaskRuntimeContext {
+    type PageData;
+
     fn slice(
         &self,
         slice: JIRSlice,
@@ -201,10 +202,10 @@ pub trait JITTaskRuntimeContext {
     ) -> Result<&mut [u8], RuntimeError>;
 
     /// Get a reference to the tlb of this task context
-    fn tlb(&self) -> &TLB;
+    fn tlb(&self) -> &TLB<Self::PageData>;
 
     /// Get a mutable reference to the tlb of this task context.
-    fn tlb_mut(&mut self) -> &mut TLB;
+    fn tlb_mut(&mut self) -> &mut TLB<Self::PageData>;
 
     /// Callbacks may set a runtime error in the context.
     /// This causes the jit to exit as soon as possible,
@@ -245,7 +246,7 @@ where
 
 /// The tlb miss helpers must have a signature that corresponds to this trait.
 pub trait TlbMissHelper<RuntimeContextT>:
-    Fn(&mut RuntimeContextT, EVAddr, usize, SpaceId) -> Result<HVAddr<PageData>, RuntimeError>
+    Fn(&mut RuntimeContextT, EVAddr, usize, SpaceId) -> Result<HVAddr<RuntimeContextT::PageData>, RuntimeError>
 where
     RuntimeContextT: JITTaskRuntimeContext,
 {
@@ -253,7 +254,7 @@ where
 
 impl<T, RuntimeContextT> TlbMissHelper<RuntimeContextT> for T
 where
-    T: Fn(&mut RuntimeContextT, EVAddr, usize, SpaceId) -> Result<HVAddr<PageData>, RuntimeError>,
+    T: Fn(&mut RuntimeContextT, EVAddr, usize, SpaceId) -> Result<HVAddr<RuntimeContextT::PageData>, RuntimeError>,
     RuntimeContextT: JITTaskRuntimeContext,
 {
 }

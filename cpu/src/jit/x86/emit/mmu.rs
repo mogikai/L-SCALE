@@ -11,11 +11,11 @@ use crate::jit::x86::{
     X86MogiJit,
     assemble,
 };
-use mogi_mem::physical::page::PageData;
-use mogi_mem::tlb::entry::TLBEntry;
-use mogi_mem::tlb::tlb::AccessType;
-use mogi_mem::tlb::{
+use crate::tlb::entry::TLBEntry;
+use crate::tlb::{
+    AccessType,
     PageIndex,
+    PageMetaInfo,
     PageTag,
 };
 use mogi_sleigh::spec::SpaceId;
@@ -29,9 +29,11 @@ use mogi_utilities::addresses::{
     HVAddr,
 };
 use std::marker::PhantomData;
-use std::mem::offset_of;
 
-impl X86MogiJit {
+impl<PageDataT> X86MogiJit<PageDataT>
+where
+    PageDataT: PageMetaInfo,
+{
     pub fn emit_load(
         &mut self,
         output: JIRSlice,
@@ -75,10 +77,10 @@ impl X86MogiJit {
 
         let tag_gpr = self.temp_alloc();
         // TODO: Rewrite temp allocation to automatically free the allocated variables when they go out of scope.
-        let tlb_offset = X86TaskContext::tlb_offset(access_type);
-        let tag_offset = tlb_offset + offset_of!(TLBEntry, tag);
-        let target_offset = tlb_offset + offset_of!(TLBEntry, target);
-        let entry_size = size_of::<TLBEntry>();
+        let tlb_offset = X86TaskContext::<PageDataT>::tlb_offset(access_type);
+        let tag_offset = tlb_offset + TLBEntry::<PageDataT>::tag_offset();
+        let target_offset = tlb_offset + TLBEntry::<PageDataT>::target_offset();
+        let entry_size = TLBEntry::<PageDataT>::size();
         // Various assertions that are needed for now until this is made more generic.
         // We currently assume addresses of size 8 bytes, and that a tlb entry has
         // a size that is a power of two.
@@ -108,11 +110,11 @@ impl X86MogiJit {
         }
 
         assemble!(self.block_mut()?.assembler();
-            ; shr Rq(addr_gpr as u8), BYTE EVAddr::<u8>::index_shift_from_start() as _
+            ; shr Rq(addr_gpr as u8), BYTE EVAddr::<u8>::index_shift_from_start::<PageDataT>() as _
             ; mov Rq(tag_gpr as u8), Rq(addr_gpr as u8)
             ; and Rd(addr_gpr as u8), DWORD EVAddr::<u8>::index_mask() as _
             ; shr Rq(tag_gpr as u8), BYTE EVAddr::<u8>::tag_shift_from_index() as _
-            ; and Rq(tag_gpr as u8), EVAddr::<u8>::tag_mask() as _
+            ; and Rq(tag_gpr as u8), EVAddr::<u8>::tag_mask::<PageDataT>() as _
             // addr_gpr now contains the index.
             // look at tlb_offset + index * entry_size
             // index = index * entry_size
@@ -121,7 +123,7 @@ impl X86MogiJit {
             ; cmp Rq(tag_gpr as u8), QWORD [Rq(addr_gpr as u8) + tag_offset as _ + cpu_context]
             ; jne >tlb_miss
             // TLB hit. Extract the page offset from the EVAddr
-            ; and Rd(translated_address_gpr as u8), WORD 0xfff
+            ; and Rd(translated_address_gpr as u8), WORD PageDataT::page_offset_mask() as _
             // Add target onto the page offset
             ; add Rq(translated_address_gpr as u8), QWORD [Rq(addr_gpr as u8) + target_offset as _ + cpu_context]
             // Permissions do not need to be checked, since we have two tlb tables. One for read and one for write.
@@ -171,12 +173,15 @@ impl X86MogiJit {
             // If the translation returns zero, we encountered an error.
             // Jump to the exit code to exit the jit.
             ; jz ->exit_failure
-            //// End of trampoline call sequence
+            //--- End of trampoline call sequence
             // The result of the helper is the host address
             ; mov Rq(translated_address_gpr as u8), rax
             // tlb hit skips to here. Regardless of hit or miss, the address will be in addr_gpr if possible.
             ; success:
         );
+        // We reserve the translated_address_gpr again here, since the flush cleared the reservation.
+        // This does not touch the contents of the register, since it is marked as free.
+        self.reserve_gp_as_temp(translated_address_gpr)?;
         self.temp_free(tag_gpr)
     }
 
@@ -264,14 +269,14 @@ impl X86MogiJit {
     }
 }
 
-type TlbMissTrampoline<ContextT> =
-    unsafe extern "sysv64" fn(&mut ContextT, *mut (), EVAddr, usize, SpaceId) -> Option<HVAddr<PageData>>;
+type TlbMissTrampoline<ContextT, PageDataT> =
+    unsafe extern "sysv64" fn(&mut ContextT, *mut (), EVAddr, usize, SpaceId) -> Option<HVAddr<PageDataT>>;
 
 /// The custom op callback consists of a trampoline function that acts as a transition layer between assembly
 /// and rust code. Usually, the rust compiler will be able to inline the closures into this trampoline.
 /// The callback signature is defined in [CustomOpImpl]. The callback gets the [JITTaskRuntimeContext] and the [CustomOpArgs].
 pub struct TlbMissCallback<ContextT: JITTaskRuntimeContext> {
-    trampoline: TlbMissTrampoline<ContextT>,
+    trampoline: TlbMissTrampoline<ContextT, ContextT::PageData>,
     callback: *mut (),
     phantom_data: PhantomData<ContextT>,
 }
@@ -301,7 +306,7 @@ unsafe extern "sysv64" fn trampoline<CB, ContextT>(
     addr: EVAddr,
     size: usize,
     space_id: SpaceId,
-) -> Option<HVAddr<PageData>>
+) -> Option<HVAddr<ContextT::PageData>>
 where
     CB: TlbMissHelper<ContextT>,
     ContextT: JITTaskRuntimeContext,
