@@ -23,7 +23,7 @@ pub struct TargetInstructionBuilder<'a> {
     /// Labels are local to instructions. We keep track of the mapping in the instruction builder.
     /// Once the instruction is built, there are only references to block ids.
     block_labels: SecondaryMap<LabelId, Option<JIRBlockId>>,
-    start: Option<EVAddr>,
+    start: EVAddr,
     next: EVAddr,
 }
 
@@ -33,19 +33,16 @@ impl<'a> TargetInstructionBuilder<'a> {
         start: EVAddr,
         next: EVAddr,
     ) -> Self {
+        block_builder.start_instruction(start);
         Self {
             block_builder,
             block_labels: Default::default(),
-            start: Some(start),
+            start,
             next,
         }
     }
 
     pub fn start_block(&mut self) -> ProcessorSpecResult<JIRBlockId> {
-        if let Some(start) = self.start.take() {
-            // If this is the first block, we add an instruction start marker.
-            self.block_builder.start_instruction(start)?;
-        }
         self.block_builder.start_block()
     }
 
@@ -94,7 +91,16 @@ impl<'a> TargetInstructionBuilder<'a> {
     }
 
     pub fn finish(self) -> ProcessorSpecResult {
-        self.block_builder.end_instruction(self.next)?;
+        self.block_builder.end_instruction(self.start)?;
+        Ok(())
+    }
+
+    /// The instruction ends with a goto instruction. This necessitates that the instruction is finalized,
+    /// and afterward a new block is created.
+    pub fn finish_goto(mut self) -> ProcessorSpecResult {
+        self.block_builder.end_instruction(self.start)?;
+        self.finish_block()?;
+        self.start_block()?;
         Ok(())
     }
 }

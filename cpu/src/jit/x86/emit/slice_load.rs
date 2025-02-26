@@ -500,7 +500,6 @@ impl<PageDataT> X86MogiJit<PageDataT> {
                     | GPRegister::R9
                     | GPRegister::R10
                     | GPRegister::R11 => {
-                        trace_jit!("Preserve register {register:?} for slice {slice:?}");
                         // preserved by caller.
                         Self::emit_flush_register_to_slice(self.block_mut()?.assembler(), register, *slice)?;
                     }

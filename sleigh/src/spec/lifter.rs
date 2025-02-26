@@ -69,9 +69,11 @@ impl Lifter for ProcessorSpecification {
                 let mut block_builder = TargetBasicBlockBuilder::new(addr, self.temp_space);
                 resolver.print_hierarchy(0);
 
+                block_builder.start_block().unwrap();
                 resolver
                     .build(self, &mut block_builder)
                     .map_err(|_| -> LifterError { todo!() })?;
+                block_builder.finish_block().unwrap();
 
                 let block = block_builder
                     .finish()
@@ -98,7 +100,8 @@ impl Lifter for ProcessorSpecification {
         let now = Instant::now();
         let root_jumplist = self.jumplist_cache.get(0.into()).unwrap();
         let mut block_builder = TargetBasicBlockBuilder::new(addr, self.temp_space);
-
+        // Start with a block. Any intermediate blocks will end this block and create a new one.
+        block_builder.start_block().unwrap();
         loop {
             trace_jir!("Loading instruction bytes at {:?}", addr);
             source
@@ -141,6 +144,9 @@ impl Lifter for ProcessorSpecification {
                 }
             }
         }
+
+        // Close the last open block.
+        block_builder.finish_block().unwrap();
 
         Ok((
             addr,

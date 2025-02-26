@@ -156,6 +156,7 @@ impl<PageDataT> X86MogiJit<PageDataT> {
         register: GPRegister,
         slice: JIRSlice,
     ) -> JITResult {
+        trace_jit!("Flushing slice {slice:?} which is currently loaded in {register:?}");
         let varnode_offset = X86TaskContext::<PageDataT>::varnode_offset(slice);
         // Emit the instruction that loads the varnode from the specified space in the context.
         match slice.size() {

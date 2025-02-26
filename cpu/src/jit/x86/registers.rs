@@ -14,7 +14,11 @@ use num_enum::{
     IntoPrimitive,
     TryFromPrimitive,
 };
-use std::fmt::Debug;
+use std::fmt::{
+    Debug,
+    Display,
+    Formatter,
+};
 use std::marker::PhantomData;
 use std::ops::{
     Index,
@@ -132,6 +136,25 @@ impl Register for XMMRegister {
 pub struct RegisterAllocations<T, const N: usize>([RegAlloc; N], PhantomData<T>)
 where
     T: Register;
+
+impl<T, const N: usize> Display for RegisterAllocations<T, N>
+where
+    T: Register,
+{
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        writeln!(f, "")?;
+        for (i, alloc) in self.0.iter().enumerate() {
+            write!(f, "v{:03}:{:?}", alloc.version, alloc.ty)?;
+            if i < self.0.len() - 1 {
+                write!(f, "\n")?;
+            }
+        }
+        Ok(())
+    }
+}
 
 impl<T, const N: usize> Default for RegisterAllocations<T, N>
 where
@@ -437,15 +460,22 @@ impl RegisterTracker {
         })
     }
 
+    /// Finds a register to spill. The result is a tuple where the first element is the register
+    /// to spill, the second element is the slice that is currently loaded, and the third element
+    /// is a boolean that indicates whether this slot is dirty.
     fn find_register_to_spill(&mut self) -> (GPRegister, JIRSlice, bool) {
         // TODO: Use more sophisticated spilling heuristic. For example, LU + FIFO
+        trace_jit!("Searching for register to spill in allocations: {}", self.gp);
         let mut iter = self.gp.iter_mut();
         let mut write_occupied = None;
         let to_flush = loop {
             match iter.next() {
                 None => break write_occupied,
                 Some((gpr, alloc)) => match &alloc.ty {
-                    RegAllocType::Occupied(slice) if alloc.version < self.version => break Some((gpr, *slice, false)),
+                    RegAllocType::Occupied(slice) if alloc.version < self.version => {
+                        trace_jit!("Found a non-dirty register to spill");
+                        break Some((gpr, *slice, false));
+                    }
                     RegAllocType::OccupiedDirty(slice) if alloc.version < self.version => {
                         write_occupied.get_or_insert((gpr, *slice, true));
                     }

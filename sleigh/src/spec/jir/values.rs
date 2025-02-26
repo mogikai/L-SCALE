@@ -8,6 +8,7 @@ use serde_derive::{
     Serialize,
 };
 use std::fmt::{
+    Debug,
     Display,
     Formatter,
 };
@@ -25,7 +26,7 @@ impl JIRVarNode {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct JIRSlice {
     /// The varnode that is associated with this slice. The slice may refer to only a part of the varnode.
     pub varnode_id: JIRVarNodeId,
@@ -35,6 +36,15 @@ pub struct JIRSlice {
     pub offset: JIRSize,
     /// The size of the slice in bytes.
     pub size: JIRSize,
+}
+
+impl Debug for JIRSlice {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "{}::<{}>[{:#x}..{:#x}]", self.varnode_id, self.space_id, self.offset, self.end())
+    }
 }
 
 impl PartialEq<JIRValue> for JIRSlice {

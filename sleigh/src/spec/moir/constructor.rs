@@ -119,20 +119,32 @@ impl MOIRConstructor {
                 .expect("There must be an inst_next set"),
         );
         resolver.realize_temporaries(&mut target_inst)?;
-        for block in self.instructions.chunk_by(|inst, next_inst| {
-            !matches!(inst.operation.op_category(), MOIROpCategory::Branch(_)) && next_inst.label.is_none()
-        }) {
-            if let Some(label) = block.first().expect("Blocks must not be empty").label {
-                target_inst.start_labeled_block(label)?
-            } else {
-                target_inst.start_block()?
-            };
-            for inst in block {
-                self.generate_instruction(spec, &mut resolver, &mut target_inst, inst)?;
+        let mut iter = self.instructions.iter().peekable();
+        loop {
+            match iter.next() {
+                Some(inst) => {
+                    if let Some(label) = inst.label {
+                        // This constitutes a block end, and a block start.
+                        // The previous block simply falls through to the next block.
+                        target_inst.finish_block()?;
+                        target_inst.start_labeled_block(label)?;
+                    }
+                    self.generate_instruction(spec, &mut resolver, &mut target_inst, inst)?;
+                    if matches!(inst.operation.op_category(), MOIROpCategory::Branch(_)) {
+                        if iter.peek().is_none() {
+                            // If the instructions ends with a goto, we first have to end the instruction, and
+                            // then the block.
+                            break target_inst.finish_goto();
+                        } else {
+                            // A branch constitutes a block end, and also marks the beginning of the next block
+                            target_inst.finish_block()?;
+                            target_inst.start_block()?;
+                        }
+                    }
+                }
+                None => break target_inst.finish(),
             }
-            target_inst.finish_block()?;
         }
-        target_inst.finish()
     }
 
     /// Transform the MOIR code template in the constructor into JCode, but as a subtable.

@@ -88,11 +88,10 @@ impl TargetBasicBlockBuilder {
     pub fn start_instruction(
         &mut self,
         address: EVAddr,
-    ) -> ProcessorSpecResult {
+    ) {
         self.target_block
             .jir_instructions
             .push(JIRInstruction::instruction_start(address));
-        Ok(())
     }
 
     pub fn end_instruction(
