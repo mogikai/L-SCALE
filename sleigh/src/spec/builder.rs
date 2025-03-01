@@ -77,6 +77,9 @@ use mogi_utilities::index_map::PrimaryMap;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::fs::{File, OpenOptions};
+use std::io::{BufWriter, Write};
+use std::path::{Path, PathBuf};
 use strum_macros::Display;
 use tracing::debug;
 
@@ -847,6 +850,17 @@ impl ProcessorSpecificationBuilder {
         Self::default()
     }
 
+    fn dump_symbols_to_file(&self, path: &Path) {
+        let file = OpenOptions::new().write(true).create(true).open(path).expect("Couldn't open file");
+        let mut writer = BufWriter::new(file);
+
+        for (ident, symbol_id) in self.symbol_ids.iter() {
+            let string_id = self.symbol_strings.get(&ident).expect("Ident not assigned to string id");
+            let string = self.interner.string(string_id.into_value()).expect("String id not assigned to string");
+            write!(writer, "{:?} <=> {}\n", symbol_id, string).unwrap();
+        }
+    }
+
     pub fn build(self) -> InternalCompilerResult<ProcessorSpecification> {
         debug!("Finalizing spec:");
         debug!("Found {} symbols", self.symbol_ids.len());
@@ -858,6 +872,8 @@ impl ProcessorSpecificationBuilder {
         debug!("Found {} spaces", self.symbol_tables.spaces.len());
         debug!("Found {} global varnodes", self.symbol_tables.varnodes.len());
         debug!("Found {} custom operations", self.symbol_tables.custom_ops.len());
+
+        self.dump_symbols_to_file(&PathBuf::from("symbol_strings.txt"));
 
         let root_table = self.table_id_by_ident(&self.root_table)?;
         let context = MOIRToJIRTransformer::new(

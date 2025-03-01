@@ -1,5 +1,4 @@
 use std::collections::{
-    BTreeMap,
     BTreeSet,
     HashSet,
 };
@@ -9,9 +8,8 @@ use crate::compiler::build::constructor::matcher::{
     Matcher,
     MatcherAtom,
     MatcherReference,
-    TokenList,
+    MatcherToken,
 };
-use crate::compiler::build::trace_build;
 use crate::compiler::error::InternalError;
 use crate::compiler::{
     InternalCompilerResult,
@@ -37,7 +35,10 @@ use mogi_sleigh_parser::ast::constructor::bit_pattern_section::{
 };
 use num::PrimInt;
 
-use super::matcher::Submatchers;
+use super::matcher::{
+    MatcherConjunction,
+    Submatchers,
+};
 
 impl SleighCompiler {
     /// Create a [Matcher] from a [SASTBitPatternConstraint]. Multiple matchers might be created
@@ -104,16 +105,10 @@ impl SleighCompiler {
                 // all table references start as unconstrained and are only constrained
                 // as needed
                 let atom = MatcherAtom::Submatchers(Submatchers::new(*tid, None));
-                let conjunctions = vec![BTreeSet::from([atom])];
+                let token = MatcherToken::new(None);
+                let conjunction = MatcherConjunction::new(BTreeSet::from([atom]), token);
                 let references = HashSet::from([MatcherReference::Subtable(*tid)]);
-                let token_list = TokenList::new(vec![None], true, false);
-                vec![Matcher::new(
-                    conjunctions,
-                    token_list,
-                    references,
-                    table_id,
-                    constructor_id,
-                )]
+                vec![Matcher::new(vec![conjunction], references, table_id, constructor_id)]
             }
             MOIRSymbolId::Field(fid) => {
                 // create a wildcard field matcher to extract value later on
@@ -127,11 +122,11 @@ impl SleighCompiler {
                     field_id: *fid,
                     matcher: field_matcher,
                 };
-                let tokens = TokenList::new(vec![Some(field.parent)], false, false);
+                let token = MatcherToken::new(Some(field.parent));
+                let conjunction = MatcherConjunction::new(BTreeSet::from([atom]), token);
 
                 vec![Matcher::new(
-                    vec![BTreeSet::from([atom])],
-                    tokens,
+                    vec![conjunction],
                     HashSet::from([MatcherReference::Field(*fid)]),
                     table_id,
                     constructor_id,
@@ -139,17 +134,10 @@ impl SleighCompiler {
             }
             MOIRSymbolId::VarNode(vnid) => {
                 // include in references
-                let conjunctions = Vec::new();
-                let token_list = TokenList::new(Vec::new(), false, false);
                 let references = HashSet::from([MatcherReference::Varnode(*vnid)]);
+                let conjunction = MatcherConjunction::default();
 
-                vec![Matcher::new(
-                    conjunctions,
-                    token_list,
-                    references,
-                    table_id,
-                    constructor_id,
-                )]
+                vec![Matcher::new(vec![conjunction], references, table_id, constructor_id)]
             }
             _ => todo!("Generate error report for invalid symbol type"),
         };
@@ -178,45 +166,34 @@ impl SleighCompiler {
                 // combining them has to be done as a Cartesian product
                 for matcher_lhs in &matchers_lhs {
                     for matcher_rhs in &matchers_rhs {
-                        // Special case: one of the matchers is empty (this can happen
-                        // if the bit pattern contains only `epsilon`). In this case,
-                        // we'll just use the other matcher as-is
-
-                        // We first extract everything context-related into an extra matcher that
-                        // will be merged at the end. This is necessary since the Sleigh writers
-                        // decided to use & and not ; to separate context from regular tokens.
+                        // We first extract context conjunctions that will be merged at the end.
+                        // This is necessary since the Sleigh writers decided to use & and not ; to
+                        // separate context from regular tokens.
                         let mut matcher_lhs_nc = matcher_lhs.clone();
                         let mut matcher_rhs_nc = matcher_rhs.clone();
-                        let context_matcher = extract_context(&mut matcher_lhs_nc, Some(&mut matcher_rhs_nc));
+                        let mut context_conjunctions = extract_context(&mut matcher_lhs_nc, Some(&mut matcher_rhs_nc));
 
                         // Make sure tokens are the same (since lhs and rhs can be inconsistent in
                         // case a subtable with multiple constructors was used). If this is the
                         // case the resulting matcher can be discarded.
-                        if let Some(merged_tokens) =
-                            merge_token_lists(&matcher_lhs_nc.token_list, &matcher_rhs_nc.token_list)
+                        if let Some(merged_conjunctions) =
+                            merge_conjunctions(true, &matcher_lhs_nc.conjunctions, &matcher_rhs_nc.conjunctions)
                         {
-                            let mut merged_conjunctions =
-                                merge_conjunctions(&matcher_lhs_nc.conjunctions, &matcher_rhs_nc.conjunctions);
+                            let mut merged_conjunctions = merged_conjunctions
+                                .into_iter()
+                                .map(|(mut lhs, mut rhs)| {
+                                    lhs.atoms.append(&mut rhs.atoms);
+                                    lhs.token.parent = lhs.token.parent.or(rhs.token.parent);
+                                    lhs
+                                })
+                                .collect_vec();
 
-                            // constrain submatchers (technically necessary but idk)
-                            // self.constrain_submatchers(&mut merged_conjunctions, &merged_tokens.list);
-
-                            let mut token_list = context_matcher.token_list;
-                            token_list.list.extend(merged_tokens.list);
-
-                            let mut conjunctions = context_matcher.conjunctions;
-                            conjunctions.append(&mut merged_conjunctions);
+                            context_conjunctions.append(&mut merged_conjunctions);
 
                             let mut references = matcher_lhs.references.clone();
                             references.extend(matcher_rhs.references.clone().into_iter());
 
-                            new_matchers.push(Matcher::new(
-                                conjunctions,
-                                token_list,
-                                references,
-                                table_id,
-                                constructor_id,
-                            ));
+                            new_matchers.push(Matcher::new(context_conjunctions, references, table_id, constructor_id));
                         }
                     }
                 }
@@ -224,52 +201,8 @@ impl SleighCompiler {
                 new_matchers
             }
             SASTBinaryOp::Or => {
-                // TODO is this correct? what do we need to check here?
-                // make sure tokens are the same (since lhs and rhs are consistent themselves *in
-                // the Or case*, it's enough to check the first elements) taking left/right
-                // justification into account
-
-                // We only extract the context to make sure tokens match; the conjunctions as well
-                // as symbols used stay the same.
-                let mut matcher_lhs_nc = matchers_lhs
-                    .first()
-                    .expect("A matcher has to exist on successful return")
-                    .clone();
-                let mut matcher_rhs_nc = matchers_rhs
-                    .first()
-                    .expect("A matcher has to exist on successful return")
-                    .clone();
-                let context_lhs = extract_context(&mut matcher_lhs_nc, None);
-                let context_rhs = extract_context(&mut matcher_rhs_nc, None);
-
-                let merged_tokens = match merge_token_lists(&matcher_lhs_nc.token_list, &matcher_rhs_nc.token_list) {
-                    Some(merged_tokens) => merged_tokens,
-                    // not compatible => abort
-                    None => return Ok(vec![]),
-                };
-
-                // Add missing conjunction/symbol lists in case the resulting token list is
-                // longer than the original list. This is not necessary for the other cases
-                // since everything is merged into one which we do not do here.
-                matchers_lhs.iter_mut().for_each(|matcher| {
-                    let mut token_list = context_lhs.token_list.clone();
-                    token_list.list.extend(merged_tokens.list.iter());
-                    for _ in matcher.token_list.list.len()..token_list.list.len() {
-                        matcher.conjunctions.push(BTreeSet::new());
-                    }
-                    matcher.token_list = token_list;
-                });
-
-                matchers_rhs.iter_mut().for_each(|matcher| {
-                    let mut token_list = context_rhs.token_list.clone();
-                    token_list.list.extend(merged_tokens.list.iter());
-                    for _ in matcher.token_list.list.len()..token_list.list.len() {
-                        matcher.conjunctions.push(BTreeSet::new());
-                    }
-                    matcher.token_list = token_list;
-                });
-
-                // combining them is done by union
+                // TODO this is not correct since the Or operator can force the
+                // token list to change, but what do we need to check exactly?
                 matchers_lhs.append(&mut matchers_rhs);
                 matchers_lhs
             }
@@ -284,21 +217,18 @@ impl SleighCompiler {
                     for matcher_rhs in &matchers_rhs {
                         let mut matcher_lhs_nc = matcher_lhs.clone();
                         let mut matcher_rhs_nc = matcher_rhs.clone();
-                        let context_matcher = extract_context(&mut matcher_lhs_nc, Some(&mut matcher_rhs_nc));
+                        let context_conjunctions = extract_context(&mut matcher_lhs_nc, Some(&mut matcher_rhs_nc));
 
-                        let mut conjunctions = context_matcher.conjunctions.clone();
-                        conjunctions.append(&mut matcher_lhs_nc.conjunctions.clone());
-                        conjunctions.append(&mut matcher_rhs_nc.conjunctions.clone());
-
-                        let mut token_list = context_matcher.token_list.clone();
-                        token_list.list.extend(matcher_lhs_nc.token_list.list);
-                        token_list.list.extend(matcher_rhs_nc.token_list.list);
-                        token_list.remove_padding();
+                        // let concretized_lhs_nc = self.concretize_matcher(&matcher_lhs_nc.conjunctions);
 
                         let mut references = matcher_lhs.references.clone();
                         references.extend(matcher_rhs.references.clone().into_iter());
 
-                        new_matchers.push(Matcher::new(conjunctions, token_list, references, table_id, constructor_id));
+                        let mut conjunctions = context_conjunctions.clone();
+                        conjunctions.append(&mut matcher_lhs_nc.conjunctions);
+                        conjunctions.append(&mut matcher_rhs_nc.conjunctions);
+
+                        new_matchers.push(Matcher::new(conjunctions, references.clone(), table_id, constructor_id));
                     }
                 }
 
@@ -318,16 +248,20 @@ impl SleighCompiler {
     ) -> InternalCompilerResult<Vec<Matcher>> {
         let mut matchers = self.create_matchers_recursive(operand, table_id, constructor_id)?;
 
-        // append/prepend undetermined token to each matcher
+        // append/prepend None token to each matcher
         match op.into_value() {
             SASTUnaryOp::JustifyLeft => {
                 for matcher in matchers.iter_mut() {
-                    matcher.token_list.justify_left = true;
+                    matcher
+                        .conjunctions
+                        .push(MatcherConjunction::new(BTreeSet::default(), MatcherToken::new(None)));
                 }
             }
             SASTUnaryOp::JustifyRight => {
                 for matcher in matchers.iter_mut() {
-                    matcher.token_list.justify_right = true;
+                    matcher
+                        .conjunctions
+                        .insert(0, MatcherConjunction::new(BTreeSet::default(), MatcherToken::new(None)));
                 }
             }
         }
@@ -351,17 +285,10 @@ impl SleighCompiler {
         let (conjunctions, references) =
             self.matcher_conjunctions_from_advanced_constraint(lhs_field_id, op.into_value(), pattern.into_value())?;
 
-        let lhs_field = self
-            .spec_builder
-            .field_by_symbol_id(lhs_field_id)
-            .ok_or_else(|| -> InternalError { todo!("Generate error report for missing field") })?;
-
-        let token_list = TokenList::new(vec![Some(lhs_field.parent)], false, false);
-
         // one matcher per conjunction returned
         Ok(conjunctions
             .into_iter()
-            .map(|c| Matcher::new(vec![c], token_list.clone(), references.clone(), table_id, constructor_id))
+            .map(|c| Matcher::new(vec![c], references.clone(), table_id, constructor_id))
             .collect::<Vec<_>>())
     }
 
@@ -374,16 +301,18 @@ impl SleighCompiler {
         field_id: FieldId,
         op: SASTConstraintOp,
         pattern: SASTConstraintPattern,
-    ) -> InternalCompilerResult<(Vec<BTreeSet<MatcherAtom>>, HashSet<MatcherReference>)> {
+    ) -> InternalCompilerResult<(Vec<MatcherConjunction>, HashSet<MatcherReference>)> {
         let field = self
             .spec_builder
             .field_by_symbol_id(field_id)
             .ok_or_else(|| -> InternalError { todo!("Generate error report for symbol undeclared") })?;
 
+        let token = MatcherToken::new(Some(field.parent));
+
         let mut references = HashSet::new();
         references.insert(MatcherReference::Field(field_id));
 
-        let conjunctions = match pattern {
+        let atoms = match pattern {
             SASTConstraintPattern::Ident(ident) => {
                 let other_id = self.spec_builder.field_id_by_ident(&ident.transmute())?;
                 references.insert(MatcherReference::Field(other_id));
@@ -428,6 +357,11 @@ impl SleighCompiler {
                 }
             },
         };
+
+        let conjunctions = atoms
+            .into_iter()
+            .map(|atoms| MatcherConjunction::new(atoms, token.clone()))
+            .collect_vec();
 
         Ok((conjunctions, references))
     }
@@ -619,6 +553,91 @@ impl SleighCompiler {
     ) {
         todo!("Constrain submatchers")
     }
+
+    /// Find all possible token lists of `matcher` that are compatible with `root_constraint`.
+    fn concretize_matcher(
+        &self,
+        matcher: &[MatcherConjunction],
+    ) -> Vec<Vec<MatcherConjunction>> {
+        todo!("");
+
+        // // start with matcher
+        // let mut result = vec![matcher.to_vec()];
+
+        // // root_constraint = t0; None; t2; None
+
+        // // t0; None; t2; None
+
+        // // t0; imm16; t2; None
+        // // t0; imm32; t2; None
+
+        // // t0; modrm; t2; byte
+        // // t0; modrm; t2; sib
+
+        // for token_start in 0..matcher.len() {
+        //     // new values are added each iteration
+
+        //     let mut new_results = Vec::new();
+        //     for result_i in 0..result.len() {
+        //         // start off from previous results
+        //         let prev_result = &result[result_i];
+        //         let slice = &prev_result[token_start..];
+        //         let start = slice.first().expect("There must be at least one");
+
+        //         // we need to concretize every submatcher because if we encounter a None token it might
+        //         // be already too late since submatchers from earlier can constrain it
+        //         for atom in &start.atoms {
+        //             if let MatcherAtom::Submatchers(submatchers) = atom {
+        //                 let table = self
+        //                     .spec_builder
+        //                     .table_by_symbol_id(submatchers.table)
+        //                     .expect("Invalid table reference");
+        //                 let matchers = match &submatchers.matchers {
+        //                     Some(matcher_ids) => matcher_ids
+        //                         .iter()
+        //                         .map(|matcher_id| {
+        //                             table
+        //                                 .matchers
+        //                                 .get(*matcher_id)
+        //                                 .expect("Invalid matcher reference")
+        //                         })
+        //                         .collect_vec(),
+        //                     None => table.matchers.values().collect_vec(),
+        //                 };
+
+        //                 // pre-filter matchers by merging them with the root constraint
+        //                 // (this needs to be done again after concretization)
+        //                 let filtered_matchers = matchers.into_iter().filter_map(|matcher| {
+        //                     match merge_conjunctions(&matcher.conjunctions, slice) {
+        //                         Some(merged) => {
+        //                             let (merged_matcher, _): (Vec<MatcherConjunction>, Vec<MatcherConjunction>) =
+        //                                 merged.into_iter().unzip();
+        //                             Some(merged_matcher)
+        //                         }
+        //                         _ => None,
+        //                     }
+        //                 });
+
+        //                 // recursively concretize filtered matchers
+        //                 let mut concretized_submatchers = filtered_matchers
+        //                     .map(|matcher| {
+        //                         // concretization is recursive
+        //                         self.concretize_matcher(&matcher)
+        //                     })
+        //                     .flatten()
+        //                     .collect_vec();
+
+        //                 // add to result
+        //                 new_results.append(&mut concretized_submatchers);
+        //             }
+        //         }
+        //     }
+
+        //     result = new_results;
+        // }
+
+        // result
+    }
 }
 
 /// Combine two tokens in the following manner:
@@ -626,262 +645,187 @@ impl SleighCompiler {
 /// - if both are Some, return Some(Some()) if they are the same
 /// - if both are Some but are not the same, return None
 fn combine_tokens(
-    left: Option<MOIRFieldParent>,
-    right: Option<MOIRFieldParent>,
-) -> Option<Option<MOIRFieldParent>> {
-    match left {
-        Some(l) => match right {
+    left: &MatcherToken,
+    right: &MatcherToken,
+) -> Option<MatcherToken> {
+    match left.parent {
+        Some(l) => match right.parent {
             Some(r) => {
                 if l == r {
                     // Some(left) and Some(right) and left == right => Some(left)
-                    Some(Some(l))
+                    Some(MatcherToken::new(Some(l)))
                 } else {
                     // Some(left) and Some(right) and left != right => None
                     None
                 }
             }
             // Some(left) and None(right) => Some(left)
-            None => Some(Some(l)),
+            None => Some(MatcherToken::new(Some(l))),
         },
         // None(left) => Some(right)
-        None => Some(right),
+        None => Some(MatcherToken::new(right.parent)),
     }
 }
 
-/// Merge two token lists by checking whether they are compatible with one another, i.e. if they
-/// are equal taking potential left/right justification for different lengths into account, and
-/// by filling potential None tokens. Two lists are always compatible if one of them is empty.
-/// The resulting list is guaranteed to not contain any None tokens.
+// C0; C1; T0; T1
+// C1; T0; T1
+//
+// No; No; T0; T1
+// No; T0; T1
+
+/// Merge two conjunctions by checking whether they are compatible with one another, i.e. if they
+/// are equal taking potential left/right justification for different lengths into account, and by
+/// filling potential None tokens. Two lists are always compatible if one of them is empty. Return
+/// a list of conjunction pairs with identical tokens but different atoms from lhs and rhs respectively.
 ///
-/// # Return
-/// - Some(list) if the lists are compatible with `list` being the more specific (i.e. longer) one
-/// - None if the lists are not compatible
-pub(crate) fn merge_token_lists(
-    lhs: &TokenList,
-    rhs: &TokenList,
-) -> Option<TokenList> {
-    // only one can be justified either left or right or both
-    debug_assert!(!(lhs.justify_left && lhs.justify_right));
-    debug_assert!(!(rhs.justify_left && rhs.justify_right));
-    // debug_assert!(!(lhs.justify_left && rhs.justify_left));
-    // debug_assert!(!(rhs.justify_right && lhs.justify_right));
-
-    // return if empty or just None (this is a special case, the more general one
-    // is not yet implemented)
-    if lhs.list.is_empty() || lhs.list.len() == 1 && lhs.list[0] == None {
-        return Some(rhs.clone());
-    } else if rhs.list.is_empty() || rhs.list.len() == 1 && rhs.list[0] == None {
-        return Some(lhs.clone());
-    }
-
-    // - if both are non-justified, the order doesn't matter
-    // - if one is justified but the other is not, list_0 equals the justified one
-    // - if both are justified, list_0 equals the longer one
-
-    let left_justified = lhs.justify_left || lhs.justify_right;
-    let right_justified = rhs.justify_left || rhs.justify_right;
-
-    let (list_0, list_1) = if left_justified && right_justified {
-        // both are justified
-        if lhs.list.len() > rhs.list.len() {
-            // both are justified, but left is longer
-            (lhs, rhs)
-        } else {
-            // both are justified, but right is longer
-            (rhs, lhs)
-        }
-    } else if left_justified {
-        // left is justified
-        (lhs, rhs)
-    } else {
-        // right may or may not be justified
-        (rhs, lhs)
-    };
-
-    let mut result_list = Vec::new();
-
-    if list_0.justify_left {
-        // left-justified => find common prefix while combining None tokens
-        for i in 0..list_0.list.len().max(list_1.list.len()) {
-            let token_lhs = list_0
-                .list
-                .get(i)
-                .map(|inner| inner.as_ref().copied())
-                .flatten();
-            let token_rhs = list_1
-                .list
-                .get(i)
-                .map(|inner| inner.as_ref().copied())
-                .flatten();
-            match combine_tokens(token_lhs, token_rhs) {
-                Some(token) => result_list.push(token),
-                None => return None,
-            }
-        }
-    } else if list_0.justify_right {
-        // right-justified => find common suffix while combining None tokens
-        for i in 0..list_0.list.len().max(list_1.list.len()) {
-            let token_lhs = list_0
-                .list
-                .get(lhs.list.len() - i - 1)
-                .map(|inner| inner.as_ref().copied())
-                .flatten();
-            let token_rhs = list_1
-                .list
-                .get(rhs.list.len() - i - 1)
-                .map(|inner| inner.as_ref().copied())
-                .flatten();
-            match combine_tokens(token_lhs, token_rhs) {
-                Some(token) => result_list.push(token),
-                None => return None,
-            }
-        }
-
-        result_list.reverse();
-    } else {
-        // nothing is justified => lists must be the same
-        if list_0.list.len() != list_1.list.len() {
-            return None;
-        }
-
-        for (&token_lhs, &token_rhs) in list_0.list.iter().zip(list_1.list.iter()) {
-            match combine_tokens(token_lhs, token_rhs) {
-                Some(token) => result_list.push(token),
-                None => return None,
-            }
-        }
-    }
-
-    Some(TokenList::new(result_list, false, false))
-}
-
-/// Removes all [MOIRFieldParent::Context] tokens as well as token fields from `lhs` and `rhs` and
-/// returns them in a new list with duplicates removed. This is a helper function which assumes the
-/// resulting matchers are merged again some time later so references are not set, yielding
-/// inconsistent matchers.
-fn extract_context(
-    lhs: &mut Matcher,
-    rhs_maybe: Option<&mut Matcher>,
-) -> Matcher {
-    let context_lhs = lhs
-        .token_list
-        .list
-        .iter()
-        .zip(lhs.conjunctions.iter())
-        .filter_map(|(token, conjunction)| {
-            token.and_then(|token| match token {
-                MOIRFieldParent::Context(_) => Some((Some(token.clone()), conjunction.clone())),
-                MOIRFieldParent::Token(_) => None,
-            })
-        });
-
-    let mut context_rhs = if let Some(ref rhs) = rhs_maybe {
-        rhs.token_list
-            .list
-            .iter()
-            .zip(rhs.conjunctions.iter())
-            .filter_map(|(token, conjunction)| {
-                token.and_then(|token| match token {
-                    MOIRFieldParent::Context(_) => Some((Some(token.clone()), conjunction.clone())),
-                    MOIRFieldParent::Token(_) => None,
-                })
-            })
-            .collect::<Vec<_>>()
-    } else {
-        Vec::new()
-    };
-
-    // merge context_lhs into context_rhs and create context matcher
-    'next: for (token, conjunctions) in context_lhs {
-        for (token_rhs, conjunctions_rhs) in context_rhs.iter_mut() {
-            if token == *token_rhs {
-                conjunctions_rhs.extend(conjunctions);
-                break 'next;
-            }
-        }
-
-        context_rhs.push((token.clone(), conjunctions.clone()));
-    }
-
-    let (context_tokens, context_conjunctions): (Vec<_>, Vec<_>) = context_rhs.into_iter().unzip();
-    let context_matcher = Matcher::new(
-        context_conjunctions,
-        TokenList::new(context_tokens, false, false),
-        HashSet::new(),
-        lhs.table_id,
-        lhs.constructor_id,
-    );
-
-    let lhs_new = lhs
-        .token_list
-        .list
-        .iter()
-        .zip(lhs.conjunctions.iter())
-        .filter_map(|(token, conjunction)| {
-            if matches!(token, Some(MOIRFieldParent::Context(_))) {
-                None
-            } else {
-                Some((token.clone(), conjunction.clone()))
-            }
-        });
-
-    let (lhs_tokens, lhs_conjunctions): (Vec<_>, Vec<_>) = lhs_new.into_iter().unzip();
-    *lhs = Matcher::new(
-        lhs_conjunctions,
-        TokenList {
-            list: lhs_tokens,
-            ..lhs.token_list
-        },
-        HashSet::new(),
-        lhs.table_id,
-        lhs.constructor_id,
-    );
-
-    if let Some(rhs) = rhs_maybe {
-        let rhs_new = rhs
-            .token_list
-            .list
-            .iter()
-            .zip(rhs.conjunctions.iter())
-            .filter_map(|(token, conjunction)| {
-                if matches!(token, Some(MOIRFieldParent::Context(_))) {
-                    None
-                } else {
-                    Some((token.clone(), conjunction.clone()))
-                }
-            });
-
-        let (rhs_tokens, rhs_conjunctions): (Vec<_>, Vec<_>) = rhs_new.into_iter().unzip();
-        *rhs = Matcher::new(
-            rhs_conjunctions,
-            TokenList {
-                list: rhs_tokens,
-                ..rhs.token_list
-            },
-            HashSet::new(),
-            rhs.table_id,
-            rhs.constructor_id,
+/// If `accept_empty` is set to true, an empty list will lead to the other being returned.
+pub(crate) fn merge_conjunctions(
+    accept_empty: bool,
+    lhs: &[MatcherConjunction],
+    rhs: &[MatcherConjunction],
+) -> Option<Vec<(MatcherConjunction, MatcherConjunction)>> {
+    // base case: both are empty
+    if lhs.is_empty() && rhs.is_empty() {
+        return Some(vec![]);
+    } else if lhs.is_empty() && accept_empty {
+        return Some(
+            rhs.iter()
+                .map(|c| (MatcherConjunction::default(), c.clone()))
+                .collect(),
+        );
+    } else if rhs.is_empty() && accept_empty {
+        return Some(
+            lhs.iter()
+                .map(|c| (c.clone(), MatcherConjunction::default()))
+                .collect(),
         );
     }
 
-    context_matcher
-}
+    let parent_lhs = lhs.first()?.token.parent;
+    let parent_rhs = rhs.first()?.token.parent;
 
-/// Merge two conjunction lists by combining conjunctions at identical positions through appending and extending
-/// the smaller list with elements from the larger one.
-fn merge_conjunctions(
-    lhs: &Vec<BTreeSet<MatcherAtom>>,
-    rhs: &Vec<BTreeSet<MatcherAtom>>,
-) -> Vec<BTreeSet<MatcherAtom>> {
-    let mut conjunctions_combined = lhs.clone();
+    if parent_lhs.is_some_and(|token_lhs| parent_rhs.is_some_and(|token_rhs| token_lhs == token_rhs)) {
+        // both are some and equal => merge conjunctions and recurse
+        let mut result_list = vec![(lhs[0].clone(), rhs[0].clone())];
 
-    for (i, conjunctions_rhs) in rhs.iter().enumerate() {
-        if let Some(conjunctions) = conjunctions_combined.get_mut(i) {
-            conjunctions.extend(conjunctions_rhs.clone());
-        } else {
-            conjunctions_combined.push(conjunctions_rhs.clone());
+        match merge_conjunctions(false, &lhs[1..], &rhs[1..]) {
+            Some(mut recurse_list) => {
+                // got merge
+                result_list.append(&mut recurse_list);
+                return Some(result_list);
+            }
+            None => return None,
+        }
+    } else if parent_lhs.is_none() {
+        // token_lhs is None => try to absorb 0 to rhs.len() tokens from rhs and recurse with that
+        // .*;     t1; t2
+        // t3; t0; t1; t2
+        for num_absorp in 0..=rhs.len() {
+            let lhs_list = rhs[0..num_absorp]
+                .iter()
+                .enumerate()
+                .map(|(i, rhs_conjunction)| {
+                    let atoms = if i == 0 {
+                        // first => use atoms from lhs conjunction
+                        lhs[0].atoms.clone()
+                    } else {
+                        // not first => new empty list
+                        BTreeSet::default()
+                    };
+                    MatcherConjunction::new(atoms, rhs_conjunction.token.clone())
+                })
+                .collect_vec();
+            let rhs_list = rhs[0..num_absorp].to_vec();
+            let mut result_list = lhs_list.into_iter().zip(rhs_list.into_iter()).collect_vec();
+
+            match merge_conjunctions(false, &lhs[1..], &rhs[num_absorp..]) {
+                Some(mut recurse_list) => {
+                    // got merge
+                    result_list.append(&mut recurse_list);
+                    return Some(result_list);
+                }
+                None => continue,
+            }
+        }
+    } else if parent_rhs.is_none() {
+        // token_rhs is None => try to absorb 0 to lhs.len() tokens from lhs and recurse with that
+        // t3; t0; t1; t2
+        // .*;     t1; t2
+        for num_absorp in 0..=lhs.len() {
+            let lhs_list = lhs[0..num_absorp].to_vec();
+            let rhs_list = lhs[0..num_absorp]
+                .iter()
+                .enumerate()
+                .map(|(i, lhs_conjunction)| {
+                    let atoms = if i == 0 {
+                        // first => use atoms from rhs conjunction
+                        rhs[0].atoms.clone()
+                    } else {
+                        // not first => new empty list
+                        BTreeSet::default()
+                    };
+                    MatcherConjunction::new(atoms, lhs_conjunction.token.clone())
+                })
+                .collect_vec();
+            let mut result_list = lhs_list.into_iter().zip(rhs_list.into_iter()).collect_vec();
+
+            match merge_conjunctions(false, &lhs[num_absorp..], &rhs[1..]) {
+                Some(mut recurse_list) => {
+                    // got merge
+                    result_list.append(&mut recurse_list);
+                    return Some(result_list);
+                }
+                None => continue,
+            }
         }
     }
 
-    conjunctions_combined
+    // no match
+    None
+}
+
+/// Removes all [MOIRFieldParent::Context] tokens as well as token fields from `lhs` and `rhs` and
+/// returns them in a new list with duplicates removed.
+fn extract_context(
+    lhs: &mut Matcher,
+    rhs_maybe: Option<&mut Matcher>,
+) -> Vec<MatcherConjunction> {
+    // extract lhs context
+    let mut lhs_context = lhs
+        .conjunctions
+        .iter()
+        .filter(|conjunction| matches!(conjunction.token.parent, Some(MOIRFieldParent::Context(_))))
+        .cloned()
+        .collect_vec();
+
+    lhs.conjunctions
+        .retain(|conjunction| !matches!(conjunction.token.parent, Some(MOIRFieldParent::Context(_))));
+
+    // extract rhs context and combine with lhs context (if applicable)
+    if let Some(rhs) = rhs_maybe {
+        // extract lhs context
+        let rhs_context = rhs
+            .conjunctions
+            .iter()
+            .filter(|conjunction| matches!(conjunction.token.parent, Some(MOIRFieldParent::Context(_))))
+            .cloned()
+            .collect_vec();
+
+        rhs.conjunctions
+            .retain(|conjunction| !matches!(conjunction.token.parent, Some(MOIRFieldParent::Context(_))));
+
+        // merge context rhs into context lhs
+        'next: for mut rhs_conjunction in rhs_context.into_iter() {
+            for lhs_conjunction in lhs_context.iter_mut() {
+                if rhs_conjunction.token.parent == lhs_conjunction.token.parent {
+                    lhs_conjunction.atoms.append(&mut rhs_conjunction.atoms);
+                    continue 'next;
+                }
+            }
+
+            lhs_context.push(rhs_conjunction);
+        }
+    }
+
+    lhs_context
 }

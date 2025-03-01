@@ -67,7 +67,7 @@ impl From<JIRValue> for JIRResolvedValue {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct JIRResolver<'a> {
     constructor: &'a MOIRConstructor,
     values: SecondaryMap<MOIRLocalId, Option<JIRValue>>,
@@ -400,13 +400,22 @@ impl<'a> JIRResolver<'a> {
 
                         JIRResolvedValue::Value(JIRValue::Slice(slice))
                     } else if !field.values.is_empty() {
-                        todo!("values");
+                        let attached_value = *field
+                            .values
+                            .get(usize::try_from(field_value).unwrap())
+                            .ok_or_else(|| -> ProcessorSpecificationError {
+                                todo!("Generate error report for out of bounds attached field")
+                            })?;
+                        JIRResolvedValue::Value(JIRValue::Const(JIRConst::new(
+                            attached_value.into(),
+                            field.bits.bits(),
+                        )))
                     } else if !field.strings.is_empty() {
                         todo!("display");
                     } else {
                         JIRResolvedValue::Value(JIRValue::Const(JIRConst::new(
                             field_value,
-                            field.bits.bytes().unwrap(),
+                            field.bits.bits(),
                         )))
                     }
                 } else {

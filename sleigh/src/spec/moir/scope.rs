@@ -17,6 +17,7 @@ use crate::spec::moir::varnode::{
     MOIRReference,
     MOIRSlice,
 };
+use itertools::Itertools;
 use mogi_sleigh_parser::lexer::InputSpan;
 use mogi_sleigh_parser::{
     ParserContext,
@@ -750,6 +751,28 @@ impl MOIRScope {
                 .expect("Generate error report for missing slice");
             match slice.reference {
                 MOIRReference::Field(field_id) => Some((field_id, *local_id)),
+                _ => None,
+            }
+        })
+    }
+
+    pub fn get_used_field(
+        &self,
+        field_id: FieldId,
+    ) -> Option<MOIRLocalId> {
+        self.used_locals.iter().find_map(|local_id| {
+            let slice = self
+                .slices
+                .get(*local_id)
+                .expect("Generate error report for missing slice");
+            match slice.reference {
+                MOIRReference::Field(ref_field_id) => {
+                    if ref_field_id == field_id {
+                        Some(*local_id)
+                    } else {
+                        None
+                    }
+                }
                 _ => None,
             }
         })

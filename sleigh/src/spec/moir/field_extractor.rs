@@ -15,11 +15,16 @@ use super::common::MOIRSize;
 use super::field::MOIRBitRange;
 use super::scope::MOIRLocalId;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// In most situations, fields can be extracted from the byte stream, but this doesn't hold for
+/// fields that come after an unconstrained or partially constrained subtable. In this case field
+/// extractors are stored in the jumplist itself. The byte index is relative to the absolute
+/// beginning of the byte stream for known offsets.
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct FieldExtractor {
     local_id: MOIRLocalId,
     local_size: MOIRSize,
-    byte_index: usize,
+    pub(crate) byte_index: usize,
     bits: MOIRBitRange,
 }
 
@@ -38,12 +43,15 @@ impl FieldExtractor {
         }
     }
 
-    /// Extract the field value from the provided byte slice.
-    pub(crate) fn process_value(
+    pub(crate) fn local_id(&self) -> MOIRLocalId {
+        self.local_id
+    }
+
+    /// Extract and return the field value from the provided byte slice.
+    pub(crate) fn extract_value(
         &self,
         bytes: &[u8],
-        values: &mut SecondaryMap<MOIRLocalId, Option<JIRValue>>,
-    ) -> InternalCompilerResult {
+    ) -> InternalCompilerResult<Option<JIRValue>> {
         if bytes.len() <= self.byte_index + usize::from(self.bits.bits().checked_sub(1).unwrap_or(0) / 8) {
             todo!("Generate error report for out of bounds token index");
         }
@@ -60,10 +68,8 @@ impl FieldExtractor {
         let value = u64::from_le_bytes(value_bytes);
         let extracted_value = self.bits.extract(value);
 
-        trace_jir!("Defining local_id {} := {}", self.local_id, extracted_value);
+        trace_jir!("Extracted local_id {} := {}", self.local_id, extracted_value);
 
-        values[self.local_id] = Some(JIRValue::Const(JIRConst::new(extracted_value.into(), self.local_size)));
-
-        Ok(())
+        Ok(Some(JIRValue::Const(JIRConst::new(extracted_value.into(), self.local_size))))
     }
 }

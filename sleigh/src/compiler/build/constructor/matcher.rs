@@ -7,6 +7,7 @@ use crate::spec::moir::field::{
     FieldId,
     MOIRFieldParent,
 };
+use crate::spec::moir::field_extractor::FieldExtractor;
 use crate::spec::moir::table::TableId;
 use crate::spec::moir::varnode::VarNodeId;
 use serde_derive::{
@@ -77,40 +78,77 @@ impl Matching {
     }
 }
 
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TokenList {
-    /// This can be `None` for shallow references when recursion is used
-    pub list: Vec<Option<MOIRFieldParent>>,
-    pub justify_left: bool,
-    pub justify_right: bool,
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MatcherToken {
+    /// This can be `None` for subtables
+    pub parent: Option<MOIRFieldParent>,
 }
 
-impl TokenList {
+impl MatcherToken {
     pub fn new(
-        list: Vec<Option<MOIRFieldParent>>,
-        justify_left: bool,
-        justify_right: bool,
+        parent: Option<MOIRFieldParent>,
     ) -> Self {
         Self {
-            list,
-            justify_left,
-            justify_right,
+            parent,
         }
     }
-    pub fn remove_padding(&mut self) {
-        self.justify_right = false;
-        self.justify_left = false;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MatcherConjunction {
+    // atoms are always assigned with a token, either context or regular
+    pub(crate) atoms: BTreeSet<MatcherAtom>,
+    pub(crate) token: MatcherToken,
+
+    // variable-offset field extractors and submatchers are stored per conjunction and created
+    // in the constructor with their corresponding locals
+    pub(crate) submatchers: Vec<Submatchers>,
+    pub(crate) field_extractors: Vec<FieldExtractor>,
+}
+
+impl Default for MatcherConjunction {
+    fn default() -> Self {
+        Self {
+            atoms: Default::default(),
+            token: MatcherToken::new(None),
+            submatchers: Default::default(),
+            field_extractors: Default::default(),
+        }
     }
 }
+
+// :ADD is (byte=0x3F; r64) | (byte_subtable; r64) { ... }
+
+impl MatcherConjunction {
+    pub fn new(
+        atoms: BTreeSet<MatcherAtom>,
+        token: MatcherToken,
+    ) -> Self {
+        Self { atoms, token, submatchers: Default::default(), field_extractors: Default::default(), }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
+pub(crate) struct OffsettedSubmatchers {
+    pub(crate) offset: usize,
+    pub(crate) submatchers: Submatchers,
+}
+
+impl OffsettedSubmatchers {
+    pub(crate) fn new(
+        offset: usize,
+        submatchers: Submatchers,
+    ) -> Self {
+        Self { offset, submatchers }
+    }
+}
+
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Matcher {
     // Each conjunction belongs to the corresponding MOIRFieldParent defined down below in
     // token_list.
-    pub(crate) conjunctions: Vec<BTreeSet<MatcherAtom>>,
-
-    // ordered list of used tokens and context registers
-    pub(crate) token_list: TokenList,
+    pub(crate) conjunctions: Vec<MatcherConjunction>,
 
     // Symbols whose presence needs to be known, but whose value does not matter or cannot be
     // extracted in the first place. Used for the scope.
@@ -118,6 +156,11 @@ pub struct Matcher {
 
     pub(crate) table_id: TableId,
     pub(crate) constructor_id: ConstructorId,
+
+    // fixed-offset field extractors and submatchers are stored per matcher and created
+    // in the constructor with their corresponding locals
+    pub(crate) submatchers: Vec<OffsettedSubmatchers>,
+    pub(crate) field_extractors: Vec<FieldExtractor>,
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Ord, PartialOrd, Serialize, Deserialize)]
@@ -129,7 +172,7 @@ pub(crate) struct Submatchers {
     /// corresponding compatible matchers.
 
     /// Matchers is None:
-    /// - Token list is not concretized; this is the case if recursion is encountered. Using it with
+    /// - Token list is not concretized; this is the case for subtables. Using it with
     /// & constraints will constrain it.
     pub matchers: Option<Vec<MatcherId>>,
 }
@@ -150,19 +193,19 @@ pub(crate) enum MatcherAtom {
 }
 
 impl Matcher {
-    pub fn new(
-        conjunctions: Vec<BTreeSet<MatcherAtom>>,
-        token_list: TokenList,
+    pub(crate) fn new(
+        conjunctions: Vec<MatcherConjunction>,
         references: HashSet<MatcherReference>,
         table_id: TableId,
         constructor_id: ConstructorId,
     ) -> Self {
         Self {
             conjunctions,
-            token_list,
             references,
             table_id,
             constructor_id,
+            submatchers: Default::default(),
+            field_extractors: Default::default(),
         }
     }
 }

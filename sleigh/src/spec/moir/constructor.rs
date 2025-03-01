@@ -53,8 +53,6 @@ pub struct MOIRConstructor {
     pub display: String,
     pub(crate) actions: Vec<MOIRAction>,
     pub(crate) modifies_context: bool,
-    /// Field extractors will be used to extract the field values from the token stream.
-    pub(crate) field_extractors: Vec<FieldExtractor>,
     /// A constructor may export a value. The export refers to a local in this constructor.
     /// To resolve the value, the scope for this constructor has to be used.
     /// 7.7.2.3. Exports

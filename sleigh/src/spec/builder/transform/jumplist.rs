@@ -12,6 +12,8 @@ use crate::compiler::build::constructor::matcher::{
     FieldMatcher,
     Matcher,
     MatcherAtom,
+    MatcherConjunction,
+    OffsettedSubmatchers,
     Submatchers,
 };
 use crate::compiler::build::trace_build;
@@ -23,6 +25,7 @@ use crate::spec::jir::jumplist::{
     JumplistEntry,
     JumplistId,
     NextJumplistEntry,
+    OffsettedJumplist,
 };
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::{
@@ -123,7 +126,6 @@ struct Row<'a> {
     pub value: u64,
     pub data_provider: DataProvider,
     pub token_size: MOIRSize,
-    pub submatchers_list: Vec<&'a Submatchers>,
 }
 
 impl<'a> Row<'a> {
@@ -133,7 +135,6 @@ impl<'a> Row<'a> {
         value: u64,
         data_provider: DataProvider,
         token_size: MOIRSize,
-        submatchers_list: Vec<&'a Submatchers>,
     ) -> Self {
         Self {
             matcher,
@@ -141,7 +142,6 @@ impl<'a> Row<'a> {
             value,
             data_provider,
             token_size,
-            submatchers_list,
         }
     }
 }
@@ -294,10 +294,10 @@ impl<'a> JumplistBuilder<'a> {
     ) -> InternalCompilerResult<Jumplist> {
         debug_assert_ne!(matchers.len(), 0, "There must be matchers");
         for matcher in matchers.iter() {
-            if token_index >= matcher.token_list.list.len() {
+            if token_index >= matcher.conjunctions.len() {
                 error!(
                     "Matcher token list not long enough: token_index={token_index} >= len={} \nMatcher: {matcher:?}",
-                    matcher.token_list.list.len()
+                    matcher.conjunctions.len()
                 );
             }
         }
@@ -308,14 +308,10 @@ impl<'a> JumplistBuilder<'a> {
         let rows = matchers
             .iter()
             .map(|matcher| {
-                let (mask, value, data_provider, token_size, submatchers_list) = match matcher
-                    .conjunctions
-                    .get(token_index)
-                    .zip(matcher.token_list.list.get(token_index))
-                {
-                    Some((conjunction, parent)) => {
-                        let (mask, value, submatchers_list) = extract_from_conjunction(conjunction);
-                        let (data_provider, token_size) = match parent {
+                let (mask, value, data_provider, token_size) = match matcher.conjunctions.get(token_index) {
+                    Some(conjunction) => {
+                        let (mask, value) = extract_from_conjunction(conjunction);
+                        let (data_provider, token_size) = match &conjunction.token.parent {
                             Some(parent) => {
                                 // Some => we know the size
                                 let token_size = self.get_token_size(parent)?;
@@ -333,14 +329,14 @@ impl<'a> JumplistBuilder<'a> {
                             None => (DataProvider::ByteStream, 0),
                         };
 
-                        (mask, value, data_provider, token_size, submatchers_list)
+                        (mask, value, data_provider, token_size)
                     }
                     // This can be the case if subtables with more tokens than
                     // the matcher are used. The path terminates in this case.
-                    None => (0, 0, DataProvider::ByteStream, 0, vec![]),
+                    None => (0, 0, DataProvider::ByteStream, 0),
                 };
 
-                Ok(Row::new(matcher, mask, value, data_provider, token_size, submatchers_list))
+                Ok(Row::new(matcher, mask, value, data_provider, token_size))
             })
             .collect::<InternalCompilerResult<Vec<_>>>()?;
 
@@ -363,11 +359,7 @@ impl<'a> JumplistBuilder<'a> {
             let mut jumplist_new = Jumplist::default();
             for jumplist in jumplists.into_iter() {
                 let jumplist_id = self.jumplist_cache.insert(jumplist);
-                jumplist_new.insert(
-                    0,
-                    JumplistEntry::new(vec![], NextJumplistEntry::TrailingSame(jumplist_id)),
-                    false,
-                )?;
+                jumplist_new.insert(0, JumplistEntry::new(NextJumplistEntry::TrailingSame(jumplist_id)), false)?;
                 self.diagnostics.entry_count += 1;
             }
 
@@ -435,7 +427,7 @@ impl<'a> JumplistBuilder<'a> {
             let mut jumplist_new = Jumplist::default();
             for jumplist in jumplists.into_iter() {
                 let jumplist_id = self.jumplist_cache.insert(jumplist);
-                let entry = JumplistEntry::new(vec![], NextJumplistEntry::TrailingSame(jumplist_id));
+                let entry = JumplistEntry::new(NextJumplistEntry::TrailingSame(jumplist_id));
                 jumplist_new.insert(0, entry, false)?;
                 self.diagnostics.entry_count += 1;
             }
@@ -518,8 +510,7 @@ impl<'a> JumplistBuilder<'a> {
                 {
                     // use NextJumplistEntry::TrailingSame since we want to continue but not consume any
                     // bytes
-                    let propagated_entry =
-                        JumplistEntry::new(vec![], NextJumplistEntry::TrailingSame(jumplist_parent_id));
+                    let propagated_entry = JumplistEntry::new(NextJumplistEntry::TrailingSame(jumplist_parent_id));
                     jumplist_child.insert(propagated_value, propagated_entry, false)?;
                     self.diagnostics.entry_count += 1;
                     self.diagnostics.propagated_parent_value_count += 1;
@@ -527,11 +518,11 @@ impl<'a> JumplistBuilder<'a> {
             }
 
             // partition by value and submatchers
-            let mut partitions: BTreeMap<(u64, Vec<&'a Submatchers>), Vec<Row>> = BTreeMap::new();
+            let mut partitions: BTreeMap<(u64, Vec<Submatchers>), Vec<Row>> = BTreeMap::new();
             for row in set_rows_child.into_iter() {
                 let submatchers_list = if bytes_consumed == 0 {
                     // first iteration: take sublists into account
-                    row.submatchers_list.clone() // TODO how to do this without cloning?
+                    row.matcher.conjunctions[token_index].submatchers.clone()
                 } else {
                     vec![]
                 };
@@ -550,7 +541,7 @@ impl<'a> JumplistBuilder<'a> {
                 // process submatchers into sublist
                 let sublist_ids = submatchers_list
                     .into_iter()
-                    .map(|submatchers| self.process_submatchers(submatchers))
+                    .map(|submatchers| self.process_submatchers(&submatchers))
                     .collect::<InternalCompilerResult<Vec<_>>>()?;
 
                 // partition into rows with trailing bytes and rows that terminate
@@ -559,16 +550,10 @@ impl<'a> JumplistBuilder<'a> {
                     .partition(|row| row.token_size > bytes_consumed + size_delta);
 
                 // partition rows that terminate into rows that terminate in a matcher or in more
-                // tokens (the row might end despite remaining tokens since these might belong to a
-                // subtable => if an empty conjunction is encountered this is also treated as an end)
-                let (terminal_token_rows, terminal_matcher_rows): (Vec<_>, Vec<_>) =
-                    terminal_rows.into_iter().partition(|row| {
-                        row.matcher
-                            .conjunctions
-                            .get(token_index + 1)
-                            .map(|conjunction| !conjunction.is_empty())
-                            .unwrap_or(false)
-                    });
+                // token
+                let (terminal_token_rows, terminal_matcher_rows): (Vec<_>, Vec<_>) = terminal_rows
+                    .into_iter()
+                    .partition(|row| row.matcher.conjunctions.get(token_index + 1).is_some());
 
                 self.diagnostics.next_byte_row_count += next_byte_rows.len();
                 self.diagnostics.terminal_token_row_count += terminal_token_rows.len();
@@ -585,7 +570,7 @@ impl<'a> JumplistBuilder<'a> {
                     let trailing_jumplist_id = self.jumplist_cache.insert(trailing_jumplist);
                     let next_entry_trailing = NextJumplistEntry::TrailingNext(trailing_jumplist_id);
 
-                    let entry = JumplistEntry::new(sublist_ids.clone(), next_entry_trailing);
+                    let entry = JumplistEntry::with_sublists(next_entry_trailing, sublist_ids.clone());
                     // first entry for non-expanded values...
                     jumplist_child.insert(value, entry.clone(), false)?;
                     self.diagnostics.entry_count += 1;
@@ -611,7 +596,7 @@ impl<'a> JumplistBuilder<'a> {
                     let next_token_jumplist_id = self.jumplist_cache.insert(next_token_jumplist);
 
                     let next_entry_tokens = NextJumplistEntry::TrailingNext(next_token_jumplist_id);
-                    let entry = JumplistEntry::new(sublist_ids.clone(), next_entry_tokens);
+                    let entry = JumplistEntry::with_sublists(next_entry_tokens, sublist_ids.clone());
                     jumplist_child.insert(value, entry.clone(), false)?;
                     self.diagnostics.entry_count += 1;
 
@@ -625,6 +610,17 @@ impl<'a> JumplistBuilder<'a> {
                 if let Some(terminal_matcher_row) = terminal_matcher_rows.first() {
                     let expanded_values = expand_rows(&terminal_matcher_rows, set_mask, value, size_bits);
 
+                    // process fixed-offset submatchers into sublists
+                    let fixed_sublists = terminal_matcher_row
+                        .matcher
+                        .submatchers
+                        .iter()
+                        .map(|submatcher| {
+                            let sublist = self.process_submatchers(&submatcher.submatchers)?;
+                            Ok(OffsettedJumplist::new(submatcher.offset, sublist))
+                        })
+                        .collect::<InternalCompilerResult<Vec<_>>>()?;
+
                     // this assertion does not have to hold true since two matchers can have the
                     // same primary matching path but different subtables (TODO should we check
                     // this?)
@@ -632,9 +628,11 @@ impl<'a> JumplistBuilder<'a> {
                     let next_entry_matcher = NextJumplistEntry::Constructor {
                         tid: terminal_matcher_row.matcher.table_id,
                         cid: terminal_matcher_row.matcher.constructor_id,
+                        sublists: fixed_sublists,
+                        field_extractors: terminal_matcher_row.matcher.field_extractors.clone(),
                     };
 
-                    let entry = JumplistEntry::new(sublist_ids, next_entry_matcher);
+                    let entry = JumplistEntry::with_sublists(next_entry_matcher, sublist_ids);
                     jumplist_child.insert(value, entry.clone(), false)?;
                     self.diagnostics.entry_count += 1;
 
@@ -750,31 +748,20 @@ fn expand_rows(
     expand_mask(value, largest_common_mask, mask)
 }
 
-/// Extracts a mask/value pair as well as subtables from a matcher conjunction.
-fn extract_from_conjunction(conjunction: &BTreeSet<MatcherAtom>) -> (u64, u64, Vec<&Submatchers>) {
-    let mut mask = 0u64;
-    let mut value = 0u64;
-    let mut subtables = Vec::new();
-    for atom in conjunction {
-        match atom {
-            MatcherAtom::Field { field_id: _, matcher } => {
-                if let FieldMatcher::Value {
-                    mask: fmask,
-                    value: fvalue,
-                } = matcher
-                {
-                    mask |= *fmask;
-                    // TODO handle endianness when extracting value
-                    value |= *fvalue;
+/// Extracts a mask/value pair from a matcher conjunction.
+fn extract_from_conjunction(conjunction: &MatcherConjunction) -> (u64, u64) {
+    conjunction
+        .atoms
+        .iter()
+        .fold((0, 0), |(acc_mask, acc_value), atom| {
+            if let MatcherAtom::Field { field_id: _, matcher } = atom {
+                if let FieldMatcher::Value { mask, value } = matcher {
+                    return (acc_mask | mask, acc_value | value);
                 }
             }
-            MatcherAtom::Submatchers(submatchers) => {
-                subtables.push(submatchers);
-            }
-        }
-    }
 
-    (mask, value, subtables)
+            (acc_mask, acc_value)
+        })
 }
 
 /// Returns true if `submask` is a submask of `supermask`,
@@ -882,7 +869,12 @@ fn save_graph(
                             stack.push(*jlid);
                             format!("S{}", usize::from(*jlid))
                         }
-                        NextJumplistEntry::Constructor { cid, tid: _ } => format!("C{}", cid),
+                        NextJumplistEntry::Constructor {
+                            cid,
+                            tid: _,
+                            sublists: _,
+                            field_extractors: _,
+                        } => format!("C{}", cid),
                     };
 
                     graph.add_node(entry_node_weight)

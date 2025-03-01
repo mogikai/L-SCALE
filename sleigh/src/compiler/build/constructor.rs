@@ -1,6 +1,7 @@
 use self::matcher::{
     Matcher,
     MatcherAtom,
+    OffsettedSubmatchers,
 };
 use crate::compiler::build::constructor::matcher::MatcherReference;
 use crate::compiler::build::trace_build;
@@ -92,7 +93,8 @@ impl SleighCompiler {
             .get_table_id_or_create(constructor.table.transpose())?;
 
         let constructor_id = self.spec_builder.next_constructor_id();
-        let matchers = self.create_matchers(&constructor.bit_pattern_section.constraint, table_id, constructor_id)?;
+        let mut matchers =
+            self.create_matchers(&constructor.bit_pattern_section.constraint, table_id, constructor_id)?;
         trace_build!("Created {} matchers", matchers.len());
 
         let mut references = HashSet::new();
@@ -114,7 +116,6 @@ impl SleighCompiler {
             display: display_section.display_str.into_value(),
             actions,
             modifies_context,
-            field_extractors: Vec::new(),
             export: None,
         };
 
@@ -137,14 +138,7 @@ impl SleighCompiler {
         //     .realize_temporaries(&mut self.spec_builder)?;
         trace_build!("{}", moir_constructor.mcode_debug_string(self.spec_builder.interner()));
 
-        moir_constructor.field_extractors = self.pc_create_field_extractors(
-            matchers
-                .first()
-                .expect("There must be ast least one matcher"),
-            &moir_constructor.local_scope,
-        );
-
-        trace_build!("Created {} field extractors", moir_constructor.field_extractors.len());
+        self.pc_populate_sublists_and_extractors(&mut matchers, &moir_constructor.local_scope);
 
         // Define the constructor and insert it into the corresponding table.
         self.spec_builder.define_constructor(moir_constructor)?;
@@ -350,79 +344,84 @@ impl SleighCompiler {
         }
     }
 
-    /// Create field extractors from a matcher and a scope. Since all matchers need
-    /// to have all necessary field, it is enough to only use the first one.
-    fn pc_create_field_extractors(
+    /// Populate matcher conjunctions with dynamic-offset sublists and field extractors
+    /// and populate the matcher itself with fixed-offset sublists and field extractors.
+    fn pc_populate_sublists_and_extractors(
         &self,
-        matcher: &Matcher,
+        matchers: &mut Vec<Matcher>,
         scope: &MOIRScope,
-    ) -> Vec<FieldExtractor> {
-        scope
-            .get_used_fields()
-            .filter(|(field_id, _)| {
-                // ignore context fields
-                let field = self
-                    .spec_builder
-                    .field_by_symbol_id(*field_id)
-                    .expect("There must be a field");
-                matches!(field.parent, MOIRFieldParent::Token(_))
-            })
-            .map(|(field_id, local_id)| {
-                // find byte index where field is present
-                let mut byte_index = 0;
-                let mut found = false;
-                'outer: for (conjunction, token) in matcher
-                    .conjunctions
-                    .iter()
-                    .zip(matcher.token_list.list.iter())
-                    .skip_while(|(_, token)| {
-                        // ignore context tokens
-                        token.is_some_and(|token| matches!(token, MOIRFieldParent::Context(_)))
-                    })
-                {
-                    for atom in conjunction.iter() {
-                        if let MatcherAtom::Field {
-                            field_id: atom_field_id,
-                            matcher: _,
-                        } = atom
-                        {
-                            // field present in atom => finished
-                            if *atom_field_id == field_id {
-                                found = true;
-                                break 'outer;
+    ) {
+        for matcher in matchers.iter_mut() {
+            // This doesn't work if the sublist uses more than one token. Too bad!
+            let mut bytes_consumed = Some(0);
+
+            // skip context
+            for conjunction in matcher
+                .conjunctions
+                .iter_mut()
+                .skip_while(|conjunction| matches!(conjunction.token.parent, Some(MOIRFieldParent::Context(_))))
+            {
+                for atom in &conjunction.atoms {
+                    match atom {
+                        MatcherAtom::Field { field_id, matcher: _ } => {
+                            if let Some(local_id) = scope.get_used_field(*field_id) {
+                                let field = self
+                                    .spec_builder
+                                    .field_by_symbol_id(*field_id)
+                                    .expect("There must be a field");
+
+                                match bytes_consumed {
+                                    Some(bytes_consumed) => {
+                                        // field used and fixed offset
+                                        let fe = FieldExtractor::new(local_id, 0, bytes_consumed.into(), field.bits);
+                                        matcher.field_extractors.push(fe);
+                                    }
+                                    None => {
+                                        // field used and dynamic offset
+                                        let fe = FieldExtractor::new(local_id, 0, 0, field.bits);
+                                        conjunction.field_extractors.push(fe);
+                                    }
+                                }
+                            }
+                        }
+                        MatcherAtom::Submatchers(submatchers) => {
+                            match bytes_consumed {
+                                Some(bytes_consumed) => {
+                                    // known size
+                                    let os = OffsettedSubmatchers::new(bytes_consumed, submatchers.clone());
+                                    matcher.submatchers.push(os);
+                                }
+                                None => {
+                                    // unknown size
+                                    conjunction.submatchers.push(submatchers.clone());
+                                }
                             }
                         }
                     }
+                }
 
-                    // field not present in atom => continue
-                    let token_size = match token {
-                        None => 0,
-                        Some(token) => {
-                            let MOIRFieldParent::Token(token) = token else {
-                                panic!("We checked for this above");
-                            };
-
-                            self.spec_builder
-                                .token_by_symbol_id(*token)
-                                .expect("There must be a token")
-                                .bytes
-                        }
+                // update bytes_consumed
+                let token_size = conjunction.token.parent.map(|token| {
+                    let MOIRFieldParent::Token(token) = token else {
+                        panic!("We checked for this above")
                     };
 
-                    byte_index += token_size;
-                }
+                    self.spec_builder
+                        .token_by_symbol_id(token)
+                        .expect("There must be a token")
+                        .bytes
+                });
 
-                if !found {
-                    panic!("Field id {} not in matcher {:#?}", field_id, matcher);
+                match token_size {
+                    Some(token_size) => {
+                        if let Some(bytes_consumed) = &mut bytes_consumed {
+                            *bytes_consumed += usize::from(token_size);
+                        }
+                    }
+                    None => bytes_consumed = None,
                 }
-
-                let field = self
-                    .spec_builder
-                    .field_by_symbol_id(field_id)
-                    .expect("Missing field id");
-                FieldExtractor::new(local_id, 0, byte_index.into(), field.bits)
-            })
-            .collect_vec()
+            }
+        }
     }
 
     /// Validates the constructors in the table.

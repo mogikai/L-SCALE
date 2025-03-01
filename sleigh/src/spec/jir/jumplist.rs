@@ -1,5 +1,6 @@
 use super::context_stack::ContextStack;
 use super::local_resolver::JIRResolver;
+use super::values::JIRValue;
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
 use crate::new_typed_index_table_id;
@@ -10,6 +11,8 @@ use crate::spec::moir::constructor::{
     MOIRConstructor,
 };
 use crate::spec::moir::context::ContextId;
+use crate::spec::moir::field_extractor::FieldExtractor;
+use crate::spec::moir::scope::MOIRLocalId;
 use crate::spec::moir::table::TableId;
 use crate::spec::typed_index_table::TypedIndexTable;
 use fnv::FnvHashMap;
@@ -25,11 +28,13 @@ use serde_derive::{
 /// * continue matching subtables
 ///
 /// To avoid traversing the lists twice, we store necessary information here like
-/// the remaining sublists with their byte slices.
+/// the remaining sublists.
 #[derive(Debug, Default)]
 struct LocalMatching<'a> {
-    sublists: Vec<&'a Vec<JumplistId>>,
-    byte_offsets: Vec<usize>,
+    // collect sublist resolvers (no sublists since we immediately descend) and values with a
+    // dynamic offset and store as vec for backtracking
+    subresolvers: Vec<(TableId, JIRResolver<'a>)>,
+    values: Vec<(MOIRLocalId, Option<JIRValue>)>,
 }
 
 #[derive(Debug)]
@@ -45,27 +50,65 @@ pub(crate) enum MatcherResult<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub(crate) struct OffsettedJumplist {
+    offset: usize,
+    jumplist: JumplistId,
+}
+
+impl OffsettedJumplist {
+    pub(crate) fn new(
+        offset: usize,
+        jumplist: JumplistId,
+    ) -> Self {
+        Self { offset, jumplist }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(crate) enum NextJumplistEntry {
     // consume self.bytes bytes and continue with next
     TrailingNext(JumplistId),
     // don't consume any bytes and continue with next
     TrailingSame(JumplistId),
-    Constructor { cid: ConstructorId, tid: TableId },
+    Constructor {
+        cid: ConstructorId,
+        tid: TableId,
+        // fixed-offset sublists and extractors
+        sublists: Vec<OffsettedJumplist>,
+        field_extractors: Vec<FieldExtractor>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct JumplistEntry {
-    pub(crate) sublists: Vec<JumplistId>,
     pub(crate) next_entry: NextJumplistEntry,
+    // not all field positions are known beforehand so we store additional extractors and lists here
+    pub(crate) sublists: Vec<JumplistId>,
+    pub(crate) field_extractors: Vec<FieldExtractor>,
 }
 
 impl JumplistEntry {
     pub(crate) fn new(
         // all jumplists have to match successfully
-        sublists: Vec<JumplistId>,
         next_entry: NextJumplistEntry,
     ) -> Self {
-        Self { sublists, next_entry }
+        Self {
+            next_entry,
+            sublists: Default::default(),
+            field_extractors: Default::default(),
+        }
+    }
+
+    pub(crate) fn with_sublists(
+        // all jumplists have to match successfully
+        next_entry: NextJumplistEntry,
+        sublists: Vec<JumplistId>,
+    ) -> Self {
+        Self {
+            next_entry,
+            sublists,
+            field_extractors: Default::default(),
+        }
     }
 }
 
@@ -186,10 +229,8 @@ impl Jumplist {
         }
     }
 
-    /// Match the bit pattern and return the constructor id at the end while collecting tokens and
-    /// sublists. This is necessary since we first need to extract fields and execute all actions
-    /// before descending further. Since there might be multiple local matchings,
-    /// we return a list ordered by priority with the most specific ones first.
+    /// Match the bit pattern while descending into partially constrained sublists and continuing
+    /// with trailing bytes and tokens.
     fn match_local<'a, 'b>(
         &'b self,
         bytes: &[u8],
@@ -198,20 +239,66 @@ impl Jumplist {
         constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
         context_stack: &mut ContextStack,
         consumed_so_far: usize,
-        accum: &mut LocalMatching<'b>,
+        accum: &mut LocalMatching<'a>,
     ) -> InternalCompilerResult<MatcherResult<'a>> {
-        let (value_masked, consumed) = self
+        let (value_masked, mut consumed) = self
             .decode_value(bytes, consumed_so_far, context_stack)?
             .expect("Couldn't decode value");
 
         if let Some(entries) = self.get(value_masked)? {
-            for entry in entries {
+            'next_entry: for entry in entries {
                 // store state for backtracking
-                accum.sublists.push(&entry.sublists);
-                accum.byte_offsets.push(consumed_so_far);
+                let (prev_len_subresolvers, prev_len_values) = (accum.subresolvers.len(), accum.values.len());
+
+                // immediately descend into any variable-offset sublists and add resolver if match
+                for sublist_id in &entry.sublists {
+                    trace_jir!("Descending into entry sublist {} with bytes_consumed={}", sublist_id, consumed_so_far);
+
+                    let sublist = jumplist_cache
+                        .get(*sublist_id)
+                        .expect("Invalid jumplist id");
+
+                    match sublist.r#match(
+                        &bytes[consumed_so_far..],
+                        addr,
+                        jumplist_cache,
+                        constructors,
+                        context_stack,
+                    )? {
+                        MatcherResult::EndOfByteStream => return Ok(MatcherResult::EndOfByteStream), // TODO should we continue?
+                        MatcherResult::None => continue 'next_entry,
+                        MatcherResult::Some {
+                            table,
+                            resolver,
+                            bytes_consumed,
+                        } => {
+                            // if we have dynamic sublists, they dictate how much is consumed
+                            consumed = consumed.max(bytes_consumed);
+                            accum.subresolvers.push((table, resolver));
+                        }
+                    }
+                }
+
+                // variable-offset extractors
+                for field_extractor in &entry.field_extractors {
+                    trace_jir!(
+                        "Extracting local {} with entry extractor {:#?}",
+                        field_extractor.local_id(),
+                        field_extractor
+                    );
+                    let extracted_value = field_extractor.extract_value(bytes)?;
+                    accum
+                        .values
+                        .push((field_extractor.local_id(), extracted_value));
+                }
 
                 let result = match &entry.next_entry {
-                    NextJumplistEntry::Constructor { cid, tid } => {
+                    NextJumplistEntry::Constructor {
+                        cid,
+                        tid,
+                        sublists,
+                        field_extractors,
+                    } => {
                         trace_jir!("Reached leaf; cid={cid:?}, tid={tid:?}");
 
                         self.process_local_matching(
@@ -222,6 +309,8 @@ impl Jumplist {
                             context_stack,
                             consumed_so_far + consumed,
                             accum,
+                            sublists,
+                            field_extractors,
                             *cid,
                             *tid,
                         )?
@@ -261,8 +350,8 @@ impl Jumplist {
                 match result {
                     MatcherResult::None => {
                         // no complete match => backtrack and try next entry
-                        accum.sublists.pop();
-                        accum.byte_offsets.pop();
+                        accum.subresolvers.truncate(prev_len_subresolvers);
+                        accum.values.truncate(prev_len_values);
                     }
                     // complete match or end of stream => return
                     _ => return Ok(result),
@@ -282,7 +371,10 @@ impl Jumplist {
         constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
         context_stack: &mut ContextStack,
         consumed_so_far: usize,
-        local_matching: &LocalMatching<'b>,
+        local_matching: &LocalMatching<'a>,
+        // fixed offset
+        sublists: &Vec<OffsettedJumplist>,
+        field_extractors: &Vec<FieldExtractor>,
         constructor_id: ConstructorId,
         table_id: TableId,
     ) -> InternalCompilerResult<MatcherResult<'a>> {
@@ -296,23 +388,35 @@ impl Jumplist {
             })?;
 
         trace_jir!(
-            "Got constructor {} with {} actions and {} field extractors, consumed {} bytes",
+            "Got constructor {} with {} actions, consumed {} bytes",
             constructor.display,
             constructor.actions.len(),
-            constructor.field_extractors.len(),
             consumed_so_far,
         );
 
-        // extract token and context fields
-        let mut values = SecondaryMap::default();
+        trace_jir!("Sublists: {:#?}", sublists);
+        trace_jir!("Field extractors: {:#?}", field_extractors);
 
-        for field_extractor in &constructor.field_extractors {
-            field_extractor.process_value(bytes, &mut values)?;
+        let mut values = SecondaryMap::<MOIRLocalId, Option<JIRValue>>::default();
+
+        // traversing values from front to back overwrites old values
+        for &(local_id, value) in local_matching.values.iter() {
+            values[local_id] = value;
+        }
+
+        // extract token and context fields with fixed offset into map
+        for field_extractor in field_extractors {
+            let extracted_value = field_extractor.extract_value(bytes)?;
+            values[field_extractor.local_id()] = extracted_value;
         }
 
         // the resolver with all local values is needed for the actions so we
         // instantiate it here
         let mut resolver = JIRResolver::new(constructor, values);
+
+        for (subtable, subresolver) in &local_matching.subresolvers {
+            resolver.define_subtable_resolver(*subtable, subresolver.clone())?;
+        }
 
         // `inst_next` etc. has to be set at this point already since actions might use it
         resolver.set_inst_addresses(addr, addr + consumed_so_far, None);
@@ -333,40 +437,34 @@ impl Jumplist {
         // sublists might consume bytes that the main match tree does not so we take the maximum
         let mut consumed_so_far_max = consumed_so_far;
 
-        for (sublist_ids, sublist_byte_offset) in local_matching
-            .sublists
-            .iter()
-            .zip(local_matching.byte_offsets.iter())
-        {
-            let sublist_bytes = &bytes[*sublist_byte_offset..];
+        for offsetted_sublist in sublists {
+            let sublist_bytes = &bytes[offsetted_sublist.offset..];
 
-            for sublist_id in *sublist_ids {
-                let sublist = jumplist_cache
-                    .get(*sublist_id)
-                    .ok_or_else(|| -> InternalError { todo!("Generate error report for missing jumplist") })?;
-                trace_jir!(
-                    "Descending into sublist {:#?} with bytes={:#x?} (from {})",
-                    sublist_id,
-                    sublist_bytes,
-                    constructor.display
-                );
+            let sublist = jumplist_cache
+                .get(offsetted_sublist.jumplist)
+                .ok_or_else(|| -> InternalError { todo!("Generate error report for missing jumplist") })?;
+            trace_jir!(
+                "Descending into offsetted sublist {:#?} with bytes={:#x?} (from {})",
+                offsetted_sublist,
+                sublist_bytes,
+                constructor.display
+            );
 
-                let result = sublist.r#match(sublist_bytes, addr, jumplist_cache, constructors, context_stack)?;
-                match result {
-                    MatcherResult::Some {
-                        table: table_id,
-                        resolver: sublist_resolver,
-                        bytes_consumed: bytes_consumed_sublist,
-                    } => {
-                        // sublist matches => add resolver
-                        trace_jir!("Sublist consumed {} additional bytes", bytes_consumed_sublist);
-                        trace_jir!("Adding subtable resolver {table_id:?}");
-                        consumed_so_far_max = consumed_so_far_max.max(sublist_byte_offset + bytes_consumed_sublist);
-                        resolver.define_subtable_resolver(table_id, sublist_resolver)?;
-                    }
-                    // sublist did not match => return
-                    _ => return Ok(result),
+            let result = sublist.r#match(sublist_bytes, addr, jumplist_cache, constructors, context_stack)?;
+            match result {
+                MatcherResult::Some {
+                    table: table_id,
+                    resolver: sublist_resolver,
+                    bytes_consumed: bytes_consumed_sublist,
+                } => {
+                    // sublist matches => add resolver
+                    trace_jir!("Sublist consumed {} additional bytes", bytes_consumed_sublist);
+                    trace_jir!("Adding subtable resolver {table_id:?}");
+                    consumed_so_far_max = consumed_so_far_max.max(offsetted_sublist.offset + bytes_consumed_sublist);
+                    resolver.define_subtable_resolver(table_id, sublist_resolver)?;
                 }
+                // sublist did not match => return
+                _ => return Ok(result),
             }
         }
 
@@ -376,7 +474,11 @@ impl Jumplist {
         // TODO handle context flow
         context_stack.pop_state()?;
 
-        return Ok(MatcherResult::Some { table: table_id, resolver, bytes_consumed: consumed_so_far_max });
+        return Ok(MatcherResult::Some {
+            table: table_id,
+            resolver,
+            bytes_consumed: consumed_so_far_max,
+        });
     }
 
     /// Match a given byte sequence into a constructor while resolving fields and setting context.
