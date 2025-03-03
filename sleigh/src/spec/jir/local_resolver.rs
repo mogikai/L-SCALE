@@ -375,6 +375,7 @@ impl<'a> JIRResolver<'a> {
                     debug!("Constructor: {:?}", self.constructor);
                     debug!("Scope is {}", self.constructor.local_scope);
                     debug!("Local id is {local}");
+                    debug!("Field id is {field_id}");
                     todo!("Generate error for a local that cannot be resolved because it was not defined")
                 };
 

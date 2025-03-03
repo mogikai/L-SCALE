@@ -34,6 +34,9 @@ struct LocalMatching<'a> {
     // collect sublist resolvers (no sublists since we immediately descend) and values with a
     // dynamic offset and store as vec for backtracking
     subresolvers: Vec<(TableId, JIRResolver<'a>)>,
+    // need to store all extractor maps with the corresponding byte index since we
+    // don't know the constructor id at that point
+    field_extractors: Vec<&'a FnvHashMap<ConstructorId, Vec<FieldExtractor>>>,
     values: Vec<(MOIRLocalId, Option<JIRValue>)>,
 }
 
@@ -52,7 +55,7 @@ pub(crate) enum MatcherResult<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(crate) struct OffsettedJumplist {
     offset: usize,
-    jumplist: JumplistId,
+    pub(crate) jumplist: JumplistId,
 }
 
 impl OffsettedJumplist {
@@ -84,30 +87,19 @@ pub(crate) struct JumplistEntry {
     pub(crate) next_entry: NextJumplistEntry,
     // not all field positions are known beforehand so we store additional extractors and lists here
     pub(crate) sublists: Vec<JumplistId>,
-    pub(crate) field_extractors: Vec<FieldExtractor>,
+    pub(crate) field_extractors: FnvHashMap<ConstructorId, Vec<FieldExtractor>>,
 }
 
 impl JumplistEntry {
     pub(crate) fn new(
-        // all jumplists have to match successfully
-        next_entry: NextJumplistEntry,
-    ) -> Self {
-        Self {
-            next_entry,
-            sublists: Default::default(),
-            field_extractors: Default::default(),
-        }
-    }
-
-    pub(crate) fn with_sublists(
-        // all jumplists have to match successfully
         next_entry: NextJumplistEntry,
         sublists: Vec<JumplistId>,
+        field_extractors: FnvHashMap<ConstructorId, Vec<FieldExtractor>>,
     ) -> Self {
         Self {
             next_entry,
             sublists,
-            field_extractors: Default::default(),
+            field_extractors,
         }
     }
 }
@@ -231,11 +223,11 @@ impl Jumplist {
 
     /// Match the bit pattern while descending into partially constrained sublists and continuing
     /// with trailing bytes and tokens.
-    fn match_local<'a, 'b>(
-        &'b self,
-        bytes: &[u8],
+    fn match_local<'a>(
+        &'a self,
+        bytes: &'a [u8],
         addr: EVAddr,
-        jumplist_cache: &'b TypedIndexTable<JumplistId, Jumplist>,
+        jumplist_cache: &'a TypedIndexTable<JumplistId, Jumplist>,
         constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
         context_stack: &mut ContextStack,
         consumed_so_far: usize,
@@ -279,18 +271,9 @@ impl Jumplist {
                     }
                 }
 
-                // variable-offset extractors
-                for field_extractor in &entry.field_extractors {
-                    trace_jir!(
-                        "Extracting local {} with entry extractor {:#?}",
-                        field_extractor.local_id(),
-                        field_extractor
-                    );
-                    let extracted_value = field_extractor.extract_value(bytes)?;
-                    accum
-                        .values
-                        .push((field_extractor.local_id(), extracted_value));
-                }
+                // variable-offset extractors will be processed later when the constructor id is
+                // known
+                accum.field_extractors.push(&entry.field_extractors);
 
                 let result = match &entry.next_entry {
                     NextJumplistEntry::Constructor {
@@ -351,6 +334,7 @@ impl Jumplist {
                     MatcherResult::None => {
                         // no complete match => backtrack and try next entry
                         accum.subresolvers.truncate(prev_len_subresolvers);
+                        accum.field_extractors.pop();
                         accum.values.truncate(prev_len_values);
                     }
                     // complete match or end of stream => return
@@ -363,11 +347,11 @@ impl Jumplist {
         Ok(MatcherResult::None)
     }
 
-    fn process_local_matching<'a, 'b>(
-        &'b self,
-        bytes: &'b [u8],
+    fn process_local_matching<'a>(
+        &'a self,
+        bytes: &'a [u8],
         addr: EVAddr,
-        jumplist_cache: &TypedIndexTable<JumplistId, Jumplist>,
+        jumplist_cache: &'a TypedIndexTable<JumplistId, Jumplist>,
         constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
         context_stack: &mut ContextStack,
         consumed_so_far: usize,
@@ -399,6 +383,21 @@ impl Jumplist {
 
         let mut values = SecondaryMap::<MOIRLocalId, Option<JIRValue>>::default();
 
+        // variable-offset field extractors
+        for field_extractor_map in &local_matching.field_extractors {
+            if let Some(field_extractors) = field_extractor_map.get(&constructor_id) {
+                for field_extractor in field_extractors {
+                    trace_jir!(
+                        "Extracting local {} with entry extractor {:#?}",
+                        field_extractor.local_id(),
+                        field_extractor
+                    );
+                    let extracted_value = field_extractor.extract_value(bytes)?;
+                    values[field_extractor.local_id()] = extracted_value;
+                }
+            }
+        }
+
         // traversing values from front to back overwrites old values
         for &(local_id, value) in local_matching.values.iter() {
             values[local_id] = value;
@@ -407,6 +406,7 @@ impl Jumplist {
         // extract token and context fields with fixed offset into map
         for field_extractor in field_extractors {
             let extracted_value = field_extractor.extract_value(bytes)?;
+            trace_jir!("Field extractor is defining {} := {:#?}", field_extractor.local_id(), extracted_value);
             values[field_extractor.local_id()] = extracted_value;
         }
 
@@ -487,11 +487,11 @@ impl Jumplist {
     /// # Return value
     ///
     /// - None if nothing was matched
-    pub(crate) fn r#match<'a, 'b>(
-        &'b self,
-        bytes: &[u8],
+    pub(crate) fn r#match<'a>(
+        &'a self,
+        bytes: &'a [u8],
         addr: EVAddr,
-        jumplist_cache: &'b TypedIndexTable<JumplistId, Jumplist>,
+        jumplist_cache: &'a TypedIndexTable<JumplistId, Jumplist>,
         constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
         context_stack: &mut ContextStack,
     ) -> InternalCompilerResult<MatcherResult<'a>> {

@@ -1,3 +1,4 @@
+use fnv::FnvHashMap;
 use petgraph::graph::NodeIndex;
 use std::collections::{
     BTreeMap,
@@ -359,7 +360,11 @@ impl<'a> JumplistBuilder<'a> {
             let mut jumplist_new = Jumplist::default();
             for jumplist in jumplists.into_iter() {
                 let jumplist_id = self.jumplist_cache.insert(jumplist);
-                jumplist_new.insert(0, JumplistEntry::new(NextJumplistEntry::TrailingSame(jumplist_id)), false)?;
+                jumplist_new.insert(
+                    0,
+                    JumplistEntry::new(NextJumplistEntry::TrailingSame(jumplist_id), vec![], FnvHashMap::default()),
+                    false,
+                )?;
                 self.diagnostics.entry_count += 1;
             }
 
@@ -427,7 +432,8 @@ impl<'a> JumplistBuilder<'a> {
             let mut jumplist_new = Jumplist::default();
             for jumplist in jumplists.into_iter() {
                 let jumplist_id = self.jumplist_cache.insert(jumplist);
-                let entry = JumplistEntry::new(NextJumplistEntry::TrailingSame(jumplist_id));
+                let entry =
+                    JumplistEntry::new(NextJumplistEntry::TrailingSame(jumplist_id), vec![], FnvHashMap::default());
                 jumplist_new.insert(0, entry, false)?;
                 self.diagnostics.entry_count += 1;
             }
@@ -510,7 +516,11 @@ impl<'a> JumplistBuilder<'a> {
                 {
                     // use NextJumplistEntry::TrailingSame since we want to continue but not consume any
                     // bytes
-                    let propagated_entry = JumplistEntry::new(NextJumplistEntry::TrailingSame(jumplist_parent_id));
+                    let propagated_entry = JumplistEntry::new(
+                        NextJumplistEntry::TrailingSame(jumplist_parent_id),
+                        vec![],
+                        FnvHashMap::default(),
+                    );
                     jumplist_child.insert(propagated_value, propagated_entry, false)?;
                     self.diagnostics.entry_count += 1;
                     self.diagnostics.propagated_parent_value_count += 1;
@@ -563,6 +573,19 @@ impl<'a> JumplistBuilder<'a> {
                 if !next_byte_rows.is_empty() {
                     let expanded_values = expand_rows(&next_byte_rows, set_mask, value, size_bits);
 
+                    let mut field_extractor_map = FnvHashMap::default();
+                    if bytes_consumed == 0 {
+                        // first iteration: take field extractors into account
+                        for row in &next_byte_rows {
+                            field_extractor_map.insert(
+                                row.matcher.constructor_id,
+                                row.matcher.conjunctions[token_index]
+                                    .field_extractors
+                                    .clone(),
+                            );
+                        }
+                    }
+
                     let trailing_jumplist =
                         self.create_jumplist_bytes(next_byte_rows, token_index, bytes_consumed + size_delta)?;
 
@@ -570,7 +593,7 @@ impl<'a> JumplistBuilder<'a> {
                     let trailing_jumplist_id = self.jumplist_cache.insert(trailing_jumplist);
                     let next_entry_trailing = NextJumplistEntry::TrailingNext(trailing_jumplist_id);
 
-                    let entry = JumplistEntry::with_sublists(next_entry_trailing, sublist_ids.clone());
+                    let entry = JumplistEntry::new(next_entry_trailing, sublist_ids.clone(), field_extractor_map);
                     // first entry for non-expanded values...
                     jumplist_child.insert(value, entry.clone(), false)?;
                     self.diagnostics.entry_count += 1;
@@ -586,6 +609,19 @@ impl<'a> JumplistBuilder<'a> {
                 if !terminal_token_rows.is_empty() {
                     let expanded_values = expand_rows(&terminal_token_rows, set_mask, value, size_bits);
 
+                    let mut field_extractor_map = FnvHashMap::default();
+                    if bytes_consumed == 0 {
+                        // first iteration: take field extractors into account
+                        for row in &terminal_token_rows {
+                            field_extractor_map.insert(
+                                row.matcher.constructor_id,
+                                row.matcher.conjunctions[token_index]
+                                    .field_extractors
+                                    .clone(),
+                            );
+                        }
+                    }
+
                     let terminal_token_matchers = terminal_token_rows
                         .into_iter()
                         .map(|row| row.matcher)
@@ -596,7 +632,7 @@ impl<'a> JumplistBuilder<'a> {
                     let next_token_jumplist_id = self.jumplist_cache.insert(next_token_jumplist);
 
                     let next_entry_tokens = NextJumplistEntry::TrailingNext(next_token_jumplist_id);
-                    let entry = JumplistEntry::with_sublists(next_entry_tokens, sublist_ids.clone());
+                    let entry = JumplistEntry::new(next_entry_tokens, sublist_ids.clone(), field_extractor_map);
                     jumplist_child.insert(value, entry.clone(), false)?;
                     self.diagnostics.entry_count += 1;
 
@@ -609,6 +645,19 @@ impl<'a> JumplistBuilder<'a> {
                 // create entries for terminal row that ends in a matcher
                 if let Some(terminal_matcher_row) = terminal_matcher_rows.first() {
                     let expanded_values = expand_rows(&terminal_matcher_rows, set_mask, value, size_bits);
+
+                    let mut field_extractor_map = FnvHashMap::default();
+                    if bytes_consumed == 0 {
+                        // first iteration: take field extractors into account
+                        for row in &terminal_matcher_rows {
+                            field_extractor_map.insert(
+                                row.matcher.constructor_id,
+                                row.matcher.conjunctions[token_index]
+                                    .field_extractors
+                                    .clone(),
+                            );
+                        }
+                    }
 
                     // process fixed-offset submatchers into sublists
                     let fixed_sublists = terminal_matcher_row
@@ -632,7 +681,7 @@ impl<'a> JumplistBuilder<'a> {
                         field_extractors: terminal_matcher_row.matcher.field_extractors.clone(),
                     };
 
-                    let entry = JumplistEntry::with_sublists(next_entry_matcher, sublist_ids);
+                    let entry = JumplistEntry::new(next_entry_matcher, sublist_ids, field_extractor_map);
                     jumplist_child.insert(value, entry.clone(), false)?;
                     self.diagnostics.entry_count += 1;
 
@@ -857,6 +906,8 @@ fn save_graph(
 
         for (value, entries) in list.entries() {
             for entry in entries {
+                let mut entry_sublists = Vec::new();
+
                 // process next_entry
                 let entry_node = *nodes.entry(entry.next_entry.clone()).or_insert_with(|| {
                     // not seen => insert node and push onto stack
@@ -872,9 +923,13 @@ fn save_graph(
                         NextJumplistEntry::Constructor {
                             cid,
                             tid: _,
-                            sublists: _,
+                            sublists,
                             field_extractors: _,
-                        } => format!("C{}", cid),
+                        } => {
+                            entry_sublists.extend(sublists.iter().map(|os| os.jumplist));
+                            // process variable-offset sublists
+                            format!("C{}", cid)
+                        }
                     };
 
                     graph.add_node(entry_node_weight)
@@ -882,14 +937,16 @@ fn save_graph(
 
                 graph.add_edge(list_node, entry_node, format!("NE{:#x}", value));
 
-                // process sublists
-                for sublist in &entry.sublists {
+                entry_sublists.extend(entry.sublists.iter());
+
+                // process fixed-offset sublists
+                for sublist in entry_sublists.into_iter() {
                     let sublist_node = *nodes
-                        .entry(NextJumplistEntry::TrailingNext(*sublist))
+                        .entry(NextJumplistEntry::TrailingNext(sublist))
                         .or_insert_with(|| {
                             // not seen => insert node and push onto stack
-                            let sublist_node_weight = format!("L{}", usize::from(*sublist));
-                            stack.push(*sublist);
+                            let sublist_node_weight = format!("L{}", usize::from(sublist));
+                            stack.push(sublist);
                             graph.add_node(sublist_node_weight)
                         });
 

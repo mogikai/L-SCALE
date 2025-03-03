@@ -9,7 +9,7 @@ use serde_derive::{
     Serialize,
 };
 
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct MOIRBitRange {
     pub start: MOIRSize,
     pub end: MOIRSize,

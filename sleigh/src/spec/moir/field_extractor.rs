@@ -20,7 +20,7 @@ use super::scope::MOIRLocalId;
 /// extractors are stored in the jumplist itself. The byte index is relative to the absolute
 /// beginning of the byte stream for known offsets.
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
 pub(crate) struct FieldExtractor {
     local_id: MOIRLocalId,
     local_size: MOIRSize,

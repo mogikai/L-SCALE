@@ -64,7 +64,7 @@ macro_rules! new_map_key {
 macro_rules! new_map_key_16 {
     ( $(#[$outer:meta])* $vis:vis struct $name:ident; $display_prefix:literal;) => {
         $(#[$outer])*
-        #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
+        #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Copy, Clone, Hash)]
         #[derive(serde::Serialize, serde::Deserialize)]
         #[repr(transparent)]
         $vis struct $name(std::num::NonZero<u16>);
