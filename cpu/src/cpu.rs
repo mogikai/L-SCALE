@@ -214,12 +214,7 @@ where
             trace_jit!("{}", block);
             trace_jit!("Next: {:?}", next_addr);
             // TODO: What about caching?
-            jit.new_target_block(current_addr, Some(EVAddr::null()))?;
-            // TODO: Insert instructions into block.
-            for inst in block.instructions() {
-                jit.emit_jinst(inst)?;
-            }
-            jit.finalize_block()?;
+            jit.compile_target_block(block)?;
             jit.chain_blocks(current_addr, current_addr, JITPathChoice::Main)?;
             Ok(())
         }

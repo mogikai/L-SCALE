@@ -3,7 +3,7 @@ use crate::jit::api::{
     JitError,
 };
 use crate::jit::trace_jit;
-use crate::jit::x86::regalloc::{
+use crate::jit::x86::x64emitter::regalloc::{
     RegAllocHint,
     RegAllocIntention,
     SpillBehavior,

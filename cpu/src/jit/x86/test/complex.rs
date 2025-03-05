@@ -58,7 +58,7 @@ fn test_complex() {
         jinst!(result = result + 342),
         jinst!(goto slice_addr),
     ];
-    exec_instructions(&mut jit, &mut context, &instructions);
+    exec_instructions(&mut jit, &mut context, instructions);
     let actual: u32 = get_slice_value(context.as_ref(), &spec, result);
 
     let result = a * b;
@@ -92,7 +92,7 @@ fn test_add_overflow_then_popcount() {
         jinst!(result = slice_a + slice_b),
         jinst!(result = popcount(result)),
     ];
-    exec_instructions(&mut jit, &mut context, &instructions);
+    exec_instructions(&mut jit, &mut context, instructions);
     let actual: u8 = get_slice_value(context.as_ref(), &spec, result);
 
     let result = a.wrapping_add(b);
@@ -121,7 +121,7 @@ fn test_add_overflow_then_lzcount() {
         jinst!(result = slice_a + slice_b),
         jinst!(result = lzcount(result)),
     ];
-    exec_instructions(&mut jit, &mut context, &instructions);
+    exec_instructions(&mut jit, &mut context, instructions);
     let actual: u8 = get_slice_value(context.as_ref(), &spec, result);
 
     let result = a.wrapping_add(b);

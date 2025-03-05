@@ -1,5 +1,5 @@
 use crate::tlb::{
-    PageMetaInfo,
+    PageData,
     PageTag,
 };
 use mogi_utilities::addresses::{
@@ -14,16 +14,16 @@ use std::mem::offset_of;
 
 #[repr(C)]
 #[repr(align(16))]
-pub struct TLBEntry<PageDataT> {
+pub struct TLBEntry {
     pub tag: u64,
     /// The target host address of the page. Since an HVAddr can never be null (see [NonNull]),
     /// the Option<HVAddr> type has the same size as a native pointer, and as such we can use it in
     /// the jit code like a normal address.
-    pub target: Option<HVAddr<PageDataT>>,
+    pub target: Option<HVAddr<PageData>>,
 }
 
-impl<PageDataT> Copy for TLBEntry<PageDataT> {}
-impl<PageDataT> Clone for TLBEntry<PageDataT> {
+impl Copy for TLBEntry {}
+impl Clone for TLBEntry {
     fn clone(&self) -> Self {
         Self {
             tag: self.tag,
@@ -32,7 +32,7 @@ impl<PageDataT> Clone for TLBEntry<PageDataT> {
     }
 }
 
-impl<PageDataT> Debug for TLBEntry<PageDataT> {
+impl Debug for TLBEntry {
     fn fmt(
         &self,
         f: &mut Formatter<'_>,
@@ -45,7 +45,7 @@ impl<PageDataT> Debug for TLBEntry<PageDataT> {
     }
 }
 
-impl<PageDataT> Default for TLBEntry<PageDataT> {
+impl Default for TLBEntry {
     fn default() -> Self {
         Self {
             tag: u64::MAX,
@@ -54,16 +54,13 @@ impl<PageDataT> Default for TLBEntry<PageDataT> {
     }
 }
 
-impl<PageDataT> TLBEntry<PageDataT>
-where
-    PageDataT: PageMetaInfo,
-{
+impl TLBEntry {
     pub fn new(
         addr: EVAddr,
-        target: HVAddr<PageDataT>,
+        target: HVAddr<PageData>,
     ) -> Self {
         Self {
-            tag: addr.tag::<PageDataT>(),
+            tag: addr.tag::<PageData>(),
             target: Some(target),
         }
     }

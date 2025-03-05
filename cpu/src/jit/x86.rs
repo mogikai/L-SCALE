@@ -41,26 +41,28 @@ use crate::jit::code_buffer::{
     CodeBuffer,
     CompiledBasicBlock,
 };
-use crate::jit::x86::emit::TlbMissCallback;
 use crate::jit::x86::scaffolding::{
     build_epilogue,
     build_prelude,
 };
-use emit::CustomOpCallback;
+use crate::jit::x86::x64emitter::{
+    TlbMissCallback,
+    X64Emitter,
+};
 use mogi_utilities::index_map::SecondaryMap;
 use registers::{
     RegAlloc,
     RegisterTracker,
 };
 use task_context::X86TaskContext;
+use x64emitter::CustomOpCallback;
 
-mod emit;
-mod regalloc;
 mod registers;
 mod scaffolding;
 mod task_context;
 #[cfg(test)]
 mod test;
+mod x64emitter;
 
 macro_rules! assemble {
     ($asm:expr; $($t:tt)*) => {
@@ -85,11 +87,11 @@ use crate::jit::x86::registers::RegAllocType;
 use crate::tlb::PageMetaInfo;
 use assemble;
 use mogi_mem::mmu::MogiMMU;
+use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
 
-pub struct X86MogiJit<PageDataT> {
+pub struct X86MogiJit {
     code_buffer: CodeBuffer<X64Relocation>,
     processor_specification: Rc<RefCell<ProcessorSpecification>>,
-    current_block: Option<EVAddr>,
     /// The jit prelude is the entry point of the emulator. The jir prelude is called with the
     /// context as first argument, and the block to execute as second argument (see [PreludeSignature])
     /// The prelude always lives in the first 1024 bits of the executable buffer.
@@ -109,14 +111,14 @@ pub struct X86MogiJit<PageDataT> {
     /// The global context pointer is baked into translated blocks for, e.g., custom op callbacks.
     /// Since the pointer is unmovable as lang as the jit exists, and the block cache is deleted
     /// along with the jit, this is safe to access.
-    global_context: Pin<Box<X86GlobalContext<PageDataT>>>,
+    global_context: Pin<Box<X86GlobalContext>>,
 }
 
 /// The global jit context. Each task context contains a pointer to this context.
-pub struct X86GlobalContext<PageDataT> {
-    custom_op_impls: SecondaryMap<CustomOpId, Option<CustomOpCallback<X86TaskContext<PageDataT>>>>,
-    tlb_miss_read_callback: Option<TlbMissCallback<X86TaskContext<PageDataT>>>,
-    tlb_miss_write_callback: Option<TlbMissCallback<X86TaskContext<PageDataT>>>,
+pub struct X86GlobalContext {
+    custom_op_impls: SecondaryMap<CustomOpId, Option<CustomOpCallback<X86TaskContext>>>,
+    tlb_miss_read_callback: Option<TlbMissCallback<X86TaskContext>>,
+    tlb_miss_write_callback: Option<TlbMissCallback<X86TaskContext>>,
 }
 
 #[repr(transparent)]
@@ -165,7 +167,7 @@ impl Space {
     }
 }
 
-impl<PageDataT> Default for X86GlobalContext<PageDataT> {
+impl Default for X86GlobalContext {
     fn default() -> Self {
         Self {
             custom_op_impls: Default::default(),
@@ -175,9 +177,9 @@ impl<PageDataT> Default for X86GlobalContext<PageDataT> {
     }
 }
 
-impl<PageDataT> JITGlobalRuntimeContext for X86GlobalContext<PageDataT> {}
+impl JITGlobalRuntimeContext for X86GlobalContext {}
 
-impl<PageDataT> X86MogiJit<PageDataT> {
+impl X86MogiJit {
     // TODO: Make MMU generic (put behind trait)
     pub fn new(
         processor_specification: Rc<RefCell<ProcessorSpecification>>,
@@ -191,7 +193,6 @@ impl<PageDataT> X86MogiJit<PageDataT> {
         Self {
             code_buffer,
             processor_specification,
-            current_block: Default::default(),
             jit_prelude_block: prelude_block,
             jit_prelude: prelude,
             jit_epilogue_block: epilogue_block,
@@ -201,89 +202,9 @@ impl<PageDataT> X86MogiJit<PageDataT> {
     }
 }
 
-impl<PageDataT> X86MogiJit<PageDataT> {
-    /// Directly chain a target address to the block at the provided EVAddr.
-    fn chain_blocks_direct(
-        &mut self,
-        origin_block_address: EVAddr,
-        target_address: *const u8,
-    ) -> JITResult {
-        todo!()
-        // // We need to take the block out of the cache, in order to modify it.
-        // let mut origin = self.jit_cache.take(origin_block_address)?;
-        // let Some(epilogue_offset) = origin.jmp_epilogue_offset else {
-        //     Err(JitError::NoEpilogue)?
-        // };
-        // // The origin address is after the jump instruction, hence we add 5 here.
-        // // See the intel manual for relative jmp size with 32 bit argument.
-        // let orign_address = unsafe { origin.code.ptr(epilogue_offset).add(5) };
-        // let jmp_offset = i32::try_from(unsafe { target_address.offset_from(orign_address) }).unwrap();
-        // // We know this must be safe, since the offset points into the memory starting at code.as_ptr
-        // let offset = unsafe {
-        //     origin
-        //         .code
-        //         .ptr(epilogue_offset)
-        //         .offset_from(origin.code.as_ptr()) as usize
-        // };
-        // let mut new_jmp = MogiAssembler::<X64Relocation>::new(0)?;
-        // dynasm!(new_jmp
-        // ; jmp jmp_offset as _
-        // );
-        // let new_jmp = new_jmp.finalize().unwrap();
-        // let mut code = origin.code.make_mut()?;
-        // let mut code = origin.code.make_mut()?;
-        // // Replace the jmp instruction with a new one pointing to the new target address
-        // code[offset..offset + new_jmp.len()].copy_from_slice(&new_jmp);
-        // origin.code = code.make_exec()?;
-        // // Done! We can now put the block back into the cache.
-        // self.jit_cache.populate(origin);
-        // Ok(())
-    }
-
-    // fn emit_host_load(
-    //     &mut self,
-    //     ty: (),
-    //     address: Self::Value,
-    //     offset: <Self::Value as JitValue>::Constant,
-    // ) -> Result<Self::Value, JitError> {
-    //     todo!()
-    // }
-    //
-    // fn emit_host_store(
-    //     &mut self,
-    //     ty: (),
-    //     address: Self::Value,
-    //     offset: <Self::Value as JitValue>::Constant,
-    // ) -> Result<Self::Value, JitError> {
-    //     todo!()
-    // }
-
-    // fn emit_load_fast_path(
-    //     &mut self,
-    //     target_register: u8,
-    // ) -> JITResult {
-    //     let block = self.current_block()?;
-    //     dynasm!(block.assembler
-    //         ; mov Rq(target_register), 0
-    //     );
-    //     Ok(())
-    // }
-
-    #[inline]
-    fn block_mut(&mut self) -> Result<&mut CompiledBasicBlock<X64Relocation>, JitError> {
-        Ok(self
-            .code_buffer
-            .block_mut(self.current_block.ok_or(JitError::NoActiveBlock)?)
-            .expect("The block must exist"))
-    }
-}
-
-impl<PageDataT> MogiJit for X86MogiJit<PageDataT>
-where
-    PageDataT: PageMetaInfo,
-{
-    type RuntimeContext = X86TaskContext<PageDataT>;
-    type GlobalContext = X86GlobalContext<PageDataT>;
+impl MogiJit for X86MogiJit {
+    type RuntimeContext = X86TaskContext;
+    type GlobalContext = X86GlobalContext;
 
     fn new_runtime_context(&mut self) -> Self::RuntimeContext {
         X86TaskContext::new(
@@ -337,185 +258,39 @@ where
         Ok(())
     }
 
-    fn new_target_block(
+    fn compile_target_block(
         &mut self,
-        evaddr: EVAddr,
-        successor: Option<EVAddr>,
+        block: TargetBasicBlock,
     ) -> JITResult {
-        if self.current_block.is_some() {
-            todo!("Return error: 'Tried to create new block without finalizing the previous block'")
-        }
-        self.code_buffer.create_block(evaddr, successor)?;
-        self.current_block = Some(evaddr);
+        self.code_buffer.create_block(block.start(), block.next())?;
         // Fetch the offset of the epilogue block
         let epilogue_code = self
             .code_buffer
             .anonymous_block(self.jit_epilogue_block)
             .ptr()
             .expect("The epilogue block code must exist");
-        let block = self
+        let compiled_block = self
             .code_buffer
-            .block_mut(evaddr)
+            .block_mut(block.start())
             .expect("We just created this block");
-
+        let spec = self.processor_specification.borrow();
         // Set both exit succes and exit fail to the jit epilogue
         // TODO: Different block for exit_fail?
         unsafe {
-            block.set_exit_success(epilogue_code);
-            block.set_exit_alternate(epilogue_code);
-            block.set_exit_failure(epilogue_code);
+            compiled_block.set_exit_success(epilogue_code);
+            compiled_block.set_exit_alternate(epilogue_code);
+            compiled_block.set_exit_failure(epilogue_code);
         }
+
+        let mut emitter = X64Emitter::new(&self.global_context, &spec, &mut self.register_tracker, compiled_block);
+        for inst in block.instructions() {
+            emitter.emit_jinst(inst)?;
+        }
+
+        emitter.finalize()?;
+        self.code_buffer.write_block(block.start())?;
         Ok(())
     }
-
-    fn emit_jinst(
-        &mut self,
-        jinst: &JIRInstruction,
-    ) -> JITResult {
-        trace!("Emitting {jinst}");
-        self.register_tracker.new_alloc_version();
-        // TODO: Maybe we can "allocate" the registers ahead of time and provide some hints
-        //       or something similar. Allocating the registers when having a complete
-        //       view on all relevant instructions may be more efficient.
-        let output = jinst.output.ok_or(RuntimeError::MissingOutput);
-        let input_a = jinst.input_a.ok_or(RuntimeError::MissingInput);
-        let input_b = jinst.input_b.ok_or(RuntimeError::MissingInput);
-        match jinst.operation {
-            JIROperation::BlockStart(block_id) => return Ok(()),
-            JIROperation::BlockEnd(block_id) => return Ok(()),
-            JIROperation::InstructionStart(addr) => return Ok(()),
-            JIROperation::InstructionEnd(addr) => return Ok(()),
-            JIROperation::Copy => return self.emit_copy(output?, input_a?),
-            JIROperation::Load(space_id) => return self.emit_load(output?, input_a?, space_id),
-            JIROperation::Store(space_id) => return self.emit_store(input_a?, space_id, input_b?),
-            JIROperation::IntAdd => return self.emit_add(output?, input_a?, input_b?),
-            JIROperation::IntSubtract => return self.emit_subtract(output?, input_a?, input_b?),
-            JIROperation::IntMul => return self.emit_multiply(output?, input_a?, input_b?),
-            JIROperation::IntDiv => return self.emit_divide(output?, input_a?, input_b?),
-            JIROperation::IntSDiv => return self.emit_signed_divide(output?, input_a?, input_b?),
-            JIROperation::IntRemainder => return self.emit_remainder(output?, input_a?, input_b?),
-            JIROperation::IntSRemainder => return self.emit_signed_remainder(output?, input_a?, input_b?),
-            JIROperation::IntLeft => return self.emit_shift_left(output?, input_a?, input_b?),
-            JIROperation::IntRight => return self.emit_shift_right(output?, input_a?, input_b?),
-            JIROperation::IntSRight => return self.emit_shift_right_signed(output?, input_a?, input_b?),
-            JIROperation::IntOr => return self.emit_bitwise_or(output?, input_a?, input_b?),
-            JIROperation::IntAnd => return self.emit_bitwise_and(output?, input_a?, input_b?),
-            JIROperation::IntXor => return self.emit_bitwise_xor(output?, input_a?, input_b?),
-            JIROperation::IntSLess => return self.emit_compare_lt_signed(output?, input_a?, input_b?),
-            JIROperation::IntSGreater => return self.emit_compare_gt_signed(output?, input_a?, input_b?),
-            JIROperation::IntSLessEqual => return self.emit_compare_le_signed(output?, input_a?, input_b?),
-            JIROperation::IntSGreaterEqual => return self.emit_compare_ge_signed(output?, input_a?, input_b?),
-            JIROperation::IntLess => return self.emit_compare_lt(output?, input_a?, input_b?),
-            JIROperation::IntGreater => return self.emit_compare_gt(output?, input_a?, input_b?),
-            JIROperation::IntLessEqual => return self.emit_compare_le(output?, input_a?, input_b?),
-            JIROperation::IntGreaterEqual => return self.emit_compare_ge(output?, input_a?, input_b?),
-            JIROperation::IntEquals => return self.emit_compare_eq(output?, input_a?, input_b?),
-            JIROperation::IntNotEquals => return self.emit_compare_ne(output?, input_a?, input_b?),
-            JIROperation::BitNegate => return self.emit_bitwise_negate(output?, input_a?),
-            JIROperation::IntNegate => return self.emit_negate(output?, input_a?),
-            JIROperation::FloatDiv => {}
-            JIROperation::FloatMul => {}
-            JIROperation::FloatAdd => {}
-            JIROperation::FloatSubtract => {}
-            JIROperation::FloatLess => {}
-            JIROperation::FloatGreater => {}
-            JIROperation::FloatLessEqual => {}
-            JIROperation::FloatGreaterEqual => {}
-            JIROperation::FloatEquals => {}
-            JIROperation::FloatNotEquals => {}
-            JIROperation::FloatNegate => {}
-            JIROperation::BoolOr => return self.emit_boolean_or(output?, input_a?, input_b?),
-            JIROperation::BoolAnd => return self.emit_boolean_and(output?, input_a?, input_b?),
-            JIROperation::BoolXor => return self.emit_boolean_xor(output?, input_a?, input_b?),
-            JIROperation::BoolNegate => return self.emit_boolean_negate(output?, input_a?),
-            JIROperation::CallDirect => {}
-            JIROperation::CallIndirect => {}
-            JIROperation::ReturnDirect => {}
-            JIROperation::ReturnIndirect => {}
-            JIROperation::GotoDirect => return self.emit_goto_direct(input_a?),
-            JIROperation::GotoIndirect => return self.emit_goto_indirect(input_a?),
-            JIROperation::GotoDirectIf => return self.emit_goto_direct_if(input_a?, input_b?),
-            JIROperation::GotoIndirectIf => {}
-            JIROperation::JCodeGoto(block_id) => {}
-            JIROperation::JCodeGotoIf(block_id) => {}
-            JIROperation::PopCount => return self.emit_popcount(output?, input_a?),
-            JIROperation::LZCount => return self.emit_lzcount(output?, input_a?),
-            JIROperation::ZeroExtend => return self.emit_zero_extend(output?, input_a?),
-            JIROperation::SignExtend => return self.emit_sign_extend(output?, input_a?),
-            JIROperation::Carry => return self.emit_carry(output?, input_a?, input_b?),
-            JIROperation::SignCarry => return self.emit_scarry(output?, input_a?, input_b?),
-            JIROperation::SignBorrow => return self.emit_sborrow(output?, input_a?, input_b?),
-            JIROperation::Nan => {}
-            JIROperation::Abs => {}
-            JIROperation::Sqrt => {}
-            JIROperation::IntToFloat => {}
-            JIROperation::FloatToFloat => {}
-            JIROperation::Trunc => {}
-            JIROperation::Ceil => {}
-            JIROperation::Floor => {}
-            JIROperation::Round => {}
-            JIROperation::CustomOp { op_id, ref extra_args } => {
-                return self.emit_custom_op_call(op_id, output, input_a, input_b, extra_args.as_slice());
-            }
-        }
-        todo!("Instruction not yet implemented: {jinst}")
-    }
-
-    fn emit_flush_slices(&mut self) -> JITResult {
-        // Iterate over the loaded slices and flush them to memory
-        for (register, alloc) in self.register_tracker.reset_gp().iter() {
-            if let RegAllocType::OccupiedDirty(slice) = &alloc.ty {
-                Self::emit_flush_register_to_slice(self.block_mut()?.assembler(), register, *slice)?;
-            }
-        }
-        Ok(())
-    }
-
-    // fn emit_load(
-    //     &mut self,
-    //     ty: (),
-    //     address: Self::Value,
-    //     offset: <Self::Value as JitValue>::Constant,
-    // ) -> Result<Self::Value, JitError> {
-    //     todo!()
-    // }
-    //
-    // fn emit_store(
-    //     &mut self,
-    //     address: Self::Value,
-    //     offset: <Self::Value as JitValue>::Constant,
-    //     value: Self::Value,
-    // ) -> JITResult {
-    //     todo!()
-    // }
-
-    // fn emit_ret(&mut self) -> JITResult {
-    //     let block = self.current_block()?;
-    //     dynasm!(block.assembler
-    //         ; ret
-    //     );
-    //     Ok(())
-    // }
-
-    // fn emit_pop(
-    //     &mut self,
-    //     var: Self::Value,
-    // ) -> JITResult {
-    //     // TODO: Every basic block has "outputs" and "inputs"
-    //     //       "outputs" are simply variables that have been written to during the blocks execution.
-    //     //       "inputs" are variables that are read from, before they are written to during the blocks execution.
-    //     // TODO: self.allocate_registers()?
-    //     //       Need to check if var is already a register (e.g. context is fixed as a register)
-    //     //       If it is not a register, it needs to be loaded from the cpu state
-    //     todo!()
-    //     // TODO: self.sync_registers()?
-    //     //       we might need to write registers back to the cpu state, depending on if they
-    //     //       are overwritten before the block ends or not.
-    //     //       Effectively, all "output" registers need to be written back.
-    //     //       Whether or not a variable is "dead" or an "output", is set by the MIR optimizer.
-    //     //       The state is stored in the variable struct.
-    //     //       In order to do this, we need to write a store instruction to host assembly.
-    // }
 
     fn chain_blocks(
         &mut self,
@@ -543,35 +318,6 @@ where
             },
         }
         origin_block.commit()?;
-        Ok(())
-    }
-
-    fn finalize_block(&mut self) -> JITResult {
-        if self.current_block.is_none() {
-            todo!("Return error: 'Cannot finalize because no block was started'")
-        };
-        match self.block_mut()?.fallthrough() {
-            None => {
-                // No successor specified. This means the processor is halting or something similar.
-                // Jump to failure exit.
-                // TODO: Write exception to runtime context.
-                assemble!(self.block_mut()?.assembler();
-                    // Intentionally trigger an exception, since this case is a todo
-                    ; mov rax, [0x0]
-                );
-            }
-            Some(next) => {
-                // Write the pc before we exit the block to make it visible to the jit.
-                // TODO: This could maybe be optimized such that we do not write the pc on chained blocks?
-                self.emit_write_pc(u64::from(next).into())?;
-                self.emit_flush_slices()?;
-                assemble!(self.block_mut()?.assembler();
-                    ; jmp ->exit_success
-                );
-            }
-        }
-        let block_addr = self.current_block.take().expect("The block must exist");
-        self.code_buffer.write_block(block_addr)?;
         Ok(())
     }
 

@@ -1,8 +1,10 @@
+use crate::spec::ProcessorSpecificationError;
+use crate::spec::jir::basic_block::instruction::JIRTempId;
 use crate::spec::jir::common::JIRSize;
-use crate::spec::jir::instruction::JIRTempId;
 use crate::spec::moir::address_space::SpaceId;
 pub use crate::spec::moir::context::ContextId;
 pub use crate::spec::moir::varnode::VarNodeId;
+use mogi_utilities::addresses::EVAddr;
 use serde_derive::{
     Deserialize,
     Serialize,
@@ -298,6 +300,14 @@ impl From<i16> for JIRValue {
 impl From<i8> for JIRValue {
     fn from(value: i8) -> Self {
         JIRConst::new(value as u128, 1).into()
+    }
+}
+
+impl TryFrom<JIRConst> for EVAddr {
+    type Error = ProcessorSpecificationError;
+
+    fn try_from(value: JIRConst) -> Result<Self, Self::Error> {
+        Ok(EVAddr::from(u64::try_from(value.value).map_err(|_| -> Self::Error { todo!() })?))
     }
 }
 

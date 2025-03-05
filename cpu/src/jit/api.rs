@@ -2,9 +2,11 @@ use crate::jit::cache::JitCacheError;
 use crate::jit::code_buffer::CodeBufferError;
 use crate::tlb::{
     AccessType,
+    PageData,
     TLB,
 };
 use dynasmrt::DynasmError;
+use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
 use mogi_sleigh::spec::jir::jcode::JIRInstruction;
 use mogi_sleigh::spec::jir::values::{
     JIRSlice,
@@ -103,25 +105,11 @@ pub trait MogiJit {
     where
         CB: TlbMissHelper<Self::RuntimeContext>;
 
-    /// Create a new target block that starts at the provided emulated virtual address.
-    /// Only one block can be built at once.
-    fn new_target_block(
+    /// Compiles the provided target basic block and inserts it into the jit cache for future access.
+    fn compile_target_block(
         &mut self,
-        evaddr: EVAddr,
-        successor: Option<EVAddr>,
+        block: TargetBasicBlock,
     ) -> JITResult;
-
-    /// Emit jited code for the provided [JIRInstruction]. The JIT compiler will allocate
-    /// registers for the used varnodes and populate them, if they have not yet been populated.
-    /// This might necessitate flushing registers, if no more registers are available.
-    fn emit_jinst(
-        &mut self,
-        jinst: &JIRInstruction,
-    ) -> JITResult;
-
-    /// Flush all varnodes to memory. This clears all host registers and flushes their contents
-    /// to the associated varnodes.
-    fn emit_flush_slices(&mut self) -> JITResult;
 
     /// Chain the blocks `origin` and `target`, such that the `origin` block no longer jumps out to
     /// the epilogue block, but directly into the next block `target`.
@@ -131,10 +119,6 @@ pub trait MogiJit {
         target_block_address: EVAddr,
         path: JITPathChoice,
     ) -> JITResult;
-
-    /// Finalize the emitted instructions as a block and add it to the jit cache.
-    /// This also resets the JIT such that a new block can be built by emitting instructions.
-    fn finalize_block(&mut self) -> JITResult;
 
     /// Execute the block at the specified emulated virtual address.
     /// If there is no translated block, an error is returned.
@@ -189,8 +173,6 @@ pub trait MogiJit {
 /// The context also owns the [TLB] which the mmu can access to populate entries.
 /// This context is task specific. I.e. each task has its own context.
 pub trait JITTaskRuntimeContext {
-    type PageData;
-
     fn slice(
         &self,
         slice: JIRSlice,
@@ -202,10 +184,10 @@ pub trait JITTaskRuntimeContext {
     ) -> Result<&mut [u8], RuntimeError>;
 
     /// Get a reference to the tlb of this task context
-    fn tlb(&self) -> &TLB<Self::PageData>;
+    fn tlb(&self) -> &TLB;
 
     /// Get a mutable reference to the tlb of this task context.
-    fn tlb_mut(&mut self) -> &mut TLB<Self::PageData>;
+    fn tlb_mut(&mut self) -> &mut TLB;
 
     /// Callbacks may set a runtime error in the context.
     /// This causes the jit to exit as soon as possible,
@@ -246,7 +228,7 @@ where
 
 /// The tlb miss helpers must have a signature that corresponds to this trait.
 pub trait TlbMissHelper<RuntimeContextT>:
-    Fn(&mut RuntimeContextT, EVAddr, usize, SpaceId) -> Result<HVAddr<RuntimeContextT::PageData>, RuntimeError>
+    Fn(&mut RuntimeContextT, EVAddr, usize, SpaceId) -> Result<HVAddr<PageData>, RuntimeError>
 where
     RuntimeContextT: JITTaskRuntimeContext,
 {
@@ -254,7 +236,7 @@ where
 
 impl<T, RuntimeContextT> TlbMissHelper<RuntimeContextT> for T
 where
-    T: Fn(&mut RuntimeContextT, EVAddr, usize, SpaceId) -> Result<HVAddr<RuntimeContextT::PageData>, RuntimeError>,
+    T: Fn(&mut RuntimeContextT, EVAddr, usize, SpaceId) -> Result<HVAddr<PageData>, RuntimeError>,
     RuntimeContextT: JITTaskRuntimeContext,
 {
 }

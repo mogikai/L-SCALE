@@ -1,9 +1,16 @@
 mod display;
+pub(crate) mod instruction;
 
 use crate::jinst;
+use crate::spec::jir::basic_block::instruction::{
+    JIRTempId,
+    TargetInstructionBuilder,
+};
 use crate::spec::jir::common::JIRSize;
-use crate::spec::jir::instruction::JIRTempId;
-use crate::spec::jir::jcode::JIRInstruction;
+use crate::spec::jir::jcode::{
+    JIRInstruction,
+    NextBlockTarget,
+};
 use crate::spec::jir::jir_block::{
     JIRBlock,
     JIRBlockFallthrough,
@@ -42,11 +49,19 @@ impl TargetBasicBlockBuilder {
                 temporaries: Default::default(),
                 start,
                 fallthrough: None,
+                branch_targets: None,
             },
             current_block_id: None,
             previous_block_id: None,
             temp_space,
         }
+    }
+
+    pub fn set_fallthrough(
+        &mut self,
+        fallthrough: EVAddr,
+    ) {
+        self.target_block.fallthrough = Some(fallthrough);
     }
 
     pub fn alloc_temporary(
@@ -85,22 +100,39 @@ impl TargetBasicBlockBuilder {
         })
     }
 
+    /// Starts building a new instruction by returning a new [TargetInstructionBuilder].
+    /// To finalize the instruction, call [TargetInstructionBuilder::finish]
     pub fn start_instruction(
         &mut self,
-        address: EVAddr,
-    ) {
+        start: EVAddr,
+        next: EVAddr,
+    ) -> ProcessorSpecResult<TargetInstructionBuilder> {
+        if self.target_block.fallthrough.is_some() || self.target_block.branch_targets.is_some() {
+            // Another instruction has previously emitted a goto
+        }
         self.target_block
             .jir_instructions
-            .push(JIRInstruction::instruction_start(address));
+            .push(JIRInstruction::instruction_start(start));
+        Ok(TargetInstructionBuilder {
+            block_builder: self,
+            block_labels: Default::default(),
+            start,
+            fallthrough: next,
+            branch_targets: None,
+        })
     }
 
-    pub fn end_instruction(
+    fn end_instruction(
         &mut self,
         address: EVAddr,
+        fallthrough: Option<EVAddr>,
+        branch_targets: Option<Vec<NextBlockTarget>>,
     ) -> ProcessorSpecResult {
         self.target_block
             .jir_instructions
             .push(JIRInstruction::instruction_end(address));
+        self.target_block.fallthrough = fallthrough;
+        self.target_block.branch_targets = branch_targets;
         Ok(())
     }
 
@@ -113,6 +145,14 @@ impl TargetBasicBlockBuilder {
         }
         self.target_block.jir_instructions.push(instruction);
         Ok(())
+    }
+
+    pub fn is_last_instruction_unconditional_external_branch(&self) -> bool {
+        self.target_block
+            .jir_instructions
+            .last()
+            .map(|i| i.is_unconditional_external_branch())
+            .unwrap_or(false)
     }
 
     /// Reserve a new block id for future blocks, such that we can have forward-references.
@@ -202,6 +242,16 @@ impl TargetBasicBlock {
     pub fn instructions(&self) -> impl Iterator<Item = &JIRInstruction> {
         self.0.jir_instructions.iter()
     }
+
+    /// The address where this block starts.
+    pub fn start(&self) -> EVAddr {
+        self.0.start
+    }
+
+    /// The address of the next block, if there is a next block.
+    pub fn next(&self) -> Option<EVAddr> {
+        self.0.fallthrough
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -221,4 +271,5 @@ struct TargetBasicBlockInner {
     /// This might be the case if the block issues some kind of halt instruction
     /// that stops execution.
     fallthrough: Option<EVAddr>,
+    branch_targets: Option<Vec<NextBlockTarget>>,
 }

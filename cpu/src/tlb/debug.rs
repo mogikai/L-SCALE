@@ -10,16 +10,16 @@ use std::fmt::{
     Formatter,
 };
 
-impl<PageDataT> Debug for TLB<PageDataT> {
+impl Debug for TLB {
     fn fmt(
         &self,
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
         write!(f, "TLB: {{")?;
-        fn write_color<T>(
+        fn write_color(
             f: &mut Formatter<'_>,
             i: usize,
-            entry: &TLBEntry<T>,
+            entry: &TLBEntry,
             color: ansi_term::Colour,
         ) -> std::fmt::Result {
             if i % 10 == 0 {

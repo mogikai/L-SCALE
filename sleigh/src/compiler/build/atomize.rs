@@ -10,7 +10,11 @@ use crate::compiler::{
     SleighCompiler,
 };
 use crate::spec::moir::code::{
-    moir_instruction, MOIRBranchCategory, MOIRGotoType, MOIRInstruction, MOIROpCategory
+    MOIRBranchCategory,
+    MOIRGotoType,
+    MOIRInstruction,
+    MOIROpCategory,
+    moir_instruction,
 };
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::scope::{
@@ -88,7 +92,10 @@ impl SleighCompiler {
                 SASTPCodeStatement::Invocation(invocation) => {
                     // We ignore the output, since top level invocations do not output anything.
                     // TODO: Maybe it makes sense to update the pcodeop definition here to "no output"?
-                    (_, block_end) = self.atomize_invocation(scope, instructions, None, invocation)?;
+                    block_end = block_end
+                        || self
+                            .atomize_invocation(scope, instructions, None, invocation)?
+                            .1;
                     Ok(())
                 }
                 SASTPCodeStatement::Build(table) => self.atomize_build(scope, instructions, table.transmute()),
@@ -131,7 +138,10 @@ impl SleighCompiler {
             }
 
             if let Some(last_instruction) = instructions.last() {
-                if matches!(last_instruction.operation.op_category(), MOIROpCategory::Branch(MOIRBranchCategory::External)) {
+                if matches!(
+                    last_instruction.operation.op_category(),
+                    MOIROpCategory::Branch(MOIRBranchCategory::External)
+                ) {
                     block_end = true;
                 }
             }

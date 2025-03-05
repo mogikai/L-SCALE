@@ -12,6 +12,7 @@ use crate::spec::jir::basic_block::{
     TargetBasicBlockBuilder,
 };
 use crate::spec::jir::context_stack::ContextStack;
+use crate::spec::jir::jcode::ContinueLifting;
 use crate::spec::jir::jumplist::MatcherResult;
 use crate::spec::jir::trace_jir;
 use mogi_utilities::addresses::EVAddr;
@@ -127,20 +128,17 @@ impl Lifter for ProcessorSpecification {
                     bytes_consumed,
                 } => {
                     trace_jir!("Found match and consumed {} bytes", bytes_consumed);
-
                     resolver.print_hierarchy(0);
-                    addr += bytes_consumed;
 
-                    let block_end = resolver.constructor().block_end;
                     resolver.print_mcode(&self, 0);
-                    resolver
+                    match resolver
                         .build(self, &mut block_builder)
-                        .map_err(|_| -> LifterError { todo!() })?;
-                    self.lifter_diagnostics.borrow_mut().total_time_build += now.elapsed();
-
-                    if block_end {
-                        break;
+                        .map_err(|_| -> LifterError { todo!() })?
+                    {
+                        ContinueLifting::Continue(next_addr) => addr = next_addr,
+                        ContinueLifting::Stop => break,
                     }
+                    self.lifter_diagnostics.borrow_mut().total_time_build += now.elapsed();
                 }
             }
         }

@@ -2,8 +2,11 @@ use super::actions::MOIRAction;
 use super::field_extractor::FieldExtractor;
 use crate::compiler::InternalCompilerResult;
 use crate::spec::jir::basic_block::TargetBasicBlockBuilder;
-use crate::spec::jir::instruction::TargetInstructionBuilder;
-use crate::spec::jir::jcode::JIRInstruction;
+use crate::spec::jir::basic_block::instruction::TargetInstructionBuilder;
+use crate::spec::jir::jcode::{
+    ContinueLifting,
+    JIRInstruction,
+};
 use crate::spec::jir::local_resolver::{
     JIRResolvedValue,
     JIRResolver,
@@ -37,6 +40,7 @@ use crate::{
     new_typed_index_table_id,
 };
 use mogi_sleigh_parser::SleighInterner;
+use mogi_utilities::addresses::EVAddr;
 use serde_derive::{
     Deserialize,
     Serialize,
@@ -106,16 +110,15 @@ impl MOIRConstructor {
         spec: &ProcessorSpecification,
         mut resolver: JIRResolver,
         block_builder: &mut TargetBasicBlockBuilder,
-    ) -> ProcessorSpecResult {
-        let mut target_inst = TargetInstructionBuilder::new(
-            block_builder,
+    ) -> ProcessorSpecResult<ContinueLifting> {
+        let mut target_inst = block_builder.start_instruction(
             resolver
                 .inst_start()
                 .expect("There must be an inst_start set"),
             resolver
                 .inst_next()
                 .expect("There must be an inst_next set"),
-        );
+        )?;
         resolver.realize_temporaries(&mut target_inst)?;
         let mut iter = self.instructions.iter().peekable();
         loop {

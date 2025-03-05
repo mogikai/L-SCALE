@@ -12,9 +12,16 @@ use crate::tlb::PageData;
 use mogi_mem::mmu::MogiMMU;
 use mogi_sleigh::SleighPreprocessorFactory;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
-use mogi_sleigh::spec::ProcessorSpecification;
+use mogi_sleigh::spec::jir::basic_block::{
+    TargetBasicBlock,
+    TargetBasicBlockBuilder,
+};
 use mogi_sleigh::spec::jir::jcode::JIRInstruction;
 use mogi_sleigh::spec::jir::values::JIRSlice;
+use mogi_sleigh::spec::{
+    ProcessorSpecification,
+    SpaceId,
+};
 use mogi_utilities::addresses::EVAddr;
 use num_traits::{
     FromBytes,
@@ -30,11 +37,7 @@ use std::rc::Rc;
 
 pub(super) fn setup(
     debug: bool
-) -> (
-    X86MogiJit<PageData>,
-    Rc<RefCell<ProcessorSpecification>>,
-    Box<<X86MogiJit<PageData> as MogiJit>::RuntimeContext>,
-) {
+) -> (X86MogiJit, Rc<RefCell<ProcessorSpecification>>, Box<<X86MogiJit as MogiJit>::RuntimeContext>) {
     let mut spec_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     spec_path.push("resources/test/x86/x86-64.slaspec");
     let spec_dir = spec_path.parent().unwrap();
@@ -100,17 +103,32 @@ pub(super) fn get_reg_slice(
         .unwrap()
 }
 
+pub(super) fn make_basic_block_from_instructions(
+    address: EVAddr,
+    fallthrough: EVAddr,
+    instructions: impl IntoIterator<Item = JIRInstruction>,
+) -> TargetBasicBlock {
+    let mut builder = TargetBasicBlockBuilder::new(address, SpaceId::from(0x4141));
+    builder.set_fallthrough(fallthrough);
+    builder.start_block().unwrap();
+    for instruction in instructions.into_iter() {
+        builder.push_jir_instruction(instruction).unwrap();
+    }
+    builder.finish_block().unwrap();
+    builder.finish().unwrap()
+}
+
 pub(super) fn exec_instructions<T: MogiJit>(
     jit: &mut T,
     context: &mut T::RuntimeContext,
-    instructions: &[JIRInstruction],
+    instructions: impl IntoIterator<Item = JIRInstruction>,
 ) {
-    jit.new_target_block(EVAddr::from(0x800100u64), Some(EVAddr::from(0x800200u64)))
-        .unwrap();
-    for instruction in instructions {
-        jit.emit_jinst(&instruction).unwrap();
-    }
-    jit.finalize_block().unwrap();
+    jit.compile_target_block(make_basic_block_from_instructions(
+        EVAddr::from(0x800100u64),
+        EVAddr::from(0x800200u64),
+        instructions,
+    ))
+    .unwrap();
     jit.set_instruction_pointer(context, EVAddr::from(0x800100u64))
         .unwrap();
 
@@ -155,7 +173,7 @@ pub(super) fn test_instruction_generic<T, U1, U2, R>(
         //
         instruction,
     ];
-    exec_instructions(jit, context, &instructions);
+    exec_instructions(jit, context, instructions);
     let actual: R = get_slice_value(context, &processor_spec, result);
 
     let expected = verify_op(a, b);
@@ -290,7 +308,7 @@ pub(super) fn test_unary_instruction_generic<T, U, R>(
         //
         instruction,
     ];
-    exec_instructions(jit, context, &instructions);
+    exec_instructions(jit, context, instructions);
     let actual: R = get_slice_value(context, &processor_spec, result);
 
     let expected = verify_op(a);

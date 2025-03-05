@@ -1,0 +1,51 @@
+use crate::jit::api::JITResult;
+use crate::jit::x86::x64emitter::X64Emitter;
+use crate::jit::x86::x64emitter::regalloc::SliceType;
+use crate::jit::x86::x64emitter::slice_load::CopyExtendMode;
+use mogi_sleigh::spec::jir::values::{
+    JIRSlice,
+    JIRValue,
+};
+
+impl X64Emitter<'_> {
+    pub fn emit_zero_extend(
+        &mut self,
+        output: JIRSlice,
+        input: JIRValue,
+    ) -> JITResult {
+        match input {
+            JIRValue::Slice(slice) => {
+                let in_gpr = self.load_slice_gpr(slice, SliceType::Input);
+                let out_gpr = self.allocate_slice_gpr(output, SliceType::Output);
+                self.copy_gpr_to_gpr(out_gpr, in_gpr, input.size(), CopyExtendMode::ZeroExtend(output.size()))?;
+            }
+            JIRValue::Const(value) => {
+                // For const values we simply copy
+                let value = value.zext(output.size()).expect("Invalid zero extend");
+                self.emit_copy(output, value)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn emit_sign_extend(
+        &mut self,
+        output: JIRSlice,
+        input: JIRValue,
+    ) -> JITResult {
+        match input {
+            JIRValue::Slice(slice) => {
+                let in_gpr = self.load_slice_gpr(slice, SliceType::Input);
+                let out_gpr = self.allocate_slice_gpr(output, SliceType::Output);
+                self.copy_gpr_to_gpr(out_gpr, in_gpr, input.size(), CopyExtendMode::SignExtend(output.size()))?;
+            }
+            JIRValue::Const(value) => {
+                // For const values we simply copy
+                // let value = value.zext(output.size()).expect("Invalid zero extend");
+                todo!()
+                // self.emit_copy(output, value)?;
+            }
+        }
+        Ok(())
+    }
+}

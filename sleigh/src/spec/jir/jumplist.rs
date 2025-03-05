@@ -467,7 +467,6 @@ impl Jumplist {
                 _ => return Ok(result),
             }
         }
-
         // everything matched
         trace_jir!("Got a complete match");
 

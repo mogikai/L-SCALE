@@ -2,8 +2,9 @@ use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
 use crate::jinst;
 use crate::spec::jir::basic_block::TargetBasicBlockBuilder;
+use crate::spec::jir::basic_block::instruction::TargetInstructionBuilder;
 use crate::spec::jir::common::JIRSize;
-use crate::spec::jir::instruction::TargetInstructionBuilder;
+use crate::spec::jir::jcode::ContinueLifting;
 use crate::spec::jir::space::JIRSpaceType;
 use crate::spec::jir::trace_jir;
 use crate::spec::jir::values::{
@@ -170,7 +171,7 @@ impl<'a> JIRResolver<'a> {
         self,
         spec: &ProcessorSpecification,
         block_builder: &mut TargetBasicBlockBuilder,
-    ) -> ProcessorSpecResult {
+    ) -> ProcessorSpecResult<ContinueLifting> {
         self.constructor.generate_jcode(spec, self, block_builder)
     }
 
@@ -414,10 +415,7 @@ impl<'a> JIRResolver<'a> {
                     } else if !field.strings.is_empty() {
                         todo!("display");
                     } else {
-                        JIRResolvedValue::Value(JIRValue::Const(JIRConst::new(
-                            field_value,
-                            field.bits.bits(),
-                        )))
+                        JIRResolvedValue::Value(JIRValue::Const(JIRConst::new(field_value, field.bits.bits())))
                     }
                 } else {
                     todo!("Generate error for field resolving to non-const");

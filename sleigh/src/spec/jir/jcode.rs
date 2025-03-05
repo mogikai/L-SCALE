@@ -12,6 +12,23 @@ pub use inline_code::*;
 use mogi_utilities::addresses::EVAddr;
 use std::rc::Rc;
 
+/// This enum is used to specify the instructions that may follow the current instruction.
+/// It may be a direct jump to a constant address, or a direct or indirect jump to a
+/// value calculated at runtime.
+/// This always ends the current block.
+#[derive(Debug, Clone)]
+pub enum NextBlockTarget {
+    Direct(EVAddr),
+    DynamicDirect(JIRValue),
+    DynamicIndirect(JIRValue),
+}
+
+#[derive(Debug)]
+pub enum ContinueLifting {
+    Continue(EVAddr),
+    Stop,
+}
+
 #[derive(Debug, Clone)]
 pub struct JIRInstruction {
     pub output: Option<JIRSlice>,
@@ -194,6 +211,14 @@ impl JIRInstruction {
         matches!(
             self.operation,
             CallDirect | CallIndirect | ReturnDirect | ReturnIndirect | GotoDirect | GotoIndirect | JCodeGoto(_)
+        )
+    }
+
+    pub fn is_unconditional_external_branch(&self) -> bool {
+        use JIROperation::*;
+        matches!(
+            self.operation,
+            CallDirect | CallIndirect | ReturnDirect | ReturnIndirect | GotoDirect | GotoIndirect
         )
     }
 

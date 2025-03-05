@@ -153,10 +153,10 @@ impl PageMetaInfo for PageData {
 
 #[derive(Clone, Copy)]
 #[repr(C)]
-pub struct TLB<PageDataT> {
+pub struct TLB {
     // TODO: Remove pub
-    read_entries: [TLBEntry<PageDataT>; TLB_SIZE],
-    write_entries: [TLBEntry<PageDataT>; TLB_SIZE],
+    read_entries: [TLBEntry; TLB_SIZE],
+    write_entries: [TLBEntry; TLB_SIZE],
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -181,7 +181,7 @@ impl Display for AccessType {
     }
 }
 
-impl<PageDataT> TLB<PageDataT> {
+impl TLB {
     pub fn new() -> Self {
         Self {
             read_entries: [Default::default(); TLB_SIZE],
@@ -211,51 +211,48 @@ impl<PageDataT> TLB<PageDataT> {
     }
 }
 
-impl<PageDataT> TLB<PageDataT>
-where
-    PageDataT: PageMetaInfo,
-{
+impl TLB {
     pub fn insert_read(
         &mut self,
         addr: EVAddr,
-        page: HVAddr<PageDataT>,
+        page: HVAddr<PageData>,
     ) {
         let entry = TLBEntry::new(addr, page);
-        trace_tlb!("New read entry {:?} for {:?} at index {:#x}", entry, addr, addr.index::<PageDataT>(),);
-        self.read_entries[addr.index::<PageDataT>() as usize] = entry;
+        trace_tlb!("New read entry {:?} for {:?} at index {:#x}", entry, addr, addr.index::<PageData>(),);
+        self.read_entries[addr.index::<PageData>() as usize] = entry;
     }
 
     pub fn insert_write(
         &mut self,
         addr: EVAddr,
-        page: HVAddr<PageDataT>,
+        page: HVAddr<PageData>,
     ) {
         let entry = TLBEntry::new(addr, page);
-        trace_tlb!("New write entry {:?} for {:?} at index {:#x}", entry, addr, addr.index::<PageDataT>(),);
-        self.write_entries[addr.index::<PageDataT>() as usize] = entry;
+        trace_tlb!("New write entry {:?} for {:?} at index {:#x}", entry, addr, addr.index::<PageData>(),);
+        self.write_entries[addr.index::<PageData>() as usize] = entry;
     }
 
     pub fn remove(
         &mut self,
         addr: EVAddr,
     ) {
-        self.read_entries[addr.index::<PageDataT>() as usize] = Default::default();
-        self.write_entries[addr.index::<PageDataT>() as usize] = Default::default();
+        self.read_entries[addr.index::<PageData>() as usize] = Default::default();
+        self.write_entries[addr.index::<PageData>() as usize] = Default::default();
     }
 
     /// If the entry is contained in the tlb(r/w), the mapping is updated. Otherwise, this operation does nothing.
     pub fn update(
         &mut self,
         addr: EVAddr,
-        page: HVAddr<PageDataT>,
+        page: HVAddr<PageData>,
     ) {
         let new_entry = TLBEntry::new(addr, page);
-        let entry = &mut self.read_entries[addr.index::<PageDataT>() as usize];
-        if entry.tag == addr.tag::<PageDataT>() {
+        let entry = &mut self.read_entries[addr.index::<PageData>() as usize];
+        if entry.tag == addr.tag::<PageData>() {
             *entry = new_entry;
         }
-        let entry = &mut self.write_entries[addr.index::<PageDataT>() as usize];
-        if entry.tag == addr.tag::<PageDataT>() {
+        let entry = &mut self.write_entries[addr.index::<PageData>() as usize];
+        if entry.tag == addr.tag::<PageData>() {
             *entry = new_entry;
         }
     }
@@ -265,9 +262,9 @@ where
     pub unsafe fn page(
         &self,
         addr: EVAddr,
-    ) -> Option<&PageDataT> {
-        let entry = self.read_entries[addr.index::<PageDataT>() as usize];
-        (entry.tag == addr.tag::<PageDataT>())
+    ) -> Option<&PageData> {
+        let entry = self.read_entries[addr.index::<PageData>() as usize];
+        (entry.tag == addr.tag::<PageData>())
             .then_some(entry.target)
             .flatten()
             .map(|addr| unsafe { addr.as_ref() })
@@ -278,9 +275,9 @@ where
     pub unsafe fn page_mut(
         &self,
         addr: EVAddr,
-    ) -> Option<&mut PageDataT> {
-        let entry = self.write_entries[addr.index::<PageDataT>() as usize];
-        (entry.tag == addr.tag::<PageDataT>())
+    ) -> Option<&mut PageData> {
+        let entry = self.write_entries[addr.index::<PageData>() as usize];
+        (entry.tag == addr.tag::<PageData>())
             .then_some(entry.target)
             .flatten()
             .map(|mut addr| unsafe { addr.as_mut() })
