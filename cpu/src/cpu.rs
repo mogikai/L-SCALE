@@ -207,7 +207,7 @@ where
                 // The block is already translated. Return
                 return Ok(());
             }
-            let (next_addr, block) = self
+            let block = self
                 .processor_specification
                 .borrow()
                 .lift_block(&*mmu, self.runtime_context.as_mut(), current_addr)
@@ -215,7 +215,8 @@ where
             // TODO: Most likely, if the runtime context was modified, we will first need to emulate before translating
             //       more blocks?
             trace_jit!("{}", block);
-            trace_jit!("Next: {:?}", next_addr);
+            trace_jit!("Fallthrough: {:?}", block.fallthrough());
+            trace_jit!("Branch targets: {:?}", block.branch_targets());
             // TODO: What about caching?
             jit.compile_target_block(block)?;
             jit.chain_blocks(current_addr, current_addr, JITPathChoice::Main)?;

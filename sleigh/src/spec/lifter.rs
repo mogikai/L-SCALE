@@ -26,7 +26,7 @@ impl Lifter for ProcessorSpecification {
         source: &S,
         context_provider: &mut C,
         addr: EVAddr,
-    ) -> LifterResult<(EVAddr, TargetBasicBlock)> {
+    ) -> LifterResult<TargetBasicBlock> {
         // // Check the cache. If it contains the instruction we can simply return it.
         // if self.cache.is_instruction_cached(addr) {
         //     // TODO: Remove the outer check once the conditional control flow borrow checking lands
@@ -68,7 +68,7 @@ impl Lifter for ProcessorSpecification {
                 bytes_consumed: _,
             } => {
                 let mut block_builder = TargetBasicBlockBuilder::new(addr, self.temp_space);
-                resolver.print_hierarchy(0);
+                trace_jir!("{}", resolver.hierarchy_debug_string().unwrap());
 
                 block_builder.start_block().unwrap();
                 resolver
@@ -79,8 +79,9 @@ impl Lifter for ProcessorSpecification {
                 let block = block_builder
                     .finish()
                     .map_err(|_| -> LifterError { todo!() })?;
+
                 self.lifter_diagnostics.borrow_mut().total_time_build += now.elapsed();
-                Ok((addr, block))
+                Ok(block)
             }
         }
     }
@@ -90,12 +91,12 @@ impl Lifter for ProcessorSpecification {
         source: &S,
         context_provider: &mut C,
         mut addr: EVAddr,
-    ) -> LifterResult<(EVAddr, TargetBasicBlock)>
+    ) -> LifterResult<TargetBasicBlock>
     where
         S: TargetInstructionSource,
         C: ContextProvider,
     {
-        // TODO: Allocate buffer size depending on the target instruction sets maximum instruction size.
+        // TODO: Allocate buffer size depending on the target instruction set's maximum instruction size.
         let mut buffer = [0u8; 16];
 
         let now = Instant::now();
@@ -128,9 +129,9 @@ impl Lifter for ProcessorSpecification {
                     bytes_consumed,
                 } => {
                     trace_jir!("Found match and consumed {} bytes", bytes_consumed);
-                    resolver.print_hierarchy(0);
+                    trace_jir!("{}", resolver.hierarchy_debug_string().unwrap());
 
-                    resolver.print_mcode(&self, 0);
+                    trace_jir!("{}", resolver.mcode_debug_string(&self).unwrap());
                     match resolver
                         .build(self, &mut block_builder)
                         .map_err(|_| -> LifterError { todo!() })?
@@ -146,12 +147,9 @@ impl Lifter for ProcessorSpecification {
         // Close the last open block.
         block_builder.finish_block().unwrap();
 
-        Ok((
-            addr,
-            block_builder
-                .finish()
-                .map_err(|_| -> LifterError { todo!() })?,
-        ))
+        Ok(block_builder
+            .finish()
+            .map_err(|_| -> LifterError { todo!() })?)
     }
 
     fn diagnostics(&self) -> Ref<LifterDiagnostics> {

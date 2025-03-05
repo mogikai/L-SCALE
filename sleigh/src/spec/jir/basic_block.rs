@@ -30,10 +30,28 @@ use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::PrimaryMap;
 use std::rc::Rc;
 
+/// A builder for constructing `TargetBasicBlock` structures.
+///
+/// This builder manages the internal state of the basic block,
+/// including its instructions, temporaries, and connections
+/// between blocks. It provides methods for starting and finishing
+/// blocks, allocating temporaries, and managing control flow
+/// branches.
 pub struct TargetBasicBlockBuilder {
+    /// The inner representation of the target basic block being constructed.
     target_block: TargetBasicBlockInner,
+
+    /// The ID of the currently active block. If `None`, no block is currently active.
     current_block_id: Option<JIRBlockId>,
+
+    /// The ID of the previously finalized block. This is used to link consecutive blocks.
     previous_block_id: Option<JIRBlockId>,
+
+    /// Keeps track of the next instruction to be added. If the block is finalized before
+    /// a branch occurs, this instruction is set as the fallthrough.
+    next_instruction: Option<EVAddr>,
+
+    /// The address space used for allocating temporary variables within the basic block.
     temp_space: SpaceId,
 }
 
@@ -53,8 +71,16 @@ impl TargetBasicBlockBuilder {
             },
             current_block_id: None,
             previous_block_id: None,
+            next_instruction: None,
             temp_space,
         }
+    }
+
+    /// Returns true if the block currently has no successors. This can be helpful
+    /// when constructing single instruction blocks, where a manual call to
+    /// [set_fallthrough](TargetBasicBlockBuilder::set_fallthrough) will be necessary.
+    pub fn no_successor(&self) -> bool {
+        self.target_block.fallthrough.is_none() && self.target_block.branch_targets.is_none()
     }
 
     pub fn set_fallthrough(
@@ -107,8 +133,16 @@ impl TargetBasicBlockBuilder {
         start: EVAddr,
         next: EVAddr,
     ) -> ProcessorSpecResult<TargetInstructionBuilder> {
+        if let Some(previous_next) = self.next_instruction
+            && previous_next != start
+        {
+            Err(todo!(
+                "Report error: Cannot start an instruction that is not directly connected in the control flow."
+            ))?
+        }
         if self.target_block.fallthrough.is_some() || self.target_block.branch_targets.is_some() {
             // Another instruction has previously emitted a goto
+            Err(todo!("Report error: The previous instruction already terminated the block"))?
         }
         self.target_block
             .jir_instructions
@@ -125,9 +159,11 @@ impl TargetBasicBlockBuilder {
     fn end_instruction(
         &mut self,
         address: EVAddr,
+        next: EVAddr,
         fallthrough: Option<EVAddr>,
         branch_targets: Option<Vec<NextBlockTarget>>,
     ) -> ProcessorSpecResult {
+        self.next_instruction = Some(next);
         self.target_block
             .jir_instructions
             .push(JIRInstruction::instruction_end(address));
@@ -227,7 +263,12 @@ impl TargetBasicBlockBuilder {
         Ok(block_id)
     }
 
-    pub fn finish(self) -> ProcessorSpecResult<TargetBasicBlock> {
+    pub fn finish(mut self) -> ProcessorSpecResult<TargetBasicBlock> {
+        if self.target_block.branch_targets.is_none() && self.target_block.fallthrough.is_none() {
+            // In case only non-branching instructions were added, we want to set the fallthrough
+            // to the next instruction in line.
+            self.target_block.fallthrough = self.next_instruction
+        }
         Ok(TargetBasicBlock(Rc::new(self.target_block)))
     }
 }
@@ -248,9 +289,21 @@ impl TargetBasicBlock {
         self.0.start
     }
 
-    /// The address of the next block, if there is a next block.
-    pub fn next(&self) -> Option<EVAddr> {
+    /// The address of the next block, if the next block can be reached without branching.
+    pub fn fallthrough(&self) -> Option<EVAddr> {
         self.0.fallthrough
+    }
+
+    /// Determines whether the block branches, or simply falls through to the next instruction.
+    pub fn branches(&self) -> bool {
+        self.0.branch_targets.is_some()
+    }
+
+    /// If the block branches conditionally or unconditionally, this returns a list of targets for the branches
+    /// at the end of this block. In most cases, this will be either one or two targets.
+    /// Some obscure architectures may provide more than two branch targets.
+    pub fn branch_targets(&self) -> Option<&[NextBlockTarget]> {
+        self.0.branch_targets.as_deref()
     }
 }
 

@@ -39,6 +39,8 @@ use fnv::FnvHashMap;
 use mogi_sleigh_parser::StringId;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::SecondaryMap;
+use std::fmt::Write;
+use std::ptr::write;
 use tracing::debug;
 
 pub enum JIRResolvedValue {
@@ -119,35 +121,53 @@ impl<'a> JIRResolver<'a> {
         }
     }
 
-    // TODO remove
-    pub(crate) fn print_hierarchy(
-        &self,
-        depth: u32,
-    ) {
-        for _ in 0..depth {
-            eprint!(" ");
-        }
-
-        eprintln!("|-> {:?}", self.constructor.display);
-        for subtable_resolver in self.subtables.values() {
-            subtable_resolver.print_hierarchy(depth + 4);
-        }
+    pub(crate) fn hierarchy_debug_string(&self) -> Result<String, std::fmt::Error> {
+        let mut out = String::new();
+        writeln!(out, "Resolver hierarchy:")?;
+        self._hierarchy_debug_string(0, &mut out)?;
+        Ok(out)
     }
 
-    // TODO remove
-    pub(crate) fn print_mcode(
+    fn _hierarchy_debug_string(
+        &self,
+        depth: u32,
+        out: &mut String,
+    ) -> Result<(), std::fmt::Error> {
+        for _ in 0..depth {
+            write!(out, " ")?;
+        }
+
+        writeln!(out, "|-> {:?}", self.constructor.display)?;
+        for subtable_resolver in self.subtables.values() {
+            subtable_resolver._hierarchy_debug_string(depth + 4, out)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn mcode_debug_string(
+        &self,
+        spec: &ProcessorSpecification,
+    ) -> Result<String, std::fmt::Error> {
+        let mut out = String::new();
+        self._mcode_debug_string(spec, 0, &mut out)?;
+        Ok(out)
+    }
+
+    fn _mcode_debug_string(
         &self,
         spec: &ProcessorSpecification,
         depth: u32,
-    ) {
+        out: &mut String,
+    ) -> Result<(), std::fmt::Error> {
         for _ in 0..depth {
-            eprint!(" ");
+            write!(out, " ")?;
         }
 
-        eprintln!("{}", self.constructor.mcode_debug_string(&spec.interner));
+        writeln!(out, "{}", self.constructor.mcode_debug_string(&spec.interner))?;
         for subtable_resolver in self.subtables.values() {
-            subtable_resolver.print_mcode(spec, depth + 4);
+            subtable_resolver._mcode_debug_string(spec, depth + 4, out)?
         }
+        Ok(())
     }
 
     /// Resolve the unresolved temporaries for the associated constructor.

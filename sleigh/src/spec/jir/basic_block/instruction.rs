@@ -126,7 +126,7 @@ impl<'a> TargetInstructionBuilder<'a> {
     ) -> ProcessorSpecResult {
         if block_builder.is_last_instruction_unconditional_external_branch() {
             // The last instruction is an unconditional branch. There is no fallthrough.
-            block_builder.end_instruction(start, None, branch_targets)?;
+            block_builder.end_instruction(start, fallthrough, None, branch_targets)?;
         } else {
             // if we don't have an unconditional branch as last instruction, the target instruction
             // falls through to the next instruction.
@@ -134,6 +134,7 @@ impl<'a> TargetInstructionBuilder<'a> {
             // since the block will end later on.
             block_builder.end_instruction(
                 start,
+                fallthrough,
                 branch_targets.as_ref().and_then(|_| Some(fallthrough)),
                 branch_targets,
             )?;

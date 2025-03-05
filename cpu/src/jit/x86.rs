@@ -262,7 +262,8 @@ impl MogiJit for X86MogiJit {
         &mut self,
         block: TargetBasicBlock,
     ) -> JITResult {
-        self.code_buffer.create_block(block.start(), block.next())?;
+        self.code_buffer
+            .create_block(block.start(), block.fallthrough())?;
         // Fetch the offset of the epilogue block
         let epilogue_code = self
             .code_buffer

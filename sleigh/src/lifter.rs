@@ -8,8 +8,8 @@ use thiserror::Error;
 use self::context_provider::ContextProvider;
 
 pub mod cache;
-pub mod source;
 pub mod context_provider;
+pub mod source;
 
 pub type LifterResult<T = ()> = Result<T, LifterError>;
 
@@ -42,14 +42,14 @@ pub trait Lifter {
         source: &S,
         context_provider: &mut C,
         addr: EVAddr,
-    ) -> LifterResult<(EVAddr, TargetBasicBlock)>;
+    ) -> LifterResult<TargetBasicBlock>;
 
     fn lift_block<S: TargetInstructionSource, C: ContextProvider>(
         &self,
         source: &S,
         context_provider: &mut C,
         addr: EVAddr,
-    ) -> LifterResult<(EVAddr, TargetBasicBlock)>;
+    ) -> LifterResult<TargetBasicBlock>;
 
     fn diagnostics(&self) -> Ref<LifterDiagnostics>;
     fn reset_diagnostics(&mut self);
