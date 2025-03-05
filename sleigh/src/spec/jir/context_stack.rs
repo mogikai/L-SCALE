@@ -42,14 +42,8 @@ impl ContextStack {
         };
 
         // fill initial values from the context provider
-        for (name, value) in context_provider.values() {
-            let field_id = specification
-                .field_id_by_string(name)
-                .ok_or_else(|| -> InternalError {
-                    todo!("Generate error report for global context value without any context fields (name: {})", name);
-                })?;
-
-            slf.set_field_value(field_id, *value)?;
+        for (field_id, value) in context_provider.values() {
+            slf.set_field_value(field_id, value)?;
         }
 
         Ok(slf)

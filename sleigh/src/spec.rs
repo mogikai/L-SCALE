@@ -23,7 +23,7 @@ use crate::spec::moir::constructor::{
 use crate::spec::moir::context::ContextId;
 pub use crate::spec::moir::custom_op::CustomOpId;
 use crate::spec::moir::endianness::MOIREndianness;
-use crate::spec::moir::field::FieldId;
+pub use crate::spec::moir::field::FieldId;
 use crate::spec::moir::r#macro::MacroId;
 use crate::spec::moir::table::{
     MOIRTable,
@@ -246,15 +246,13 @@ impl ProcessorSpecification {
     /// Look up a field by its string identifier.
     pub fn field_id_by_string(
         &self,
-        name: &str
+        name: &str,
     ) -> Option<FieldId> {
         let name = self.interner.lookup(name)?;
         let ident = self.string_to_ident_mapping.get(&name)?;
         match self.symbol_ids.get(*ident)? {
-            JIRSymbolId::Field(field_id) => {
-                Some(*field_id)
-            },
-            _ => None
+            JIRSymbolId::Field(field_id) => Some(*field_id),
+            _ => None,
         }
     }
 

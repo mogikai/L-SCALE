@@ -6,6 +6,7 @@ use crate::tlb::{
     TLB,
 };
 use dynasmrt::DynasmError;
+use mogi_sleigh::lifter::context_provider::ContextProvider;
 use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
 use mogi_sleigh::spec::jir::jcode::JIRInstruction;
 use mogi_sleigh::spec::jir::values::{
@@ -72,7 +73,7 @@ pub enum RuntimeError {
 pub type JITResult<T = ()> = Result<T, JitError>;
 
 pub trait MogiJit {
-    type RuntimeContext: JITTaskRuntimeContext + Sized;
+    type RuntimeContext: JITTaskRuntimeContext + ContextProvider + Sized;
     type GlobalContext: JITGlobalRuntimeContext + Sized;
 
     /// Creates a new context that is used during the jit runtime.

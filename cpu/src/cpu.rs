@@ -4,6 +4,7 @@
 
 use std::cell::RefCell;
 use std::fmt::Debug;
+use std::ops::Deref;
 use std::rc::Rc;
 
 use crate::jit::api::{
@@ -20,10 +21,7 @@ use crate::new_cpu_trait::{
     RunLimit,
 };
 use mogi_sleigh::lifter::Lifter;
-use mogi_sleigh::lifter::context_provider::{
-    ContextProvider,
-    SimpleContextProvider,
-};
+use mogi_sleigh::lifter::context_provider::ContextProvider;
 use mogi_sleigh::lifter::source::TargetInstructionSource;
 use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_utilities::addresses::EVAddr;
@@ -85,8 +83,18 @@ where
         processor_specification: Rc<RefCell<ProcessorSpecification>>,
         mmu: Rc<RefCell<MmuT>>,
     ) -> Self {
+        // TODO: Make an api for the runtime configuration. We probably want some kind of json file for this?
+        let runtime_context = {
+            let spec = processor_specification.borrow();
+            let mut runtime_context = Box::new(jit.new_runtime_context());
+            runtime_context.set(&*spec, "longMode", 1);
+            runtime_context.set(&*spec, "addrsize", 2);
+            runtime_context.set(&*spec, "opsize", 1);
+            runtime_context
+        };
+
         Self {
-            runtime_context: Box::new(jit.new_runtime_context()),
+            runtime_context,
             jit: RefCell::new(jit),
             mmu,
             processor_specification,
@@ -188,13 +196,6 @@ where
         // // Translate to host blocks
         // let blocks = new_blocks.translate();
         // self.jit_cache.populate(blocks);
-
-        // TODO put this somewhere better
-        let mut context_provider = SimpleContextProvider::default();
-        context_provider.set("longMode", 1);
-        context_provider.set("addrsize", 2);
-        context_provider.set("opsize", 1);
-
         {
             // TODO: Remove demo block
             let mut jit = self.jit.borrow_mut();
@@ -209,8 +210,10 @@ where
             let (next_addr, block) = self
                 .processor_specification
                 .borrow()
-                .lift_block(&*mmu, &mut context_provider, current_addr)
+                .lift_block(&*mmu, self.runtime_context.as_mut(), current_addr)
                 .unwrap();
+            // TODO: Most likely, if the runtime context was modified, we will first need to emulate before translating
+            //       more blocks?
             trace_jit!("{}", block);
             trace_jit!("Next: {:?}", next_addr);
             // TODO: What about caching?

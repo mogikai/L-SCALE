@@ -10,7 +10,13 @@ use crate::tlb::{
     AccessType,
     TLB,
 };
+use fnv::FnvHashMap;
+use mogi_sleigh::lifter::context_provider::ContextProvider;
 use mogi_sleigh::spec::jir::values::JIRSlice;
+use mogi_sleigh::spec::{
+    FieldId,
+    ProcessorSpecification,
+};
 use std::array;
 use std::mem::offset_of;
 use std::ptr::NonNull;
@@ -34,6 +40,8 @@ pub struct X86TaskContext {
     /// If a runtime error occurred, it is stored here, and the jit exits as soon
     /// as possible.
     runtime_error: Option<RuntimeError>,
+    /// The context values of the cpu. This includes stuff like longMode for example.
+    context_values: FnvHashMap<FieldId, u64>,
 }
 
 impl X86TaskContext {
@@ -44,6 +52,7 @@ impl X86TaskContext {
             pc: 0,
             global_context,
             runtime_error: None,
+            context_values: Default::default(),
         }
     }
 
@@ -109,5 +118,41 @@ impl JITTaskRuntimeContext for X86TaskContext {
 
     fn runtime_error(&self) -> Option<RuntimeError> {
         self.runtime_error
+    }
+}
+
+impl ContextProvider for X86TaskContext {
+    fn set(
+        &mut self,
+        processor_spec: &ProcessorSpecification,
+        name: &str,
+        value: u64,
+    ) {
+        processor_spec.field_id_by_string(name).map(|field_id| {
+            self.context_values.insert(field_id, value);
+        });
+    }
+
+    fn get_by_string(
+        &self,
+        processor_spec: &ProcessorSpecification,
+        name: &str,
+    ) -> Option<u64> {
+        processor_spec
+            .field_id_by_string(name)
+            .and_then(|field_id| self.context_values.get(&field_id).copied())
+    }
+
+    fn get_by_id(
+        &self,
+        field_id: FieldId,
+    ) -> Option<u64> {
+        self.context_values.get(&field_id).copied()
+    }
+
+    fn values(&self) -> impl Iterator<Item = (FieldId, u64)> {
+        self.context_values
+            .iter()
+            .map(|(field_id, value)| (*field_id, *value))
     }
 }
