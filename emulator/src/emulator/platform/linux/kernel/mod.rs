@@ -87,6 +87,7 @@ macro_rules! sys_component_mut {
     };
 }
 
+use crate::emulator::platform::linux::kernel::fs::fd_ops::FileOps;
 use crate::emulator::system::stdio::{
     StdInputOps,
     StdOutputOps,
@@ -443,11 +444,11 @@ where
         stdin.data.stdio = Some(StdioData::new(self.system.stdio.clone()));
         file_descriptor_map.insert_at(&self.task_id, 0.into(), stdin);
 
-        let mut stdout = FileDescriptor::new(Box::new(StdOutputOps::new(StdOutputType::Out)));
+        let mut stdout = FileDescriptor::new(Box::new(StdOutputOps::new(StdOutputType::STDOUT)));
         stdout.data.stdio = Some(StdioData::new(self.system.stdio.clone()));
         file_descriptor_map.insert_at(&self.task_id, 1.into(), stdout);
 
-        let mut stderr = FileDescriptor::new(Box::new(StdOutputOps::new(StdOutputType::Err)));
+        let mut stderr = FileDescriptor::new(Box::new(StdOutputOps::new(StdOutputType::STDERR)));
         stderr.data.stdio = Some(StdioData::new(self.system.stdio.clone()));
         file_descriptor_map.insert_at(&self.task_id, 2.into(), stderr);
     }

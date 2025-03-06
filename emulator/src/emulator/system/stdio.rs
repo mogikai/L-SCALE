@@ -126,15 +126,15 @@ impl Stdio {
         output_type: StdOutputType,
     ) {
         if !self.buffered {
-            trace!("{:?}: {:}", output_type, String::from_utf8_lossy(data));
+            info!("\n({:?}) {:}", output_type, String::from_utf8_lossy(data));
             return;
         }
         let buffer = match output_type {
-            StdOutputType::Out => &mut self.data.out_buf,
-            StdOutputType::Err => &mut self.data.err_buf,
+            StdOutputType::STDOUT => &mut self.data.out_buf,
+            StdOutputType::STDERR => &mut self.data.err_buf,
         };
         if data.ends_with("\n".as_bytes()) {
-            trace!("{:?}: {:}{:}", output_type, String::from_utf8_lossy(buffer), String::from_utf8_lossy(data));
+            info!("\n({:?}) {:}{:}", output_type, String::from_utf8_lossy(buffer), String::from_utf8_lossy(data));
             buffer.clear();
         } else {
             buffer.extend_from_slice(data);
@@ -258,8 +258,8 @@ impl FileDescriptorOps for StdInputOps {
 
 #[derive(Debug, Clone)]
 pub enum StdOutputType {
-    Out,
-    Err,
+    STDOUT,
+    STDERR,
 }
 
 #[derive(Debug)]
