@@ -1,7 +1,3 @@
-use crate::emulator::abstractions::errors::{
-    GenericError,
-    GenericErrorKind,
-};
 use crate::emulator::abstractions::file_descriptors::{
     FileDescriptorError,
     FileDescriptorOps,
@@ -11,7 +7,6 @@ use crate::emulator::abstractions::network::{
     ShutdownMethod,
     SocketAddress,
 };
-use crate::emulator::abstractions::restore::Restorable;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::fs::Whence;
 use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
@@ -29,6 +24,8 @@ use tracing::{
     info,
     trace,
 };
+use mogi_system::components::restore::Restorable;
+use mogi_system::errors::generic::{GenericError, GenericErrorKind};
 
 #[derive(Debug, Default, Clone)]
 pub struct StdioSnapshot {

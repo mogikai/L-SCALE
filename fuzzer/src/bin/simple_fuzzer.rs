@@ -65,6 +65,7 @@ use tracing_subscriber::{
     EnvFilter,
     fmt,
 };
+use mogi_emulator::emulator::system::stdio::Stdio;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -116,6 +117,7 @@ fn main() -> Result<(), GenericError> {
         let prng_map = SeedablePrngMap::new(0xcafef00dd15ea5e5cafef00dd15ea5e5_u128.to_ne_bytes());
         let file_descriptor_map = FileDescriptorMap::new();
         let tcp = Rc::new(RefCell::new(TCP::new()));
+        let stdio = Rc::new(RefCell::new(Stdio::new(true)));
         let system = System::new(
             cpu.clone(),
             mmu.clone(),
@@ -126,6 +128,7 @@ fn main() -> Result<(), GenericError> {
             file_descriptor_map,
             task_manager,
             tcp.clone(),
+            stdio,
         );
 
         // let total_blocks_hook = total_blocks.clone();

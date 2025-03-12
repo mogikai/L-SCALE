@@ -91,6 +91,7 @@ use crate::emulator::platform::linux::kernel::fs::fd_ops::FileOps;
 use crate::emulator::system::stdio::{
     StdInputOps,
     StdOutputOps,
+    StdOutputType,
     StdioData,
 };
 use mogi_system::components::cpu::{

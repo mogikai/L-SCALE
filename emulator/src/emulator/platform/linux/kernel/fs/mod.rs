@@ -7,6 +7,7 @@ use bitflags::{
 use byteorder::ByteOrder;
 use mogi_derive::unfinished;
 use mogi_system::components::cpu::CPU;
+use num_enum::TryFromPrimitive;
 
 use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
 use crate::emulator::abstractions::filesystem::FileId;
@@ -33,7 +34,7 @@ use crate::emulator::system::memory::rw_interface::{
     MemoryWrite,
 };
 
-mod fd_ops;
+pub(super) mod fd_ops;
 
 impl<Endianness, Arch, CpuT, MmuT, TcpT> LinuxKernelTask<Endianness, Arch, CpuT, MmuT, TcpT>
 where
@@ -354,7 +355,11 @@ where
             let mut stdio = sys_component_mut!(self, stdio);
             stdio.lseek(whence, offset as i64)
         } else if file.data.file.is_some() {
-            file.data.file.as_mut().unwrap().lseek(whence, offset as i64)
+            file.data
+                .file
+                .as_mut()
+                .unwrap()
+                .lseek(whence, offset as i64)
         } else {
             unimplemented!()
         };

@@ -438,7 +438,6 @@ where
         let newfd = self.get_free_fd(task_id)?;
         self.dup2(task_id, fd, newfd)
     }
-
     #[unfinished]
     pub fn dup2(
         &mut self,

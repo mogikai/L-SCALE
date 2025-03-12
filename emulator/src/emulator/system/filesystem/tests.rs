@@ -84,8 +84,8 @@ fn load_file_contents() -> Result<(), GenericError> {
     let file_id = fs.create_file_with_contents(Path::new("/test.txt"), data, None)?;
     let file_id2 = fs.create_file_with_contents(Path::new("/test2.txt"), data2, None)?;
 
-    assert_eq!(data, fs.read(file_id, 0, data.len())?.as_slice());
-    assert_eq!(data2, fs.read(file_id2, 0, data2.len())?.as_slice());
+    assert_eq!(data, fs.read(file_id, 0, data.len())?.unwrap().as_slice());
+    assert_eq!(data2, fs.read(file_id2, 0, data2.len())?.unwrap().as_slice());
     fs.write(file_id, 10000, data)?;
     fs.write(file_id2, 10000, data)?;
     fs.write(file_id, 10010, data)?;
@@ -106,7 +106,7 @@ fn load_file_contents() -> Result<(), GenericError> {
 
     let data3 = "Beep Boop".as_bytes();
     let file_id3 = fs.create_file_with_contents(Path::new("/test3.txt"), data3, None)?;
-    assert_eq!(data3, fs.read(file_id3, 0, data3.len())?);
+    assert_eq!(data3, fs.read(file_id3, 0, data3.len())?.unwrap());
     println!("{:?}", fs.read(file_id3, 0, 10000)?);
     fs.truncate(file_id3, 5000)?;
     println!("{:?}", fs.read(file_id3, 0, 10000)?);
@@ -129,7 +129,7 @@ fn load_fs() -> Result<(), FSError> {
     let fs = Filesystem::from_disk(1_073_741_824, dir.as_path())?;
     // fs.print_tree();
     let lib_id = fs.resolve_last(Path::new("/assets/mremap_private_anon.c"), false)?;
-    let data = fs.read(lib_id, 0, 100000)?;
+    let data = fs.read(lib_id, 0, 100000)?.unwrap();
     assert_eq!(data.as_slice(), reference.as_slice());
     Ok(())
 }
