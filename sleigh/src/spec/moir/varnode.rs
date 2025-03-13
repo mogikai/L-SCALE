@@ -79,7 +79,7 @@ impl MOIRSlice {
     ) -> Self {
         Self {
             reference: MOIRReference::Const(temporary),
-            start: 0u16,
+            start: 0,
             end,
         }
     }

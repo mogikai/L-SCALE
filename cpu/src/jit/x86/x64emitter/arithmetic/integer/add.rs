@@ -1,5 +1,6 @@
 use crate::jit::api::JITResult;
 use crate::jit::code_buffer::CompiledBasicBlock;
+use crate::jit::x86::emitter::OperandRequest;
 use crate::jit::x86::x64emitter::arithmetic::integer::AddSub;
 use crate::jit::x86::x64emitter::regalloc::SliceType;
 use crate::jit::x86::x64emitter::{
@@ -11,14 +12,25 @@ use crate::jit::x86::{
     assemble,
 };
 use dynasmrt::x64::X64Relocation;
+use either::Either;
 use mogi_sleigh::spec::jir::values::{
     JIRConst,
     JIRSlice,
     JIRValue,
 };
+use std::iter::once;
 use tracing::trace;
 
 impl X64Emitter<'_> {
+    pub fn request_add_operands(
+        &self,
+        output: JIRSlice,
+        a: JIRValue,
+        b: JIRValue,
+    ) -> impl Iterator<Item = OperandRequest> {
+        once(OperandRequest::slice_write_any(output))
+    }
+
     /// Emit instructions that add `a` and `b` and store the result in `output`.
     /// Since JIR operations do not have side effects, most of the time this will
     /// result in some kind of lea operation.

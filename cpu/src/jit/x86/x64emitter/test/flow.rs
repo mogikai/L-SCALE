@@ -12,7 +12,6 @@ use crate::jit::x86::test::{
     set_slice,
     setup,
 };
-use crate::tlb::PageData;
 use mogi_sleigh::jinst;
 use mogi_sleigh::spec::jir::values::JIRSlice;
 use mogi_utilities::addresses::EVAddr;
@@ -133,21 +132,21 @@ fn setup_blocks(
     jit.set_instruction_pointer(&mut context, start_block_addr)
         .unwrap();
 
-    jit.compile_target_block(make_basic_block_from_instructions(
+    jit.compile_target_block(&make_basic_block_from_instructions(
         start_block_addr,
         false_block_addr,
         [jinst!(if slice_cond goto slice_addr)],
     ))
     .unwrap();
 
-    jit.compile_target_block(make_basic_block_from_instructions(
+    jit.compile_target_block(&make_basic_block_from_instructions(
         false_block_addr,
         end_block_addr,
         [jinst!(slice_result = 0x41u32)],
     ))
     .unwrap();
 
-    jit.compile_target_block(make_basic_block_from_instructions(
+    jit.compile_target_block(&make_basic_block_from_instructions(
         true_block_addr,
         end_block_addr,
         [jinst!(slice_result = 0x42u32)],

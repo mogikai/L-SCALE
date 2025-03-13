@@ -21,9 +21,9 @@ impl X64Emitter<'_> {
     pub fn emit_custom_op_call(
         &mut self,
         op_id: CustomOpId,
-        output: Result<JIRSlice, RuntimeError>,
-        input_a: Result<JIRValue, RuntimeError>,
-        input_b: Result<JIRValue, RuntimeError>,
+        output: Option<JIRSlice>,
+        input_a: Option<JIRValue>,
+        input_b: Option<JIRValue>,
         extra_args: &[JIRValue],
     ) -> JITResult {
         // Make sure all slices are flushed, such that they cannot be trashed and are available to the impl callback.

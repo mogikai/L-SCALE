@@ -1,6 +1,7 @@
 use crate::jit::api::{
     JITTaskRuntimeContext,
     MogiJit,
+    RuntimeError,
 };
 use crate::jit::x86::test::{
     exec_instructions,
@@ -34,15 +35,15 @@ fn test_complex() {
     let id = CustomOpId::try_from_index(5).unwrap();
 
     jit.register_custom_op_impl(id, |context, args| {
-        let JIRValue::Slice(input_a) = args.input_a? else {
+        let JIRValue::Slice(input_a) = args.input_a.ok_or(RuntimeError::MissingInput)? else {
             panic!();
         };
         let input_a = u32::from_le_bytes(context.slice(input_a)?.try_into().unwrap());
-        let JIRValue::Slice(input_b) = args.input_b? else {
+        let JIRValue::Slice(input_b) = args.input_b.ok_or(RuntimeError::MissingInput)? else {
             panic!();
         };
         let input_b = u32::from_le_bytes(context.slice(input_b)?.try_into().unwrap());
-        let output = context.slice_mut(args.output?)?;
+        let output = context.slice_mut(args.output.ok_or(RuntimeError::MissingInput)?)?;
         output.copy_from_slice(&input_a.wrapping_sub(input_b.isqrt()).to_le_bytes());
         Ok(())
     })

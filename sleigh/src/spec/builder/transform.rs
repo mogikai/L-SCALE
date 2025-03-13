@@ -1,5 +1,6 @@
 use crate::compiler::InternalCompilerResult;
 
+use self::jumplist::JumplistBuilder;
 use crate::spec::builder::{
     MOIRSymbolId,
     MOIRSymbolTables,
@@ -38,9 +39,8 @@ use crate::spec::{
     JIRSymbolTables,
 };
 use mogi_utilities::index_map::PrimaryMap;
+use num::complex::ComplexFloat;
 use std::collections::HashMap;
-
-use self::jumplist::JumplistBuilder;
 
 mod jumplist;
 use mogi_sleigh_parser::{
@@ -199,8 +199,14 @@ fn transform_spaces(
             };
             let space = JIRSpace {
                 r#type,
-                address_size: space.address_size,
-                wordsize: space.wordsize,
+                address_size: space
+                    .address_size
+                    .try_into()
+                    .expect("The address size must fit into JIRSize"),
+                wordsize: space
+                    .wordsize
+                    .try_into()
+                    .expect("The word size must fit into JIRSize"),
             };
             (ident, space)
         })
@@ -216,7 +222,10 @@ fn transform_varnodes(
             let varnode = JIRVarNode {
                 space_id: varnode.space,
                 offset: varnode.offset,
-                size: varnode.size,
+                size: varnode
+                    .size
+                    .try_into()
+                    .expect("The size must fit into JIRSize"),
             };
             (ident, varnode)
         })

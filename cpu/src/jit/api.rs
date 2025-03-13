@@ -109,7 +109,7 @@ pub trait MogiJit {
     /// Compiles the provided target basic block and inserts it into the jit cache for future access.
     fn compile_target_block(
         &mut self,
-        block: TargetBasicBlock,
+        block: &TargetBasicBlock,
     ) -> JITResult;
 
     /// Chain the blocks `origin` and `target`, such that the `origin` block no longer jumps out to
@@ -249,9 +249,9 @@ where
 /// the jit runtime gets an updated error handling mechanism.
 #[derive(Debug)]
 pub struct CustomOpArgs {
-    pub output: Result<JIRSlice, RuntimeError>,
-    pub input_a: Result<JIRValue, RuntimeError>,
-    pub input_b: Result<JIRValue, RuntimeError>,
+    pub output: Option<JIRSlice>,
+    pub input_a: Option<JIRValue>,
+    pub input_b: Option<JIRValue>,
     pub extra_args: Vec<JIRValue>,
 }
 

@@ -39,6 +39,7 @@ use fnv::FnvHashMap;
 use mogi_sleigh_parser::StringId;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::SecondaryMap;
+use num::complex::ComplexFloat;
 use std::fmt::Write;
 use std::ptr::write;
 use tracing::debug;
@@ -181,7 +182,8 @@ impl<'a> JIRResolver<'a> {
             let MOIRMaybeSize::Determined(size) = temp.size else {
                 todo!("Generate error for undetermined temporary size")
             };
-            let tmp_slice = instruction_builder.alloc_temporary(size)?;
+            let tmp_slice =
+                instruction_builder.alloc_temporary(size.try_into().expect("The size must fit into JIRSize"))?;
             self.temporaries[temp_id] = Some(tmp_slice.into());
         }
         Ok(())
@@ -236,7 +238,12 @@ impl<'a> JIRResolver<'a> {
             .field_size(field_id)?
             .determined_or(0);
 
-        let jir_value = self.values[local_id].get_or_insert(JIRValue::Const(JIRConst::new(0, field_size)));
+        let jir_value = self.values[local_id].get_or_insert(JIRValue::Const(JIRConst::new(
+            0,
+            field_size
+                .try_into()
+                .expect("The size must fit into JIRSize"),
+        )));
         let JIRValue::Const(c) = jir_value else {
             todo!("Generate error report for slice in field extractor");
         };
@@ -348,7 +355,7 @@ impl<'a> JIRResolver<'a> {
                 let MOIRConst::Determined(value, size) = value else {
                     todo!("Generate error for undetermined size")
                 };
-                Ok(JIRConst::new(value, size).into())
+                Ok(JIRConst::new(value, size.try_into().expect("The size must fit into JIRSize")).into())
             }
         }
     }
@@ -377,14 +384,20 @@ impl<'a> JIRResolver<'a> {
                     varnode_id,
                     varnode.space_id,
                     varnode.offset + start,
-                    end.ok_or_else(|| todo!("Generate error for undefined size"))?,
+                    end.ok_or_else(|| todo!("Generate error for undefined size"))?
+                        .try_into()
+                        .expect("The size must fit into JIRSize"),
                 )
                 .into()
             }
             MOIRReference::Temporary(temp_id) => match self.temporaries[temp_id] {
                 None => todo!("Generate error for unresolved temporary."),
                 Some(value) => value
-                    .slice(start, end.ok_or_else(|| todo!("Generate error for undefined size"))? - start)
+                    .slice(
+                        start,
+                        JIRSize::try_from(end.ok_or_else(|| todo!("Generate error for undefined size"))? - start)
+                            .expect("The size must fit into JIRSize"),
+                    )
                     .into(),
             },
             MOIRReference::Const(_) => match self.values[local] {
@@ -430,12 +443,23 @@ impl<'a> JIRResolver<'a> {
                             })?;
                         JIRResolvedValue::Value(JIRValue::Const(JIRConst::new(
                             attached_value.into(),
-                            field.bits.bits(),
+                            field
+                                .bits
+                                .bits()
+                                .try_into()
+                                .expect("The size must fit into JIRSize"),
                         )))
                     } else if !field.strings.is_empty() {
                         todo!("display");
                     } else {
-                        JIRResolvedValue::Value(JIRValue::Const(JIRConst::new(field_value, field.bits.bits())))
+                        JIRResolvedValue::Value(JIRValue::Const(JIRConst::new(
+                            field_value,
+                            field
+                                .bits
+                                .bits()
+                                .try_into()
+                                .expect("The size must fit into JIRSize"),
+                        )))
                     }
                 } else {
                     todo!("Generate error for field resolving to non-const");
@@ -491,7 +515,10 @@ impl<'a> JIRResolver<'a> {
                 Ok(JIRResolvedValue::Reference {
                     address,
                     space: *space,
-                    size: size.ok_or_else(|| todo!("Generate error for missing export size"))?,
+                    size: size
+                        .ok_or_else(|| todo!("Generate error for missing export size"))?
+                        .try_into()
+                        .expect("The size must fit into JIRSize"),
                 })
             }
         }

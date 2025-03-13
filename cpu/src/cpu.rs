@@ -218,7 +218,7 @@ where
             trace_jit!("Fallthrough: {:?}", block.fallthrough());
             trace_jit!("Branch targets: {:?}", block.branch_targets());
             // TODO: What about caching?
-            jit.compile_target_block(block)?;
+            jit.compile_target_block(&block)?;
             jit.chain_blocks(current_addr, current_addr, JITPathChoice::Main)?;
             Ok(())
         }

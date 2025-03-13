@@ -15,6 +15,7 @@ use crate::compiler::{
     InternalCompilerResult,
     SleighCompiler,
 };
+use crate::spec::ProcessorSpecificationError;
 use crate::spec::moir::address_space::{
     MOIRSpace,
     MOIRSpaceIsDefault,
@@ -28,7 +29,6 @@ use crate::spec::moir::field::{
 };
 use crate::spec::moir::token::MOIRToken;
 use crate::spec::moir::varnode::MOIRVarNode;
-use crate::spec::ProcessorSpecificationError;
 use mogi_sleigh_parser::ast::attach::SASTAttach;
 use mogi_sleigh_parser::ast::define::{
     SASTAddressSpace,
@@ -49,6 +49,7 @@ use mogi_sleigh_parser::{
     Spanned,
     TransmuteIntoVec,
 };
+use num::complex::ComplexFloat;
 use tracing::{
     debug,
     trace,
@@ -173,7 +174,11 @@ impl SleighCompiler {
             let varnode = MOIRVarNode {
                 space,
                 offset: varnodes.offset.value() + (i as u64 * u64::from(*varnodes.size)),
-                size: *varnodes.size,
+                size: varnodes
+                    .size
+                    .into_value()
+                    .try_into()
+                    .expect("The size must fit into MOIRSize"),
             };
             let result = self.spec_builder.define_varnode(name.transmute(), varnode);
             self.report_error_or_unwrap(result)?;
@@ -250,8 +255,12 @@ impl SleighCompiler {
         }
         let moir_space = MOIRSpace {
             r#type: r#type.map(|t| t.0).unwrap_or(MOIRSpaceType::Ram),
-            address_size: address_size.map(|t| t.0).unwrap(),
-            wordsize: word_size.map(|t| t.0).unwrap_or(1),
+            address_size: address_size
+                .map(|t| t.0.try_into().expect("The size must fit into MOIRSize"))
+                .unwrap(),
+            wordsize: word_size
+                .map(|t| t.0.try_into().expect("The size must fit into MOIRSize"))
+                .unwrap_or(1),
         };
         self.spec_builder
             .define_space(space.name.transmute(), moir_space, default.0)?;
@@ -268,12 +277,13 @@ impl SleighCompiler {
         if bits % 8 != 0 {
             Err(ProcessorSpecificationError::TokenSizeNotAMultipleOfEightBit)?;
         }
-        let result = self
-            .spec_builder
-            .define_token(token.name.transmute(), MOIRToken {
+        let result = self.spec_builder.define_token(
+            token.name.transmute(),
+            MOIRToken {
                 bytes: MOIRSize::try_from(bits).map_err(|_| -> InternalError { todo!() })? / 8,
                 endianness_override: token.endian_override.map(|e| e.into_value().into()),
-            });
+            },
+        );
         if let Some(token_id) = self.report_error_or_unwrap(result)? {
             for field in token.fields.into_iter() {
                 let name = field.name.clone().transmute();

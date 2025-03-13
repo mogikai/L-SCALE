@@ -178,6 +178,17 @@ impl<T> Spanned<T> {
         }
     }
 
+    /// Transmute the inner value from type `T` into type `U` as long as T implements TryInto<U>.
+    pub fn try_transmute<U>(self) -> Result<Spanned<U>, T::Error>
+    where
+        T: TryInto<U>,
+    {
+        Ok(Spanned {
+            value: self.value.try_into()?,
+            span: self.span,
+        })
+    }
+
     pub fn map<F, U>(
         self,
         map: F,

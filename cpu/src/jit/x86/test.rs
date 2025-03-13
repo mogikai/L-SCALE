@@ -108,7 +108,7 @@ pub(super) fn make_basic_block_from_instructions(
     fallthrough: EVAddr,
     instructions: impl IntoIterator<Item = JIRInstruction>,
 ) -> TargetBasicBlock {
-    let mut builder = TargetBasicBlockBuilder::new(address, SpaceId::from(0x4141));
+    let mut builder = TargetBasicBlockBuilder::new(address, SpaceId::from(0x41));
     builder.set_fallthrough(fallthrough);
     builder.start_block().unwrap();
     for instruction in instructions.into_iter() {
@@ -123,7 +123,7 @@ pub(super) fn exec_instructions<T: MogiJit>(
     context: &mut T::RuntimeContext,
     instructions: impl IntoIterator<Item = JIRInstruction>,
 ) {
-    jit.compile_target_block(make_basic_block_from_instructions(
+    jit.compile_target_block(&make_basic_block_from_instructions(
         EVAddr::from(0x800100u64),
         EVAddr::from(0x800200u64),
         instructions,

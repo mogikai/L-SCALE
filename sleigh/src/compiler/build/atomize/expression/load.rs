@@ -32,6 +32,7 @@ impl SleighCompiler {
         let value_size = deref
             .size
             .map(Spanned::into_value)
+            .map(|size| size.try_into().expect("The size must fit into u8"))
             .map(MOIRMaybeSize::Determined)
             .unwrap_or(MOIRMaybeSize::Undetermined);
         trace_build!("Load size is {value_size:?}");

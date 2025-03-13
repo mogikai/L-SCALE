@@ -1,5 +1,8 @@
-use crate::new_typed_index_table_id_16;
 use crate::spec::moir::common::MOIRSize;
+use crate::{
+    new_typed_index_table_id_8,
+    new_typed_index_table_id_16,
+};
 use mogi_sleigh_parser::ast::define::SASTAddressSpaceType;
 
 #[derive(Debug)]
@@ -39,4 +42,4 @@ impl From<SASTAddressSpaceType> for MOIRSpaceType {
     }
 }
 
-new_typed_index_table_id_16! { pub struct SpaceId; "S"; }
+new_typed_index_table_id_8! { pub struct SpaceId; "S"; }

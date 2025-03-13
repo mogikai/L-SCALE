@@ -1,15 +1,7 @@
 #[macro_export]
 macro_rules! jinst {
-    (unimpl) => {
-        $crate::spec::jir::jcode::JIRInstruction{
-            output: None,
-            input_a: None,
-            input_b: None,
-            operation: $crate::spec::jir::jcode::JIROperation::Unimpl,
-        }
-    };
     ($to:tt = $from:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_unary_op($to, $from, $crate::spec::jir::jcode::JIROperation::Copy)
+        $crate::spec::jir::jcode::JIRInstruction::copy($to, $from)
     };
     ($to:tt = *[$space:tt]$addr:tt) => {
         $crate::spec::jir::jcode::JIRInstruction::load($to, $addr, $space)
@@ -18,508 +10,229 @@ macro_rules! jinst {
         $crate::spec::jir::jcode::JIRInstruction::store($addr, $space, $value)
     };
     ($to:tt = popcount($from:tt)) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_unary_op(
-            $to,
-            $from,
-            $crate::spec::jir::jcode::JIROperation::PopCount,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::pop_count($to, $from)
     };
     ($to:tt = lzcount($from:tt)) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_unary_op(
-            $to,
-            $from,
-            $crate::spec::jir::jcode::JIROperation::LZCount,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::lzcount($to, $from)
     };
     ($to:tt = zext($from:tt)) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_unary_op(
-            $to,
-            $from,
-            $crate::spec::jir::jcode::JIROperation::ZeroExtend,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::zero_extend($to, $from)
     };
     ($to:tt = sext($from:tt)) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_unary_op(
-            $to,
-            $from,
-            $crate::spec::jir::jcode::JIROperation::SignExtend,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::sign_extend($to, $from)
     };
     ($to:tt = carry($a:tt, $b:tt)) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::Carry,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::carry($to, $a, $b)
     };
     ($to:tt = scarry($a:tt, $b:tt)) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::SignCarry,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::sign_carry($to, $a, $b)
     };
     ($to:tt = sborrow($a:tt, $b:tt)) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::SignBorrow,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::sign_borrow($to, $a, $b)
     };
     ($to:tt = nan($from:tt)) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_unary_op($to, $from, $crate::spec::jir::jcode::JIROperation::Nan)
+        $crate::spec::jir::jcode::JIRInstruction::nan($to, $from)
     };
     ($to:tt = abs($from:tt)) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_unary_op($to, $from, $crate::spec::jir::jcode::JIROperation::Abs)
+        $crate::spec::jir::jcode::JIRInstruction::nan($to, $from)
     };
     ($to:tt = sqrt($from:tt)) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_unary_op($to, $from, $crate::spec::jir::jcode::JIROperation::Sqrt)
+        $crate::spec::jir::jcode::JIRInstruction::sqrt($to, $from)
     };
     ($to:tt = int2float($from:tt)) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_unary_op(
-            $to,
-            $from,
-            $crate::spec::jir::jcode::JIROperation::IntToFloat,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_to_float($to, $from)
     };
     ($to:tt = float2float($from:tt)) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_unary_op(
-            $to,
-            $from,
-            $crate::spec::jir::jcode::JIROperation::FloatToFloat,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::float_to_float($to, $from)
     };
     ($to:tt = trunc($from:tt)) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_unary_op(
-            $to,
-            $from,
-            $crate::spec::jir::jcode::JIROperation::Trunc,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::trunc($to, $from)
     };
     ($to:tt = ceil($from:tt)) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_unary_op($to, $from, $crate::spec::jir::jcode::JIROperation::Ceil)
+        $crate::spec::jir::jcode::JIRInstruction::ceil($to, $from)
     };
     ($to:tt = floor($from:tt)) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_unary_op(
-            $to,
-            $from,
-            $crate::spec::jir::jcode::JIROperation::Floor,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::floor($to, $from)
     };
     ($to:tt = round($from:tt)) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_unary_op(
-            $to,
-            $from,
-            $crate::spec::jir::jcode::JIROperation::Round,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::round($to, $from)
     };
     ($to:tt = $a:tt + $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntAdd,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_add($to, $a, $b)
     };
     ($to:tt = $a:tt - $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntSubtract,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_subtract($to, $a, $b)
     };
     ($to:tt = $a:tt * $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntMul,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_mul($to, $a, $b)
     };
     ($to:tt = $a:tt / $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntDiv,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_div($to, $a, $b)
     };
     ($to:tt = $a:tt s/ $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntSDiv,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_sdiv($to, $a, $b)
     };
     ($to:tt = $a:tt % $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntRemainder,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_remainder($to, $a, $b)
     };
     ($to:tt = $a:tt s% $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntSRemainder,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_sremainder($to, $a, $b)
     };
     ($to:tt = $a:tt f/ $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::FloatDiv,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::float_div($to, $a, $b)
     };
     ($to:tt = $a:tt f* $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::FloatMul,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::float_mul($to, $a, $b)
     };
     ($to:tt = $a:tt f+ $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::FloatAdd,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::float_add($to, $a, $b)
     };
     ($to:tt = $a:tt f- $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::FloatSubtract,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::float_subtract($to, $a, $b)
     };
     ($to:tt = $a:tt || $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::BoolOr,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::bool_or($to, $a, $b)
     };
     ($to:tt = $a:tt && $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::BoolAnd,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::bool_and($to, $a, $b)
     };
     ($to:tt = $a:tt ^^ $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::BoolXor,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::bool_xor($to, $a, $b)
     };
     ($to:tt = $a:tt << $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntLeft,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_left($to, $a, $b)
     };
     ($to:tt = $a:tt >> $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntRight,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_right($to, $a, $b)
     };
     ($to:tt = $a:tt s>> $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntSRight,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_sright($to, $a, $b)
     };
     ($to:tt = $a:tt s< $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntSLess,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_sless($to, $a, $b)
     };
     ($to:tt = $a:tt s> $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntSGreater,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_sgreater($to, $a, $b)
     };
     ($to:tt = $a:tt s<= $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntSLessEqual,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_sless_equal($to, $a, $b)
     };
     ($to:tt = $a:tt s>= $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntSGreaterEqual,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_sgreater_equal($to, $a, $b)
     };
     ($to:tt = $a:tt < $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntLess,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_less($to, $a, $b)
     };
     ($to:tt = $a:tt > $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntGreater,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_greater($to, $a, $b)
     };
     ($to:tt = $a:tt <= $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntLessEqual,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_less_equal($to, $a, $b)
     };
     ($to:tt = $a:tt >= $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntGreaterEqual,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_greater_equal($to, $a, $b)
     };
     ($to:tt = $a:tt f< $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::FloatLess,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::float_less($to, $a, $b)
     };
     ($to:tt = $a:tt f> $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::FloatGreater,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::float_greater($to, $a, $b)
     };
     ($to:tt = $a:tt f<= $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::FloatLessEqual,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::float_less_equal($to, $a, $b)
     };
     ($to:tt = $a:tt f>= $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::FloatGreaterEqual,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::float_greater_equal($to, $a, $b)
     };
     ($to:tt = $a:tt f== $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::FloatEquals,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::float_equals($to, $a, $b)
     };
     ($to:tt = $a:tt f!= $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::FloatNotEquals,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::float_not_equals($to, $a, $b)
     };
     ($to:tt = $a:tt | $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntOr,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_or($to, $a, $b)
     };
     ($to:tt = $a:tt & $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntAnd,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_and($to, $a, $b)
     };
     ($to:tt = $a:tt ^ $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntXor,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_xor($to, $a, $b)
     };
     ($to:tt = $a:tt == $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntEquals,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_equals($to, $a, $b)
     };
     ($to:tt = $a:tt != $b:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_binary_op(
-            $to,
-            $a,
-            $b,
-            $crate::spec::jir::jcode::JIROperation::IntNotEquals,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_not_equals($to, $a, $b)
     };
     ($to:tt = !$from:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_unary_op(
-            $to,
-            $from,
-            $crate::spec::jir::jcode::JIROperation::BoolNegate,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::bool_negate($to, $from)
     };
     ($to:tt = ~$from:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_unary_op(
-            $to,
-            $from,
-            $crate::spec::jir::jcode::JIROperation::BitNegate,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::bit_negate($to, $from)
     };
     ($to:tt = -$from:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_unary_op(
-            $to,
-            $from,
-            $crate::spec::jir::jcode::JIROperation::IntNegate,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::int_negate($to, $from)
     };
     ($to:tt = fneg $from:tt) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_unary_op(
-            $to,
-            $from,
-            $crate::spec::jir::jcode::JIROperation::FloatNegate,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::float_negate($to, $from)
     };
     (goto $addr:block) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_branch(
-            $addr,
-            $crate::spec::jir::jcode::JIROperation::GotoDirect,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::goto_direct($addr)
     };
     (goto $addr:ident) => {
         jinst!(goto {$addr})
     };
     (goto [$addr:block]) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_branch(
-            $addr,
-            $crate::spec::jir::jcode::JIROperation::GotoIndirect,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::goto_indirect($addr)
     };
     (goto [$addr:ident]) => {
         jinst!(goto [{$addr}])
     };
     (goto <$label:block>) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_jcode_branch(
-            Option::<JIRValue>::None,
-            $crate::spec::jir::jcode::JIROperation::JCodeGoto($label),
-        )
+        $crate::spec::jir::jcode::JIRInstruction::jcode_goto($label)
     };
     (goto <$label:ident>) => {
         jinst!(goto <{$label}>)
     };
     (call $addr:block) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_branch(
-            $addr,
-            $crate::spec::jir::jcode::JIROperation::CallDirect,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::call_direct($addr)
     };
     (call $addr:ident) => {
         jinst!(call {$addr})
     };
     (call [$addr:block]) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_branch(
-            $addr,
-            $crate::spec::jir::jcode::JIROperation::CallIndirect,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::call_indirect($addr)
     };
     (call [$addr:ident]) => {
         jinst!(call [{$addr}])
     };
     (return $addr:block) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_branch(
-            $addr,
-            $crate::spec::jir::jcode::JIROperation::ReturnDirect,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::return_direct($addr)
     };
     (return $addr:ident) => {
         jinst!(return {$addr})
     };
     (return [$addr:block]) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_branch(
-            $addr,
-            $crate::spec::jir::jcode::JIROperation::ReturnIndirect,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::return_indirect($addr)
     };
     (return [$addr:ident]) => {
         jinst!(return {$addr})
     };
     (if $cond:tt goto $addr:block) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_conditional_branch(
-            $addr,
-            $cond,
-            $crate::spec::jir::jcode::JIROperation::GotoDirectIf,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::goto_direct_if($addr,  $cond)
     };
     (if $cond:tt goto $addr:ident) => {
         jinst!(if $cond goto {$addr})
     };
     (if $cond:tt goto [$addr:block]) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_conditional_branch(
-            $addr,
-            $cond,
-            $crate::spec::jir::jcode::JIROperation::GotoIndirectIf,
-        )
+        $crate::spec::jir::jcode::JIRInstruction::goto_indirect_if($addr, $cond)
     };
     (if $cond:tt goto [$addr:ident]) => {
         jinst!(if $cond goto [{$addr}])
     };
     (if $cond:tt goto <$label:block>) => {
-        $crate::spec::jir::jcode::JIRInstruction::new_jcode_branch(
-            Some($cond),
-            $crate::spec::jir::jcode::JIROperation::JCodeGotoIf($label),
-        )
+        $crate::spec::jir::jcode::JIRInstruction::jcode_goto_if($cond, $label)
     };
     (if $cond:tt goto <$label:ident>) => {
         jinst!(if $cond goto {$label})

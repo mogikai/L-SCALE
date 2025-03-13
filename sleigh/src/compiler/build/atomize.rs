@@ -107,9 +107,13 @@ impl SleighCompiler {
                 SASTPCodeStatement::Delayslot(_) => {
                     todo!()
                 }
-                SASTPCodeStatement::Declaration(ident, size) => {
-                    self.atomize_declaration(scope, ident.transmute(), size.map(Spanned::transmute))
-                }
+                SASTPCodeStatement::Declaration(ident, size) => self.atomize_declaration(
+                    scope,
+                    ident.transmute(),
+                    size.map(Spanned::try_transmute)
+                        .transpose()
+                        .expect("The size must fit into MOIRSize"),
+                ),
                 SASTPCodeStatement::Branch(branch) => {
                     self.atomize_branch(scope, instructions, MOIRGotoType::Regular, branch)
                 }
@@ -201,7 +205,14 @@ impl SleighCompiler {
         trace_build!("Constraining addr size to {}", spc.address_size);
         scope.constrain_local_size(&mut address, spc.address_size)?;
 
-        let size = deref.size.map(|s| s.into_value()).into();
+        let size = deref
+            .size
+            .map(|s| {
+                s.into_value()
+                    .try_into()
+                    .expect("The size must fit into MOIRSize")
+            })
+            .into();
         trace_build!("Exporting dynamic reference with size {size}");
         Ok(MOIRExport::MemReference { address, space, size })
     }

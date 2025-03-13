@@ -1,6 +1,9 @@
 use crate::spec::ProcessorSpecificationError;
 use crate::spec::jir::basic_block::instruction::JIRTempId;
-use crate::spec::jir::common::JIRSize;
+use crate::spec::jir::common::{
+    JIROffset,
+    JIRSize,
+};
 use crate::spec::moir::address_space::SpaceId;
 pub use crate::spec::moir::context::ContextId;
 pub use crate::spec::moir::varnode::VarNodeId;
@@ -35,7 +38,7 @@ pub struct JIRSlice {
     /// The space this slice is located in.
     pub space_id: SpaceId,
     /// The offset in the space where this slice is located.
-    pub offset: JIRSize,
+    pub offset: JIROffset,
     /// The size of the slice in bytes.
     pub size: JIRSize,
 }
@@ -61,7 +64,7 @@ impl PartialEq<JIRValue> for JIRSlice {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum JIRVarNodeId {
     VarNode(VarNodeId),
     Temp(JIRTempId),
@@ -100,6 +103,17 @@ impl PartialEq<JIRSlice> for JIRValue {
 }
 
 impl JIRValue {
+    pub fn is_slice_then<F>(
+        &self,
+        f: F,
+    ) where
+        F: FnOnce(&JIRSlice),
+    {
+        if let JIRValue::Slice(slice) = self {
+            f(slice)
+        }
+    }
+
     pub fn size(&self) -> JIRSize {
         match self {
             JIRValue::Slice(slice) => slice.size(),
@@ -119,7 +133,7 @@ impl JIRValue {
 
     pub fn slice(
         self,
-        start: JIRSize,
+        start: JIROffset,
         size: JIRSize,
     ) -> JIRValue {
         match self {
@@ -157,7 +171,7 @@ impl JIRConst {
 
     pub fn slice(
         self,
-        offset: JIRSize,
+        offset: JIROffset,
         size: JIRSize,
     ) -> JIRConst {
         todo!()
@@ -179,7 +193,7 @@ impl JIRSlice {
     pub fn new(
         varnode_id: VarNodeId,
         space_id: SpaceId,
-        offset: JIRSize,
+        offset: JIROffset,
         size: JIRSize,
     ) -> Self {
         Self {
@@ -193,7 +207,7 @@ impl JIRSlice {
     pub fn new_temp(
         temp_id: JIRTempId,
         space_id: SpaceId,
-        offset: JIRSize,
+        offset: JIROffset,
         size: JIRSize,
     ) -> Self {
         Self {
@@ -204,9 +218,10 @@ impl JIRSlice {
         }
     }
 
+    #[inline]
     pub fn slice(
         self,
-        start: JIRSize,
+        start: JIROffset,
         size: JIRSize,
     ) -> JIRSlice {
         if self.end() < start {
@@ -215,9 +230,21 @@ impl JIRSlice {
         Self {
             varnode_id: self.varnode_id,
             space_id: self.space_id,
-            offset: self.offset + start,
+            offset: self.offset + JIROffset::from(start),
             size,
         }
+    }
+
+    /// Checks whether `self` overlaps with `other`.
+    #[inline]
+    pub fn overlaps(
+        &self,
+        other: &JIRSlice,
+    ) -> bool {
+        // Ranges >dont< overlap if self ends before other, or other ends before self, i.e.:
+        // other.end() < self.offset || self.end() < other.offset
+        // negate and reorder, and we have the following expression:
+        self.offset < other.end() && other.offset < self.end()
     }
 
     #[inline]
@@ -226,8 +253,8 @@ impl JIRSlice {
     }
 
     #[inline]
-    pub fn end(&self) -> JIRSize {
-        self.offset + self.size
+    pub fn end(&self) -> JIROffset {
+        self.offset + JIROffset::from(self.size)
     }
 }
 
@@ -338,5 +365,15 @@ impl Display for JIRConst {
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
         write!(f, "{:#0x}:{}", self.value, self.size)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn size_of_slice_is_64_bits() {
+        assert_eq!(std::mem::size_of::<JIRSlice>(), 8);
     }
 }

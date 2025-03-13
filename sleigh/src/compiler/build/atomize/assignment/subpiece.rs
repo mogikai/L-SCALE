@@ -11,6 +11,7 @@ use crate::spec::moir::code::{
     MOIRInstruction,
     moir_instruction,
 };
+use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::scope::{
     MOIRLocalId,
     MOIRScope,
@@ -66,7 +67,9 @@ impl SleighCompiler {
             SASTPCodeSubpieceSelector::Discard(_) => {
                 todo!("Currently unimplemented")
             }
-        };
+        }
+        .try_into()
+        .expect("The size must fit into u8");
         let lhs = resolve_lhs(&self.spec_builder, scope, local.clone(), ident.clone(), size)?;
         ensure_valid_subpiece_size(scope, lhs, size)?;
         let lhs = truncate_lhs(&self.spec_builder, scope, local, ident, lhs, size)?;
@@ -83,7 +86,7 @@ impl SleighCompiler {
 fn ensure_valid_subpiece_size(
     scope: &MOIRScope,
     lhs: MOIRLocalId,
-    size: SASTSize,
+    size: MOIRSize,
 ) -> InternalCompilerResult<()> {
     // If the subpiece tries to create a slice that is
     // larger than the original, we generate an error.
@@ -103,7 +106,7 @@ fn resolve_lhs(
     scope: &mut MOIRScope,
     local: Spanned<bool>,
     ident: Spanned<SASTIdent>,
-    size: SASTSize,
+    size: MOIRSize,
 ) -> InternalCompilerResult<MOIRLocalId> {
     if local.into_value() {
         // We encountered a local definition. Define here and error out if it already exists.
@@ -119,7 +122,7 @@ fn truncate_lhs(
     local: Spanned<bool>,
     ident: Spanned<SASTIdent>,
     lhs: MOIRLocalId,
-    size: SASTSize,
+    size: MOIRSize,
 ) -> InternalCompilerResult<MOIRLocalId> {
     if *local {
         // If we defined a new local, then there is no need to truncate.

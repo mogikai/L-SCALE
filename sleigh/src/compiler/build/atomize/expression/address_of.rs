@@ -40,7 +40,13 @@ impl SleighCompiler {
         let (address_of, _) = address_of.into_tuple();
         let size = address_of
             .size
-            .map(|s| MOIRMaybeSize::Determined(s.into_value()))
+            .map(|s| {
+                MOIRMaybeSize::Determined(
+                    s.into_value()
+                        .try_into()
+                        .expect("The size must fit into u8"),
+                )
+            })
             .unwrap_or(MOIRMaybeSize::Undetermined);
         if let MOIRMaybeSize::Determined(size_constraint) = out
             .map(|id| scope.size_of_local(id))

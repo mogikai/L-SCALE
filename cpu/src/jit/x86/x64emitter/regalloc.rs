@@ -5,8 +5,8 @@ use crate::jit::api::{
 use crate::jit::assembler::MogiAssembler;
 use crate::jit::code_buffer::CompiledBasicBlock;
 use crate::jit::trace_jit;
+use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::registers::{
-    GPRegister,
     RegAllocType,
     RegisterLoadInfo,
     RegisterTracker,

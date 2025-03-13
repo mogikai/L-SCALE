@@ -1,6 +1,6 @@
 use crate::jit::api::JITResult;
 use crate::jit::x86::assemble;
-use crate::jit::x86::registers::GPRegister;
+use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::x64emitter::X64Emitter;
 use crate::jit::x86::x64emitter::regalloc::SliceType;
 use mogi_sleigh::spec::jir::common::JIRSize;

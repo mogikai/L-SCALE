@@ -6,7 +6,10 @@ use crate::spec::jir::basic_block::instruction::{
     JIRTempId,
     TargetInstructionBuilder,
 };
-use crate::spec::jir::common::JIRSize;
+use crate::spec::jir::common::{
+    JIROffset,
+    JIRSize,
+};
 use crate::spec::jir::jcode::{
     JIRInstruction,
     NextBlockTarget,
@@ -27,7 +30,10 @@ use crate::spec::{
     SpaceId,
 };
 use mogi_utilities::addresses::EVAddr;
-use mogi_utilities::index_map::PrimaryMap;
+use mogi_utilities::index_map::{
+    PrimaryMap,
+    SecondaryMap,
+};
 use std::rc::Rc;
 
 /// A builder for constructing `TargetBasicBlock` structures.
@@ -64,6 +70,8 @@ impl TargetBasicBlockBuilder {
             target_block: TargetBasicBlockInner {
                 jir_instructions: vec![],
                 jir_blocks: Default::default(),
+                jir_block_predecessors: Default::default(),
+                jir_block_successors: Default::default(),
                 temporaries: Default::default(),
                 start,
                 fallthrough: None,
@@ -96,7 +104,7 @@ impl TargetBasicBlockBuilder {
     ) -> ProcessorSpecResult<JIRSlice> {
         // TODO: Maybe it makes sense padding the varnodes to a specific byte boundary?
         // The offset of the new temporary is either the end of the last, or zero, if no other temps were allocated yet.
-        let offset: JIRSize = self
+        let offset: JIROffset = self
             .target_block
             .temporaries
             .last()
@@ -280,8 +288,21 @@ impl TargetBasicBlockBuilder {
 pub struct TargetBasicBlock(Rc<TargetBasicBlockInner>);
 
 impl TargetBasicBlock {
-    pub fn instructions(&self) -> impl Iterator<Item = &JIRInstruction> {
+    /// Get an iterator over all instructions of the target basic block.
+    pub fn instructions(&self) -> impl ExactSizeIterator<Item = &JIRInstruction> + DoubleEndedIterator {
         self.0.jir_instructions.iter()
+    }
+
+    /// Get an iterator over all instructions of the provided jir block in the target block.
+    pub fn jir_block_instructions(
+        &self,
+        block: JIRBlockId,
+    ) -> Option<impl ExactSizeIterator<Item = &JIRInstruction> + DoubleEndedIterator> {
+        self.0
+            .jir_blocks
+            .get(block)?
+            .as_ref()
+            .map(|block| self.0.jir_instructions[block.range.clone()].iter())
     }
 
     /// The address where this block starts.
@@ -310,7 +331,10 @@ impl TargetBasicBlock {
 #[derive(Debug, Clone)]
 struct TargetBasicBlockInner {
     jir_instructions: Vec<JIRInstruction>,
+    /// Keeps track of the blocks and what range of instructions the block lives in.
     jir_blocks: PrimaryMap<JIRBlockId, Option<JIRBlock>>,
+    jir_block_predecessors: SecondaryMap<JIRBlockId, Vec<JIRBlockId>>,
+    jir_block_successors: SecondaryMap<JIRBlockId, Vec<JIRBlockId>>,
 
     /// A list of temporary varnodes that are valid only for this TargetBasicBlock.
     /// The temporaries are allocated such that they are sequential in the

@@ -15,10 +15,7 @@ use crate::jit::api::{
 use dynasmrt::dynasm;
 use dynasmrt::x64::X64Relocation;
 use memmap2::MmapOptions;
-use mogi_sleigh::spec::jir::jcode::{
-    JIRInstruction,
-    JIROperation,
-};
+use mogi_sleigh::spec::jir::jcode::JIRInstruction;
 use mogi_sleigh::spec::jir::values::{
     JIRSlice,
     JIRVarNode,
@@ -57,6 +54,7 @@ use registers::{
 use task_context::X86TaskContext;
 use x64emitter::CustomOpCallback;
 
+mod emitter;
 mod registers;
 mod scaffolding;
 mod task_context;
@@ -83,7 +81,7 @@ macro_rules! assemble {
     };
 }
 
-use crate::jit::x86::registers::RegAllocType;
+use crate::jit::x86::registers::allocator::RegisterAllocator;
 use crate::tlb::PageMetaInfo;
 use assemble;
 use mogi_mem::mmu::MogiMMU;
@@ -260,10 +258,10 @@ impl MogiJit for X86MogiJit {
 
     fn compile_target_block(
         &mut self,
-        block: TargetBasicBlock,
+        target_block: &TargetBasicBlock,
     ) -> JITResult {
         self.code_buffer
-            .create_block(block.start(), block.fallthrough())?;
+            .create_block(target_block.start(), target_block.fallthrough())?;
         // Fetch the offset of the epilogue block
         let epilogue_code = self
             .code_buffer
@@ -272,9 +270,9 @@ impl MogiJit for X86MogiJit {
             .expect("The epilogue block code must exist");
         let compiled_block = self
             .code_buffer
-            .block_mut(block.start())
+            .block_mut(target_block.start())
             .expect("We just created this block");
-        let spec = self.processor_specification.borrow();
+
         // Set both exit succes and exit fail to the jit epilogue
         // TODO: Different block for exit_fail?
         unsafe {
@@ -283,13 +281,19 @@ impl MogiJit for X86MogiJit {
             compiled_block.set_exit_failure(epilogue_code);
         }
 
-        let mut emitter = X64Emitter::new(&self.global_context, &spec, &mut self.register_tracker, compiled_block);
-        for inst in block.instructions() {
-            emitter.emit_jinst(inst)?;
-        }
+        // We create a new emitter for the target architecture. The emitter will directly emit instructions
+        // into the provided `compiled_block` for each instruction in the provided `target_block`.
+        let spec = self.processor_specification.borrow();
+        let mut emitter =
+            X64Emitter::new(&self.global_context, &spec, &mut self.register_tracker, compiled_block, target_block);
 
-        emitter.finalize()?;
-        self.code_buffer.write_block(block.start())?;
+        // And then start the register allocator for the block and target architecture.
+        let regalloc = RegisterAllocator::new(&target_block, emitter.emitter_requirements());
+        let allocations = regalloc.run()?;
+
+        // And finally we emit the instructions, using the allocations we just calculated.
+        emitter.emit_block(allocations)?;
+        self.code_buffer.write_block(target_block.start())?;
         Ok(())
     }
 

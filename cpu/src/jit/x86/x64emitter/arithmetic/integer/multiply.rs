@@ -2,14 +2,9 @@ use crate::jit::api::{
     JITResult,
     JitError,
 };
-use crate::jit::code_buffer::CompiledBasicBlock;
+use crate::jit::x86::assemble;
 use crate::jit::x86::x64emitter::X64Emitter;
 use crate::jit::x86::x64emitter::regalloc::SliceType;
-use crate::jit::x86::{
-    X86MogiJit,
-    assemble,
-};
-use dynasmrt::x64::X64Relocation;
 use mogi_sleigh::spec::jir::values::{
     JIRConst,
     JIRSlice,

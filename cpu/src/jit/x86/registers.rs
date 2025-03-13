@@ -1,3 +1,9 @@
+pub(crate) mod allocator;
+pub(crate) mod general_purpose;
+#[cfg(test)]
+mod test;
+pub(crate) mod xmm;
+
 use crate::jit::api::{
     JITResult,
     JitError,
@@ -9,6 +15,7 @@ use crate::jit::x86::x64emitter::regalloc::{
     SpillBehavior,
 };
 use bitvec::array::BitArray;
+use general_purpose::GPRegister;
 use mogi_sleigh::spec::jir::values::JIRSlice;
 use num_enum::{
     IntoPrimitive,
@@ -28,6 +35,7 @@ use std::{
     array,
     mem,
 };
+use xmm::XMMRegister;
 
 pub trait FlushEmitter<AssemblerT>: Fn(&mut AssemblerT, GPRegister, JIRSlice) -> JITResult {}
 impl<AssemblerT, T> FlushEmitter<AssemblerT> for T where T: Fn(&mut AssemblerT, GPRegister, JIRSlice) -> JITResult {}
@@ -37,99 +45,6 @@ pub trait Register: TryFrom<Self::Primitive, Error: Debug> {
     const NUMBER: usize;
     /// Return the initial allocation for the specified register.
     fn initial_allocation(&self) -> RegAlloc;
-}
-
-#[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive, PartialEq, Eq)]
-#[repr(u8)]
-/// Represents all general purpose registers available on x64.
-/// The size of the register is not encoded here. This enum only
-/// serves as a selector for the register and not for its size.
-pub enum GPRegister {
-    AX  = 0,
-    CX  = 1,
-    DX  = 2,
-    BX  = 3,
-    SP  = 4,
-    BP  = 5,
-    SI  = 6,
-    DI  = 7,
-    R8  = 8,
-    R9  = 9,
-    R10 = 10,
-    R11 = 11,
-    R12 = 12,
-    R13 = 13,
-    R14 = 14,
-    R15 = 15,
-}
-
-impl Register for GPRegister {
-    type Primitive = u8;
-    const NUMBER: usize = 16;
-
-    fn initial_allocation(&self) -> RegAlloc {
-        let ty = match self {
-            // we reserve RAX as temporary since there are some instructions that can only use RAX
-            GPRegister::AX => RegAllocType::Reserved,
-            // RBP is reserved for the cpu_context
-            GPRegister::BP => RegAllocType::Reserved,
-            // We don't want to mess with the stack pointer.
-            // TODO: It may make sense to keep the emulated stack pointer loaded in some register.
-            //       This might even be the host SP register, but we will have to save the value somewhere.
-            //       Maybe it even makes sense to provide an api where one can specify target registers
-            //       that should be loaded into fixed host registers upon entering the jit. (SP?, FLAGS?)
-            GPRegister::SP => RegAllocType::Reserved,
-            _ => RegAllocType::Free,
-        };
-        RegAlloc { ty, version: 0 }
-    }
-}
-
-impl From<GPRegister> for usize {
-    fn from(value: GPRegister) -> Self {
-        usize::from(u8::from(value))
-    }
-}
-
-#[derive(Debug, Copy, Clone, TryFromPrimitive, IntoPrimitive, PartialEq, Eq)]
-#[repr(u8)]
-/// This enum represents the available XMM, YMM, and ZMM Registers. (YMM and ZMM are extensions of XMM)
-/// These registers are primarily used for floating point arithmetic and simd operations.
-enum XMMRegister {
-    XMM0  = 0,
-    XMM1  = 1,
-    XMM2  = 2,
-    XMM3  = 3,
-    XMM4  = 4,
-    XMM5  = 5,
-    XMM6  = 6,
-    XMM7  = 7,
-    XMM8  = 8,
-    XMM9  = 9,
-    XMM10 = 10,
-    XMM11 = 11,
-    XMM12 = 12,
-    XMM13 = 13,
-    XMM14 = 14,
-    XMM15 = 15,
-}
-
-impl From<XMMRegister> for usize {
-    fn from(value: XMMRegister) -> Self {
-        usize::from(u8::from(value))
-    }
-}
-
-impl Register for XMMRegister {
-    type Primitive = u8;
-    const NUMBER: usize = 16;
-
-    fn initial_allocation(&self) -> RegAlloc {
-        let ty = match self {
-            _ => RegAllocType::Free,
-        };
-        RegAlloc { ty, version: 0 }
-    }
 }
 
 #[derive(Debug)]
@@ -355,8 +270,8 @@ impl RegisterTracker {
                 }
                 RegAllocType::Reserved | RegAllocType::OccupiedTemp => {}
                 RegAllocType::Occupied(current) | RegAllocType::OccupiedDirty(current) => match alloc_intention {
-                    RegAllocIntention::Slice(slice) if current.varnode_id == slice.varnode_id => {
-                        if current.size < slice.size() || current.offset != slice.offset {
+                    RegAllocIntention::Slice(slice) if current.overlaps(&slice) => {
+                        if current.varnode_id != slice.varnode_id {
                             todo!("Aliasing varnodes are currently not supported yet")
                         }
                         if let RegAllocHint::Reallocate(_) = hint {
@@ -368,9 +283,13 @@ impl RegisterTracker {
                             return Ok(RegisterLoadInfo::Loaded(register));
                         }
                     }
-                    RegAllocIntention::OutSlice(slice) if current.varnode_id == slice.varnode_id => {
-                        if current.size < slice.size() || current.offset != slice.offset {
-                            todo!("Aliasing varnodes are currently not supported yet")
+                    RegAllocIntention::OutSlice(slice) if current.overlaps(&slice) => {
+                        if current.varnode_id != slice.varnode_id {
+                            if current.offset == slice.offset {
+                                todo!("implement same offset alias")
+                            } else {
+                                todo!("Aliasing varnodes with different offsets are currently not supported")
+                            }
                         }
                         existing_gpr = Some(register);
                         if matches!(hint, RegAllocHint::Reallocate(_)) {
@@ -378,8 +297,8 @@ impl RegisterTracker {
                             break;
                         };
                     }
-                    RegAllocIntention::Realloc(slice) if current.varnode_id == slice.varnode_id => {
-                        if current.size < slice.size() || current.offset != slice.offset {
+                    RegAllocIntention::Realloc(slice) if current.overlaps(&slice) => {
+                        if current.varnode_id != slice.varnode_id {
                             todo!("Aliasing varnodes are currently not supported yet")
                         }
                         existing_gpr = Some(register);

@@ -1,7 +1,4 @@
-use crate::spec::jir::jcode::{
-    JIRInstruction,
-    JIROperation,
-};
+use crate::spec::jir::jcode::JIRInstruction;
 use std::fmt::{
     Display,
     Formatter,
@@ -12,79 +9,56 @@ impl Display for JIRInstruction {
         &self,
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
-        match &self.operation {
-            JIROperation::BlockStart(label) => write!(f, "block_start <{}>", label),
-            JIROperation::BlockEnd(label) => write!(f, "block_end <{}>", label),
-            JIROperation::InstructionStart(addr) => write!(f, "instruction_start <{:?}>", addr),
-            JIROperation::InstructionEnd(addr) => write!(f, "instruction_end <{:?}>", addr),
-            JIROperation::PopCount
-            | JIROperation::LZCount
-            | JIROperation::ZeroExtend
-            | JIROperation::SignExtend
-            | JIROperation::Nan
-            | JIROperation::Abs
-            | JIROperation::Sqrt
-            | JIROperation::IntToFloat
-            | JIROperation::FloatToFloat
-            | JIROperation::Trunc
-            | JIROperation::Ceil
-            | JIROperation::Floor
-            | JIROperation::Round => {
-                write!(
-                    f,
-                    "{} = {}({})",
-                    self.output.expect("Extend ops have an output"),
-                    self.operation,
-                    self.input_a.expect("Extend ops have to have input_a")
-                )
+        use JIRInstruction as OP;
+        match &self {
+            OP::BlockStart(label) => write!(f, "block_start <{}>", label),
+            OP::BlockEnd(label) => write!(f, "block_end <{}>", label),
+            OP::InstructionStart(addr) => write!(f, "instruction_start <{:?}>", addr),
+            OP::InstructionEnd(addr) => write!(f, "instruction_end <{:?}>", addr),
+            OP::PopCount(args)
+            | OP::LZCount(args)
+            | OP::ZeroExtend(args)
+            | OP::SignExtend(args)
+            | OP::Nan(args)
+            | OP::Abs(args)
+            | OP::Sqrt(args)
+            | OP::IntToFloat(args)
+            | OP::FloatToFloat(args)
+            | OP::Trunc(args)
+            | OP::Ceil(args)
+            | OP::Floor(args)
+            | OP::Round(args) => {
+                write!(f, "{} = {}({})", args.output, self.op_display(), args.input)
             }
-            JIROperation::Carry | JIROperation::SignCarry | JIROperation::SignBorrow => {
-                write!(
-                    f,
-                    "{} = {}({}, {})",
-                    self.output.expect("op has to have an output"),
-                    self.operation,
-                    self.input_a.expect("op has to have input_a"),
-                    self.input_b.expect("op has to have input_a")
-                )
+            OP::Carry(args) | OP::SignCarry(args) | OP::SignBorrow(args) => {
+                write!(f, "{} = {}({}, {})", args.output, self.op_display(), args.input_a, args.input_b)
             }
-            JIROperation::Load(space) => {
-                write!(
-                    f,
-                    "{} = *[{:?}]{}",
-                    self.output.expect("Load ops have an output"),
-                    space,
-                    self.input_a.expect("Load has to have input_a")
-                )
+            OP::Load { target, address, space } => {
+                write!(f, "{} = *[{:?}]{}", target, space, address)
             }
-            JIROperation::Store(space) => {
-                write!(
-                    f,
-                    "*[{:?}]{} = {}",
-                    space,
-                    self.input_a.expect("Store has to have input_a"),
-                    self.input_b.expect("Store has to have input_b")
-                )
+            OP::Store { address, value, space } => {
+                write!(f, "*[{:?}]{} = {}", space, address, value)
             }
-            JIROperation::Copy => {
-                write!(
-                    f,
-                    "{} = {}",
-                    self.output.expect("Copy ops have an output"),
-                    self.input_a.expect("Copy has to have input_a")
-                )
+            OP::Copy(args) => {
+                write!(f, "{} = {}", args.output, args.input)
             }
-            JIROperation::CustomOp { op_id, extra_args } => {
-                if let Some(output) = self.output {
+            OP::CustomOp {
+                output,
+                input_a,
+                input_b,
+                op_id,
+                extra_args,
+            } => {
+                if let Some(output) = output {
                     write!(f, "{} = {}(", output, op_id)?
                 } else {
                     write!(f, "{}(", op_id)?
                 }
                 let mut inputs = vec![];
-                if let Some(input) = self.input_a {
+                if let Some(input) = input_a {
                     inputs.push(input);
                 }
-                if let Some(input) = self.input_b {
+                if let Some(input) = input_b {
                     inputs.push(input);
                 }
                 inputs.extend(extra_args.iter());
@@ -100,132 +74,141 @@ impl Display for JIRInstruction {
                     write!(f, ")")
                 }
             }
-            JIROperation::BoolNegate
-            | JIROperation::BitNegate
-            | JIROperation::IntNegate
-            | JIROperation::FloatNegate => {
-                write!(
-                    f,
-                    "{} = {}{}",
-                    self.output.expect("Unary op has to have an output"),
-                    self.operation,
-                    self.input_a.expect("Unary op has to have input_a")
-                )
+            OP::BoolNegate(args) | OP::BitNegate(args) | OP::IntNegate(args) | OP::FloatNegate(args) => {
+                write!(f, "{} = {}{}", args.output, self.op_display(), args.input)
             }
-            JIROperation::ReturnDirect => write!(f, "return {}", self.input_a.expect("Goto has to have input_a")),
-            JIROperation::ReturnIndirect => write!(f, "return [{}]", self.input_a.expect("Goto has to have input_a")),
-            JIROperation::CallDirect => write!(f, "call {}", self.input_a.expect("Goto has to have input_a")),
-            JIROperation::CallIndirect => write!(f, "call [{}]", self.input_a.expect("Goto has to have input_a")),
-            JIROperation::GotoDirect => write!(f, "goto {}", self.input_a.expect("Goto has to have input_a")),
-            JIROperation::GotoIndirect => write!(f, "goto [{}]", self.input_a.expect("Goto has to have input_a")),
-            JIROperation::JCodeGoto(label) => write!(f, "goto <{}>", label),
-            JIROperation::JCodeGotoIf(label) => {
-                write!(f, "if ({}) goto <{:?}>", self.input_b.expect("GotoIf has to have input_b"), label)
+            OP::ReturnDirect(target) => write!(f, "return {}", target),
+            OP::ReturnIndirect(target) => write!(f, "return [{}]", target),
+            OP::CallDirect(target) => write!(f, "call {}", target),
+            OP::CallIndirect(target) => write!(f, "call [{}]", target),
+            OP::GotoDirect(target) => write!(f, "goto {}", target),
+            OP::GotoIndirect(target) => write!(f, "goto [{}]", target),
+            OP::JCodeGoto(label) => write!(f, "goto <{}>", label),
+            OP::JCodeGotoIf {
+                condition,
+                target_block,
+            } => {
+                write!(f, "if ({}) goto <{:?}>", condition, target_block)
             }
-            JIROperation::GotoDirectIf => write!(
-                f,
-                "if ({}) goto [{}]",
-                self.input_b.expect("GotoIf has to have input_b"),
-                self.input_a.expect("Goto has to have input_a")
-            ),
-            JIROperation::GotoIndirectIf => write!(
-                f,
-                "if ({}) goto {}",
-                self.input_b.expect("GotoIf has to have input_b"),
-                self.input_a.expect("Goto has to have input_a")
-            ),
-            _ => write!(
-                f,
-                "{} = {} {} {}",
-                self.output.expect("Binary op has to have an output"),
-                self.input_a.expect("Binary op must have input_a"),
-                self.operation,
-                self.input_b.expect("Binary op must have input_b")
-            ),
+            OP::GotoDirectIf { condition, target } => write!(f, "if ({}) goto [{}]", condition, target),
+            OP::GotoIndirectIf { condition, target } => write!(f, "if ({}) goto {}", condition, target),
+            JIRInstruction::IntAdd(args)
+            | JIRInstruction::IntSubtract(args)
+            | JIRInstruction::IntMul(args)
+            | JIRInstruction::IntDiv(args)
+            | JIRInstruction::IntSDiv(args)
+            | JIRInstruction::IntRemainder(args)
+            | JIRInstruction::IntSRemainder(args)
+            | JIRInstruction::IntLeft(args)
+            | JIRInstruction::IntRight(args)
+            | JIRInstruction::IntSRight(args)
+            | JIRInstruction::IntOr(args)
+            | JIRInstruction::IntAnd(args)
+            | JIRInstruction::IntXor(args)
+            | JIRInstruction::IntSLess(args)
+            | JIRInstruction::IntSGreater(args)
+            | JIRInstruction::IntSLessEqual(args)
+            | JIRInstruction::IntSGreaterEqual(args)
+            | JIRInstruction::IntLess(args)
+            | JIRInstruction::IntGreater(args)
+            | JIRInstruction::IntLessEqual(args)
+            | JIRInstruction::IntGreaterEqual(args)
+            | JIRInstruction::IntEquals(args)
+            | JIRInstruction::IntNotEquals(args)
+            | JIRInstruction::FloatDiv(args)
+            | JIRInstruction::FloatMul(args)
+            | JIRInstruction::FloatAdd(args)
+            | JIRInstruction::FloatSubtract(args)
+            | JIRInstruction::FloatLess(args)
+            | JIRInstruction::FloatGreater(args)
+            | JIRInstruction::FloatLessEqual(args)
+            | JIRInstruction::FloatGreaterEqual(args)
+            | JIRInstruction::FloatEquals(args)
+            | JIRInstruction::FloatNotEquals(args)
+            | JIRInstruction::BoolOr(args)
+            | JIRInstruction::BoolAnd(args)
+            | JIRInstruction::BoolXor(args) => {
+                write!(f, "{} = {} {} {}", args.output, args.input_a, self.op_display(), args.input_b)
+            }
         }
     }
 }
 
-impl Display for JIROperation {
-    fn fmt(
-        &self,
-        f: &mut Formatter<'_>,
-    ) -> std::fmt::Result {
+impl JIRInstruction {
+    fn op_display(&self) -> &str {
         match self {
-            JIROperation::BlockStart(_) => write!(f, "block_start"),
-            JIROperation::BlockEnd(_) => write!(f, "block_end"),
-            JIROperation::InstructionStart(_) => write!(f, "instruction_start"),
-            JIROperation::InstructionEnd(_) => write!(f, "instruction_end"),
-            JIROperation::Copy => write!(f, ""),
-            JIROperation::CustomOp { .. } => write!(f, "custom"),
-            JIROperation::PopCount => write!(f, "popcount"),
-            JIROperation::LZCount => write!(f, "lzcount"),
-            JIROperation::ZeroExtend => write!(f, "zext"),
-            JIROperation::SignExtend => write!(f, "sext"),
-            JIROperation::Carry => write!(f, "carry"),
-            JIROperation::SignCarry => write!(f, "scarry"),
-            JIROperation::SignBorrow => write!(f, "sborrow"),
-            JIROperation::Nan => write!(f, "nan"),
-            JIROperation::Abs => write!(f, "abs"),
-            JIROperation::Sqrt => write!(f, "sqrt"),
-            JIROperation::IntToFloat => write!(f, "int2float"),
-            JIROperation::FloatToFloat => write!(f, "float2float"),
-            JIROperation::Trunc => write!(f, "trunc"),
-            JIROperation::Ceil => write!(f, "ceil"),
-            JIROperation::Floor => write!(f, "floor"),
-            JIROperation::Round => write!(f, "round"),
-            JIROperation::Load(_) => write!(f, "load"),
-            JIROperation::Store(_) => write!(f, "store"),
-            JIROperation::IntAdd => write!(f, "+"),
-            JIROperation::IntSubtract => write!(f, "-"),
-            JIROperation::IntMul => write!(f, "*"),
-            JIROperation::IntDiv => write!(f, "/"),
-            JIROperation::IntSDiv => write!(f, "s/"),
-            JIROperation::IntRemainder => write!(f, "%"),
-            JIROperation::IntSRemainder => write!(f, "s%"),
-            JIROperation::FloatDiv => write!(f, "f/"),
-            JIROperation::FloatMul => write!(f, "f*"),
-            JIROperation::FloatAdd => write!(f, "f+"),
-            JIROperation::FloatSubtract => write!(f, "f-"),
-            JIROperation::BoolOr => write!(f, "||"),
-            JIROperation::BoolAnd => write!(f, "&&"),
-            JIROperation::BoolXor => write!(f, "^^"),
-            JIROperation::IntLeft => write!(f, "<<"),
-            JIROperation::IntRight => write!(f, ">>"),
-            JIROperation::IntSRight => write!(f, "s>>"),
-            JIROperation::IntSLess => write!(f, "s<"),
-            JIROperation::IntSGreater => write!(f, "s>"),
-            JIROperation::IntSLessEqual => write!(f, "s<="),
-            JIROperation::IntSGreaterEqual => write!(f, "s>="),
-            JIROperation::IntLess => write!(f, "<"),
-            JIROperation::IntGreater => write!(f, ">"),
-            JIROperation::IntLessEqual => write!(f, "<="),
-            JIROperation::IntGreaterEqual => write!(f, ">="),
-            JIROperation::FloatLess => write!(f, "f<"),
-            JIROperation::FloatGreater => write!(f, "f>"),
-            JIROperation::FloatLessEqual => write!(f, "f<="),
-            JIROperation::FloatGreaterEqual => write!(f, "f>="),
-            JIROperation::FloatEquals => write!(f, "f=="),
-            JIROperation::FloatNotEquals => write!(f, "f!="),
-            JIROperation::IntOr => write!(f, "|"),
-            JIROperation::IntAnd => write!(f, "&"),
-            JIROperation::IntXor => write!(f, "^"),
-            JIROperation::IntEquals => write!(f, "=="),
-            JIROperation::IntNotEquals => write!(f, "!="),
-            JIROperation::BoolNegate => write!(f, "!"),
-            JIROperation::BitNegate => write!(f, "~"),
-            JIROperation::IntNegate => write!(f, "-"),
-            JIROperation::FloatNegate => write!(f, "f-"),
-            JIROperation::CallDirect | JIROperation::CallIndirect => write!(f, "call"),
-            JIROperation::ReturnDirect | JIROperation::ReturnIndirect => write!(f, "return"),
-            JIROperation::GotoDirect
-            | JIROperation::GotoIndirect
-            | JIROperation::GotoDirectIf
-            | JIROperation::GotoIndirectIf
-            | JIROperation::JCodeGoto(_)
-            | JIROperation::JCodeGotoIf(_) => {
-                write!(f, "goto")
-            }
+            JIRInstruction::BlockStart(_) => "block_start",
+            JIRInstruction::BlockEnd(_) => "block_end",
+            JIRInstruction::InstructionStart(_) => "instruction_start",
+            JIRInstruction::InstructionEnd(_) => "instruction_end",
+            JIRInstruction::Copy(_) => "",
+            JIRInstruction::CustomOp { .. } => "custom",
+            JIRInstruction::PopCount(_) => "popcount",
+            JIRInstruction::LZCount(_) => "lzcount",
+            JIRInstruction::ZeroExtend(_) => "zext",
+            JIRInstruction::SignExtend(_) => "sext",
+            JIRInstruction::Carry(_) => "carry",
+            JIRInstruction::SignCarry(_) => "scarry",
+            JIRInstruction::SignBorrow(_) => "sborrow",
+            JIRInstruction::Nan(_) => "nan",
+            JIRInstruction::Abs(_) => "abs",
+            JIRInstruction::Sqrt(_) => "sqrt",
+            JIRInstruction::IntToFloat(_) => "int2float",
+            JIRInstruction::FloatToFloat(_) => "float2float",
+            JIRInstruction::Trunc(_) => "trunc",
+            JIRInstruction::Ceil(_) => "ceil",
+            JIRInstruction::Floor(_) => "floor",
+            JIRInstruction::Round(_) => "round",
+            JIRInstruction::Load { .. } => "load",
+            JIRInstruction::Store { .. } => "store",
+            JIRInstruction::IntAdd(_) => "+",
+            JIRInstruction::IntSubtract(_) => "-",
+            JIRInstruction::IntMul(_) => "*",
+            JIRInstruction::IntDiv(_) => "/",
+            JIRInstruction::IntSDiv(_) => "s/",
+            JIRInstruction::IntRemainder(_) => "%",
+            JIRInstruction::IntSRemainder(_) => "s%",
+            JIRInstruction::FloatDiv(_) => "f/",
+            JIRInstruction::FloatMul(_) => "f*",
+            JIRInstruction::FloatAdd(_) => "f+",
+            JIRInstruction::FloatSubtract(_) => "f-",
+            JIRInstruction::BoolOr(_) => "||",
+            JIRInstruction::BoolAnd(_) => "&&",
+            JIRInstruction::BoolXor(_) => "^^",
+            JIRInstruction::IntLeft(_) => "<<",
+            JIRInstruction::IntRight(_) => ">>",
+            JIRInstruction::IntSRight(_) => "s>>",
+            JIRInstruction::IntSLess(_) => "s<",
+            JIRInstruction::IntSGreater(_) => "s>",
+            JIRInstruction::IntSLessEqual(_) => "s<=",
+            JIRInstruction::IntSGreaterEqual(_) => "s>=",
+            JIRInstruction::IntLess(_) => "<",
+            JIRInstruction::IntGreater(_) => ">",
+            JIRInstruction::IntLessEqual(_) => "<=",
+            JIRInstruction::IntGreaterEqual(_) => ">=",
+            JIRInstruction::FloatLess(_) => "f<",
+            JIRInstruction::FloatGreater(_) => "f>",
+            JIRInstruction::FloatLessEqual(_) => "f<=",
+            JIRInstruction::FloatGreaterEqual(_) => "f>=",
+            JIRInstruction::FloatEquals(_) => "f==",
+            JIRInstruction::FloatNotEquals(_) => "f!=",
+            JIRInstruction::IntOr(_) => "|",
+            JIRInstruction::IntAnd(_) => "&",
+            JIRInstruction::IntXor(_) => "^",
+            JIRInstruction::IntEquals(_) => "==",
+            JIRInstruction::IntNotEquals(_) => "!=",
+            JIRInstruction::BoolNegate(_) => "!",
+            JIRInstruction::BitNegate(_) => "~",
+            JIRInstruction::IntNegate(_) => "-",
+            JIRInstruction::FloatNegate(_) => "f-",
+            JIRInstruction::CallDirect(_) | JIRInstruction::CallIndirect(_) => "call",
+            JIRInstruction::ReturnDirect(_) | JIRInstruction::ReturnIndirect(_) => "return",
+            JIRInstruction::GotoDirect(_)
+            | JIRInstruction::GotoIndirect(_)
+            | JIRInstruction::GotoDirectIf { .. }
+            | JIRInstruction::GotoIndirectIf { .. }
+            | JIRInstruction::JCodeGoto(_)
+            | JIRInstruction::JCodeGotoIf { .. } => "goto",
         }
     }
 }

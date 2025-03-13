@@ -1,5 +1,5 @@
 use crate::spec::jir::basic_block::TargetBasicBlock;
-use crate::spec::jir::jcode::JIROperation;
+use crate::spec::jir::jcode::JIRInstruction;
 use std::fmt::{
     Display,
     Formatter,
@@ -13,11 +13,11 @@ impl Display for TargetBasicBlock {
         writeln!(f, "\nTargetBlock at {:?}:", self.0.start)?;
         writeln!(f, "JCode:")?;
         for inst in &self.0.jir_instructions {
-            match inst.operation {
-                JIROperation::BlockStart(block_id) => writeln!(f, "    +++ {} +++", block_id)?,
-                JIROperation::BlockEnd(block_id) => writeln!(f, "    --- {} ---", block_id)?,
-                JIROperation::InstructionStart(addr) => writeln!(f, "+++ INST({:?}) +++", addr)?,
-                JIROperation::InstructionEnd(addr) => writeln!(f, "--- INST({:?}) ---", addr)?,
+            match inst {
+                JIRInstruction::BlockStart(block_id) => writeln!(f, "    +++ {} +++", block_id)?,
+                JIRInstruction::BlockEnd(block_id) => writeln!(f, "    --- {} ---", block_id)?,
+                JIRInstruction::InstructionStart(addr) => writeln!(f, "+++ INST({:?}) +++", addr)?,
+                JIRInstruction::InstructionEnd(addr) => writeln!(f, "--- INST({:?}) ---", addr)?,
                 _ => writeln!(f, "        {}", inst)?,
             }
         }

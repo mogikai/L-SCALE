@@ -30,7 +30,9 @@ impl SleighCompiler {
         let shift_amount = MOIRLocal::from(bitrange.lsb.into_value());
         let bits = bitrange.bits.into_value();
         // The size of the output is the smallest size in bytes that still fits the output.
-        let size = (bits + 7) / 8;
+        let size = ((bits + 7) / 8)
+            .try_into()
+            .expect("The size must fit into u8");
 
         // Allocate an out local if none was provided. Otherwise, we need to make sure,
         // that the size of out is correct.

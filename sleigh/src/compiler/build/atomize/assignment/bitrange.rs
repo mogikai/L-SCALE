@@ -45,7 +45,7 @@ impl SleighCompiler {
         let shift_amount = bitrange.lsb.into_value();
         let bits = bitrange.bits.into_value();
 
-        let minimum_value_size = (bits + 7) / 8;
+        let minimum_value_size = ((bits + 7) / 8).try_into().expect("bits must fit into u8");
         let target = resolve_target(&self.spec_builder, scope, local, bitrange.ident)?;
         let target_size = scope
             .size_of_local(target)

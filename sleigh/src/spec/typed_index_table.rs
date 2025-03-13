@@ -67,6 +67,38 @@ macro_rules! new_typed_index_table_id_16 {
     };
 }
 
+/// Creates a new symbol table identifier that can be used to index a [TypedIndexTable].
+/// The backing type is a 16 bit integer
+#[macro_export(local_inner_macros)]
+macro_rules! new_typed_index_table_id_8 {
+    ( $(#[$outer:meta])* $vis:vis struct $name:ident; $display_prefix:literal;) => {
+        $(#[$outer])*
+        #[derive(Debug, Eq, PartialEq, Copy, Clone, Hash)]
+        #[derive(serde::Serialize, serde::Deserialize)]
+        #[repr(transparent)]
+        $vis struct $name(u8);
+        impl From<usize> for $name {
+            fn from(value: usize) -> Self {
+                Self(value.try_into().expect(std::format!("8 bit keys must be in the range [0, 255]. Got {}", value).as_str()))
+            }
+        }
+
+        impl From<$name> for usize {
+            fn from(value: $name) -> Self {
+                value.0.into()
+            }
+        }
+        impl std::fmt::Display for $name {
+            fn fmt(
+                &self,
+                f: &mut std::fmt::Formatter<'_>,
+            ) -> std::fmt::Result {
+                std::write!(f, "{}{}", $display_prefix, self.0)
+            }
+        }
+    };
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypedIndexTable<K, V>(Vec<V>, PhantomData<K>);
 impl<K, V> Default for TypedIndexTable<K, V> {

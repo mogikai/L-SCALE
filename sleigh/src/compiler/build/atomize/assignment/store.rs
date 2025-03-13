@@ -35,6 +35,7 @@ impl SleighCompiler {
         let value_size = deref
             .size
             .map(Spanned::into_value)
+            .map(|s| s.try_into().expect("The size must fit into u8"))
             .map(MOIRMaybeSize::Determined)
             .unwrap_or(MOIRMaybeSize::Undetermined);
         let mut rhs = self.atomize_expression(scope, instructions, None, expression)?;

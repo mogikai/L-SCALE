@@ -3,7 +3,6 @@ use crate::spec::jir::common::JIRSize;
 use crate::spec::jir::jcode::{
     ContinueLifting,
     JIRInstruction,
-    JIROperation,
     NextBlockTarget,
 };
 use crate::spec::jir::jir_block::JIRBlockId;
@@ -52,11 +51,11 @@ impl<'a> TargetInstructionBuilder<'a> {
         /// If we insert a branch instruction, we add the target to the set of out edges.
         /// Once the instruction is finished, the targets are pushed into the block, and
         /// the block is locked for further instructions.
-        match instruction.operation {
-            JIROperation::GotoDirectIf
-            | JIROperation::CallDirect
-            | JIROperation::ReturnDirect
-            | JIROperation::GotoDirect => match instruction.input_a.expect("Direct jumps require a target") {
+        match instruction {
+            JIRInstruction::GotoDirectIf { target, .. }
+            | JIRInstruction::CallDirect(target)
+            | JIRInstruction::ReturnDirect(target)
+            | JIRInstruction::GotoDirect(target) => match target {
                 // We also handle a conditional jump here, since the fallthrough only happens
                 // at the end of the instruction which is handled when the instruction is finalized.
                 JIRValue::Slice(target) => self
@@ -68,17 +67,13 @@ impl<'a> TargetInstructionBuilder<'a> {
                     .get_or_insert_default()
                     .push(NextBlockTarget::Direct(target.try_into()?)),
             },
-            JIROperation::CallIndirect
-            | JIROperation::ReturnIndirect
-            | JIROperation::GotoIndirect
-            | JIROperation::GotoIndirectIf => {
+            JIRInstruction::CallIndirect(target)
+            | JIRInstruction::ReturnIndirect(target)
+            | JIRInstruction::GotoIndirect(target)
+            | JIRInstruction::GotoIndirectIf { target, .. } => {
                 self.branch_targets
                     .get_or_insert_default()
-                    .push(NextBlockTarget::DynamicIndirect(
-                        instruction
-                            .input_a
-                            .expect("Indirect jumps require a target"),
-                    ));
+                    .push(NextBlockTarget::DynamicIndirect(target));
             }
             _ => {}
         }

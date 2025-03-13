@@ -70,6 +70,11 @@ impl FieldExtractor {
 
         trace_jir!("Extracted local_id {} := {}", self.local_id, extracted_value);
 
-        Ok(Some(JIRValue::Const(JIRConst::new(extracted_value.into(), self.local_size))))
+        Ok(Some(JIRValue::Const(JIRConst::new(
+            extracted_value.into(),
+            self.local_size
+                .try_into()
+                .expect("The size must fit into JIRSize"),
+        ))))
     }
 }

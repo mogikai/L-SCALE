@@ -31,13 +31,13 @@ impl SleighCompiler {
         let (offset, size) = match subpiece.selector.into_value() {
             SASTPCodeSubpieceSelector::Take(size) => {
                 // If we take n, the offset is zero, and the size is determined as n
-                (0, size)
+                (0, size.try_into().expect("The size must fit into u8"))
             }
             SASTPCodeSubpieceSelector::Discard(offset) => {
                 // If we discard n, then the offset is n and the size is undetermined,
                 // i.e. must be determined by the external size constraint.
                 (
-                    offset,
+                    offset.try_into().expect("The offset must fit into u8"),
                     size_constraint
                         .ok_or_else(|| -> InternalError { todo!("Generate error for missing size constraint") })?,
                 )

@@ -4,13 +4,14 @@ use crate::jit::api::{
     JitError,
     TlbMissHelper,
 };
-use crate::jit::x86::registers::GPRegister;
+use crate::jit::x86::assemble;
+use crate::jit::x86::emitter::OperandRequest;
+use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::task_context::X86TaskContext;
-use crate::jit::x86::x64emitter::X64Emitter;
 use crate::jit::x86::x64emitter::regalloc::SliceType;
-use crate::jit::x86::{
-    X86GlobalContext,
-    assemble,
+use crate::jit::x86::x64emitter::{
+    X64AllocRequirements,
+    X64Emitter,
 };
 use crate::tlb::entry::TLBEntry;
 use crate::tlb::{
@@ -31,6 +32,40 @@ use mogi_utilities::addresses::{
     HVAddr,
 };
 use std::marker::PhantomData;
+
+impl X64AllocRequirements {
+    pub fn append_load_operands(
+        &mut self,
+        output: JIRSlice,
+        addr: JIRValue,
+        space_id: SpaceId,
+    ) {
+        // We always need the output
+        self.operand_requests
+            .push(OperandRequest::slice_write_any(output));
+        // The address might be in a slice, so request it if it is not const.
+        addr.is_slice_then(|addr| {
+            self.operand_requests
+                .push(OperandRequest::slice_read_any(*addr))
+        });
+    }
+
+    pub fn append_store_operands(
+        &mut self,
+        addr: JIRValue,
+        space_id: SpaceId,
+        value: JIRValue,
+    ) {
+        addr.is_slice_then(|addr| {
+            self.operand_requests
+                .push(OperandRequest::slice_read_any(*addr))
+        });
+        value.is_slice_then(|value| {
+            self.operand_requests
+                .push(OperandRequest::slice_read_any(*value))
+        });
+    }
+}
 
 impl X64Emitter<'_> {
     pub fn emit_load(
