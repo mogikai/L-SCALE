@@ -24,7 +24,7 @@ use super::scope::MOIRLocalId;
 pub(crate) struct FieldExtractor {
     local_id: MOIRLocalId,
     local_size: MOIRSize,
-    pub(crate) byte_index: usize,
+    byte_index: usize,
     bits: MOIRBitRange,
 }
 
@@ -45,6 +45,10 @@ impl FieldExtractor {
 
     pub(crate) fn local_id(&self) -> MOIRLocalId {
         self.local_id
+    }
+
+    pub(crate) fn byte_index(&self) -> usize {
+        self.byte_index
     }
 
     /// Extract and return the field value from the provided byte slice.

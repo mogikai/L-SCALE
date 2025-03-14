@@ -11,26 +11,23 @@ use crate::spec::moir::field::{
 use mogi_utilities::index_map::SecondaryMap;
 
 #[derive(Debug, Default)]
-pub struct ContextStack {
+pub struct ContextStack<'a> {
     // context ids are assumed to be contiguous and therefore pushed onto and popped
     // from this vector when saving and restoring state
     context_values: Vec<u64>,
     num_values: usize,
-    context_fields: SecondaryMap<FieldId, Option<MOIRField>>,
+    context_fields: SecondaryMap<FieldId, Option<&'a MOIRField>>,
 }
 
-impl ContextStack {
-    pub(crate) fn new<C: ContextProvider>(
-        specification: &ProcessorSpecification,
-        context_provider: &C,
-    ) -> InternalCompilerResult<Self> {
+impl<'a> ContextStack<'a> {
+    pub fn new<C: ContextProvider>(specification: &'a ProcessorSpecification, context_provider: &C) -> InternalCompilerResult<Self> {
         let mut highest_cid = ContextId::from(0);
         let mut context_fields = SecondaryMap::default();
 
         for (field_id, field) in specification.symbol_tables.fields.items() {
             if let MOIRFieldParent::Context(cid) = field.parent {
                 highest_cid = highest_cid.max(cid);
-                context_fields[field_id] = Some(field.clone());
+                context_fields[field_id] = Some(field);
             }
         }
 

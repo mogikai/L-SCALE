@@ -859,6 +859,10 @@ impl ProcessorSpecificationBuilder {
             let string = self.interner.string(string_id.into_value()).expect("String id not assigned to string");
             write!(writer, "{:?} <=> {}\n", symbol_id, string).unwrap();
         }
+
+        for (cid, c) in self.symbol_tables.constructors.iter() {
+            write!(writer, "{:?} <=> {}\n", cid, c.display).unwrap();
+        }
     }
 
     pub fn build(self) -> InternalCompilerResult<ProcessorSpecification> {

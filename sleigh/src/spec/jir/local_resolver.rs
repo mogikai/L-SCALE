@@ -14,7 +14,7 @@ use crate::spec::jir::values::{
     JIRVarNodeId,
 };
 use crate::spec::moir::address_space::SpaceId;
-use crate::spec::moir::constructor::MOIRConstructor;
+use crate::spec::moir::constructor::{ConstructorId, MOIRConstructor};
 use crate::spec::moir::field::FieldId;
 use crate::spec::moir::scope::{
     MOIRLocalId,
@@ -73,7 +73,9 @@ impl From<JIRValue> for JIRResolvedValue {
 
 #[derive(Debug, Clone)]
 pub struct JIRResolver<'a> {
+    // TODO maybe move constructor out of here and only pass in when needed?
     constructor: &'a MOIRConstructor,
+    constructor_id: ConstructorId,
     values: SecondaryMap<MOIRLocalId, Option<JIRValue>>,
     temporaries: SecondaryMap<MOIRTemporaryId, Option<JIRSlice>>,
     subtables: FnvHashMap<TableId, JIRResolver<'a>>,
@@ -82,10 +84,12 @@ pub struct JIRResolver<'a> {
 impl<'a> JIRResolver<'a> {
     pub fn new(
         constructor: &'a MOIRConstructor,
+        constructor_id: ConstructorId,
         values: SecondaryMap<MOIRLocalId, Option<JIRValue>>,
     ) -> Self {
         Self {
             constructor,
+            constructor_id,
             values,
             temporaries: Default::default(),
             subtables: Default::default(),
@@ -199,6 +203,14 @@ impl<'a> JIRResolver<'a> {
 
     pub fn constructor(&self) -> &MOIRConstructor {
         self.constructor
+    }
+
+    pub fn constructor_id(&self) -> ConstructorId {
+        self.constructor_id
+    }
+
+    pub fn subtables(&self) -> &FnvHashMap<TableId, JIRResolver<'a>> {
+        &self.subtables
     }
 
     /// Assign `value` to the local given by `local_id`. Return the previous value if existing.

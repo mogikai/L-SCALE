@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use super::context_stack::ContextStack;
 use super::local_resolver::JIRResolver;
 use super::values::JIRValue;
@@ -27,17 +29,16 @@ use serde_derive::{
 /// * get the constructor id and execute disassembly actions
 /// * continue matching subtables
 ///
-/// To avoid traversing the lists twice, we store necessary information here like
+/// To avoid traversing the hierarchy twice, we store necessary information here like
 /// the remaining sublists.
 #[derive(Debug, Default)]
-struct LocalMatching<'a> {
+struct MatchState<'a> {
     // collect sublist resolvers (no sublists since we immediately descend) and values with a
     // dynamic offset and store as vec for backtracking
     subresolvers: Vec<(TableId, JIRResolver<'a>)>,
     // need to store all extractor maps with the corresponding byte index since we
-    // don't know the constructor id at that point
-    field_extractors: Vec<&'a FnvHashMap<ConstructorId, Vec<FieldExtractor>>>,
-    values: Vec<(MOIRLocalId, Option<JIRValue>)>,
+    // don't know the constructor id at this point
+    field_extractors: Vec<(usize, &'a FnvHashMap<ConstructorId, Vec<FieldExtractor>>)>,
 }
 
 #[derive(Debug)]
@@ -88,6 +89,8 @@ pub(crate) struct JumplistEntry {
     // not all field positions are known beforehand so we store additional extractors and lists here
     pub(crate) sublists: Vec<JumplistId>,
     pub(crate) field_extractors: FnvHashMap<ConstructorId, Vec<FieldExtractor>>,
+    // we count the number of hits for each entry and rearrange later
+    hit_count: Cell<u64>,
 }
 
 impl JumplistEntry {
@@ -100,6 +103,7 @@ impl JumplistEntry {
             next_entry,
             sublists,
             field_extractors,
+            hit_count: Cell::from(0),
         }
     }
 }
@@ -127,7 +131,7 @@ pub(crate) enum DataProvider {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub(crate) struct Jumplist {
+pub struct Jumplist {
     container: JumplistContainer,
     mask: u64, // usually only a few bits are actually relevant for indexing into the list
     bytes: MOIRSize,
@@ -231,16 +235,19 @@ impl Jumplist {
         constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
         context_stack: &mut ContextStack,
         consumed_so_far: usize,
-        accum: &mut LocalMatching<'a>,
+        state: &mut MatchState<'a>,
     ) -> InternalCompilerResult<MatcherResult<'a>> {
-        let (value_masked, mut consumed) = self
+        let (value_masked, consumed_decoded) = self
             .decode_value(bytes, consumed_so_far, context_stack)?
             .expect("Couldn't decode value");
 
         if let Some(entries) = self.get(value_masked)? {
+            let mut consumed_total = consumed_so_far + consumed_decoded;
+
             'next_entry: for entry in entries {
                 // store state for backtracking
-                let (prev_len_subresolvers, prev_len_values) = (accum.subresolvers.len(), accum.values.len());
+                let pl_subresolvers = state.subresolvers.len();
+                entry.hit_count.set(entry.hit_count.get() + 1);
 
                 // immediately descend into any variable-offset sublists and add resolver if match
                 for sublist_id in &entry.sublists {
@@ -262,18 +269,18 @@ impl Jumplist {
                         MatcherResult::Some {
                             table,
                             resolver,
-                            bytes_consumed,
+                            bytes_consumed: consumed_jumplist,
                         } => {
                             // if we have dynamic sublists, they dictate how much is consumed
-                            consumed = consumed.max(bytes_consumed);
-                            accum.subresolvers.push((table, resolver));
+                            consumed_total = consumed_total.max(consumed_so_far + consumed_jumplist);
+                            state.subresolvers.push((table, resolver));
                         }
                     }
                 }
 
                 // variable-offset extractors will be processed later when the constructor id is
                 // known
-                accum.field_extractors.push(&entry.field_extractors);
+                state.field_extractors.push((consumed_so_far, &entry.field_extractors));
 
                 let result = match &entry.next_entry {
                     NextJumplistEntry::Constructor {
@@ -290,8 +297,8 @@ impl Jumplist {
                             jumplist_cache,
                             constructors,
                             context_stack,
-                            consumed_so_far + consumed,
-                            accum,
+                            consumed_total,
+                            state,
                             sublists,
                             field_extractors,
                             *cid,
@@ -309,8 +316,8 @@ impl Jumplist {
                             jumplist_cache,
                             constructors,
                             context_stack,
-                            consumed_so_far + consumed,
-                            accum,
+                            consumed_total,
+                            state,
                         )?
                     }
                     NextJumplistEntry::TrailingSame(jlid) => {
@@ -325,7 +332,7 @@ impl Jumplist {
                             constructors,
                             context_stack,
                             consumed_so_far,
-                            accum,
+                            state,
                         )?
                     }
                 };
@@ -333,9 +340,9 @@ impl Jumplist {
                 match result {
                     MatcherResult::None => {
                         // no complete match => backtrack and try next entry
-                        accum.subresolvers.truncate(prev_len_subresolvers);
-                        accum.field_extractors.pop();
-                        accum.values.truncate(prev_len_values);
+                        state.subresolvers.truncate(pl_subresolvers);
+                        state.field_extractors.pop();
+                        entry.hit_count.set(entry.hit_count.get() - 1);
                     }
                     // complete match or end of stream => return
                     _ => return Ok(result),
@@ -355,7 +362,7 @@ impl Jumplist {
         constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
         context_stack: &mut ContextStack,
         consumed_so_far: usize,
-        local_matching: &LocalMatching<'a>,
+        state: &MatchState<'a>,
         // fixed offset
         sublists: &Vec<OffsettedJumplist>,
         field_extractors: &Vec<FieldExtractor>,
@@ -384,7 +391,7 @@ impl Jumplist {
         let mut values = SecondaryMap::<MOIRLocalId, Option<JIRValue>>::default();
 
         // variable-offset field extractors
-        for field_extractor_map in &local_matching.field_extractors {
+        for (offset, field_extractor_map) in &state.field_extractors {
             if let Some(field_extractors) = field_extractor_map.get(&constructor_id) {
                 for field_extractor in field_extractors {
                     trace_jir!(
@@ -392,15 +399,10 @@ impl Jumplist {
                         field_extractor.local_id(),
                         field_extractor
                     );
-                    let extracted_value = field_extractor.extract_value(bytes)?;
+                    let extracted_value = field_extractor.extract_value(&bytes[*offset..])?;
                     values[field_extractor.local_id()] = extracted_value;
                 }
             }
-        }
-
-        // traversing values from front to back overwrites old values
-        for &(local_id, value) in local_matching.values.iter() {
-            values[local_id] = value;
         }
 
         // extract token and context fields with fixed offset into map
@@ -412,9 +414,9 @@ impl Jumplist {
 
         // the resolver with all local values is needed for the actions so we
         // instantiate it here
-        let mut resolver = JIRResolver::new(constructor, values);
+        let mut resolver = JIRResolver::new(constructor, constructor_id, values);
 
-        for (subtable, subresolver) in &local_matching.subresolvers {
+        for (subtable, subresolver) in &state.subresolvers {
             resolver.define_subtable_resolver(*subtable, subresolver.clone())?;
         }
 
@@ -486,7 +488,7 @@ impl Jumplist {
     /// # Return value
     ///
     /// - None if nothing was matched
-    pub(crate) fn r#match<'a>(
+    pub fn r#match<'a>(
         &'a self,
         bytes: &'a [u8],
         addr: EVAddr,
@@ -494,8 +496,19 @@ impl Jumplist {
         constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
         context_stack: &mut ContextStack,
     ) -> InternalCompilerResult<MatcherResult<'a>> {
-        let mut accum = LocalMatching::default();
+        let mut accum = MatchState::default();
         self.match_local(bytes, addr, jumplist_cache, constructors, context_stack, 0, &mut accum)
+    }
+
+    /// Each entry stores the number of times it was part of a matching branch in
+    /// [JumplistEntry::hit_count]. This function sorts the entries by their hit count in
+    /// descending order and subsequently resets the hit counts to zero.
+    pub fn rearrange_entries(
+        &mut self,
+    ) {
+        for (_, entry_vec) in self.entries_mut() {
+            entry_vec.sort_by(|e0, e1| e0.hit_count.get().cmp(&e1.hit_count.get()).reverse());
+        }
     }
 
     pub(crate) fn get(
