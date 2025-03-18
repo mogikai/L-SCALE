@@ -11,7 +11,7 @@ use crate::spec::moir::field::{
 use mogi_utilities::index_map::SecondaryMap;
 
 #[derive(Debug, Default)]
-pub struct ContextStack<'a> {
+pub(crate) struct ContextStack<'a> {
     // context ids are assumed to be contiguous and therefore pushed onto and popped
     // from this vector when saving and restoring state
     context_values: Vec<u64>,
@@ -20,7 +20,7 @@ pub struct ContextStack<'a> {
 }
 
 impl<'a> ContextStack<'a> {
-    pub fn new<C: ContextProvider>(specification: &'a ProcessorSpecification, context_provider: &C) -> InternalCompilerResult<Self> {
+    pub(crate) fn new<C: ContextProvider>(specification: &'a ProcessorSpecification, context_provider: &C) -> InternalCompilerResult<Self> {
         let mut highest_cid = ContextId::from(0);
         let mut context_fields = SecondaryMap::default();
 
@@ -78,7 +78,7 @@ impl<'a> ContextStack<'a> {
 
     /// Get a mutable reference to the value of a context register. Return an error if no value is
     /// associated with`cid`.
-    pub fn context_value_mut(
+    pub(crate) fn context_value_mut(
         &mut self,
         cid: ContextId,
     ) -> InternalCompilerResult<&mut u64> {
@@ -108,7 +108,7 @@ impl<'a> ContextStack<'a> {
         };
 
         let context_value = self.context_value(cid)?;
-        Ok(field.bits.extract(context_value).reverse_bits())
+        Ok(field.bits.extract(context_value))
     }
 
     /// Set the value of context field `field_id` to `new_value`. Return an error if `field_id` does not point to a context field.

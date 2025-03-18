@@ -877,7 +877,7 @@ impl ProcessorSpecificationBuilder {
         debug!("Found {} global varnodes", self.symbol_tables.varnodes.len());
         debug!("Found {} custom operations", self.symbol_tables.custom_ops.len());
 
-        self.dump_symbols_to_file(&PathBuf::from("symbol_strings.txt"));
+        // self.dump_symbols_to_file(&PathBuf::from("symbol_strings.txt"));
 
         let root_table = self.table_id_by_ident(&self.root_table)?;
         let context = MOIRToJIRTransformer::new(

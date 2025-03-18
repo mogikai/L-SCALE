@@ -126,7 +126,7 @@ impl<'a> JIRResolver<'a> {
         }
     }
 
-    pub(crate) fn hierarchy_debug_string(&self) -> Result<String, std::fmt::Error> {
+    pub fn hierarchy_debug_string(&self) -> Result<String, std::fmt::Error> {
         let mut out = String::new();
         writeln!(out, "Resolver hierarchy:")?;
         self._hierarchy_debug_string(0, &mut out)?;
@@ -205,11 +205,11 @@ impl<'a> JIRResolver<'a> {
         self.constructor
     }
 
-    pub fn constructor_id(&self) -> ConstructorId {
+    pub(crate) fn constructor_id(&self) -> ConstructorId {
         self.constructor_id
     }
 
-    pub fn subtables(&self) -> &FnvHashMap<TableId, JIRResolver<'a>> {
+    pub(crate) fn subtables(&self) -> &FnvHashMap<TableId, JIRResolver<'a>> {
         &self.subtables
     }
 

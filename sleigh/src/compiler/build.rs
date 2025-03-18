@@ -314,8 +314,9 @@ impl SleighCompiler {
         for field in &context.fields {
             // +1 since end is inclusive, but `MOIRBitRange` is exclusive
             let range = MOIRBitRange::new(
-                MOIRSize::try_from(*field.start.value()).unwrap(),
-                MOIRSize::try_from(*field.end.value() + 1).unwrap(),
+                // inverted bit range since context works the other way around
+                MOIRSize::try_from(bits - *field.end.value() - 1).unwrap(),
+                MOIRSize::try_from(bits - *field.start.value()).unwrap(),
             );
             if let Some(moir_field) = self
                 .make_field(MOIRFieldParent::Context(context_id), bits, range)

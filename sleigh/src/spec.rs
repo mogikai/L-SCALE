@@ -344,6 +344,14 @@ impl ProcessorSpecification {
             .collect()
     }
 
+    pub fn jumplist_cache(&self) -> &TypedIndexTable<JumplistId, Jumplist> {
+        &self.jumplist_cache
+    }
+
+    pub fn constructors(&self) -> &TypedIndexTable<ConstructorId, MOIRConstructor> {
+        &self.symbol_tables.constructors
+    }
+
     pub fn shrink(&mut self) {
         self.interner.shrink_to_fit();
         self.symbol_ids.shrink_to_fit();

@@ -762,7 +762,10 @@ mod test {
         assert_eq!(res_xmmreg1.constructor_id(), cid_xmmreg1);
         let res_zmmreg1 = res_vfmaddsub213pd.subtables().get(&tid_zmmreg1).unwrap();
         assert_eq!(res_zmmreg1.constructor_id(), cid_zmmreg1);
-        let res_xmmreg2_m128 = res_vfmaddsub213pd.subtables().get(&tid_xmmreg2_m128).unwrap();
+        let res_xmmreg2_m128 = res_vfmaddsub213pd
+            .subtables()
+            .get(&tid_xmmreg2_m128)
+            .unwrap();
         assert_eq!(res_xmmreg2_m128.constructor_id(), cid_xmmreg2_m128);
         let res_m128 = res_xmmreg2_m128.subtables().get(&tid_m128).unwrap();
         assert_eq!(res_m128.constructor_id(), cid_m128);
