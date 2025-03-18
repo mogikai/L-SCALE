@@ -55,6 +55,7 @@ impl SleighCompiler {
         constructor_id: ConstructorId,
     ) -> InternalCompilerResult<Vec<Matcher>> {
         let matchers = self.create_matchers_recursive(constraint, table_id, constructor_id)?;
+        eprintln!("{:#?}", matchers);
 
         Ok(matchers)
     }
@@ -667,12 +668,6 @@ fn combine_tokens(
     }
 }
 
-// C0; C1; T0; T1
-// C1; T0; T1
-//
-// No; No; T0; T1
-// No; T0; T1
-
 /// Merge two conjunctions by checking whether they are compatible with one another, i.e. if they
 /// are equal taking potential left/right justification for different lengths into account, and by
 /// filling potential None tokens. Two lists are always compatible if one of them is empty. Return
@@ -684,16 +679,19 @@ pub(crate) fn merge_conjunctions(
     lhs: &[MatcherConjunction],
     rhs: &[MatcherConjunction],
 ) -> Option<Vec<(MatcherConjunction, MatcherConjunction)>> {
-    // base case: both are empty
+    // base cases:
     if lhs.is_empty() && rhs.is_empty() {
+        // both are empty
         return Some(vec![]);
-    } else if lhs.is_empty() && accept_empty {
+    } else if lhs.is_empty() && (accept_empty || (rhs.iter().all(|c| c.token.parent.is_none()))) {
+        // left is empty and empty is accepted or right is only None
         return Some(
             rhs.iter()
                 .map(|c| (MatcherConjunction::default(), c.clone()))
                 .collect(),
         );
-    } else if rhs.is_empty() && accept_empty {
+    } else if rhs.is_empty() && (accept_empty || (lhs.iter().all(|c| c.token.parent.is_none()))) {
+        // right is empty and empty is accepted or left is only None
         return Some(
             lhs.iter()
                 .map(|c| (c.clone(), MatcherConjunction::default()))
@@ -720,22 +718,31 @@ pub(crate) fn merge_conjunctions(
         // token_lhs is None => try to absorb 0 to rhs.len() tokens from rhs and recurse with that
         // .*;     t1; t2
         // t3; t0; t1; t2
-        for num_absorp in 0..=rhs.len() {
-            let lhs_list = rhs[0..num_absorp]
-                .iter()
-                .enumerate()
-                .map(|(i, rhs_conjunction)| {
-                    let atoms = if i == 0 {
-                        // first => use atoms from lhs conjunction
-                        lhs[0].atoms.clone()
-                    } else {
-                        // not first => new empty list
-                        BTreeSet::default()
-                    };
-                    MatcherConjunction::new(atoms, rhs_conjunction.token.clone())
-                })
-                .collect_vec();
-            let rhs_list = rhs[0..num_absorp].to_vec();
+
+        // try to absorp as much as possible
+        for num_absorp in (0..=rhs.len()).rev() {
+            // the first lhs conjunction is always used as-is and then depending on the absorption
+            // count tokens from rhs are added
+            let mut lhs_list = vec![lhs[0].clone()];
+
+            for (i, rhs_conjunction) in rhs[0..num_absorp].iter().enumerate() {
+                match lhs_list.get_mut(i) {
+                    Some(entry) => entry.token = rhs_conjunction.token.clone(),
+                    None => {
+                        let rhs_token_conj = MatcherConjunction::new(BTreeSet::new(), rhs_conjunction.token.clone());
+                        lhs_list.push(rhs_token_conj);
+                    }
+                }
+            }
+
+            // if num_absorp == 0 then rhs_list must have a single dummy conjunction
+            // since elements from lhs and rhs are returned in pairs
+            let rhs_list = if num_absorp == 0 {
+                vec![MatcherConjunction::default()]
+            } else {
+                rhs[0..num_absorp].to_vec()
+            };
+
             let mut result_list = lhs_list.into_iter().zip(rhs_list.into_iter()).collect_vec();
 
             match merge_conjunctions(false, &lhs[1..], &rhs[num_absorp..]) {
@@ -751,22 +758,30 @@ pub(crate) fn merge_conjunctions(
         // token_rhs is None => try to absorb 0 to lhs.len() tokens from lhs and recurse with that
         // t3; t0; t1; t2
         // .*;     t1; t2
-        for num_absorp in 0..=lhs.len() {
-            let lhs_list = lhs[0..num_absorp].to_vec();
-            let rhs_list = lhs[0..num_absorp]
-                .iter()
-                .enumerate()
-                .map(|(i, lhs_conjunction)| {
-                    let atoms = if i == 0 {
-                        // first => use atoms from rhs conjunction
-                        rhs[0].atoms.clone()
-                    } else {
-                        // not first => new empty list
-                        BTreeSet::default()
-                    };
-                    MatcherConjunction::new(atoms, lhs_conjunction.token.clone())
-                })
-                .collect_vec();
+
+        // try to absorp as much as possible
+        for num_absorp in (0..=lhs.len()).rev() {
+            // the first lhs conjunction is always used as-is and then depending on the absorption
+            // count tokens from rhs are added
+            let mut rhs_list = vec![rhs[0].clone()];
+
+            for (i, lhs_conjunction) in lhs[0..num_absorp].iter().enumerate() {
+                match rhs_list.get_mut(i) {
+                    Some(entry) => entry.token = lhs_conjunction.token.clone(),
+                    None => {
+                        let lhs_token_conj = MatcherConjunction::new(BTreeSet::new(), lhs_conjunction.token.clone());
+                        rhs_list.push(lhs_token_conj);
+                    }
+                }
+            }
+
+            // if num_absorp == 0 then rhs_list must have a single dummy conjunction
+            // since elements from lhs and rhs are returned in pairs
+            let lhs_list = if num_absorp == 0 {
+                vec![MatcherConjunction::default()]
+            } else {
+                lhs[0..num_absorp].to_vec()
+            };
             let mut result_list = lhs_list.into_iter().zip(rhs_list.into_iter()).collect_vec();
 
             match merge_conjunctions(false, &lhs[num_absorp..], &rhs[1..]) {
