@@ -422,9 +422,6 @@ impl Jumplist {
             resolver.define_subtable_resolver(*subtable, subresolver.clone())?;
         }
 
-        // `inst_next` etc. has to be set at this point already since actions might use it
-        resolver.set_inst_addresses(addr, addr + consumed_so_far, None);
-
         for (context_field_id, context_field_value) in context_stack.values() {
             if resolver.has_field(context_field_id) {
                 trace_jir!("Defining context field value {context_field_id:?} := {context_field_value:?}");
@@ -433,6 +430,11 @@ impl Jumplist {
         }
 
         context_stack.push_state();
+
+        // TODO actions will use this so it has to be set before descending into
+        // sublists but sublists might alter the number of bytes consumed, what to do?
+        // for now we set it once before action evaluation and then afterwards again
+        resolver.set_inst_addresses(addr, addr + consumed_so_far, None);
 
         for action in &constructor.actions {
             action.evaluate(&mut resolver, context_stack)?;
@@ -473,6 +475,9 @@ impl Jumplist {
         }
         // everything matched
         trace_jir!("Got a complete match");
+
+        // TODO this should be set before descending into jumplists
+        resolver.set_inst_addresses(addr, addr + consumed_so_far_max, None);
 
         // TODO handle context flow
         context_stack.pop_state()?;
