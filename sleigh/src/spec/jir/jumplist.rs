@@ -42,7 +42,7 @@ struct MatchState<'a> {
 }
 
 #[derive(Debug)]
-pub(crate) enum MatcherResult<'a> {
+pub enum MatcherResult<'a> {
     // TODO should this result in an early return or in a continuation of matching?
     EndOfByteStream,
     None,
@@ -280,7 +280,9 @@ impl Jumplist {
 
                 // variable-offset extractors will be processed later when the constructor id is
                 // known
-                state.field_extractors.push((consumed_so_far, &entry.field_extractors));
+                state
+                    .field_extractors
+                    .push((consumed_so_far, &entry.field_extractors));
 
                 let result = match &entry.next_entry {
                     NextJumplistEntry::Constructor {
@@ -503,9 +505,7 @@ impl Jumplist {
     /// Each entry stores the number of times it was part of a matching branch in
     /// [JumplistEntry::hit_count]. This function sorts the entries by their hit count in
     /// descending order and subsequently resets the hit counts to zero.
-    pub fn rearrange_entries(
-        &mut self,
-    ) {
+    pub fn rearrange_entries(&mut self) {
         for (_, entry_vec) in self.entries_mut() {
             entry_vec.sort_by(|e0, e1| e0.hit_count.get().cmp(&e1.hit_count.get()).reverse());
         }
@@ -563,3 +563,214 @@ impl Jumplist {
 }
 
 new_typed_index_table_id! { pub struct JumplistId; "JMPLST"; }
+
+mod test {
+    use std::path::Path;
+
+    use mogi_sleigh_parser::preprocessor::SleighPreprocessorFactory;
+
+    use super::*;
+    use crate::compiler::SleighCompilerResult;
+    use crate::compiler::builder::SleighCompilerBuilder;
+    use crate::lifter::context_provider::{
+        ContextProvider,
+        SimpleContextProvider,
+    };
+    use crate::spec::ProcessorSpecification;
+    use crate::spec::jir::context_stack::ContextStack;
+    use crate::spec::moir::constructor::ConstructorId;
+    use crate::spec::moir::table::TableId;
+
+    const ASSETS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/resources/test/");
+
+    fn build(path: String) -> SleighCompilerResult<ProcessorSpecification> {
+        let spec_path = Path::new(&path);
+        let spec_dir = spec_path.parent().unwrap();
+        let factory = SleighPreprocessorFactory::new().working_dir(spec_dir.to_path_buf());
+        let compiler = SleighCompilerBuilder::new()
+            .preprocessor_factory(factory)
+            .build();
+        compiler.compile(spec_path)
+    }
+
+    #[test]
+    fn test_pdep() {
+        let path = ASSETS_PATH.to_string() + "x86/x86-64.slaspec";
+        let spec = build(path).unwrap();
+
+        let mut context_provider = SimpleContextProvider::default();
+        context_provider.set(&spec, "longMode", 1);
+        context_provider.set(&spec, "addrsize", 2);
+        context_provider.set(&spec, "opsize", 1);
+
+        let root_jumplist = spec.jumplist_cache().values().next().unwrap();
+        // pdep rax, rcx, [rbp+8*rsi+0x1234]
+        let bytes = b"\xc4\xe2\xf3\xf5\x84\xf5\xcc\xed\xff\xff";
+
+        let mut context_stack = ContextStack::new(&spec, &context_provider).expect("Couldn't create context stack");
+        let MatcherResult::Some {
+            table,
+            resolver,
+            bytes_consumed,
+        } = root_jumplist
+            .r#match(bytes, 0x0u64.into(), spec.jumplist_cache(), spec.constructors(), &mut context_stack)
+            .unwrap()
+        else {
+            panic!("No match");
+        };
+
+        let tid_instr: TableId = 0.into();
+        let tid_reg64: TableId = 4.into();
+        let tid_rm64: TableId = 120.into();
+        let tid_mem: TableId = 46.into();
+        let tid_addr64: TableId = 41.into();
+        let tid_index64: TableId = 15.into();
+        let tid_base64: TableId = 14.into();
+        let tid_simm32_64: TableId = 31.into();
+
+        let cid_instr: ConstructorId = 456.into();
+        let cid_pdep: ConstructorId = 4781.into();
+        let cid_reg64: ConstructorId = 7.into();
+        let cid_rm64: ConstructorId = 362.into();
+        let cid_mem: ConstructorId = 198.into();
+        let cid_addr64: ConstructorId = 168.into();
+        let cid_index: ConstructorId = 32.into();
+        let cid_base: ConstructorId = 30.into();
+        let cid_simm32_64: ConstructorId = 59.into();
+
+        assert_eq!(resolver.constructor_id(), cid_instr);
+        let res_pdep = resolver.subtables().get(&tid_instr).unwrap();
+        assert_eq!(res_pdep.constructor_id(), cid_pdep);
+        let res_reg64 = res_pdep.subtables().get(&tid_reg64).unwrap();
+        assert_eq!(res_reg64.constructor_id(), cid_reg64);
+        let res_rm64 = res_pdep.subtables().get(&tid_rm64).unwrap();
+        assert_eq!(res_rm64.constructor_id(), cid_rm64);
+        let res_mem = res_rm64.subtables().get(&tid_mem).unwrap();
+        assert_eq!(res_mem.constructor_id(), cid_mem);
+        let res_addr64 = res_mem.subtables().get(&tid_addr64).unwrap();
+        assert_eq!(res_addr64.constructor_id(), cid_addr64);
+        let res_index = res_addr64.subtables().get(&tid_index64).unwrap();
+        assert_eq!(res_index.constructor_id(), cid_index);
+        let res_base = res_addr64.subtables().get(&tid_base64).unwrap();
+        assert_eq!(res_base.constructor_id(), cid_base);
+        let res_simm32_64 = res_addr64.subtables().get(&tid_simm32_64).unwrap();
+        assert_eq!(res_simm32_64.constructor_id(), cid_simm32_64);
+    }
+
+    #[test]
+    fn test_cmovge() {
+        let path = ASSETS_PATH.to_string() + "x86/x86-64.slaspec";
+        let spec = build(path).unwrap();
+
+        let mut context_provider = SimpleContextProvider::default();
+        context_provider.set(&spec, "longMode", 1);
+        context_provider.set(&spec, "addrsize", 2);
+        context_provider.set(&spec, "opsize", 1);
+
+        let root_jumplist = spec.jumplist_cache().values().next().unwrap();
+        // cmovge rcx, r12
+        let bytes = b"\x49\x0F\x4D\xCC";
+
+        let mut context_stack = ContextStack::new(&spec, &context_provider).expect("Couldn't create context stack");
+        let MatcherResult::Some {
+            table,
+            resolver,
+            bytes_consumed,
+        } = root_jumplist
+            .r#match(bytes, 0x0u64.into(), spec.jumplist_cache(), spec.constructors(), &mut context_stack)
+            .unwrap()
+        else {
+            panic!("No match");
+        };
+
+        let tid_instr: TableId = 0.into();
+        let tid_cc: TableId = 131.into();
+        let tid_rm64: TableId = 120.into();
+        let tid_rmr64: TableId = 11.into();
+        let tid_reg64: TableId = 4.into();
+
+        let cid_instr: ConstructorId = 449.into();
+        let cid_cmov: ConstructorId = 628.into();
+        let cid_cc: ConstructorId = 391.into();
+        let cid_rm64: ConstructorId = 361.into();
+        let cid_rmr64: ConstructorId = 25.into();
+        let cid_reg64: ConstructorId = 7.into();
+
+        assert_eq!(resolver.constructor_id(), cid_instr);
+        let res_cmov = resolver.subtables().get(&tid_instr).unwrap();
+        assert_eq!(res_cmov.constructor_id(), cid_cmov);
+        let res_cc = res_cmov.subtables().get(&tid_cc).unwrap();
+        assert_eq!(res_cc.constructor_id(), cid_cc);
+        let res_rm64 = res_cmov.subtables().get(&tid_rm64).unwrap();
+        assert_eq!(res_rm64.constructor_id(), cid_rm64);
+        let res_rmr64 = res_rm64.subtables().get(&tid_rmr64).unwrap();
+        assert_eq!(res_rmr64.constructor_id(), cid_rmr64);
+        let res_reg64 = res_cmov.subtables().get(&tid_reg64).unwrap();
+        assert_eq!(res_reg64.constructor_id(), cid_reg64);
+    }
+
+    #[test]
+    fn test_vfmaddsub213pd() {
+        let path = ASSETS_PATH.to_string() + "x86/x86-64.slaspec";
+        let spec = build(path).unwrap();
+
+        let mut context_provider = SimpleContextProvider::default();
+        context_provider.set(&spec, "longMode", 1);
+        context_provider.set(&spec, "addrsize", 2);
+        context_provider.set(&spec, "opsize", 1);
+
+        let root_jumplist = spec.jumplist_cache().values().next().unwrap();
+        // vfmaddsub213pd xmm4, xmm1, xmmword ptr [0x1337]
+        let bytes = b"\xC4\xE2\xF1\xA6\x24\x25\x37\x13\x00\x00";
+
+        let mut context_stack = ContextStack::new(&spec, &context_provider).expect("Couldn't create context stack");
+        let MatcherResult::Some {
+            table,
+            resolver,
+            bytes_consumed,
+        } = root_jumplist
+            .r#match(bytes, 0x0u64.into(), spec.jumplist_cache(), spec.constructors(), &mut context_stack)
+            .unwrap()
+        else {
+            panic!("No match");
+        };
+
+        let tid_instr: TableId = 0.into();
+        let tid_xmmreg1: TableId = 17.into();
+        let tid_zmmreg1: TableId = 21.into();
+        let tid_zmmreg1: TableId = 21.into();
+        let tid_xmmreg2_m128: TableId = 84.into();
+        let tid_m128: TableId = 54.into();
+        let tid_mem: TableId = 46.into();
+        let tid_addr64: TableId = 41.into();
+        let tid_simm32_64: TableId = 31.into();
+
+        let cid_instr: ConstructorId = 454.into();
+        let cid_vfmaddsub213pd: ConstructorId = 4841.into();
+        let cid_xmmreg1: ConstructorId = 36.into();
+        let cid_zmmreg1: ConstructorId = 44.into();
+        let cid_xmmreg2_m128: ConstructorId = 271.into();
+        let cid_m128: ConstructorId = 209.into();
+        let cid_mem: ConstructorId = 198.into();
+        let cid_addr64: ConstructorId = 160.into();
+        let cid_simm32_64: ConstructorId = 59.into();
+
+        assert_eq!(resolver.constructor_id(), cid_instr);
+        let res_vfmaddsub213pd = resolver.subtables().get(&tid_instr).unwrap();
+        assert_eq!(res_vfmaddsub213pd.constructor_id(), cid_vfmaddsub213pd);
+        let res_xmmreg1 = res_vfmaddsub213pd.subtables().get(&tid_xmmreg1).unwrap();
+        assert_eq!(res_xmmreg1.constructor_id(), cid_xmmreg1);
+        let res_zmmreg1 = res_vfmaddsub213pd.subtables().get(&tid_zmmreg1).unwrap();
+        assert_eq!(res_zmmreg1.constructor_id(), cid_zmmreg1);
+        let res_xmmreg2_m128 = res_vfmaddsub213pd.subtables().get(&tid_xmmreg2_m128).unwrap();
+        assert_eq!(res_xmmreg2_m128.constructor_id(), cid_xmmreg2_m128);
+        let res_m128 = res_xmmreg2_m128.subtables().get(&tid_m128).unwrap();
+        assert_eq!(res_m128.constructor_id(), cid_m128);
+        let res_mem = res_m128.subtables().get(&tid_mem).unwrap();
+        assert_eq!(res_mem.constructor_id(), cid_mem);
+        let res_addr64 = res_mem.subtables().get(&tid_addr64).unwrap();
+        assert_eq!(res_addr64.constructor_id(), cid_addr64);
+        let res_simm32_64 = res_addr64.subtables().get(&tid_simm32_64).unwrap();
+        assert_eq!(res_simm32_64.constructor_id(), cid_simm32_64);
+    }
+}
