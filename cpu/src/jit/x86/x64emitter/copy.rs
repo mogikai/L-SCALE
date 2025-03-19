@@ -1,5 +1,6 @@
 use crate::jit::api::JITResult;
-use crate::jit::x86::emitter::OperandRequest;
+use crate::jit::host::register::HostRegSet;
+use crate::jit::regalloc::requirements::OperandRequest;
 use crate::jit::x86::x64emitter::regalloc::SliceType;
 use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
@@ -15,13 +16,14 @@ impl X64AllocRequirements {
         &mut self,
         target: JIRSlice,
         source: JIRValue,
-    ) {
+    ) -> HostRegSet {
         self.operand_requests
             .push(OperandRequest::slice_write_any(target));
         if let JIRValue::Slice(source) = source {
             self.operand_requests
                 .push(OperandRequest::slice_read_any(source));
         }
+        HostRegSet::empty()
     }
 }
 

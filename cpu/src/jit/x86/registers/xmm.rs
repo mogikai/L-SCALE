@@ -1,7 +1,9 @@
+use crate::jit::host::register::HostRegClass;
 use crate::jit::x86::registers::{
+    HostReg,
+    InitialAllocation,
     RegAlloc,
     RegAllocType,
-    Register,
 };
 use num_enum::{
     IntoPrimitive,
@@ -31,16 +33,19 @@ pub enum XMMRegister {
     XMM15 = 15,
 }
 
+impl XMMRegister {
+    pub const fn into_host_reg(self) -> HostReg {
+        HostReg::new(self as u8, HostRegClass::Vector)
+    }
+}
+
 impl From<XMMRegister> for usize {
     fn from(value: XMMRegister) -> Self {
         usize::from(u8::from(value))
     }
 }
 
-impl Register for XMMRegister {
-    type Primitive = u8;
-    const NUMBER: usize = 16;
-
+impl InitialAllocation for XMMRegister {
     fn initial_allocation(&self) -> RegAlloc {
         let ty = match self {
             _ => RegAllocType::Free,

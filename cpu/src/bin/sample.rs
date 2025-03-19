@@ -71,8 +71,11 @@ fn main() {
         mmu.set_page_table_entry(0xffaa00u64.into(), 0x8_000u64.into(), Permission::ALL)
             .unwrap();
         // And then write the instruction to the allocated memory.
-        mmu.write(0xffaa00u64.into(), b"\x58\x5B\x48\x01\xD8\x53\x50\xE9\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00")
-            .unwrap();
+        mmu.write(
+            0xffaa00u64.into(),
+            b"\x58\x5B\x48\x01\xD8\x48\x0F\xBC\xD8\x53\x50\xE9\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+        )
+        .unwrap();
     }
 
     let mut stack_page = Box::new(PageData::zero());

@@ -171,11 +171,17 @@ impl<K: MapKey, V> PrimaryMap<K, V> {
         self.data.last()
     }
 
-    pub fn values(&self) -> impl Iterator<Item = &V> {
+    pub fn keys(&self) -> impl ExactSizeIterator<Item = K> + DoubleEndedIterator {
+        (0..self.data.len())
+            .map(MapKey::try_from_index)
+            .map(Result::unwrap)
+    }
+
+    pub fn values(&self) -> impl ExactSizeIterator<Item = &V> + DoubleEndedIterator {
         self.data.iter()
     }
 
-    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
+    pub fn values_mut(&mut self) -> impl ExactSizeIterator<Item = &mut V> + DoubleEndedIterator {
         self.data.iter_mut()
     }
 

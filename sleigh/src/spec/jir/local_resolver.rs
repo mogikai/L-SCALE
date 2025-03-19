@@ -1,7 +1,7 @@
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
 use crate::jinst;
-use crate::spec::jir::basic_block::TargetBasicBlockBuilder;
+use crate::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
 use crate::spec::jir::basic_block::instruction::TargetInstructionBuilder;
 use crate::spec::jir::common::JIRSize;
 use crate::spec::jir::jcode::ContinueLifting;
@@ -14,7 +14,10 @@ use crate::spec::jir::values::{
     JIRVarNodeId,
 };
 use crate::spec::moir::address_space::SpaceId;
-use crate::spec::moir::constructor::{ConstructorId, MOIRConstructor};
+use crate::spec::moir::constructor::{
+    ConstructorId,
+    MOIRConstructor,
+};
 use crate::spec::moir::field::FieldId;
 use crate::spec::moir::scope::{
     MOIRLocalId,

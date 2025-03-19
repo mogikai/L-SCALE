@@ -43,23 +43,24 @@ use crate::jit::api::{
     RuntimeError,
 };
 use crate::jit::code_buffer::CompiledBasicBlock;
-use crate::jit::x86::emitter::{
+use crate::jit::host::register::HostRegSet;
+use crate::jit::regalloc::RegisterAllocator;
+use crate::jit::regalloc::requirements::{
     EmitterAllocRequirements,
     OperandRequest,
-    RegisterSet,
 };
+use crate::jit::regalloc::result::AllocatorResult;
 use crate::jit::x86::registers::RegisterTracker;
-use crate::jit::x86::registers::allocator::{
-    Allocations,
-    RegisterAllocator,
-};
 use crate::jit::x86::{
     X86GlobalContext,
     assemble,
 };
 pub use host_call::CustomOpCallback;
 use mogi_sleigh::spec::ProcessorSpecification;
-use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
+use mogi_sleigh::spec::jir::basic_block::{
+    InstId,
+    TargetBasicBlock,
+};
 use mogi_sleigh::spec::jir::jcode::JIRInstruction;
 use mogi_sleigh::spec::jir::values::{
     JIRSlice,
@@ -96,7 +97,7 @@ pub struct X64AllocRequirements {
     instruction_operand_ranges: Vec<Range<usize>>,
 
     /// The clobber registers for each instruction.
-    clobbers: Vec<RegisterSet>,
+    clobbers: Vec<HostRegSet>,
 }
 
 impl X64AllocRequirements {
@@ -120,93 +121,102 @@ impl X64AllocRequirements {
         // TODO: Potentially, this step could be put into the IR generation step, so that we can directly add
         //       the requirements when the instruction is inserted, avoiding one iteration.
         for inst in target_block.instructions() {
-            let start = self.operand_requests.len();
-            self.append_inst_operands(inst);
-            let end = self.operand_requests.len();
-            self.instruction_operand_ranges.push(start..end);
-            self.clobbers.push(RegisterSet::default());
+            let range = self.add_instruction_operands(inst);
+            self.instruction_operand_ranges.push(range);
         }
     }
 
+    fn add_instruction_operands(
+        &mut self,
+        inst: &JIRInstruction,
+    ) -> Range<usize> {
+        let start = self.operand_requests.len();
+        let clobberes = self.append_inst_operands(inst);
+        self.clobbers.push(clobberes);
+        let end = self.operand_requests.len();
+        start..end
+    }
+
+    #[must_use]
     fn append_inst_operands(
         &mut self,
         inst: &JIRInstruction,
-    ) {
+    ) -> HostRegSet {
         match inst {
-            JIRInstruction::BlockStart(_) => {}
-            JIRInstruction::BlockEnd(_) => {}
-            JIRInstruction::InstructionStart(_) => {}
-            JIRInstruction::InstructionEnd(_) => {}
+            JIRInstruction::BlockStart(_) => HostRegSet::empty(),
+            JIRInstruction::BlockEnd(_) => HostRegSet::empty(),
+            JIRInstruction::InstructionStart(_) => HostRegSet::empty(),
+            JIRInstruction::InstructionEnd(_) => HostRegSet::empty(),
             JIRInstruction::Copy(args) => self.append_copy_operands(args.output, args.input),
             JIRInstruction::Load { target, address, space } => self.append_load_operands(*target, *address, *space),
             JIRInstruction::Store { address, value, space } => self.append_store_operands(*address, *space, *value),
-            JIRInstruction::IntAdd(args) => {}
-            JIRInstruction::IntSubtract(args) => {}
-            JIRInstruction::IntMul(_) => {}
-            JIRInstruction::IntDiv(_) => {}
-            JIRInstruction::IntSDiv(_) => {}
-            JIRInstruction::IntRemainder(_) => {}
-            JIRInstruction::IntSRemainder(_) => {}
-            JIRInstruction::IntLeft(_) => {}
-            JIRInstruction::IntRight(_) => {}
-            JIRInstruction::IntSRight(_) => {}
-            JIRInstruction::IntOr(_) => {}
-            JIRInstruction::IntAnd(_) => {}
-            JIRInstruction::IntXor(_) => {}
-            JIRInstruction::IntSLess(_) => {}
-            JIRInstruction::IntSGreater(_) => {}
-            JIRInstruction::IntSLessEqual(_) => {}
-            JIRInstruction::IntSGreaterEqual(_) => {}
-            JIRInstruction::IntLess(_) => {}
-            JIRInstruction::IntGreater(_) => {}
-            JIRInstruction::IntLessEqual(_) => {}
-            JIRInstruction::IntGreaterEqual(_) => {}
-            JIRInstruction::IntEquals(_) => {}
-            JIRInstruction::IntNotEquals(_) => {}
-            JIRInstruction::BitNegate(_) => {}
-            JIRInstruction::IntNegate(_) => {}
-            JIRInstruction::FloatDiv(_) => {}
-            JIRInstruction::FloatMul(_) => {}
-            JIRInstruction::FloatAdd(_) => {}
-            JIRInstruction::FloatSubtract(_) => {}
-            JIRInstruction::FloatLess(_) => {}
-            JIRInstruction::FloatGreater(_) => {}
-            JIRInstruction::FloatLessEqual(_) => {}
-            JIRInstruction::FloatGreaterEqual(_) => {}
-            JIRInstruction::FloatEquals(_) => {}
-            JIRInstruction::FloatNotEquals(_) => {}
-            JIRInstruction::FloatNegate(_) => {}
-            JIRInstruction::BoolOr(_) => {}
-            JIRInstruction::BoolAnd(_) => {}
-            JIRInstruction::BoolXor(_) => {}
-            JIRInstruction::BoolNegate(_) => {}
-            JIRInstruction::CallDirect(_) => {}
-            JIRInstruction::CallIndirect(_) => {}
-            JIRInstruction::ReturnDirect(_) => {}
-            JIRInstruction::ReturnIndirect(_) => {}
-            JIRInstruction::GotoDirect(_) => {}
-            JIRInstruction::GotoIndirect(_) => {}
-            JIRInstruction::GotoDirectIf { .. } => {}
-            JIRInstruction::GotoIndirectIf { .. } => {}
-            JIRInstruction::JCodeGoto(_) => {}
-            JIRInstruction::JCodeGotoIf { .. } => {}
-            JIRInstruction::PopCount(_) => {}
-            JIRInstruction::LZCount(_) => {}
-            JIRInstruction::ZeroExtend(_) => {}
-            JIRInstruction::SignExtend(_) => {}
-            JIRInstruction::Carry(_) => {}
-            JIRInstruction::SignCarry(_) => {}
-            JIRInstruction::SignBorrow(_) => {}
-            JIRInstruction::Nan(_) => {}
-            JIRInstruction::Abs(_) => {}
-            JIRInstruction::Sqrt(_) => {}
-            JIRInstruction::IntToFloat(_) => {}
-            JIRInstruction::FloatToFloat(_) => {}
-            JIRInstruction::Trunc(_) => {}
-            JIRInstruction::Ceil(_) => {}
-            JIRInstruction::Floor(_) => {}
-            JIRInstruction::Round(_) => {}
-            JIRInstruction::CustomOp { .. } => {}
+            JIRInstruction::IntAdd(args) => HostRegSet::empty(),
+            JIRInstruction::IntSubtract(args) => HostRegSet::empty(),
+            JIRInstruction::IntMul(_) => HostRegSet::empty(),
+            JIRInstruction::IntDiv(_) => HostRegSet::empty(),
+            JIRInstruction::IntSDiv(_) => HostRegSet::empty(),
+            JIRInstruction::IntRemainder(_) => HostRegSet::empty(),
+            JIRInstruction::IntSRemainder(_) => HostRegSet::empty(),
+            JIRInstruction::IntLeft(_) => HostRegSet::empty(),
+            JIRInstruction::IntRight(_) => HostRegSet::empty(),
+            JIRInstruction::IntSRight(_) => HostRegSet::empty(),
+            JIRInstruction::IntOr(_) => HostRegSet::empty(),
+            JIRInstruction::IntAnd(_) => HostRegSet::empty(),
+            JIRInstruction::IntXor(_) => HostRegSet::empty(),
+            JIRInstruction::IntSLess(_) => HostRegSet::empty(),
+            JIRInstruction::IntSGreater(_) => HostRegSet::empty(),
+            JIRInstruction::IntSLessEqual(_) => HostRegSet::empty(),
+            JIRInstruction::IntSGreaterEqual(_) => HostRegSet::empty(),
+            JIRInstruction::IntLess(_) => HostRegSet::empty(),
+            JIRInstruction::IntGreater(_) => HostRegSet::empty(),
+            JIRInstruction::IntLessEqual(_) => HostRegSet::empty(),
+            JIRInstruction::IntGreaterEqual(_) => HostRegSet::empty(),
+            JIRInstruction::IntEquals(_) => HostRegSet::empty(),
+            JIRInstruction::IntNotEquals(_) => HostRegSet::empty(),
+            JIRInstruction::BitNegate(_) => HostRegSet::empty(),
+            JIRInstruction::IntNegate(_) => HostRegSet::empty(),
+            JIRInstruction::FloatDiv(_) => HostRegSet::empty(),
+            JIRInstruction::FloatMul(_) => HostRegSet::empty(),
+            JIRInstruction::FloatAdd(_) => HostRegSet::empty(),
+            JIRInstruction::FloatSubtract(_) => HostRegSet::empty(),
+            JIRInstruction::FloatLess(_) => HostRegSet::empty(),
+            JIRInstruction::FloatGreater(_) => HostRegSet::empty(),
+            JIRInstruction::FloatLessEqual(_) => HostRegSet::empty(),
+            JIRInstruction::FloatGreaterEqual(_) => HostRegSet::empty(),
+            JIRInstruction::FloatEquals(_) => HostRegSet::empty(),
+            JIRInstruction::FloatNotEquals(_) => HostRegSet::empty(),
+            JIRInstruction::FloatNegate(_) => HostRegSet::empty(),
+            JIRInstruction::BoolOr(_) => HostRegSet::empty(),
+            JIRInstruction::BoolAnd(_) => HostRegSet::empty(),
+            JIRInstruction::BoolXor(_) => HostRegSet::empty(),
+            JIRInstruction::BoolNegate(_) => HostRegSet::empty(),
+            JIRInstruction::CallDirect(_) => HostRegSet::empty(),
+            JIRInstruction::CallIndirect(_) => HostRegSet::empty(),
+            JIRInstruction::ReturnDirect(_) => HostRegSet::empty(),
+            JIRInstruction::ReturnIndirect(_) => HostRegSet::empty(),
+            JIRInstruction::GotoDirect(_) => HostRegSet::empty(),
+            JIRInstruction::GotoIndirect(_) => HostRegSet::empty(),
+            JIRInstruction::GotoDirectIf { .. } => HostRegSet::empty(),
+            JIRInstruction::GotoIndirectIf { .. } => HostRegSet::empty(),
+            JIRInstruction::JCodeGoto(_) => HostRegSet::empty(),
+            JIRInstruction::JCodeGotoIf { .. } => HostRegSet::empty(),
+            JIRInstruction::PopCount(_) => HostRegSet::empty(),
+            JIRInstruction::LZCount(_) => HostRegSet::empty(),
+            JIRInstruction::ZeroExtend(_) => HostRegSet::empty(),
+            JIRInstruction::SignExtend(_) => HostRegSet::empty(),
+            JIRInstruction::Carry(_) => HostRegSet::empty(),
+            JIRInstruction::SignCarry(_) => HostRegSet::empty(),
+            JIRInstruction::SignBorrow(_) => HostRegSet::empty(),
+            JIRInstruction::Nan(_) => HostRegSet::empty(),
+            JIRInstruction::Abs(_) => HostRegSet::empty(),
+            JIRInstruction::Sqrt(_) => HostRegSet::empty(),
+            JIRInstruction::IntToFloat(_) => HostRegSet::empty(),
+            JIRInstruction::FloatToFloat(_) => HostRegSet::empty(),
+            JIRInstruction::Trunc(_) => HostRegSet::empty(),
+            JIRInstruction::Ceil(_) => HostRegSet::empty(),
+            JIRInstruction::Floor(_) => HostRegSet::empty(),
+            JIRInstruction::Round(_) => HostRegSet::empty(),
+            JIRInstruction::CustomOp { .. } => HostRegSet::empty(),
         }
     }
 }
@@ -214,16 +224,20 @@ impl X64AllocRequirements {
 impl EmitterAllocRequirements for X64AllocRequirements {
     fn clobbers(
         &self,
-        inst_id: usize,
-    ) -> &RegisterSet {
-        &self.clobbers[inst_id]
+        inst_id: InstId,
+    ) -> HostRegSet {
+        self.clobbers[inst_id]
     }
 
     fn operands(
         &self,
-        inst_id: usize,
+        inst_id: InstId,
     ) -> &[OperandRequest] {
         &self.operand_requests[self.instruction_operand_ranges[inst_id].clone()]
+    }
+
+    fn total_opereands(&self) -> usize {
+        todo!()
     }
 }
 
@@ -251,7 +265,7 @@ impl X64Emitter<'_> {
 
     pub fn emit_block(
         mut self,
-        allocations: Allocations,
+        allocations: AllocatorResult,
     ) -> JITResult {
         for inst in self.target_block.instructions() {
             self.emit_inst(inst)?;

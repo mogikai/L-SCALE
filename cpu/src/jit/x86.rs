@@ -9,13 +9,22 @@ use crate::jit::api::{
     JitError,
     MogiJit,
     PreludeSignature,
-    RuntimeError,
     TlbMissHelper,
 };
-use dynasmrt::dynasm;
+use crate::jit::code_buffer::{
+    AnonymousBlockId,
+    CodeBuffer,
+};
+use crate::jit::x86::scaffolding::{
+    build_epilogue,
+    build_prelude,
+};
+use crate::jit::x86::x64emitter::{
+    TlbMissCallback,
+    X64Emitter,
+};
 use dynasmrt::x64::X64Relocation;
 use memmap2::MmapOptions;
-use mogi_sleigh::spec::jir::jcode::JIRInstruction;
 use mogi_sleigh::spec::jir::values::{
     JIRSlice,
     JIRVarNode,
@@ -26,35 +35,16 @@ use mogi_sleigh::spec::{
     ProcessorSpecification,
 };
 use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::index_map::SecondaryMap;
+use registers::RegisterTracker;
 use std::cell::RefCell;
 use std::ffi::c_void;
 use std::pin::Pin;
 use std::ptr::NonNull;
 use std::rc::Rc;
-use tracing::trace;
-
-use crate::jit::code_buffer::{
-    AnonymousBlockId,
-    CodeBuffer,
-    CompiledBasicBlock,
-};
-use crate::jit::x86::scaffolding::{
-    build_epilogue,
-    build_prelude,
-};
-use crate::jit::x86::x64emitter::{
-    TlbMissCallback,
-    X64Emitter,
-};
-use mogi_utilities::index_map::SecondaryMap;
-use registers::{
-    RegAlloc,
-    RegisterTracker,
-};
 use task_context::X86TaskContext;
 use x64emitter::CustomOpCallback;
 
-mod emitter;
 mod registers;
 mod scaffolding;
 mod task_context;
@@ -81,7 +71,7 @@ macro_rules! assemble {
     };
 }
 
-use crate::jit::x86::registers::allocator::RegisterAllocator;
+use crate::jit::regalloc::RegisterAllocator;
 use crate::tlb::PageMetaInfo;
 use assemble;
 use mogi_mem::mmu::MogiMMU;

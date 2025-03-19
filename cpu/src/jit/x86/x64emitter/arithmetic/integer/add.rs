@@ -1,6 +1,6 @@
 use crate::jit::api::JITResult;
 use crate::jit::code_buffer::CompiledBasicBlock;
-use crate::jit::x86::emitter::OperandRequest;
+use crate::jit::regalloc::requirements::OperandRequest;
 use crate::jit::x86::x64emitter::arithmetic::integer::AddSub;
 use crate::jit::x86::x64emitter::regalloc::SliceType;
 use crate::jit::x86::x64emitter::{

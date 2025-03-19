@@ -8,14 +8,11 @@ use crate::jit::api::{
     MogiJit,
 };
 use crate::jit::x86::X86MogiJit;
-use crate::tlb::PageData;
 use mogi_mem::mmu::MogiMMU;
 use mogi_sleigh::SleighPreprocessorFactory;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
-use mogi_sleigh::spec::jir::basic_block::{
-    TargetBasicBlock,
-    TargetBasicBlockBuilder,
-};
+use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
+use mogi_sleigh::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
 use mogi_sleigh::spec::jir::jcode::JIRInstruction;
 use mogi_sleigh::spec::jir::values::JIRSlice;
 use mogi_sleigh::spec::{

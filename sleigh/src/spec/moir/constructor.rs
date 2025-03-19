@@ -1,7 +1,7 @@
 use super::actions::MOIRAction;
 use super::field_extractor::FieldExtractor;
 use crate::compiler::InternalCompilerResult;
-use crate::spec::jir::basic_block::TargetBasicBlockBuilder;
+use crate::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
 use crate::spec::jir::basic_block::instruction::TargetInstructionBuilder;
 use crate::spec::jir::jcode::{
     ContinueLifting,

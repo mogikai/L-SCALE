@@ -2,6 +2,8 @@ pub mod api;
 pub mod assembler;
 pub mod cache;
 pub mod code_buffer;
+mod host;
+pub(crate) mod regalloc;
 pub mod x86;
 
 #[cfg(feature = "trace_jit")]

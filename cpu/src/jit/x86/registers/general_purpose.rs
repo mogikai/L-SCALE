@@ -1,7 +1,11 @@
+use crate::jit::host::register::{
+    HostReg,
+    HostRegClass,
+};
 use crate::jit::x86::registers::{
+    InitialAllocation,
     RegAlloc,
     RegAllocType,
-    Register,
 };
 use num_enum::{
     IntoPrimitive,
@@ -32,10 +36,13 @@ pub enum GPRegister {
     R15 = 15,
 }
 
-impl Register for GPRegister {
-    type Primitive = u8;
-    const NUMBER: usize = 16;
+impl GPRegister {
+    pub const fn into_host_reg(self) -> HostReg {
+        HostReg::new(self as u8, HostRegClass::Int)
+    }
+}
 
+impl InitialAllocation for GPRegister {
     fn initial_allocation(&self) -> RegAlloc {
         let ty = match self {
             // we reserve RAX as temporary since there are some instructions that can only use RAX

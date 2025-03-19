@@ -7,10 +7,8 @@ use crate::lifter::{
     LifterResult,
 };
 use crate::spec::ProcessorSpecification;
-use crate::spec::jir::basic_block::{
-    TargetBasicBlock,
-    TargetBasicBlockBuilder,
-};
+use crate::spec::jir::basic_block::TargetBasicBlock;
+use crate::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
 use crate::spec::jir::context_stack::ContextStack;
 use crate::spec::jir::jcode::ContinueLifting;
 use crate::spec::jir::jumplist::MatcherResult;
@@ -134,7 +132,7 @@ impl Lifter for ProcessorSpecification {
                     trace_jir!("{}", resolver.mcode_debug_string(&self).unwrap());
                     match resolver
                         .build(self, &mut block_builder)
-                        .map_err(|_| -> LifterError { todo!() })?
+                        .map_err(|e| -> LifterError { todo!("{e:?}") })?
                     {
                         ContinueLifting::Continue(next_addr) => addr = next_addr,
                         ContinueLifting::Stop => break,

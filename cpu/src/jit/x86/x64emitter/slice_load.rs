@@ -3,12 +3,12 @@ use crate::jit::api::{
     JitError,
 };
 use crate::jit::code_buffer::CompiledBasicBlock;
-use crate::jit::trace_jit;
-use crate::jit::x86::emitter::{
+use crate::jit::regalloc::requirements::{
     OperandConstraint,
     OperandKind,
     OperandRequest,
 };
+use crate::jit::trace_jit;
 use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::registers::{
     RegAlloc,

@@ -4,8 +4,9 @@ use crate::jit::api::{
     JitError,
     TlbMissHelper,
 };
+use crate::jit::host::register::HostRegSet;
+use crate::jit::regalloc::requirements::OperandRequest;
 use crate::jit::x86::assemble;
-use crate::jit::x86::emitter::OperandRequest;
 use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::task_context::X86TaskContext;
 use crate::jit::x86::x64emitter::regalloc::SliceType;
@@ -39,7 +40,7 @@ impl X64AllocRequirements {
         output: JIRSlice,
         addr: JIRValue,
         space_id: SpaceId,
-    ) {
+    ) -> HostRegSet {
         // We always need the output
         self.operand_requests
             .push(OperandRequest::slice_write_any(output));
@@ -48,6 +49,7 @@ impl X64AllocRequirements {
             self.operand_requests
                 .push(OperandRequest::slice_read_any(*addr))
         });
+        HostRegSet::empty().with(GPRegister::DX.into_host_reg())
     }
 
     pub fn append_store_operands(
@@ -55,7 +57,7 @@ impl X64AllocRequirements {
         addr: JIRValue,
         space_id: SpaceId,
         value: JIRValue,
-    ) {
+    ) -> HostRegSet {
         addr.is_slice_then(|addr| {
             self.operand_requests
                 .push(OperandRequest::slice_read_any(*addr))
@@ -64,6 +66,7 @@ impl X64AllocRequirements {
             self.operand_requests
                 .push(OperandRequest::slice_read_any(*value))
         });
+        HostRegSet::empty().with(GPRegister::DX.into_host_reg())
     }
 }
 
@@ -171,6 +174,8 @@ impl X64Emitter<'_> {
         // TODO: Move the tlb miss code out of the happy path.
         //       We most likely want to defer writing the slow path to the end of the basic block?
         // We emit flush code first, and then the call into the memory helper. On TLB hit this code is skipped.
+        // TODO: This needs to be changed with the new register allocator. I.e. we will also need to restore
+        //       the preserved registers after the callback.
         self.preserve_registers_caller()?;
 
         let Some(callback) = match access_type {
@@ -213,6 +218,7 @@ impl X64Emitter<'_> {
             // tlb hit skips to here. Regardless of hit or miss, the address will be in addr_gpr if possible.
             ; success:
         );
+        // TODO: Restore registers here
         // We reserve the translated_address_gpr again here, since the flush cleared the reservation.
         // This does not touch the contents of the register, since it is marked as free.
         self.reserve_gp_as_temp(translated_address_gpr)?;

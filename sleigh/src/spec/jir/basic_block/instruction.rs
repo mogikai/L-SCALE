@@ -1,4 +1,4 @@
-use crate::spec::jir::basic_block::TargetBasicBlockBuilder;
+use crate::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
 use crate::spec::jir::common::JIRSize;
 use crate::spec::jir::jcode::{
     ContinueLifting,

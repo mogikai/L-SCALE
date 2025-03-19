@@ -1,4 +1,3 @@
-pub(crate) mod allocator;
 pub(crate) mod general_purpose;
 #[cfg(test)]
 mod test;
@@ -8,6 +7,7 @@ use crate::jit::api::{
     JITResult,
     JitError,
 };
+use crate::jit::host::register::HostReg;
 use crate::jit::trace_jit;
 use crate::jit::x86::x64emitter::regalloc::{
     RegAllocHint,
@@ -40,22 +40,14 @@ use xmm::XMMRegister;
 pub trait FlushEmitter<AssemblerT>: Fn(&mut AssemblerT, GPRegister, JIRSlice) -> JITResult {}
 impl<AssemblerT, T> FlushEmitter<AssemblerT> for T where T: Fn(&mut AssemblerT, GPRegister, JIRSlice) -> JITResult {}
 
-pub trait Register: TryFrom<Self::Primitive, Error: Debug> {
-    type Primitive: TryFrom<usize, Error: Debug>;
-    const NUMBER: usize;
+trait InitialAllocation {
     /// Return the initial allocation for the specified register.
     fn initial_allocation(&self) -> RegAlloc;
 }
 
 #[derive(Debug)]
-pub struct RegisterAllocations<T, const N: usize>([RegAlloc; N], PhantomData<T>)
-where
-    T: Register;
-
-impl<T, const N: usize> Display for RegisterAllocations<T, N>
-where
-    T: Register,
-{
+pub struct RegisterAllocations<T, const N: usize>([RegAlloc; N], PhantomData<T>);
+impl<T, const N: usize> Display for RegisterAllocations<T, N> {
     fn fmt(
         &self,
         f: &mut Formatter<'_>,
@@ -73,12 +65,13 @@ where
 
 impl<T, const N: usize> Default for RegisterAllocations<T, N>
 where
-    T: Register,
+    T: InitialAllocation + TryFrom<u8>,
+    <T as TryFrom<u8>>::Error: Debug,
 {
     fn default() -> Self {
         Self(
             array::from_fn(|i| {
-                T::try_from(T::Primitive::try_from(i).expect("T::Primitive must fit into N"))
+                T::try_from(u8::try_from(i).expect("T::Primitive must fit into N"))
                     .expect("T::Primitive must fit into N")
                     .initial_allocation()
             }),
@@ -87,10 +80,7 @@ where
     }
 }
 
-impl<T, const N: usize> RegisterAllocations<T, N>
-where
-    T: Register,
-{
+impl<T, const N: usize> RegisterAllocations<T, N> {
     pub fn iter(&self) -> impl Iterator<Item = (GPRegister, &RegAlloc)> {
         self.0.iter().enumerate().map(|(i, entry)| {
             (GPRegister::try_from(i as u8).expect("We iterate over the GP ids, hence this must not error"), entry)
@@ -104,10 +94,7 @@ where
     }
 }
 
-impl<T, const N: usize> Index<GPRegister> for RegisterAllocations<T, N>
-where
-    T: Register,
-{
+impl<T, const N: usize> Index<GPRegister> for RegisterAllocations<T, N> {
     type Output = RegAlloc;
 
     fn index(
@@ -118,10 +105,7 @@ where
     }
 }
 
-impl<T, const N: usize> IndexMut<GPRegister> for RegisterAllocations<T, N>
-where
-    T: Register,
-{
+impl<T, const N: usize> IndexMut<GPRegister> for RegisterAllocations<T, N> {
     fn index_mut(
         &mut self,
         index: GPRegister,

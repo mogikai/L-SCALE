@@ -1,7 +1,5 @@
+use crate::jit::host::register::HostRegSet;
 use mogi_sleigh::spec::jir::values::JIRSlice;
-
-#[derive(Default, Debug)]
-pub struct Register;
 
 #[derive(Debug)]
 pub enum OperandConstraint {
@@ -16,7 +14,7 @@ pub enum OperandConstraint {
     /// The operand must be loaded into any register.
     Reg,
     /// The operand must be put into the provided register.
-    FixedReg(Register),
+    FixedReg(()),
 }
 
 #[derive(Debug)]
@@ -65,12 +63,6 @@ impl OperandRequest {
     }
 }
 
-// TODO: Optimize sizes and layout later.
-#[derive(Default, Debug)]
-pub struct RegisterSet {
-    registers: Vec<Register>,
-}
-
 /// This trait specifies methods needed by the allocator to determine the required registers for an instruction.
 /// The emitter implementation will need to specify what operands and temporaries are needed per instruction.
 pub trait EmitterAllocRequirements {
@@ -80,11 +72,14 @@ pub trait EmitterAllocRequirements {
     fn clobbers(
         &self,
         inst_id: usize,
-    ) -> &RegisterSet;
+    ) -> HostRegSet;
 
     /// Return the required operands for the provided instruction.
     fn operands(
         &self,
         inst_id: usize,
     ) -> &[OperandRequest];
+
+    /// Returns the total number of different operands used in this emitter instance.
+    fn total_opereands(&self) -> usize;
 }
