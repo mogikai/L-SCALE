@@ -54,7 +54,7 @@ impl Lifter for ProcessorSpecification {
 
         let mut context_stack = ContextStack::new(self, context_provider).expect("Couldn't create context stack");
         let matching_result = root_jumplist
-            .r#match(&buffer, addr, &self.jumplist_cache, &self.symbol_tables.constructors, &mut context_stack)
+            .r#match(&buffer, addr, 0u64.into(), &self.jumplist_cache, &self.symbol_tables.constructors, &mut context_stack)
             .unwrap();
         self.lifter_diagnostics.borrow_mut().total_time_match += now.elapsed();
 
@@ -115,7 +115,7 @@ impl Lifter for ProcessorSpecification {
             // TODO: Initially fill the context stack with the value from the context provider that needs to be passed in.
 
             let matching_result = root_jumplist
-                .r#match(&buffer, addr, &self.jumplist_cache, &self.symbol_tables.constructors, &mut context_stack)
+                .r#match(&buffer, addr, 0u64.into(), &self.jumplist_cache, &self.symbol_tables.constructors, &mut context_stack)
                 .unwrap();
             self.lifter_diagnostics.borrow_mut().total_time_match += now.elapsed();
 

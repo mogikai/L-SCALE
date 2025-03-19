@@ -231,6 +231,7 @@ impl Jumplist {
         &'a self,
         bytes: &'a [u8],
         addr: EVAddr,
+        addr_offset: EVAddr,
         jumplist_cache: &'a TypedIndexTable<JumplistId, Jumplist>,
         constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
         context_stack: &mut ContextStack,
@@ -260,6 +261,7 @@ impl Jumplist {
                     match sublist.r#match(
                         &bytes[consumed_so_far..],
                         addr,
+                        addr_offset,
                         jumplist_cache,
                         constructors,
                         context_stack,
@@ -296,6 +298,7 @@ impl Jumplist {
                         self.process_local_matching(
                             bytes,
                             addr,
+                            addr_offset,
                             jumplist_cache,
                             constructors,
                             context_stack,
@@ -315,6 +318,7 @@ impl Jumplist {
                         jumplist.match_local(
                             bytes,
                             addr,
+                            addr_offset,
                             jumplist_cache,
                             constructors,
                             context_stack,
@@ -330,6 +334,7 @@ impl Jumplist {
                         jumplist.match_local(
                             bytes,
                             addr,
+                            addr_offset,
                             jumplist_cache,
                             constructors,
                             context_stack,
@@ -360,6 +365,7 @@ impl Jumplist {
         &'a self,
         bytes: &'a [u8],
         addr: EVAddr,
+        addr_offset: EVAddr,
         jumplist_cache: &'a TypedIndexTable<JumplistId, Jumplist>,
         constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
         context_stack: &mut ContextStack,
@@ -434,7 +440,7 @@ impl Jumplist {
         // TODO actions will use this so it has to be set before descending into
         // sublists but sublists might alter the number of bytes consumed, what to do?
         // for now we set it once before action evaluation and then afterwards again
-        resolver.set_inst_addresses(addr, addr + consumed_so_far, None);
+        resolver.set_inst_addresses(addr, addr + addr_offset + consumed_so_far, None);
 
         for action in &constructor.actions {
             action.evaluate(&mut resolver, context_stack)?;
@@ -456,7 +462,14 @@ impl Jumplist {
                 constructor.display
             );
 
-            let result = sublist.r#match(sublist_bytes, addr, jumplist_cache, constructors, context_stack)?;
+            let result = sublist.r#match(
+                sublist_bytes,
+                addr,
+                u64::try_from(offsetted_sublist.offset).unwrap().into(),
+                jumplist_cache,
+                constructors,
+                context_stack,
+            )?;
             match result {
                 MatcherResult::Some {
                     table: table_id,
@@ -477,7 +490,7 @@ impl Jumplist {
         trace_jir!("Got a complete match");
 
         // TODO this should be set before descending into jumplists
-        resolver.set_inst_addresses(addr, addr + consumed_so_far_max, None);
+        resolver.set_inst_addresses(addr, addr + addr_offset + consumed_so_far_max, None);
 
         // TODO handle context flow
         context_stack.pop_state()?;
@@ -499,12 +512,16 @@ impl Jumplist {
         &'a self,
         bytes: &'a [u8],
         addr: EVAddr,
+        // Matching might be started from an offsetted address. Even though properly slicing
+        // `bytes` is enough for matching, we still need to pass the actual offset for address
+        // calculations.
+        addr_offset: EVAddr,
         jumplist_cache: &'a TypedIndexTable<JumplistId, Jumplist>,
         constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
         context_stack: &mut ContextStack,
     ) -> InternalCompilerResult<MatcherResult<'a>> {
         let mut accum = MatchState::default();
-        self.match_local(bytes, addr, jumplist_cache, constructors, context_stack, 0, &mut accum)
+        self.match_local(bytes, addr, addr_offset, jumplist_cache, constructors, context_stack, 0, &mut accum)
     }
 
     /// Each entry stores the number of times it was part of a matching branch in
@@ -618,7 +635,7 @@ mod test {
             resolver,
             bytes_consumed,
         } = root_jumplist
-            .r#match(bytes, 0x0u64.into(), spec.jumplist_cache(), spec.constructors(), &mut context_stack)
+            .r#match(bytes, 0x0u64.into(), 0.into(), spec.jumplist_cache(), spec.constructors(), &mut context_stack)
             .unwrap()
         else {
             panic!("No match");
@@ -682,7 +699,7 @@ mod test {
             resolver,
             bytes_consumed,
         } = root_jumplist
-            .r#match(bytes, 0x0u64.into(), spec.jumplist_cache(), spec.constructors(), &mut context_stack)
+            .r#match(bytes, 0x0u64.into(), 0.into(), spec.jumplist_cache(), spec.constructors(), &mut context_stack)
             .unwrap()
         else {
             panic!("No match");
@@ -734,7 +751,7 @@ mod test {
             resolver,
             bytes_consumed,
         } = root_jumplist
-            .r#match(bytes, 0x0u64.into(), spec.jumplist_cache(), spec.constructors(), &mut context_stack)
+            .r#match(bytes, 0x0u64.into(), 0.into(), spec.jumplist_cache(), spec.constructors(), &mut context_stack)
             .unwrap()
         else {
             panic!("No match");

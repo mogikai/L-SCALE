@@ -119,11 +119,6 @@ impl<'a> JIRResolver<'a> {
             self.values[local_inst_next2] =
                 Some(JIRValue::Const(JIRConst::new(inst_next2.try_into().unwrap(), addr_bytes.try_into().unwrap())));
         }
-
-        // set recursively
-        for subresolver in self.subtables.values_mut() {
-            subresolver.set_inst_addresses(inst_start, inst_next, inst_next2);
-        }
     }
 
     pub fn hierarchy_debug_string(&self) -> Result<String, std::fmt::Error> {
