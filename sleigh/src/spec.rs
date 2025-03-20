@@ -167,8 +167,8 @@ impl ProcessorSpecification {
         self.varnode_slice_by_string("RIP").unwrap()
     }
 
-    /// Create a new [MatchContext] from the given [EVAddr] and [ContextProvider].
-    pub fn new_match_context<C: ContextProvider>(
+    /// Create a new [MatchContext] from the given [EVAddr].
+    pub(crate) fn new_match_context(
         &self,
         addr: EVAddr,
     ) -> ProcessorSpecResult<MatchContext> {

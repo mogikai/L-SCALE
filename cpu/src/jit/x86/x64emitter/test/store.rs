@@ -48,7 +48,7 @@ fn test_store_tlb_hit() {
 
     let instructions = vec![
         //
-        jinst!(*[{SpaceId::from(0)}]addr_slice = value_slice),
+        jinst!(*[{SpaceId::try_from_index(0).unwrap()}]addr_slice = value_slice),
     ];
     exec_instructions(&mut jit, &mut context, instructions);
 

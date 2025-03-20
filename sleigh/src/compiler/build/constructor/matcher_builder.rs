@@ -59,7 +59,6 @@ impl SleighCompiler {
         constructor_id: ConstructorId,
     ) -> InternalCompilerResult<Vec<Matcher>> {
         let matchers = self.create_matchers_recursive(constraint, table_id, constructor_id)?;
-        eprintln!("{:#?}", matchers);
 
         Ok(matchers)
     }

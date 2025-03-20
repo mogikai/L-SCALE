@@ -661,36 +661,35 @@ mod test {
         // pdep rax, rcx, [rbp+8*rsi+0x1234]
         let bytes = b"\xc4\xe2\xf3\xf5\x84\xf5\xcc\xed\xff\xff";
 
-        let match_context = spec
-            .new_match_context(0x0u64.into(), &context_provider)
-            .unwrap();
+        let mut context_stack = ContextStack::new(&spec, &context_provider).unwrap();
+        let match_context = spec.new_match_context(0x0u64.into()).unwrap();
         let MatcherResult::Some {
             table,
             resolver,
             bytes_consumed,
-        } = match_context.r#match(bytes).unwrap()
+        } = match_context.r#match(bytes, &mut context_stack).unwrap()
         else {
             panic!("No match");
         };
 
-        let tid_instr: TableId = 0.into();
-        let tid_reg64: TableId = 4.into();
-        let tid_rm64: TableId = 120.into();
-        let tid_mem: TableId = 46.into();
-        let tid_addr64: TableId = 41.into();
-        let tid_index64: TableId = 15.into();
-        let tid_base64: TableId = 14.into();
-        let tid_simm32_64: TableId = 31.into();
+        let tid_instr = TableId::try_from_index(0).unwrap();
+        let tid_reg64 = TableId::try_from_index(4).unwrap();
+        let tid_rm64 = TableId::try_from_index(120).unwrap();
+        let tid_mem = TableId::try_from_index(46).unwrap();
+        let tid_addr64 = TableId::try_from_index(41).unwrap();
+        let tid_index64 = TableId::try_from_index(15).unwrap();
+        let tid_base64 = TableId::try_from_index(14).unwrap();
+        let tid_simm32_64 = TableId::try_from_index(31).unwrap();
 
-        let cid_instr: ConstructorId = 456.into();
-        let cid_pdep: ConstructorId = 4781.into();
-        let cid_reg64: ConstructorId = 7.into();
-        let cid_rm64: ConstructorId = 362.into();
-        let cid_mem: ConstructorId = 198.into();
-        let cid_addr64: ConstructorId = 168.into();
-        let cid_index: ConstructorId = 32.into();
-        let cid_base: ConstructorId = 30.into();
-        let cid_simm32_64: ConstructorId = 59.into();
+        let cid_instr = ConstructorId::try_from_index(456).unwrap();
+        let cid_pdep = ConstructorId::try_from_index(4781).unwrap();
+        let cid_reg64 = ConstructorId::try_from_index(7).unwrap();
+        let cid_rm64 = ConstructorId::try_from_index(362).unwrap();
+        let cid_mem = ConstructorId::try_from_index(198).unwrap();
+        let cid_addr64 = ConstructorId::try_from_index(168).unwrap();
+        let cid_index = ConstructorId::try_from_index(32).unwrap();
+        let cid_base = ConstructorId::try_from_index(30).unwrap();
+        let cid_simm32_64 = ConstructorId::try_from_index(59).unwrap();
 
         assert_eq!(resolver.constructor_id(), cid_instr);
         let res_pdep = resolver.subtables().get(&tid_instr).unwrap();
@@ -724,30 +723,29 @@ mod test {
         // cmovge rcx, r12
         let bytes = b"\x49\x0F\x4D\xCC";
 
-        let match_context = spec
-            .new_match_context(0x0u64.into(), &context_provider)
-            .unwrap();
+        let mut context_stack = ContextStack::new(&spec, &context_provider).unwrap();
+        let match_context = spec.new_match_context(0x0u64.into()).unwrap();
         let MatcherResult::Some {
             table,
             resolver,
             bytes_consumed,
-        } = match_context.r#match(bytes).unwrap()
+        } = match_context.r#match(bytes, &mut context_stack).unwrap()
         else {
             panic!("No match");
         };
 
-        let tid_instr: TableId = 0.into();
-        let tid_cc: TableId = 131.into();
-        let tid_rm64: TableId = 120.into();
-        let tid_rmr64: TableId = 11.into();
-        let tid_reg64: TableId = 4.into();
+        let tid_instr = TableId::try_from_index(0).unwrap();
+        let tid_cc = TableId::try_from_index(131).unwrap();
+        let tid_rm64 = TableId::try_from_index(120).unwrap();
+        let tid_rmr64 = TableId::try_from_index(11).unwrap();
+        let tid_reg64 = TableId::try_from_index(4).unwrap();
 
-        let cid_instr: ConstructorId = 449.into();
-        let cid_cmov: ConstructorId = 628.into();
-        let cid_cc: ConstructorId = 391.into();
-        let cid_rm64: ConstructorId = 361.into();
-        let cid_rmr64: ConstructorId = 25.into();
-        let cid_reg64: ConstructorId = 7.into();
+        let cid_instr = ConstructorId::try_from_index(449).unwrap();
+        let cid_cmov = ConstructorId::try_from_index(628).unwrap();
+        let cid_cc = ConstructorId::try_from_index(391).unwrap();
+        let cid_rm64 = ConstructorId::try_from_index(361).unwrap();
+        let cid_rmr64 = ConstructorId::try_from_index(25).unwrap();
+        let cid_reg64 = ConstructorId::try_from_index(7).unwrap();
 
         assert_eq!(resolver.constructor_id(), cid_instr);
         let res_cmov = resolver.subtables().get(&tid_instr).unwrap();
@@ -775,37 +773,35 @@ mod test {
         // vfmaddsub213pd xmm4, xmm1, xmmword ptr [0x1337]
         let bytes = b"\xC4\xE2\xF1\xA6\x24\x25\x37\x13\x00\x00";
 
-        let match_context = spec
-            .new_match_context(0x0u64.into(), &context_provider)
-            .unwrap();
+        let mut context_stack = ContextStack::new(&spec, &context_provider).unwrap();
+        let match_context = spec.new_match_context(0x0u64.into()).unwrap();
         let MatcherResult::Some {
             table,
             resolver,
             bytes_consumed,
-        } = match_context.r#match(bytes).unwrap()
+        } = match_context.r#match(bytes, &mut context_stack).unwrap()
         else {
             panic!("No match");
         };
 
-        let tid_instr: TableId = 0.into();
-        let tid_xmmreg1: TableId = 17.into();
-        let tid_zmmreg1: TableId = 21.into();
-        let tid_zmmreg1: TableId = 21.into();
-        let tid_xmmreg2_m128: TableId = 84.into();
-        let tid_m128: TableId = 54.into();
-        let tid_mem: TableId = 46.into();
-        let tid_addr64: TableId = 41.into();
-        let tid_simm32_64: TableId = 31.into();
+        let tid_instr = TableId::try_from_index(0).unwrap();
+        let tid_xmmreg1 = TableId::try_from_index(17).unwrap();
+        let tid_zmmreg1 = TableId::try_from_index(21).unwrap();
+        let tid_xmmreg2_m128 = TableId::try_from_index(84).unwrap();
+        let tid_m128 = TableId::try_from_index(54).unwrap();
+        let tid_mem = TableId::try_from_index(46).unwrap();
+        let tid_addr64 = TableId::try_from_index(41).unwrap();
+        let tid_simm32_64 = TableId::try_from_index(31).unwrap();
 
-        let cid_instr: ConstructorId = 454.into();
-        let cid_vfmaddsub213pd: ConstructorId = 4841.into();
-        let cid_xmmreg1: ConstructorId = 36.into();
-        let cid_zmmreg1: ConstructorId = 44.into();
-        let cid_xmmreg2_m128: ConstructorId = 271.into();
-        let cid_m128: ConstructorId = 209.into();
-        let cid_mem: ConstructorId = 198.into();
-        let cid_addr64: ConstructorId = 160.into();
-        let cid_simm32_64: ConstructorId = 59.into();
+        let cid_instr = ConstructorId::try_from_index(454).unwrap();
+        let cid_vfmaddsub213pd = ConstructorId::try_from_index(4841).unwrap();
+        let cid_xmmreg1 = ConstructorId::try_from_index(36).unwrap();
+        let cid_zmmreg1 = ConstructorId::try_from_index(44).unwrap();
+        let cid_xmmreg2_m128 = ConstructorId::try_from_index(271).unwrap();
+        let cid_m128 = ConstructorId::try_from_index(209).unwrap();
+        let cid_mem = ConstructorId::try_from_index(198).unwrap();
+        let cid_addr64 = ConstructorId::try_from_index(160).unwrap();
+        let cid_simm32_64 = ConstructorId::try_from_index(59).unwrap();
 
         assert_eq!(resolver.constructor_id(), cid_instr);
         let res_vfmaddsub213pd = resolver.subtables().get(&tid_instr).unwrap();

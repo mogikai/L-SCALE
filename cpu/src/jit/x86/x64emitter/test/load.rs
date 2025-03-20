@@ -20,6 +20,7 @@ use mogi_utilities::addresses::{
     EVAddr,
     HVAddr,
 };
+use mogi_utilities::index_map::MapKey;
 
 #[test]
 fn test_load_tlb_hit() {
@@ -48,7 +49,7 @@ fn test_load_tlb_hit() {
 
     let instructions = vec![
         //
-        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::try_from_index(0).unwrap()}]addr_slice),
     ];
     exec_instructions(&mut jit, &mut context, instructions);
     let actual: u64 = get_slice_value(context.as_ref(), &spec, result);
@@ -81,7 +82,7 @@ fn test_load_tlb_miss_success() {
 
     let instructions = vec![
         //
-        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::try_from_index(0).unwrap()}]addr_slice),
     ];
     exec_instructions(&mut jit, &mut context, instructions);
     let actual: u64 = get_slice_value(context.as_ref(), &spec, result);
@@ -116,7 +117,7 @@ fn test_load_tlb_miss_failure() {
 
     let instructions = vec![
         //
-        jinst!(result = *[{SpaceId::from(0)}]addr_slice),
+        jinst!(result = *[{SpaceId::try_from_index(0).unwrap()}]addr_slice),
     ];
     exec_instructions(&mut jit, &mut context, instructions);
     let actual: u64 = get_slice_value(context.as_ref(), &spec, result);

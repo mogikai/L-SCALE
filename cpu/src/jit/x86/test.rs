@@ -20,6 +20,7 @@ use mogi_sleigh::spec::{
     SpaceId,
 };
 use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::index_map::MapKey;
 use num_traits::{
     FromBytes,
     ToBytes,
@@ -105,7 +106,7 @@ pub(super) fn make_basic_block_from_instructions(
     fallthrough: EVAddr,
     instructions: impl IntoIterator<Item = JIRInstruction>,
 ) -> TargetBasicBlock {
-    let mut builder = TargetBasicBlockBuilder::new(address, SpaceId::from(0x41));
+    let mut builder = TargetBasicBlockBuilder::new(address, SpaceId::try_from_index(0x41).unwrap());
     builder.set_fallthrough(fallthrough);
     builder.start_block().unwrap();
     for instruction in instructions.into_iter() {
