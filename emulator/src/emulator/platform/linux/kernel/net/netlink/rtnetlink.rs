@@ -3,8 +3,8 @@ use std::marker::PhantomData;
 
 use bitflags::__private::PublicFlags;
 use bitflags::{
-    bitflags,
     Flags,
+    bitflags,
 };
 use byteorder::ByteOrder;
 use num_enum::{
@@ -36,6 +36,10 @@ use crate::emulator::abstractions::network::{
     SocketAddress,
 };
 use crate::emulator::platform::linux::fd::FileDescriptorData;
+use crate::emulator::platform::linux::kernel::net::SocketDomain::{
+    AF_INET,
+    AF_INET6,
+};
 use crate::emulator::platform::linux::kernel::net::netlink::rtnetlink::nla_type::{
     IFA_ADDRESS,
     IFA_BROADCAST,
@@ -44,14 +48,10 @@ use crate::emulator::platform::linux::kernel::net::netlink::rtnetlink::nla_type:
     IFA_LOCAL,
 };
 use crate::emulator::platform::linux::kernel::net::netlink::{
-    nlmsghdr,
     NetlinkMessageFlags,
+    nlmsghdr,
 };
 use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
-use crate::emulator::platform::linux::kernel::net::SocketDomain::{
-    AF_INET,
-    AF_INET6,
-};
 use crate::emulator::platform::linux::kernel::socket::Optval;
 use crate::emulator::system::fd_map::FileDescriptor;
 

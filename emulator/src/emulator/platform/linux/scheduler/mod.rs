@@ -13,11 +13,11 @@ use crate::emulator::abstractions::emulator::Scheduler;
 use mogi_system::components::cpu::hooks::Hooks;
 
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
-use crate::emulator::platform::linux::architecture::x86::X86;
-use crate::emulator::platform::linux::kernel::task_id::TaskId;
-use crate::emulator::platform::linux::kernel::LinuxKernelTask;
-use crate::emulator::platform::linux::scheduler::syscall::syscall;
 use crate::emulator::platform::linux::LinuxSystem;
+use crate::emulator::platform::linux::architecture::x86::X86;
+use crate::emulator::platform::linux::kernel::LinuxKernelTask;
+use crate::emulator::platform::linux::kernel::task_id::TaskId;
+use crate::emulator::platform::linux::scheduler::syscall::syscall;
 use crate::emulator::system::memory::Memory;
 use mogi_system::components::restore::Restorable;
 

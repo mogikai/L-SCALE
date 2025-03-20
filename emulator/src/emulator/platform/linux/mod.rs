@@ -3,11 +3,11 @@ use byteorder::ByteOrder;
 use rand_pcg::Mcg128Xsl64;
 
 use crate::emulator::platform::linux::fd::{
-    FileDescriptorData,
     FD,
+    FileDescriptorData,
 };
-use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::platform::linux::kernel::LinuxKernelTask;
+use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::System;
 
 pub mod architecture;

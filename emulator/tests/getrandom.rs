@@ -1,8 +1,15 @@
 use std::path::Path;
 
-use common::{get_sysdir, prepare_binary, setup_test};
+use common::{
+    get_sysdir,
+    prepare_binary,
+    setup_test,
+};
 
-use crate::common::{emulate, TestFailure};
+use crate::common::{
+    TestFailure,
+    emulate,
+};
 
 mod common;
 

@@ -21,10 +21,10 @@ use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::FD;
 use crate::emulator::platform::linux::kernel::error::SyscallError;
 use crate::emulator::platform::linux::kernel::{
-    sys_component_mut,
     LinuxKernelError,
     LinuxKernelTask,
     SyscallResult,
+    sys_component_mut,
 };
 use crate::emulator::system::memory::rw_interface::{
     MemoryRead,

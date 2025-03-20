@@ -11,8 +11,8 @@ use iced_x86::{
     IntelFormatter,
 };
 use mogi_system::components::cpu::{
-    RegisterX86,
     CPU,
+    RegisterX86,
 };
 use mogi_system::components::mmu::MMU;
 

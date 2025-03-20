@@ -14,11 +14,11 @@ use std::time::{
     Instant,
 };
 use tracing::{
+    Level,
     debug,
     event,
     span,
     trace,
-    Level,
 };
 
 use crate::emulator::abstractions::emulator::Scheduler;

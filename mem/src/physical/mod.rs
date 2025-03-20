@@ -1,5 +1,5 @@
-use crate::physical::mapping::PhysicalMapping;
 use crate::PAGE_SIZE;
+use crate::physical::mapping::PhysicalMapping;
 use addr_align::Align;
 use mogi_system::components::mmu::Permission;
 use mogi_utilities::addresses::EPAddr;
@@ -270,8 +270,8 @@ impl PhysicalMemory {
 
 #[cfg(test)]
 mod test {
-    use crate::physical::PhysicalMemory;
     use crate::PAGE_SIZE;
+    use crate::physical::PhysicalMemory;
     use mogi_system::components::mmu::Permission;
     use mogi_utilities::addresses::EPAddr;
 

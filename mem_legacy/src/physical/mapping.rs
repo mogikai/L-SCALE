@@ -1,12 +1,12 @@
-use crate::physical::PageId;
 use crate::PAGE_SIZE;
+use crate::physical::PageId;
 use addr_align::Align;
 use mogi_utilities::addresses::EPAddr;
 use mogi_utilities::error::memory::MemoryError;
 use std::cmp::{
+    Ordering,
     max,
     min,
-    Ordering,
 };
 use std::fmt::{
     Display,

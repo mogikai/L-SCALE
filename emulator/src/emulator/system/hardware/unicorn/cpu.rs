@@ -4,9 +4,9 @@ use std::time::Duration;
 use tracing::trace;
 
 use mogi_system::components::cpu::{
+    CPU,
     ContextHandle,
     Register,
-    CPU,
 };
 
 use mogi_system::components::cpu;
@@ -19,8 +19,8 @@ use mogi_system::errors::generic::{
     GenericErrorKind,
 };
 use mogi_utilities::addresses::EVAddr;
-use unicorn_engine::unicorn_const::uc_error;
 use unicorn_engine::RegisterX86;
+use unicorn_engine::unicorn_const::uc_error;
 
 use crate::emulator::system::hardware::unicorn::UCWrapper;
 use mogi_system::components::restore::Restorable;

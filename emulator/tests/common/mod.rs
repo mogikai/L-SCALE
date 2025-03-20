@@ -2,8 +2,8 @@ mod emulate;
 mod mocks;
 
 pub use emulate::emulate;
-use mogi_system::errors::cpu::StopReason;
 use mogi_system::errors::SchedulerError;
+use mogi_system::errors::cpu::StopReason;
 use samples;
 use std::path::{
     Path,
@@ -18,8 +18,8 @@ use std::{
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{
-    fmt,
     EnvFilter,
+    fmt,
 };
 
 static INIT: Once = Once::new();

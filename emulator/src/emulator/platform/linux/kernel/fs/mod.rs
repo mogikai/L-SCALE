@@ -1,8 +1,8 @@
 use std::cell::RefMut;
 
 use bitflags::{
-    bitflags,
     Flags,
+    bitflags,
 };
 use byteorder::ByteOrder;
 
@@ -13,8 +13,8 @@ use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
 use crate::emulator::abstractions::filesystem::FileId;
 use crate::emulator::macros::*;
 use crate::emulator::platform::linux::fd::{
-    FileDescriptorData,
     FD,
+    FileDescriptorData,
 };
 use crate::emulator::platform::linux::kernel::error::SyscallError::KernelError;
 use crate::emulator::platform::linux::kernel::fs::fd_ops::FileOps;

@@ -14,12 +14,12 @@ use crate::emulator::abstractions::network::{
     SocketAddress,
 };
 use crate::emulator::platform::linux::fd::FileDescriptorData;
+use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::platform::linux::kernel::net::inet6::tcp::TCPData;
 use crate::emulator::platform::linux::kernel::net::sockopt::{
     Socket_Sockopt,
     Sockopt,
 };
-use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::platform::linux::kernel::socket::Optval;
 use crate::emulator::system::fd_map::FileDescriptor;
 

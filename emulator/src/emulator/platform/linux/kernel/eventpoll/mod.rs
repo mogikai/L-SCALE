@@ -11,10 +11,10 @@ use num_enum::TryFromPrimitive;
 use tracing::trace;
 
 use mogi_derive::{
-    unfinished,
     Decode,
     Encode,
     RequiredMem,
+    unfinished,
 };
 use mogi_system::components::cpu::CPU;
 use mogi_utilities::addresses::EVAddr;
@@ -26,27 +26,27 @@ use crate::emulator::abstractions::file_descriptors::{
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::{
-    FileDescriptorData,
     FD,
+    FileDescriptorData,
 };
 use crate::emulator::platform::linux::kernel::error::SyscallError;
 use crate::emulator::platform::linux::kernel::eventpoll::events::EPOLL_EVENTS;
 use crate::emulator::platform::linux::kernel::eventpoll::fd_ops::EpollOps;
 use crate::emulator::platform::linux::kernel::{
-    sys_component_mut,
     LinuxKernelError,
     LinuxKernelTask,
     SyscallResult,
+    sys_component_mut,
 };
 use crate::emulator::system::fd_map::{
     FileDescriptor,
     TemporaryRemoveGuard,
 };
+use crate::emulator::system::memory::MemoryAccessor;
 use crate::emulator::system::memory::rw_interface::{
     MemoryRead,
     MemoryWrite,
 };
-use crate::emulator::system::memory::MemoryAccessor;
 use mogi_system::components::mmu::MMU;
 
 mod events;

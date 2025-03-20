@@ -1,5 +1,5 @@
-use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::network::SocketId;
+use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::fmt::{

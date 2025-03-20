@@ -1,7 +1,7 @@
 use quote::quote;
 use syn::{
-    parse_macro_input,
     DeriveInput,
+    parse_macro_input,
 };
 
 use crate::decode::derive_decode_impl;

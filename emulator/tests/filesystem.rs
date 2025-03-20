@@ -1,11 +1,11 @@
 use std::path::Path;
 
 use crate::common::{
+    TestFailure,
     emulate,
     get_sysdir,
     prepare_binary,
     setup_test,
-    TestFailure,
 };
 
 mod common;

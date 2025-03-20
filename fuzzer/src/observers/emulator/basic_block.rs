@@ -8,11 +8,11 @@ use std::ops::{
     RangeBounds,
 };
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::atomic::{
     AtomicUsize,
     Ordering,
 };
-use std::sync::Arc;
 use std::thread;
 
 use core_affinity::CoreId;

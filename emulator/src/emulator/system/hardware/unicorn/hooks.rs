@@ -1,5 +1,5 @@
-use mogi_system::components::mmu::tlb_entry::TLBEntry;
 use mogi_system::components::mmu::MemoryAction;
+use mogi_system::components::mmu::tlb_entry::TLBEntry;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::error::memory::MemoryError;
 use unicorn_engine::unicorn_const::HookType;
@@ -11,8 +11,8 @@ use unicorn_engine::{
     Unicorn,
 };
 
-use crate::emulator::system::hardware::unicorn::cpu::cpu_error_from_uc_error;
 use crate::emulator::system::hardware::unicorn::UCWrapper;
+use crate::emulator::system::hardware::unicorn::cpu::cpu_error_from_uc_error;
 use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::errors::cpu::CPUError;
 use mogi_system::errors::generic::GenericError;

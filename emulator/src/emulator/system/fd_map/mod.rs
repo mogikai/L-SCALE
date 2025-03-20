@@ -39,12 +39,12 @@ use crate::emulator::platform::linux::kernel::socket::Optval;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
 use crate::emulator::system::fd_map::error::FileDescriptorMapError;
 use crate::emulator::system::filesystem::Stat;
+use crate::util::auto_key::AutoKey;
 use crate::util::auto_key::lazy_clone_map::{
     LazyCloneMap,
     RemovedElement,
 };
 use crate::util::auto_key::restorable_map::RestorableHashMap;
-use crate::util::auto_key::AutoKey;
 use crate::util::rcow::RCow;
 use mogi_system::components::restore::Restorable;
 

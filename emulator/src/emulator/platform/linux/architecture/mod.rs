@@ -1,7 +1,10 @@
 use std::fmt::Debug;
 
 use crate::emulator::platform::linux::kernel::LinuxKernelError;
-use crate::emulator::platform::linux::signals::{Signal, SignalAction};
+use crate::emulator::platform::linux::signals::{
+    Signal,
+    SignalAction,
+};
 
 pub mod x86;
 

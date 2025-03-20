@@ -11,8 +11,8 @@ use crate::emulator::system::memory::Memory;
 use crate::emulator::system::prng::SeedablePrngMap;
 use crate::emulator::system::task_manager::TaskManager;
 use byteorder::ByteOrder;
-use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::components::cpu::CPU;
+use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::components::mmu::MMU;
 use mogi_system::components::restore::Restorable;
 use rand::{

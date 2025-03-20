@@ -2,8 +2,8 @@ use bitflags::Flags;
 use byteorder::ByteOrder;
 use mogi_system::components::mmu::tlb_entry::TLBEntry;
 use mogi_system::components::mmu::{
-    Permission,
     MMU,
+    Permission,
 };
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::error::memory::MemoryError;
@@ -41,7 +41,7 @@ impl<Endianness: ByteOrder, MmuT: MMU> MemoryAccessor<'_, Endianness, MmuT> {
         for tlb_entry in self.translate(address, size)? {
             let addr = tlb_entry.physical_address;
             let len = tlb_entry.size;
-            self.mmu.read_physical(addr, &mut buf[start..start+len])?;
+            self.mmu.read_physical(addr, &mut buf[start..start + len])?;
             start += len;
         }
         Ok(buf)

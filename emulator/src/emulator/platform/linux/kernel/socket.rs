@@ -21,27 +21,27 @@ use mogi_utilities::encoding::{
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use mogi_system::components::cpu::CPU;
 
-use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::abstractions::network::SocketAddress;
+use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::FD;
 use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
 use crate::emulator::platform::linux::kernel::net::unix::UnixSocketOps;
 use crate::emulator::platform::linux::kernel::net::{
-    inet6,
-    netlink,
     ShutMethod,
     Sockaddr,
     SocketDomain,
     SocketFlags,
     SocketType,
+    inet6,
+    netlink,
 };
 use crate::emulator::platform::linux::kernel::{
-    sys_component,
-    sys_component_mut,
     LinuxKernelError,
     LinuxKernelTask,
     SyscallResult,
+    sys_component,
+    sys_component_mut,
 };
 use crate::emulator::system::fd_map::FileDescriptor;
 use crate::emulator::system::memory::rw_interface::{

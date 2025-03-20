@@ -1,5 +1,5 @@
-use crate::components::mmu::tlb_entry::TLBEntry;
 use crate::components::mmu::MemoryAction;
+use crate::components::mmu::tlb_entry::TLBEntry;
 use crate::errors::cpu::CPUError;
 use mogi_utilities::addresses::EVAddr;
 

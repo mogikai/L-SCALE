@@ -1,7 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    parse_quote,
     Data,
     DataEnum,
     DataStruct,
@@ -11,6 +10,7 @@ use syn::{
     FieldsUnnamed,
     GenericParam,
     Generics,
+    parse_quote,
 };
 
 pub fn derive_decode_impl(input: DeriveInput) -> TokenStream {

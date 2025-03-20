@@ -8,12 +8,12 @@ use crate::emulator::abstractions::file_descriptors::{
     FileDescriptorOps,
 };
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
-use crate::emulator::platform::linux::fd::FileDescriptorData;
-use crate::emulator::platform::linux::kernel::net::inet6::tcp::TCPData;
-use crate::emulator::platform::linux::kernel::net::inet6::udp::socket::UdpSocketOps;
-use crate::emulator::platform::linux::kernel::net::inet6::udp::UDPData;
-use crate::emulator::platform::linux::kernel::net::SocketType;
 use crate::emulator::platform::linux::LinuxSystem;
+use crate::emulator::platform::linux::fd::FileDescriptorData;
+use crate::emulator::platform::linux::kernel::net::SocketType;
+use crate::emulator::platform::linux::kernel::net::inet6::tcp::TCPData;
+use crate::emulator::platform::linux::kernel::net::inet6::udp::UDPData;
+use crate::emulator::platform::linux::kernel::net::inet6::udp::socket::UdpSocketOps;
 use crate::emulator::system::fd_map::FileDescriptor;
 use mogi_system::errors::generic::GenericError;
 

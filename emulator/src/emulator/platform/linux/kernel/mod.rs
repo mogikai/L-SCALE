@@ -12,9 +12,9 @@ use std::rc::Rc;
 
 use byteorder::ByteOrder;
 use goblin::elf::{
+    Elf,
     dynamic,
     program_header,
-    Elf,
 };
 use num_enum::FromPrimitive;
 use tracing::{
@@ -37,10 +37,11 @@ use crate::emulator::abstractions::filesystem::FileId;
 use crate::emulator::abstractions::kernel_task::KernelTask;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::macros::push_stack;
+use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::{
-    FileDescriptorData,
     FD,
+    FileDescriptorData,
 };
 use crate::emulator::platform::linux::kernel::auxv::AUXVType;
 pub use crate::emulator::platform::linux::kernel::error::LinuxKernelError;
@@ -51,7 +52,6 @@ use crate::emulator::platform::linux::signals::{
     SignalHandler,
     SignalMaskFlags,
 };
-use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::system::default_handles;
 use crate::emulator::system::fd_map::{
     FileDescriptor,
@@ -88,12 +88,12 @@ macro_rules! sys_component_mut {
 }
 
 use mogi_system::components::cpu::{
-    RegisterX86,
     CPU,
+    RegisterX86,
 };
 use mogi_system::components::mmu::{
-    Permission,
     MMU,
+    Permission,
 };
 use mogi_utilities::addresses::EVAddr;
 pub(super) use {

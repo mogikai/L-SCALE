@@ -3,10 +3,10 @@ use std::path::Path;
 use common::get_sysdir;
 
 use crate::common::{
+    TestFailure,
     emulate,
     prepare_binary,
     setup_test,
-    TestFailure,
 };
 
 mod common;

@@ -1,7 +1,7 @@
 use std::cell::Ref;
 use std::cmp::max;
-use std::collections::btree_set::Iter;
 use std::collections::BTreeSet;
+use std::collections::btree_set::Iter;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::iter::once;
@@ -36,9 +36,9 @@ pub use accessor::MemoryAccessor;
 use layout::Layout;
 use mogi_system::components::mmu::tlb_entry::TLBEntry;
 use mogi_system::components::mmu::{
-    Permission,
     MMU,
     MREMAP_FLAGS,
+    Permission,
 };
 use mogi_utilities::addresses::{
     EPAddr,
@@ -48,8 +48,8 @@ use mogi_utilities::error::memory::MemoryError;
 
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::fd::{
-    FileDescriptorData,
     FD,
+    FileDescriptorData,
 };
 // TODO: Make TaskId generic
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
@@ -60,9 +60,9 @@ use crate::emulator::system::fd_map::{
 };
 use crate::emulator::system::memory::pregion::PhysicalRegion;
 use crate::emulator::system::memory::rw_interface::DirectMemoryWrite;
+use crate::emulator::system::memory::tlb::Tlb;
 use crate::emulator::system::memory::tlb::mapping::Mapping;
 pub use crate::emulator::system::memory::tlb::mapping::MappingType;
-use crate::emulator::system::memory::tlb::Tlb;
 use crate::util::auto_key::lazy_clone_map::LazyCloneMap;
 use crate::util::rcow::RCow;
 
@@ -509,7 +509,7 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
         } else {
             // todo: try resizing mapping by either shrinking the mapping or adding a new mapping directly after this mapping
             let err = MemoryError::AlreadyMapped; // Result of trying to resize
-                                                  // todo: On already mapped error: map in free region and copy there. then unmap old, if !flags.contains(MREMAP_DONTUNMAP)
+            // todo: On already mapped error: map in free region and copy there. then unmap old, if !flags.contains(MREMAP_DONTUNMAP)
             todo!()
         }
     }

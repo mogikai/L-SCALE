@@ -1,6 +1,9 @@
 use std::path::Path;
 use std::process::Command;
-use std::{env, fs};
+use std::{
+    env,
+    fs,
+};
 
 fn main() {
     println!("cargo:rerun-if-changed=assets/*");

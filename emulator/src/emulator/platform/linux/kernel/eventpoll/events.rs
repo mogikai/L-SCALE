@@ -1,6 +1,6 @@
 use bitflags::{
-    bitflags,
     Flags,
+    bitflags,
 };
 use byteorder::ByteOrder;
 

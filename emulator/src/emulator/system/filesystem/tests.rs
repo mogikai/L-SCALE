@@ -7,13 +7,13 @@ use std::path::Path;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{
-    fmt,
     EnvFilter,
+    fmt,
 };
 
 use rand::{
-    thread_rng,
     RngCore,
+    thread_rng,
 };
 
 use super::*;
@@ -49,9 +49,10 @@ fn basic() -> Result<(), GenericError> {
     fs.create_file(Path::new("/bin/test/my_file.bin"), None)?;
     assert!(fs.create_dir(Path::new("/my_file.txt/test"), None).is_err());
     assert!(fs.create_dir(Path::new("/bin/test"), None).is_err());
-    assert!(fs
-        .create_dir(Path::new("/doesnotexist/test"), None)
-        .is_err());
+    assert!(
+        fs.create_dir(Path::new("/doesnotexist/test"), None)
+            .is_err()
+    );
 
     fs.restore_snapshot()?;
     let resolved = fs.resolve_path(Path::new("/home/mark/my_stuff/my_file.txt"), false)?;

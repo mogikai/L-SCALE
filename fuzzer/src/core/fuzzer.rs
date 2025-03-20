@@ -11,17 +11,17 @@ use std::fmt::{
 };
 use std::fs;
 use std::fs::{
-    create_dir_all,
     File,
+    create_dir_all,
 };
 use std::hash::{
     Hash,
     Hasher,
 };
 use std::io::{
-    stdin,
     Read,
     Write,
+    stdin,
 };
 use std::iter::{
     empty,
@@ -35,18 +35,18 @@ use std::path::{
 };
 use std::process::exit;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::sync::atomic::{
     AtomicBool,
     Ordering,
 };
-use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
 
 use bmp::{
-    px,
     Image,
     Pixel,
+    px,
 };
 use graphviz_rust::attributes::dimen;
 use hilbert_curve::convert_1d_to_2d;
@@ -66,9 +66,9 @@ use serde::{
 };
 use serde_json;
 use slotmap::{
-    new_key_type,
     SecondaryMap,
     SlotMap,
+    new_key_type,
 };
 use tracing::{
     debug,
@@ -108,8 +108,8 @@ use crate::observers::bb_based::edge::{
 };
 use crate::observers::emulator::basic_block::BasicBlockCollector;
 use crate::reducers::bb::behavior::BasicBlockBehaviorReducer;
-use crate::reducers::edge::behavior::EdgeBehaviorReducer;
 use crate::reducers::edge::InterestingEdgesReducer;
+use crate::reducers::edge::behavior::EdgeBehaviorReducer;
 
 /// Testcases have an associated input and some metadata.
 /// The input data may be shared across testcases.

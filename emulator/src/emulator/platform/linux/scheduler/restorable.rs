@@ -1,8 +1,8 @@
 use byteorder::ByteOrder;
 use mogi_system::components::mmu::MMU;
 
-use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::components::cpu::CPU;
+use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::errors::generic::GenericError;
 
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;

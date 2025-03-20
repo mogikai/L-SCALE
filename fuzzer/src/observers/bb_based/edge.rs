@@ -9,8 +9,8 @@ use std::sync::atomic::{
     Ordering,
 };
 use std::sync::{
-    mpsc,
     Arc,
+    mpsc,
 };
 use std::thread;
 

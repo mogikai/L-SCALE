@@ -8,6 +8,7 @@ use byteorder::LittleEndian;
 use mogi_emulator::emulator::abstractions::emulator::Scheduler;
 use mogi_emulator::emulator::platform::linux::kernel::LinuxKernelTask;
 use mogi_emulator::emulator::platform::linux::scheduler::LinuxX86Scheduler;
+use mogi_emulator::emulator::system::System;
 use mogi_emulator::emulator::system::clock::Clock;
 use mogi_emulator::emulator::system::fd_map::FileDescriptorMap;
 use mogi_emulator::emulator::system::filesystem::Filesystem;
@@ -15,13 +16,12 @@ use mogi_emulator::emulator::system::hardware::unicorn::UCWrapper;
 use mogi_emulator::emulator::system::memory::Memory;
 use mogi_emulator::emulator::system::prng::SeedablePrngMap;
 use mogi_emulator::emulator::system::task_manager::TaskManager;
-use mogi_emulator::emulator::system::System;
 
-use crate::common::mocks::tcp_system::MockTCPSystem;
 use crate::common::TestFailure;
+use crate::common::mocks::tcp_system::MockTCPSystem;
 use mogi_emulator::emulator::abstractions::kernel_task::KernelTask;
-use mogi_system::errors::cpu::StopReason;
 use mogi_system::errors::SchedulerError;
+use mogi_system::errors::cpu::StopReason;
 
 pub fn emulate(
     sys_path: &Path,

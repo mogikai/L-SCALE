@@ -2,9 +2,9 @@ use addr_align::Align4k;
 use bitflags::Flags;
 use byteorder::ByteOrder;
 use mogi_system::components::mmu::{
-    Permission,
     MMU,
     MREMAP_FLAGS,
+    Permission,
 };
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::error::memory::MemoryError;
@@ -14,16 +14,16 @@ use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::FD;
 use crate::emulator::platform::linux::kernel::memory::flags::MMAP_FLAGS;
 use crate::emulator::platform::linux::kernel::{
-    sys_component_mut,
     LinuxKernelError,
     LinuxKernelTask,
     SyscallResult,
+    sys_component_mut,
 };
+use crate::emulator::system::memory::MappingType;
 use crate::emulator::system::memory::rw_interface::{
     DirectMemoryWrite,
     MemoryWrite,
 };
-use crate::emulator::system::memory::MappingType;
 use mogi_system::components::cpu::CPU;
 
 pub mod flags;

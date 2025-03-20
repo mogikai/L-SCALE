@@ -11,8 +11,8 @@ use crate::emulator::abstractions::network::{
     SocketAddress,
 };
 use crate::emulator::platform::linux::fd::FileDescriptorData;
-use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
+use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
 use crate::emulator::platform::linux::kernel::socket::Optval;
 use crate::emulator::system::fd_map::FileDescriptor;
 
