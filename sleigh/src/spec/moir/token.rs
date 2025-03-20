@@ -1,3 +1,5 @@
+use mogi_utilities::new_map_key;
+
 use crate::new_typed_index_table_id;
 use crate::spec::moir::endianness::MOIREndianness;
 
@@ -10,4 +12,4 @@ pub struct MOIRToken {
     pub endianness_override: Option<MOIREndianness>,
 }
 
-new_typed_index_table_id! { pub struct TokenId;  "TOK"; }
+new_map_key! { pub struct TokenId;  "TOK"; }

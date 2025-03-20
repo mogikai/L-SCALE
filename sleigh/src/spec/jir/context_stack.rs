@@ -1,14 +1,20 @@
 use crate::compiler::InternalCompilerResult;
-use crate::compiler::error::InternalError;
 use crate::lifter::context_provider::ContextProvider;
-use crate::spec::ProcessorSpecification;
 use crate::spec::moir::context::ContextId;
 use crate::spec::moir::field::{
     FieldId,
     MOIRField,
     MOIRFieldParent,
 };
-use mogi_utilities::index_map::SecondaryMap;
+use crate::spec::{
+    ProcessorSpecResult,
+    ProcessorSpecification,
+    ProcessorSpecificationError,
+};
+use mogi_utilities::index_map::{
+    MapKey,
+    SecondaryMap,
+};
 
 #[derive(Debug, Default)]
 pub(crate) struct ContextStack<'a> {
@@ -20,8 +26,11 @@ pub(crate) struct ContextStack<'a> {
 }
 
 impl<'a> ContextStack<'a> {
-    pub(crate) fn new<C: ContextProvider>(specification: &'a ProcessorSpecification, context_provider: &C) -> InternalCompilerResult<Self> {
-        let mut highest_cid = ContextId::from(0);
+    pub(crate) fn new<C: ContextProvider>(
+        specification: &'a ProcessorSpecification,
+        context_provider: &C,
+    ) -> ProcessorSpecResult<Self> {
+        let mut highest_cid = ContextId::try_from_index(0).expect("Zero is a valid index");
         let mut context_fields = SecondaryMap::default();
 
         for (field_id, field) in specification.symbol_tables.fields.items() {
@@ -33,8 +42,8 @@ impl<'a> ContextStack<'a> {
 
         let mut slf = Self {
             // initialize default layer with zeroes
-            context_values: vec![0; usize::from(highest_cid) + 1],
-            num_values: usize::from(highest_cid) + 1,
+            context_values: vec![0; highest_cid.to_index() + 1],
+            num_values: highest_cid.to_index() + 1,
             context_fields,
         };
 
@@ -63,12 +72,12 @@ impl<'a> ContextStack<'a> {
     pub(crate) fn context_value(
         &self,
         cid: ContextId,
-    ) -> InternalCompilerResult<u64> {
-        if usize::from(cid) >= self.num_values {
+    ) -> ProcessorSpecResult<u64> {
+        if cid.to_index() >= self.num_values {
             todo!("Generate error report for out of bounds context id");
         }
 
-        let index = self.context_values.len() - usize::from(cid) - 1;
+        let index = self.context_values.len() - cid.to_index() - 1;
 
         Ok(*self
             .context_values
@@ -81,12 +90,12 @@ impl<'a> ContextStack<'a> {
     pub(crate) fn context_value_mut(
         &mut self,
         cid: ContextId,
-    ) -> InternalCompilerResult<&mut u64> {
-        if usize::from(cid) >= self.num_values {
+    ) -> ProcessorSpecResult<&mut u64> {
+        if cid.to_index() >= self.num_values {
             todo!("Generate error report for out of bounds context id");
         }
 
-        let index = self.context_values.len() - usize::from(cid) - 1;
+        let index = self.context_values.len() - cid.to_index() - 1;
 
         Ok(self
             .context_values
@@ -98,10 +107,12 @@ impl<'a> ContextStack<'a> {
     pub(crate) fn field_value(
         &self,
         field_id: FieldId,
-    ) -> InternalCompilerResult<u64> {
+    ) -> ProcessorSpecResult<u64> {
         let field = self.context_fields[field_id]
             .as_ref()
-            .ok_or_else(|| -> InternalError { todo!("Generate error report for missing context field") })?;
+            .ok_or_else(|| -> ProcessorSpecificationError {
+                todo!("Generate error report for missing context field")
+            })?;
         let cid = match field.parent {
             MOIRFieldParent::Token(_) => panic!("We only store context fields"),
             MOIRFieldParent::Context(cid) => cid,
@@ -116,10 +127,12 @@ impl<'a> ContextStack<'a> {
         &mut self,
         field_id: FieldId,
         value: u64,
-    ) -> InternalCompilerResult {
+    ) -> ProcessorSpecResult {
         let field = self.context_fields[field_id]
             .as_ref()
-            .ok_or_else(|| -> InternalError { todo!("Generate error report for missing context field") })?;
+            .ok_or_else(|| -> ProcessorSpecificationError {
+                todo!("Generate error report for missing context field")
+            })?;
         let cid = match field.parent {
             MOIRFieldParent::Token(_) => panic!("We only store context fields"),
             MOIRFieldParent::Context(cid) => cid,

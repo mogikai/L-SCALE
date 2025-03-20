@@ -32,6 +32,7 @@ use mogi_utilities::addresses::{
     EVAddr,
     HVAddr,
 };
+use mogi_utilities::index_map::MapKey;
 use std::marker::PhantomData;
 
 impl X64AllocRequirements {
@@ -196,7 +197,7 @@ impl X64Emitter<'_> {
             ; mov rsi, QWORD translate_callback as _
             // evaddr is already loaded in RDX.
             ; mov rcx, WORD size as _
-            ; mov r8d, DWORD usize::from(space_id) as _
+            ; mov r8d, DWORD space_id.to_index() as _
             // TODO: Call the correct helper function.
             ; mov rax, QWORD translate_trampoline as _
             //// Perform the trampoline call

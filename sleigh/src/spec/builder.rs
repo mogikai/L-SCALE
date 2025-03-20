@@ -73,13 +73,25 @@ use mogi_sleigh_parser::{
     Spanned,
     StringId,
 };
-use mogi_utilities::index_map::PrimaryMap;
+use mogi_utilities::index_map::{
+    MapKey,
+    PrimaryMap,
+};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use std::fs::{File, OpenOptions};
-use std::io::{BufWriter, Write};
-use std::path::{Path, PathBuf};
+use std::fs::{
+    File,
+    OpenOptions,
+};
+use std::io::{
+    BufWriter,
+    Write,
+};
+use std::path::{
+    Path,
+    PathBuf,
+};
 use strum_macros::Display;
 use tracing::debug;
 
@@ -102,16 +114,16 @@ pub enum MOIRSymbolId {
 #[derive(Debug, Default)]
 /// A transparent helper struct that contains all the symbol tables to make the builder more manageable.
 pub(super) struct MOIRSymbolTables {
-    pub(super) macros: TypedIndexTable<MacroId, MOIRMacro>,
-    pub(super) spaces: TypedIndexTable<SpaceId, MOIRSpace>,
-    pub(super) tables: TypedIndexTable<TableId, MOIRTable>,
-    pub(super) constructors: TypedIndexTable<ConstructorId, MOIRConstructor>,
+    pub(super) macros: PrimaryMap<MacroId, MOIRMacro>,
+    pub(super) spaces: PrimaryMap<SpaceId, MOIRSpace>,
+    pub(super) tables: PrimaryMap<TableId, MOIRTable>,
+    pub(super) constructors: PrimaryMap<ConstructorId, MOIRConstructor>,
     pub(super) varnodes: PrimaryMap<VarNodeId, MOIRVarNode>,
-    pub(super) tokens: TypedIndexTable<TokenId, MOIRToken>,
+    pub(super) tokens: PrimaryMap<TokenId, MOIRToken>,
     pub(super) fields: PrimaryMap<FieldId, MOIRField>,
     pub(super) custom_ops: PrimaryMap<CustomOpId, MOIRCustomOp>,
     // bitrange registers are treated more like placeholders for the corresponding pcode operations to realize access
-    pub(super) bitrange_registers: TypedIndexTable<BitrangeRegisterId, MOIRTBitrangeRegister>,
+    pub(super) bitrange_registers: PrimaryMap<BitrangeRegisterId, MOIRTBitrangeRegister>,
 }
 
 #[derive(Debug)]
@@ -125,7 +137,7 @@ pub struct ProcessorSpecificationBuilder {
     /// The main symbol map of the specification.
     /// Each identifier points to a specific symbol id.
     /// The symbols are saved in separate lists, one for each symbol type.
-    symbol_ids: TypedIndexTable<Ident, MOIRSymbolId>,
+    symbol_ids: PrimaryMap<Ident, MOIRSymbolId>,
 
     /// Maps the identifier ids to corresponding strings.
     symbol_strings: HashMap<Ident, Spanned<StringId>>,
@@ -138,7 +150,7 @@ pub struct ProcessorSpecificationBuilder {
     alignment: Option<Spanned<u16>>,
     /// Context defined on top of existing varnodes containing context fields (e.g. a dedicated
     /// `contextreg` varnode containing a field `longmode=(0,1)` for x86).
-    context: TypedIndexTable<ContextId, MOIRContext>,
+    context: PrimaryMap<ContextId, MOIRContext>,
 
     /// Maps a string identifier to the corresponding internal [Ident].
     /// This is useful for the compiler, when an identifier string references another symbol.
@@ -703,7 +715,7 @@ impl ProcessorSpecificationBuilder {
         symbol: &MOIRSymbolId,
     ) -> Option<&Spanned<StringId>> {
         self.symbol_ids
-            .iter()
+            .items()
             .find_map(|(k, v)| if v == symbol { self.symbol_strings.get(&k) } else { None })
     }
 
@@ -835,7 +847,7 @@ impl Default for ProcessorSpecificationBuilder {
         slf.define_varnode(
             Spanned::new(epsilon, InputSpan::default()),
             MOIRVarNode {
-                space: SpaceId::from(0),
+                space: SpaceId::try_from_index(0).expect("Zero is a valid id"),
                 offset: 0,
                 size: 0,
             },
@@ -850,17 +862,30 @@ impl ProcessorSpecificationBuilder {
         Self::default()
     }
 
-    fn dump_symbols_to_file(&self, path: &Path) {
-        let file = OpenOptions::new().write(true).create(true).open(path).expect("Couldn't open file");
+    fn dump_symbols_to_file(
+        &self,
+        path: &Path,
+    ) {
+        let file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open(path)
+            .expect("Couldn't open file");
         let mut writer = BufWriter::new(file);
 
-        for (ident, symbol_id) in self.symbol_ids.iter() {
-            let string_id = self.symbol_strings.get(&ident).expect("Ident not assigned to string id");
-            let string = self.interner.string(string_id.into_value()).expect("String id not assigned to string");
+        for (ident, symbol_id) in self.symbol_ids.items() {
+            let string_id = self
+                .symbol_strings
+                .get(&ident)
+                .expect("Ident not assigned to string id");
+            let string = self
+                .interner
+                .string(string_id.into_value())
+                .expect("String id not assigned to string");
             write!(writer, "{:?} <=> {}\n", symbol_id, string).unwrap();
         }
 
-        for (cid, c) in self.symbol_tables.constructors.iter() {
+        for (cid, c) in self.symbol_tables.constructors.items() {
             write!(writer, "{:?} <=> {}\n", cid, c.display).unwrap();
         }
     }
@@ -899,7 +924,7 @@ impl ProcessorSpecificationBuilder {
             symbol_tables: jir.symbol_tables,
             contexts: self
                 .context
-                .iter()
+                .items()
                 .map(|(id, context)| (context.varnode, id))
                 .collect(),
             string_to_ident_mapping: jir.string_to_ident_mapping,

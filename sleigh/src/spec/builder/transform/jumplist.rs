@@ -57,7 +57,10 @@ use crate::spec::moir::varnode::{
 };
 use crate::spec::typed_index_table::TypedIndexTable;
 use itertools::Itertools;
-use mogi_utilities::index_map::PrimaryMap;
+use mogi_utilities::index_map::{
+    MapKey,
+    PrimaryMap,
+};
 use petgraph::Graph;
 use petgraph::dot::Dot;
 use tracing::error;
@@ -107,14 +110,14 @@ struct JumplistDiagnostics {
 
 /// Create a [Jumplist] for the root [MOIRTable]
 pub(super) struct JumplistBuilder<'a> {
-    jumplist_cache: TypedIndexTable<JumplistId, Jumplist>,
+    jumplist_cache: PrimaryMap<JumplistId, Jumplist>,
     sublist_cache: HashMap<Submatchers, JumplistId>,
-    tables: &'a TypedIndexTable<TableId, MOIRTable>,
+    tables: &'a PrimaryMap<TableId, MOIRTable>,
     fields: &'a PrimaryMap<FieldId, MOIRField>,
-    tokens: &'a TypedIndexTable<TokenId, MOIRToken>,
-    context: &'a TypedIndexTable<ContextId, MOIRContext>,
+    tokens: &'a PrimaryMap<TokenId, MOIRToken>,
+    context: &'a PrimaryMap<ContextId, MOIRContext>,
     varnodes: &'a PrimaryMap<VarNodeId, MOIRVarNode>,
-    constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
+    constructors: &'a PrimaryMap<ConstructorId, MOIRConstructor>,
     diagnostics: JumplistDiagnostics,
 }
 
@@ -149,15 +152,15 @@ impl<'a> Row<'a> {
 
 impl<'a> JumplistBuilder<'a> {
     pub(super) fn new(
-        tables: &'a TypedIndexTable<TableId, MOIRTable>,
+        tables: &'a PrimaryMap<TableId, MOIRTable>,
         fields: &'a PrimaryMap<FieldId, MOIRField>,
-        tokens: &'a TypedIndexTable<TokenId, MOIRToken>,
-        context: &'a TypedIndexTable<ContextId, MOIRContext>,
+        tokens: &'a PrimaryMap<TokenId, MOIRToken>,
+        context: &'a PrimaryMap<ContextId, MOIRContext>,
         varnodes: &'a PrimaryMap<VarNodeId, MOIRVarNode>,
-        constructors: &'a TypedIndexTable<ConstructorId, MOIRConstructor>,
+        constructors: &'a PrimaryMap<ConstructorId, MOIRConstructor>,
     ) -> Self {
         Self {
-            jumplist_cache: TypedIndexTable::default(),
+            jumplist_cache: Default::default(),
             sublist_cache: HashMap::new(),
             tables,
             fields,
@@ -172,7 +175,7 @@ impl<'a> JumplistBuilder<'a> {
     pub(super) fn transform(
         mut self,
         root_table_id: TableId,
-    ) -> InternalCompilerResult<TypedIndexTable<JumplistId, Jumplist>> {
+    ) -> InternalCompilerResult<PrimaryMap<JumplistId, Jumplist>> {
         trace_build!("Processing {} tables into jumplists", self.tables.len());
 
         let root_table = self
@@ -271,7 +274,10 @@ impl<'a> JumplistBuilder<'a> {
 
                 // create single jumplist out of all matchers
                 let new_jumplist = self.create_jumplist(0, &matchers)?;
-                self.jumplist_cache.replace(dummy_jumplist_id, new_jumplist);
+                *self
+                    .jumplist_cache
+                    .get_mut(dummy_jumplist_id)
+                    .expect("We just inserted this") = new_jumplist;
 
                 self.diagnostics.root_level_count += 1;
 
@@ -891,7 +897,7 @@ fn arrange_into_hierarchy<'a>(merged_rows: Vec<(u64, Vec<Row<'a>>)>) -> Vec<(u64
 
 fn save_graph(
     root: JumplistId,
-    jumplist_cache: &TypedIndexTable<JumplistId, Jumplist>,
+    jumplist_cache: &PrimaryMap<JumplistId, Jumplist>,
 ) {
     // depth-first traversal
     let mut stack = vec![root];
@@ -902,7 +908,7 @@ fn save_graph(
         let list = jumplist_cache.get(top).unwrap();
         let list_node = *nodes
             .entry(NextJumplistEntry::TrailingNext(top))
-            .or_insert_with(|| graph.add_node(format!("L{}", usize::from(top))));
+            .or_insert_with(|| graph.add_node(format!("L{}", top.to_index())));
 
         for (value, entries) in list.entries() {
             for entry in entries {
@@ -914,11 +920,11 @@ fn save_graph(
                     let entry_node_weight = match &entry.next_entry {
                         NextJumplistEntry::TrailingNext(jlid) => {
                             stack.push(*jlid);
-                            format!("L{}", usize::from(*jlid))
+                            format!("L{}", jlid.to_index())
                         }
                         NextJumplistEntry::TrailingSame(jlid) => {
                             stack.push(*jlid);
-                            format!("S{}", usize::from(*jlid))
+                            format!("S{}", jlid.to_index())
                         }
                         NextJumplistEntry::Constructor {
                             cid,
@@ -945,7 +951,7 @@ fn save_graph(
                         .entry(NextJumplistEntry::TrailingNext(sublist))
                         .or_insert_with(|| {
                             // not seen => insert node and push onto stack
-                            let sublist_node_weight = format!("L{}", usize::from(sublist));
+                            let sublist_node_weight = format!("L{}", sublist.to_index());
                             stack.push(sublist);
                             graph.add_node(sublist_node_weight)
                         });

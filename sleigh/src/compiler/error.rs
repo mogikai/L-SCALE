@@ -1,6 +1,6 @@
+use crate::spec::ProcessorSpecificationError;
 use crate::spec::builder::MOIRSymbolId;
 use crate::spec::moir::common::MOIRSize;
-use crate::spec::ProcessorSpecificationError;
 use ariadne::{
     ColorGenerator,
     Fmt,

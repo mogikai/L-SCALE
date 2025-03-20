@@ -1,3 +1,5 @@
+use mogi_utilities::new_map_key;
+
 use crate::new_typed_index_table_id;
 
 use super::varnode::VarNodeId;
@@ -9,4 +11,4 @@ pub struct MOIRTBitrangeRegister {
     pub size: u64,   // number of bits
 }
 
-new_typed_index_table_id! { pub struct BitrangeRegisterId; "BR"; }
+new_map_key! { pub struct BitrangeRegisterId; "BR"; }

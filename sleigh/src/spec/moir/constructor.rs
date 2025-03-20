@@ -41,6 +41,7 @@ use crate::{
 };
 use mogi_sleigh_parser::SleighInterner;
 use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::new_map_key;
 use serde_derive::{
     Deserialize,
     Serialize,
@@ -95,7 +96,7 @@ pub struct MOIRConstructor {
     pub export: Option<MOIRExport>,
 }
 
-new_typed_index_table_id! { pub struct ConstructorId; "C"; }
+new_map_key! { pub struct ConstructorId; "C"; }
 
 impl MOIRConstructor {
     /// Transform the MOIR code template in the constructor into actual JCode.

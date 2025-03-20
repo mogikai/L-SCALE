@@ -1,3 +1,7 @@
+//! Transformation of arbitrary bit pattern constraints into a [Matcher].
+//!
+//! This includes the following steps
+
 use std::collections::{
     BTreeSet,
     HashSet,

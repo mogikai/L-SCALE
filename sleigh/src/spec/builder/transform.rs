@@ -31,7 +31,6 @@ use crate::spec::moir::varnode::{
     MOIRVarNode,
     VarNodeId,
 };
-use crate::spec::typed_index_table::TypedIndexTable;
 use crate::spec::{
     CustomOpId,
     Ident,
@@ -58,32 +57,32 @@ pub(super) struct MOIRToJIRTransformer<'a> {
 
 #[derive(Debug)]
 pub struct JIRData {
-    pub symbol_ids: TypedIndexTable<Ident, JIRSymbolId>,
+    pub symbol_ids: PrimaryMap<Ident, JIRSymbolId>,
     pub symbol_strings: HashMap<Ident, StringId>,
     pub symbol_tables: JIRSymbolTables,
-    pub jumplist_cache: TypedIndexTable<JumplistId, Jumplist>,
+    pub jumplist_cache: PrimaryMap<JumplistId, Jumplist>,
     pub string_to_ident_mapping: HashMap<StringId, Ident>,
 }
 
 #[derive(Debug)]
 struct MOIRData<'a> {
     interner: &'a SleighInterner,
-    symbol_ids: TypedIndexTable<Ident, MOIRSymbolId>,
+    symbol_ids: PrimaryMap<Ident, MOIRSymbolId>,
     symbol_strings: HashMap<Ident, Spanned<StringId>>,
     symbol_tables: MOIRSymbolTables,
     string_to_ident_mapping: HashMap<StringId, Ident>,
-    context: &'a TypedIndexTable<ContextId, MOIRContext>,
+    context: &'a PrimaryMap<ContextId, MOIRContext>,
     root_table_id: TableId,
 }
 
 impl<'a> MOIRToJIRTransformer<'a> {
     pub fn new(
         interner: &'a SleighInterner,
-        symbol_ids: TypedIndexTable<Ident, MOIRSymbolId>,
+        symbol_ids: PrimaryMap<Ident, MOIRSymbolId>,
         symbol_strings: HashMap<Ident, Spanned<StringId>>,
         symbol_tables: MOIRSymbolTables,
         string_to_ident_mapping: HashMap<StringId, Ident>,
-        context: &'a TypedIndexTable<ContextId, MOIRContext>,
+        context: &'a PrimaryMap<ContextId, MOIRContext>,
         root_table_id: TableId,
     ) -> Self {
         Self {
@@ -114,14 +113,14 @@ impl<'a> MOIRToJIRTransformer<'a> {
             .map(|(ident, symbol_id)| {
                 let symbol_id = match symbol_id {
                     MOIRSymbolId::Undefined => todo!("Generate error for undefined symbol"),
-                    MOIRSymbolId::Macro(id) => JIRSymbolId::Macro(id),
-                    MOIRSymbolId::Space(id) => JIRSymbolId::Space(id),
-                    MOIRSymbolId::Table(id) => JIRSymbolId::Table(id),
-                    MOIRSymbolId::Token(id) => JIRSymbolId::Token(id),
-                    MOIRSymbolId::Field(id) => JIRSymbolId::Field(id),
-                    MOIRSymbolId::VarNode(id) => JIRSymbolId::VarNode(id),
-                    MOIRSymbolId::BitrangeRegister(id) => JIRSymbolId::BitrangeRegister(id),
-                    MOIRSymbolId::CustomOp(id) => JIRSymbolId::CustomOp(id),
+                    MOIRSymbolId::Macro(id) => JIRSymbolId::Macro(*id),
+                    MOIRSymbolId::Space(id) => JIRSymbolId::Space(*id),
+                    MOIRSymbolId::Table(id) => JIRSymbolId::Table(*id),
+                    MOIRSymbolId::Token(id) => JIRSymbolId::Token(*id),
+                    MOIRSymbolId::Field(id) => JIRSymbolId::Field(*id),
+                    MOIRSymbolId::VarNode(id) => JIRSymbolId::VarNode(*id),
+                    MOIRSymbolId::BitrangeRegister(id) => JIRSymbolId::BitrangeRegister(*id),
+                    MOIRSymbolId::CustomOp(id) => JIRSymbolId::CustomOp(*id),
                 };
                 (ident, symbol_id)
             })
@@ -185,9 +184,7 @@ fn transform_custom_ops(
         .collect::<PrimaryMap<CustomOpId, JIRCustomOp>>())
 }
 
-fn transform_spaces(
-    spaces: TypedIndexTable<SpaceId, MOIRSpace>
-) -> InternalCompilerResult<TypedIndexTable<SpaceId, JIRSpace>> {
+fn transform_spaces(spaces: PrimaryMap<SpaceId, MOIRSpace>) -> InternalCompilerResult<PrimaryMap<SpaceId, JIRSpace>> {
     Ok(spaces
         .into_iter()
         .map(|(ident, space)| {

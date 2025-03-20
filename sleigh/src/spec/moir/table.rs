@@ -11,6 +11,7 @@ use crate::spec::moir::scope::{
 };
 use crate::spec::moir::varnode::MOIRLocal;
 use crate::spec::typed_index_table::TypedIndexTable;
+use mogi_utilities::new_map_key;
 use serde_derive::{
     Deserialize,
     Serialize,
@@ -48,4 +49,4 @@ impl MOIRExport {
     }
 }
 
-new_typed_index_table_id! { pub struct TableId; "TBL"; }
+new_map_key! { pub struct TableId; "TBL"; }

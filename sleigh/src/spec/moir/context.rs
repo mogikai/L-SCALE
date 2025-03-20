@@ -1,4 +1,5 @@
 use crate::new_typed_index_table_id;
+use mogi_utilities::new_map_key;
 
 use super::varnode::VarNodeId;
 
@@ -9,4 +10,4 @@ pub struct MOIRContext {
 }
 
 // define MOIRContextId as a key for a SlotMap instead because it's not a symbol
-new_typed_index_table_id! { pub struct ContextId; "CNTXT"; }
+new_map_key! { pub struct ContextId; "CNTXT"; }

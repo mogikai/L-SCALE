@@ -42,6 +42,29 @@ use std::ffi::c_void;
 use std::pin::Pin;
 use std::ptr::NonNull;
 use std::rc::Rc;
+use tracing::trace;
+
+use crate::jit::code_buffer::{
+    AnonymousBlockId,
+    CodeBuffer,
+    CompiledBasicBlock,
+};
+use crate::jit::x86::scaffolding::{
+    build_epilogue,
+    build_prelude,
+};
+use crate::jit::x86::x64emitter::{
+    TlbMissCallback,
+    X64Emitter,
+};
+use mogi_utilities::index_map::{
+    MapKey,
+    SecondaryMap,
+};
+use registers::{
+    RegAlloc,
+    RegisterTracker,
+};
 use task_context::X86TaskContext;
 use x64emitter::CustomOpCallback;
 
@@ -384,7 +407,7 @@ impl MogiJit for X86MogiJit {
     ) -> Result<&'b [u8], JitError> {
         let spec = self.processor_specification.borrow();
         let varnode = spec.varnode_by_id(varnode).unwrap();
-        Ok(context.spaces()[usize::from(varnode.space_id)].varnode(varnode))
+        Ok(context.spaces()[varnode.space_id.to_index()].varnode(varnode))
     }
 
     fn varnode_mut<'b>(
@@ -394,7 +417,7 @@ impl MogiJit for X86MogiJit {
     ) -> Result<&'b mut [u8], JitError> {
         let spec = self.processor_specification.borrow();
         let varnode = spec.varnode_by_id(varnode).unwrap();
-        Ok(context.spaces_mut()[usize::from(varnode.space_id)].varnode_mut(varnode))
+        Ok(context.spaces_mut()[varnode.space_id.to_index()].varnode_mut(varnode))
     }
 }
 

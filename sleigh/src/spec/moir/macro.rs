@@ -2,6 +2,7 @@ use crate::new_typed_index_table_id;
 use mogi_sleigh_parser::Spanned;
 use mogi_sleigh_parser::ast::common::SASTIdent;
 use mogi_sleigh_parser::ast::pcode::SASTPCode;
+use mogi_utilities::new_map_key;
 
 #[derive(Debug, Clone)]
 pub struct MOIRMacro {
@@ -11,4 +12,4 @@ pub struct MOIRMacro {
     pub pcode: SASTPCode,
 }
 
-new_typed_index_table_id! { pub struct MacroId; "M"; }
+new_map_key! { pub struct MacroId; "M"; }

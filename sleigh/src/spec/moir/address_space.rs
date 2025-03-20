@@ -4,6 +4,7 @@ use crate::{
     new_typed_index_table_id_16,
 };
 use mogi_sleigh_parser::ast::define::SASTAddressSpaceType;
+use mogi_utilities::new_map_key;
 
 #[derive(Debug)]
 /// A space refers to an address space with which the cpu can interact by storing or reading data to or from.
@@ -42,4 +43,4 @@ impl From<SASTAddressSpaceType> for MOIRSpaceType {
     }
 }
 
-new_typed_index_table_id_8! { pub struct SpaceId; "S"; }
+new_map_key! { pub struct SpaceId; "S"; }

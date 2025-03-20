@@ -3,8 +3,8 @@ use crate::compiler::error::{
     InternalErrorType,
     SleighCompilerError,
 };
-use crate::spec::builder::ProcessorSpecificationBuilder;
 use crate::spec::ProcessorSpecification;
+use crate::spec::builder::ProcessorSpecificationBuilder;
 use ariadne::Source;
 use mogi_sleigh_parser::inputcache::CompilerInputCache;
 use mogi_sleigh_parser::lexer::{
@@ -12,9 +12,9 @@ use mogi_sleigh_parser::lexer::{
     SleighTokens,
 };
 use mogi_sleigh_parser::parser::SleighParser;
+use mogi_sleigh_parser::preprocessor::SleighPreprocessorFactory;
 use mogi_sleigh_parser::preprocessor::error::PreprocessorError;
 use mogi_sleigh_parser::preprocessor::error::PreprocessorError::ParseError;
-use mogi_sleigh_parser::preprocessor::SleighPreprocessorFactory;
 use std::fmt::Debug;
 use std::path::{
     Path,

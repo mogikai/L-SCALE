@@ -122,7 +122,6 @@ fn stop_on_first_error() {
     }
 }
 
-
 #[test]
 fn parser_error() {
     common::setup_test();

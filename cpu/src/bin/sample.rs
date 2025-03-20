@@ -17,12 +17,16 @@ use mogi_cpu::tlb::{
 use mogi_mem::mmu::MogiMMU;
 use mogi_sleigh::SleighPreprocessorFactory;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
-use mogi_sleigh::spec::ProcessorSpecification;
+use mogi_sleigh::spec::{
+    ProcessorSpecification,
+    SpaceId,
+};
 use mogi_system::components::mmu::{
     MMU,
     Permission,
 };
 use mogi_utilities::addresses::HVAddr;
+use mogi_utilities::index_map::MapKey;
 use std::cell::RefCell;
 use std::env::current_dir;
 use std::fs::{
@@ -58,8 +62,15 @@ fn main() {
     // let spec_path = Path::new("./sleigh/ia.sinc");
     let specification = load_specification(spec_path);
     // println!("{:?}", specification.list_global_varnode_strings());
-    println!("{:?}", specification.space_max_used_offset(3.into()).unwrap());
-    specification.debug_space_allocation(3.into()).unwrap();
+    println!(
+        "{:?}",
+        specification
+            .space_max_used_offset(SpaceId::try_from_index(3).expect("3 is a valid index"))
+            .unwrap()
+    );
+    specification
+        .debug_space_allocation(SpaceId::try_from_index(3).expect("3 is a valid index"))
+        .unwrap();
     let specification = Rc::new(RefCell::new(specification));
     // Set up the mmu.
     let mmu = Rc::new(RefCell::new(MogiMMU::new()));

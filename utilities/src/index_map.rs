@@ -40,7 +40,7 @@ macro_rules! new_map_key {
         $vis struct $name(std::num::NonZero<usize>);
 
         $crate::map_key_display!($name, $display_prefix);
-        $crate::mape_key_trait!($name, usize::try_from);
+        $crate::map_key_trait!($name, usize::try_from);
     };
 }
 #[cfg(not(feature = "serde"))]
@@ -52,7 +52,7 @@ macro_rules! new_map_key {
         $vis struct $name(std::num::NonZero<usize>);
 
         $crate::map_key_display!($name, $display_prefix);
-        $crate::mape_key_trait!($name, usize::try_from);
+        $crate::map_key_trait!($name, usize::try_from);
     };
 }
 
@@ -70,7 +70,7 @@ macro_rules! new_map_key_16 {
         $vis struct $name(std::num::NonZero<u16>);
 
         $crate::map_key_display!($name, $display_prefix);
-        $crate::mape_key_trait!($name, u16::try_from);
+        $crate::map_key_trait!($name, u16::try_from);
     };
 }
 #[cfg(not(feature = "serde"))]
@@ -82,7 +82,7 @@ macro_rules! new_map_key_16 {
         $vis struct $name(std::num::NonZero<u16>);
 
         $crate::map_key_display!($name, $display_prefix);
-        $crate::mape_key_trait!($name, u16::try_from);
+        $crate::map_key_trait!($name, u16::try_from);
     };
 }
 
@@ -101,7 +101,7 @@ macro_rules! map_key_display {
 }
 
 #[macro_export(local_inner_macros)]
-macro_rules! mape_key_trait {
+macro_rules! map_key_trait {
     ($name:ident, $backing_type_conversion:path) => {
         impl $crate::index_map::MapKey for $name {
             fn try_from_index(index: usize) -> Result<Self, $crate::index_map::IndexMapError> {

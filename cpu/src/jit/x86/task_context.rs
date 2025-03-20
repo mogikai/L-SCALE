@@ -17,6 +17,7 @@ use mogi_sleigh::spec::{
     FieldId,
     ProcessorSpecification,
 };
+use mogi_utilities::index_map::MapKey;
 use std::array;
 use std::mem::offset_of;
 use std::ptr::NonNull;
@@ -78,9 +79,9 @@ impl X86TaskContext {
     pub fn varnode_offset(slice: JIRSlice) -> usize {
         // TODO: We need to either make sure in the spec generation, that space_id is in range, or
         //       perform some kind of mapping.
-        assert!(usize::from(slice.space_id) < Self::max_spaces());
+        assert!(slice.space_id.to_index() < Self::max_spaces());
         // space = spaces[varnode.space_id]
-        let space_offset = offset_of!(Self, spaces) + usize::from(slice.space_id) * size_of::<Space>();
+        let space_offset = offset_of!(Self, spaces) + slice.space_id.to_index() * size_of::<Space>();
         // space[slice.offset]
         space_offset + slice.offset as usize
     }
@@ -91,14 +92,14 @@ impl JITTaskRuntimeContext for X86TaskContext {
         &self,
         slice: JIRSlice,
     ) -> Result<&[u8], RuntimeError> {
-        Ok(self.spaces[usize::from(slice.space_id)].slice(slice))
+        Ok(self.spaces[slice.space_id.to_index()].slice(slice))
     }
 
     fn slice_mut(
         &mut self,
         slice: JIRSlice,
     ) -> Result<&mut [u8], RuntimeError> {
-        Ok(self.spaces[usize::from(slice.space_id)].slice_mut(slice))
+        Ok(self.spaces[slice.space_id.to_index()].slice_mut(slice))
     }
 
     fn tlb(&self) -> &TLB {

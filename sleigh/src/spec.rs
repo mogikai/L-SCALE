@@ -3,7 +3,9 @@ use self::jir::jumplist::{
     JumplistId,
 };
 use self::moir::field::MOIRField;
+use crate::compiler::InternalCompilerResult;
 use crate::lifter::LifterDiagnostics;
+use crate::lifter::context_provider::ContextProvider;
 use crate::new_typed_index_table_id;
 use crate::spec::builder::MOIRSymbolId;
 use crate::spec::jir::context_stack::ContextStack;
@@ -31,15 +33,17 @@ use crate::spec::moir::table::{
 };
 use crate::spec::moir::token::TokenId;
 use crate::spec::moir::varnode::VarNodeId;
-use crate::spec::typed_index_table::TypedIndexTable;
 use brotli::Decompressor;
+use jir::jumplist::MatchContext;
 use mogi_sleigh_parser::{
     ParserContext,
     SleighInterner,
     Spanned,
     StringId,
 };
+use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::PrimaryMap;
+use mogi_utilities::new_map_key;
 use serde_derive::{
     Deserialize,
     Serialize,
@@ -62,7 +66,7 @@ mod lifter;
 pub mod moir;
 pub mod typed_index_table;
 
-new_typed_index_table_id! {
+new_map_key! {
     /// [Ident] is the identifier type that is used by the [ProcessorSpecification]
     /// to refer to individual [JIRSymbolId]s. Each [JIRSymbolId] in turn refers to the corresponding symbol table.
     /// TODO: Improve docs
@@ -87,9 +91,9 @@ pub enum JIRSymbolId {
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub(crate) struct JIRSymbolTables {
     // macros: TypedIndexTable<MOIRMacroId, MOIRMacro>,
-    pub(crate) spaces: TypedIndexTable<SpaceId, JIRSpace>,
+    pub(crate) spaces: PrimaryMap<SpaceId, JIRSpace>,
     // pub(crate) tables: TypedIndexTable<TableId, MOIRTable>,
-    pub(crate) constructors: TypedIndexTable<ConstructorId, MOIRConstructor>,
+    pub(crate) constructors: PrimaryMap<ConstructorId, MOIRConstructor>,
     pub(crate) varnodes: PrimaryMap<VarNodeId, JIRVarNode>,
     pub(crate) fields: PrimaryMap<FieldId, MOIRField>,
     // tokens: TypedIndexTable<MOIRTokenId, MOIRToken>,
@@ -116,7 +120,7 @@ pub struct ProcessorSpecification {
     /// The main symbol map of the specification.
     /// Each identifier points to a specific symbol id.
     /// The symbols are saved in separate lists, one for each symbol type.
-    pub(crate) symbol_ids: TypedIndexTable<Ident, JIRSymbolId>,
+    pub(crate) symbol_ids: PrimaryMap<Ident, JIRSymbolId>,
 
     /// Maps the identifier ids to corresponding strings.
     pub(crate) symbol_strings: HashMap<Ident, StringId>,
@@ -133,7 +137,7 @@ pub struct ProcessorSpecification {
     pub(crate) string_to_ident_mapping: HashMap<StringId, Ident>,
 
     /// The first jumplist is the root from which matching begins.
-    pub(crate) jumplist_cache: TypedIndexTable<JumplistId, Jumplist>,
+    pub(crate) jumplist_cache: PrimaryMap<JumplistId, Jumplist>,
 
     pub(crate) root_table: TableId,
 
@@ -161,6 +165,14 @@ impl ProcessorSpecification {
     pub fn program_counter_slice(&self) -> JIRSlice {
         // TODO: Read this from somewhere instead of hardcoding it. Currently x64 specific
         self.varnode_slice_by_string("RIP").unwrap()
+    }
+
+    /// Create a new [MatchContext] from the given [EVAddr] and [ContextProvider].
+    pub fn new_match_context<C: ContextProvider>(
+        &self,
+        addr: EVAddr,
+    ) -> ProcessorSpecResult<MatchContext> {
+        Ok(MatchContext::new(addr, &self.jumplist_cache, &self.symbol_tables.constructors))
     }
 
     pub fn default_space(&self) -> SpaceId {
@@ -325,7 +337,7 @@ impl ProcessorSpecification {
         // TODO: Maybe we can include some backwards mappings to make these lookups easier?
         //       although they most likely are only used in rare cases.
         self.symbol_ids
-            .iter()
+            .items()
             .filter_map(|(id, sym)| {
                 if let JIRSymbolId::VarNode(_) = sym {
                     let string_id = *self
@@ -344,11 +356,11 @@ impl ProcessorSpecification {
             .collect()
     }
 
-    pub fn jumplist_cache(&self) -> &TypedIndexTable<JumplistId, Jumplist> {
+    pub fn jumplist_cache(&self) -> &PrimaryMap<JumplistId, Jumplist> {
         &self.jumplist_cache
     }
 
-    pub fn constructors(&self) -> &TypedIndexTable<ConstructorId, MOIRConstructor> {
+    pub fn constructors(&self) -> &PrimaryMap<ConstructorId, MOIRConstructor> {
         &self.symbol_tables.constructors
     }
 

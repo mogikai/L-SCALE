@@ -18,6 +18,8 @@ use num::PrimInt;
 use std::cell::Ref;
 use std::time::Instant;
 
+use super::jir::jumplist::MatchContext;
+
 impl Lifter for ProcessorSpecification {
     fn lift_instruction<S: TargetInstructionSource, C: ContextProvider>(
         &self,
@@ -48,12 +50,10 @@ impl Lifter for ProcessorSpecification {
             .map_err(|_| -> LifterError { todo!() })?;
 
         let now = Instant::now();
-        let root_jumplist = self.jumplist_cache.get(0.into()).unwrap();
 
         let mut context_stack = ContextStack::new(self, context_provider).expect("Couldn't create context stack");
-        let matching_result = root_jumplist
-            .r#match(&buffer, addr, 0u64.into(), &self.jumplist_cache, &self.symbol_tables.constructors, &mut context_stack)
-            .unwrap();
+        let match_context = MatchContext::new(addr, &self.jumplist_cache, &self.symbol_tables.constructors);
+        let matching_result = match_context.r#match(&buffer, &mut context_stack).unwrap();
         self.lifter_diagnostics.borrow_mut().total_time_match += now.elapsed();
 
         let now = Instant::now();
@@ -98,7 +98,6 @@ impl Lifter for ProcessorSpecification {
         let mut buffer = [0u8; 16];
 
         let now = Instant::now();
-        let root_jumplist = self.jumplist_cache.get(0.into()).unwrap();
         let mut block_builder = TargetBasicBlockBuilder::new(addr, self.temp_space);
         // Start with a block. Any intermediate blocks will end this block and create a new one.
         block_builder.start_block().unwrap();
@@ -109,12 +108,11 @@ impl Lifter for ProcessorSpecification {
                 .map_err(|_| -> LifterError { todo!() })?;
 
             // TODO error type
-            let mut context_stack = ContextStack::new(self, context_provider).expect("Couldn't create context stack");
             // TODO: Initially fill the context stack with the value from the context provider that needs to be passed in.
 
-            let matching_result = root_jumplist
-                .r#match(&buffer, addr, 0u64.into(), &self.jumplist_cache, &self.symbol_tables.constructors, &mut context_stack)
-                .unwrap();
+            let mut context_stack = ContextStack::new(self, context_provider).expect("Couldn't create context stack");
+            let match_context = MatchContext::new(addr, &self.jumplist_cache, &self.symbol_tables.constructors);
+            let matching_result = match_context.r#match(&buffer, &mut context_stack).unwrap();
             self.lifter_diagnostics.borrow_mut().total_time_match += now.elapsed();
 
             let now = Instant::now();

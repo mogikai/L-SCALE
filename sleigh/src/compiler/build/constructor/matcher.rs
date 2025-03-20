@@ -1,3 +1,9 @@
+//! Normal form for matchers.
+//!
+//! Matching expressions can become arbitrarily complex, so we represent them in a standard form as
+//! a list of [MatcherConjunction]s, each of which consisting of a token and associated
+//! constraints.
+
 #![allow(unused_variables)]
 
 use crate::new_typed_index_table_id;
@@ -85,12 +91,8 @@ pub struct MatcherToken {
 }
 
 impl MatcherToken {
-    pub fn new(
-        parent: Option<MOIRFieldParent>,
-    ) -> Self {
-        Self {
-            parent,
-        }
+    pub fn new(parent: Option<MOIRFieldParent>) -> Self {
+        Self { parent }
     }
 }
 
@@ -124,7 +126,12 @@ impl MatcherConjunction {
         atoms: BTreeSet<MatcherAtom>,
         token: MatcherToken,
     ) -> Self {
-        Self { atoms, token, submatchers: Default::default(), field_extractors: Default::default(), }
+        Self {
+            atoms,
+            token,
+            submatchers: Default::default(),
+            field_extractors: Default::default(),
+        }
     }
 }
 
@@ -142,7 +149,6 @@ impl OffsettedSubmatchers {
         Self { offset, submatchers }
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Matcher {

@@ -30,7 +30,7 @@ pub trait ContextProvider {
 
 #[derive(Default)]
 pub struct SimpleContextProvider {
-    values: HashMap<FieldId, u64>
+    values: HashMap<FieldId, u64>,
 }
 
 impl ContextProvider for SimpleContextProvider {
