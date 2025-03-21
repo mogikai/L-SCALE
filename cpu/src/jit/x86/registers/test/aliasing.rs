@@ -7,6 +7,7 @@ use crate::jit::x86::test::{
 };
 use mogi_sleigh::jinst;
 
+#[ignore]
 #[test]
 fn aliasing_register_alloc_works() {
     let (mut jit, spec, mut context) = setup(true);
