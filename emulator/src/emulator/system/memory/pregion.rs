@@ -1,20 +1,33 @@
+use addr_align::Align4k;
+use mogi_utilities::addresses::EPAddr;
+use mogi_utilities::overlap::overlaps;
+use size_format::SizeFormatterBinary;
 use std::cmp::{
-    min,
     Ordering,
+    min,
 };
 use std::fmt::{
     Debug,
     Formatter,
 };
-
-use addr_align::Align4k;
-use mogi_utilities::addresses::EPAddr;
-use size_format::SizeFormatterBinary;
+use std::ops::Range;
 
 #[derive(Copy, Clone)]
 pub struct PhysicalRegion {
     pub start: EPAddr,
     pub end: EPAddr,
+}
+
+impl From<PhysicalRegion> for Range<EPAddr> {
+    fn from(value: PhysicalRegion) -> Self {
+        value.start..value.end
+    }
+}
+
+impl From<&PhysicalRegion> for Range<EPAddr> {
+    fn from(value: &PhysicalRegion) -> Self {
+        value.start..value.end
+    }
 }
 
 impl Debug for PhysicalRegion {
@@ -52,11 +65,7 @@ impl PhysicalRegion {
         &self,
         other: &PhysicalRegion,
     ) -> bool {
-        if self.end <= other.start {
-            false
-        } else {
-            other.end > self.start
-        }
+        overlaps(self, other)
     }
 
     pub fn split(

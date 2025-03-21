@@ -1,22 +1,22 @@
-use mogi_system::components::mmu::tlb_entry::TLBEntry;
+use crate::emulator::system::fd_map::InternalFD;
 use mogi_system::components::mmu::Permission;
+use mogi_system::components::mmu::tlb_entry::TLBEntry;
 use mogi_utilities::addresses::{
     EPAddr,
     EVAddr,
 };
 use mogi_utilities::error::memory::MemoryError;
+use mogi_utilities::overlap::overlaps;
 use std::cmp::{
+    Ordering,
     max,
     min,
-    Ordering,
 };
 use std::fmt::{
     Display,
     Formatter,
 };
 use std::ops::Range;
-
-use crate::emulator::system::fd_map::InternalFD;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MappingType {
@@ -181,11 +181,7 @@ impl Mapping {
         &self,
         range: Range<EVAddr>,
     ) -> bool {
-        if self.v_end() <= range.start {
-            false
-        } else {
-            range.end > self.v_start
-        }
+        overlaps(self.v_start..self.v_end(), range)
     }
 }
 

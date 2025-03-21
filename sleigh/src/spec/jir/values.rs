@@ -8,6 +8,7 @@ use crate::spec::moir::address_space::SpaceId;
 pub use crate::spec::moir::context::ContextId;
 pub use crate::spec::moir::varnode::VarNodeId;
 use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::overlap::overlaps;
 use serde_derive::{
     Deserialize,
     Serialize,
@@ -17,6 +18,7 @@ use std::fmt::{
     Display,
     Formatter,
 };
+use std::ops::Range;
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct JIRVarNode {
@@ -49,6 +51,18 @@ impl Debug for JIRSlice {
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
         write!(f, "{}::<{}>[{:#x}..{:#x}]", self.varnode_id, self.space_id, self.offset, self.end())
+    }
+}
+
+impl From<JIRSlice> for Range<JIROffset> {
+    fn from(value: JIRSlice) -> Self {
+        value.offset..value.end()
+    }
+}
+
+impl From<&JIRSlice> for Range<JIROffset> {
+    fn from(value: &JIRSlice) -> Self {
+        value.offset..value.end()
     }
 }
 
@@ -241,10 +255,7 @@ impl JIRSlice {
         &self,
         other: &JIRSlice,
     ) -> bool {
-        // Ranges >dont< overlap if self ends before other, or other ends before self, i.e.:
-        // other.end() < self.offset || self.end() < other.offset
-        // negate and reorder, and we have the following expression:
-        self.offset < other.end() && other.offset < self.end()
+        overlaps(self, other)
     }
 
     #[inline]
