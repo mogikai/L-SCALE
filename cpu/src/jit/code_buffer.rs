@@ -209,12 +209,15 @@ impl<R: Relocation + Clone> CodeBuffer<R> {
         start: EVAddr,
         successor: Option<EVAddr>,
     ) -> Result<(), CodeBufferError> {
-        self.blocks.insert(start, CompiledBasicBlock {
-            code: None,
-            custom_op_args: vec![],
-            assembler: MogiAssembler::new(),
-            fallthrough: successor,
-        });
+        self.blocks.insert(
+            start,
+            CompiledBasicBlock {
+                code: None,
+                custom_op_args: vec![],
+                assembler: MogiAssembler::new(),
+                fallthrough: successor,
+            },
+        );
         Ok(())
     }
 

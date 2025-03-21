@@ -635,7 +635,7 @@ mod test {
             resolver,
             bytes_consumed,
         } = root_jumplist
-            .r#match(bytes, 0x0u64.into(), 0.into(), spec.jumplist_cache(), spec.constructors(), &mut context_stack)
+            .r#match(bytes, 0x0u64.into(), 0u64.into(), spec.jumplist_cache(), spec.constructors(), &mut context_stack)
             .unwrap()
         else {
             panic!("No match");
@@ -699,7 +699,7 @@ mod test {
             resolver,
             bytes_consumed,
         } = root_jumplist
-            .r#match(bytes, 0x0u64.into(), 0.into(), spec.jumplist_cache(), spec.constructors(), &mut context_stack)
+            .r#match(bytes, 0x0u64.into(), 0u64.into(), spec.jumplist_cache(), spec.constructors(), &mut context_stack)
             .unwrap()
         else {
             panic!("No match");
@@ -751,7 +751,7 @@ mod test {
             resolver,
             bytes_consumed,
         } = root_jumplist
-            .r#match(bytes, 0x0u64.into(), 0.into(), spec.jumplist_cache(), spec.constructors(), &mut context_stack)
+            .r#match(bytes, 0x0u64.into(), 0u64.into(), spec.jumplist_cache(), spec.constructors(), &mut context_stack)
             .unwrap()
         else {
             panic!("No match");
