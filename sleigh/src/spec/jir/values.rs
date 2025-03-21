@@ -9,6 +9,7 @@ pub use crate::spec::moir::context::ContextId;
 pub use crate::spec::moir::varnode::VarNodeId;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::overlap::overlaps;
+use mogi_utilities::new_map_key;
 use serde_derive::{
     Deserialize,
     Serialize,
@@ -32,6 +33,28 @@ impl JIRVarNode {
         self.offset + self.size as u64
     }
 }
+
+// Varnodes are compacted on transformation, but overlapping varnodes need to keep
+// their overlap. We group them into into intersection groups which we then compact.
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct VarnodeGroup {
+    pub(crate) varnodes: Vec<VarNodeId>,
+    // track the total size of the group
+    pub(crate) offset: u64,
+    pub(crate) size: JIRSize,
+}
+
+impl VarnodeGroup {
+    pub(crate) fn new(
+        varnodes: Vec<VarNodeId>,
+        offset: u64,
+        size: JIRSize,
+    ) -> Self {
+        Self { varnodes, offset, size }
+    }
+}
+
+new_map_key! { pub struct VarnodeGroupId; "VIGI"; }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct JIRSlice {

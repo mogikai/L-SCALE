@@ -394,9 +394,9 @@ impl<'a> JIRResolver<'a> {
                     varnode_id,
                     varnode.space_id,
                     varnode.offset + start,
-                    end.ok_or_else(|| todo!("Generate error for undefined size"))?
-                        .try_into()
-                        .expect("The size must fit into JIRSize"),
+                    JIRSize::try_from(end.ok_or_else(|| todo!("Generate error for undefined size"))?)
+                        .expect("The size must fit into JIRSize")
+                        - JIRSize::try_from(start).expect("The size must fit into JIRSize"),
                 )
                 .into()
             }

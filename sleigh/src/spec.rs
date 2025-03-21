@@ -35,6 +35,10 @@ use crate::spec::moir::token::TokenId;
 use crate::spec::moir::varnode::VarNodeId;
 use brotli::Decompressor;
 use jir::jumplist::MatchContext;
+use jir::values::{
+    VarnodeGroup,
+    VarnodeGroupId,
+};
 use mogi_sleigh_parser::{
     ParserContext,
     SleighInterner,
@@ -42,7 +46,10 @@ use mogi_sleigh_parser::{
     StringId,
 };
 use mogi_utilities::addresses::EVAddr;
-use mogi_utilities::index_map::PrimaryMap;
+use mogi_utilities::index_map::{
+    PrimaryMap,
+    SecondaryMap,
+};
 use mogi_utilities::new_map_key;
 use serde_derive::{
     Deserialize,
@@ -98,7 +105,7 @@ pub(crate) struct JIRSymbolTables {
     pub(crate) fields: PrimaryMap<FieldId, MOIRField>,
     // tokens: TypedIndexTable<MOIRTokenId, MOIRToken>,
     // fields: TypedIndexTable<MOIRFieldId, MOIRField>,
-    custom_ops: PrimaryMap<CustomOpId, JIRCustomOp>,
+    custom_ops: PrimaryMap<CustomOpId, Option<JIRCustomOp>>,
     // bitrange registers are treated more like placeholders for the corresponding pcode operations to realize access
     // bitrange_registers: TypedIndexTable<MOIRBitrangeRegisterId, MOIRTBitrangeRegister>,
 }
@@ -129,6 +136,11 @@ pub struct ProcessorSpecification {
     pub(crate) symbol_tables: JIRSymbolTables,
     /// A mapping to look up context ids from their varnode id.
     pub(crate) contexts: HashMap<VarNodeId, ContextId>,
+
+    /// Overlapping varnodes need special treatments in multiple locations which
+    /// is why we keep track of different disjoint groups.
+    pub(crate) varnode_groups: PrimaryMap<VarnodeGroupId, VarnodeGroup>,
+    pub(crate) varnode_to_group: SecondaryMap<VarNodeId, Option<VarnodeGroupId>>,
 
     /// Maps a string identifier to the corresponding internal [Ident].
     /// This is useful for the compiler, when an identifier string references another symbol.

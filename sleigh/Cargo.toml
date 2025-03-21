@@ -9,7 +9,6 @@ thiserror = "2.0.3"
 ariadne = "0.5.0"
 num = "0.4.3"
 strum_macros = "0.26.4"
-itertools = "0.14.0"
 mogi_utilities = { path = "../utilities", version = "*", features = ["serde"] }
 imbl = "3.0.0"
 petgraph = "0.7.0"
@@ -20,6 +19,7 @@ serde_derive = "1.0.217"
 bincode = { version = "2.0.0-rc.3", features = ["serde"] }
 brotli = "7.0.0"
 mogi_sleigh_parser = { path = "../sleigh_parser", version = "*" }
+itertools = "0.14.0"
 
 [features]
 trace_build = []

@@ -927,6 +927,8 @@ impl ProcessorSpecificationBuilder {
                 .items()
                 .map(|(id, context)| (context.varnode, id))
                 .collect(),
+            varnode_groups: jir.varnode_groups,
+            varnode_to_group: jir.varnode_to_group,
             string_to_ident_mapping: jir.string_to_ident_mapping,
             jumplist_cache: jir.jumplist_cache,
             root_table,

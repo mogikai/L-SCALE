@@ -1,4 +1,6 @@
 use crate::compiler::InternalCompilerResult;
+use crate::spec::jir::common::JIRSize;
+use crate::spec::moir::common::MOIRSize;
 
 use self::jumplist::JumplistBuilder;
 use crate::spec::builder::{
@@ -15,7 +17,11 @@ use crate::spec::jir::space::{
     JIRSpace,
     JIRSpaceType,
 };
-use crate::spec::jir::values::JIRVarNode;
+use crate::spec::jir::values::{
+    JIRVarNode,
+    VarnodeGroup,
+    VarnodeGroupId,
+};
 use crate::spec::moir::address_space::{
     MOIRSpace,
     MOIRSpaceType,
@@ -37,8 +43,11 @@ use crate::spec::{
     JIRSymbolId,
     JIRSymbolTables,
 };
-use mogi_utilities::index_map::PrimaryMap;
-use num::complex::ComplexFloat;
+use itertools::Itertools;
+use mogi_utilities::index_map::{
+    PrimaryMap,
+    SecondaryMap,
+};
 use std::collections::HashMap;
 
 mod jumplist;
@@ -47,7 +56,10 @@ use mogi_sleigh_parser::{
     SleighInterner,
     Spanned,
 };
-use tracing::warn;
+use tracing::{
+    debug,
+    warn,
+};
 
 #[derive(Debug)]
 pub(super) struct MOIRToJIRTransformer<'a> {
@@ -62,6 +74,8 @@ pub struct JIRData {
     pub symbol_tables: JIRSymbolTables,
     pub jumplist_cache: PrimaryMap<JumplistId, Jumplist>,
     pub string_to_ident_mapping: HashMap<StringId, Ident>,
+    pub varnode_groups: PrimaryMap<VarnodeGroupId, VarnodeGroup>,
+    pub varnode_to_group: SecondaryMap<VarNodeId, Option<VarnodeGroupId>>,
 }
 
 #[derive(Debug)]
@@ -101,6 +115,8 @@ impl<'a> MOIRToJIRTransformer<'a> {
                 symbol_tables: Default::default(),
                 jumplist_cache: Default::default(),
                 string_to_ident_mapping: Default::default(),
+                varnode_groups: Default::default(),
+                varnode_to_group: Default::default(),
             },
         }
     }
@@ -143,14 +159,17 @@ impl<'a> MOIRToJIRTransformer<'a> {
         .transform(self.moir.root_table_id)?;
 
         self.jir.jumplist_cache = jumplist_cache;
-
+        let (varnodes, varnode_groups, varnode_to_group) = transform_varnodes(self.moir.symbol_tables.varnodes, 8)?;
+        self.jir.varnode_groups = varnode_groups;
+        self.jir.varnode_to_group = varnode_to_group;
         self.jir.symbol_tables = JIRSymbolTables {
             spaces: transform_spaces(self.moir.symbol_tables.spaces)?,
             constructors: self.moir.symbol_tables.constructors,
-            varnodes: transform_varnodes(self.moir.symbol_tables.varnodes)?,
+            varnodes,
             custom_ops: transform_custom_ops(self.moir.interner, self.moir.symbol_tables.custom_ops)?,
             fields: self.moir.symbol_tables.fields,
         };
+
         self.jir.string_to_ident_mapping = self.moir.string_to_ident_mapping;
         Ok(self.jir)
     }
@@ -159,29 +178,29 @@ impl<'a> MOIRToJIRTransformer<'a> {
 fn transform_custom_ops(
     interner: &SleighInterner,
     custom_ops: PrimaryMap<CustomOpId, MOIRCustomOp>,
-) -> InternalCompilerResult<PrimaryMap<CustomOpId, JIRCustomOp>> {
+) -> InternalCompilerResult<PrimaryMap<CustomOpId, Option<JIRCustomOp>>> {
     Ok(custom_ops
         .into_iter()
-        .filter_map(|(id, op)| match op {
+        .map(|(id, op)| match op {
             MOIRCustomOp::Declared { name } => {
                 let name = interner
                     .string(*name)
                     .expect("The string has to exist since we saved an id to it.");
                 // TODO: Emit a compiler warning instead of a log output
                 warn!("Custom op '{name}' is declared but not defined. Ignoring.");
-                None
+                (id, None)
             }
-            MOIRCustomOp::Defined { name, .. } => Some((
+            MOIRCustomOp::Defined { name, .. } => (
                 id,
-                JIRCustomOp {
+                Some(JIRCustomOp {
                     name: interner
                         .string(*name)
                         .expect("The string has to exist since we saved an id to it.")
                         .to_string(),
-                },
-            )),
+                }),
+            ),
         })
-        .collect::<PrimaryMap<CustomOpId, JIRCustomOp>>())
+        .collect::<PrimaryMap<CustomOpId, Option<JIRCustomOp>>>())
 }
 
 fn transform_spaces(spaces: PrimaryMap<SpaceId, MOIRSpace>) -> InternalCompilerResult<PrimaryMap<SpaceId, JIRSpace>> {
@@ -210,21 +229,101 @@ fn transform_spaces(spaces: PrimaryMap<SpaceId, MOIRSpace>) -> InternalCompilerR
         .collect())
 }
 
+fn build_varnode_groups(
+    varnodes: &PrimaryMap<VarNodeId, MOIRVarNode>
+) -> (PrimaryMap<VarnodeGroupId, VarnodeGroup>, SecondaryMap<VarNodeId, Option<VarnodeGroupId>>) {
+    let mut groups: PrimaryMap<VarnodeGroupId, VarnodeGroup> = Default::default();
+    let mut to_group: SecondaryMap<VarNodeId, Option<VarnodeGroupId>> = Default::default();
+    'next_varnode: for (ident, varnode) in varnodes.items() {
+        // check if varnode intersects with any existing intersection group and if so,
+        // insert into groupand update group offset and size
+        for group_id in groups.keys() {
+            let group = groups.get_mut(group_id).expect("This element must exist");
+
+            let end_group = group.offset + u64::from(group.size);
+            let end_varnode = varnode.offset + u64::from(varnode.size);
+            if end_group > varnode.offset && end_varnode > group.offset {
+                if varnode.offset < group.offset {
+                    // V < G => move group start and update size
+                    group.size += JIRSize::try_from(group.offset - varnode.offset).unwrap();
+                    group.offset = varnode.offset;
+                }
+
+                group.size = group.size.max(varnode.size.try_into().unwrap());
+                group.varnodes.push(ident);
+                to_group[ident] = Some(group_id);
+                continue 'next_varnode;
+            }
+        }
+
+        // nothing found => create new group
+        let new_group = VarnodeGroup::new(vec![ident], varnode.offset, varnode.size.try_into().unwrap());
+        let new_group_id = groups.insert(new_group);
+        to_group[ident] = Some(new_group_id);
+    }
+
+    (groups, to_group)
+}
+
 fn transform_varnodes(
-    varnodes: PrimaryMap<VarNodeId, MOIRVarNode>
-) -> InternalCompilerResult<PrimaryMap<VarNodeId, JIRVarNode>> {
-    Ok(varnodes
-        .into_iter()
-        .map(|(ident, varnode)| {
-            let varnode = JIRVarNode {
-                space_id: varnode.space,
-                offset: varnode.offset,
-                size: varnode
-                    .size
-                    .try_into()
-                    .expect("The size must fit into JIRSize"),
-            };
-            (ident, varnode)
-        })
-        .collect())
+    mut varnodes: PrimaryMap<VarNodeId, MOIRVarNode>,
+    alignment: MOIRSize,
+) -> InternalCompilerResult<(
+    PrimaryMap<VarNodeId, JIRVarNode>,
+    PrimaryMap<VarnodeGroupId, VarnodeGroup>,
+    SecondaryMap<VarNodeId, Option<VarnodeGroupId>>,
+)> {
+    assert_ne!(alignment, 0);
+
+    let mut prev_end = 0;
+    for varnode in varnodes.values() {
+        let end = varnode.offset + u64::from(varnode.size);
+        if end > prev_end {
+            prev_end = end;
+        }
+    }
+
+    debug!("Varnode prev size = {:#?}", prev_end);
+
+    // we compact the groups, but offsets inside each group must stay the same
+    let (mut groups, to_group) = build_varnode_groups(&varnodes);
+    let mut running_offset = 0;
+    for group in groups.values_mut() {
+        // align up
+        running_offset = u64::try_from((running_offset as i64 + alignment as i64 - 1) & !(alignment as i64 - 1))
+            .expect("If alignment is not zero this cannot underflow");
+
+        // modify group and varnode offsets
+        let offset_delta = group.offset - running_offset;
+        group.offset = running_offset;
+        for varnode_id in group.varnodes.iter() {
+            let varnode = varnodes
+                .get_mut(*varnode_id)
+                .expect("This value must exist");
+            varnode.offset -= offset_delta;
+        }
+
+        running_offset += u64::from(group.size);
+    }
+
+    debug!("Group compacting yielded size of {:#?}", running_offset);
+
+    Ok((
+        varnodes
+            .into_iter()
+            .map(|(ident, varnode)| {
+                let varnode = JIRVarNode {
+                    space_id: varnode.space,
+                    offset: varnode.offset,
+                    size: varnode
+                        .size
+                        .try_into()
+                        .expect("The size must fit into JIRSize"),
+                };
+                (ident, varnode)
+            })
+            .collect(),
+        groups,
+        to_group,
+    ))
 }

@@ -1,13 +1,16 @@
+use itertools::Itertools;
 use serde::{
     Deserialize,
     Serialize,
 };
+use std::fmt::Debug;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::ops::{
     Index,
     IndexMut,
 };
+use std::vec::IntoIter;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -20,7 +23,7 @@ pub enum IndexMapError {
 /// New keys may be created with the [new_map_key] macro.
 /// It is highly discouraged to manually implement this trait.
 #[allow(private_bounds)]
-pub trait MapKey: Copy + PartialEq + Eq + Hash {
+pub trait MapKey: Copy + PartialEq + Eq + PartialOrd + Ord + Hash {
     /// Tries to create a new key from the provided index. If Index is the maximum value, this will result
     /// in an error.
     fn try_from_index(index: usize) -> Result<Self, IndexMapError>;
@@ -201,7 +204,7 @@ impl<K: MapKey, V> PrimaryMap<K, V> {
         self.data.last()
     }
 
-    pub fn keys(&self) -> impl ExactSizeIterator<Item = K> + DoubleEndedIterator {
+    pub fn keys(&self) -> impl ExactSizeIterator<Item = K> + DoubleEndedIterator + use<K, V> {
         (0..self.data.len())
             .map(MapKey::try_from_index)
             .map(Result::unwrap)
@@ -220,6 +223,13 @@ impl<K: MapKey, V> PrimaryMap<K, V> {
             .iter()
             .enumerate()
             .map(|(k, v)| (MapKey::try_from_index(k).expect("Enumarating must produce a valid index"), v))
+    }
+
+    pub fn into_items(self) -> impl Iterator<Item = (K, V)> {
+        self.data
+            .into_iter()
+            .enumerate()
+            .map(|(k, v)| (MapKey::try_from_index(k).expect("Enumerating must produce a valid index"), v))
     }
 }
 
@@ -295,8 +305,19 @@ impl<K: MapKey, V> IndexMut<K> for PrimaryMap<K, V> {
 
 impl<K: MapKey, V> FromIterator<(K, V)> for PrimaryMap<K, V> {
     fn from_iter<T: IntoIterator<Item = (K, V)>>(iter: T) -> Self {
+        let mut collected: Vec<(K, V)> = iter.into_iter().collect();
+        collected.sort_by_key(|(k, _)| k.to_index());
+
+        if let Some((k, _)) = collected.first() {
+            assert_eq!(k.to_index(), 0, "Keys must begin at 0");
+        };
+
+        for (&(k, _), &(k_next, _)) in collected.iter().zip(collected.iter().skip(1)) {
+            assert_eq!(k_next.to_index(), k.to_index() + 1, "Keys must be consecutive");
+        }
+
         Self {
-            data: Vec::from_iter(iter.into_iter().map(|(_, v)| v)),
+            data: collected.into_iter().map(|(_, v)| v).collect_vec(),
             phantom_data: Default::default(),
         }
     }

@@ -23,7 +23,7 @@ use std::fmt::{
     Formatter,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// A varnode is the unit of data manipulated by p-code.
 /// It is simply a contiguous sequence of bytes in some address space.
 ///
