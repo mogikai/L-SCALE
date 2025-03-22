@@ -346,14 +346,21 @@ impl SleighCompiler {
 
     /// Populate matcher conjunctions with dynamic-offset sublists and field extractors
     /// and populate the matcher itself with fixed-offset sublists and field extractors.
+    /// Also remove empty conjunctions that arose from padding.
     fn pc_populate_sublists_and_extractors(
         &self,
         matchers: &mut Vec<Matcher>,
         scope: &MOIRScope,
     ) {
         for matcher in matchers.iter_mut() {
-            // This doesn't work if the sublist uses more than one token. Too bad!
+            // even if bytes_consumed is known, partially constrained sublists can still determine
+            // the number of bytes consumed which is why if there is any padding at
+            // all, we make all sublists dynamic
             let mut bytes_consumed = Some(0);
+            let contains_padding = matcher
+                .conjunctions
+                .iter()
+                .any(|conjunction| conjunction.token.parent.is_none() && conjunction.atoms.is_empty());
 
             // skip context
             for conjunction in matcher
@@ -374,26 +381,31 @@ impl SleighCompiler {
                                     Some(bytes_consumed) => {
                                         // field used and fixed offset
                                         let fe = FieldExtractor::new(local_id, 0, bytes_consumed.into(), field.bits);
-                                        matcher.field_extractors.push(fe);
+                                        matcher.static_field_extractors.push(fe);
                                     }
                                     None => {
                                         // field used and dynamic offset
                                         let fe = FieldExtractor::new(local_id, 0, 0, field.bits);
-                                        conjunction.field_extractors.push(fe);
+                                        conjunction.dynamic_field_extractors.push(fe);
                                     }
                                 }
                             }
                         }
                         MatcherAtom::Submatchers(submatchers) => {
-                            match bytes_consumed {
-                                Some(bytes_consumed) => {
-                                    // known size
-                                    let os = OffsettedSubmatchers::new(bytes_consumed, submatchers.clone());
-                                    matcher.submatchers.push(os);
-                                }
-                                None => {
-                                    // unknown size
-                                    conjunction.submatchers.push(submatchers.clone());
+                            if contains_padding {
+                                // padding => assume unknown size
+                                conjunction.dynamic_submatchers.push(submatchers.clone());
+                            } else {
+                                match bytes_consumed {
+                                    Some(bytes_consumed) => {
+                                        // known size
+                                        let os = OffsettedSubmatchers::new(bytes_consumed, submatchers.clone());
+                                        matcher.static_submatchers.push(os);
+                                    }
+                                    None => {
+                                        // unknown size
+                                        conjunction.dynamic_submatchers.push(submatchers.clone());
+                                    }
                                 }
                             }
                         }
@@ -421,6 +433,11 @@ impl SleighCompiler {
                     None => bytes_consumed = None,
                 }
             }
+
+            // remove empty
+            matcher
+                .conjunctions
+                .retain(|conjunction| conjunction.token.parent != None || !conjunction.atoms.is_empty());
         }
     }
 

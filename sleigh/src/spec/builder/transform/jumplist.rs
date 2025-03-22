@@ -288,27 +288,12 @@ impl<'a> JumplistBuilder<'a> {
 
     /// Create a single jumplist for multiple matchers. Multiple lists will be created and merged
     /// into one dummy list if the matchers have different [DataProvider]s at `token_index`.
-    ///
-    /// # Preconditions:
-    /// - `matchers` must not be empty
-    /// - each matcher must have a token list of length at least `token_index` + 1
-    /// # Return on success
-    /// - the newly created jumplist
     fn create_jumplist(
         &mut self,
         token_index: usize,
         matchers: &[&'a Matcher],
     ) -> InternalCompilerResult<Jumplist> {
         debug_assert_ne!(matchers.len(), 0, "There must be matchers");
-        for matcher in matchers.iter() {
-            if token_index >= matcher.conjunctions.len() {
-                error!(
-                    "Matcher token list not long enough: token_index={token_index} >= len={} \nMatcher: {matcher:?}",
-                    matcher.conjunctions.len()
-                );
-            }
-        }
-
         // this is just a stub precalculating everything necessary for `create_jumplist_bytes`
 
         // 1. extract everything necessary for token processing
@@ -538,7 +523,7 @@ impl<'a> JumplistBuilder<'a> {
             for row in set_rows_child.into_iter() {
                 let submatchers_list = if bytes_consumed == 0 {
                     // first iteration: take sublists into account
-                    row.matcher.conjunctions[token_index].submatchers.clone()
+                    row.matcher.conjunctions.get(token_index).map(|c| c.dynamic_submatchers.clone()).unwrap_or(vec![])
                 } else {
                     vec![]
                 };
@@ -586,7 +571,7 @@ impl<'a> JumplistBuilder<'a> {
                             field_extractor_map.insert(
                                 row.matcher.constructor_id,
                                 row.matcher.conjunctions[token_index]
-                                    .field_extractors
+                                    .dynamic_field_extractors
                                     .clone(),
                             );
                         }
@@ -622,7 +607,7 @@ impl<'a> JumplistBuilder<'a> {
                             field_extractor_map.insert(
                                 row.matcher.constructor_id,
                                 row.matcher.conjunctions[token_index]
-                                    .field_extractors
+                                    .dynamic_field_extractors
                                     .clone(),
                             );
                         }
@@ -658,9 +643,7 @@ impl<'a> JumplistBuilder<'a> {
                         for row in &terminal_matcher_rows {
                             field_extractor_map.insert(
                                 row.matcher.constructor_id,
-                                row.matcher.conjunctions[token_index]
-                                    .field_extractors
-                                    .clone(),
+                                row.matcher.conjunctions.get(token_index).map(|c| c.dynamic_field_extractors.clone()).unwrap_or(vec![])
                             );
                         }
                     }
@@ -668,7 +651,7 @@ impl<'a> JumplistBuilder<'a> {
                     // process fixed-offset submatchers into sublists
                     let fixed_sublists = terminal_matcher_row
                         .matcher
-                        .submatchers
+                        .static_submatchers
                         .iter()
                         .map(|submatcher| {
                             let sublist = self.process_submatchers(&submatcher.submatchers)?;
@@ -684,7 +667,7 @@ impl<'a> JumplistBuilder<'a> {
                         tid: terminal_matcher_row.matcher.table_id,
                         cid: terminal_matcher_row.matcher.constructor_id,
                         sublists: fixed_sublists,
-                        field_extractors: terminal_matcher_row.matcher.field_extractors.clone(),
+                        field_extractors: terminal_matcher_row.matcher.static_field_extractors.clone(),
                     };
 
                     let entry = JumplistEntry::new(next_entry_matcher, sublist_ids, field_extractor_map);

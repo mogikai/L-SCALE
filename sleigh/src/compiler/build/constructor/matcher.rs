@@ -102,10 +102,10 @@ pub struct MatcherConjunction {
     pub(crate) atoms: BTreeSet<MatcherAtom>,
     pub(crate) token: MatcherToken,
 
-    // variable-offset field extractors and submatchers are stored per conjunction and created
+    // dynamic-offset field extractors and submatchers are stored per conjunction and created
     // in the constructor with their corresponding locals
-    pub(crate) submatchers: Vec<Submatchers>,
-    pub(crate) field_extractors: Vec<FieldExtractor>,
+    pub(crate) dynamic_submatchers: Vec<Submatchers>,
+    pub(crate) dynamic_field_extractors: Vec<FieldExtractor>,
 }
 
 impl Default for MatcherConjunction {
@@ -113,8 +113,8 @@ impl Default for MatcherConjunction {
         Self {
             atoms: Default::default(),
             token: MatcherToken::new(None),
-            submatchers: Default::default(),
-            field_extractors: Default::default(),
+            dynamic_submatchers: Default::default(),
+            dynamic_field_extractors: Default::default(),
         }
     }
 }
@@ -129,8 +129,8 @@ impl MatcherConjunction {
         Self {
             atoms,
             token,
-            submatchers: Default::default(),
-            field_extractors: Default::default(),
+            dynamic_submatchers: Default::default(),
+            dynamic_field_extractors: Default::default(),
         }
     }
 }
@@ -165,8 +165,8 @@ pub struct Matcher {
 
     // fixed-offset field extractors and submatchers are stored per matcher and created
     // in the constructor with their corresponding locals
-    pub(crate) submatchers: Vec<OffsettedSubmatchers>,
-    pub(crate) field_extractors: Vec<FieldExtractor>,
+    pub(crate) static_submatchers: Vec<OffsettedSubmatchers>,
+    pub(crate) static_field_extractors: Vec<FieldExtractor>,
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Ord, PartialOrd, Serialize, Deserialize)]
@@ -210,8 +210,8 @@ impl Matcher {
             references,
             table_id,
             constructor_id,
-            submatchers: Default::default(),
-            field_extractors: Default::default(),
+            static_submatchers: Default::default(),
+            static_field_extractors: Default::default(),
         }
     }
 }
