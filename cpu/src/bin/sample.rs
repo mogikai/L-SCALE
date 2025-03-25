@@ -62,6 +62,9 @@ fn main() {
     // let spec_path = Path::new("./sleigh/ia.sinc");
     let specification = load_specification(spec_path);
     // println!("{:?}", specification.list_global_varnode_strings());
+
+    let testelf_content = std::fs::read("./a.out").unwrap();
+
     println!(
         "{:?}",
         specification
@@ -76,15 +79,17 @@ fn main() {
     let mmu = Rc::new(RefCell::new(MogiMMU::new()));
     {
         let mut mmu = mmu.borrow_mut();
-        // We allocate 1000 bytes of physical memory
-        mmu.alloc_physical(0x8_000u64.into(), 0x1_000).unwrap();
-        // And link the virtual address 0xffaa00 to the allocated physical memory.
-        mmu.set_page_table_entry(0xffaa00u64.into(), 0x8_000u64.into(), Permission::ALL)
-            .unwrap();
+        // We allocate enough memory
+        mmu.alloc_physical(0x0u64.into(), 0x16_000).unwrap();
+        // And link the virtual address 0x1000 to the allocated physical memory.
+        for page_id in 0..(testelf_content.len() as u64 / 4096 + 1) {
+            mmu.set_page_table_entry((page_id * 4096u64).into(), (page_id * 4096u64).into(), Permission::ALL)
+                .unwrap();
+        }
         // And then write the instruction to the allocated memory.
         mmu.write(
-            0xffaa00u64.into(),
-            b"\x58\x5B\x48\x01\xD8\x48\x0F\xBC\xD8\x53\x50\xE9\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+            0x0u64.into(),
+            &testelf_content[..]
         )
         .unwrap();
     }
@@ -113,7 +118,8 @@ fn main() {
     let mut cpu = MogiCPU::new(jit, specification, mmu);
 
     // Set the instruction pointer to the address we want to start executing at.
-    *cpu.register_mut("RIP").unwrap() = 0xffaa00u64;
+    // *cpu.register_mut("RIP").unwrap() = 0x113Au64;
+    *cpu.register_mut("RIP").unwrap() = 0x1193u64;
     *cpu.register_mut("RSP").unwrap() = 0xffff_ffff_ffff_0220u64;
 
     // Now lets roll! (forever :>)

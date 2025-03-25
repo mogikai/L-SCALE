@@ -42,7 +42,7 @@ pub struct X86TaskContext {
     /// as possible.
     runtime_error: Option<RuntimeError>,
     /// The context values of the cpu. This includes stuff like longMode for example.
-    context_values: FnvHashMap<FieldId, u64>,
+    context_values: FnvHashMap<FieldId, u128>,
 }
 
 impl X86TaskContext {
@@ -127,7 +127,7 @@ impl ContextProvider for X86TaskContext {
         &mut self,
         processor_spec: &ProcessorSpecification,
         name: &str,
-        value: u64,
+        value: u128,
     ) {
         processor_spec.field_id_by_string(name).map(|field_id| {
             self.context_values.insert(field_id, value);
@@ -138,7 +138,7 @@ impl ContextProvider for X86TaskContext {
         &self,
         processor_spec: &ProcessorSpecification,
         name: &str,
-    ) -> Option<u64> {
+    ) -> Option<u128> {
         processor_spec
             .field_id_by_string(name)
             .and_then(|field_id| self.context_values.get(&field_id).copied())
@@ -147,11 +147,11 @@ impl ContextProvider for X86TaskContext {
     fn get_by_id(
         &self,
         field_id: FieldId,
-    ) -> Option<u64> {
+    ) -> Option<u128> {
         self.context_values.get(&field_id).copied()
     }
 
-    fn values(&self) -> impl Iterator<Item = (FieldId, u64)> {
+    fn values(&self) -> impl Iterator<Item = (FieldId, u128)> {
         self.context_values
             .iter()
             .map(|(field_id, value)| (*field_id, *value))

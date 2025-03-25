@@ -239,7 +239,12 @@ impl MOIRConstructor {
                 }
             }
             MOIROperation::Nop => return Ok(()),
-            MOIROperation::AddressOf => todo!(),
+            MOIROperation::AddressOf => {
+                match input_a? {
+                    JIRValue::Slice(_) => todo!("Handle slices in AddressOf"),
+                    JIRValue::Const(jirconst) => jinst!({ output? } = { jirconst }),
+                }
+            }
             MOIROperation::PopCount => jinst!({ output? } = popcount({ input_a? })),
             MOIROperation::LZCount => jinst!({ output? } = lzcount({ input_a? })),
             MOIROperation::ZeroExtend => jinst!({ output? } = zext({ input_a? })),
@@ -417,13 +422,10 @@ impl MOIRConstructor {
                 resolver
                     .resolve_local(spec, instruction_builder, input)
                     .and_then(|resolved| match resolved {
-                        JIRResolvedValue::Value(value) => match value {
-                            JIRValue::Slice(_) => todo!("This should not happen?"),
-                            JIRValue::Const(_) => Ok(value),
-                        },
+                        JIRResolvedValue::Value(value) => Ok(value),
                         JIRResolvedValue::Reference { address, space, size } => match address {
                             JIRValue::Slice(slice) => {
-                                todo!("Handle non const addresses")
+                                Ok(slice.into())
                             }
                             JIRValue::Const(value) => {
                                 // We construct a new const with the size provided in the reference, since this

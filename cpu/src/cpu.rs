@@ -3,6 +3,7 @@
 //! This includes for example the registers and a pointer to the currently active `TLB`.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::rc::Rc;
@@ -20,9 +21,12 @@ use crate::new_cpu_trait::{
     CPUResult,
     RunLimit,
 };
-use mogi_sleigh::lifter::Lifter;
+use mogi_sleigh::disassembler::Disassembler;
+use mogi_sleigh::lifter::{Lifter, LifterError};
 use mogi_sleigh::lifter::context_provider::ContextProvider;
 use mogi_sleigh::lifter::source::TargetInstructionSource;
+use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
+use mogi_sleigh::spec::jir::jcode::NextBlockTarget;
 use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_utilities::addresses::EVAddr;
 use thiserror::Error;
@@ -46,6 +50,8 @@ pub enum StopReason {
     RuntimeError(#[from] RuntimeError),
     #[error("The just in time compiler encountered an error")]
     JitError(#[from] JitError),
+    #[error("The block couldn't be lifted")]
+    LifterError(#[from] LifterError),
 }
 
 #[allow(dead_code)]
@@ -53,6 +59,13 @@ pub enum StopReason {
 enum MustInterpret {
     Yes,
     No,
+}
+
+#[derive(Debug)]
+pub enum TranslationLimit {
+    Unlimited,
+    BlockCount(usize),
+    InstructionCount(usize),
 }
 
 #[repr(C)]
@@ -121,7 +134,7 @@ where
             match self.must_interpret() {
                 MustInterpret::No => {
                     // This populates the jit block cache for the next instruction(s)
-                    self.translate_blocks()?;
+                    self.translate_blocks(TranslationLimit::BlockCount(5))?;
                     let jit = self.jit.borrow();
                     let ip = jit.instruction_pointer(&self.runtime_context)?;
                     jit.execute(&mut self.runtime_context, ip)?;
@@ -189,37 +202,80 @@ where
     }
 
     /// Translate the next block or blocks.
-    fn translate_blocks(&mut self) -> Result<(), StopReason> {
+    fn translate_blocks(
+        &mut self,
+        translation_limit: TranslationLimit,
+    ) -> Result<(), StopReason> {
         // // TODO: Return translate error instead of stop reason?
         // // Load target instructions into mir cache
         // let new_blocks = self.mir_cache.populate(self.context.pc());
         // // Translate to host blocks
         // let blocks = new_blocks.translate();
         // self.jit_cache.populate(blocks);
+
+
         {
             // TODO: Remove demo block
             let mut jit = self.jit.borrow_mut();
             let mmu = self.mmu.borrow();
-            let current_addr = jit.instruction_pointer(&self.runtime_context)?;
-            trace_jit!("Translating block at {:?}", current_addr);
-            if jit.is_cached(current_addr) {
-                trace_jit!("Block is already cached");
-                // The block is already translated. Return
-                return Ok(());
+
+            let mut target_addresses = vec![jit.instruction_pointer(&self.runtime_context)?];
+            let mut block_cache: HashMap<EVAddr, TargetBasicBlock> = Default::default();
+            let mut translated_block_count = 0;
+            let mut translated_instr_count = 0;
+            trace_jit!("Translation limit is {:?}", translation_limit);
+
+            while let Some(current_addr) = target_addresses.pop() {
+                trace_jit!("Translating block at {:?}", current_addr);
+
+                if block_cache.contains_key(&current_addr) {
+                    trace_jit!("Skipping aleady translated block");
+                    continue;
+                }
+
+                let block = self.processor_specification.borrow().lift_block(&*mmu, self.runtime_context.as_mut(), current_addr)?;
+                // let disassembly = self.processor_specification.borrow().disassemble_block(&*mmu, self.runtime_context.as_mut(), current_addr).unwrap();
+                // trace_jit!("{:#?}", disassembly);
+
+                // TODO: Most likely, if the runtime context was modified, we will first need to emulate before translating
+                //       more blocks?
+                trace_jit!("{}", block);
+                trace_jit!("Fallthrough: {:?}", block.fallthrough());
+                trace_jit!("Branch targets: {:?}", block.branch_targets());
+
+                if let Some(branch_targets) = block.branch_targets() {
+                    for branch_target in branch_targets {
+                        if let NextBlockTarget::Direct(target_addr) = branch_target {
+                            target_addresses.push(*target_addr);
+                        }
+                    }
+                }
+
+                translated_instr_count += block.instruction_count();
+                translated_block_count += 1;
+
+                block_cache.insert(current_addr, block);
+
+                match translation_limit {
+                    TranslationLimit::Unlimited => {}
+                    TranslationLimit::BlockCount(block_count) => {
+                        if translated_block_count > block_count {
+                            trace_jit!("Hit block translation limit");
+                            break;
+                        }
+                    }
+                    TranslationLimit::InstructionCount(instr_count) => {
+                        if translated_instr_count > instr_count {
+                            trace_jit!("Hit instruction translation limit");
+                            break;
+                        }
+                    }
+                }
             }
-            let block = self
-                .processor_specification
-                .borrow()
-                .lift_block(&*mmu, self.runtime_context.as_mut(), current_addr)
-                .unwrap();
-            // TODO: Most likely, if the runtime context was modified, we will first need to emulate before translating
-            //       more blocks?
-            trace_jit!("{}", block);
-            trace_jit!("Fallthrough: {:?}", block.fallthrough());
-            trace_jit!("Branch targets: {:?}", block.branch_targets());
-            // TODO: What about caching?
-            jit.compile_target_block(&block)?;
-            jit.chain_blocks(current_addr, current_addr, JITPathChoice::Main)?;
+
+            let total_instr_count: usize = block_cache.values().map(|block| block.instruction_count()).sum();
+            trace_jit!("Translated {}/{} blocks/instructions in total", block_cache.len(), total_instr_count);
+
             Ok(())
         }
     }
