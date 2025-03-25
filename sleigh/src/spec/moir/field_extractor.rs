@@ -26,6 +26,7 @@ pub(crate) struct FieldExtractor {
     local_size: MOIRSize,
     byte_index: usize,
     bits: MOIRBitRange,
+    signed: bool,
 }
 
 impl FieldExtractor {
@@ -34,12 +35,14 @@ impl FieldExtractor {
         local_size: MOIRSize,
         byte_index: usize,
         bits: MOIRBitRange,
+        signed: bool,
     ) -> Self {
         Self {
             local_id,
             local_size,
             byte_index,
             bits,
+            signed,
         }
     }
 
@@ -60,7 +63,7 @@ impl FieldExtractor {
             todo!("Generate error report for out of bounds token index");
         }
 
-        let mut value_bytes = [0u8; 8];
+        let mut value_bytes = [0u8; 16];
         for (bytei, byte) in bytes[self.byte_index..]
             .iter()
             .enumerate()
@@ -69,13 +72,20 @@ impl FieldExtractor {
             value_bytes[bytei] = *byte;
         }
 
-        let value = u64::from_le_bytes(value_bytes);
-        let extracted_value = self.bits.extract(value);
+        let value = u128::from_le_bytes(value_bytes);
+        let mut value = self.bits.extract_u128(value);
 
-        trace_jir!("Extracted local_id {} := {}", self.local_id, extracted_value);
+        if self.signed {
+            // if the field is signed, we need to sign extend
+            eprintln!("value = {:x}", value);
+            value = (((value << (128 - self.bits.bits())) as i128) >> (128 - self.bits.bits())) as u128;
+            eprintln!("value = {:x}", value);
+        };
+
+        trace_jir!("Extracted local_id {} := {}", self.local_id, value);
 
         Ok(Some(JIRValue::Const(JIRConst::new(
-            extracted_value.into(),
+            value,
             self.local_size
                 .try_into()
                 .expect("The size must fit into JIRSize"),

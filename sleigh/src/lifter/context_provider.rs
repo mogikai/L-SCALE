@@ -10,27 +10,27 @@ pub trait ContextProvider {
         &mut self,
         processor_spec: &ProcessorSpecification,
         name: &str,
-        value: u64,
+        value: u128,
     );
 
     fn get_by_string(
         &self,
         processor_spec: &ProcessorSpecification,
         name: &str,
-    ) -> Option<u64>;
+    ) -> Option<u128>;
 
     fn get_by_id(
         &self,
         field_id: FieldId,
-    ) -> Option<u64>;
+    ) -> Option<u128>;
 
     /// Return an iterator over all stored context field values.
-    fn values(&self) -> impl Iterator<Item = (FieldId, u64)>;
+    fn values(&self) -> impl Iterator<Item = (FieldId, u128)>;
 }
 
 #[derive(Default)]
 pub struct SimpleContextProvider {
-    values: HashMap<FieldId, u64>,
+    values: HashMap<FieldId, u128>,
 }
 
 impl ContextProvider for SimpleContextProvider {
@@ -38,7 +38,7 @@ impl ContextProvider for SimpleContextProvider {
         &mut self,
         processor_spec: &ProcessorSpecification,
         name: &str,
-        value: u64,
+        value: u128,
     ) {
         processor_spec.field_id_by_string(name).map(|field_id| {
             self.values.insert(field_id, value);
@@ -49,7 +49,7 @@ impl ContextProvider for SimpleContextProvider {
         &self,
         processor_spec: &ProcessorSpecification,
         name: &str,
-    ) -> Option<u64> {
+    ) -> Option<u128> {
         processor_spec
             .field_id_by_string(name)
             .and_then(|field_id| self.values.get(&field_id).copied())
@@ -58,11 +58,11 @@ impl ContextProvider for SimpleContextProvider {
     fn get_by_id(
         &self,
         field_id: FieldId,
-    ) -> Option<u64> {
+    ) -> Option<u128> {
         self.values.get(&field_id).copied()
     }
 
-    fn values(&self) -> impl Iterator<Item = (FieldId, u64)> {
+    fn values(&self) -> impl Iterator<Item = (FieldId, u128)> {
         self.values
             .iter()
             .map(|(field_id, value)| (*field_id, *value))

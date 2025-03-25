@@ -8,6 +8,7 @@ use crate::compiler::build::trace_build;
 use crate::compiler::error::{
     InternalError,
     InternalErrorType,
+    InvalidSymbolType,
 };
 use crate::compiler::{
     InternalCompilerResult,
@@ -24,6 +25,10 @@ use crate::spec::moir::actions::{
 use crate::spec::moir::constructor::{
     ConstructorId,
     MOIRConstructor,
+};
+use crate::spec::moir::display::{
+    MOIRDisplay,
+    MOIRDisplayFragment,
 };
 use crate::spec::moir::field::{
     FieldId,
@@ -51,6 +56,10 @@ use mogi_sleigh_parser::ast::constructor::disassembly_section::{
     SASTDisassemblySection,
     SASTPatternExpression,
 };
+use mogi_sleigh_parser::ast::constructor::display_section::{
+    SASTDisplayFragment,
+    SASTDisplaySection,
+};
 use mogi_sleigh_parser::lexer::InputSpan;
 use mogi_sleigh_parser::{
     Spanned,
@@ -61,6 +70,7 @@ use std::collections::{
     BTreeSet,
     HashSet,
 };
+use std::ops::Deref;
 use tracing::{
     debug,
     trace,
@@ -103,17 +113,23 @@ impl SleighCompiler {
         });
         let references = references.into_iter().collect_vec();
 
-        let display_section = constructor.display_section.into_value();
+        let display_string = constructor.display_section.display_str.clone().into_value();
+        let display_section = constructor.display_section;
+
         let mut scope = self
-            .pc_create_scope(display_section.identifiers, &references)
+            .pc_create_scope(display_section.identifiers(), &references)
             .map_err(|e| e.span("constructor", span))?;
+
+        let display = self.pc_process_display_section(display_section, &scope)?;
+
         let actions = self.pc_process_actions(&mut scope, constructor.disassembly_section)?;
         let modifies_context = actions.iter().any(|action| action.modifies_context());
         let mut moir_constructor = MOIRConstructor {
             local_scope: scope,
             instructions: vec![],
             block_end: false,
-            display: display_section.display_str.into_value(),
+            display_string,
+            display,
             actions,
             modifies_context,
             export: None,
@@ -240,7 +256,7 @@ impl SleighCompiler {
                 used_locals.push(local_id);
                 MOIRPatternExpression::Local(local_id)
             }
-            SASTPatternExpression::Integer(value) => MOIRPatternExpression::Integer(value as u64),
+            SASTPatternExpression::Integer(value) => MOIRPatternExpression::Integer(value.try_into().unwrap()),
         })
     }
 
@@ -380,12 +396,12 @@ impl SleighCompiler {
                                 match bytes_consumed {
                                     Some(bytes_consumed) => {
                                         // field used and fixed offset
-                                        let fe = FieldExtractor::new(local_id, 0, bytes_consumed.into(), field.bits);
+                                        let fe = FieldExtractor::new(local_id, 0, bytes_consumed.into(), field.bits, field.signed);
                                         matcher.static_field_extractors.push(fe);
                                     }
                                     None => {
                                         // field used and dynamic offset
-                                        let fe = FieldExtractor::new(local_id, 0, 0, field.bits);
+                                        let fe = FieldExtractor::new(local_id, 0, 0, field.bits, field.signed);
                                         conjunction.dynamic_field_extractors.push(fe);
                                     }
                                 }
@@ -516,6 +532,42 @@ impl SleighCompiler {
         });
 
         Ok(())
+    }
+
+    /// A [SASTDisplaySection] is processed into a [MOIRDisplay] by resolving identifiers.
+    fn pc_process_display_section(
+        &mut self,
+        display_section: Spanned<SASTDisplaySection>,
+        scope: &MOIRScope,
+    ) -> InternalCompilerResult<MOIRDisplay> {
+        let moir_fragments: Vec<MOIRDisplayFragment> = display_section
+            .into_value()
+            .fragments
+            .into_iter()
+            .map(|sast_fragment| {
+                let (fragment, span) = sast_fragment.into_tuple();
+
+                match fragment {
+                    SASTDisplayFragment::Literal(string) => Ok(MOIRDisplayFragment::Literal(string)),
+                    SASTDisplayFragment::Identifier(sid) => {
+                        let sid_spanned = Spanned::new(sid, span);
+                        let slice = scope
+                            .local(sid)
+                            .expect("Fragment identifiers must be included in the scope");
+
+                        match slice.reference {
+                            MOIRReference::Field(_)
+                            | MOIRReference::SubTable(_)
+                            | MOIRReference::VarNode(_)
+                            | MOIRReference::Const(_) => Ok(MOIRDisplayFragment::Local(slice.reference)),
+                            _ => todo!("Generate error report for invalid reference type in display string"),
+                        }
+                    }
+                }
+            })
+            .collect::<InternalCompilerResult<_>>()?;
+
+        Ok(MOIRDisplay::new(moir_fragments))
     }
 
     fn pc_create_scope(

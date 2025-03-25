@@ -27,7 +27,7 @@ pub(crate) enum MOIRPatternExpression {
     Xor(Box<MOIRPatternExpression>, Box<MOIRPatternExpression>),
     Not(Box<MOIRPatternExpression>),
     Local(MOIRLocalId),
-    Integer(u64),
+    Integer(u128),
 }
 
 /// Disassembly actions are used for dynamic calculations at disassembly time to for example
@@ -80,7 +80,7 @@ impl MOIRPatternExpression {
     pub(crate) fn evaluate(
         &self,
         resolver: &JIRResolver,
-    ) -> InternalCompilerResult<u64> {
+    ) -> InternalCompilerResult<u128> {
         Ok(match self {
             MOIRPatternExpression::Add(lhs, rhs) => lhs.evaluate(resolver)? + rhs.evaluate(resolver)?,
             MOIRPatternExpression::Sub(lhs, rhs) => lhs.evaluate(resolver)? - rhs.evaluate(resolver)?,
@@ -88,16 +88,13 @@ impl MOIRPatternExpression {
             MOIRPatternExpression::Div(lhs, rhs) => lhs.evaluate(resolver)? / rhs.evaluate(resolver)?,
             MOIRPatternExpression::Shl(lhs, rhs) => lhs.evaluate(resolver)? << rhs.evaluate(resolver)?,
             MOIRPatternExpression::Shr(lhs, rhs) => {
-                ((lhs.evaluate(resolver)? as i64) >> rhs.evaluate(resolver)?) as u64
+                ((lhs.evaluate(resolver)? as i128) >> rhs.evaluate(resolver)?) as u128
             }
             MOIRPatternExpression::And(lhs, rhs) => lhs.evaluate(resolver)? & rhs.evaluate(resolver)?,
             MOIRPatternExpression::Or(lhs, rhs) => lhs.evaluate(resolver)? | rhs.evaluate(resolver)?,
             MOIRPatternExpression::Xor(lhs, rhs) => lhs.evaluate(resolver)? ^ rhs.evaluate(resolver)?,
             MOIRPatternExpression::Not(expr) => !expr.evaluate(resolver)?,
-            MOIRPatternExpression::Local(local_id) => resolver
-                .resolve_local_id_to_const(*local_id)?
-                .try_into()
-                .expect("Actions only support 64-bit values"),
+            MOIRPatternExpression::Local(local_id) => resolver.resolve_local_id_to_const(*local_id)?,
             MOIRPatternExpression::Integer(value) => *value,
         })
     }

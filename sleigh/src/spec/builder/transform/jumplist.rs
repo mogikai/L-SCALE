@@ -126,8 +126,8 @@ pub(super) struct JumplistBuilder<'a> {
 #[derive(Debug, Clone)]
 struct Row<'a> {
     pub matcher: &'a Matcher,
-    pub mask: u64,
-    pub value: u64,
+    pub mask: u128,
+    pub value: u128,
     pub data_provider: DataProvider,
     pub token_size: MOIRSize,
 }
@@ -135,8 +135,8 @@ struct Row<'a> {
 impl<'a> Row<'a> {
     fn new(
         matcher: &'a Matcher,
-        mask: u64,
-        value: u64,
+        mask: u128,
+        value: u128,
         data_provider: DataProvider,
         token_size: MOIRSize,
     ) -> Self {
@@ -519,7 +519,7 @@ impl<'a> JumplistBuilder<'a> {
             }
 
             // partition by value and submatchers
-            let mut partitions: BTreeMap<(u64, Vec<Submatchers>), Vec<Row>> = BTreeMap::new();
+            let mut partitions: BTreeMap<(u128, Vec<Submatchers>), Vec<Row>> = BTreeMap::new();
             for row in set_rows_child.into_iter() {
                 let submatchers_list = if bytes_consumed == 0 {
                     // first iteration: take sublists into account
@@ -724,10 +724,10 @@ impl<'a> JumplistBuilder<'a> {
 /// This is necessary for creating jumplist indices for a jumplist with a single mask out of values
 /// with potentially different, smaller masks.
 fn expand_mask(
-    value: u64,
-    mask_small: u64,
-    mask_large: u64,
-) -> Vec<u64> {
+    value: u128,
+    mask_small: u128,
+    mask_large: u128,
+) -> Vec<u128> {
     /* value        = 0b0000
      * mask_small   = 0b0011
      * mask_large   = 0b1111
@@ -738,11 +738,11 @@ fn expand_mask(
      */
 
     let mask_delta = mask_large ^ mask_small;
-    let num_values = 2u64.pow(mask_delta.count_ones()) - 1;
+    let num_values = 2u128.pow(mask_delta.count_ones()) - 1;
     let mut new_values = Vec::with_capacity(usize::try_from(num_values).unwrap());
 
     // (position, value) tuples
-    let mut delta_positions = (0..u64::BITS)
+    let mut delta_positions = (0..u128::BITS)
         .filter(|&position| (mask_delta >> position) & 1 == 1)
         .map(|position| (position, 0))
         .collect_vec();
@@ -775,19 +775,19 @@ fn expand_mask(
 /// Calculate the largest common mask of all rows and expand values.
 fn expand_rows(
     rows: &Vec<Row>,
-    mask: u64,
-    value: u64,
+    mask: u128,
+    value: u128,
     size_bits: MOIRBitRange,
-) -> Vec<u64> {
+) -> Vec<u128> {
     let largest_common_mask = rows
         .iter()
-        .fold(!0u64, |acc, row| acc & size_bits.extract(row.mask));
+        .fold(!0u128, |acc, row| acc & size_bits.extract(row.mask));
 
     expand_mask(value, largest_common_mask, mask)
 }
 
 /// Extracts a mask/value pair from a matcher conjunction.
-fn extract_from_conjunction(conjunction: &MatcherConjunction) -> (u64, u64) {
+fn extract_from_conjunction(conjunction: &MatcherConjunction) -> (u128, u128) {
     conjunction
         .atoms
         .iter()
@@ -805,8 +805,8 @@ fn extract_from_conjunction(conjunction: &MatcherConjunction) -> (u64, u64) {
 /// Returns true if `submask` is a submask of `supermask`,
 /// i.e. if all bits set in `submask` are also set in `supermask`
 fn is_submask(
-    submask: u64,
-    supermask: u64,
+    submask: u128,
+    supermask: u128,
 ) -> bool {
     (submask ^ supermask) & submask == 0
 }
@@ -828,8 +828,8 @@ fn partition_by_data_provider(rows: Vec<Row>) -> BTreeMap<DataProvider, Vec<Row>
 fn merge_rows<'a>(
     rows: Vec<Row<'a>>,
     size_bits: MOIRBitRange,
-) -> Vec<(u64, Vec<Row<'a>>)> {
-    let mut sets = Vec::<(u64, Vec<Row<'a>>)>::new();
+) -> Vec<(u128, Vec<Row<'a>>)> {
+    let mut sets = Vec::<(u128, Vec<Row<'a>>)>::new();
     'next_row: for row in rows.into_iter() {
         let row_mask = size_bits.extract(row.mask);
 
@@ -857,8 +857,8 @@ fn merge_rows<'a>(
 }
 
 /// Arrange all merged rows into a hierarchy w.r.t. the supermask relation.
-fn arrange_into_hierarchy<'a>(merged_rows: Vec<(u64, Vec<Row<'a>>)>) -> Vec<(u64, Vec<Row<'a>>, Vec<Row<'a>>)> {
-    let mut sets = Vec::<(u64, Vec<Row<'a>>, Vec<Row<'a>>)>::new();
+fn arrange_into_hierarchy<'a>(merged_rows: Vec<(u128, Vec<Row<'a>>)>) -> Vec<(u128, Vec<Row<'a>>, Vec<Row<'a>>)> {
+    let mut sets = Vec::<(u128, Vec<Row<'a>>, Vec<Row<'a>>)>::new();
 
     'next_merged: for (merged_mask, mut merged_rows) in merged_rows.into_iter() {
         // set_children is not modified since all rows with equal mask were already merged in the

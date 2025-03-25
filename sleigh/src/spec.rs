@@ -70,6 +70,7 @@ use tracing::debug;
 pub mod builder;
 pub mod jir;
 mod lifter;
+mod disassembler;
 pub mod moir;
 pub mod typed_index_table;
 

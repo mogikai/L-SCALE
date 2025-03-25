@@ -52,5 +52,5 @@ pub enum SASTConstraintOp {
 #[derive(Debug, Copy, Clone)]
 pub enum SASTConstraintPattern {
     Ident(Spanned<SASTIdent>),
-    BitPattern(Spanned<u64>),
+    BitPattern(Spanned<u128>),
 }

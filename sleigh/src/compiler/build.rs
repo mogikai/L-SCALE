@@ -31,16 +31,7 @@ use crate::spec::moir::token::MOIRToken;
 use crate::spec::moir::varnode::MOIRVarNode;
 use mogi_sleigh_parser::ast::attach::SASTAttach;
 use mogi_sleigh_parser::ast::define::{
-    SASTAddressSpace,
-    SASTAddressSpaceAttribute,
-    SASTAlignment,
-    SASTBitrangeRegister,
-    SASTContext,
-    SASTDefine,
-    SASTEndianness,
-    SASTToken,
-    SASTUserPcodeOp,
-    SASTVarnode,
+    SASTAddressSpace, SASTAddressSpaceAttribute, SASTAlignment, SASTBitrangeRegister, SASTContext, SASTContextFieldAttribute, SASTDefine, SASTEndianness, SASTToken, SASTTokenFieldAttribute, SASTUserPcodeOp, SASTVarnode
 };
 use mogi_sleigh_parser::ast::item::SASTItem;
 use mogi_sleigh_parser::ast::with::SASTWith;
@@ -292,8 +283,19 @@ impl SleighCompiler {
                     MOIRSize::try_from(*field.start.value()).unwrap(),
                     MOIRSize::try_from(*field.end.value() + 1).unwrap(),
                 );
+
+                let mut signed = false;
+                let mut hex = false;
+                for attr in field.attributes.iter() {
+                    match attr.value() {
+                        SASTTokenFieldAttribute::Signed => signed = true,
+                        SASTTokenFieldAttribute::Hex => hex = true,
+                        SASTTokenFieldAttribute::Dec => todo!("Generate error report for unsupported dec attribute"),
+                    }
+                }
+
                 if let Some(field) = self
-                    .make_field(MOIRFieldParent::Token(token_id), bits, range)
+                    .make_field(MOIRFieldParent::Token(token_id), bits, range, signed, hex)
                     .map_err(|e| e.span("field", field.span().clone()))?
                 {
                     let result = self.spec_builder.define_field(name, field);
@@ -318,8 +320,20 @@ impl SleighCompiler {
                 MOIRSize::try_from(bits - *field.end.value() - 1).unwrap(),
                 MOIRSize::try_from(bits - *field.start.value()).unwrap(),
             );
+
+            let mut signed = false;
+            let mut hex = false;
+            for attr in field.attributes.iter() {
+                match attr.value() {
+                    SASTContextFieldAttribute::Signed => signed = true,
+                    SASTContextFieldAttribute::Hex => hex = true,
+                    SASTContextFieldAttribute::Dec => todo!("Generate error report for unsupported dec attribute"),
+                    SASTContextFieldAttribute::Noflow => todo!("Noflow"),
+                }
+            }
+
             if let Some(moir_field) = self
-                .make_field(MOIRFieldParent::Context(context_id), bits, range)
+                .make_field(MOIRFieldParent::Context(context_id), bits, range, signed, hex)
                 .map_err(|e| e.span("field", field.span().clone()))?
             {
                 let result = self
@@ -341,6 +355,8 @@ impl SleighCompiler {
         parent: MOIRFieldParent,
         bits: u64,
         field_range: MOIRBitRange,
+        signed: bool,
+        hex: bool,
     ) -> InternalCompilerResult<Option<MOIRField>> {
         if field_range.start > field_range.end {
             Err(InternalError::from_error(
@@ -358,7 +374,10 @@ impl SleighCompiler {
                 variables: vec![],
                 values: vec![],
                 strings: vec![],
+                signed,
+                hex,
             };
+
             Ok(Some(field))
         }
     }

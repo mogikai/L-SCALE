@@ -33,33 +33,41 @@ impl MOIRBitRange {
     }
 
     /// Generate a mask for the bit range without any shifts.
-    pub fn mask(&self) -> u64 {
-        if self.bits() as u32 == u64::BITS {
+    pub fn mask(&self) -> u128 {
+        if u32::from(self.bits()) == u128::BITS {
             // prevent overflow
-            u64::MAX
+            u128::MAX
         } else {
             (1 << self.bits()) - 1
         }
     }
 
     /// Generate a mask for the bit range including shifts.
-    pub fn shifted_mask(&self) -> u64 {
+    pub fn shifted_mask(&self) -> u128 {
         self.mask() << self.start
     }
 
     /// Right-shift `v` by `self.start` and apply `self.mask()`
     pub fn extract(
         &self,
-        v: u64,
-    ) -> u64 {
+        v: u128,
+    ) -> u128 {
         (v >> self.start) & self.mask()
+    }
+
+    /// Right-shift `v` by `self.start` and apply `self.mask()`
+    pub fn extract_u128(
+        &self,
+        v: u128,
+    ) -> u128 {
+        (v >> self.start) & u128::try_from(self.mask()).unwrap()
     }
 
     /// Apply `self.mask()` to `v` and left-shift by `self.start`
     pub fn insert(
         &self,
-        v: u64,
-    ) -> u64 {
+        v: u128,
+    ) -> u128 {
         (v & self.mask()) << self.start
     }
 }
@@ -101,6 +109,10 @@ pub struct MOIRField {
     /// Attach different strings to the field to change the display characteristic. This has no
     /// influence on the semantic meaning.
     pub strings: Vec<StringId>,
+
+    /// Field properties
+    pub signed: bool,
+    pub hex: bool,
 }
 
 new_map_key! { pub struct FieldId; "F"; }

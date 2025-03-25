@@ -1,4 +1,7 @@
-use crate::ast::constructor::display_section::SASTDisplaySection;
+use crate::ast::constructor::display_section::{
+    SASTDisplayFragment,
+    SASTDisplaySection,
+};
 use crate::lexer::ParserInput;
 use crate::parser::helpers::spanned;
 use crate::parser::{
@@ -7,6 +10,7 @@ use crate::parser::{
     sleigh_ident,
     sleigh_keyword,
     sleigh_operation,
+    sleigh_whitespace,
 };
 use crate::tokens::SleighKeyword::Is;
 use crate::tokens::{
@@ -64,36 +68,42 @@ pub fn display_section<'tokens>()
         .boxed();
     // let mnemonic = any().rewind().map(|_| String::new()).map_with(spanned);
 
-    let not_ident = any().and_is(
-        select! {
-            SleighToken::Ident(_) => (),
-            SleighToken::Keyword(Is) => (),
-        }
-        .not(),
-    );
+    // parse literal, i.e. non-identifier or surrounded by double quotes
+    let string =
+        select! { SleighToken::String(string_id) => SleighToken::String(string_id) }.map_with(make_display_string);
+    let not_ident = any()
+        .and_is(
+            select! {
+                SleighToken::Ident(_) => (),
+                SleighToken::Keyword(Is) => (),
+            }
+            .not(),
+        )
+        .map_with(make_display_string);
 
-    let identifiers = sleigh_ident()
-        .padded_by(not_ident.repeated())
-        .map_with(spanned)
+    let literal = string
+        .or(not_ident)
+        .map(SASTDisplayFragment::Literal)
+        .map_with(spanned);
+    let identifier = sleigh_ident()
+        .map(SASTDisplayFragment::Identifier)
+        .map_with(spanned);
+
+    // TODO ignore whitespace strings here
+    let fragments = literal
+        .or(identifier)
         .repeated()
         .collect::<Vec<_>>()
-        .then_ignore(end_of_display_section.clone())
+        .separated_by(sleigh_operation(SleighOperation::Hat))
+        .collect::<Vec<_>>()
+        .map(|v| v.into_iter().flatten().collect())
         .boxed();
-
-    let no_identifiers = not_ident
-        .repeated()
-        .map(|_| Vec::new())
-        .then_ignore(end_of_display_section);
 
     start_of_display_section
         .ignore_then(display)
-        .then(mnemonic)
-        .then(identifiers.or(no_identifiers))
-        .map(|((display_str, mnemonic), identifiers)| SASTDisplaySection {
-            mnemonic,
-            identifiers,
-            display_str,
-        })
+        .then(fragments)
+        .then_ignore(end_of_display_section)
+        .map(|(display_str, fragments)| SASTDisplaySection { display_str, fragments })
         .map_with(spanned)
         .boxed()
 }

@@ -37,7 +37,7 @@ pub enum FieldMatcher {
     // everything else (except nontrivial expressions) is broken down to mask-value comparisons
     // TODO do we need to store the mask? do we still work with FieldIds later on or just bit
     // ranges? right now this is redundand
-    Value { mask: u64, value: u64 },
+    Value { mask: u128, value: u128 },
 }
 
 // Every symbol type that can appear in the bit pattern section. This is only used for

@@ -8,6 +8,7 @@ pub(crate) mod common;
 pub(crate) mod constructor;
 pub(crate) mod context;
 pub(crate) mod custom_op;
+pub(crate) mod display;
 pub(crate) mod endianness;
 pub(crate) mod field;
 pub(crate) mod field_extractor;

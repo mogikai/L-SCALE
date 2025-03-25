@@ -145,7 +145,7 @@ impl JumplistEntry {
 pub(crate) enum JumplistContainer {
     // multiple alternatives are possible in case of a shared prefix
     Small(Vec<Option<Vec<JumplistEntry>>>),
-    Large(FnvHashMap<u64, Vec<JumplistEntry>>),
+    Large(FnvHashMap<u128, Vec<JumplistEntry>>),
 }
 
 impl Default for JumplistContainer {
@@ -166,14 +166,14 @@ pub(crate) enum DataProvider {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Jumplist {
     container: JumplistContainer,
-    mask: u64, // usually only a few bits are actually relevant for indexing into the list
+    mask: u128, // usually only a few bits are actually relevant for indexing into the list
     bytes: MOIRSize,
     data_provider: DataProvider,
 }
 
 impl Jumplist {
     pub(crate) fn new(
-        mask: u64,
+        mask: u128,
         bytes: MOIRSize,
         data_provider: DataProvider,
     ) -> Self {
@@ -195,7 +195,7 @@ impl Jumplist {
     /// inserted at the front and have the highest priority.
     pub(crate) fn insert(
         &mut self,
-        value: u64,
+        value: u128,
         entry: JumplistEntry,
         prepend: bool,
     ) -> InternalCompilerResult {
@@ -238,7 +238,7 @@ impl Jumplist {
         bytes: &[u8],
         consumed_so_far: usize,
         context_stack: &ContextStack,
-    ) -> InternalCompilerResult<Option<(u64, usize)>> {
+    ) -> InternalCompilerResult<Option<(u128, usize)>> {
         match self.data_provider {
             DataProvider::ByteStream => {
                 if bytes.len() - consumed_so_far < self.bytes.into() {
@@ -248,11 +248,11 @@ impl Jumplist {
 
                 let offsetted_bytes = &bytes[consumed_so_far..];
 
-                let mut value_bytes = [0u8; 8];
+                let mut value_bytes = [0u8; 16];
                 for (bytei, byte) in offsetted_bytes.iter().enumerate().take(self.bytes.into()) {
                     value_bytes[bytei] = *byte;
                 }
-                let value = u64::from_le_bytes(value_bytes);
+                let value = u128::from_le_bytes(value_bytes);
                 Ok(Some((value & self.mask, usize::from(self.bytes))))
             }
             DataProvider::Context(cid) => {
@@ -274,7 +274,7 @@ impl Jumplist {
     /// Get all entries for a given value.
     pub(crate) fn get(
         &self,
-        value: u64,
+        value: u128,
     ) -> InternalCompilerResult<Option<&Vec<JumplistEntry>>> {
         if value > 0 && value.ilog2() >= (self.bytes * 8) as u32 {
             todo!("Generate error report for out of bounds access");
@@ -290,36 +290,36 @@ impl Jumplist {
     }
 
     /// Get all values stored in [Jumplist::container].
-    pub(crate) fn values<'a>(&'a self) -> Box<dyn Iterator<Item = u64> + 'a> {
+    pub(crate) fn values<'a>(&'a self) -> Box<dyn Iterator<Item = u128> + 'a> {
         match &self.container {
             JumplistContainer::Small(array) => Box::new(
                 (0..array.len())
                     .filter(|index| array.get(*index).expect("We checked for this").is_some())
-                    .map(|index| u64::try_from(index).unwrap()),
+                    .map(|index| u128::try_from(index).unwrap()),
             ),
             JumplistContainer::Large(map) => Box::new(map.keys().copied()),
         }
     }
 
     /// Get all `(value, entry)` pairs stored in [Jumplist::container].
-    pub(crate) fn entries_mut<'a>(&'a mut self) -> Box<dyn Iterator<Item = (u64, &'a mut Vec<JumplistEntry>)> + 'a> {
+    pub(crate) fn entries_mut<'a>(&'a mut self) -> Box<dyn Iterator<Item = (u128, &'a mut Vec<JumplistEntry>)> + 'a> {
         match &mut self.container {
             JumplistContainer::Small(array) => Box::new(array.iter_mut().enumerate().filter_map(|(value, option)| {
                 option
                     .as_mut()
-                    .map(|entries| (u64::try_from(value).unwrap(), entries))
+                    .map(|entries| (u128::try_from(value).unwrap(), entries))
             })),
             JumplistContainer::Large(map) => Box::new(map.iter_mut().map(|(value, entries)| (*value, entries))),
         }
     }
 
     /// Mutably get all `(value, entry)` pairs stored in [Jumplist::container].
-    pub(crate) fn entries<'a>(&'a self) -> Box<dyn Iterator<Item = (u64, &'a Vec<JumplistEntry>)> + 'a> {
+    pub(crate) fn entries<'a>(&'a self) -> Box<dyn Iterator<Item = (u128, &'a Vec<JumplistEntry>)> + 'a> {
         match &self.container {
             JumplistContainer::Small(array) => Box::new(array.iter().enumerate().filter_map(|(value, option)| {
                 option
                     .as_ref()
-                    .map(|entries| (u64::try_from(value).unwrap(), entries))
+                    .map(|entries| (u128::try_from(value).unwrap(), entries))
             })),
             JumplistContainer::Large(map) => Box::new(map.iter().map(|(value, entries)| (*value, entries))),
         }
@@ -358,7 +358,7 @@ impl<'a> MatchContext<'a> {
 
         trace_jir!(
             "Got constructor {} with {} actions, consumed {} bytes",
-            constructor.display,
+            constructor.display_string,
             constructor.actions.len(),
             consumed_so_far,
         );
@@ -430,7 +430,7 @@ impl<'a> MatchContext<'a> {
                 "Descending into offsetted sublist {:#?} with bytes={:#x?} (from {})",
                 offsetted_sublist,
                 sublist_bytes,
-                constructor.display
+                constructor.display_string
             );
 
             let result = self.match_with_list(

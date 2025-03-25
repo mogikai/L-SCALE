@@ -383,8 +383,8 @@ impl SleighCompiler {
         other: &MOIRField,
     ) -> Vec<BTreeSet<MatcherAtom>> {
         let mut conjunctions = Vec::with_capacity(2.pow(field.bits.bits() as u32));
-        (0u64..2u64.pow(field.bits.bits() as u32))
-            .zip(0u64..2u64.pow(other.bits.bits() as u32))
+        (0u128..2u128.pow(field.bits.bits() as u32))
+            .zip(0u128..2u128.pow(other.bits.bits() as u32))
             .for_each(|(v0, v1)| {
                 let mask = field.bits.shifted_mask() | other.bits.shifted_mask();
                 let value = (v0 << field.bits.start) | (v1 << other.bits.start);
@@ -408,8 +408,8 @@ impl SleighCompiler {
         other: &MOIRField,
     ) -> Vec<BTreeSet<MatcherAtom>> {
         let mut conjunctions = Vec::with_capacity(2.pow((field.bits.bits() + other.bits.bits()) as u32));
-        for v0 in 0u64..2u64.pow(field.bits.bits() as u32) {
-            for v1 in 0u64..2u64.pow(other.bits.bits() as u32) {
+        for v0 in 0u128..2u128.pow(field.bits.bits() as u32) {
+            for v1 in 0u128..2u128.pow(other.bits.bits() as u32) {
                 if v0 == v1 {
                     continue;
                 }
@@ -437,8 +437,8 @@ impl SleighCompiler {
         other: &MOIRField,
     ) -> Vec<BTreeSet<MatcherAtom>> {
         let mut conjunctions = Vec::with_capacity(2.pow((field.bits.bits() + other.bits.bits()) as u32));
-        for v0 in 0u64..2u64.pow(field.bits.bits() as u32) {
-            for v1 in v0..2u64.pow(other.bits.bits() as u32) {
+        for v0 in 0u128..2u128.pow(field.bits.bits() as u32) {
+            for v1 in v0..2u128.pow(other.bits.bits() as u32) {
                 let mask = field.bits.shifted_mask() | other.bits.shifted_mask();
                 let value = (v0 << field.bits.start) | (v1 << other.bits.start);
                 let field_matcher = FieldMatcher::Value { mask, value };
@@ -470,7 +470,7 @@ impl SleighCompiler {
         &self,
         field: &MOIRField,
         field_id: FieldId,
-        value: u64,
+        value: u128,
     ) -> BTreeSet<MatcherAtom> {
         let mask = field.bits.shifted_mask();
         let value = value << field.bits.start;
@@ -489,9 +489,9 @@ impl SleighCompiler {
         &self,
         field: &MOIRField,
         field_id: FieldId,
-        value: u64,
+        value: u128,
     ) -> Vec<BTreeSet<MatcherAtom>> {
-        (0u64..2u64.pow(field.bits.bits() as u32))
+        (0u128..2u128.pow(field.bits.bits() as u32))
             .filter_map(|v| {
                 if v != value {
                     Some(self.matcher_conjunction_from_equals_constraint(field, field_id, v))
@@ -508,9 +508,9 @@ impl SleighCompiler {
         &self,
         field: &MOIRField,
         field_id: FieldId,
-        value: u64,
+        value: u128,
     ) -> Vec<BTreeSet<MatcherAtom>> {
-        (0u64..2u64.pow(field.bits.bits() as u32))
+        (0u128..2u128.pow(field.bits.bits() as u32))
             .filter_map(|v| {
                 if v < value {
                     Some(self.matcher_conjunction_from_equals_constraint(field, field_id, v))
@@ -527,9 +527,9 @@ impl SleighCompiler {
         &self,
         field: &MOIRField,
         field_id: FieldId,
-        value: u64,
+        value: u128,
     ) -> Vec<BTreeSet<MatcherAtom>> {
-        (0u64..2u64.pow(field.bits.bits() as u32))
+        (0u128..2u128.pow(field.bits.bits() as u32))
             .filter_map(|v| {
                 if v > value {
                     Some(self.matcher_conjunction_from_equals_constraint(field, field_id, v))

@@ -20,7 +20,7 @@ use mogi_utilities::index_map::{
 pub(crate) struct ContextStack<'a> {
     // context ids are assumed to be contiguous and therefore pushed onto and popped
     // from this vector when saving and restoring state
-    context_values: Vec<u64>,
+    context_values: Vec<u128>,
     num_values: usize,
     context_fields: SecondaryMap<FieldId, Option<&'a MOIRField>>,
 }
@@ -55,8 +55,8 @@ impl<'a> ContextStack<'a> {
         Ok(slf)
     }
 
-    /// Get all stored `(FieldId, u64)` key-value pairs.
-    pub(crate) fn values(&self) -> impl Iterator<Item = (FieldId, u64)> {
+    /// Get all stored `(FieldId, u128)` key-value pairs.
+    pub(crate) fn values(&self) -> impl Iterator<Item = (FieldId, u128)> {
         self.context_fields.items().filter_map(|(field_id, field)| {
             field.as_ref().and_then(|_| {
                 Some((
@@ -72,7 +72,7 @@ impl<'a> ContextStack<'a> {
     pub(crate) fn context_value(
         &self,
         cid: ContextId,
-    ) -> ProcessorSpecResult<u64> {
+    ) -> ProcessorSpecResult<u128> {
         if cid.to_index() >= self.num_values {
             todo!("Generate error report for out of bounds context id");
         }
@@ -90,7 +90,7 @@ impl<'a> ContextStack<'a> {
     pub(crate) fn context_value_mut(
         &mut self,
         cid: ContextId,
-    ) -> ProcessorSpecResult<&mut u64> {
+    ) -> ProcessorSpecResult<&mut u128> {
         if cid.to_index() >= self.num_values {
             todo!("Generate error report for out of bounds context id");
         }
@@ -107,7 +107,7 @@ impl<'a> ContextStack<'a> {
     pub(crate) fn field_value(
         &self,
         field_id: FieldId,
-    ) -> ProcessorSpecResult<u64> {
+    ) -> ProcessorSpecResult<u128> {
         let field = self.context_fields[field_id]
             .as_ref()
             .ok_or_else(|| -> ProcessorSpecificationError {
@@ -126,7 +126,7 @@ impl<'a> ContextStack<'a> {
     pub(crate) fn set_field_value(
         &mut self,
         field_id: FieldId,
-        value: u64,
+        value: u128,
     ) -> ProcessorSpecResult {
         let field = self.context_fields[field_id]
             .as_ref()

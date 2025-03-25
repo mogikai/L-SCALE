@@ -15,7 +15,7 @@ pub enum SASTPatternExpression {
     Xor(Box<Spanned<SASTPatternExpression>>, Box<Spanned<SASTPatternExpression>>),
     Not(Box<Spanned<SASTPatternExpression>>),
     Symbol(SASTIdent),
-    Integer(i64), // integer constants are treated as signed
+    Integer(i128), // integer constants are treated as signed
 }
 
 /// A disassembly action is of the form `<IDENT> = <EXPRESSION>;`

@@ -33,6 +33,10 @@ impl TargetBasicBlock {
         self.0.jir_instructions.iter()
     }
 
+    pub fn instruction_count(&self) -> usize {
+        self.0.jir_instructions.len()
+    }
+
     pub fn jir_block_ids(&self) -> impl ExactSizeIterator<Item = JIRBlockId> + DoubleEndedIterator {
         self.0.jir_blocks.keys()
     }

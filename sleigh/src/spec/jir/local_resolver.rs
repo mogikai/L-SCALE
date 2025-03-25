@@ -47,6 +47,8 @@ use std::fmt::Write;
 use std::ptr::write;
 use tracing::debug;
 
+use super::basic_block::TargetBasicBlock;
+
 pub enum JIRResolvedValue {
     Value(JIRValue),
     Reference {
@@ -140,7 +142,7 @@ impl<'a> JIRResolver<'a> {
             write!(out, " ")?;
         }
 
-        writeln!(out, "|-> {:?}", self.constructor.display)?;
+        writeln!(out, "|-> {:?}", self.constructor.display_string)?;
         for subtable_resolver in self.subtables.values() {
             subtable_resolver._hierarchy_debug_string(depth + 4, out)?;
         }
@@ -199,6 +201,13 @@ impl<'a> JIRResolver<'a> {
         self.constructor.generate_jcode(spec, self, block_builder)
     }
 
+    pub fn build_display(
+        &self,
+        spec: &ProcessorSpecification,
+    ) -> ProcessorSpecResult<String> {
+        self.constructor.generate_display(self)
+    }
+
     pub fn constructor(&self) -> &MOIRConstructor {
         self.constructor
     }
@@ -234,7 +243,7 @@ impl<'a> JIRResolver<'a> {
     pub fn define_field(
         &mut self,
         field_id: FieldId,
-        value: u64,
+        value: u128,
     ) -> InternalCompilerResult {
         let local_id = self
             .constructor
@@ -258,7 +267,7 @@ impl<'a> JIRResolver<'a> {
             todo!("Generate error report for slice in field extractor");
         };
 
-        *c.value_mut() = value as u128;
+        *c.value_mut() = value;
         Ok(())
     }
 

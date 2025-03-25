@@ -1,4 +1,5 @@
 use super::actions::MOIRAction;
+use super::display::MOIRDisplay;
 use super::field_extractor::FieldExtractor;
 use crate::compiler::InternalCompilerResult;
 use crate::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
@@ -48,14 +49,15 @@ use serde_derive::{
 };
 use std::iter::once;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MOIRConstructor {
     pub local_scope: MOIRScope,
     pub instructions: Vec<MOIRInstruction>,
     /// block_end is set to true if the last instruction branches to another block.
     /// No other instructions may follow.
     pub block_end: bool,
-    pub display: String,
+    pub display_string: String,
+    pub(crate) display: MOIRDisplay,
     pub(crate) actions: Vec<MOIRAction>,
     pub(crate) modifies_context: bool,
     /// A constructor may export a value. The export refers to a local in this constructor.
@@ -147,6 +149,17 @@ impl MOIRConstructor {
                 None => break target_inst.finish(),
             }
         }
+    }
+
+    /// Transform the [MOIRDisplay] section into the final display string with
+    /// the provided [JIRResolver].
+    pub fn generate_display(
+        &self,
+        resolver: &JIRResolver,
+    ) -> ProcessorSpecResult<String> {
+        Ok(self.display.fragments.iter().map(|fragment| {
+            format!("{:#?}", fragment)
+        }).collect::<String>())
     }
 
     /// Transform the MOIR code template in the constructor into JCode, but as a subtable.
@@ -451,7 +464,7 @@ impl MOIRConstructor {
     ) -> String {
         use std::fmt::Write;
         let mut instructions_str = String::new();
-        writeln!(&mut instructions_str, r#"MCode for "{}":"#, self.display).expect("");
+        writeln!(&mut instructions_str, r#"MCode for "{}":"#, self.display_string).expect("");
         writeln!(&mut instructions_str, "Scope:\n{}", self.local_scope.detailed_scope_display(interner)).expect("");
         writeln!(&mut instructions_str, "Instructions:").expect("");
         for instruction in &self.instructions {

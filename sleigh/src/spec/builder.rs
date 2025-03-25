@@ -886,7 +886,7 @@ impl ProcessorSpecificationBuilder {
         }
 
         for (cid, c) in self.symbol_tables.constructors.items() {
-            write!(writer, "{:?} <=> {}\n", cid, c.display).unwrap();
+            write!(writer, "{:?} <=> {}\n", cid, c.display_string).unwrap();
         }
     }
 
