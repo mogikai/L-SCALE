@@ -3,16 +3,23 @@ pub mod requirements;
 pub mod result;
 
 use crate::jit::api::JITResult;
+use crate::jit::host::register::{
+    HostReg,
+    HostRegMap,
+};
+use crate::jit::regalloc::requirements::{
+    OperandConstraint,
+    OperandRequest,
+};
 use crate::jit::trace_jit;
 use mogi_sleigh::spec::jir::basic_block::{
     InstId,
     TargetBasicBlock,
 };
 use mogi_sleigh::spec::jir::jir_block::JIRBlockId;
+use mogi_sleigh::spec::jir::values::JIRSlice;
 use requirements::EmitterAllocRequirements;
 use result::AllocatorResult;
-use std::fmt::Display;
-use std::ops::Range;
 
 pub struct RegisterAllocator<'a, E> {
     /// The target basic block. It contains the instructions and JirBlocks that the allocator performs allocations for.
@@ -23,6 +30,9 @@ pub struct RegisterAllocator<'a, E> {
     emitter_requirements: &'a E,
 
     allocations: AllocatorResult,
+
+    /// Maps the [HostReg]
+    loaded_slices: HostRegMap<JIRSlice>,
 }
 
 impl<'a, E> RegisterAllocator<'a, E>
@@ -38,6 +48,7 @@ where
             target_block: translation_unit,
             emitter_requirements,
             allocations: AllocatorResult::default(),
+            loaded_slices: Default::default(),
         }
     }
 
@@ -68,6 +79,27 @@ where
     ) {
         let clobbers = self.emitter_requirements.clobbers(inst);
         let operands = self.emitter_requirements.operands(inst);
+
+        for operand in operands.fixed() {
+            let OperandConstraint::FixedReg(target_reg) = operand.constraint else {
+                unreachable!()
+            };
+            // TODO: Spill anything in target_reg, if it is not the requested slice.
+            // TODO: Process fixed operand
+        }
+        for clobber in clobbers {
+            // TODO: Since we are walking in reverse:
+            //       We need to load any allocations appearing in clobbers
+            //       and mark the registers as empty for the next (the previous) instruction.
+
+            // Remove from loaded, since this instruction clobbers the register.
+            // This means it is free to be allocated to by the next (the previous) instruction.
+            if let Some(slice) = self.loaded_slices.take(clobber) {
+                // We need to load the slice that is allocated to this register
+                // for the previous (the next) instruction.
+                self.load_after(inst, clobber, slice)
+            }
+        }
 
         // TODO: We might need to track the number of uses per allocation, such that we can
         //       replace register allocations with memory allocations, in case the value is
@@ -101,5 +133,16 @@ where
         alloc v2(read)
 
          */
+    }
+
+    /// Insert a load operation for the [JIRSlice] into the provided [HostReg]
+    fn load_after(
+        &mut self,
+        inst: InstId,
+        reg: HostReg,
+        slice: JIRSlice,
+    ) {
+        trace_jit!("Loading {slice} into {reg} after inst: {inst}");
+        // TODO: Implement
     }
 }

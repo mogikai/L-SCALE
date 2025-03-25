@@ -1,4 +1,7 @@
-use crate::jit::host::register::HostRegSet;
+use crate::jit::host::register::{
+    HostReg,
+    HostRegSet,
+};
 use mogi_sleigh::spec::jir::values::JIRSlice;
 
 #[derive(Debug)]
@@ -14,7 +17,7 @@ pub enum OperandConstraint {
     /// The operand must be loaded into any register.
     Reg,
     /// The operand must be put into the provided register.
-    FixedReg(()),
+    FixedReg(HostReg),
 }
 
 #[derive(Debug)]
@@ -25,25 +28,21 @@ pub enum OperandKind {
     Read,
 }
 
+// TODO: We might need to compress the requests into an easily copyable value by doing
+//       some bit manipulation?
+/// Request a slice to be allocated. The [OperandConstraint] specifies whether to always allocate a register,
+/// or even to request a specific register. The [OperandKind] specifies whether the operand is written to, or
+/// read from.
 #[derive(Debug)]
-pub enum OperandRequest {
-    /// A temp operand is requested. The allocator will reserve a register for this temporary request that can be used
-    /// for the instruction. There are no guarantees to the data contained in the register, and the register is free
-    /// to be reused after the instruction.
-    Temp,
-    /// Request a slice to be allocated. The [OperandConstraint] specifies whether to always allocate a register,
-    /// or even to request a specific register. The [OperandKind] specifies whether the operand is written to, or
-    /// read from.
-    Slice {
-        slice: JIRSlice,
-        constraint: OperandConstraint,
-        kind: OperandKind,
-    },
+pub struct OperandRequest {
+    pub slice: JIRSlice,
+    pub constraint: OperandConstraint,
+    pub kind: OperandKind,
 }
 
 impl OperandRequest {
     pub fn slice_write_any(slice: JIRSlice) -> Self {
-        OperandRequest::Slice {
+        OperandRequest {
             slice,
             constraint: OperandConstraint::Any,
             kind: OperandKind::Write,
@@ -51,15 +50,32 @@ impl OperandRequest {
     }
 
     pub fn slice_read_any(slice: JIRSlice) -> Self {
-        OperandRequest::Slice {
+        OperandRequest {
             slice,
             constraint: OperandConstraint::Any,
             kind: OperandKind::Read,
         }
     }
+}
 
-    pub fn temp() -> Self {
-        OperandRequest::Temp
+/// This struct provides some convenience view methods on the operand request slice.
+#[derive(Debug)]
+pub struct OperandRequirements<'a>(&'a [OperandRequest]);
+
+impl<'a> OperandRequirements<'a> {
+    pub fn new(requests: &'a [OperandRequest]) -> OperandRequirements<'a> {
+        OperandRequirements(requests)
+    }
+
+    /// Returns an iterator over all operand requests with a fixed register.
+    pub fn fixed(&self) -> impl Iterator<Item = &OperandRequest> {
+        self.0
+            .iter()
+            .filter(|req| matches!(req.constraint, OperandConstraint::FixedReg(_)))
+    }
+
+    pub fn all(&self) -> impl Iterator<Item = &OperandRequest> {
+        self.0.iter()
     }
 }
 
@@ -78,7 +94,7 @@ pub trait EmitterAllocRequirements {
     fn operands(
         &self,
         inst_id: usize,
-    ) -> &[OperandRequest];
+    ) -> OperandRequirements;
 
     /// Returns the total number of different operands used in this emitter instance.
     fn total_opereands(&self) -> usize;

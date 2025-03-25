@@ -48,6 +48,7 @@ use crate::jit::regalloc::RegisterAllocator;
 use crate::jit::regalloc::requirements::{
     EmitterAllocRequirements,
     OperandRequest,
+    OperandRequirements,
 };
 use crate::jit::regalloc::result::AllocatorResult;
 use crate::jit::x86::registers::RegisterTracker;
@@ -232,8 +233,8 @@ impl EmitterAllocRequirements for X64AllocRequirements {
     fn operands(
         &self,
         inst_id: InstId,
-    ) -> &[OperandRequest] {
-        &self.operand_requests[self.instruction_operand_ranges[inst_id].clone()]
+    ) -> OperandRequirements {
+        OperandRequirements::new(&self.operand_requests[self.instruction_operand_ranges[inst_id].clone()])
     }
 
     fn total_opereands(&self) -> usize {

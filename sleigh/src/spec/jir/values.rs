@@ -6,10 +6,12 @@ use crate::spec::jir::common::{
 };
 use crate::spec::moir::address_space::SpaceId;
 pub use crate::spec::moir::context::ContextId;
+use crate::spec::moir::varnode::MOIRVarNode;
 pub use crate::spec::moir::varnode::VarNodeId;
 use mogi_utilities::addresses::EVAddr;
-use mogi_utilities::overlap::overlaps;
 use mogi_utilities::new_map_key;
+use mogi_utilities::overlap::overlaps;
+use num::complex::ComplexFloat;
 use serde_derive::{
     Deserialize,
     Serialize,
@@ -36,12 +38,37 @@ impl JIRVarNode {
 
 // Varnodes are compacted on transformation, but overlapping varnodes need to keep
 // their overlap. We group them into into intersection groups which we then compact.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub(crate) struct VarnodeGroup {
     pub(crate) varnodes: Vec<VarNodeId>,
     // track the total size of the group
     pub(crate) offset: u64,
     pub(crate) size: JIRSize,
+}
+
+impl Debug for VarnodeGroup {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        f.debug_struct("VarnodeGroup")
+            .field("varnodes", &format_args!("{} VIds", self.varnodes.len()))
+            .field("offset", &self.offset)
+            .field("end", &self.end())
+            .finish()
+    }
+}
+
+impl From<&VarnodeGroup> for Range<u64> {
+    fn from(value: &VarnodeGroup) -> Self {
+        value.offset..value.end()
+    }
+}
+
+impl From<&mut VarnodeGroup> for Range<u64> {
+    fn from(value: &mut VarnodeGroup) -> Self {
+        value.offset..value.end()
+    }
 }
 
 impl VarnodeGroup {
@@ -52,9 +79,28 @@ impl VarnodeGroup {
     ) -> Self {
         Self { varnodes, offset, size }
     }
+
+    pub fn end(&self) -> u64 {
+        self.offset + u64::from(self.size)
+    }
+
+    /// Expands the group such that it contains the provided varnode
+    pub fn insert(
+        &mut self,
+        varnode_id: VarNodeId,
+        varnode: &MOIRVarNode,
+    ) {
+        self.varnodes.push(varnode_id);
+        // Adjust offset if necessary.
+        self.offset = self.offset.min(varnode.offset);
+        // Calculate the new end
+        let new_end = self.end().max(varnode.end());
+        // And then set the size accordingly
+        self.size = JIRSize::try_from(new_end - self.offset).expect("This cannot overflow");
+    }
 }
 
-new_map_key! { pub struct VarnodeGroupId; "VIGI"; }
+new_map_key! { pub struct VarnodeGroupId; "VGI"; }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct JIRSlice {

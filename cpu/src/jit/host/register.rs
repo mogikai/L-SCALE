@@ -42,7 +42,7 @@ pub struct HostReg {
 
 impl HostReg {
     pub const MAX_BITS: usize = 6;
-    pub const MAX_INDEX: u8 = (1 << Self::MAX_BITS) - 1;
+    pub const MAX_HW_ENC: u8 = (1 << Self::MAX_BITS) - 1;
     pub const NUM_INDEX: usize = 1 << (Self::MAX_BITS + 2); // including RegClass bits
 
     /// Create a new PReg. The `hw_enc` range is 6 bits.
@@ -51,7 +51,7 @@ impl HostReg {
         hw_enc: u8,
         class: HostRegClass,
     ) -> Self {
-        debug_assert!(hw_enc <= HostReg::MAX_INDEX);
+        debug_assert!(hw_enc <= HostReg::MAX_HW_ENC);
         HostReg {
             bits: ((class as u8) << Self::MAX_BITS) | (hw_enc as u8),
         }
@@ -60,7 +60,7 @@ impl HostReg {
     /// The physical register number, as encoded by the ISA for the particular register class.
     #[inline(always)]
     pub const fn hw_enc(self) -> u8 {
-        self.bits & Self::MAX_INDEX
+        self.bits & Self::MAX_HW_ENC
     }
 
     /// The register class.
@@ -94,7 +94,7 @@ impl HostReg {
     /// data structures.
     #[inline(always)]
     pub const fn invalid() -> Self {
-        HostReg::new(Self::MAX_INDEX, HostRegClass::Int)
+        HostReg::new(Self::MAX_HW_ENC, HostRegClass::Int)
     }
 }
 
@@ -124,6 +124,52 @@ impl core::fmt::Display for HostReg {
             HostRegClass::Vector => "v",
         };
         write!(f, "p{}{}", self.hw_enc(), class)
+    }
+}
+
+/// Maps a host register to a value of type T
+#[derive(Clone, Debug)]
+pub struct HostRegMap<T> {
+    mapping: Vec<Option<T>>,
+}
+
+impl<T> Default for HostRegMap<T> {
+    fn default() -> Self {
+        Self {
+            mapping: Default::default(),
+        }
+    }
+}
+
+impl<T> HostRegMap<T> {
+    pub fn insert(
+        &mut self,
+        reg: HostReg,
+        value: T,
+    ) {
+        self.mapping[reg.index()] = Some(value);
+    }
+
+    pub fn get(
+        &self,
+        reg: HostReg,
+    ) -> Option<&T> {
+        self.mapping.get(reg.index())?.as_ref()
+    }
+
+    /// Removes the associated item for the provided [HostReg]
+    pub fn remove(
+        &mut self,
+        reg: HostReg,
+    ) {
+        self.mapping[reg.index()] = None;
+    }
+
+    pub fn take(
+        &mut self,
+        reg: HostReg,
+    ) -> Option<T> {
+        self.mapping[reg.index()].take()
     }
 }
 

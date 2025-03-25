@@ -225,6 +225,13 @@ impl<K: MapKey, V> PrimaryMap<K, V> {
             .map(|(k, v)| (MapKey::try_from_index(k).expect("Enumarating must produce a valid index"), v))
     }
 
+    pub fn items_mut(&mut self) -> impl Iterator<Item = (K, &mut V)> {
+        self.data
+            .iter_mut()
+            .enumerate()
+            .map(|(k, v)| (MapKey::try_from_index(k).expect("Enumarating must produce a valid index"), v))
+    }
+
     pub fn into_items(self) -> impl Iterator<Item = (K, V)> {
         self.data
             .into_iter()

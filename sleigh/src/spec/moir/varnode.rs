@@ -22,6 +22,7 @@ use std::fmt::{
     Display,
     Formatter,
 };
+use std::ops::Range;
 
 #[derive(Debug, Clone)]
 /// A varnode is the unit of data manipulated by p-code.
@@ -40,6 +41,24 @@ pub struct MOIRVarNode {
     pub offset: u64,
     /// The size specifies the size in bytes of the varnode.
     pub size: MOIRSize,
+}
+
+impl MOIRVarNode {
+    pub fn end(&self) -> u64 {
+        self.offset + u64::from(self.size)
+    }
+}
+
+impl From<MOIRVarNode> for Range<u64> {
+    fn from(value: MOIRVarNode) -> Self {
+        value.offset..value.end()
+    }
+}
+
+impl From<&MOIRVarNode> for Range<u64> {
+    fn from(value: &MOIRVarNode) -> Self {
+        value.offset..value.end()
+    }
 }
 
 /// A slice of an existing varnode. The slice is at most as large as the original varnode.

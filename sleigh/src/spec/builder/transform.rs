@@ -56,6 +56,7 @@ use mogi_sleigh_parser::{
     SleighInterner,
     Spanned,
 };
+use mogi_utilities::overlap::overlaps;
 use tracing::{
     debug,
     warn,
@@ -232,37 +233,26 @@ fn transform_spaces(spaces: PrimaryMap<SpaceId, MOIRSpace>) -> InternalCompilerR
 fn build_varnode_groups(
     varnodes: &PrimaryMap<VarNodeId, MOIRVarNode>
 ) -> (PrimaryMap<VarnodeGroupId, VarnodeGroup>, SecondaryMap<VarNodeId, Option<VarnodeGroupId>>) {
-    let mut groups: PrimaryMap<VarnodeGroupId, VarnodeGroup> = Default::default();
-    let mut to_group: SecondaryMap<VarNodeId, Option<VarnodeGroupId>> = Default::default();
-    'next_varnode: for (ident, varnode) in varnodes.items() {
+    let mut groups = PrimaryMap::<VarnodeGroupId, VarnodeGroup>::default();
+    let mut varnode_to_group = SecondaryMap::<VarNodeId, Option<VarnodeGroupId>>::default();
+    'next_varnode: for (varnode_id, varnode) in varnodes.items() {
         // check if varnode intersects with any existing intersection group and if so,
-        // insert into groupand update group offset and size
-        for group_id in groups.keys() {
-            let group = groups.get_mut(group_id).expect("This element must exist");
-
-            let end_group = group.offset + u64::from(group.size);
-            let end_varnode = varnode.offset + u64::from(varnode.size);
-            if end_group > varnode.offset && end_varnode > group.offset {
-                if varnode.offset < group.offset {
-                    // V < G => move group start and update size
-                    group.size += JIRSize::try_from(group.offset - varnode.offset).unwrap();
-                    group.offset = varnode.offset;
-                }
-
-                group.size = group.size.max(varnode.size.try_into().unwrap());
-                group.varnodes.push(ident);
-                to_group[ident] = Some(group_id);
+        // insert into group and update group offset and size
+        for (group_id, group) in groups.items_mut() {
+            if overlaps(group, varnode) {
+                group.insert(varnode_id, varnode);
+                varnode_to_group[varnode_id] = Some(group_id);
                 continue 'next_varnode;
             }
         }
 
         // nothing found => create new group
-        let new_group = VarnodeGroup::new(vec![ident], varnode.offset, varnode.size.try_into().unwrap());
+        let new_group = VarnodeGroup::new(vec![varnode_id], varnode.offset, varnode.size.try_into().unwrap());
         let new_group_id = groups.insert(new_group);
-        to_group[ident] = Some(new_group_id);
+        varnode_to_group[varnode_id] = Some(new_group_id);
     }
 
-    (groups, to_group)
+    (groups, varnode_to_group)
 }
 
 fn transform_varnodes(
@@ -275,18 +265,12 @@ fn transform_varnodes(
 )> {
     assert_ne!(alignment, 0);
 
-    let mut prev_end = 0;
-    for varnode in varnodes.values() {
-        let end = varnode.offset + u64::from(varnode.size);
-        if end > prev_end {
-            prev_end = end;
-        }
-    }
-
+    let prev_end = varnodes.values().map(MOIRVarNode::end).max().unwrap_or(0);
     debug!("Varnode prev size = {:#?}", prev_end);
 
     // we compact the groups, but offsets inside each group must stay the same
     let (mut groups, to_group) = build_varnode_groups(&varnodes);
+    dbg!(&groups);
     let mut running_offset = 0;
     for group in groups.values_mut() {
         // align up
@@ -294,13 +278,13 @@ fn transform_varnodes(
             .expect("If alignment is not zero this cannot underflow");
 
         // modify group and varnode offsets
-        let offset_delta = group.offset - running_offset;
+        let offset_delta = running_offset as i64 - group.offset as i64;
         group.offset = running_offset;
         for varnode_id in group.varnodes.iter() {
             let varnode = varnodes
                 .get_mut(*varnode_id)
                 .expect("This value must exist");
-            varnode.offset -= offset_delta;
+            varnode.offset = (varnode.offset as i64 + offset_delta) as u64;
         }
 
         running_offset += u64::from(group.size);
