@@ -396,7 +396,13 @@ impl SleighCompiler {
                                 match bytes_consumed {
                                     Some(bytes_consumed) => {
                                         // field used and fixed offset
-                                        let fe = FieldExtractor::new(local_id, 0, bytes_consumed.into(), field.bits, field.signed);
+                                        let fe = FieldExtractor::new(
+                                            local_id,
+                                            0,
+                                            bytes_consumed.into(),
+                                            field.bits,
+                                            field.signed,
+                                        );
                                         matcher.static_field_extractors.push(fe);
                                     }
                                     None => {
@@ -610,7 +616,7 @@ impl SleighCompiler {
         scope: &mut MOIRScope,
         references: &[MatcherReference],
     ) -> InternalCompilerResult {
-        trace!("Resolving {} symbols to a local scope", references.len());
+        trace_build!("Resolving {} symbols to a local scope", references.len());
         for reference in references {
             trace_build!("Resolving symbol {reference:?}");
             let value = match reference {

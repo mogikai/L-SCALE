@@ -34,6 +34,7 @@ use crate::spec::moir::table::{
 use crate::spec::moir::token::TokenId;
 use crate::spec::moir::varnode::VarNodeId;
 use brotli::Decompressor;
+use itertools::Itertools;
 use jir::jumplist::MatchContext;
 use jir::values::{
     VarnodeGroup,
@@ -68,9 +69,9 @@ use thiserror::Error;
 use tracing::debug;
 
 pub mod builder;
+mod disassembler;
 pub mod jir;
 mod lifter;
-mod disassembler;
 pub mod moir;
 pub mod typed_index_table;
 
@@ -138,10 +139,13 @@ pub struct ProcessorSpecification {
     /// A mapping to look up context ids from their varnode id.
     pub(crate) contexts: HashMap<VarNodeId, ContextId>,
 
-    /// Overlapping varnodes need special treatments in multiple locations which
+    /// Overlapping varnodes need special treatments in multiple locations, which
     /// is why we keep track of different disjoint groups.
     pub(crate) varnode_groups: PrimaryMap<VarnodeGroupId, VarnodeGroup>,
     pub(crate) varnode_to_group: SecondaryMap<VarNodeId, Option<VarnodeGroupId>>,
+
+    /// Maps varnode ids to the corresponding string id, such that we can display them to the user.
+    pub(crate) varnode_names: SecondaryMap<VarNodeId, Option<StringId>>,
 
     /// Maps a string identifier to the corresponding internal [Ident].
     /// This is useful for the compiler, when an identifier string references another symbol.
@@ -316,6 +320,30 @@ impl ProcessorSpecification {
         &self,
         space_id: SpaceId,
     ) -> ProcessorSpecResult<()> {
+        use std::fmt::Write;
+        let mut group_dbg = String::new();
+        let mut prev_end = 0;
+        for group in self
+            .varnode_groups
+            .values()
+            .sorted_by(|a, b| a.offset.cmp(&b.offset))
+        {
+            if group.offset != prev_end {
+                writeln!(group_dbg, "Empty space of {} bytes", group.offset - prev_end).unwrap();
+            }
+            write!(group_dbg, "Group<{}..={}>[", group.offset, group.end().saturating_sub(1)).unwrap();
+            for varnode_id in &group.varnodes {
+                let str = self
+                    .interner
+                    .string_unchecked(self.varnode_names[*varnode_id].unwrap());
+                write!(group_dbg, "{} ", str).unwrap();
+            }
+            writeln!(group_dbg, "]").unwrap();
+            prev_end = group.end();
+        }
+
+        debug!("Space {} consists of the following groups: \n{}", space_id, group_dbg);
+
         let _ = self
             .symbol_tables
             .spaces
@@ -326,7 +354,7 @@ impl ProcessorSpecification {
                 .map(|varnode| varnode.offset..varnode.end())
                 .collect::<Vec<_>>(),
         );
-        debug!("Varnodes occupy the following ranges: {:?}", merged);
+        debug!("Varnodes occupy the following ranges: {:#05x?}", merged);
         let total_size: u64 = merged.iter().map(|r| r.end - r.start).sum();
         debug!("Total size: {}", total_size);
         debug!("Potential savings: {}", self.space_max_used_offset(space_id)? - total_size);

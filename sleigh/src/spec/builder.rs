@@ -76,6 +76,7 @@ use mogi_sleigh_parser::{
 use mogi_utilities::index_map::{
     MapKey,
     PrimaryMap,
+    SecondaryMap,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -151,6 +152,8 @@ pub struct ProcessorSpecificationBuilder {
     /// Context defined on top of existing varnodes containing context fields (e.g. a dedicated
     /// `contextreg` varnode containing a field `longmode=(0,1)` for x86).
     context: PrimaryMap<ContextId, MOIRContext>,
+
+    varnode_names: SecondaryMap<VarNodeId, Option<StringId>>,
 
     /// Maps a string identifier to the corresponding internal [Ident].
     /// This is useful for the compiler, when an identifier string references another symbol.
@@ -289,6 +292,7 @@ impl ProcessorSpecificationBuilder {
         let symbol_id = self.declare_symbol(ident)?;
         let varnode_id = self.symbol_tables.varnodes.insert(varnode);
         self.define_symbol(symbol_id, MOIRSymbolId::VarNode(varnode_id))?;
+        self.varnode_names[varnode_id] = Some(ident.into_value());
         Ok(symbol_id)
     }
 
@@ -806,6 +810,7 @@ impl Default for ProcessorSpecificationBuilder {
             endianness: None,
             alignment: None,
             context: Default::default(),
+            varnode_names: Default::default(),
             string_to_ident_mapping: Default::default(),
             root_table,
             default_space: None,
@@ -929,6 +934,7 @@ impl ProcessorSpecificationBuilder {
                 .collect(),
             varnode_groups: jir.varnode_groups,
             varnode_to_group: jir.varnode_to_group,
+            varnode_names: self.varnode_names,
             string_to_ident_mapping: jir.string_to_ident_mapping,
             jumplist_cache: jir.jumplist_cache,
             root_table,

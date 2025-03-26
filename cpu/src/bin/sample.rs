@@ -63,7 +63,8 @@ fn main() {
     let specification = load_specification(spec_path);
     // println!("{:?}", specification.list_global_varnode_strings());
 
-    let testelf_content = std::fs::read("./a.out").unwrap();
+    // let testelf_content = std::fs::read("./a.out").unwrap();
+    let testelf_content = b"\x58\x5B\x48\x01\xD8\x48\x0F\xBC\xD8\x53\x50\xEB\xF3";
 
     println!(
         "{:?}",
@@ -87,11 +88,7 @@ fn main() {
                 .unwrap();
         }
         // And then write the instruction to the allocated memory.
-        mmu.write(
-            0x0u64.into(),
-            &testelf_content[..]
-        )
-        .unwrap();
+        mmu.write(0x0u64.into(), &testelf_content[..]).unwrap();
     }
 
     let mut stack_page = Box::new(PageData::zero());
@@ -119,7 +116,7 @@ fn main() {
 
     // Set the instruction pointer to the address we want to start executing at.
     // *cpu.register_mut("RIP").unwrap() = 0x113Au64;
-    *cpu.register_mut("RIP").unwrap() = 0x1193u64;
+    *cpu.register_mut("RIP").unwrap() = 0x0u64;
     *cpu.register_mut("RSP").unwrap() = 0xffff_ffff_ffff_0220u64;
 
     // Now lets roll! (forever :>)

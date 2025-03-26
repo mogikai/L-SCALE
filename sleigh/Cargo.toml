@@ -20,6 +20,7 @@ bincode = { version = "2.0.0-rc.3", features = ["serde"] }
 brotli = "7.0.0"
 mogi_sleigh_parser = { path = "../sleigh_parser", version = "*" }
 itertools = "0.14.0"
+addr_align = "0.1.0"
 
 [features]
 trace_build = []

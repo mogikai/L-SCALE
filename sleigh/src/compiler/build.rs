@@ -31,7 +31,18 @@ use crate::spec::moir::token::MOIRToken;
 use crate::spec::moir::varnode::MOIRVarNode;
 use mogi_sleigh_parser::ast::attach::SASTAttach;
 use mogi_sleigh_parser::ast::define::{
-    SASTAddressSpace, SASTAddressSpaceAttribute, SASTAlignment, SASTBitrangeRegister, SASTContext, SASTContextFieldAttribute, SASTDefine, SASTEndianness, SASTToken, SASTTokenFieldAttribute, SASTUserPcodeOp, SASTVarnode
+    SASTAddressSpace,
+    SASTAddressSpaceAttribute,
+    SASTAlignment,
+    SASTBitrangeRegister,
+    SASTContext,
+    SASTContextFieldAttribute,
+    SASTDefine,
+    SASTEndianness,
+    SASTToken,
+    SASTTokenFieldAttribute,
+    SASTUserPcodeOp,
+    SASTVarnode,
 };
 use mogi_sleigh_parser::ast::item::SASTItem;
 use mogi_sleigh_parser::ast::with::SASTWith;
@@ -45,6 +56,19 @@ use tracing::{
     debug,
     trace,
 };
+
+#[cfg(feature = "trace_build")]
+macro_rules! trace_build {
+    ($($arg:tt)*) => {
+        tracing::trace!($($arg)*)
+    };
+}
+#[cfg(not(feature = "trace_build"))]
+macro_rules! trace_build {
+    ($($arg:tt)*) => {};
+}
+
+pub(crate) use trace_build;
 
 impl SleighCompiler {
     /// Build the specification from the provided AST by walking over each node and performing
@@ -404,21 +428,8 @@ impl SleighCompiler {
         &mut self,
         with: Spanned<SASTWith>,
     ) -> InternalCompilerResult {
-        trace!("Processing with statement at {:?}.", with.span());
+        trace_build!("Processing with statement at {:?}.", with.span());
         self.process_items(with.into_value().items)?;
         Ok(())
     }
 }
-
-#[cfg(feature = "trace_build")]
-macro_rules! trace_build {
-    ($($arg:tt)*) => {
-        tracing::trace!($($arg)*)
-    };
-}
-#[cfg(not(feature = "trace_build"))]
-macro_rules! trace_build {
-    ($($arg:tt)*) => {};
-}
-
-pub(crate) use trace_build;

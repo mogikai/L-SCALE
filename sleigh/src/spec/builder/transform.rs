@@ -43,6 +43,7 @@ use crate::spec::{
     JIRSymbolId,
     JIRSymbolTables,
 };
+use addr_align::Align;
 use itertools::Itertools;
 use mogi_utilities::index_map::{
     PrimaryMap,
@@ -51,6 +52,7 @@ use mogi_utilities::index_map::{
 use std::collections::HashMap;
 
 mod jumplist;
+use crate::compiler::build::trace_build;
 use mogi_sleigh_parser::{
     ParserContext,
     SleighInterner,
@@ -231,70 +233,153 @@ fn transform_spaces(spaces: PrimaryMap<SpaceId, MOIRSpace>) -> InternalCompilerR
         .collect())
 }
 
+/// Constructs varnode groups from a collection of varnodes and creates mapping structures.
+///
+/// This function takes a collection of varnodes and organizes them into groups of overlapping
+/// varnodes. It first creates unsorted groups using `create_unsorted_groups`, then sorts them
+/// by offset, and finally converts them into mapping structures.
+///
+/// The grouping of varnodes is important when transforming or shifting varnodes in an address
+/// space, as overlapping varnodes must be shifted together to maintain their relationships.
+///
+/// # Returns
+/// A tuple containing:
+/// * A `PrimaryMap` mapping `VarnodeGroupId` to `VarnodeGroup` containing the grouped varnodes
+/// * A `SecondaryMap` mapping each `VarNodeId` to its corresponding `VarnodeGroupId`
+///
+/// # Notes
+/// The groups are sorted by their offset values.
+
 fn build_varnode_groups(
     varnodes: &PrimaryMap<VarNodeId, MOIRVarNode>
 ) -> (PrimaryMap<VarnodeGroupId, VarnodeGroup>, SecondaryMap<VarNodeId, Option<VarnodeGroupId>>) {
-    let mut groups = PrimaryMap::<VarnodeGroupId, VarnodeGroup>::default();
+    let mut groups = create_unsorted_groups(varnodes);
+
+    // We want to sort the groups by offset
+    groups.sort_by(|a, b| {
+        a.as_ref()
+            .map(|g| g.offset)
+            .cmp(&b.as_ref().map(|g| g.offset))
+    });
+
+    build_maps(groups)
+}
+
+fn build_maps(
+    groups: Vec<Option<VarnodeGroup>>
+) -> (PrimaryMap<VarnodeGroupId, VarnodeGroup>, SecondaryMap<VarNodeId, Option<VarnodeGroupId>>) {
+    let mut groups_map = PrimaryMap::<VarnodeGroupId, VarnodeGroup>::default();
     let mut varnode_to_group = SecondaryMap::<VarNodeId, Option<VarnodeGroupId>>::default();
-    'next_varnode: for (varnode_id, varnode) in varnodes.items() {
+    for group in groups.into_iter().flatten() {
+        let group_id = groups_map.insert(group);
+        for varnode_id in &groups_map[group_id].varnodes {
+            varnode_to_group[*varnode_id] = Some(group_id);
+        }
+    }
+    (groups_map, varnode_to_group)
+}
+
+/// Groups overlapping varnodes from a collection into sets (called VarnodeGroups).
+///
+/// This function analyzes a collection of varnodes and creates groups where each
+/// group contains varnodes that overlap with at least one other varnode in that group.
+/// When shifting around varnodes in the address space, this is only possible when shifting
+/// the entire group a varnode is contained in.
+/// # Returns
+/// A vector of `Option<VarnodeGroup>` where each entry that is `Some` represents a
+/// distinct group of overlapping varnodes. Entries that are `None` represent groups
+/// that were merged into other groups.
+fn create_unsorted_groups(varnodes: &PrimaryMap<VarNodeId, MOIRVarNode>) -> Vec<Option<VarnodeGroup>> {
+    let mut groups = Vec::<Option<VarnodeGroup>>::new();
+    // let mut varnode_to_group = SecondaryMap::<VarNodeId, Option<VarnodeGroupId>>::default();
+    for (varnode_id, varnode) in varnodes.items() {
         // check if varnode intersects with any existing intersection group and if so,
-        // insert into group and update group offset and size
-        for (group_id, group) in groups.items_mut() {
-            if overlaps_generic(group, varnode) {
-                group.insert(varnode_id, varnode);
-                varnode_to_group[varnode_id] = Some(group_id);
-                continue 'next_varnode;
+        // insert into that group and update group offset and size
+
+        // Get the first group that overlaps if there is one.
+        let existing_group = groups.iter().enumerate().find_map(|(id, g)| {
+            if let Some(g) = g {
+                if overlaps_generic(g, varnode) { Some(id) } else { None }
+            } else {
+                None
             }
+        });
+
+        let Some(existing_group) = existing_group else {
+            // No overlapping group found. Create a new one.
+            let new_group = VarnodeGroup::new(vec![varnode_id], varnode.offset, varnode.size.try_into().unwrap());
+            groups.push(Some(new_group));
+            continue;
+        };
+
+        // We can now insert the varnode into the existing group.
+        if let Some(group) = &mut groups[existing_group] {
+            group.insert(varnode_id, varnode);
         }
 
-        // nothing found => create new group
-        let new_group = VarnodeGroup::new(vec![varnode_id], varnode.offset, varnode.size.try_into().unwrap());
-        let new_group_id = groups.insert(new_group);
-        varnode_to_group[varnode_id] = Some(new_group_id);
-    }
+        // Now, let's check for any additional groups that might overlap and
+        // merge them into the first group.
 
-    (groups, varnode_to_group)
+        merge_remaining_overlaps(&mut groups, varnode, existing_group);
+    }
+    groups
+}
+
+/// Merges overlapping varnode groups starting from the specified group ID.
+///
+/// This function identifies and merges any varnode groups that overlap with the provided
+/// varnode, starting from `group_id + 1` onwards. When an overlap is found, the
+/// overlapping group is merged into the current group at `group_id`, and its entry
+/// in the `groups` vector is set to `None`.
+fn merge_remaining_overlaps(
+    mut groups: &mut Vec<Option<VarnodeGroup>>,
+    varnode: &MOIRVarNode,
+    existing_group_id: usize,
+) {
+    for group_id in existing_group_id + 1..groups.len() {
+        if groups[group_id].is_none() {
+            // This group was merged into another. Skip it.
+            continue;
+        }
+        if overlaps_generic(
+            groups[group_id]
+                .as_ref()
+                .expect("The group has to be valid at this point"),
+            varnode,
+        ) {
+            // The group overlaps with the varnode as well.
+            // We now take the group out of the collection and merge it with the first group.
+            let other_group = groups[group_id].take();
+            let existing_group: &mut Option<VarnodeGroup> = &mut groups[existing_group_id];
+            if let Some(existing_group) = existing_group
+                && let Some(other_group) = other_group
+            {
+                existing_group.merge(other_group);
+            } else {
+                unreachable!("The groups must exist at this point.");
+            };
+        }
+    }
 }
 
 fn transform_varnodes(
     mut varnodes: PrimaryMap<VarNodeId, MOIRVarNode>,
-    alignment: MOIRSize,
+    cache_line_size: MOIRSize,
 ) -> InternalCompilerResult<(
     PrimaryMap<VarNodeId, JIRVarNode>,
     PrimaryMap<VarnodeGroupId, VarnodeGroup>,
     SecondaryMap<VarNodeId, Option<VarnodeGroupId>>,
 )> {
-    assert_ne!(alignment, 0);
+    assert_ne!(cache_line_size, 0);
+    let cache_alignment = u64::from(cache_line_size);
 
     let prev_end = varnodes.values().map(MOIRVarNode::end).max().unwrap_or(0);
-    debug!("Varnode prev size = {:#?}", prev_end);
+    debug!("Compacting varnodes. Cache line size is {}. Varnodes occupy {} bytes.", cache_line_size, prev_end);
 
     // we compact the groups, but offsets inside each group must stay the same
-    let (mut groups, to_group) = build_varnode_groups(&varnodes);
-    dbg!(&groups);
-    let mut running_offset = 0;
-    for group in groups
-        .values_mut()
-        .sorted_by(|a, b| a.offset.cmp(&b.offset))
-    {
-        // align up
-        running_offset = u64::try_from((running_offset as i64 + alignment as i64 - 1) & !(alignment as i64 - 1))
-            .expect("If alignment is not zero this cannot underflow");
-
-        // modify group and varnode offsets
-        let offset_delta = running_offset as i64 - group.offset as i64;
-        group.offset = running_offset;
-        for varnode_id in group.varnodes.iter() {
-            let varnode = varnodes
-                .get_mut(*varnode_id)
-                .expect("This value must exist");
-            varnode.offset = (varnode.offset as i64 + offset_delta) as u64;
-        }
-
-        running_offset += u64::from(group.size);
-    }
-
-    debug!("Group compacting yielded size of {:#?}", running_offset);
+    let (mut groups, varnode_to_group) = build_varnode_groups(&varnodes);
+    // dbg!(&groups);
+    compact_varnode_groups(&mut varnodes, cache_alignment, &mut groups);
 
     Ok((
         varnodes
@@ -302,8 +387,46 @@ fn transform_varnodes(
             .map(|(ident, varnode)| (ident, varnode.into()))
             .collect(),
         groups,
-        to_group,
+        varnode_to_group,
     ))
+}
+
+fn compact_varnode_groups(
+    varnodes: &mut PrimaryMap<VarNodeId, MOIRVarNode>,
+    cache_alignment: u64,
+    groups: &mut PrimaryMap<VarnodeGroupId, VarnodeGroup>,
+) {
+    let mut current_offset = 0u64;
+    for group in groups.values_mut() {
+        let current_cache_line = current_offset.align_down(cache_alignment);
+        let end_cache_line = (current_offset + u64::from(group.size))
+            .saturating_sub(1)
+            .align_down(cache_alignment);
+        // If the group crosses a cache line boundary, move it to the next cache line.
+        if current_cache_line != end_cache_line {
+            current_offset = current_cache_line + cache_alignment;
+        }
+
+        // modify group and varnode offsets
+        let offset_delta = current_offset as i64 - group.offset as i64;
+        if offset_delta != 0 {
+            trace_build!("Moving group {:#?} by {:#?}", group, offset_delta);
+            group.offset = current_offset;
+
+            // Move all varnodes in this group.
+            for varnode_id in &group.varnodes {
+                let varnode = varnodes
+                    .get_mut(*varnode_id)
+                    .expect("This value must exist");
+                varnode.offset = (varnode.offset as i64 + offset_delta) as u64;
+            }
+        } else {
+            trace_build!("Group {:#?} is already placed correctly", group);
+        }
+
+        current_offset += u64::from(group.size);
+    }
+    debug!("Varnodes could be compacted compacting yielded size of {:#?}", current_offset);
 }
 
 impl From<MOIRVarNode> for JIRVarNode {

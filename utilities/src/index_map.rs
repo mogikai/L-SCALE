@@ -3,13 +3,19 @@ use serde::{
     Deserialize,
     Serialize,
 };
-use std::fmt::Debug;
+use std::fmt::{
+    Debug,
+    Display,
+    Formatter,
+};
 use std::hash::Hash;
 use std::marker::PhantomData;
+use std::num::NonZero;
 use std::ops::{
     Index,
     IndexMut,
 };
+use std::slice::Iter;
 use std::vec::IntoIter;
 use thiserror::Error;
 
@@ -127,7 +133,7 @@ macro_rules! map_key_display {
                 &self,
                 f: &mut std::fmt::Formatter<'_>,
             ) -> std::fmt::Result {
-                std::write!(f, "{}{}", $display_prefix, self.0)
+                std::write!(f, "{}{}", $display_prefix, self.0.get() - 1)
             }
         }
     };
@@ -250,6 +256,22 @@ where
     fn into_iter(self) -> Self::IntoIter {
         self.data
             .into_iter()
+            .enumerate()
+            .map(|(k, v)| (MapKey::try_from_index(k).expect("Enumerating must produce a valid index"), v))
+    }
+}
+
+impl<'a, K, V> IntoIterator for &'a PrimaryMap<K, V>
+where
+    K: MapKey,
+{
+    type Item = (K, &'a V);
+    // TODO: Replace type with ATIT once https://github.com/rust-lang/rust/issues/63063 is stable
+    type IntoIter = std::iter::Map<std::iter::Enumerate<Iter<'a, V>>, fn((usize, &'a V)) -> (K, &'a V)>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.data
+            .iter()
             .enumerate()
             .map(|(k, v)| (MapKey::try_from_index(k).expect("Enumerating must produce a valid index"), v))
     }

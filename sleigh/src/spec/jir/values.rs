@@ -8,7 +8,9 @@ use crate::spec::moir::address_space::SpaceId;
 pub use crate::spec::moir::context::ContextId;
 use crate::spec::moir::varnode::MOIRVarNode;
 pub use crate::spec::moir::varnode::VarNodeId;
+use mogi_sleigh_parser::StringId;
 use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::index_map::SecondaryMap;
 use mogi_utilities::new_map_key;
 use mogi_utilities::overlap::overlaps_generic;
 use num::complex::ComplexFloat;
@@ -21,6 +23,7 @@ use std::fmt::{
     Display,
     Formatter,
 };
+use std::mem::take;
 use std::ops::Range;
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
@@ -97,6 +100,16 @@ impl VarnodeGroup {
         let new_end = self.end().max(varnode.end());
         // And then set the size accordingly
         self.size = JIRSize::try_from(new_end - self.offset).expect("This cannot overflow");
+    }
+
+    pub fn merge(
+        &mut self,
+        other: Self,
+    ) {
+        self.offset = self.offset.min(other.offset);
+        let new_end = self.end().max(other.end());
+        self.size = JIRSize::try_from(new_end - self.offset).expect("This cannot overflow");
+        self.varnodes.extend(other.varnodes);
     }
 }
 

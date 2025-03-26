@@ -82,7 +82,9 @@ impl MOIRPatternExpression {
         resolver: &JIRResolver,
     ) -> InternalCompilerResult<u128> {
         Ok(match self {
-            MOIRPatternExpression::Add(lhs, rhs) => lhs.evaluate(resolver)? + rhs.evaluate(resolver)?,
+            MOIRPatternExpression::Add(lhs, rhs) => lhs
+                .evaluate(resolver)?
+                .wrapping_add(rhs.evaluate(resolver)?),
             MOIRPatternExpression::Sub(lhs, rhs) => lhs.evaluate(resolver)? - rhs.evaluate(resolver)?,
             MOIRPatternExpression::Mul(lhs, rhs) => lhs.evaluate(resolver)? * rhs.evaluate(resolver)?,
             MOIRPatternExpression::Div(lhs, rhs) => lhs.evaluate(resolver)? / rhs.evaluate(resolver)?,
