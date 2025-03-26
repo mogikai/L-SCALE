@@ -10,7 +10,7 @@ use crate::spec::moir::varnode::MOIRVarNode;
 pub use crate::spec::moir::varnode::VarNodeId;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::new_map_key;
-use mogi_utilities::overlap::overlaps;
+use mogi_utilities::overlap::overlaps_generic;
 use num::complex::ComplexFloat;
 use serde_derive::{
     Deserialize,
@@ -324,7 +324,7 @@ impl JIRSlice {
         &self,
         other: &JIRSlice,
     ) -> bool {
-        overlaps(self, other)
+        overlaps_generic(self, other)
     }
 
     #[inline]

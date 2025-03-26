@@ -19,6 +19,11 @@ pub struct AllocatorResult {
     allocation_ranges: Vec<Range<usize>>,
 }
 
+/// This struct keeps track of the load or spill instructions required per instruction.
+/// These load or spill directives are created by the register allocator and need to be inserted by the
+/// jit compiler before and after each instruction.
+pub struct LoadSpillInstructions {}
+
 #[test]
 fn test() {
     // Rust does some magic, such that the total size of allocation is still 8 bytes (it fits into a 64 bit int/reg)

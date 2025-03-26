@@ -135,9 +135,9 @@ pub struct HostRegMap<T> {
 
 impl<T> Default for HostRegMap<T> {
     fn default() -> Self {
-        Self {
-            mapping: Default::default(),
-        }
+        let mut mapping = Vec::<Option<T>>::default();
+        mapping.resize_with(HostReg::NUM_INDEX, || None::<T>);
+        Self { mapping }
     }
 }
 

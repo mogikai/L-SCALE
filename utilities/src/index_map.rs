@@ -240,32 +240,16 @@ impl<K: MapKey, V> PrimaryMap<K, V> {
     }
 }
 
-impl<'a, K, V> IntoIterator for &'a PrimaryMap<K, V>
+impl<K, V> IntoIterator for PrimaryMap<K, V>
 where
     K: MapKey,
 {
-    type Item = (K, &'a V);
-    type IntoIter = std::iter::Map<std::iter::Enumerate<std::slice::Iter<'a, V>>, fn((usize, &'a V)) -> (K, &'a V)>;
+    type Item = (K, V);
+    type IntoIter = std::iter::Map<std::iter::Enumerate<IntoIter<V>>, fn((usize, V)) -> (K, V)>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.data
-            .iter()
-            .enumerate()
-            .map(|(k, v)| (MapKey::try_from_index(k).expect("Enumerating must produce a valid index"), v))
-    }
-}
-
-impl<'a, K, V> IntoIterator for &'a mut PrimaryMap<K, V>
-where
-    K: MapKey,
-{
-    type Item = (K, &'a mut V);
-    type IntoIter =
-        std::iter::Map<std::iter::Enumerate<std::slice::IterMut<'a, V>>, fn((usize, &'a mut V)) -> (K, &'a mut V)>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.data
-            .iter_mut()
+            .into_iter()
             .enumerate()
             .map(|(k, v)| (MapKey::try_from_index(k).expect("Enumerating must produce a valid index"), v))
     }

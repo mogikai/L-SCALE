@@ -56,7 +56,7 @@ use mogi_sleigh_parser::{
     SleighInterner,
     Spanned,
 };
-use mogi_utilities::overlap::overlaps;
+use mogi_utilities::overlap::overlaps_generic;
 use tracing::{
     debug,
     warn,
@@ -130,14 +130,14 @@ impl<'a> MOIRToJIRTransformer<'a> {
             .map(|(ident, symbol_id)| {
                 let symbol_id = match symbol_id {
                     MOIRSymbolId::Undefined => todo!("Generate error for undefined symbol"),
-                    MOIRSymbolId::Macro(id) => JIRSymbolId::Macro(*id),
-                    MOIRSymbolId::Space(id) => JIRSymbolId::Space(*id),
-                    MOIRSymbolId::Table(id) => JIRSymbolId::Table(*id),
-                    MOIRSymbolId::Token(id) => JIRSymbolId::Token(*id),
-                    MOIRSymbolId::Field(id) => JIRSymbolId::Field(*id),
-                    MOIRSymbolId::VarNode(id) => JIRSymbolId::VarNode(*id),
-                    MOIRSymbolId::BitrangeRegister(id) => JIRSymbolId::BitrangeRegister(*id),
-                    MOIRSymbolId::CustomOp(id) => JIRSymbolId::CustomOp(*id),
+                    MOIRSymbolId::Macro(id) => JIRSymbolId::Macro(id),
+                    MOIRSymbolId::Space(id) => JIRSymbolId::Space(id),
+                    MOIRSymbolId::Table(id) => JIRSymbolId::Table(id),
+                    MOIRSymbolId::Token(id) => JIRSymbolId::Token(id),
+                    MOIRSymbolId::Field(id) => JIRSymbolId::Field(id),
+                    MOIRSymbolId::VarNode(id) => JIRSymbolId::VarNode(id),
+                    MOIRSymbolId::BitrangeRegister(id) => JIRSymbolId::BitrangeRegister(id),
+                    MOIRSymbolId::CustomOp(id) => JIRSymbolId::CustomOp(id),
                 };
                 (ident, symbol_id)
             })
@@ -160,7 +160,8 @@ impl<'a> MOIRToJIRTransformer<'a> {
         .transform(self.moir.root_table_id)?;
 
         self.jir.jumplist_cache = jumplist_cache;
-        let (varnodes, varnode_groups, varnode_to_group) = transform_varnodes(self.moir.symbol_tables.varnodes, 8)?;
+        // TODO: Make alignment configurable such that it can be adjusted depending on the cache line size.
+        let (varnodes, varnode_groups, varnode_to_group) = transform_varnodes(self.moir.symbol_tables.varnodes, 64)?;
         self.jir.varnode_groups = varnode_groups;
         self.jir.varnode_to_group = varnode_to_group;
         self.jir.symbol_tables = JIRSymbolTables {
@@ -185,7 +186,7 @@ fn transform_custom_ops(
         .map(|(id, op)| match op {
             MOIRCustomOp::Declared { name } => {
                 let name = interner
-                    .string(*name)
+                    .string(name)
                     .expect("The string has to exist since we saved an id to it.");
                 // TODO: Emit a compiler warning instead of a log output
                 warn!("Custom op '{name}' is declared but not defined. Ignoring.");
@@ -195,7 +196,7 @@ fn transform_custom_ops(
                 id,
                 Some(JIRCustomOp {
                     name: interner
-                        .string(*name)
+                        .string(name)
                         .expect("The string has to exist since we saved an id to it.")
                         .to_string(),
                 }),
@@ -239,7 +240,7 @@ fn build_varnode_groups(
         // check if varnode intersects with any existing intersection group and if so,
         // insert into group and update group offset and size
         for (group_id, group) in groups.items_mut() {
-            if overlaps(group, varnode) {
+            if overlaps_generic(group, varnode) {
                 group.insert(varnode_id, varnode);
                 varnode_to_group[varnode_id] = Some(group_id);
                 continue 'next_varnode;
@@ -272,7 +273,10 @@ fn transform_varnodes(
     let (mut groups, to_group) = build_varnode_groups(&varnodes);
     dbg!(&groups);
     let mut running_offset = 0;
-    for group in groups.values_mut() {
+    for group in groups
+        .values_mut()
+        .sorted_by(|a, b| a.offset.cmp(&b.offset))
+    {
         // align up
         running_offset = u64::try_from((running_offset as i64 + alignment as i64 - 1) & !(alignment as i64 - 1))
             .expect("If alignment is not zero this cannot underflow");
@@ -295,19 +299,22 @@ fn transform_varnodes(
     Ok((
         varnodes
             .into_iter()
-            .map(|(ident, varnode)| {
-                let varnode = JIRVarNode {
-                    space_id: varnode.space,
-                    offset: varnode.offset,
-                    size: varnode
-                        .size
-                        .try_into()
-                        .expect("The size must fit into JIRSize"),
-                };
-                (ident, varnode)
-            })
+            .map(|(ident, varnode)| (ident, varnode.into()))
             .collect(),
         groups,
         to_group,
     ))
+}
+
+impl From<MOIRVarNode> for JIRVarNode {
+    fn from(varnode: MOIRVarNode) -> Self {
+        Self {
+            space_id: varnode.space,
+            offset: varnode.offset,
+            size: varnode
+                .size
+                .try_into()
+                .expect("The size must fit into JIRSize"),
+        }
+    }
 }

@@ -1,7 +1,8 @@
 use addr_align::Align4k;
 use mogi_utilities::addresses::EPAddr;
-use mogi_utilities::overlap::overlaps;
+use mogi_utilities::overlap::overlaps_generic;
 use size_format::SizeFormatterBinary;
+use std::borrow::Borrow;
 use std::cmp::{
     Ordering,
     min,
@@ -65,7 +66,7 @@ impl PhysicalRegion {
         &self,
         other: &PhysicalRegion,
     ) -> bool {
-        overlaps(self, other)
+        overlaps_generic(self, other)
     }
 
     pub fn split(
