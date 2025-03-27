@@ -1,10 +1,11 @@
+use crate::spec::jir::basic_block::InstId;
 use mogi_utilities::new_map_key;
 use std::ops::Range;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct JIRBlock {
     /// The range in the instruction stream where this blocks instructions are located.
-    pub range: Range<usize>,
+    pub range: Range<InstId>,
     /// The id of the block that follows this one.
     pub fallthrough: JIRBlockFallthrough,
 }

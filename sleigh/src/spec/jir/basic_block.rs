@@ -45,7 +45,7 @@ impl TargetBasicBlock {
     pub fn jir_block_inst_ids(
         &self,
         block: JIRBlockId,
-    ) -> Option<impl ExactSizeIterator<Item = usize> + DoubleEndedIterator> {
+    ) -> Option<impl ExactSizeIterator<Item = InstId> + DoubleEndedIterator> {
         self.0
             .jir_blocks
             .get(block)?

@@ -2,12 +2,6 @@
 //! The `CPUContext` contains all the runtime information needed during emulation.
 //! This includes for example the registers and a pointer to the currently active `TLB`.
 
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::fmt::Debug;
-use std::ops::Deref;
-use std::rc::Rc;
-
 use crate::jit::api::{
     JITPathChoice,
     JITTaskRuntimeContext,
@@ -21,14 +15,23 @@ use crate::new_cpu_trait::{
     CPUResult,
     RunLimit,
 };
+use fnv::FnvHashMap;
 use mogi_sleigh::disassembler::Disassembler;
-use mogi_sleigh::lifter::{Lifter, LifterError};
 use mogi_sleigh::lifter::context_provider::ContextProvider;
 use mogi_sleigh::lifter::source::TargetInstructionSource;
+use mogi_sleigh::lifter::{
+    Lifter,
+    LifterError,
+};
+use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
 use mogi_sleigh::spec::jir::jcode::NextBlockTarget;
-use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_utilities::addresses::EVAddr;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::fmt::Debug;
+use std::ops::Deref;
+use std::rc::Rc;
 use thiserror::Error;
 use tracing::trace;
 use zerocopy::{
@@ -213,14 +216,13 @@ where
         // let blocks = new_blocks.translate();
         // self.jit_cache.populate(blocks);
 
-
         {
             // TODO: Remove demo block
             let mut jit = self.jit.borrow_mut();
             let mmu = self.mmu.borrow();
 
             let mut target_addresses = vec![jit.instruction_pointer(&self.runtime_context)?];
-            let mut block_cache: HashMap<EVAddr, TargetBasicBlock> = Default::default();
+            let mut block_cache: FnvHashMap<EVAddr, TargetBasicBlock> = Default::default();
             let mut translated_block_count = 0;
             let mut translated_instr_count = 0;
             trace_jit!("Translation limit is {:?}", translation_limit);
@@ -233,7 +235,11 @@ where
                     continue;
                 }
 
-                let block = self.processor_specification.borrow().lift_block(&*mmu, self.runtime_context.as_mut(), current_addr)?;
+                let block = self.processor_specification.borrow().lift_block(
+                    &*mmu,
+                    self.runtime_context.as_mut(),
+                    current_addr,
+                )?;
                 // let disassembly = self.processor_specification.borrow().disassemble_block(&*mmu, self.runtime_context.as_mut(), current_addr).unwrap();
                 // trace_jit!("{:#?}", disassembly);
 
@@ -254,6 +260,8 @@ where
                 translated_instr_count += block.instruction_count();
                 translated_block_count += 1;
 
+                jit.compile_target_block(&block)?;
+
                 block_cache.insert(current_addr, block);
 
                 match translation_limit {
@@ -273,7 +281,10 @@ where
                 }
             }
 
-            let total_instr_count: usize = block_cache.values().map(|block| block.instruction_count()).sum();
+            let total_instr_count: usize = block_cache
+                .values()
+                .map(|block| block.instruction_count())
+                .sum();
             trace_jit!("Translated {}/{} blocks/instructions in total", block_cache.len(), total_instr_count);
 
             Ok(())

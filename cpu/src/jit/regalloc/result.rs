@@ -1,4 +1,7 @@
+use crate::jit::api::JITResult;
 use crate::jit::host::register::HostReg;
+use crate::jit::trace_jit;
+use mogi_sleigh::spec::jir::basic_block::InstId;
 use mogi_sleigh::spec::jir::values::JIRSlice;
 use std::ops::Range;
 
@@ -13,16 +16,146 @@ pub enum Allocation {
     Slice(JIRSlice),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct AllocatorResult {
-    allocations: Vec<Allocation>,
-    allocation_ranges: Vec<Range<usize>>,
+    pub(super) allocations: Vec<Allocation>,
+    pub(super) allocation_ranges: Vec<Range<usize>>,
+    pub(super) load_spill_directives: LoadSpillDirectives,
+}
+
+impl AllocatorResult {
+    pub fn new(inst_count: usize) -> Self {
+        Self {
+            allocations: vec![],
+            allocation_ranges: vec![0..0; inst_count],
+            load_spill_directives: LoadSpillDirectives::new(inst_count),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum LoadSpillDirective {
+    Load(HostReg, JIRSlice),
+    Spill(HostReg, JIRSlice),
+    Move(HostReg, HostReg),
+}
+
+#[derive(Debug, Default, Clone)]
+struct InstToDirectiveMapping {
+    before: Range<usize>,
+    after: Range<usize>,
+}
+
+impl InstToDirectiveMapping {
+    pub fn is_empty(&self) -> bool {
+        self.before.start == self.before.end && self.after.start == self.after.end
+    }
 }
 
 /// This struct keeps track of the load or spill instructions required per instruction.
 /// These load or spill directives are created by the register allocator and need to be inserted by the
 /// jit compiler before and after each instruction.
-pub struct LoadSpillInstructions {}
+#[derive(Debug)]
+pub struct LoadSpillDirectives {
+    before_directives: Vec<LoadSpillDirective>,
+    after_directives: Vec<LoadSpillDirective>,
+    /// Maps each instruction id to the range of `before` directives and `after` directives.
+    inst_to_directives: Vec<InstToDirectiveMapping>,
+    current_inst: InstId,
+}
+
+impl LoadSpillDirectives {
+    pub fn new(inst_count: usize) -> Self {
+        Self {
+            before_directives: vec![],
+            after_directives: vec![],
+            inst_to_directives: vec![InstToDirectiveMapping::default(); inst_count],
+            current_inst: 0,
+        }
+    }
+}
+
+impl LoadSpillDirectives {
+    pub fn start_inst_directives(
+        &mut self,
+        inst: InstId,
+    ) -> JITResult {
+        if !self.inst_to_directives[inst].is_empty() {
+            todo!("Emit error: Cannot start adding inst directives to non empty directive.")
+        }
+        self.current_inst = inst;
+        // Set the indices to the end of the current vectors.
+        self.inst_to_directives[inst].after = self.after_directives.len()..self.after_directives.len();
+        self.inst_to_directives[inst].before = self.before_directives.len()..self.before_directives.len();
+        Ok(())
+    }
+
+    pub fn finish_inst_directives(&mut self) {
+        let inst_to_directives = &mut self.inst_to_directives[self.current_inst];
+        inst_to_directives.before.end = self.before_directives.len();
+        inst_to_directives.after.end = self.after_directives.len();
+        trace_jit!(
+            "Added {} before and {} after directives for inst {}",
+            inst_to_directives.before.len(),
+            inst_to_directives.after.len(),
+            self.current_inst
+        );
+    }
+
+    pub fn add_load_before(
+        &mut self,
+        reg: HostReg,
+        slice: JIRSlice,
+    ) {
+        self.before_directives
+            .push(LoadSpillDirective::Load(reg, slice));
+    }
+
+    pub fn add_load_after(
+        &mut self,
+        reg: HostReg,
+        slice: JIRSlice,
+    ) {
+        self.after_directives
+            .push(LoadSpillDirective::Load(reg, slice));
+    }
+
+    pub fn add_spill_before(
+        &mut self,
+        reg: HostReg,
+        slice: JIRSlice,
+    ) {
+        self.before_directives
+            .push(LoadSpillDirective::Spill(reg, slice));
+    }
+
+    pub fn add_spill_after(
+        &mut self,
+        reg: HostReg,
+        slice: JIRSlice,
+    ) {
+        self.after_directives
+            .push(LoadSpillDirective::Spill(reg, slice));
+    }
+
+    pub fn add_move_before(
+        &mut self,
+        dst: HostReg,
+        src: HostReg,
+    ) {
+        self.before_directives
+            .push(LoadSpillDirective::Move(dst, src));
+    }
+
+    pub fn add_move_after(
+        &mut self,
+        dst: HostReg,
+        src: HostReg,
+    ) {
+        self.after_directives
+            .push(LoadSpillDirective::Move(dst, src));
+    }
+}
 
 #[test]
 fn test() {

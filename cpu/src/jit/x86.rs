@@ -75,7 +75,12 @@ macro_rules! assemble {
     };
 }
 
-use crate::jit::regalloc::RegisterAllocator;
+use crate::jit::host::register::HostRegSet;
+use crate::jit::regalloc::{
+    RegAllocHostConstraints,
+    RegisterAllocator,
+};
+use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::tlb::PageMetaInfo;
 use assemble;
 use mogi_mem::mmu::MogiMMU;
@@ -281,8 +286,30 @@ impl MogiJit for X86MogiJit {
         let mut emitter =
             X64Emitter::new(&self.global_context, &spec, &mut self.register_tracker, compiled_block, target_block);
 
+        let usable_registers = HostRegSet::empty()
+            .with(GPRegister::AX.into_host_reg())
+            .with(GPRegister::BX.into_host_reg())
+            .with(GPRegister::CX.into_host_reg())
+            .with(GPRegister::DX.into_host_reg())
+            .with(GPRegister::SI.into_host_reg())
+            .with(GPRegister::DI.into_host_reg())
+            .with(GPRegister::BP.into_host_reg())
+            .with(GPRegister::SP.into_host_reg())
+            .with(GPRegister::R8.into_host_reg())
+            .with(GPRegister::R9.into_host_reg())
+            .with(GPRegister::R10.into_host_reg())
+            .with(GPRegister::R11.into_host_reg())
+            .with(GPRegister::R12.into_host_reg())
+            .with(GPRegister::R13.into_host_reg())
+            .with(GPRegister::R14.into_host_reg())
+            .with(GPRegister::R15.into_host_reg());
+
         // And then start the register allocator for the block and target architecture.
-        let regalloc = RegisterAllocator::new(&target_block, emitter.emitter_requirements());
+        let regalloc = RegisterAllocator::new(
+            &target_block,
+            emitter.emitter_requirements(),
+            RegAllocHostConstraints { usable_registers },
+        );
         let allocations = regalloc.run()?;
 
         // And finally we emit the instructions, using the allocations we just calculated.

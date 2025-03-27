@@ -376,9 +376,8 @@ fn transform_varnodes(
     let prev_end = varnodes.values().map(MOIRVarNode::end).max().unwrap_or(0);
     debug!("Compacting varnodes. Cache line size is {}. Varnodes occupy {} bytes.", cache_line_size, prev_end);
 
-    // we compact the groups, but offsets inside each group must stay the same
     let (mut groups, varnode_to_group) = build_varnode_groups(&varnodes);
-    // dbg!(&groups);
+
     compact_varnode_groups(&mut varnodes, cache_alignment, &mut groups);
 
     Ok((

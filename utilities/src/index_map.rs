@@ -138,7 +138,6 @@ macro_rules! map_key_display {
         }
     };
 }
-
 #[macro_export(local_inner_macros)]
 macro_rules! map_key_trait {
     ($name:ident, $backing_type_conversion:path) => {

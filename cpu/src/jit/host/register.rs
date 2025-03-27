@@ -1,5 +1,8 @@
 //! The definitions in this module are for the most part adapted from regalloc2
-use std::fmt::Debug;
+use std::fmt::{
+    Debug,
+    Display,
+};
 
 /// Register classes.
 ///
@@ -332,5 +335,22 @@ impl Iterator for PRegSetIter {
             }
             self.cur += 1;
         }
+    }
+}
+
+impl Display for HostRegSet {
+    fn fmt(
+        &self,
+        f: &mut core::fmt::Formatter,
+    ) -> core::fmt::Result {
+        write!(f, "HostRegSet[")?;
+        let mut iter = self.into_iter().peekable();
+        while let Some(reg) = iter.next() {
+            write!(f, "{}", reg)?;
+            if iter.peek().is_some() {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, "]")
     }
 }
