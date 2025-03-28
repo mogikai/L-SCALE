@@ -168,6 +168,9 @@ impl<T> HostRegMap<T> {
         self.mapping[reg.index()] = None;
     }
 
+    /// Removes the associated item for the provided [HostReg],
+    /// returning it, if there was a previous element.
+    /// Otherwise [None] is returned.
     pub fn take(
         &mut self,
         reg: HostReg,

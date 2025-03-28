@@ -20,12 +20,18 @@ pub enum OperandConstraint {
     FixedReg(HostReg),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum OperandKind {
     /// The operand is written to
     Write,
     /// The operand is only read from.
     Read,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum OperandPos {
+    Before,
+    After,
 }
 
 // TODO: We might need to compress the requests into an easily copyable value by doing
@@ -38,22 +44,43 @@ pub struct OperandRequest {
     pub slice: JIRSlice,
     pub constraint: OperandConstraint,
     pub kind: OperandKind,
+    pub pos: OperandPos,
 }
 
 impl OperandRequest {
-    pub fn slice_write_any(slice: JIRSlice) -> Self {
+    pub fn write_any_before(slice: JIRSlice) -> Self {
         OperandRequest {
             slice,
             constraint: OperandConstraint::Any,
             kind: OperandKind::Write,
+            pos: OperandPos::After,
         }
     }
 
-    pub fn slice_read_any(slice: JIRSlice) -> Self {
+    pub fn write_any_after(slice: JIRSlice) -> Self {
+        OperandRequest {
+            slice,
+            constraint: OperandConstraint::Any,
+            kind: OperandKind::Write,
+            pos: OperandPos::After,
+        }
+    }
+
+    pub fn read_any_before(slice: JIRSlice) -> Self {
         OperandRequest {
             slice,
             constraint: OperandConstraint::Any,
             kind: OperandKind::Read,
+            pos: OperandPos::Before,
+        }
+    }
+
+    pub fn read_any_after(slice: JIRSlice) -> Self {
+        OperandRequest {
+            slice,
+            constraint: OperandConstraint::Any,
+            kind: OperandKind::Read,
+            pos: OperandPos::After,
         }
     }
 }
@@ -72,6 +99,18 @@ impl<'a> OperandRequirements<'a> {
         self.0
             .iter()
             .filter(|req| matches!(req.constraint, OperandConstraint::FixedReg(_)))
+    }
+
+    pub fn write(&self) -> impl Iterator<Item = &OperandRequest> {
+        self.0
+            .iter()
+            .filter(|req| matches!(req.kind, OperandKind::Write))
+    }
+
+    pub fn read(&self) -> impl Iterator<Item = &OperandRequest> {
+        self.0
+            .iter()
+            .filter(|req| matches!(req.kind, OperandKind::Read))
     }
 
     pub fn all(&self) -> impl Iterator<Item = &OperandRequest> {

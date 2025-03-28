@@ -10,6 +10,8 @@ use crate::jit::host::register::{
 };
 use crate::jit::regalloc::requirements::{
     OperandConstraint,
+    OperandKind,
+    OperandPos,
     OperandRequest,
 };
 use crate::jit::trace_jit;
@@ -117,6 +119,9 @@ where
             .load_spill_directives
             .start_inst_directives(inst)?;
 
+        // At the start we set the available registers to all configured registers.
+        // We then subsequently remove all registers that are used by clobbers, fixed
+        // register operands, or are already allocated.
         self.reset_available_host_registers();
 
         let clobbers = self.emitter_requirements.clobbers(inst);
@@ -129,33 +134,10 @@ where
         );
 
         for operand in operands.fixed() {
-            let OperandConstraint::FixedReg(target_reg) = operand.constraint else {
-                unreachable!()
-            };
-            if let Some(slice) = self.loaded_slices.get(target_reg) {}
-            self.allocations
-                .load_spill_directives
-                .add_load_before(target_reg, operand.slice);
-            // TODO: Spill anything in target_reg, if it is not the requested slice.
-            // TODO: Process fixed operand
+            self.reserve_reg_for_fixed_operand(operand)?;
         }
         for clobber in clobbers {
-            // TODO: Since we are walking in reverse:
-            //       We need to load any allocations appearing in clobbers
-            //       and mark the registers as empty for the next (the previous) instruction.
-
-            // Remove from loaded, since this instruction clobbers the register.
-            // This means it is free to be allocated to by the next (the previous) instruction.
-            if let Some(slice) = self.loaded_slices.take(clobber) {
-                // We need to load the slice that is allocated to this register
-                // for the previous (the next) instruction.
-                self.allocations
-                    .load_spill_directives
-                    .add_load_after(clobber, slice);
-                self.loaded_slices.remove(clobber);
-            }
-            self.available_registers.before.remove(clobber);
-            self.available_registers.after.remove(clobber);
+            self.clear_clobber(clobber);
         }
 
         trace_jit!(
@@ -163,6 +145,14 @@ where
             self.available_registers.before,
             self.available_registers.after
         );
+
+        for operand in operands.write() {
+            self.alloc_write_operand(operand)?;
+        }
+
+        for operand in operands.read() {
+            self.alloc_read_operand(operand)?;
+        }
 
         // TODO: We might need to track the number of uses per allocation, such that we can
         //       replace register allocations with memory allocations, in case the value is
@@ -184,27 +174,97 @@ where
         //     spill all for diverging branches
         //     keep everything loaded for main path (either fallthrough or unconditional jmp)
 
-        /*
-
-        B1: In(v0, v1)      | Ideally, v0 is loaded once, before B1, and then kept loaded.
-            v0 = v0 + v1    |
-            v1 = v0 * v0    |
-            v2 = v1 + v0    |
-            if v2 goto B3   |
-        B2: In(v0)          |
-            v1 = v0         |
-            goto B1         |
-        B3: In(v2)          |
-            v0 = v2         |
-
-        alloc v0(write)
-        alloc v2(read)
-
-         */
-
         self.allocations
             .load_spill_directives
             .finish_inst_directives();
         Ok(())
+    }
+
+    fn alloc_write_operand(
+        &mut self,
+        operand: &OperandRequest,
+    ) -> JITResult {
+        trace_jit!("Allocating write operand {operand:?}");
+        Ok(())
+    }
+
+    fn alloc_read_operand(
+        &mut self,
+        operand: &OperandRequest,
+    ) -> JITResult {
+        trace_jit!("Allocating read operand {operand:?}");
+        Ok(())
+    }
+
+    fn reserve_reg_for_fixed_operand(
+        &mut self,
+        operand: &OperandRequest,
+    ) -> JITResult {
+        let OperandConstraint::FixedReg(target_reg) = operand.constraint else {
+            unreachable!()
+        };
+        trace_jit!("Reserving register {target_reg} for fixed operand");
+
+        // Check if the register is free, and remove it from the available set.
+        match (operand.kind, operand.pos) {
+            (OperandKind::Read, OperandPos::Before) => {
+                if !self.available_registers.before.contains(target_reg) {
+                    todo!("Allocation error")
+                }
+                self.available_registers.before.remove(target_reg);
+            }
+            (OperandKind::Write, OperandPos::After) => {
+                if !self.available_registers.after.contains(target_reg) {
+                    todo!("Allocation error")
+                }
+                self.available_registers.after.remove(target_reg);
+            }
+            _ => {
+                if !self.available_registers.before.contains(target_reg)
+                    || !self.available_registers.after.contains(target_reg)
+                {
+                    todo!("Allocation error")
+                }
+                self.available_registers.before.remove(target_reg);
+                self.available_registers.after.remove(target_reg);
+            }
+        }
+        // TODO: Is this the correct spill location?
+        self.spill_reg(target_reg);
+        Ok(())
+    }
+
+    #[inline]
+    fn clear_clobber(
+        &mut self,
+        clobber: HostReg,
+    ) {
+        trace_jit!("Clearing clobber {clobber}");
+        if !self.available_registers.before.contains(clobber) || !self.available_registers.after.contains(clobber) {
+            todo!(
+                "Error: Clobbering already removed register.
+                This likely means that a clobber overlaps with a fixed register allocation.
+                This must be avoided.
+                It could also mean that the register is generally not available, since it is reserved."
+            )
+        }
+        self.spill_reg(clobber);
+        self.available_registers.before.remove(clobber);
+        self.available_registers.after.remove(clobber);
+    }
+
+    /// Spill the provided register at the `after` position of the current instruction.
+    #[inline]
+    fn spill_reg(
+        &mut self,
+        reg: HostReg,
+    ) {
+        // Spilling the register
+        if let Some(slice) = self.loaded_slices.take(reg) {
+            trace_jit!("Spilling register {reg} to slice {slice}");
+            self.allocations
+                .load_spill_directives
+                .add_load_after(reg, slice);
+        }
     }
 }

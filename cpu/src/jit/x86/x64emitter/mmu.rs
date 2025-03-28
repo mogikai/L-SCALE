@@ -44,11 +44,11 @@ impl X64AllocRequirements {
     ) -> HostRegSet {
         // We always need the output
         self.operand_requests
-            .push(OperandRequest::slice_write_any(output));
+            .push(OperandRequest::write_any_after(output));
         // The address might be in a slice, so request it if it is not const.
         addr.is_slice_then(|addr| {
             self.operand_requests
-                .push(OperandRequest::slice_read_any(*addr))
+                .push(OperandRequest::read_any_before(*addr))
         });
         HostRegSet::empty().with(GPRegister::DX.into_host_reg())
     }
@@ -61,11 +61,11 @@ impl X64AllocRequirements {
     ) -> HostRegSet {
         addr.is_slice_then(|addr| {
             self.operand_requests
-                .push(OperandRequest::slice_read_any(*addr))
+                .push(OperandRequest::read_any_before(*addr))
         });
         value.is_slice_then(|value| {
             self.operand_requests
-                .push(OperandRequest::slice_read_any(*value))
+                .push(OperandRequest::read_any_before(*value))
         });
         HostRegSet::empty().with(GPRegister::DX.into_host_reg())
     }

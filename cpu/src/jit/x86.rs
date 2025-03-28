@@ -293,8 +293,8 @@ impl MogiJit for X86MogiJit {
             .with(GPRegister::DX.into_host_reg())
             .with(GPRegister::SI.into_host_reg())
             .with(GPRegister::DI.into_host_reg())
-            .with(GPRegister::BP.into_host_reg())
-            .with(GPRegister::SP.into_host_reg())
+            // .with(GPRegister::BP.into_host_reg()) // bp is reserved
+            // .with(GPRegister::SP.into_host_reg()) // sp is reserved
             .with(GPRegister::R8.into_host_reg())
             .with(GPRegister::R9.into_host_reg())
             .with(GPRegister::R10.into_host_reg())
