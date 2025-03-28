@@ -77,9 +77,7 @@ impl FieldExtractor {
 
         if self.signed {
             // if the field is signed, we need to sign extend
-            eprintln!("value = {:x}", value);
             value = (((value << (128 - self.bits.bits())) as i128) >> (128 - self.bits.bits())) as u128;
-            eprintln!("value = {:x}", value);
         };
 
         trace_jir!("Extracted local_id {} := {}", self.local_id, value);

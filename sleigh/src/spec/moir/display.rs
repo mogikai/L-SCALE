@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::spec::FieldId;
 
-use super::{scope::MOIRTemporaryId, table::TableId, varnode::{MOIRReference, VarNodeId}};
+use super::{scope::{MOIRLocalId, MOIRTemporaryId}, table::TableId, varnode::{MOIRReference, VarNodeId}};
 
 #[derive(Debug, Serialize, Deserialize)]
 /// Each fragment will be resolved into a concrete string and then inserted into
@@ -10,7 +10,7 @@ use super::{scope::MOIRTemporaryId, table::TableId, varnode::{MOIRReference, Var
 /// is dependent on the scope.
 pub(crate) enum MOIRDisplayFragment {
     Literal(String),
-    Local(MOIRReference),
+    Local(MOIRLocalId),
 }
 
 /// The display section for converting a lifted byte sequence into a more human-readable disassembly

@@ -6,6 +6,7 @@ use crate::lexer::ParserInput;
 use crate::parser::helpers::spanned;
 use crate::parser::{
     SleighParserExtra,
+    at_least_one_sleigh_whitespace,
     sleigh_control,
     sleigh_ident,
     sleigh_keyword,
@@ -52,22 +53,6 @@ pub fn display_section<'tokens>()
         .boxed();
     // let display = any().rewind().map(|_| String::new()).map_with(spanned);
 
-    // Parse mnemonic, removing any `^` and rewind.
-    // If we encounter a whitespace in the beginning, the mnemonic is empty.
-    let mnemonic = just(SleighToken::Whitespace)
-        .to(String::new())
-        .map_with(spanned)
-        .or(none_of(SleighToken::Whitespace)
-            .then_ignore(sleigh_operation(SleighOperation::Hat).or_not())
-            .map(|token: SleighToken| token.to_mnemonic().to_string())
-            .repeated()
-            .collect::<Vec<_>>()
-            .map(|element| element.into_iter().collect::<String>())
-            .map_with(spanned))
-        .rewind()
-        .boxed();
-    // let mnemonic = any().rewind().map(|_| String::new()).map_with(spanned);
-
     // parse literal, i.e. non-identifier or surrounded by double quotes
     let string =
         select! { SleighToken::String(string_id) => SleighToken::String(string_id) }.map_with(make_display_string);
@@ -76,6 +61,9 @@ pub fn display_section<'tokens>()
             select! {
                 SleighToken::Ident(_) => (),
                 SleighToken::Keyword(Is) => (),
+                // ^ has special meaning as a non-whitespace separator
+                SleighToken::Operation(SleighOperation::Hat) => (),
+                SleighToken::Whitespace,
             }
             .not(),
         )
@@ -88,15 +76,20 @@ pub fn display_section<'tokens>()
     let identifier = sleigh_ident()
         .map(SASTDisplayFragment::Identifier)
         .map_with(spanned);
+    let whitespace = at_least_one_sleigh_whitespace()
+        .to(SASTDisplayFragment::Whitespace)
+        .map_with(spanned);
+    let hat = sleigh_operation(SleighOperation::Hat)
+        .to(SASTDisplayFragment::Hat)
+        .map_with(spanned);
 
     // TODO ignore whitespace strings here
     let fragments = literal
         .or(identifier)
+        .or(whitespace)
+        .or(hat)
         .repeated()
         .collect::<Vec<_>>()
-        .separated_by(sleigh_operation(SleighOperation::Hat))
-        .collect::<Vec<_>>()
-        .map(|v| v.into_iter().flatten().collect())
         .boxed();
 
     start_of_display_section

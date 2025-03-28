@@ -1,6 +1,8 @@
 use super::actions::MOIRAction;
 use super::display::MOIRDisplay;
+use super::field::MOIRField;
 use super::field_extractor::FieldExtractor;
+use super::varnode::MOIRReference;
 use crate::compiler::InternalCompilerResult;
 use crate::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
 use crate::spec::jir::basic_block::instruction::TargetInstructionBuilder;
@@ -24,6 +26,7 @@ use crate::spec::moir::code::{
     MOIROpCategory,
     MOIROperation,
 };
+use crate::spec::moir::display::MOIRDisplayFragment;
 use crate::spec::moir::scope::{
     MOIRLocalId,
     MOIRMaybeSize,
@@ -32,6 +35,7 @@ use crate::spec::moir::scope::{
 use crate::spec::moir::table::MOIRExport;
 use crate::spec::moir::varnode::MOIRLocal;
 use crate::spec::{
+    FieldId,
     ProcessorSpecResult,
     ProcessorSpecification,
     ProcessorSpecificationError,
@@ -40,13 +44,17 @@ use crate::{
     jinst,
     new_typed_index_table_id,
 };
-use mogi_sleigh_parser::SleighInterner;
+use mogi_sleigh_parser::{
+    ParserContext,
+    SleighInterner,
+};
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::new_map_key;
 use serde_derive::{
     Deserialize,
     Serialize,
 };
+use std::fmt::Write;
 use std::iter::once;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -151,15 +159,98 @@ impl MOIRConstructor {
         }
     }
 
+    /// Build the display string for the field given by [FieldId] by processing
+    /// potential attach statements.
+    fn build_field_display(
+        &self,
+        spec: &ProcessorSpecification,
+        resolver: &JIRResolver,
+        local_id: MOIRLocalId,
+        field_id: FieldId,
+    ) -> String {
+        let field = spec
+            .symbol_tables
+            .fields
+            .get(field_id)
+            .expect("There must be a field");
+        let field_value = resolver
+            .resolve_local_id_to_const(local_id)
+            .expect("There must be a value for this field");
+
+        // this operation can fail since field_value has a size of 128 bits
+        if let Ok(index) = usize::try_from(field_value) {
+            if let Some(attached_varnode) = field.variables.get(index) {
+                let varnode = spec
+                    .varnode_by_id(*attached_varnode)
+                    .expect("This varnode must exist");
+                format!("{}", attached_varnode)
+            } else if let Some(attached_value) = field.values.get(index) {
+                attached_value.to_string()
+            } else if let Some(attached_string_id) = field.strings.get(index) {
+                spec.interner
+                    .string(*attached_string_id)
+                    .expect("String must have been interned before")
+                    .to_string()
+            } else {
+                build_field_value_display(field, field_value)
+            }
+        } else {
+            build_field_value_display(field, field_value)
+        }
+    }
+
     /// Transform the [MOIRDisplay] section into the final display string with
     /// the provided [JIRResolver].
     pub fn generate_display(
         &self,
+        spec: &ProcessorSpecification,
         resolver: &JIRResolver,
     ) -> ProcessorSpecResult<String> {
-        Ok(self.display.fragments.iter().map(|fragment| {
-            format!("{:#?}", fragment)
-        }).collect::<String>())
+        let mut display_string = String::new();
+
+        for fragment in self.display.fragments.iter() {
+            match fragment {
+                MOIRDisplayFragment::Literal(string) => {
+                    write!(display_string, "{}", string);
+                }
+                MOIRDisplayFragment::Local(local_id) => {
+                    let reference = self
+                        .local_scope
+                        .resolve_local(*local_id)
+                        .map_err(|_| -> ProcessorSpecificationError { todo!("Map error") })?
+                        .reference;
+
+                    match reference {
+                        MOIRReference::Field(field_id) => {
+                            let field_string = self.build_field_display(spec, resolver, *local_id, field_id);
+                            write!(display_string, "{}", field_string);
+                        }
+                        MOIRReference::SubTable(table_id) => {
+                            let table_resolver = resolver
+                                .subtables()
+                                .get(&table_id)
+                                .expect("A table must be defined");
+                            let table_string = table_resolver
+                                .constructor()
+                                .generate_display(spec, table_resolver)?;
+                            write!(display_string, "{}", table_string);
+                        }
+                        MOIRReference::VarNode(vnid) => {
+                            write!(display_string, "{}", vnid);
+                        }
+                        MOIRReference::Const(_) => {
+                            let value = resolver
+                                .resolve_local_id_to_const(*local_id)
+                                .expect("The const must be set");
+                            write!(display_string, "{}", value);
+                        }
+                        _ => panic!("There are no other cases"),
+                    }
+                }
+            }
+        }
+
+        Ok(display_string)
     }
 
     /// Transform the MOIR code template in the constructor into JCode, but as a subtable.
@@ -239,12 +330,10 @@ impl MOIRConstructor {
                 }
             }
             MOIROperation::Nop => return Ok(()),
-            MOIROperation::AddressOf => {
-                match input_a? {
-                    JIRValue::Slice(_) => todo!("Handle slices in AddressOf"),
-                    JIRValue::Const(jirconst) => jinst!({ output? } = { jirconst }),
-                }
-            }
+            MOIROperation::AddressOf => match input_a? {
+                JIRValue::Slice(_) => todo!("Handle slices in AddressOf"),
+                JIRValue::Const(jirconst) => jinst!({ output? } = { jirconst }),
+            },
             MOIROperation::PopCount => jinst!({ output? } = popcount({ input_a? })),
             MOIROperation::LZCount => jinst!({ output? } = lzcount({ input_a? })),
             MOIROperation::ZeroExtend => jinst!({ output? } = zext({ input_a? })),
@@ -424,9 +513,7 @@ impl MOIRConstructor {
                     .and_then(|resolved| match resolved {
                         JIRResolvedValue::Value(value) => Ok(value),
                         JIRResolvedValue::Reference { address, space, size } => match address {
-                            JIRValue::Slice(slice) => {
-                                Ok(slice.into())
-                            }
+                            JIRValue::Slice(slice) => Ok(slice.into()),
                             JIRValue::Const(value) => {
                                 // We construct a new const with the size provided in the reference, since this
                                 // is the actual size used for the load.
@@ -513,5 +600,26 @@ impl MOIRConstructor {
         }
 
         Ok(())
+    }
+}
+
+/// Build the display string for the given field by taking attributes like `signed` and `hex`
+/// into accout.
+fn build_field_value_display(
+    field: &MOIRField,
+    value: u128,
+) -> String {
+    if field.signed {
+        if field.hex {
+            format!("{:x}", value as i128)
+        } else {
+            format!("{}", value as i128)
+        }
+    } else {
+        if field.hex {
+            format!("{:x}", value)
+        } else {
+            format!("{}", value)
+        }
     }
 }

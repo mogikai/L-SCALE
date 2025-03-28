@@ -40,7 +40,10 @@ use crate::spec::moir::scope::{
     MOIRMaybeSize,
     MOIRScope,
 };
-use crate::spec::moir::table::MOIRTable;
+use crate::spec::moir::table::{
+    MOIRTable,
+    TableId,
+};
 use crate::spec::moir::varnode::{
     MOIRLocal,
     MOIRReference,
@@ -62,10 +65,12 @@ use mogi_sleigh_parser::ast::constructor::display_section::{
 };
 use mogi_sleigh_parser::lexer::InputSpan;
 use mogi_sleigh_parser::{
+    ParserContext,
     Spanned,
     StringId,
 };
 use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::index_map::MapKey;
 use std::collections::{
     BTreeSet,
     HashSet,
@@ -120,7 +125,10 @@ impl SleighCompiler {
             .pc_create_scope(display_section.identifiers(), &references)
             .map_err(|e| e.span("constructor", span))?;
 
-        let display = self.pc_process_display_section(display_section, &scope)?;
+        // if we are in the root table, the first fragment is always interpreted as a mnemonic,
+        // i.e. literal
+        let is_root_table = table_id == TableId::try_from_index(0).unwrap();
+        let display = self.pc_process_display_section(display_section, &scope, is_root_table)?;
 
         let actions = self.pc_process_actions(&mut scope, constructor.disassembly_section)?;
         let modifies_context = actions.iter().any(|action| action.modifies_context());
@@ -540,36 +548,69 @@ impl SleighCompiler {
         Ok(())
     }
 
+    /// Resolve a [SASTDisplayFragment] to a [MOIRDisplayFragment].
+    fn resolve_fragment(
+        &self,
+        sast_fragment: Spanned<SASTDisplayFragment>,
+        scope: &MOIRScope,
+        to_literal: bool,
+    ) -> InternalCompilerResult<Option<MOIRDisplayFragment>> {
+        let (fragment, span) = sast_fragment.into_tuple();
+
+        Ok(match fragment {
+            SASTDisplayFragment::Literal(string) => Some(MOIRDisplayFragment::Literal(string)),
+            SASTDisplayFragment::Identifier(sid) => {
+                if to_literal {
+                    let string = self
+                        .spec_builder
+                        .interner()
+                        .string(sid)
+                        .expect("If we stored it it must be interned");
+                    Some(MOIRDisplayFragment::Literal(string.to_string()))
+                } else {
+                    let sid_spanned = Spanned::new(sid, span);
+                    let local_id = scope
+                        .local_id_by_ident(sid)
+                        .expect("Fragment identifiers must be included in the scope");
+                    let local = scope
+                        .local(sid)
+                        .expect("Fragmet identifiers must be included in the scope");
+
+                    match local.reference {
+                        MOIRReference::Field(_)
+                        | MOIRReference::SubTable(_)
+                        | MOIRReference::VarNode(_)
+                        | MOIRReference::Const(_) => Some(MOIRDisplayFragment::Local(local_id)),
+                        _ => todo!("Generate error report for invalid reference type in display string"),
+                    }
+                }
+            }
+            SASTDisplayFragment::Whitespace => Some(MOIRDisplayFragment::Literal(" ".to_string())),
+            SASTDisplayFragment::Hat => None,
+        })
+    }
+
     /// A [SASTDisplaySection] is processed into a [MOIRDisplay] by resolving identifiers.
     fn pc_process_display_section(
         &mut self,
         display_section: Spanned<SASTDisplaySection>,
         scope: &MOIRScope,
+        is_root_table: bool,
     ) -> InternalCompilerResult<MOIRDisplay> {
+        let len = display_section.value().fragments.len();
         let moir_fragments: Vec<MOIRDisplayFragment> = display_section
             .into_value()
             .fragments
             .into_iter()
-            .map(|sast_fragment| {
-                let (fragment, span) = sast_fragment.into_tuple();
-
-                match fragment {
-                    SASTDisplayFragment::Literal(string) => Ok(MOIRDisplayFragment::Literal(string)),
-                    SASTDisplayFragment::Identifier(sid) => {
-                        let sid_spanned = Spanned::new(sid, span);
-                        let slice = scope
-                            .local(sid)
-                            .expect("Fragment identifiers must be included in the scope");
-
-                        match slice.reference {
-                            MOIRReference::Field(_)
-                            | MOIRReference::SubTable(_)
-                            | MOIRReference::VarNode(_)
-                            | MOIRReference::Const(_) => Ok(MOIRDisplayFragment::Local(slice.reference)),
-                            _ => todo!("Generate error report for invalid reference type in display string"),
-                        }
-                    }
+            .enumerate()
+            .filter_map(|(i, sast_fragment)| {
+                if (i == 0 || i + 1 == len) && matches!(sast_fragment.value(), SASTDisplayFragment::Whitespace) {
+                    // skip start and end
+                    return None;
                 }
+
+                self.resolve_fragment(sast_fragment, scope, is_root_table && i == 0)
+                    .transpose()
             })
             .collect::<InternalCompilerResult<_>>()?;
 

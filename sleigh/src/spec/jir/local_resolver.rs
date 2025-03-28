@@ -205,7 +205,7 @@ impl<'a> JIRResolver<'a> {
         &self,
         spec: &ProcessorSpecification,
     ) -> ProcessorSpecResult<String> {
-        self.constructor.generate_display(self)
+        self.constructor.generate_display(spec, self)
     }
 
     pub fn constructor(&self) -> &MOIRConstructor {

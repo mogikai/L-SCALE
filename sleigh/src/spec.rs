@@ -133,7 +133,7 @@ pub struct ProcessorSpecification {
 
     /// Maps the identifier ids to corresponding strings.
     pub(crate) symbol_strings: HashMap<Ident, StringId>,
-    /// Contains a table for each symbol type. A [Ident] maps to a [JIRSymbolId], which in turn maps to the
+    /// Contains a table for each symbol type. An [Ident] maps to a [JIRSymbolId], which in turn maps to the
     /// corresponding [MOIRSymbolTable] with a table-specific id type.
     pub(crate) symbol_tables: JIRSymbolTables,
     /// A mapping to look up context ids from their varnode id.

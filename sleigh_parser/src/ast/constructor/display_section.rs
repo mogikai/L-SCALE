@@ -7,6 +7,8 @@ use crate::{
 pub enum SASTDisplayFragment {
     Literal(String),
     Identifier(StringId),
+    Whitespace,
+    Hat,
 }
 
 #[derive(Debug)]
@@ -26,8 +28,9 @@ impl SASTDisplaySection {
         self.fragments
             .iter()
             .filter_map(|fragment| match fragment.value() {
-                SASTDisplayFragment::Literal(_) => None,
+                SASTDisplayFragment::Literal(_) | SASTDisplayFragment::Whitespace | SASTDisplayFragment::Hat => None,
                 SASTDisplayFragment::Identifier(string_id) => Some(Spanned::new(*string_id, fragment.span().clone())),
-            }).collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>()
     }
 }
