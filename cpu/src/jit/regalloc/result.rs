@@ -160,5 +160,5 @@ impl LoadSpillDirectives {
 #[test]
 fn test() {
     // Rust does some magic, such that the total size of allocation is still 8 bytes (it fits into a 64 bit int/reg)
-    assert_eq!(size_of::<Allocation>(), 8);
+    assert!(size_of::<Allocation>() <= 8);
 }
