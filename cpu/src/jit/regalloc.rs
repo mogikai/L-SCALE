@@ -132,10 +132,10 @@ where
             let OperandConstraint::FixedReg(target_reg) = operand.constraint else {
                 unreachable!()
             };
-            if let Some(slice) = self.loaded_slices.get(target_reg) {
-                if slice.
-            }
-            self.allocations.load_spill_directives.add_load_before(target_reg, operand.slice);
+            if let Some(slice) = self.loaded_slices.get(target_reg) {}
+            self.allocations
+                .load_spill_directives
+                .add_load_before(target_reg, operand.slice);
             // TODO: Spill anything in target_reg, if it is not the requested slice.
             // TODO: Process fixed operand
         }

@@ -291,7 +291,7 @@ fn build_maps(
 /// that were merged into other groups.
 fn create_unsorted_groups(varnodes: &PrimaryMap<VarNodeId, MOIRVarNode>) -> Vec<Option<VarnodeGroup>> {
     let mut groups = Vec::<Option<VarnodeGroup>>::new();
-    // let mut varnode_to_group = SecondaryMap::<VarNodeId, Option<VarnodeGroupId>>::default();
+
     for (varnode_id, varnode) in varnodes.items() {
         // check if varnode intersects with any existing intersection group and if so,
         // insert into that group and update group offset and size
@@ -319,7 +319,6 @@ fn create_unsorted_groups(varnodes: &PrimaryMap<VarNodeId, MOIRVarNode>) -> Vec<
 
         // Now, let's check for any additional groups that might overlap and
         // merge them into the first group.
-
         merge_remaining_overlaps(&mut groups, varnode, existing_group);
     }
     groups

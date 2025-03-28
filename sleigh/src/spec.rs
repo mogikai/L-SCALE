@@ -323,11 +323,7 @@ impl ProcessorSpecification {
         use std::fmt::Write;
         let mut group_dbg = String::new();
         let mut prev_end = 0;
-        for group in self
-            .varnode_groups
-            .values()
-            .sorted_by(|a, b| a.offset.cmp(&b.offset))
-        {
+        for group in self.varnode_groups.values() {
             if group.offset != prev_end {
                 writeln!(group_dbg, "Empty space of {} bytes", group.offset - prev_end).unwrap();
             }
@@ -354,6 +350,7 @@ impl ProcessorSpecification {
                 .map(|varnode| varnode.offset..varnode.end())
                 .collect::<Vec<_>>(),
         );
+
         debug!("Varnodes occupy the following ranges: {:#05x?}", merged);
         let total_size: u64 = merged.iter().map(|r| r.end - r.start).sum();
         debug!("Total size: {}", total_size);

@@ -405,11 +405,7 @@ impl FileData {
         match whence {
             Whence::SEEK_SET => self.pos = offset as usize,
             Whence::SEEK_CUR => {
-                self.pos = if offset.is_negative() {
-                    self.pos.wrapping_sub(offset.abs() as usize)
-                } else {
-                    self.pos.wrapping_add(offset.abs() as usize)
-                }
+                self.pos = self.pos.wrapping_add_signed(offset as isize);
             }
             Whence::SEEK_END => {
                 self.pos = self
@@ -418,11 +414,7 @@ impl FileData {
                     .read_all(self.fse_id)
                     .expect("file should exist, else fd cannot be open")
                     .len();
-                self.pos = if offset.is_negative() {
-                    self.pos.wrapping_sub(offset.abs() as usize)
-                } else {
-                    self.pos.wrapping_add(offset.abs() as usize)
-                }
+                self.pos = self.pos.wrapping_add_signed(offset as isize);
             }
         }
         self.pos
