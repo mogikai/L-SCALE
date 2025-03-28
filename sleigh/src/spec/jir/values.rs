@@ -11,8 +11,11 @@ pub use crate::spec::moir::varnode::VarNodeId;
 use mogi_sleigh_parser::StringId;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::SecondaryMap;
-use mogi_utilities::new_map_key;
 use mogi_utilities::overlap::overlaps_generic;
+use mogi_utilities::{
+    new_map_key,
+    new_map_key_8,
+};
 use num::complex::ComplexFloat;
 use serde_derive::{
     Deserialize,
@@ -113,14 +116,14 @@ impl VarnodeGroup {
     }
 }
 
-new_map_key! { pub struct VarnodeGroupId; "VGI"; }
+new_map_key_8! { pub struct VarnodeGroupId; "VGI"; }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct JIRSlice {
-    /// The varnode that is associated with this slice. The slice may refer to only a part of the varnode.
-    pub varnode_id: JIRVarNodeId,
     /// The space this slice is located in.
     pub space_id: SpaceId,
+    /// The group of varnodes this slice belongs to. Temps do not have a group
+    pub group_id: Option<VarnodeGroupId>,
     /// The offset in the space where this slice is located.
     pub offset: JIROffset,
     /// The size of the slice in bytes.
@@ -132,7 +135,11 @@ impl Debug for JIRSlice {
         &self,
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
-        write!(f, "{}::<{}>[{:#x}..{:#x}]", self.varnode_id, self.space_id, self.offset, self.end())
+        if let Some(group_id) = self.group_id {
+            write!(f, "{}::<{}>[{:#x}..{:#x}]", group_id, self.space_id, self.offset, self.end())
+        } else {
+            write!(f, "TMP::<{}>[{:#x}..{:#x}]", self.space_id, self.offset, self.end())
+        }
     }
 }
 
@@ -287,28 +294,27 @@ impl JIRConst {
 
 impl JIRSlice {
     pub fn new(
-        varnode_id: VarNodeId,
         space_id: SpaceId,
+        group_id: VarnodeGroupId,
         offset: JIROffset,
         size: JIRSize,
     ) -> Self {
         Self {
-            varnode_id: JIRVarNodeId::VarNode(varnode_id),
             space_id,
+            group_id: Some(group_id),
             offset,
             size,
         }
     }
 
     pub fn new_temp(
-        temp_id: JIRTempId,
         space_id: SpaceId,
         offset: JIROffset,
         size: JIRSize,
     ) -> Self {
         Self {
-            varnode_id: JIRVarNodeId::Temp(temp_id),
             space_id,
+            group_id: None,
             offset,
             size,
         }
@@ -324,8 +330,8 @@ impl JIRSlice {
             todo!()
         }
         Self {
-            varnode_id: self.varnode_id,
             space_id: self.space_id,
+            group_id: self.group_id,
             offset: self.offset + JIROffset::from(start),
             size,
         }
@@ -448,7 +454,7 @@ impl Display for JIRSlice {
         &self,
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
-        write!(f, "{}:{}", self.varnode_id, self.size)
+        write!(f, "{}[{}..={}]", self.space_id, self.offset, self.size)
     }
 }
 
@@ -466,7 +472,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn size_of_slice_is_64_bits() {
-        assert_eq!(std::mem::size_of::<JIRSlice>(), 8);
+    fn size_of_slice_is_less_than_64_bits() {
+        assert!(std::mem::size_of::<JIRSlice>() <= 8);
     }
 }

@@ -106,12 +106,12 @@ impl TargetBasicBlockBuilder {
             .unwrap_or(0)
             .try_into()
             .map_err(|_| ProcessorSpecificationError::OutOfTempSpace)?;
-        let id = self.target_block.temporaries.insert(JIRVarNode {
+        self.target_block.temporaries.insert(JIRVarNode {
             space_id: self.temp_space,
             offset: offset.into(),
             size,
         });
-        Ok(JIRSlice::new_temp(id, self.temp_space, offset, size))
+        Ok(JIRSlice::new_temp(self.temp_space, offset, size))
     }
 
     /// Allocate a temporary of size `size` and load the contents at `address` in `space` to it.

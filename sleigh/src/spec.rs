@@ -225,8 +225,8 @@ impl ProcessorSpecification {
         };
         let varnode = self.symbol_tables.varnodes.get(varnode_id)?;
         Some(JIRSlice::new(
-            varnode_id,
             varnode.space_id,
+            self.varnode_to_group[varnode_id].expect("Every varnode must be in a group."),
             varnode
                 .offset
                 .try_into()
@@ -246,8 +246,8 @@ impl ProcessorSpecification {
             .ok_or(ProcessorSpecificationError::SymbolUndeclared(JIRSymbolId::VarNode(id)))
             .map(|varnode| {
                 JIRSlice::new(
-                    id,
                     varnode.space_id,
+                    self.varnode_to_group[id].expect("Every varnode must be in a group."),
                     varnode
                         .offset
                         .try_into()

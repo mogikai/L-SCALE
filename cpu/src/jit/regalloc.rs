@@ -185,6 +185,7 @@ where
         operand: &OperandRequest,
     ) -> JITResult {
         trace_jit!("Allocating write operand {operand:?}");
+
         Ok(())
     }
 

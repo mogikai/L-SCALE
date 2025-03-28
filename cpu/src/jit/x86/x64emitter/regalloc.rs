@@ -269,7 +269,7 @@ impl X64Emitter<'_> {
         for (register, entry) in self.register_tracker.gp.iter() {
             match &entry.ty {
                 RegAllocType::Occupied(entry) | RegAllocType::OccupiedDirty(entry) => {
-                    if entry.varnode_id == slice.varnode_id {
+                    if entry.group_id == slice.group_id {
                         return Some(register);
                     }
                 }

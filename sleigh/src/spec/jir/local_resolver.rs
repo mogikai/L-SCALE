@@ -400,8 +400,8 @@ impl<'a> JIRResolver<'a> {
                 }
                 let varnode = spec.varnode_slice_by_id(varnode_id)?;
                 JIRSlice::new(
-                    varnode_id,
                     varnode.space_id,
+                    spec.varnode_to_group[varnode_id].expect("Every varnode must have a group id"),
                     varnode.offset + start,
                     JIRSize::try_from(end.ok_or_else(|| todo!("Generate error for undefined size"))?)
                         .expect("The size must fit into JIRSize")
@@ -446,8 +446,10 @@ impl<'a> JIRResolver<'a> {
                         let varnode = spec.symbol_tables.varnodes.get(varnode_id).unwrap();
 
                         let slice = JIRSlice {
-                            varnode_id: JIRVarNodeId::VarNode(varnode_id),
                             space_id: varnode.space_id,
+                            group_id: Some(
+                                spec.varnode_to_group[varnode_id].expect("Every varnode must have a group id"),
+                            ),
                             offset: varnode.offset.try_into().unwrap(),
                             size: varnode.size,
                         };

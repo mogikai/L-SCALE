@@ -152,7 +152,7 @@ impl X64Emitter<'_> {
         // We need to insert an instruction that loads it from context.
         // For that we first need to calculate the offset in the cpu context.
         let varnode_offset = X86TaskContext::varnode_offset(slice);
-        trace!("Loading slice {slice:?} that refers to varnode {:?} into {register:?}", slice.varnode_id);
+        trace!("Loading slice {slice:?} that refers to varnode group {:?} into {register:?}", slice.group_id);
         // Emit the instruction that loads the varnode from the specified space in the context.
         // We always load to a 32 bit register. This avoids false dependencies.
         match slice.size() {

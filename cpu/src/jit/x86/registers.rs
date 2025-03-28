@@ -255,7 +255,7 @@ impl RegisterTracker {
                 RegAllocType::Reserved | RegAllocType::OccupiedTemp => {}
                 RegAllocType::Occupied(current) | RegAllocType::OccupiedDirty(current) => match alloc_intention {
                     RegAllocIntention::Slice(slice) if current.overlaps(&slice) => {
-                        if current.varnode_id != slice.varnode_id {
+                        if current.group_id != slice.group_id {
                             todo!("Aliasing varnodes are currently not supported yet")
                         }
                         if let RegAllocHint::Reallocate(_) = hint {
@@ -268,7 +268,7 @@ impl RegisterTracker {
                         }
                     }
                     RegAllocIntention::OutSlice(slice) if current.overlaps(&slice) => {
-                        if current.varnode_id != slice.varnode_id {
+                        if current.group_id != slice.group_id {
                             if current.offset == slice.offset {
                                 todo!("implement same offset alias")
                             } else {
@@ -282,7 +282,7 @@ impl RegisterTracker {
                         };
                     }
                     RegAllocIntention::Realloc(slice) if current.overlaps(&slice) => {
-                        if current.varnode_id != slice.varnode_id {
+                        if current.group_id != slice.group_id {
                             todo!("Aliasing varnodes are currently not supported yet")
                         }
                         existing_gpr = Some(register);
