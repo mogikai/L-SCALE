@@ -39,11 +39,11 @@ use crate::spec::moir::varnode::{
 };
 use crate::spec::{
     CustomOpId,
-    Ident,
     JIRSymbolId,
     JIRSymbolTables,
 };
 use addr_align::Align;
+use fnv::FnvHashMap;
 use itertools::Itertools;
 use mogi_utilities::index_map::{
     PrimaryMap,
@@ -72,11 +72,9 @@ pub(super) struct MOIRToJIRTransformer<'a> {
 
 #[derive(Debug)]
 pub struct JIRData {
-    pub symbol_ids: PrimaryMap<Ident, JIRSymbolId>,
-    pub symbol_strings: HashMap<Ident, StringId>,
+    pub symbol_ids: FnvHashMap<StringId, JIRSymbolId>,
     pub symbol_tables: JIRSymbolTables,
     pub jumplist_cache: PrimaryMap<JumplistId, Jumplist>,
-    pub string_to_ident_mapping: HashMap<StringId, Ident>,
     pub varnode_groups: PrimaryMap<VarnodeGroupId, VarnodeGroup>,
     pub varnode_to_group: SecondaryMap<VarNodeId, Option<VarnodeGroupId>>,
 }
@@ -84,10 +82,8 @@ pub struct JIRData {
 #[derive(Debug)]
 struct MOIRData<'a> {
     interner: &'a SleighInterner,
-    symbol_ids: PrimaryMap<Ident, MOIRSymbolId>,
-    symbol_strings: HashMap<Ident, Spanned<StringId>>,
+    symbol_ids: FnvHashMap<StringId, MOIRSymbolId>,
     symbol_tables: MOIRSymbolTables,
-    string_to_ident_mapping: HashMap<StringId, Ident>,
     context: &'a PrimaryMap<ContextId, MOIRContext>,
     root_table_id: TableId,
 }
@@ -95,10 +91,8 @@ struct MOIRData<'a> {
 impl<'a> MOIRToJIRTransformer<'a> {
     pub fn new(
         interner: &'a SleighInterner,
-        symbol_ids: PrimaryMap<Ident, MOIRSymbolId>,
-        symbol_strings: HashMap<Ident, Spanned<StringId>>,
+        symbol_ids: FnvHashMap<StringId, MOIRSymbolId>,
         symbol_tables: MOIRSymbolTables,
-        string_to_ident_mapping: HashMap<StringId, Ident>,
         context: &'a PrimaryMap<ContextId, MOIRContext>,
         root_table_id: TableId,
     ) -> Self {
@@ -106,18 +100,14 @@ impl<'a> MOIRToJIRTransformer<'a> {
             moir: MOIRData {
                 interner,
                 symbol_ids,
-                symbol_strings,
                 symbol_tables,
-                string_to_ident_mapping,
                 context,
                 root_table_id,
             },
             jir: JIRData {
                 symbol_ids: Default::default(),
-                symbol_strings: Default::default(),
                 symbol_tables: Default::default(),
                 jumplist_cache: Default::default(),
-                string_to_ident_mapping: Default::default(),
                 varnode_groups: Default::default(),
                 varnode_to_group: Default::default(),
             },
@@ -129,7 +119,7 @@ impl<'a> MOIRToJIRTransformer<'a> {
             .moir
             .symbol_ids
             .into_iter()
-            .map(|(ident, symbol_id)| {
+            .map(|(sid, symbol_id)| {
                 let symbol_id = match symbol_id {
                     MOIRSymbolId::Undefined => todo!("Generate error for undefined symbol"),
                     MOIRSymbolId::Macro(id) => JIRSymbolId::Macro(id),
@@ -141,14 +131,8 @@ impl<'a> MOIRToJIRTransformer<'a> {
                     MOIRSymbolId::BitrangeRegister(id) => JIRSymbolId::BitrangeRegister(id),
                     MOIRSymbolId::CustomOp(id) => JIRSymbolId::CustomOp(id),
                 };
-                (ident, symbol_id)
+                (sid, symbol_id)
             })
-            .collect();
-        self.jir.symbol_strings = self
-            .moir
-            .symbol_strings
-            .into_iter()
-            .map(|(k, v)| (k, v.into_value()))
             .collect();
 
         let jumplist_cache = JumplistBuilder::new(
@@ -174,7 +158,6 @@ impl<'a> MOIRToJIRTransformer<'a> {
             fields: self.moir.symbol_tables.fields,
         };
 
-        self.jir.string_to_ident_mapping = self.moir.string_to_ident_mapping;
         Ok(self.jir)
     }
 }

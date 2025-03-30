@@ -197,10 +197,7 @@ impl SleighCompiler {
             .spec_builder
             .resolve_space(deref.space.map(Spanned::transmute))?;
         let mut address = self.atomize_expression(scope, instructions, None, *deref.expression)?;
-        let spc = self
-            .spec_builder
-            .space_by_symbol_id(space)
-            .ok_or_else(|| -> InternalError { todo!("Generate appropriate error report") })?;
+        let spc = self.spec_builder.space_by_id(space);
 
         trace_build!("Constraining addr size to {}", spc.address_size);
         scope.constrain_local_size(&mut address, spc.address_size)?;

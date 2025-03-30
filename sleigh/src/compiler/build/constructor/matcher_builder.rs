@@ -116,10 +116,7 @@ impl SleighCompiler {
             }
             MOIRSymbolId::Field(fid) => {
                 // create a wildcard field matcher to extract value later on
-                let field = self
-                    .spec_builder
-                    .field_by_symbol_id(*fid)
-                    .ok_or_else(|| -> InternalError { todo!("Generate error report for missing field mapping") })?;
+                let field = self.spec_builder.field_by_id(*fid);
 
                 let field_matcher = FieldMatcher::Wildcard;
                 let atom = MatcherAtom::Field {
@@ -306,10 +303,7 @@ impl SleighCompiler {
         op: SASTConstraintOp,
         pattern: SASTConstraintPattern,
     ) -> InternalCompilerResult<(Vec<MatcherConjunction>, HashSet<MatcherReference>)> {
-        let field = self
-            .spec_builder
-            .field_by_symbol_id(field_id)
-            .ok_or_else(|| -> InternalError { todo!("Generate error report for symbol undeclared") })?;
+        let field = self.spec_builder.field_by_id(field_id);
 
         let token = MatcherToken::new(Some(field.parent));
 
@@ -320,12 +314,7 @@ impl SleighCompiler {
             SASTConstraintPattern::Ident(ident) => {
                 let other_id = self.spec_builder.field_id_by_ident(&ident.transmute())?;
                 references.insert(MatcherReference::Field(other_id));
-                let other = self
-                    .spec_builder
-                    .field_by_symbol_id(other_id)
-                    .ok_or_else(|| -> InternalError {
-                        todo!("Generate error report for wrong symbol type or missing symbol")
-                    })?;
+                let other = self.spec_builder.field_by_id(other_id);
 
                 if other.bits.bits() != field.bits.bits() {
                     todo!("Generate error report for mismatching field sizes");
@@ -538,109 +527,6 @@ impl SleighCompiler {
                 }
             })
             .collect::<Vec<_>>()
-    }
-
-    /// Eliminate all submatchers that don't fit the given token list.
-    ///
-    /// Submatchers start out as unconstrained but might get constrained along the way.
-    /// Consider the following:
-    ///
-    /// `:LEA reg_a, reg_b is (byte=0x8D; mod=3) & (byte=0x8D; addr64) { ... } `
-    ///
-    /// `addr64` starts out as being unconstrained but then gets constrained to the tokens `[byte, mod]`.
-    /// This eliminates any constructors of `addr64` that use different tokens. Since this
-    /// influences matching semantics, it should be accounted for.
-    fn constrain_submatchers(
-        &self,
-        merged_conjunctions: &mut Vec<BTreeSet<MatcherAtom>>,
-        merged_tokens: &Vec<Option<MOIRFieldParent>>,
-    ) {
-        todo!("Constrain submatchers")
-    }
-
-    /// Find all possible token lists of `matcher` that are compatible with `root_constraint`.
-    fn concretize_matcher(
-        &self,
-        matcher: &[MatcherConjunction],
-    ) -> Vec<Vec<MatcherConjunction>> {
-        todo!("");
-
-        // // start with matcher
-        // let mut result = vec![matcher.to_vec()];
-
-        // // root_constraint = t0; None; t2; None
-
-        // // t0; None; t2; None
-
-        // // t0; imm16; t2; None
-        // // t0; imm32; t2; None
-
-        // // t0; modrm; t2; byte
-        // // t0; modrm; t2; sib
-
-        // for token_start in 0..matcher.len() {
-        //     // new values are added each iteration
-
-        //     let mut new_results = Vec::new();
-        //     for result_i in 0..result.len() {
-        //         // start off from previous results
-        //         let prev_result = &result[result_i];
-        //         let slice = &prev_result[token_start..];
-        //         let start = slice.first().expect("There must be at least one");
-
-        //         // we need to concretize every submatcher because if we encounter a None token it might
-        //         // be already too late since submatchers from earlier can constrain it
-        //         for atom in &start.atoms {
-        //             if let MatcherAtom::Submatchers(submatchers) = atom {
-        //                 let table = self
-        //                     .spec_builder
-        //                     .table_by_symbol_id(submatchers.table)
-        //                     .expect("Invalid table reference");
-        //                 let matchers = match &submatchers.matchers {
-        //                     Some(matcher_ids) => matcher_ids
-        //                         .iter()
-        //                         .map(|matcher_id| {
-        //                             table
-        //                                 .matchers
-        //                                 .get(*matcher_id)
-        //                                 .expect("Invalid matcher reference")
-        //                         })
-        //                         .collect_vec(),
-        //                     None => table.matchers.values().collect_vec(),
-        //                 };
-
-        //                 // pre-filter matchers by merging them with the root constraint
-        //                 // (this needs to be done again after concretization)
-        //                 let filtered_matchers = matchers.into_iter().filter_map(|matcher| {
-        //                     match merge_conjunctions(&matcher.conjunctions, slice) {
-        //                         Some(merged) => {
-        //                             let (merged_matcher, _): (Vec<MatcherConjunction>, Vec<MatcherConjunction>) =
-        //                                 merged.into_iter().unzip();
-        //                             Some(merged_matcher)
-        //                         }
-        //                         _ => None,
-        //                     }
-        //                 });
-
-        //                 // recursively concretize filtered matchers
-        //                 let mut concretized_submatchers = filtered_matchers
-        //                     .map(|matcher| {
-        //                         // concretization is recursive
-        //                         self.concretize_matcher(&matcher)
-        //                     })
-        //                     .flatten()
-        //                     .collect_vec();
-
-        //                 // add to result
-        //                 new_results.append(&mut concretized_submatchers);
-        //             }
-        //         }
-        //     }
-
-        //     result = new_results;
-        // }
-
-        // result
     }
 }
 

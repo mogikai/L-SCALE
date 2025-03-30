@@ -34,6 +34,7 @@ use crate::spec::moir::table::{
 use crate::spec::moir::token::TokenId;
 use crate::spec::moir::varnode::VarNodeId;
 use brotli::Decompressor;
+use fnv::FnvHashMap;
 use itertools::Itertools;
 use jir::jumplist::MatchContext;
 use jir::values::{
@@ -74,14 +75,6 @@ pub mod jir;
 mod lifter;
 pub mod moir;
 pub mod typed_index_table;
-
-new_map_key! {
-    /// [Ident] is the identifier type that is used by the [ProcessorSpecification]
-    /// to refer to individual [JIRSymbolId]s. Each [JIRSymbolId] in turn refers to the corresponding symbol table.
-    /// TODO: Improve docs
-    pub struct Ident;
-    "ID";
-}
 
 pub type ProcessorSpecResult<T = ()> = Result<T, ProcessorSpecificationError>;
 
@@ -127,13 +120,11 @@ pub struct ProcessorSpecification {
     pub(crate) interner: SleighInterner,
 
     /// The main symbol map of the specification.
-    /// Each identifier points to a specific symbol id.
+    /// Each string id points to a specific symbol id.
     /// The symbols are saved in separate lists, one for each symbol type.
-    pub(crate) symbol_ids: PrimaryMap<Ident, JIRSymbolId>,
+    pub(crate) symbol_ids: FnvHashMap<StringId, JIRSymbolId>,
 
-    /// Maps the identifier ids to corresponding strings.
-    pub(crate) symbol_strings: HashMap<Ident, StringId>,
-    /// Contains a table for each symbol type. An [Ident] maps to a [JIRSymbolId], which in turn maps to the
+    /// Contains a table for each symbol type. A [StringId] maps to a [JIRSymbolId], which in turn maps to the
     /// corresponding [MOIRSymbolTable] with a table-specific id type.
     pub(crate) symbol_tables: JIRSymbolTables,
     /// A mapping to look up context ids from their varnode id.
@@ -146,12 +137,6 @@ pub struct ProcessorSpecification {
 
     /// Maps varnode ids to the corresponding string id, such that we can display them to the user.
     pub(crate) varnode_names: SecondaryMap<VarNodeId, Option<StringId>>,
-
-    /// Maps a string identifier to the corresponding internal [Ident].
-    /// This is useful for the compiler, when an identifier string references another symbol.
-    /// This will need to be resolved to the correct [Ident], so that the PSB can then
-    /// use the internal identifiers, instead of the strings.
-    pub(crate) string_to_ident_mapping: HashMap<StringId, Ident>,
 
     /// The first jumplist is the root from which matching begins.
     pub(crate) jumplist_cache: PrimaryMap<JumplistId, Jumplist>,
@@ -196,22 +181,6 @@ impl ProcessorSpecification {
         self.default_space
     }
 
-    /// Lookup a varnode by its string identifier.
-    /// This lookup is expensive. Consider resolving
-    /// to an id first and using the id in subsequent
-    /// lookups if performance is critical.
-    pub fn varnode_by_string(
-        &self,
-        name: &str,
-    ) -> Option<&JIRVarNode> {
-        let name = self.interner.lookup(name)?;
-        let ident = self.string_to_ident_mapping.get(&name)?;
-        let JIRSymbolId::VarNode(varnode_id) = self.symbol_ids.get(*ident)? else {
-            return None;
-        };
-        self.symbol_tables.varnodes.get(*varnode_id)
-    }
-
     /// Lookup a varnode by its string identifier and return a [JIRSlice] to it.
     /// This lookup is expensive.
     pub fn varnode_slice_by_string(
@@ -219,8 +188,7 @@ impl ProcessorSpecification {
         name: &str,
     ) -> Option<JIRSlice> {
         let name = self.interner.lookup(name)?;
-        let ident = self.string_to_ident_mapping.get(&name)?;
-        let JIRSymbolId::VarNode(varnode_id) = self.symbol_ids.get(*ident).copied()? else {
+        let JIRSymbolId::VarNode(varnode_id) = self.symbol_ids.get(&name).copied()? else {
             return None;
         };
         let varnode = self.symbol_tables.varnodes.get(varnode_id)?;
@@ -264,9 +232,8 @@ impl ProcessorSpecification {
         &self,
         name: &str,
     ) -> Option<VarNodeId> {
-        let name = self.interner.lookup(name)?;
-        let ident = self.string_to_ident_mapping.get(&name)?;
-        let JIRSymbolId::VarNode(varnode_id) = self.symbol_ids.get(*ident)? else {
+        let ident = self.interner.lookup(name)?;
+        let JIRSymbolId::VarNode(varnode_id) = self.symbol_ids.get(&ident)? else {
             return None;
         };
         Some(*varnode_id)
@@ -277,9 +244,8 @@ impl ProcessorSpecification {
         &self,
         name: &str,
     ) -> Option<FieldId> {
-        let name = self.interner.lookup(name)?;
-        let ident = self.string_to_ident_mapping.get(&name)?;
-        match self.symbol_ids.get(*ident)? {
+        let ident = self.interner.lookup(name)?;
+        match self.symbol_ids.get(&ident)? {
             JIRSymbolId::Field(field_id) => Some(*field_id),
             _ => None,
         }
@@ -375,16 +341,12 @@ impl ProcessorSpecification {
         // TODO: Maybe we can include some backwards mappings to make these lookups easier?
         //       although they most likely are only used in rare cases.
         self.symbol_ids
-            .items()
-            .filter_map(|(id, sym)| {
+            .iter()
+            .filter_map(|(sid, sym)| {
                 if let JIRSymbolId::VarNode(_) = sym {
-                    let string_id = *self
-                        .symbol_strings
-                        .get(&id)
-                        .expect("The ident must have a corresponding string mapped.");
                     Some(
                         self.interner
-                            .string(string_id)
+                            .string(*sid)
                             .expect("The string must have been interned."),
                     )
                 } else {
@@ -405,10 +367,8 @@ impl ProcessorSpecification {
     pub fn shrink(&mut self) {
         self.interner.shrink_to_fit();
         self.symbol_ids.shrink_to_fit();
-        self.symbol_strings.shrink_to_fit();
         self.symbol_tables.shrink_to_fit();
         self.contexts.shrink_to_fit();
-        self.string_to_ident_mapping.shrink_to_fit();
         self.jumplist_cache.shrink_to_fit();
     }
 

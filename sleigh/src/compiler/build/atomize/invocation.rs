@@ -46,7 +46,7 @@ impl SleighCompiler {
         let name = invocation.name.transmute();
         if let Some(op) = self.spec_builder.builtin_op_by_ident(&name) {
             Ok((self.atomize_builtin_op_invocation(scope, instructions, out, args, op)?, false))
-        } else if let Some(moir_macro) = self.spec_builder.macro_by_ident(&name).cloned() {
+        } else if let Ok(moir_macro) = self.spec_builder.macro_by_ident(&name).cloned() {
             self.atomize_macro_invocation(scope, instructions, args, moir_macro)
         } else {
             Ok((self.atomize_custom_op_invocation(scope, instructions, out, args, name)?, false))
@@ -61,7 +61,7 @@ impl SleighCompiler {
         mut args: Vec<MOIRLocal>,
         name: Spanned<StringId>,
     ) -> InternalCompilerResult<Option<MOIRLocal>> {
-        let Some(custom_op) = self.spec_builder.custom_op_by_ident_mut(&name) else {
+        let Ok(custom_op) = self.spec_builder.custom_op_by_ident_mut(&name) else {
             trace_build!("Missing custom op {}", self.spec_builder.resolve_string_id(name.into_value()));
             todo!("Generate error for missing custom op")
         };

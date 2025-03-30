@@ -8,7 +8,6 @@ use crate::compiler::build::trace_build;
 use crate::compiler::error::{
     InternalError,
     InternalErrorType,
-    InvalidSymbolType,
 };
 use crate::compiler::{
     InternalCompilerResult,
@@ -22,10 +21,7 @@ use crate::spec::moir::actions::{
     MOIRAction,
     MOIRPatternExpression,
 };
-use crate::spec::moir::constructor::{
-    ConstructorId,
-    MOIRConstructor,
-};
+use crate::spec::moir::constructor::MOIRConstructor;
 use crate::spec::moir::display::{
     MOIRDisplay,
     MOIRDisplayFragment,
@@ -71,10 +67,7 @@ use mogi_sleigh_parser::{
 };
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::MapKey;
-use std::collections::{
-    BTreeSet,
-    HashSet,
-};
+use std::collections::HashSet;
 use std::ops::Deref;
 use tracing::{
     debug,
@@ -178,7 +171,7 @@ impl SleighCompiler {
         // Catch any errors with exports
         let table = self
             .spec_builder
-            .table_by_ident(constructor.table.transpose())
+            .resolve_table(constructor.table.transpose())
             .expect("We just inserted this table");
         self.pc_validate_exports(table)?;
 
@@ -195,10 +188,7 @@ impl SleighCompiler {
         // local can be a context field or a temporary which we need to check for
         let slice = scope.resolve_local(local_id)?;
         if let MOIRReference::Field(field_id) = slice.reference {
-            let field = self
-                .spec_builder
-                .field_by_symbol_id(field_id)
-                .ok_or_else(|| -> InternalError { todo!("Generate error report for missing field") })?;
+            let field = self.spec_builder.field_by_id(field_id);
             if matches!(field.parent, MOIRFieldParent::Context(_)) {
                 // context field
                 return Ok((local_id, Some(field_id)));
@@ -290,15 +280,13 @@ impl SleighCompiler {
             }
             None => {
                 // ident did not previously appear as local => check for the two cases defined above
-                match self.spec_builder.get_symbol_and_ident(&ident.transmute()) {
-                    Some((symbol_id, _)) => {
+                match self.spec_builder.get_symbol(&ident.transmute()) {
+                    Ok(symbol_id) => {
                         // previously defined as symbol => check if it's a context field
                         // and if so, store as local
                         match symbol_id {
                             MOIRSymbolId::Field(field_id) => {
-                                let field = self.spec_builder.field_by_symbol_id(*field_id).ok_or_else(
-                                    || -> InternalError { todo!("Generate error report for missing field") },
-                                )?;
+                                let field = self.spec_builder.field_by_id(*field_id);
                                 match field.parent {
                                     MOIRFieldParent::Token(_) => {
                                         // not a context field => error
@@ -323,7 +311,7 @@ impl SleighCompiler {
                             }
                         }
                     }
-                    None => {
+                    Err(_) => {
                         // not previously defined as symbol => allocate new const
                         scope.allocate_named_const(ident.transmute(), MOIRMaybeSize::Undetermined)?
                     }
@@ -396,10 +384,7 @@ impl SleighCompiler {
                     match atom {
                         MatcherAtom::Field { field_id, matcher: _ } => {
                             if let Some(local_id) = scope.get_used_field(*field_id) {
-                                let field = self
-                                    .spec_builder
-                                    .field_by_symbol_id(*field_id)
-                                    .expect("There must be a field");
+                                let field = self.spec_builder.field_by_id(*field_id);
 
                                 match bytes_consumed {
                                     Some(bytes_consumed) => {
@@ -448,10 +433,7 @@ impl SleighCompiler {
                         panic!("We checked for this above")
                     };
 
-                    self.spec_builder
-                        .token_by_symbol_id(token)
-                        .expect("There must be a token")
-                        .bytes
+                    self.spec_builder.token_by_id(token).bytes
                 });
 
                 match token_size {
@@ -486,18 +468,12 @@ impl SleighCompiler {
                 Ok(())
             }
             Some(existing_constructor) => {
-                let existing_constructor = self
-                    .spec_builder
-                    .constructor_by_symbol_id(*existing_constructor)
-                    .expect("The constructor should exist since we have an id for it");
+                let existing_constructor = self.spec_builder.constructor_by_id(*existing_constructor);
                 let new_constructor = table
                     .constructors
                     .last()
                     .expect("If there is a first element, there has to be a last element");
-                let new_constructor = self
-                    .spec_builder
-                    .constructor_by_symbol_id(*new_constructor)
-                    .expect("The constructor should exist since we have an id for it");
+                let new_constructor = self.spec_builder.constructor_by_id(*new_constructor);
                 match existing_constructor.export.as_ref() {
                     None => {
                         if new_constructor.export.is_some() {
@@ -662,10 +638,7 @@ impl SleighCompiler {
             trace_build!("Resolving symbol {reference:?}");
             let value = match reference {
                 MatcherReference::Field(field_id) => {
-                    let field = self
-                        .spec_builder
-                        .field_by_symbol_id(*field_id)
-                        .ok_or(InternalErrorType::UndeclaredSymbol)?;
+                    let field = self.spec_builder.field_by_id(*field_id);
                     let size = if !field.variables.is_empty() {
                         // The field has variables attached. These will be later given to the constructor during
                         // decoding. We can now set the size of the value that is referenced to the size of the
@@ -674,11 +647,7 @@ impl SleighCompiler {
                             .variables
                             .first()
                             .expect("We just made sure there is at least one element");
-                        self.spec_builder
-                            .varnode_by_symbol_id(vnid)
-                            .expect("This must exist. Otherwise we have a programming mistake")
-                            .size
-                            .into()
+                        self.spec_builder.varnode_by_id(vnid).size.into()
                     } else {
                         // TODO: Check if values are attached and infer the maximum size from them.
                         // TODO: We cannot pass a size here since then the sleigh spec breaks
@@ -694,15 +663,10 @@ impl SleighCompiler {
                     })
                 }
                 MatcherReference::Subtable(stid) => {
-                    let table = self
-                        .spec_builder
-                        .table_by_symbol_id(*stid)
-                        .ok_or(InternalErrorType::UndeclaredSymbol)?;
+                    let table = self.spec_builder.table_by_id(*stid);
                     let constructor_id = table.constructors.first();
                     let export_size = constructor_id
-                        .map(|cid| self.spec_builder.constructor_by_symbol_id(*cid))
-                        .flatten()
-                        .map(|c| c.export_size())
+                        .map(|cid| self.spec_builder.constructor_by_id(*cid).export_size())
                         // If the constructor was not found, we set the export to zero size.
                         .unwrap_or(MOIRMaybeSize::Determined(0));
                     Some(MOIRSlice {
@@ -712,10 +676,7 @@ impl SleighCompiler {
                     })
                 }
                 MatcherReference::Varnode(vnid) => {
-                    let varnode = self
-                        .spec_builder
-                        .varnode_by_symbol_id(*vnid)
-                        .ok_or(InternalErrorType::UndeclaredSymbol)?;
+                    let varnode = self.spec_builder.varnode_by_id(*vnid);
                     Some(MOIRSlice {
                         reference: MOIRReference::VarNode(*vnid),
                         start: 0,
@@ -724,10 +685,7 @@ impl SleighCompiler {
                 }
             };
 
-            let ident = self
-                .spec_builder
-                .ident_by_symbol(&MOIRSymbolId::from(reference))
-                .ok_or(InternalErrorType::UndeclaredSymbol)?;
+            let ident = self.spec_builder.get_string(MOIRSymbolId::from(reference));
             if let Some(value) = value {
                 scope.declare_local(ident.clone().into_value(), value);
             }

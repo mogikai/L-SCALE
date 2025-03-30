@@ -174,7 +174,7 @@ impl SleighCompiler {
         // TODO is the question mark here correct?
         let result = self
             .spec_builder
-            .space_id_by_ident(varnodes.spacename.transmute());
+            .space_id_by_ident(&varnodes.spacename.transmute());
 
         let Some(space) = self.report_error_or_unwrap(result)? else {
             // We reported an error already. Quit here for this define and try to continue.
