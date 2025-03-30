@@ -2,7 +2,7 @@ use super::actions::MOIRAction;
 use super::display::MOIRDisplay;
 use super::field::MOIRField;
 use super::field_extractor::FieldExtractor;
-use super::varnode::MOIRReference;
+use super::varnode::{MOIRReference, VarNodeId};
 use crate::compiler::InternalCompilerResult;
 use crate::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
 use crate::spec::jir::basic_block::instruction::TargetInstructionBuilder;
@@ -35,10 +35,7 @@ use crate::spec::moir::scope::{
 use crate::spec::moir::table::MOIRExport;
 use crate::spec::moir::varnode::MOIRLocal;
 use crate::spec::{
-    FieldId,
-    ProcessorSpecResult,
-    ProcessorSpecification,
-    ProcessorSpecificationError,
+    FieldId, JIRSymbolId, ProcessorSpecResult, ProcessorSpecification, ProcessorSpecificationError
 };
 use crate::{
     jinst,
@@ -159,46 +156,6 @@ impl MOIRConstructor {
         }
     }
 
-    /// Build the display string for the field given by [FieldId] by processing
-    /// potential attach statements.
-    fn build_field_display(
-        &self,
-        spec: &ProcessorSpecification,
-        resolver: &JIRResolver,
-        local_id: MOIRLocalId,
-        field_id: FieldId,
-    ) -> String {
-        let field = spec
-            .symbol_tables
-            .fields
-            .get(field_id)
-            .expect("There must be a field");
-        let field_value = resolver
-            .resolve_local_id_to_const(local_id)
-            .expect("There must be a value for this field");
-
-        // this operation can fail since field_value has a size of 128 bits
-        if let Ok(index) = usize::try_from(field_value) {
-            if let Some(attached_varnode) = field.variables.get(index) {
-                let varnode = spec
-                    .varnode_by_id(*attached_varnode)
-                    .expect("This varnode must exist");
-                format!("{}", attached_varnode)
-            } else if let Some(attached_value) = field.values.get(index) {
-                attached_value.to_string()
-            } else if let Some(attached_string_id) = field.strings.get(index) {
-                spec.interner
-                    .string(*attached_string_id)
-                    .expect("String must have been interned before")
-                    .to_string()
-            } else {
-                build_field_value_display(field, field_value)
-            }
-        } else {
-            build_field_value_display(field, field_value)
-        }
-    }
-
     /// Transform the [MOIRDisplay] section into the final display string with
     /// the provided [JIRResolver].
     pub fn generate_display(
@@ -222,7 +179,7 @@ impl MOIRConstructor {
 
                     match reference {
                         MOIRReference::Field(field_id) => {
-                            let field_string = self.build_field_display(spec, resolver, *local_id, field_id);
+                            let field_string = build_field_display(spec, resolver, *local_id, field_id);
                             write!(display_string, "{}", field_string);
                         }
                         MOIRReference::SubTable(table_id) => {
@@ -236,7 +193,8 @@ impl MOIRConstructor {
                             write!(display_string, "{}", table_string);
                         }
                         MOIRReference::VarNode(vnid) => {
-                            write!(display_string, "{}", vnid);
+                            let varnode_string = build_varnode_display(spec, vnid);
+                            write!(display_string, "{}", varnode_string);
                         }
                         MOIRReference::Const(_) => {
                             let value = resolver
@@ -623,3 +581,50 @@ fn build_field_value_display(
         }
     }
 }
+
+/// Build the display string for the field given by [FieldId] by processing
+/// potential attach statements.
+fn build_field_display(
+    spec: &ProcessorSpecification,
+    resolver: &JIRResolver,
+    local_id: MOIRLocalId,
+    field_id: FieldId,
+) -> String {
+    let field = spec
+        .symbol_tables
+        .fields
+        .get(field_id)
+        .expect("There must be a field");
+    let field_value = resolver
+        .resolve_local_id_to_const(local_id)
+        .expect("There must be a value for this field");
+
+    // this operation can fail since field_value has a size of 128 bits
+    if let Ok(index) = usize::try_from(field_value) {
+        if let Some(attached_varnode) = field.variables.get(index) {
+            let varnode_string = build_varnode_display(spec, *attached_varnode);
+            format!("{}", varnode_string)
+        } else if let Some(attached_value) = field.values.get(index) {
+            attached_value.to_string()
+        } else if let Some(attached_string_id) = field.strings.get(index) {
+            spec.interner
+                .string(*attached_string_id)
+                .expect("String must have been interned before")
+                .to_string()
+        } else {
+            build_field_value_display(field, field_value)
+        }
+    } else {
+        build_field_value_display(field, field_value)
+    }
+}
+
+/// Build the display string for the varnode given by [VarNodeId].
+fn build_varnode_display(
+    spec: &ProcessorSpecification,
+    varnode_id: VarNodeId,
+) -> String {
+    let string_id = spec.symbol_strings.get(&JIRSymbolId::VarNode(varnode_id)).expect("If the id exists so does the varnode");
+    spec.interner.string(*string_id.value()).expect("This string must exist").to_string()
+}
+

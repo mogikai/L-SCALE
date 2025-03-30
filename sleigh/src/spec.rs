@@ -3,6 +3,7 @@ use self::jir::jumplist::{
     JumplistId,
 };
 use self::moir::field::MOIRField;
+use crate::compiler::error::InternalError;
 use crate::compiler::InternalCompilerResult;
 use crate::lifter::LifterDiagnostics;
 use crate::lifter::context_provider::ContextProvider;
@@ -78,7 +79,7 @@ pub mod typed_index_table;
 
 pub type ProcessorSpecResult<T = ()> = Result<T, ProcessorSpecificationError>;
 
-#[derive(Debug, Clone, Copy, Display, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Display, Hash, Eq, PartialEq, Serialize, Deserialize)]
 pub enum JIRSymbolId {
     Macro(MacroId),
     Space(SpaceId),
@@ -88,6 +89,26 @@ pub enum JIRSymbolId {
     VarNode(VarNodeId),
     BitrangeRegister(BitrangeRegisterId),
     CustomOp(CustomOpId),
+}
+
+impl TryFrom<MOIRSymbolId> for JIRSymbolId {
+    type Error = InternalError;
+
+    fn try_from(value: MOIRSymbolId) -> Result<Self, Self::Error> {
+        Ok(match value {
+            MOIRSymbolId::Undefined => {
+                todo!("Generate error report for MOIRSymbolId::Undefined cast to JIRSymbolId")
+            }
+            MOIRSymbolId::Macro(id) => JIRSymbolId::Macro(id),
+            MOIRSymbolId::Space(id) => JIRSymbolId::Space(id),
+            MOIRSymbolId::Table(id) => JIRSymbolId::Table(id),
+            MOIRSymbolId::Token(id) => JIRSymbolId::Token(id),
+            MOIRSymbolId::Field(id) => JIRSymbolId::Field(id),
+            MOIRSymbolId::VarNode(id) => JIRSymbolId::VarNode(id),
+            MOIRSymbolId::BitrangeRegister(id) => JIRSymbolId::BitrangeRegister(id),
+            MOIRSymbolId::CustomOp(id) => JIRSymbolId::CustomOp(id),
+        })
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -123,6 +144,11 @@ pub struct ProcessorSpecification {
     /// Each string id points to a specific symbol id.
     /// The symbols are saved in separate lists, one for each symbol type.
     pub(crate) symbol_ids: FnvHashMap<StringId, JIRSymbolId>,
+
+    /// Inverse of [Self::symbol_ids] with spans.
+    /// Each symbol id points to the spanned string id it was defined with. This
+    /// is mainly useful for debugging and error reporting purposes.
+    pub(crate) symbol_strings: FnvHashMap<JIRSymbolId, Spanned<StringId>>,
 
     /// Contains a table for each symbol type. A [StringId] maps to a [JIRSymbolId], which in turn maps to the
     /// corresponding [MOIRSymbolTable] with a table-specific id type.

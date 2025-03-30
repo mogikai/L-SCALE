@@ -727,13 +727,14 @@ impl ProcessorSpecificationBuilder {
 
         let root_table = self.table_id_by_ident(&self.root_table)?;
         let context =
-            MOIRToJIRTransformer::new(&self.interner, self.symbol_ids, self.symbol_tables, &self.context, root_table);
+            MOIRToJIRTransformer::new(&self.interner, self.symbol_ids, self.symbol_strings, self.symbol_tables, &self.context, root_table);
         let jir = context.transform()?;
         // TODO: Generate more helpful error reports during final build step
         let spec = ProcessorSpecification {
             // The endianness must be defined, so we return an error if it is undefined at this point.
             interner: self.interner,
             symbol_ids: jir.symbol_ids,
+            symbol_strings: jir.symbol_strings,
             symbol_tables: jir.symbol_tables,
             contexts: self
                 .context
