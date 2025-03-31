@@ -454,7 +454,7 @@ impl Display for JIRSlice {
         &self,
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
-        write!(f, "{}[{}..={}]", self.space_id, self.offset, self.size)
+        write!(f, "{}[{:#x};{}]", self.space_id, self.offset, self.size)
     }
 }
 

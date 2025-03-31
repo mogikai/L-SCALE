@@ -9,6 +9,7 @@ use crate::jit::host::register::{
     HostRegSet,
 };
 use crate::jit::regalloc::requirements::{
+    OperandClass,
     OperandConstraint,
     OperandKind,
     OperandPos,
@@ -180,11 +181,58 @@ where
         Ok(())
     }
 
+    /// Checks if the slice group is already loaded, and returns the host reg and loaded slice
+    /// if it exists.
+    fn get_loaded_slice_group(
+        &self,
+        slice: JIRSlice,
+    ) -> Option<(HostReg, JIRSlice)> {
+        self.loaded_slices.iter().find_map(|(reg, loaded_slice)| {
+            if loaded_slice.group_id == slice.group_id {
+                Some((reg, *loaded_slice))
+            } else {
+                None
+            }
+        })
+    }
+
+    fn alloc_register(
+        &mut self,
+        constraint: OperandConstraint,
+        class: OperandClass,
+    ) -> JITResult<HostReg> {
+        self.available_registers.after.into_iter();
+        todo!()
+    }
+
     fn alloc_write_operand(
         &mut self,
         operand: &OperandRequest,
     ) -> JITResult {
+        let OperandKind::Write = operand.kind else {
+            panic!("Logic error: Write operand must have kind Write.")
+        };
         trace_jit!("Allocating write operand {operand:?}");
+        if let Some((reg, existing_slice)) = self.get_loaded_slice_group(operand.slice) {
+            if existing_slice.offset != operand.slice.offset || existing_slice.size != operand.slice.size {
+                todo!("Aliased loads currently not supported")
+            }
+            if let OperandConstraint::FixedReg(target_reg) = operand.constraint {
+                if reg != target_reg {
+                    todo!("Move allocation to target_reg")
+                }
+            }
+        } else {
+            // Slice group is not in any register. We can allocate one from the free regs.
+            match operand.pos {
+                OperandPos::Before => todo!(),
+                OperandPos::After => todo!(),
+            }
+        }
+
+        // TODO: Find free host_reg or existing one with already loaded slice.
+
+        // TODO: If this is the first write (viewing in reverse), we need to emit a spill instruction
 
         Ok(())
     }

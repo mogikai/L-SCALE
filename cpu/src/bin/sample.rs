@@ -14,8 +14,8 @@ use mogi_cpu::tlb::{
     PageMetaInfo,
     PageTag,
 };
-use mogi_mem::mmu::MogiMMU;
 use mogi_mem::PAGE_SIZE;
+use mogi_mem::mmu::MogiMMU;
 use mogi_sleigh::SleighPreprocessorFactory;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
 use mogi_sleigh::spec::{
@@ -64,32 +64,29 @@ fn main() {
     let specification = load_specification(spec_path);
     // println!("{:?}", specification.list_global_varnode_strings());
 
-    let testelf_content = std::fs::read("./ls").unwrap();
+    // let testelf_content = std::fs::read("./ls").unwrap();
+    let testelf_content = b"\x58\x5B\x48\x03\x03\x48\xF7\xE3\x53\x50\xEB\xF4";
     let page_count = (testelf_content.len() + PAGE_SIZE - 1) / PAGE_SIZE;
 
-    println!(
-        "{:?}",
-        specification
-            .space_max_used_offset(SpaceId::try_from_index(3).expect("3 is a valid index"))
-            .unwrap()
-    );
-    specification
-        .debug_space_allocation(SpaceId::try_from_index(3).expect("3 is a valid index"))
-        .unwrap();
     let specification = Rc::new(RefCell::new(specification));
     // Set up the mmu.
     let mmu = Rc::new(RefCell::new(MogiMMU::new()));
     {
         let mut mmu = mmu.borrow_mut();
         // We allocate enough memory
-        mmu.alloc_physical(0x0u64.into(), page_count * PAGE_SIZE).unwrap();
+        mmu.alloc_physical(0x0u64.into(), page_count * PAGE_SIZE)
+            .unwrap();
         // And identity-map the virtual addresses
         for page_id in 0..page_count {
-            mmu.set_page_table_entry((page_id as u64 * 4096u64).into(), (page_id as u64 * 4096u64).into(), Permission::ALL)
-                .unwrap();
+            mmu.set_page_table_entry(
+                (page_id as u64 * 4096u64).into(),
+                (page_id as u64 * 4096u64).into(),
+                Permission::ALL,
+            )
+            .unwrap();
         }
         // And then write the instruction to the allocated memory.
-        mmu.write(0x0u64.into(), &testelf_content[..]).unwrap();
+        mmu.write(0x100u64.into(), &testelf_content[..]).unwrap();
     }
 
     let mut stack_page = Box::new(PageData::zero());
@@ -117,7 +114,7 @@ fn main() {
 
     // Set the instruction pointer to the address we want to start executing at.
     // *cpu.register_mut("RIP").unwrap() = 0x113Au64;
-    *cpu.register_mut("RIP").unwrap() = 0x3080u64;
+    *cpu.register_mut("RIP").unwrap() = 0x100u64;
     *cpu.register_mut("RSP").unwrap() = 0xffff_ffff_ffff_0220u64;
 
     // Now lets roll! (forever :>)

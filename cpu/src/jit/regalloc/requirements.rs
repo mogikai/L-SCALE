@@ -34,6 +34,13 @@ pub enum OperandPos {
     After,
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum OperandClass {
+    Int,
+    Float,
+    Vector,
+}
+
 // TODO: We might need to compress the requests into an easily copyable value by doing
 //       some bit manipulation?
 /// Request a slice to be allocated. The [OperandConstraint] specifies whether to always allocate a register,
@@ -45,6 +52,7 @@ pub struct OperandRequest {
     pub constraint: OperandConstraint,
     pub kind: OperandKind,
     pub pos: OperandPos,
+    pub class: OperandClass,
 }
 
 impl OperandRequest {
@@ -54,6 +62,7 @@ impl OperandRequest {
             constraint: OperandConstraint::Any,
             kind: OperandKind::Write,
             pos: OperandPos::After,
+            class: OperandClass::Int,
         }
     }
 
@@ -63,6 +72,7 @@ impl OperandRequest {
             constraint: OperandConstraint::Any,
             kind: OperandKind::Write,
             pos: OperandPos::After,
+            class: OperandClass::Int,
         }
     }
 
@@ -72,6 +82,7 @@ impl OperandRequest {
             constraint: OperandConstraint::Any,
             kind: OperandKind::Read,
             pos: OperandPos::Before,
+            class: OperandClass::Int,
         }
     }
 
@@ -81,6 +92,7 @@ impl OperandRequest {
             constraint: OperandConstraint::Any,
             kind: OperandKind::Read,
             pos: OperandPos::After,
+            class: OperandClass::Int,
         }
     }
 }

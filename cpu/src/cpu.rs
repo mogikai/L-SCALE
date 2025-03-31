@@ -271,7 +271,7 @@ where
                 translated_instr_count += block.instruction_count();
                 translated_block_count += 1;
 
-                // jit.compile_target_block(&block)?;
+                jit.compile_target_block(&block)?;
 
                 block_cache.insert(current_addr, block);
 

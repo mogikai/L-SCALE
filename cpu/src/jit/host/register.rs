@@ -177,6 +177,17 @@ impl<T> HostRegMap<T> {
     ) -> Option<T> {
         self.mapping[reg.index()].take()
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = (HostReg, &T)> {
+        self.mapping
+            .iter()
+            .enumerate()
+            .filter_map(|(index, value)| {
+                value
+                    .as_ref()
+                    .map(|value| (HostReg::from_index(index), value))
+            })
+    }
 }
 
 /// A type for internal bit arrays.
