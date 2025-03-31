@@ -3,8 +3,8 @@ use self::jir::jumplist::{
     JumplistId,
 };
 use self::moir::field::MOIRField;
-use crate::compiler::error::InternalError;
 use crate::compiler::InternalCompilerResult;
+use crate::compiler::error::InternalError;
 use crate::lifter::LifterDiagnostics;
 use crate::lifter::context_provider::ContextProvider;
 use crate::new_typed_index_table_id;
@@ -205,6 +205,21 @@ impl ProcessorSpecification {
 
     pub fn default_space(&self) -> SpaceId {
         self.default_space
+    }
+
+    /// Lookup a varnode by its string identifier.
+    /// This lookup is expensive. Consider resolving
+    /// to an id first and using the id in subsequent
+    /// lookups if performance is critical.
+    pub fn varnode_by_string(
+        &self,
+        name: impl AsRef<str>,
+    ) -> Option<&JIRVarNode> {
+        let name = self.interner.lookup(name)?;
+        let JIRSymbolId::VarNode(varnode_id) = self.symbol_ids.get(&name)? else {
+            return None;
+        };
+        self.symbol_tables.varnodes.get(*varnode_id)
     }
 
     /// Lookup a varnode by its string identifier and return a [JIRSlice] to it.
