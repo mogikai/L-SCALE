@@ -167,6 +167,8 @@ pub struct Matcher {
     // in the constructor with their corresponding locals
     pub(crate) static_submatchers: Vec<OffsettedSubmatchers>,
     pub(crate) static_field_extractors: Vec<FieldExtractor>,
+    // context fields whose value needs to be extracted later on
+    pub(crate) context_fields: Vec<FieldId>,
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Ord, PartialOrd, Serialize, Deserialize)]
@@ -212,6 +214,7 @@ impl Matcher {
             constructor_id,
             static_submatchers: Default::default(),
             static_field_extractors: Default::default(),
+            context_fields: Default::default(),
         }
     }
 }

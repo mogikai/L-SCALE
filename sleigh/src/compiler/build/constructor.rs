@@ -41,7 +41,11 @@ use crate::spec::moir::varnode::{
     MOIRReference,
     MOIRSlice,
 };
-use itertools::Itertools;
+use itertools::{
+    FoldWhile,
+    Itertools,
+};
+use matcher::MatcherConjunction;
 use mogi_sleigh_parser::ast::common::SASTIdent;
 use mogi_sleigh_parser::ast::constructor::SASTConstructor;
 use mogi_sleigh_parser::ast::constructor::disassembly_section::{
@@ -345,6 +349,119 @@ impl SleighCompiler {
         }
     }
 
+    fn populate_matcher(
+        &self,
+        matcher: &mut Matcher,
+        scope: &MOIRScope,
+        table_id: TableId,
+    ) {
+        // extract used context fields
+        for conjunction in matcher.conjunctions.iter().filter(|conjunction| matches!(conjunction.token.parent, Some(MOIRFieldParent::Context(_)))) {
+            for atom in &conjunction.atoms {
+                match atom {
+                    MatcherAtom::Field { field_id, matcher: _ } => {
+                        if let Some(_) = scope.get_used_field(*field_id) {
+                            matcher.context_fields.push(*field_id);
+                        }
+                    }
+                    MatcherAtom::Submatchers(_) => { panic!("There are no submatchers in context conjunctions") }
+                }
+            }
+        }
+
+        // even if bytes_consumed is known, partially constrained sublists can still determine
+        // the number of bytes consumed which is why if there is any padding at
+        // all, we make all sublists dynamic except in the following cases:
+        // - recursive entries at the initial position (to avoid infinite recursion)
+        let mut bytes_consumed = Some(0);
+        let contains_padding = matcher
+            .conjunctions
+            .iter()
+            .any(|conjunction| conjunction.token.parent.is_none() && conjunction.atoms.is_empty());
+
+        // process non-context
+        for (i, conjunction) in matcher
+            .conjunctions
+            .iter_mut()
+            .skip_while(|conjunction| matches!(conjunction.token.parent, Some(MOIRFieldParent::Context(_))))
+            .enumerate()
+        {
+            for atom in &conjunction.atoms {
+                match atom {
+                    MatcherAtom::Field { field_id, matcher: _ } => {
+                        if let Some(local_id) = scope.get_used_field(*field_id) {
+                            let field = self.spec_builder.field_by_id(*field_id);
+
+                            match bytes_consumed {
+                                Some(bytes_consumed) => {
+                                    // field used and fixed offset
+                                    let fe = FieldExtractor::new(
+                                        local_id,
+                                        0,
+                                        bytes_consumed.into(),
+                                        field.bits,
+                                        field.signed,
+                                    );
+                                    matcher.static_field_extractors.push(fe);
+                                }
+                                None => {
+                                    // field used and dynamic offset
+                                    let fe = FieldExtractor::new(local_id, 0, 0, field.bits, field.signed);
+                                    conjunction.dynamic_field_extractors.push(fe);
+                                }
+                            }
+                        }
+                    }
+                    MatcherAtom::Submatchers(submatchers) => {
+                        if i == 0 && submatchers.table == table_id {
+                            // recursion in initial position => make static with offset of zero
+                            let os = OffsettedSubmatchers::new(0, submatchers.clone());
+                            matcher.static_submatchers.push(os);
+                        } else if contains_padding {
+                            // padding => assume unknown size
+                            conjunction.dynamic_submatchers.push(submatchers.clone());
+                        } else {
+                            match bytes_consumed {
+                                Some(bytes_consumed) => {
+                                    // known size
+                                    let os = OffsettedSubmatchers::new(bytes_consumed, submatchers.clone());
+                                    matcher.static_submatchers.push(os);
+                                }
+                                None => {
+                                    // unknown size
+                                    conjunction.dynamic_submatchers.push(submatchers.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // update bytes_consumed
+            let token_size = conjunction.token.parent.map(|token| {
+                let MOIRFieldParent::Token(token) = token else {
+                    panic!("We checked for this above")
+                };
+
+                self.spec_builder.token_by_id(token).bytes
+            });
+
+            match token_size {
+                Some(token_size) => {
+                    if let Some(bytes_consumed) = &mut bytes_consumed {
+                        *bytes_consumed += usize::from(token_size);
+                    }
+                }
+                None => bytes_consumed = None,
+            }
+        }
+
+        // remove empty
+        matcher
+            .conjunctions
+            .retain(|conjunction| conjunction.token.parent != None || !conjunction.atoms.is_empty());
+    }
+
     /// Populate matcher conjunctions with dynamic-offset sublists and field extractors
     /// and populate the matcher itself with fixed-offset sublists and field extractors.
     /// Also remove empty conjunctions that arose from padding.
@@ -356,97 +473,7 @@ impl SleighCompiler {
         table_id: TableId,
     ) {
         for matcher in matchers.iter_mut() {
-            // even if bytes_consumed is known, partially constrained sublists can still determine
-            // the number of bytes consumed which is why if there is any padding at
-            // all, we make all sublists dynamic except in the following cases:
-            // - recursive entries at the initial position (to avoid infinite recursion)
-            let mut bytes_consumed = Some(0);
-            let contains_padding = matcher
-                .conjunctions
-                .iter()
-                .any(|conjunction| conjunction.token.parent.is_none() && conjunction.atoms.is_empty());
-
-            // skip context
-            for (i, conjunction) in matcher
-                .conjunctions
-                .iter_mut()
-                .skip_while(|conjunction| matches!(conjunction.token.parent, Some(MOIRFieldParent::Context(_))))
-                .enumerate()
-            {
-                for atom in &conjunction.atoms {
-                    match atom {
-                        MatcherAtom::Field { field_id, matcher: _ } => {
-                            if let Some(local_id) = scope.get_used_field(*field_id) {
-                                let field = self.spec_builder.field_by_id(*field_id);
-
-                                match bytes_consumed {
-                                    Some(bytes_consumed) => {
-                                        // field used and fixed offset
-                                        let fe = FieldExtractor::new(
-                                            local_id,
-                                            0,
-                                            bytes_consumed.into(),
-                                            field.bits,
-                                            field.signed,
-                                        );
-                                        matcher.static_field_extractors.push(fe);
-                                    }
-                                    None => {
-                                        // field used and dynamic offset
-                                        let fe = FieldExtractor::new(local_id, 0, 0, field.bits, field.signed);
-                                        conjunction.dynamic_field_extractors.push(fe);
-                                    }
-                                }
-                            }
-                        }
-                        MatcherAtom::Submatchers(submatchers) => {
-                            if i == 0 && submatchers.table == table_id {
-                                // recursion in initial position => make static with offset of zero
-                                let os = OffsettedSubmatchers::new(0, submatchers.clone());
-                                matcher.static_submatchers.push(os);
-                            } else if contains_padding {
-                                // padding => assume unknown size
-                                conjunction.dynamic_submatchers.push(submatchers.clone());
-                            } else {
-                                match bytes_consumed {
-                                    Some(bytes_consumed) => {
-                                        // known size
-                                        let os = OffsettedSubmatchers::new(bytes_consumed, submatchers.clone());
-                                        matcher.static_submatchers.push(os);
-                                    }
-                                    None => {
-                                        // unknown size
-                                        conjunction.dynamic_submatchers.push(submatchers.clone());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // update bytes_consumed
-                let token_size = conjunction.token.parent.map(|token| {
-                    let MOIRFieldParent::Token(token) = token else {
-                        panic!("We checked for this above")
-                    };
-
-                    self.spec_builder.token_by_id(token).bytes
-                });
-
-                match token_size {
-                    Some(token_size) => {
-                        if let Some(bytes_consumed) = &mut bytes_consumed {
-                            *bytes_consumed += usize::from(token_size);
-                        }
-                    }
-                    None => bytes_consumed = None,
-                }
-            }
-
-            // remove empty
-            matcher
-                .conjunctions
-                .retain(|conjunction| conjunction.token.parent != None || !conjunction.atoms.is_empty());
+            self.populate_matcher(matcher, scope, table_id);
         }
     }
 

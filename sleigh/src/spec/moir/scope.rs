@@ -742,19 +742,6 @@ impl MOIRScope {
         Ok(local)
     }
 
-    pub fn get_used_fields(&self) -> impl Iterator<Item = (FieldId, MOIRLocalId)> {
-        self.used_locals.iter().filter_map(|local_id| {
-            let slice = self
-                .slices
-                .get(*local_id)
-                .expect("Generate error report for missing slice");
-            match slice.reference {
-                MOIRReference::Field(field_id) => Some((field_id, *local_id)),
-                _ => None,
-            }
-        })
-    }
-
     pub fn get_used_field(
         &self,
         field_id: FieldId,

@@ -672,6 +672,7 @@ impl<'a> JumplistBuilder<'a> {
                         cid: terminal_matcher_row.matcher.constructor_id,
                         sublists: fixed_sublists,
                         field_extractors: terminal_matcher_row.matcher.static_field_extractors.clone(),
+                        context_fields: terminal_matcher_row.matcher.context_fields.clone(),
                     };
 
                     let entry = JumplistEntry::new(next_entry_matcher, sublist_ids, field_extractor_map);
@@ -918,6 +919,7 @@ fn save_graph(
                             tid: _,
                             sublists,
                             field_extractors: _,
+                            context_fields: _,
                         } => {
                             entry_sublists.extend(sublists.iter().map(|os| os.jumplist));
                             // process variable-offset sublists

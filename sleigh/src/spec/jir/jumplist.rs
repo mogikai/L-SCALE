@@ -26,6 +26,7 @@ use crate::spec::moir::context::ContextId;
 use crate::spec::moir::field_extractor::FieldExtractor;
 use crate::spec::moir::scope::MOIRLocalId;
 use crate::spec::moir::table::TableId;
+use crate::spec::FieldId;
 use fnv::FnvHashMap;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::{
@@ -111,6 +112,7 @@ pub(crate) enum NextJumplistEntry {
         // fixed-offset sublists and extractors
         sublists: Vec<OffsettedJumplist>,
         field_extractors: Vec<FieldExtractor>,
+        context_fields: Vec<FieldId>,
     },
 }
 
@@ -341,6 +343,7 @@ impl<'a> MatchContext<'a> {
         // fixed offset
         sublists: &Vec<OffsettedJumplist>,
         field_extractors: &Vec<FieldExtractor>,
+        context_fields: &Vec<FieldId>,
         constructor_id: ConstructorId,
         table_id: TableId,
     ) -> InternalCompilerResult<MatcherResult<'a>> {
@@ -396,11 +399,10 @@ impl<'a> MatchContext<'a> {
             resolver.define_subtable_resolver(*subtable, subresolver.clone())?;
         }
 
-        for (context_field_id, context_field_value) in context_stack.values() {
-            if resolver.has_field(context_field_id) {
-                trace_jir!("Defining context field value {context_field_id:?} := {context_field_value:?}");
-                resolver.define_field(context_field_id, context_field_value)?;
-            }
+        for context_field_id in context_fields.iter() {
+            let value = context_stack.field_value(*context_field_id)?;
+            trace_jir!("Defining context field value {context_field_id:?} := {value:?}");
+            resolver.define_field(*context_field_id, value)?;
         }
 
         context_stack.push_state();
@@ -528,6 +530,7 @@ impl<'a> MatchContext<'a> {
                         tid,
                         sublists,
                         field_extractors,
+                        context_fields,
                     } => {
                         trace_jir!("Reached leaf; cid={cid:?}, tid={tid:?}");
 
@@ -539,6 +542,7 @@ impl<'a> MatchContext<'a> {
                             state,
                             sublists,
                             field_extractors,
+                            context_fields,
                             *cid,
                             *tid,
                         )?
