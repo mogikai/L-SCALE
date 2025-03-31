@@ -151,9 +151,6 @@ pub struct ProcessorSpecification {
     pub(crate) varnode_groups: PrimaryMap<VarnodeGroupId, VarnodeGroup>,
     pub(crate) varnode_to_group: SecondaryMap<VarNodeId, Option<VarnodeGroupId>>,
 
-    /// Maps varnode ids to the corresponding string id, such that we can display them to the user.
-    pub(crate) varnode_names: SecondaryMap<VarNodeId, Option<StringId>>,
-
     /// The first jumplist is the root from which matching begins.
     pub(crate) jumplist_cache: PrimaryMap<JumplistId, Jumplist>,
 
@@ -327,8 +324,10 @@ impl ProcessorSpecification {
             write!(group_dbg, "Group<{}..={}>[", group.offset, group.end().saturating_sub(1)).unwrap();
             for varnode_id in &group.varnodes {
                 let str = self
-                    .interner
-                    .string_unchecked(self.varnode_names[*varnode_id].unwrap());
+                    .symbol_strings
+                    .get(&JIRSymbolId::VarNode(*varnode_id))
+                    .expect("Every defined symbol must have come from somewhere in the spec")
+                    .value();
                 write!(group_dbg, "{} ", str).unwrap();
             }
             writeln!(group_dbg, "]").unwrap();

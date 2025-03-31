@@ -147,8 +147,6 @@ pub struct ProcessorSpecificationBuilder {
     /// `contextreg` varnode containing a field `longmode=(0,1)` for x86).
     context: PrimaryMap<ContextId, MOIRContext>,
 
-    varnode_names: SecondaryMap<VarNodeId, Option<StringId>>,
-
     root_table: Spanned<StringId>,
     /// The default space. It has to be set at one point, and only once.
     /// The Ident is spanned with the location of the first definition.
@@ -277,7 +275,6 @@ impl ProcessorSpecificationBuilder {
     ) -> InternalCompilerResult {
         let varnode_id = self.symbol_tables.varnodes.insert(varnode);
         self.define_symbol(ident, MOIRSymbolId::VarNode(varnode_id))?;
-        self.varnode_names[varnode_id] = Some(ident.into_value());
 
         Ok(())
     }
@@ -625,7 +622,6 @@ impl Default for ProcessorSpecificationBuilder {
             endianness: None,
             alignment: None,
             context: Default::default(),
-            varnode_names: Default::default(),
             root_table,
             default_space: None,
             temp_space,
@@ -740,7 +736,6 @@ impl ProcessorSpecificationBuilder {
                 .collect(),
             varnode_groups: jir.varnode_groups,
             varnode_to_group: jir.varnode_to_group,
-            varnode_names: self.varnode_names,
             jumplist_cache: jir.jumplist_cache,
             root_table,
             default_space: self
