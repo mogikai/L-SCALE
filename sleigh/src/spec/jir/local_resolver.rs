@@ -278,7 +278,9 @@ impl<'a> JIRResolver<'a> {
         local_id: MOIRLocalId,
     ) -> InternalCompilerResult<u128> {
         let value = self.values[local_id]
-            .ok_or_else(|| -> InternalError { todo!("Generate error report for missing local value") })?;
+            .ok_or_else(|| -> InternalError {
+                todo!("Generate error report for missing local value")
+            })?;
         Ok(match value {
             JIRValue::Const(c) => c.value(),
             _ => todo!("Generate error report for non-const value in const resolution"),

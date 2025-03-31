@@ -121,7 +121,7 @@ impl SleighCompiler {
         // if we are in the root table, the first fragment is always interpreted as a mnemonic,
         // i.e. literal
         let is_root_table = table_id == TableId::try_from_index(0).unwrap();
-        let display = self.pc_process_display_section(display_section, &scope, is_root_table)?;
+        let display = self.pc_process_display_section(display_section, &mut scope, is_root_table)?;
 
         let actions = self.pc_process_actions(&mut scope, constructor.disassembly_section)?;
         let modifies_context = actions.iter().any(|action| action.modifies_context());
@@ -155,7 +155,7 @@ impl SleighCompiler {
         //     .realize_temporaries(&mut self.spec_builder)?;
         trace_build!("{}", moir_constructor.mcode_debug_string(self.spec_builder.interner()));
 
-        self.pc_populate_sublists_and_extractors(&mut matchers, &moir_constructor.local_scope);
+        self.pc_populate_sublists_and_extractors(&mut matchers, &moir_constructor.local_scope, table_id);
 
         // Define the constructor and insert it into the corresponding table.
         self.spec_builder.define_constructor(moir_constructor)?;
@@ -363,11 +363,14 @@ impl SleighCompiler {
         &self,
         matchers: &mut Vec<Matcher>,
         scope: &MOIRScope,
+        // for detection of recursion
+        table_id: TableId,
     ) {
         for matcher in matchers.iter_mut() {
             // even if bytes_consumed is known, partially constrained sublists can still determine
             // the number of bytes consumed which is why if there is any padding at
-            // all, we make all sublists dynamic
+            // all, we make all sublists dynamic except in the following cases:
+            // - recursive entries at the initial position (to avoid infinite recursion)
             let mut bytes_consumed = Some(0);
             let contains_padding = matcher
                 .conjunctions
@@ -375,10 +378,11 @@ impl SleighCompiler {
                 .any(|conjunction| conjunction.token.parent.is_none() && conjunction.atoms.is_empty());
 
             // skip context
-            for conjunction in matcher
+            for (i, conjunction) in matcher
                 .conjunctions
                 .iter_mut()
                 .skip_while(|conjunction| matches!(conjunction.token.parent, Some(MOIRFieldParent::Context(_))))
+                .enumerate()
             {
                 for atom in &conjunction.atoms {
                     match atom {
@@ -407,7 +411,11 @@ impl SleighCompiler {
                             }
                         }
                         MatcherAtom::Submatchers(submatchers) => {
-                            if contains_padding {
+                            if i == 0 && submatchers.table == table_id {
+                                // recursion in initial position => make static with offset of zero
+                                let os = OffsettedSubmatchers::new(0, submatchers.clone());
+                                matcher.static_submatchers.push(os);
+                            } else if contains_padding {
                                 // padding => assume unknown size
                                 conjunction.dynamic_submatchers.push(submatchers.clone());
                             } else {
@@ -570,7 +578,7 @@ impl SleighCompiler {
     fn pc_process_display_section(
         &mut self,
         display_section: Spanned<SASTDisplaySection>,
-        scope: &MOIRScope,
+        scope: &mut MOIRScope,
         is_root_table: bool,
     ) -> InternalCompilerResult<MOIRDisplay> {
         let len = display_section.value().fragments.len();
@@ -589,6 +597,13 @@ impl SleighCompiler {
                     .transpose()
             })
             .collect::<InternalCompilerResult<_>>()?;
+
+        // mark fragment locals as used
+        for fragment in moir_fragments.iter() {
+            if let MOIRDisplayFragment::Local(local_id) = fragment {
+                scope.mark_local_as_used(MOIRLocal::Local(*local_id))?;
+            }
+        }
 
         Ok(MOIRDisplay::new(moir_fragments))
     }

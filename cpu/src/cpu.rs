@@ -240,8 +240,13 @@ where
                     self.runtime_context.as_mut(),
                     current_addr,
                 )?;
-                // let disassembly = self.processor_specification.borrow().disassemble_block(&*mmu, self.runtime_context.as_mut(), current_addr).unwrap();
-                // trace_jit!("{:#?}", disassembly);
+
+                let disassembly = self
+                    .processor_specification
+                    .borrow()
+                    .disassemble_block(&*mmu, self.runtime_context.as_mut(), current_addr)
+                    .unwrap();
+                trace_jit!("{:#?}", disassembly);
 
                 // TODO: Most likely, if the runtime context was modified, we will first need to emulate before translating
                 //       more blocks?
@@ -249,6 +254,7 @@ where
                 trace_jit!("Fallthrough: {:?}", block.fallthrough());
                 trace_jit!("Branch targets: {:?}", block.branch_targets());
 
+                // add direct branch targets
                 if let Some(branch_targets) = block.branch_targets() {
                     for branch_target in branch_targets {
                         if let NextBlockTarget::Direct(target_addr) = branch_target {
@@ -257,10 +263,15 @@ where
                     }
                 }
 
+                // add fallthrough block
+                if let Some(fallthrough) = block.fallthrough() {
+                    target_addresses.push(fallthrough);
+                }
+
                 translated_instr_count += block.instruction_count();
                 translated_block_count += 1;
 
-                jit.compile_target_block(&block)?;
+                // jit.compile_target_block(&block)?;
 
                 block_cache.insert(current_addr, block);
 

@@ -15,6 +15,7 @@ use mogi_cpu::tlb::{
     PageTag,
 };
 use mogi_mem::mmu::MogiMMU;
+use mogi_mem::PAGE_SIZE;
 use mogi_sleigh::SleighPreprocessorFactory;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
 use mogi_sleigh::spec::{
@@ -63,8 +64,8 @@ fn main() {
     let specification = load_specification(spec_path);
     // println!("{:?}", specification.list_global_varnode_strings());
 
-    // let testelf_content = std::fs::read("./a.out").unwrap();
-    let testelf_content = b"\x58\x5B\x48\x01\xD8\x48\x0F\xBC\xD8\x53\x50\xEB\xF3";
+    let testelf_content = std::fs::read("./ls").unwrap();
+    let page_count = (testelf_content.len() + PAGE_SIZE - 1) / PAGE_SIZE;
 
     println!(
         "{:?}",
@@ -81,10 +82,10 @@ fn main() {
     {
         let mut mmu = mmu.borrow_mut();
         // We allocate enough memory
-        mmu.alloc_physical(0x0u64.into(), 0x16_000).unwrap();
-        // And link the virtual address 0x1000 to the allocated physical memory.
-        for page_id in 0..(testelf_content.len() as u64 / 4096 + 1) {
-            mmu.set_page_table_entry((page_id * 4096u64).into(), (page_id * 4096u64).into(), Permission::ALL)
+        mmu.alloc_physical(0x0u64.into(), page_count * PAGE_SIZE).unwrap();
+        // And identity-map the virtual addresses
+        for page_id in 0..page_count {
+            mmu.set_page_table_entry((page_id as u64 * 4096u64).into(), (page_id as u64 * 4096u64).into(), Permission::ALL)
                 .unwrap();
         }
         // And then write the instruction to the allocated memory.
@@ -116,7 +117,7 @@ fn main() {
 
     // Set the instruction pointer to the address we want to start executing at.
     // *cpu.register_mut("RIP").unwrap() = 0x113Au64;
-    *cpu.register_mut("RIP").unwrap() = 0x0u64;
+    *cpu.register_mut("RIP").unwrap() = 0x3080u64;
     *cpu.register_mut("RSP").unwrap() = 0xffff_ffff_ffff_0220u64;
 
     // Now lets roll! (forever :>)
