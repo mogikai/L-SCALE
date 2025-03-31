@@ -395,6 +395,8 @@ impl<'a> MatchContext<'a> {
         // instantiate it here
         let mut resolver = JIRResolver::new(constructor, constructor_id, values);
 
+        trace_jir!("Context fields: {:#?}", context_fields);
+
         for (subtable, subresolver) in &state.subresolvers {
             resolver.define_subtable_resolver(*subtable, subresolver.clone())?;
         }

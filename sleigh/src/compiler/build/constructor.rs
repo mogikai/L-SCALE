@@ -355,17 +355,11 @@ impl SleighCompiler {
         scope: &MOIRScope,
         table_id: TableId,
     ) {
-        // extract used context fields
-        for conjunction in matcher.conjunctions.iter().filter(|conjunction| matches!(conjunction.token.parent, Some(MOIRFieldParent::Context(_)))) {
-            for atom in &conjunction.atoms {
-                match atom {
-                    MatcherAtom::Field { field_id, matcher: _ } => {
-                        if let Some(_) = scope.get_used_field(*field_id) {
-                            matcher.context_fields.push(*field_id);
-                        }
-                    }
-                    MatcherAtom::Submatchers(_) => { panic!("There are no submatchers in context conjunctions") }
-                }
+        // populate used context fields of matcher from scope
+        for field_id in scope.get_used_fields() {
+            let field = self.spec_builder.field_by_id(field_id);
+            if matches!(field.parent, MOIRFieldParent::Context(_)) {
+                matcher.context_fields.push(field_id);
             }
         }
 
