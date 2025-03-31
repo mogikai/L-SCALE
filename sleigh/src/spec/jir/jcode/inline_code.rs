@@ -195,17 +195,17 @@ macro_rules! jinst {
     (goto <$label:ident>) => {
         jinst!(goto <{$label}>)
     };
-    (call $addr:block) => {
-        $crate::spec::jir::jcode::JIRInstruction::call_direct($addr)
+    (call $addr:block, $retaddr:block) => {
+        $crate::spec::jir::jcode::JIRInstruction::call_direct($addr, $retaddr)
     };
-    (call $addr:ident) => {
-        jinst!(call {$addr})
+    (call $addr:ident, $retaddr:block) => {
+        jinst!(call {$addr}, $retaddr)
     };
-    (call [$addr:block]) => {
-        $crate::spec::jir::jcode::JIRInstruction::call_indirect($addr)
+    (call [$addr:block], $retaddr:block) => {
+        $crate::spec::jir::jcode::JIRInstruction::call_indirect($addr, $retaddr)
     };
-    (call [$addr:ident]) => {
-        jinst!(call [{$addr}])
+    (call [$addr:ident], $retaddr:block) => {
+        jinst!(call [{$addr}], $retaddr)
     };
     (return $addr:block) => {
         $crate::spec::jir::jcode::JIRInstruction::return_direct($addr)

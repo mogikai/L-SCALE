@@ -53,7 +53,6 @@ impl<'a> TargetInstructionBuilder<'a> {
         /// the block is locked for further instructions.
         match instruction {
             JIRInstruction::GotoDirectIf { target, .. }
-            | JIRInstruction::CallDirect(target)
             | JIRInstruction::ReturnDirect(target)
             | JIRInstruction::GotoDirect(target) => match target {
                 // We also handle a conditional jump here, since the fallthrough only happens
@@ -67,13 +66,30 @@ impl<'a> TargetInstructionBuilder<'a> {
                     .get_or_insert_default()
                     .push(NextBlockTarget::Direct(target.try_into()?)),
             },
-            JIRInstruction::CallIndirect(target)
-            | JIRInstruction::ReturnIndirect(target)
+            JIRInstruction::ReturnIndirect(target)
             | JIRInstruction::GotoIndirect(target)
             | JIRInstruction::GotoIndirectIf { target, .. } => {
                 self.branch_targets
                     .get_or_insert_default()
                     .push(NextBlockTarget::DynamicIndirect(target));
+            }
+            JIRInstruction::CallDirect(target, retaddr) => {
+                let branch_targets = self.branch_targets.get_or_insert_default();
+                match target {
+                    JIRValue::Slice(target) => {
+                        branch_targets.push(NextBlockTarget::DynamicDirect(target.into()));
+                        branch_targets.push(NextBlockTarget::Return(retaddr));
+                    }
+                    JIRValue::Const(target) => {
+                        branch_targets.push(NextBlockTarget::Direct(target.try_into()?));
+                        branch_targets.push(NextBlockTarget::Return(retaddr));
+                    }
+                }
+            }
+            JIRInstruction::CallIndirect(target, retaddr) => {
+                let branch_targets = self.branch_targets.get_or_insert_default();
+                branch_targets.push(NextBlockTarget::DynamicIndirect(target));
+                branch_targets.push(NextBlockTarget::Return(retaddr));
             }
             _ => {}
         }

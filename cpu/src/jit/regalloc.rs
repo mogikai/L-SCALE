@@ -234,6 +234,9 @@ where
 
         // TODO: If this is the first write (viewing in reverse), we need to emit a spill instruction
 
+        // allocating a write operand involves inserting a write if this is the first time this operand is allocated
+        // If the operand was already previously allocated as write operand.
+
         Ok(())
     }
 

@@ -191,8 +191,8 @@ impl X64AllocRequirements {
             JIRInstruction::BoolAnd(_) => HostRegSet::empty(),
             JIRInstruction::BoolXor(_) => HostRegSet::empty(),
             JIRInstruction::BoolNegate(_) => HostRegSet::empty(),
-            JIRInstruction::CallDirect(_) => HostRegSet::empty(),
-            JIRInstruction::CallIndirect(_) => HostRegSet::empty(),
+            JIRInstruction::CallDirect(..) => HostRegSet::empty(),
+            JIRInstruction::CallIndirect(..) => HostRegSet::empty(),
             JIRInstruction::ReturnDirect(_) => HostRegSet::empty(),
             JIRInstruction::ReturnIndirect(_) => HostRegSet::empty(),
             JIRInstruction::GotoDirect(_) => HostRegSet::empty(),
@@ -369,8 +369,8 @@ impl X64Emitter<'_> {
             JIRInstruction::BoolAnd(args) => return self.emit_boolean_and(args.output, args.input_a, args.input_b),
             JIRInstruction::BoolXor(args) => return self.emit_boolean_xor(args.output, args.input_a, args.input_b),
             JIRInstruction::BoolNegate(args) => return self.emit_boolean_negate(args.output, args.input),
-            JIRInstruction::CallDirect(_) => {}
-            JIRInstruction::CallIndirect(_) => {}
+            JIRInstruction::CallDirect(..) => {}
+            JIRInstruction::CallIndirect(..) => {}
             JIRInstruction::ReturnDirect(_) => {}
             JIRInstruction::ReturnIndirect(_) => {}
             JIRInstruction::GotoDirect(target) => return self.emit_goto_direct(*target),

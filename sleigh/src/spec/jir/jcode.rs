@@ -21,6 +21,7 @@ pub enum NextBlockTarget {
     Direct(EVAddr),
     DynamicDirect(JIRValue),
     DynamicIndirect(JIRValue),
+    Return(EVAddr),
 }
 
 #[derive(Debug)]
@@ -920,18 +921,24 @@ impl JIRInstruction {
         JIRInstruction::GotoIndirect(target.into())
     }
 
-    pub fn call_direct<I>(target: I) -> Self
+    pub fn call_direct<I>(
+        target: I,
+        retaddr: EVAddr,
+    ) -> Self
     where
         I: Into<JIRValue>,
     {
-        JIRInstruction::CallDirect(target.into())
+        JIRInstruction::CallDirect(target.into(), retaddr)
     }
 
-    pub fn call_indirect<I>(target: I) -> Self
+    pub fn call_indirect<I>(
+        target: I,
+        retaddr: EVAddr,
+    ) -> Self
     where
         I: Into<JIRValue>,
     {
-        JIRInstruction::CallIndirect(target.into())
+        JIRInstruction::CallIndirect(target.into(), retaddr)
     }
 
     pub fn return_direct<I>(target: I) -> Self
@@ -1036,8 +1043,8 @@ impl JIRInstruction {
         use JIRInstruction::*;
         matches!(
             self,
-            CallDirect(_)
-                | CallIndirect(_)
+            CallDirect(..)
+                | CallIndirect(..)
                 | ReturnDirect(_)
                 | ReturnIndirect(_)
                 | GotoDirect(_)
@@ -1050,7 +1057,7 @@ impl JIRInstruction {
         use JIRInstruction::*;
         matches!(
             self,
-            CallDirect(_) | CallIndirect(_) | ReturnDirect(_) | ReturnIndirect(_) | GotoDirect(_) | GotoIndirect(_)
+            CallDirect(..) | CallIndirect(..) | ReturnDirect(_) | ReturnIndirect(_) | GotoDirect(_) | GotoIndirect(_)
         )
     }
 
@@ -1157,8 +1164,8 @@ pub enum JIRInstruction {
     // ------------------------- BRANCHING OPERATIONS -------------------------
     // TODO: Add space id for jump instructions
     // Same as goto, but semantically different for analysis purposes.
-    CallDirect(JIRValue),
-    CallIndirect(JIRValue),
+    CallDirect(JIRValue, EVAddr),
+    CallIndirect(JIRValue, EVAddr),
 
     // Same as goto, but semantically different for analysis purposes.
     ReturnDirect(JIRValue),

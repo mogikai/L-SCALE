@@ -79,8 +79,8 @@ impl Display for JIRInstruction {
             }
             OP::ReturnDirect(target) => write!(f, "return {}", target),
             OP::ReturnIndirect(target) => write!(f, "return [{}]", target),
-            OP::CallDirect(target) => write!(f, "call {}", target),
-            OP::CallIndirect(target) => write!(f, "call [{}]", target),
+            OP::CallDirect(target, retaddr) => write!(f, "call {} (returning to {retaddr:?})", target),
+            OP::CallIndirect(target, retaddr) => write!(f, "call [{}] (returning to {retaddr:?}", target),
             OP::GotoDirect(target) => write!(f, "goto {}", target),
             OP::GotoIndirect(target) => write!(f, "goto [{}]", target),
             OP::JCodeGoto(label) => write!(f, "goto <{}>", label),
@@ -201,7 +201,7 @@ impl JIRInstruction {
             JIRInstruction::BitNegate(_) => "~",
             JIRInstruction::IntNegate(_) => "-",
             JIRInstruction::FloatNegate(_) => "f-",
-            JIRInstruction::CallDirect(_) | JIRInstruction::CallIndirect(_) => "call",
+            JIRInstruction::CallDirect(..) | JIRInstruction::CallIndirect(..) => "call",
             JIRInstruction::ReturnDirect(_) | JIRInstruction::ReturnIndirect(_) => "return",
             JIRInstruction::GotoDirect(_)
             | JIRInstruction::GotoIndirect(_)

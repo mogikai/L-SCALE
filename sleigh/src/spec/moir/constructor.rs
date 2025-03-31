@@ -2,7 +2,10 @@ use super::actions::MOIRAction;
 use super::display::MOIRDisplay;
 use super::field::MOIRField;
 use super::field_extractor::FieldExtractor;
-use super::varnode::{MOIRReference, VarNodeId};
+use super::varnode::{
+    MOIRReference,
+    VarNodeId,
+};
 use crate::compiler::InternalCompilerResult;
 use crate::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
 use crate::spec::jir::basic_block::instruction::TargetInstructionBuilder;
@@ -35,7 +38,11 @@ use crate::spec::moir::scope::{
 use crate::spec::moir::table::MOIRExport;
 use crate::spec::moir::varnode::MOIRLocal;
 use crate::spec::{
-    FieldId, JIRSymbolId, ProcessorSpecResult, ProcessorSpecification, ProcessorSpecificationError
+    FieldId,
+    JIRSymbolId,
+    ProcessorSpecResult,
+    ProcessorSpecification,
+    ProcessorSpecificationError,
 };
 use crate::{
     jinst,
@@ -321,12 +328,18 @@ impl MOIRConstructor {
             }
             MOIROperation::Store(space) => jinst!(*[{*space}]{ input_a? } = { input_b? }),
             MOIROperation::GotoDirect(ty) => match ty {
-                MOIRGotoType::Call => jinst!(call {input_a?}),
+                MOIRGotoType::Call => {
+                    jinst!(call {input_a?}, {resolver.inst_next().expect("There must be an instruction after the call")})
+                }
                 MOIRGotoType::Return => jinst!(return { input_a? }),
                 MOIRGotoType::Regular => jinst!(goto {input_a?}),
             },
             MOIROperation::GotoIndirect(ty) => match ty {
-                MOIRGotoType::Call => jinst!(call[{ input_a? }]),
+                MOIRGotoType::Call => jinst!(call[{ input_a? }], {
+                    resolver
+                        .inst_next()
+                        .expect("There must be an instruction after the call")
+                }),
                 MOIRGotoType::Return => jinst!(return [{ input_a? }]),
                 MOIRGotoType::Regular => jinst!(goto[{ input_a? }]),
             },
@@ -624,7 +637,12 @@ fn build_varnode_display(
     spec: &ProcessorSpecification,
     varnode_id: VarNodeId,
 ) -> String {
-    let string_id = spec.symbol_strings.get(&JIRSymbolId::VarNode(varnode_id)).expect("If the id exists so does the varnode");
-    spec.interner.string(*string_id.value()).expect("This string must exist").to_string()
+    let string_id = spec
+        .symbol_strings
+        .get(&JIRSymbolId::VarNode(varnode_id))
+        .expect("If the id exists so does the varnode");
+    spec.interner
+        .string(*string_id.value())
+        .expect("This string must exist")
+        .to_string()
 }
-
