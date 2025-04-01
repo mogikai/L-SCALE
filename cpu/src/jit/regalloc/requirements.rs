@@ -1,10 +1,11 @@
 use crate::jit::host::register::{
     HostReg,
     HostRegSet,
+    RegClass,
 };
 use mogi_sleigh::spec::jir::values::JIRSlice;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum OperandConstraint {
     /// The operand may be loaded into a register, or used directly from memory.
     /// This effectively means that the allocator is free to not allocate a register
@@ -34,13 +35,6 @@ pub enum OperandPos {
     After,
 }
 
-#[derive(Debug, Copy, Clone)]
-pub enum OperandClass {
-    Int,
-    Float,
-    Vector,
-}
-
 // TODO: We might need to compress the requests into an easily copyable value by doing
 //       some bit manipulation?
 /// Request a slice to be allocated. The [OperandConstraint] specifies whether to always allocate a register,
@@ -51,48 +45,25 @@ pub struct OperandRequest {
     pub slice: JIRSlice,
     pub constraint: OperandConstraint,
     pub kind: OperandKind,
-    pub pos: OperandPos,
-    pub class: OperandClass,
+    pub class: RegClass,
 }
 
 impl OperandRequest {
-    pub fn write_any_before(slice: JIRSlice) -> Self {
+    pub fn write_any(slice: JIRSlice) -> Self {
         OperandRequest {
             slice,
             constraint: OperandConstraint::Any,
             kind: OperandKind::Write,
-            pos: OperandPos::After,
-            class: OperandClass::Int,
+            class: RegClass::Int,
         }
     }
 
-    pub fn write_any_after(slice: JIRSlice) -> Self {
-        OperandRequest {
-            slice,
-            constraint: OperandConstraint::Any,
-            kind: OperandKind::Write,
-            pos: OperandPos::After,
-            class: OperandClass::Int,
-        }
-    }
-
-    pub fn read_any_before(slice: JIRSlice) -> Self {
+    pub fn read_any(slice: JIRSlice) -> Self {
         OperandRequest {
             slice,
             constraint: OperandConstraint::Any,
             kind: OperandKind::Read,
-            pos: OperandPos::Before,
-            class: OperandClass::Int,
-        }
-    }
-
-    pub fn read_any_after(slice: JIRSlice) -> Self {
-        OperandRequest {
-            slice,
-            constraint: OperandConstraint::Any,
-            kind: OperandKind::Read,
-            pos: OperandPos::After,
-            class: OperandClass::Int,
+            class: RegClass::Int,
         }
     }
 }
@@ -125,7 +96,7 @@ impl<'a> OperandRequirements<'a> {
             .filter(|req| matches!(req.kind, OperandKind::Read))
     }
 
-    pub fn all(&self) -> impl Iterator<Item = &OperandRequest> {
+    pub fn all(&self) -> impl Iterator<Item = &OperandRequest> + ExactSizeIterator {
         self.0.iter()
     }
 }

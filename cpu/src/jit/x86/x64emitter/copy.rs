@@ -18,10 +18,9 @@ impl X64AllocRequirements {
         source: JIRValue,
     ) -> HostRegSet {
         self.operand_requests
-            .push(OperandRequest::write_any_after(target));
+            .push(OperandRequest::write_any(target));
         if let JIRValue::Slice(source) = source {
-            self.operand_requests
-                .push(OperandRequest::read_any_before(source));
+            self.operand_requests.push(OperandRequest::read_any(source));
         }
         HostRegSet::empty()
     }

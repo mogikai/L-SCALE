@@ -1,6 +1,6 @@
 use crate::jit::host::register::{
     HostReg,
-    HostRegClass,
+    RegClass,
 };
 use crate::jit::x86::registers::{
     InitialAllocation,
@@ -38,7 +38,7 @@ pub enum GPRegister {
 
 impl GPRegister {
     pub const fn into_host_reg(self) -> HostReg {
-        HostReg::new(self as u8, HostRegClass::Int)
+        HostReg::new(self as u8, RegClass::Int)
     }
 }
 

@@ -65,7 +65,8 @@ fn main() {
     // println!("{:?}", specification.list_global_varnode_strings());
 
     // let testelf_content = std::fs::read("./ls").unwrap();
-    let testelf_content = b"\x58\x5B\x48\x03\x03\x48\xF7\xE3\x53\x50\xEB\xF4";
+    // let testelf_content = b"\x58\x5B\x48\x03\x03\x48\xF7\xE3\x48\x89\xD8\x53\x50\xEB\xF1";
+    let testelf_content = b"\x48\x89\xD8\x48\x89\xC3\xEB\xF8";
     let page_count = (testelf_content.len() + PAGE_SIZE - 1) / PAGE_SIZE;
 
     let specification = Rc::new(RefCell::new(specification));

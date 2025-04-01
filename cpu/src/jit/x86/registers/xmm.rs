@@ -1,4 +1,4 @@
-use crate::jit::host::register::HostRegClass;
+use crate::jit::host::register::RegClass;
 use crate::jit::x86::registers::{
     HostReg,
     InitialAllocation,
@@ -35,7 +35,7 @@ pub enum XMMRegister {
 
 impl XMMRegister {
     pub const fn into_host_reg(self) -> HostReg {
-        HostReg::new(self as u8, HostRegClass::Vector)
+        HostReg::new(self as u8, RegClass::Vector)
     }
 }
 

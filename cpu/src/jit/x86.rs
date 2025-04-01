@@ -81,6 +81,7 @@ use crate::jit::regalloc::{
     RegisterAllocator,
 };
 use crate::jit::x86::registers::general_purpose::GPRegister;
+use crate::jit::x86::registers::xmm::XMMRegister;
 use crate::tlb::PageMetaInfo;
 use assemble;
 use mogi_mem::mmu::MogiMMU;
@@ -302,7 +303,23 @@ impl MogiJit for X86MogiJit {
             .with(GPRegister::R12.into_host_reg())
             .with(GPRegister::R13.into_host_reg())
             .with(GPRegister::R14.into_host_reg())
-            .with(GPRegister::R15.into_host_reg());
+            .with(GPRegister::R15.into_host_reg())
+            .with(XMMRegister::XMM0.into_host_reg())
+            .with(XMMRegister::XMM1.into_host_reg())
+            .with(XMMRegister::XMM2.into_host_reg())
+            .with(XMMRegister::XMM3.into_host_reg())
+            .with(XMMRegister::XMM4.into_host_reg())
+            .with(XMMRegister::XMM5.into_host_reg())
+            .with(XMMRegister::XMM6.into_host_reg())
+            .with(XMMRegister::XMM7.into_host_reg())
+            .with(XMMRegister::XMM8.into_host_reg())
+            .with(XMMRegister::XMM9.into_host_reg())
+            .with(XMMRegister::XMM10.into_host_reg())
+            .with(XMMRegister::XMM11.into_host_reg())
+            .with(XMMRegister::XMM12.into_host_reg())
+            .with(XMMRegister::XMM13.into_host_reg())
+            .with(XMMRegister::XMM14.into_host_reg())
+            .with(XMMRegister::XMM15.into_host_reg());
 
         // And then start the register allocator for the block and target architecture.
         let regalloc = RegisterAllocator::new(

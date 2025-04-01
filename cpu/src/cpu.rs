@@ -274,6 +274,7 @@ where
                 jit.compile_target_block(&block)?;
 
                 block_cache.insert(current_addr, block);
+                panic!();
 
                 match translation_limit {
                     TranslationLimit::Unlimited => {}

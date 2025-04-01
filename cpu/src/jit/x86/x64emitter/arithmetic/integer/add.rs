@@ -28,7 +28,7 @@ impl X64Emitter<'_> {
         a: JIRValue,
         b: JIRValue,
     ) -> impl Iterator<Item = OperandRequest> {
-        once(OperandRequest::write_any_after(output))
+        once(OperandRequest::write_any(output))
     }
 
     /// Emit instructions that add `a` and `b` and store the result in `output`.

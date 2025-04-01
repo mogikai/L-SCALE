@@ -2,19 +2,22 @@ mod instruction;
 pub mod requirements;
 pub mod result;
 
-use crate::jit::api::JITResult;
+use crate::jit::api::{
+    JITResult,
+    JitError,
+};
 use crate::jit::host::register::{
     HostReg,
     HostRegMap,
     HostRegSet,
 };
 use crate::jit::regalloc::requirements::{
-    OperandClass,
     OperandConstraint,
     OperandKind,
     OperandPos,
     OperandRequest,
 };
+use crate::jit::regalloc::result::Allocation;
 use crate::jit::trace_jit;
 use mogi_sleigh::spec::jir::basic_block::{
     InstId,
@@ -47,10 +50,10 @@ pub struct RegisterAllocator<'a, E> {
     ///       It might also make sense to define the set of usable registers this way.
     host_constraints: RegAllocHostConstraints,
 
-    /// Keeps track of the available registers before and after an instruction.
+    /// Keeps track of the available registers for an instruction.
     /// This set of registers is reset for each instruction according to
     /// the instructions' and environments' constraints.
-    available_registers: AvailableRegisters,
+    available_registers: HostRegSet,
 }
 
 /// A struct to keep track of the registers that are available before and after an instruction.
@@ -70,10 +73,7 @@ where
         emitter_requirements: &'a E,
         host_constraints: RegAllocHostConstraints,
     ) -> Self {
-        let available_registers = AvailableRegisters {
-            before: host_constraints.usable_registers,
-            after: host_constraints.usable_registers,
-        };
+        let available_registers = host_constraints.usable_registers;
         RegisterAllocator::<'a, E> {
             target_block: translation_unit,
             emitter_requirements,
@@ -93,6 +93,23 @@ where
         Ok(self.allocations)
     }
 
+    /// Makes sure that block inputs, i.e. every slice that is live at the start of a block,
+    /// are loaded.
+    fn load_block_inputs(&mut self) -> JITResult {
+        trace_jit!("Loading block inputs");
+        for (reg, slice) in self.loaded_slices.drain() {
+            // We are at the start of a block. Make sure that the slice is loaded in the
+            // register as specified.
+            self.allocations
+                .load_spill_directives
+                .add_load_before(reg, slice);
+        }
+        self.allocations
+            .load_spill_directives
+            .update_current_inst_directives_end();
+        Ok(())
+    }
+
     fn alloc_block(
         &mut self,
         block: JIRBlockId,
@@ -100,15 +117,15 @@ where
         for inst in self.target_block.jir_block_inst_ids(block).unwrap().rev() {
             self.alloc_inst(inst)?;
         }
-        // TODO: check block inputs and make sure they are allocated here.
+        self.load_block_inputs()?;
+        // TODO: check block inputs and make sure they are allocated/loaded here.
         // We are iterating backwards, so we are at the start of a block here,
         // which means we have to load any varnodes that are live in the following instructions.
         Ok(())
     }
 
     fn reset_available_host_registers(&mut self) {
-        self.available_registers.before = self.host_constraints.usable_registers;
-        self.available_registers.after = self.host_constraints.usable_registers;
+        self.available_registers = self.host_constraints.usable_registers;
     }
 
     fn alloc_inst(
@@ -119,7 +136,6 @@ where
         self.allocations
             .load_spill_directives
             .start_inst_directives(inst)?;
-
         // At the start we set the available registers to all configured registers.
         // We then subsequently remove all registers that are used by clobbers, fixed
         // register operands, or are already allocated.
@@ -127,12 +143,13 @@ where
 
         let clobbers = self.emitter_requirements.clobbers(inst);
         let operands = self.emitter_requirements.operands(inst);
+        if clobbers.is_empty() && operands.all().len() == 0 {
+            trace_jit!("No operands or clobbers for {inst}, skipping allocation");
+            return Ok(());
+        }
+        trace_jit!("");
         trace_jit!("Allocating registers for {inst}. It is clobbering {clobbers} and requesting {operands:?}");
-        trace_jit!(
-            "Available registers at the start before/after:\n{}/{}",
-            self.available_registers.before,
-            self.available_registers.after
-        );
+        trace_jit!("Available registers at the start:\n{}", self.available_registers,);
 
         for operand in operands.fixed() {
             self.reserve_reg_for_fixed_operand(operand)?;
@@ -141,11 +158,7 @@ where
             self.clear_clobber(clobber);
         }
 
-        trace_jit!(
-            "Available registers after fixed reg and clobber constraints before/after:\n{}/{}",
-            self.available_registers.before,
-            self.available_registers.after
-        );
+        trace_jit!("Available registers after fixed reg and clobber constraints:\n{}", self.available_registers,);
 
         for operand in operands.write() {
             self.alloc_write_operand(operand)?;
@@ -174,10 +187,7 @@ where
         // if inst.is_branch()
         //     spill all for diverging branches
         //     keep everything loaded for main path (either fallthrough or unconditional jmp)
-
-        self.allocations
-            .load_spill_directives
-            .finish_inst_directives();
+        trace_jit!("Available registers after allocation:\n{}", self.available_registers);
         Ok(())
     }
 
@@ -185,67 +195,104 @@ where
     /// if it exists.
     fn get_loaded_slice_group(
         &self,
-        slice: JIRSlice,
+        operand: &OperandRequest,
     ) -> Option<(HostReg, JIRSlice)> {
-        self.loaded_slices.iter().find_map(|(reg, loaded_slice)| {
-            if loaded_slice.group_id == slice.group_id {
-                Some((reg, *loaded_slice))
-            } else {
-                None
-            }
-        })
+        self.loaded_slices
+            .iter_class(operand.class)
+            .find_map(|(reg, loaded_slice)| {
+                if loaded_slice.group_id == operand.slice.group_id {
+                    Some((reg, *loaded_slice))
+                } else {
+                    None
+                }
+            })
     }
 
+    /// Allocate a register for the provided operand.
+    /// Returns an error, if no operand could be allocated.
     fn alloc_register(
         &mut self,
-        constraint: OperandConstraint,
-        class: OperandClass,
+        operand: &OperandRequest,
     ) -> JITResult<HostReg> {
-        self.available_registers.after.into_iter();
-        todo!()
+        let reg = self
+            .available_registers
+            .into_iter()
+            .filter(|r| r.class() == operand.class)
+            .nth(0)
+            .ok_or_else(|| -> JitError { todo!("Error handling") })?;
+
+        self.available_registers.remove(reg);
+
+        /// Spill the register if it is occupied by a slice.
+        self.spill_reg(reg);
+        Ok(reg)
+    }
+
+    /// Makes sure that the already loaded slice group corresponds to the operand request.
+    /// The slice group needs to be adjusted if the offset or length do not match.
+    /// Also, the slice needs to be moved, if the operand request contains a fixed reg constraint.
+    fn ensure_valid_reg_allocation(
+        &mut self,
+        reg: HostReg,
+        existing_slice: JIRSlice,
+        operand: &OperandRequest,
+    ) -> JITResult<HostReg> {
+        trace_jit!("Slice group is already loaded in register {reg} with slice {existing_slice:?}.");
+        if existing_slice.offset != operand.slice.offset || existing_slice.size != operand.slice.size {
+            todo!("Aliased loads currently not supported")
+        }
+        if let OperandConstraint::FixedReg(fixed_reg) = operand.constraint {
+            if reg != fixed_reg {
+                todo!("Move allocation to target_reg")
+            }
+        }
+        self.available_registers.remove(reg);
+        Ok(reg)
     }
 
     fn alloc_write_operand(
         &mut self,
         operand: &OperandRequest,
-    ) -> JITResult {
+    ) -> JITResult<Allocation> {
         let OperandKind::Write = operand.kind else {
             panic!("Logic error: Write operand must have kind Write.")
         };
         trace_jit!("Allocating write operand {operand:?}");
-        if let Some((reg, existing_slice)) = self.get_loaded_slice_group(operand.slice) {
-            if existing_slice.offset != operand.slice.offset || existing_slice.size != operand.slice.size {
-                todo!("Aliased loads currently not supported")
-            }
-            if let OperandConstraint::FixedReg(target_reg) = operand.constraint {
-                if reg != target_reg {
-                    todo!("Move allocation to target_reg")
-                }
-            }
+        if let Some((reg, existing_slice)) = self.get_loaded_slice_group(operand) {
+            Ok(Allocation::Register(self.ensure_valid_reg_allocation(reg, existing_slice, operand)?))
         } else {
             // Slice group is not in any register. We can allocate one from the free regs.
-            match operand.pos {
-                OperandPos::Before => todo!(),
-                OperandPos::After => todo!(),
-            }
+
+            let reg = self.alloc_register(operand)?;
+            // We are allocating a write operand which needs to be preserved.
+            // This needs to be done for the first occurrence (when viewing in reverse),
+            // since this will be the last time this value is written.
+            // TODO: Only spill if this is the first occurrence
+            self.allocations
+                .load_spill_directives
+                .add_spill_after(reg, operand.slice);
+            self.loaded_slices.insert(reg, operand.slice);
+            Ok(Allocation::Register(reg))
         }
-
-        // TODO: Find free host_reg or existing one with already loaded slice.
-
-        // TODO: If this is the first write (viewing in reverse), we need to emit a spill instruction
-
-        // allocating a write operand involves inserting a write if this is the first time this operand is allocated
-        // If the operand was already previously allocated as write operand.
-
-        Ok(())
     }
 
+    //noinspection DuplicatedCode
     fn alloc_read_operand(
         &mut self,
         operand: &OperandRequest,
-    ) -> JITResult {
+    ) -> JITResult<Allocation> {
+        let OperandKind::Read = operand.kind else {
+            panic!("Logic error: Write operand must have kind Write.")
+        };
         trace_jit!("Allocating read operand {operand:?}");
-        Ok(())
+        if let Some((reg, existing_slice)) = self.get_loaded_slice_group(operand) {
+            Ok(Allocation::Register(self.ensure_valid_reg_allocation(reg, existing_slice, operand)?))
+        } else {
+            // Slice group is not in any register. We can allocate one from the free regs.
+            let reg = self.alloc_register(operand)?;
+            self.loaded_slices.insert(reg, operand.slice);
+            Ok(Allocation::Register(reg))
+        }
     }
 
     fn reserve_reg_for_fixed_operand(
@@ -258,29 +305,11 @@ where
         trace_jit!("Reserving register {target_reg} for fixed operand");
 
         // Check if the register is free, and remove it from the available set.
-        match (operand.kind, operand.pos) {
-            (OperandKind::Read, OperandPos::Before) => {
-                if !self.available_registers.before.contains(target_reg) {
-                    todo!("Allocation error")
-                }
-                self.available_registers.before.remove(target_reg);
-            }
-            (OperandKind::Write, OperandPos::After) => {
-                if !self.available_registers.after.contains(target_reg) {
-                    todo!("Allocation error")
-                }
-                self.available_registers.after.remove(target_reg);
-            }
-            _ => {
-                if !self.available_registers.before.contains(target_reg)
-                    || !self.available_registers.after.contains(target_reg)
-                {
-                    todo!("Allocation error")
-                }
-                self.available_registers.before.remove(target_reg);
-                self.available_registers.after.remove(target_reg);
-            }
+        if !self.available_registers.contains(target_reg) {
+            todo!("Allocation error: Tried to allocate a fixed register for an unavailable register")
         }
+        self.available_registers.remove(target_reg);
+
         // TODO: Is this the correct spill location?
         self.spill_reg(target_reg);
         Ok(())
@@ -292,7 +321,7 @@ where
         clobber: HostReg,
     ) {
         trace_jit!("Clearing clobber {clobber}");
-        if !self.available_registers.before.contains(clobber) || !self.available_registers.after.contains(clobber) {
+        if !self.available_registers.contains(clobber) {
             todo!(
                 "Error: Clobbering already removed register.
                 This likely means that a clobber overlaps with a fixed register allocation.
@@ -301,8 +330,7 @@ where
             )
         }
         self.spill_reg(clobber);
-        self.available_registers.before.remove(clobber);
-        self.available_registers.after.remove(clobber);
+        self.available_registers.remove(clobber);
     }
 
     /// Spill the provided register at the `after` position of the current instruction.

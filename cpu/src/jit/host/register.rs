@@ -18,7 +18,7 @@ use std::fmt::{
 /// operations. Additionally for machines with totally separate vector
 /// registers a third class is provided.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum HostRegClass {
+pub enum RegClass {
     Int    = 0,
     Float  = 1,
     Vector = 2,
@@ -52,7 +52,7 @@ impl HostReg {
     #[inline(always)]
     pub const fn new(
         hw_enc: u8,
-        class: HostRegClass,
+        class: RegClass,
     ) -> Self {
         debug_assert!(hw_enc <= HostReg::MAX_HW_ENC);
         HostReg {
@@ -68,11 +68,11 @@ impl HostReg {
 
     /// The register class.
     #[inline(always)]
-    pub const fn class(self) -> HostRegClass {
+    pub const fn class(self) -> RegClass {
         match (self.bits >> Self::MAX_BITS) & 0b11 {
-            0 => HostRegClass::Int,
-            1 => HostRegClass::Float,
-            2 => HostRegClass::Vector,
+            0 => RegClass::Int,
+            1 => RegClass::Float,
+            2 => RegClass::Vector,
             _ => unreachable!(),
         }
     }
@@ -97,7 +97,7 @@ impl HostReg {
     /// data structures.
     #[inline(always)]
     pub const fn invalid() -> Self {
-        HostReg::new(Self::MAX_HW_ENC, HostRegClass::Int)
+        HostReg::new(Self::MAX_HW_ENC, RegClass::Int)
     }
 }
 
@@ -122,9 +122,9 @@ impl core::fmt::Display for HostReg {
         f: &mut core::fmt::Formatter,
     ) -> core::fmt::Result {
         let class = match self.class() {
-            HostRegClass::Int => "i",
-            HostRegClass::Float => "f",
-            HostRegClass::Vector => "v",
+            RegClass::Int => "i",
+            RegClass::Float => "f",
+            RegClass::Vector => "v",
         };
         write!(f, "p{}{}", self.hw_enc(), class)
     }
@@ -185,6 +185,27 @@ impl<T> HostRegMap<T> {
             .filter_map(|(index, value)| {
                 value
                     .as_ref()
+                    .map(|value| (HostReg::from_index(index), value))
+            })
+    }
+
+    /// Iterate over all registers from the specified class.
+    pub fn iter_class(
+        &self,
+        reg_class: RegClass,
+    ) -> impl Iterator<Item = (HostReg, &T)> {
+        self.iter().filter(move |(reg, _)| reg.class() == reg_class)
+    }
+
+    /// Drains the entire host reg map, returning an iterator over all contained mappings.
+    /// The register map will be empty afterward.
+    pub fn drain(&mut self) -> impl Iterator<Item = (HostReg, T)> {
+        self.mapping
+            .iter_mut()
+            .enumerate()
+            .filter_map(|(index, value)| {
+                value
+                    .take()
                     .map(|value| (HostReg::from_index(index), value))
             })
     }
@@ -286,11 +307,20 @@ impl HostRegSet {
         HostRegSet { bits: set }
     }
 
-    pub fn is_empty(
+    pub fn class_is_empty(
         &self,
-        regclass: HostRegClass,
+        regclass: RegClass,
     ) -> bool {
         self.bits[regclass as usize] == 0
+    }
+
+    pub fn is_empty(&self) -> bool {
+        for bits in self.bits {
+            if bits != 0 {
+                return false;
+            }
+        }
+        true
     }
 }
 
