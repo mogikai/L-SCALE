@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
-
-use crate::spec::FieldId;
-
-use super::{scope::{MOIRLocalId, MOIRTemporaryId}, table::TableId, varnode::{MOIRReference, VarNodeId}};
+use crate::spec::moir::scope::MOIRLocalId;
+use serde::{
+    Deserialize,
+    Serialize,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 /// Each fragment will be resolved into a concrete string and then inserted into
@@ -17,7 +17,7 @@ pub(crate) enum MOIRDisplayFragment {
 /// string.
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct MOIRDisplay {
-    pub(crate) fragments: Vec<MOIRDisplayFragment>
+    pub(crate) fragments: Vec<MOIRDisplayFragment>,
 }
 
 impl MOIRDisplay {

@@ -14,7 +14,6 @@ use crate::spec::jir::jcode::ContinueLifting;
 use crate::spec::jir::jumplist::MatcherResult;
 use crate::spec::jir::trace_jir;
 use mogi_utilities::addresses::EVAddr;
-use num::PrimInt;
 use std::cell::Ref;
 use std::time::Instant;
 
@@ -116,6 +115,7 @@ impl Lifter for ProcessorSpecification {
             self.lifter_diagnostics.borrow_mut().total_time_match += now.elapsed();
 
             let now = Instant::now();
+            #[allow(unused_variables)]
             match matching_result {
                 MatcherResult::EndOfByteStream => todo!("Handle end of byte stream"),
                 MatcherResult::None => todo!("Handle no match"),

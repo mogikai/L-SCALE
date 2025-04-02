@@ -2,7 +2,6 @@ use fnv::FnvHashMap;
 use petgraph::graph::NodeIndex;
 use std::collections::{
     BTreeMap,
-    BTreeSet,
     HashMap,
 };
 use std::fs::File;
@@ -14,7 +13,6 @@ use crate::compiler::build::constructor::matcher::{
     Matcher,
     MatcherAtom,
     MatcherConjunction,
-    OffsettedSubmatchers,
     Submatchers,
 };
 use crate::compiler::build::trace_build;
@@ -55,7 +53,6 @@ use crate::spec::moir::varnode::{
     MOIRVarNode,
     VarNodeId,
 };
-use crate::spec::typed_index_table::TypedIndexTable;
 use itertools::Itertools;
 use mogi_utilities::index_map::{
     MapKey,
@@ -63,7 +60,6 @@ use mogi_utilities::index_map::{
 };
 use petgraph::Graph;
 use petgraph::dot::Dot;
-use tracing::error;
 
 // Entries for different masks can be combined vertically by building up a hierarchy layer by layer
 // or horizontally by ORing the mask bits together and filling missing entries by enumerating
@@ -523,7 +519,11 @@ impl<'a> JumplistBuilder<'a> {
             for row in set_rows_child.into_iter() {
                 let submatchers_list = if bytes_consumed == 0 {
                     // first iteration: take sublists into account
-                    row.matcher.conjunctions.get(token_index).map(|c| c.dynamic_submatchers.clone()).unwrap_or(vec![])
+                    row.matcher
+                        .conjunctions
+                        .get(token_index)
+                        .map(|c| c.dynamic_submatchers.clone())
+                        .unwrap_or(vec![])
                 } else {
                     vec![]
                 };
@@ -643,7 +643,11 @@ impl<'a> JumplistBuilder<'a> {
                         for row in &terminal_matcher_rows {
                             field_extractor_map.insert(
                                 row.matcher.constructor_id,
-                                row.matcher.conjunctions.get(token_index).map(|c| c.dynamic_field_extractors.clone()).unwrap_or(vec![])
+                                row.matcher
+                                    .conjunctions
+                                    .get(token_index)
+                                    .map(|c| c.dynamic_field_extractors.clone())
+                                    .unwrap_or(vec![]),
                             );
                         }
                     }

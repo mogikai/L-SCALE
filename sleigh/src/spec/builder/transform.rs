@@ -1,5 +1,4 @@
 use crate::compiler::InternalCompilerResult;
-use crate::spec::jir::common::JIRSize;
 use crate::spec::moir::common::MOIRSize;
 
 use self::jumplist::JumplistBuilder;
@@ -44,12 +43,10 @@ use crate::spec::{
 };
 use addr_align::Align;
 use fnv::FnvHashMap;
-use itertools::Itertools;
 use mogi_utilities::index_map::{
     PrimaryMap,
     SecondaryMap,
 };
-use std::collections::HashMap;
 
 mod jumplist;
 use crate::compiler::build::trace_build;
@@ -319,7 +316,7 @@ fn create_unsorted_groups(varnodes: &PrimaryMap<VarNodeId, MOIRVarNode>) -> Vec<
 /// overlapping group is merged into the current group at `group_id`, and its entry
 /// in the `groups` vector is set to `None`.
 fn merge_remaining_overlaps(
-    mut groups: &mut Vec<Option<VarnodeGroup>>,
+    groups: &mut Vec<Option<VarnodeGroup>>,
     varnode: &MOIRVarNode,
     existing_group_id: usize,
 ) {

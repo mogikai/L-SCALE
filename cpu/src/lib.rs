@@ -21,7 +21,7 @@
 #![feature(let_chains)]
 #![feature(abort_unwind)]
 // TODO: Disallow dead code once prototyping is done
-#![allow(dead_code)]
+#![allow(dead_code, unused_imports)]
 #![deny(unsafe_op_in_unsafe_fn)]
 extern crate core;
 

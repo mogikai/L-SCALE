@@ -223,7 +223,7 @@ where
 
         self.available_registers.remove(reg);
 
-        /// Spill the register if it is occupied by a slice.
+        // Spill the register if it is occupied by a slice.
         self.spill_reg(reg);
         Ok(reg)
     }

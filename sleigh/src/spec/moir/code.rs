@@ -303,10 +303,6 @@ macro_rules! moir_instruction {
 }
 
 use crate::spec::moir::address_space::SpaceId;
-use crate::spec::moir::code::MOIROperation::{
-    GotoDirectIf,
-    GotoIndirectIf,
-};
 use crate::spec::moir::custom_op::CustomOpId;
 use crate::spec::moir::scope::{
     LabelId,

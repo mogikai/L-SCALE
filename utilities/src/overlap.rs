@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::ops::Range;
 
 /// Checks whether range `a` overlaps with range `b`

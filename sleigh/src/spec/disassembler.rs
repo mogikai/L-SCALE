@@ -1,8 +1,22 @@
 use mogi_utilities::addresses::EVAddr;
 
-use crate::{disassembler::{Disassembler, DisassemblerError, DisassemblerResult}, lifter::{context_provider::ContextProvider, source::TargetInstructionSource}, spec::jir::{jcode::ContinueLifting, trace_jir}};
+use crate::disassembler::{
+    Disassembler,
+    DisassemblerError,
+    DisassemblerResult,
+};
+use crate::lifter::context_provider::ContextProvider;
+use crate::lifter::source::TargetInstructionSource;
+use crate::spec::jir::jcode::ContinueLifting;
+use crate::spec::jir::trace_jir;
 
-use super::{jir::{basic_block::builder::TargetBasicBlockBuilder, context_stack::ContextStack, jumplist::{MatchContext, MatcherResult}}, ProcessorSpecification};
+use super::ProcessorSpecification;
+use super::jir::basic_block::builder::TargetBasicBlockBuilder;
+use super::jir::context_stack::ContextStack;
+use super::jir::jumplist::{
+    MatchContext,
+    MatcherResult,
+};
 
 impl Disassembler for ProcessorSpecification {
     fn disassemble_instruction<S: TargetInstructionSource, C: ContextProvider>(
@@ -28,9 +42,9 @@ impl Disassembler for ProcessorSpecification {
                 table: _,
                 resolver,
                 bytes_consumed: _,
-            } => {
-                resolver.build_display(self).map_err(|_| -> DisassemblerError { todo!() })
-            }
+            } => resolver
+                .build_display(self)
+                .map_err(|_| -> DisassemblerError { todo!() }),
         }
     }
 
@@ -58,6 +72,7 @@ impl Disassembler for ProcessorSpecification {
             let match_context = MatchContext::new(addr, &self.jumplist_cache, &self.symbol_tables.constructors);
             let matching_result = match_context.r#match(&buffer, &mut context_stack).unwrap();
 
+            #[allow(unused_variables)]
             match matching_result {
                 MatcherResult::EndOfByteStream => todo!("Handle end of byte stream"),
                 MatcherResult::None => todo!("Handle no match"),

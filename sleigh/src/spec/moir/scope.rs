@@ -17,7 +17,6 @@ use crate::spec::moir::varnode::{
     MOIRReference,
     MOIRSlice,
 };
-use itertools::Itertools;
 use mogi_sleigh_parser::lexer::InputSpan;
 use mogi_sleigh_parser::{
     ParserContext,

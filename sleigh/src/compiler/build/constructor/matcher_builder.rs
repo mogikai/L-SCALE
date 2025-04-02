@@ -14,7 +14,6 @@ use crate::compiler::build::constructor::matcher::{
     MatcherReference,
     MatcherToken,
 };
-use crate::compiler::error::InternalError;
 use crate::compiler::{
     InternalCompilerResult,
     SleighCompiler,

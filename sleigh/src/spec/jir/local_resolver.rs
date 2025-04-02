@@ -11,7 +11,6 @@ use crate::spec::jir::values::{
     JIRConst,
     JIRSlice,
     JIRValue,
-    JIRVarNodeId,
 };
 use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::constructor::{
@@ -42,12 +41,8 @@ use fnv::FnvHashMap;
 use mogi_sleigh_parser::StringId;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::SecondaryMap;
-use num::complex::ComplexFloat;
 use std::fmt::Write;
-use std::ptr::write;
 use tracing::debug;
-
-use super::basic_block::TargetBasicBlock;
 
 pub enum JIRResolvedValue {
     Value(JIRValue),
@@ -278,9 +273,7 @@ impl<'a> JIRResolver<'a> {
         local_id: MOIRLocalId,
     ) -> InternalCompilerResult<u128> {
         let value = self.values[local_id]
-            .ok_or_else(|| -> InternalError {
-                todo!("Generate error report for missing local value")
-            })?;
+            .ok_or_else(|| -> InternalError { todo!("Generate error report for missing local value") })?;
         Ok(match value {
             JIRValue::Const(c) => c.value(),
             _ => todo!("Generate error report for non-const value in const resolution"),

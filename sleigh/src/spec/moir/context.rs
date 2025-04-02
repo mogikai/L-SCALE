@@ -1,4 +1,3 @@
-use crate::new_typed_index_table_id;
 use mogi_utilities::new_map_key;
 
 use super::varnode::VarNodeId;

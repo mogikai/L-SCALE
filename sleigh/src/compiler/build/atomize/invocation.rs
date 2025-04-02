@@ -1,8 +1,5 @@
 use crate::compiler::build::trace_build;
-use crate::compiler::error::{
-    InternalError,
-    InternalErrorType,
-};
+use crate::compiler::error::InternalErrorType;
 use crate::compiler::{
     InternalCompilerResult,
     SleighCompiler,

@@ -1,4 +1,3 @@
-use crate::new_typed_index_table_id;
 use mogi_sleigh_parser::Spanned;
 use mogi_sleigh_parser::ast::common::SASTIdent;
 use mogi_sleigh_parser::ast::pcode::SASTPCode;

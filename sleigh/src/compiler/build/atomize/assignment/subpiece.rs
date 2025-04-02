@@ -18,10 +18,7 @@ use crate::spec::moir::scope::{
 };
 use crate::spec::moir::varnode::MOIRLocal;
 use mogi_sleigh_parser::Spanned;
-use mogi_sleigh_parser::ast::common::{
-    SASTIdent,
-    SASTSize,
-};
+use mogi_sleigh_parser::ast::common::SASTIdent;
 use mogi_sleigh_parser::ast::pcode::expression::SASTPCodeExpression;
 use mogi_sleigh_parser::ast::pcode::subpiece::{
     SASTPCodeSubpiece,

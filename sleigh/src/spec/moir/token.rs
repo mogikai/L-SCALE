@@ -1,6 +1,5 @@
 use mogi_utilities::new_map_key;
 
-use crate::new_typed_index_table_id;
 use crate::spec::moir::endianness::MOIREndianness;
 
 use super::common::MOIRSize;

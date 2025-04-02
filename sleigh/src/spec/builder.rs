@@ -22,8 +22,6 @@ use crate::compiler::error::{
     InternalErrorType,
     InvalidSymbolType,
     UndefinedIdentifier,
-    UndefinedSymbol,
-    UnmappedIdentifier,
 };
 use crate::spec::builder::transform::MOIRToJIRTransformer;
 use crate::spec::moir::address_space::{
@@ -57,7 +55,6 @@ use crate::spec::moir::varnode::{
     MOIRVarNode,
     VarNodeId,
 };
-use crate::spec::typed_index_table::TypedIndexTable;
 use crate::spec::{
     MacroId,
     ProcessorSpecification,
@@ -81,18 +78,12 @@ use mogi_utilities::index_map::{
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use std::fs::{
-    File,
-    OpenOptions,
-};
+use std::fs::OpenOptions;
 use std::io::{
     BufWriter,
     Write,
 };
-use std::path::{
-    Path,
-    PathBuf,
-};
+use std::path::Path;
 use strum_macros::Display;
 use tracing::debug;
 
@@ -726,8 +717,14 @@ impl ProcessorSpecificationBuilder {
         // self.dump_symbols_to_file(&PathBuf::from("symbol_strings.txt"));
 
         let root_table = self.table_id_by_ident(&self.root_table)?;
-        let context =
-            MOIRToJIRTransformer::new(&self.interner, self.symbol_ids, self.symbol_strings, self.symbol_tables, &self.context, root_table);
+        let context = MOIRToJIRTransformer::new(
+            &self.interner,
+            self.symbol_ids,
+            self.symbol_strings,
+            self.symbol_tables,
+            &self.context,
+            root_table,
+        );
         let jir = context.transform()?;
         // TODO: Generate more helpful error reports during final build step
         let spec = ProcessorSpecification {

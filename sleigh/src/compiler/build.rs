@@ -51,11 +51,7 @@ use mogi_sleigh_parser::{
     Spanned,
     TransmuteIntoVec,
 };
-use num::complex::ComplexFloat;
-use tracing::{
-    debug,
-    trace,
-};
+use tracing::debug;
 
 #[cfg(feature = "trace_build")]
 macro_rules! trace_build {

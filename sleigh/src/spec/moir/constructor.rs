@@ -1,12 +1,12 @@
 use super::actions::MOIRAction;
 use super::display::MOIRDisplay;
 use super::field::MOIRField;
-use super::field_extractor::FieldExtractor;
 use super::varnode::{
     MOIRReference,
     VarNodeId,
 };
 use crate::compiler::InternalCompilerResult;
+use crate::jinst;
 use crate::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
 use crate::spec::jir::basic_block::instruction::TargetInstructionBuilder;
 use crate::spec::jir::jcode::{
@@ -44,15 +44,10 @@ use crate::spec::{
     ProcessorSpecification,
     ProcessorSpecificationError,
 };
-use crate::{
-    jinst,
-    new_typed_index_table_id,
-};
 use mogi_sleigh_parser::{
     ParserContext,
     SleighInterner,
 };
-use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::new_map_key;
 use serde_derive::{
     Deserialize,
@@ -175,7 +170,7 @@ impl MOIRConstructor {
         for fragment in self.display.fragments.iter() {
             match fragment {
                 MOIRDisplayFragment::Literal(string) => {
-                    write!(display_string, "{}", string);
+                    write!(display_string, "{}", string).unwrap();
                 }
                 MOIRDisplayFragment::Local(local_id) => {
                     let reference = self
@@ -187,7 +182,7 @@ impl MOIRConstructor {
                     match reference {
                         MOIRReference::Field(field_id) => {
                             let field_string = build_field_display(spec, resolver, *local_id, field_id);
-                            write!(display_string, "{}", field_string);
+                            write!(display_string, "{}", field_string).unwrap();
                         }
                         MOIRReference::SubTable(table_id) => {
                             let table_resolver = resolver
@@ -197,17 +192,17 @@ impl MOIRConstructor {
                             let table_string = table_resolver
                                 .constructor()
                                 .generate_display(spec, table_resolver)?;
-                            write!(display_string, "{}", table_string);
+                            write!(display_string, "{}", table_string).unwrap();
                         }
                         MOIRReference::VarNode(vnid) => {
                             let varnode_string = build_varnode_display(spec, vnid);
-                            write!(display_string, "{}", varnode_string);
+                            write!(display_string, "{}", varnode_string).unwrap();
                         }
                         MOIRReference::Const(_) => {
                             let value = resolver
                                 .resolve_local_id_to_const(*local_id)
                                 .expect("The const must be set");
-                            write!(display_string, "{}", value);
+                            write!(display_string, "{}", value).unwrap();
                         }
                         _ => panic!("There are no other cases"),
                     }
@@ -483,7 +478,11 @@ impl MOIRConstructor {
                     .resolve_local(spec, instruction_builder, input)
                     .and_then(|resolved| match resolved {
                         JIRResolvedValue::Value(value) => Ok(value),
-                        JIRResolvedValue::Reference { address, space, size } => match address {
+                        JIRResolvedValue::Reference {
+                            address,
+                            space: _,
+                            size,
+                        } => match address {
                             JIRValue::Slice(slice) => Ok(slice.into()),
                             JIRValue::Const(value) => {
                                 // We construct a new const with the size provided in the reference, since this

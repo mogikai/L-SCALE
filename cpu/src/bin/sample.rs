@@ -10,31 +10,24 @@ use mogi_cpu::new_cpu_trait::{
 };
 use mogi_cpu::tlb::{
     PageData,
-    PageIndex,
     PageMetaInfo,
-    PageTag,
 };
 use mogi_mem::PAGE_SIZE;
 use mogi_mem::mmu::MogiMMU;
 use mogi_sleigh::SleighPreprocessorFactory;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
-use mogi_sleigh::spec::{
-    ProcessorSpecification,
-    SpaceId,
-};
+use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_system::components::mmu::{
     MMU,
     Permission,
 };
 use mogi_utilities::addresses::HVAddr;
-use mogi_utilities::index_map::MapKey;
 use std::cell::RefCell;
 use std::env::current_dir;
 use std::fs::{
     File,
     OpenOptions,
 };
-use std::hint::black_box;
 use std::path::Path;
 use std::rc::Rc;
 use std::time::Instant;
@@ -96,14 +89,14 @@ fn main() {
     // Set up the just in time compiler. TODO: Maybe we can refactor this such that the jit doesn't need the spec.
     let mut jit = X86MogiJit::new(specification.clone(), mmu.clone(), false);
 
-    jit.register_tlb_read_miss_callback(|ctx, addr, size, space| {
+    jit.register_tlb_read_miss_callback(|ctx, addr, _size, _space| {
         let tlb = ctx.tlb_mut();
         tlb.insert_read(addr, stack_page_addr);
         unsafe { Ok(stack_page_addr.byte_offset(PageData::page_offset(addr) as isize)) }
     })
     .unwrap();
 
-    jit.register_tlb_write_miss_callback(|ctx, addr, size, space| {
+    jit.register_tlb_write_miss_callback(|ctx, addr, _size, _space| {
         let tlb = ctx.tlb_mut();
         tlb.insert_write(addr, stack_page_addr);
         unsafe { Ok(stack_page_addr.byte_offset(PageData::page_offset(addr) as isize)) }
@@ -125,7 +118,7 @@ fn main() {
 fn load_specification(spec_path: &Path) -> ProcessorSpecification {
     let mut compiled_spec_path = current_dir().unwrap();
     compiled_spec_path.push(".output/x86.mcs");
-    let mut file = File::open(&compiled_spec_path);
+    let file = File::open(&compiled_spec_path);
     let specification = match file {
         Ok(mut file) => {
             info!("Loading compiled spec from {compiled_spec_path:?}");
@@ -137,10 +130,10 @@ fn load_specification(spec_path: &Path) -> ProcessorSpecification {
         Err(_) => {
             let spec_dir = spec_path.parent().unwrap();
             let factory = SleighPreprocessorFactory::new().working_dir(spec_dir.to_path_buf());
-            let mut compiler = SleighCompilerBuilder::new()
+            let compiler = SleighCompilerBuilder::new()
                 .preprocessor_factory(factory)
                 .build();
-            let mut specification = compiler.compile(spec_path).unwrap();
+            let specification = compiler.compile(spec_path).unwrap();
             info!("Saving compiled spec to {compiled_spec_path:?}");
             let now = Instant::now();
             let mut file = OpenOptions::new()

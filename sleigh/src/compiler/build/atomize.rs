@@ -3,8 +3,6 @@ mod expression;
 mod invocation;
 mod size_inference;
 
-use std::collections::HashMap;
-
 use crate::compiler::{
     InternalCompilerResult,
     SleighCompiler,
@@ -33,7 +31,6 @@ use mogi_sleigh_parser::ast::pcode::{
     SASTPCode,
     SASTPCodeLabelledStatement,
 };
-use mogi_sleigh_parser::lexer::InputSpan;
 use mogi_sleigh_parser::{
     Spanned,
     StringId,

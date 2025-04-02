@@ -16,7 +16,6 @@ use super::local_resolver::JIRResolver;
 use super::values::JIRValue;
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
-use crate::new_typed_index_table_id;
 use crate::spec::jir::trace_jir;
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::{
@@ -27,7 +26,6 @@ use crate::spec::moir::context::ContextId;
 use crate::spec::moir::field_extractor::FieldExtractor;
 use crate::spec::moir::scope::MOIRLocalId;
 use crate::spec::moir::table::TableId;
-use crate::spec::typed_index_table::TypedIndexTable;
 use fnv::FnvHashMap;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::{
@@ -624,17 +622,9 @@ mod test {
 
     use mogi_sleigh_parser::preprocessor::SleighPreprocessorFactory;
 
-    use super::*;
     use crate::compiler::SleighCompilerResult;
     use crate::compiler::builder::SleighCompilerBuilder;
-    use crate::lifter::context_provider::{
-        ContextProvider,
-        SimpleContextProvider,
-    };
     use crate::spec::ProcessorSpecification;
-    use crate::spec::jir::context_stack::ContextStack;
-    use crate::spec::moir::constructor::ConstructorId;
-    use crate::spec::moir::table::TableId;
 
     const ASSETS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/resources/test/");
 

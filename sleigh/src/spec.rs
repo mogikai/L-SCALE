@@ -3,13 +3,9 @@ use self::jir::jumplist::{
     JumplistId,
 };
 use self::moir::field::MOIRField;
-use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
 use crate::lifter::LifterDiagnostics;
-use crate::lifter::context_provider::ContextProvider;
-use crate::new_typed_index_table_id;
 use crate::spec::builder::MOIRSymbolId;
-use crate::spec::jir::context_stack::ContextStack;
 use crate::spec::jir::custom_op::JIRCustomOp;
 use crate::spec::jir::jir_block::JIRBlockId;
 use crate::spec::jir::space::JIRSpace;
@@ -28,15 +24,11 @@ pub use crate::spec::moir::custom_op::CustomOpId;
 use crate::spec::moir::endianness::MOIREndianness;
 pub use crate::spec::moir::field::FieldId;
 use crate::spec::moir::r#macro::MacroId;
-use crate::spec::moir::table::{
-    MOIRTable,
-    TableId,
-};
+use crate::spec::moir::table::TableId;
 use crate::spec::moir::token::TokenId;
 use crate::spec::moir::varnode::VarNodeId;
 use brotli::Decompressor;
 use fnv::FnvHashMap;
-use itertools::Itertools;
 use jir::jumplist::MatchContext;
 use jir::values::{
     VarnodeGroup,
@@ -53,14 +45,12 @@ use mogi_utilities::index_map::{
     PrimaryMap,
     SecondaryMap,
 };
-use mogi_utilities::new_map_key;
 use serde_derive::{
     Deserialize,
     Serialize,
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fmt;
 use std::io::{
     Read,
     Write,

@@ -284,7 +284,7 @@ impl MogiJit for X86MogiJit {
         // We create a new emitter for the target architecture. The emitter will directly emit instructions
         // into the provided `compiled_block` for each instruction in the provided `target_block`.
         let spec = self.processor_specification.borrow();
-        let mut emitter =
+        let emitter =
             X64Emitter::new(&self.global_context, &spec, &mut self.register_tracker, compiled_block, target_block);
 
         let usable_registers = HostRegSet::empty()

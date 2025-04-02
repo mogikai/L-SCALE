@@ -13,7 +13,6 @@ use crate::spec::jir::values::{
 use crate::spec::moir::scope::LabelId;
 use crate::spec::{
     ProcessorSpecResult,
-    ProcessorSpecificationError,
     SpaceId,
 };
 use mogi_utilities::addresses::EVAddr;
@@ -48,9 +47,9 @@ impl<'a> TargetInstructionBuilder<'a> {
         &mut self,
         instruction: JIRInstruction,
     ) -> ProcessorSpecResult {
-        /// If we insert a branch instruction, we add the target to the set of out edges.
-        /// Once the instruction is finished, the targets are pushed into the block, and
-        /// the block is locked for further instructions.
+        // If we insert a branch instruction, we add the target to the set of out edges.
+        // Once the instruction is finished, the targets are pushed into the block, and
+        // the block is locked for further instructions.
         match instruction {
             JIRInstruction::GotoDirectIf { target, .. }
             | JIRInstruction::ReturnDirect(target)
@@ -155,7 +154,7 @@ impl<'a> TargetInstructionBuilder<'a> {
 
     /// Finish building the instruction. Returns the address of the next instruction, and a boolean
     /// that indicates if this instruction ends the current target block.
-    pub fn finish(mut self) -> ProcessorSpecResult<ContinueLifting> {
+    pub fn finish(self) -> ProcessorSpecResult<ContinueLifting> {
         let cont = self
             .branch_targets
             .as_ref()
@@ -166,7 +165,7 @@ impl<'a> TargetInstructionBuilder<'a> {
 
     /// The instruction ends with a goto instruction. This necessitates that the instruction is finalized,
     /// and afterward a new block is created.
-    pub fn finish_goto(mut self) -> ProcessorSpecResult<ContinueLifting> {
+    pub fn finish_goto(self) -> ProcessorSpecResult<ContinueLifting> {
         let cont = self
             .branch_targets
             .as_ref()

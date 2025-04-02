@@ -138,13 +138,11 @@ impl TargetBasicBlockBuilder {
         if let Some(previous_next) = self.next_instruction
             && previous_next != start
         {
-            Err(todo!(
-                "Report error: Cannot start an instruction that is not directly connected in the control flow."
-            ))?
+            todo!("Report error: Cannot start an instruction that is not directly connected in the control flow.")
         }
         if self.target_block.fallthrough.is_some() || self.target_block.branch_targets.is_some() {
             // Another instruction has previously emitted a goto
-            Err(todo!("Report error: The previous instruction already terminated the block"))?
+            todo!("Report error: The previous instruction already terminated the block")
         }
         self.target_block
             .jir_instructions

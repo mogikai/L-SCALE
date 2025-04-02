@@ -11,7 +11,6 @@ use crate::parser::{
     sleigh_ident,
     sleigh_keyword,
     sleigh_operation,
-    sleigh_whitespace,
 };
 use crate::tokens::SleighKeyword::Is;
 use crate::tokens::{
@@ -25,11 +24,7 @@ use crate::{
     Spanned,
 };
 use chumsky::input::MapExtra;
-use chumsky::prelude::{
-    any,
-    just,
-};
-use chumsky::primitive::none_of;
+use chumsky::prelude::any;
 use chumsky::{
     IterParser,
     Parser,

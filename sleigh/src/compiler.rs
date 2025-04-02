@@ -14,7 +14,6 @@ use mogi_sleigh_parser::lexer::{
 use mogi_sleigh_parser::parser::SleighParser;
 use mogi_sleigh_parser::preprocessor::SleighPreprocessorFactory;
 use mogi_sleigh_parser::preprocessor::error::PreprocessorError;
-use mogi_sleigh_parser::preprocessor::error::PreprocessorError::ParseError;
 use std::fmt::Debug;
 use std::path::{
     Path,

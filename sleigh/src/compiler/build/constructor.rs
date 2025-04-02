@@ -5,10 +5,6 @@ use self::matcher::{
 };
 use crate::compiler::build::constructor::matcher::MatcherReference;
 use crate::compiler::build::trace_build;
-use crate::compiler::error::{
-    InternalError,
-    InternalErrorType,
-};
 use crate::compiler::{
     InternalCompilerResult,
     SleighCompiler,
@@ -45,10 +41,7 @@ use crate::spec::moir::varnode::{
     MOIRReference,
     MOIRSlice,
 };
-use itertools::{
-    FoldWhile,
-    Itertools,
-};
+use itertools::Itertools;
 use mogi_sleigh_parser::ast::common::SASTIdent;
 use mogi_sleigh_parser::ast::constructor::SASTConstructor;
 use mogi_sleigh_parser::ast::constructor::disassembly_section::{
@@ -68,11 +61,7 @@ use mogi_sleigh_parser::{
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::MapKey;
 use std::collections::HashSet;
-use std::ops::Deref;
-use tracing::{
-    debug,
-    trace,
-};
+use tracing::debug;
 
 pub(crate) mod matcher;
 pub(crate) mod matcher_builder;
@@ -539,7 +528,7 @@ impl SleighCompiler {
         scope: &MOIRScope,
         to_literal: bool,
     ) -> InternalCompilerResult<Option<MOIRDisplayFragment>> {
-        let (fragment, span) = sast_fragment.into_tuple();
+        let fragment = sast_fragment.into_value();
 
         Ok(match fragment {
             SASTDisplayFragment::Literal(string) => Some(MOIRDisplayFragment::Literal(string)),
@@ -552,7 +541,6 @@ impl SleighCompiler {
                         .expect("If we stored it it must be interned");
                     Some(MOIRDisplayFragment::Literal(string.to_string()))
                 } else {
-                    let sid_spanned = Spanned::new(sid, span);
                     let local_id = scope
                         .local_id_by_ident(sid)
                         .expect("Fragment identifiers must be included in the scope");

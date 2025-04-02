@@ -26,10 +26,7 @@ use mogi_utilities::addresses::{
     EVAddr,
 };
 use mogi_utilities::error::memory::MemoryError;
-use std::cell::{
-    Ref,
-    RefCell,
-};
+use std::cell::RefCell;
 use std::cmp::min;
 use std::fmt::{
     Debug,
