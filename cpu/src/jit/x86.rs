@@ -39,6 +39,7 @@ use crate::jit::x86::scaffolding::{
 };
 use crate::jit::x86::x64emitter::{
     TlbMissCallback,
+    X64AllocRequirements,
     X64Emitter,
 };
 use mogi_utilities::index_map::{
@@ -80,6 +81,7 @@ use crate::jit::regalloc::{
     RegAllocHostConstraints,
     RegisterAllocator,
 };
+use crate::jit::trace_jit;
 use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::registers::xmm::XMMRegister;
 use crate::tlb::PageMetaInfo;
@@ -284,8 +286,7 @@ impl MogiJit for X86MogiJit {
         // We create a new emitter for the target architecture. The emitter will directly emit instructions
         // into the provided `compiled_block` for each instruction in the provided `target_block`.
         let spec = self.processor_specification.borrow();
-        let emitter =
-            X64Emitter::new(&self.global_context, &spec, &mut self.register_tracker, compiled_block, target_block);
+        let alloc_requirements = X64AllocRequirements::new(target_block);
 
         let usable_registers = HostRegSet::empty()
             .with(GPRegister::AX.into_host_reg())
@@ -322,15 +323,22 @@ impl MogiJit for X86MogiJit {
             .with(XMMRegister::XMM15.into_host_reg());
 
         // And then start the register allocator for the block and target architecture.
-        let regalloc = RegisterAllocator::new(
-            &target_block,
-            emitter.emitter_requirements(),
-            RegAllocHostConstraints { usable_registers },
-        );
+        let regalloc =
+            RegisterAllocator::new(&target_block, &alloc_requirements, RegAllocHostConstraints { usable_registers });
         let allocations = regalloc.run()?;
 
+        trace_jit!("Register allocations for target block:\n{:#?}", allocations);
+
         // And finally we emit the instructions, using the allocations we just calculated.
-        emitter.emit_block(allocations)?;
+        let emitter = alloc_requirements.make_emitter(
+            &allocations,
+            &self.global_context,
+            &spec,
+            &mut self.register_tracker,
+            compiled_block,
+            target_block,
+        );
+        emitter.emit_block()?;
         self.code_buffer.write_block(target_block.start())?;
         Ok(())
     }

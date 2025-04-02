@@ -1,9 +1,11 @@
 use crate::jit::api::JITResult;
 use crate::jit::code_buffer::CompiledBasicBlock;
+use crate::jit::host::register::HostRegSet;
 use crate::jit::regalloc::requirements::OperandRequest;
 use crate::jit::x86::x64emitter::arithmetic::integer::AddSub;
 use crate::jit::x86::x64emitter::regalloc::SliceType;
 use crate::jit::x86::x64emitter::{
+    X64AllocRequirements,
     X64Emitter,
     mov64,
 };
@@ -21,16 +23,32 @@ use mogi_sleigh::spec::jir::values::{
 use std::iter::once;
 use tracing::trace;
 
-impl X64Emitter<'_> {
-    pub fn request_add_operands(
-        &self,
+impl X64AllocRequirements {
+    pub fn append_add_operands(
+        &mut self,
         output: JIRSlice,
-        a: JIRValue,
-        b: JIRValue,
-    ) -> impl Iterator<Item = OperandRequest> {
-        once(OperandRequest::write_any(output))
+        input_a: JIRValue,
+        input_b: JIRValue,
+    ) -> HostRegSet {
+        self.operand_requests
+            .push(OperandRequest::int_write_any(output));
+        match (input_a, input_b) {
+            (JIRValue::Slice(a), JIRValue::Slice(b)) => {
+                self.operand_requests.push(OperandRequest::int_read_any(a));
+                self.operand_requests.push(OperandRequest::int_read_any(b));
+            }
+            (JIRValue::Slice(a), JIRValue::Const(b)) | (JIRValue::Const(b), JIRValue::Slice(a)) => {
+                // If one of the operands is const, we only need one register.
+                // The other value will be used as immediate.
+                self.operand_requests.push(OperandRequest::int_read_any(a));
+            }
+            (_, _) => {}
+        }
+        HostRegSet::empty()
     }
+}
 
+impl X64Emitter<'_> {
     /// Emit instructions that add `a` and `b` and store the result in `output`.
     /// Since JIR operations do not have side effects, most of the time this will
     /// result in some kind of lea operation.

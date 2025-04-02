@@ -77,7 +77,7 @@ where
         RegisterAllocator::<'a, E> {
             target_block: translation_unit,
             emitter_requirements,
-            allocations: AllocatorResult::new(translation_unit.instruction_count()),
+            allocations: AllocatorResult::new(translation_unit, emitter_requirements),
             loaded_slices: Default::default(),
             host_constraints,
             available_registers,
@@ -114,7 +114,7 @@ where
         &mut self,
         block: JIRBlockId,
     ) -> JITResult {
-        for inst in self.target_block.jir_block_inst_ids(block).unwrap().rev() {
+        for inst in self.target_block.jir_block_inst_ids(block).rev() {
             self.alloc_inst(inst)?;
         }
         self.load_block_inputs()?;
@@ -154,18 +154,24 @@ where
         for operand in operands.fixed() {
             self.reserve_reg_for_fixed_operand(operand)?;
         }
+
         for clobber in clobbers {
             self.clear_clobber(clobber);
         }
 
         trace_jit!("Available registers after fixed reg and clobber constraints:\n{}", self.available_registers,);
 
-        for operand in operands.write() {
-            self.alloc_write_operand(operand)?;
+        // TODO: Can we combine this?
+        for (op_id, operand) in operands.write() {
+            let allocation = self.alloc_operand(operand)?;
+            trace_jit!("Allocated write operand {operand:?} for instruction {inst} as {allocation:?}");
+            self.allocations.set_allocation(inst, op_id, allocation);
         }
 
-        for operand in operands.read() {
-            self.alloc_read_operand(operand)?;
+        for (op_id, operand) in operands.read() {
+            let allocation = self.alloc_operand(operand)?;
+            trace_jit!("Allocated read operand {operand:?} for instruction {inst} as {allocation:?}");
+            self.allocations.set_allocation(inst, op_id, allocation);
         }
 
         // TODO: We might need to track the number of uses per allocation, such that we can
@@ -208,24 +214,34 @@ where
             })
     }
 
-    /// Allocate a register for the provided operand.
-    /// Returns an error, if no operand could be allocated.
-    fn alloc_register(
+    /// Allocates the provided operand.
+    /// The operand will either reside in an allocated register or is kept in memory.
+    /// Returns an error if no operand could be allocated.
+    fn alloc_unloaded_operand(
         &mut self,
         operand: &OperandRequest,
-    ) -> JITResult<HostReg> {
-        let reg = self
-            .available_registers
-            .into_iter()
-            .filter(|r| r.class() == operand.class)
-            .nth(0)
-            .ok_or_else(|| -> JitError { todo!("Error handling") })?;
+    ) -> JITResult<Allocation> {
+        // TODO: Pick a register where it "hurts" the least to spill it.
+        //       Most likely this will be done with an LRU register or operand list.
+
+        // TODO: Potentially return a memory allocation if the operand is used infrequently.
+        let reg = match operand.constraint {
+            OperandConstraint::Any | OperandConstraint::Reg => self
+                .available_registers
+                .into_iter()
+                .filter(|r| r.class() == operand.class)
+                .nth(0)
+                .ok_or_else(|| -> JitError { todo!("Error handling") })?,
+            OperandConstraint::FixedReg(reg) => reg,
+        };
 
         self.available_registers.remove(reg);
 
-        // Spill the register if it is occupied by a slice.
+        // Spill the register if it is occupied by a slice, since we need to make sure it is loaded
+        // with the correct value after the instruction finishs.
         self.spill_reg(reg);
-        Ok(reg)
+        self.loaded_slices.insert(reg, operand.slice);
+        Ok(Allocation::Register(reg))
     }
 
     /// Makes sure that the already loaded slice group corresponds to the operand request.
@@ -250,49 +266,28 @@ where
         Ok(reg)
     }
 
-    fn alloc_write_operand(
+    fn alloc_operand(
         &mut self,
         operand: &OperandRequest,
     ) -> JITResult<Allocation> {
-        let OperandKind::Write = operand.kind else {
-            panic!("Logic error: Write operand must have kind Write.")
-        };
-        trace_jit!("Allocating write operand {operand:?}");
-        if let Some((reg, existing_slice)) = self.get_loaded_slice_group(operand) {
-            Ok(Allocation::Register(self.ensure_valid_reg_allocation(reg, existing_slice, operand)?))
+        let allocation = if let Some((reg, existing_slice)) = self.get_loaded_slice_group(operand) {
+            Allocation::Register(self.ensure_valid_reg_allocation(reg, existing_slice, operand)?)
         } else {
             // Slice group is not in any register. We can allocate one from the free regs.
+            self.alloc_unloaded_operand(operand)?
+        };
 
-            let reg = self.alloc_register(operand)?;
-            // We are allocating a write operand which needs to be preserved.
-            // This needs to be done for the first occurrence (when viewing in reverse),
-            // since this will be the last time this value is written.
-            // TODO: Only spill if this is the first occurrence
+        if let Allocation::Register(reg) = allocation
+            && let OperandKind::Write = operand.kind
+        {
+            // If this is a write operand, we need to make sure that it is spilled correctly on the first write we
+            // encounter (viewing in reverse).
+            // TODO: Only spill on first write (viewing in reverse)
             self.allocations
                 .load_spill_directives
                 .add_spill_after(reg, operand.slice);
-            self.loaded_slices.insert(reg, operand.slice);
-            Ok(Allocation::Register(reg))
         }
-    }
-
-    //noinspection DuplicatedCode
-    fn alloc_read_operand(
-        &mut self,
-        operand: &OperandRequest,
-    ) -> JITResult<Allocation> {
-        let OperandKind::Read = operand.kind else {
-            panic!("Logic error: Write operand must have kind Write.")
-        };
-        trace_jit!("Allocating read operand {operand:?}");
-        if let Some((reg, existing_slice)) = self.get_loaded_slice_group(operand) {
-            Ok(Allocation::Register(self.ensure_valid_reg_allocation(reg, existing_slice, operand)?))
-        } else {
-            // Slice group is not in any register. We can allocate one from the free regs.
-            let reg = self.alloc_register(operand)?;
-            self.loaded_slices.insert(reg, operand.slice);
-            Ok(Allocation::Register(reg))
-        }
+        Ok(allocation)
     }
 
     fn reserve_reg_for_fixed_operand(
@@ -309,9 +304,6 @@ where
             todo!("Allocation error: Tried to allocate a fixed register for an unavailable register")
         }
         self.available_registers.remove(target_reg);
-
-        // TODO: Is this the correct spill location?
-        self.spill_reg(target_reg);
         Ok(())
     }
 

@@ -49,7 +49,7 @@ pub struct OperandRequest {
 }
 
 impl OperandRequest {
-    pub fn write_any(slice: JIRSlice) -> Self {
+    pub fn int_write_any(slice: JIRSlice) -> Self {
         OperandRequest {
             slice,
             constraint: OperandConstraint::Any,
@@ -58,7 +58,7 @@ impl OperandRequest {
         }
     }
 
-    pub fn read_any(slice: JIRSlice) -> Self {
+    pub fn int_read_any(slice: JIRSlice) -> Self {
         OperandRequest {
             slice,
             constraint: OperandConstraint::Any,
@@ -84,20 +84,22 @@ impl<'a> OperandRequirements<'a> {
             .filter(|req| matches!(req.constraint, OperandConstraint::FixedReg(_)))
     }
 
-    pub fn write(&self) -> impl Iterator<Item = &OperandRequest> {
-        self.0
-            .iter()
-            .filter(|req| matches!(req.kind, OperandKind::Write))
+    pub fn write(&self) -> impl Iterator<Item = (usize, &OperandRequest)> {
+        self.all()
+            .filter(|(_, req)| matches!(req.kind, OperandKind::Write))
     }
 
-    pub fn read(&self) -> impl Iterator<Item = &OperandRequest> {
-        self.0
-            .iter()
-            .filter(|req| matches!(req.kind, OperandKind::Read))
+    pub fn read(&self) -> impl Iterator<Item = (usize, &OperandRequest)> {
+        self.all()
+            .filter(|(_, req)| matches!(req.kind, OperandKind::Read))
     }
 
-    pub fn all(&self) -> impl Iterator<Item = &OperandRequest> + ExactSizeIterator {
-        self.0.iter()
+    pub fn all(&self) -> impl Iterator<Item = (usize, &OperandRequest)> + ExactSizeIterator {
+        self.0.iter().enumerate()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 }
 

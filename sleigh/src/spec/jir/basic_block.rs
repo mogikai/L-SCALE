@@ -29,12 +29,27 @@ pub struct TargetBasicBlock(Rc<TargetBasicBlockInner>);
 
 impl TargetBasicBlock {
     /// Get an iterator over all instructions of the target basic block.
+    /// The instructions are ordered such that the instructions of the next fallthrough block
+    /// follow the ones of the current block.
     pub fn instructions(&self) -> impl ExactSizeIterator<Item = &JIRInstruction> + DoubleEndedIterator {
         self.0.jir_instructions.iter()
     }
 
+    /// See [Self::instructions]
+    pub fn instructions_with_ids(
+        &self
+    ) -> impl ExactSizeIterator<Item = (InstId, &JIRInstruction)> + DoubleEndedIterator {
+        self.0.jir_instructions.iter().enumerate()
+    }
+
     pub fn instruction_count(&self) -> usize {
         self.0.jir_instructions.len()
+    }
+
+    /// Get an iterator over all instructions in the target basic block. This includes all instructions from
+    /// all jir blocks.
+    pub fn inst_ids(&self) -> impl ExactSizeIterator<Item = InstId> + DoubleEndedIterator {
+        (0..self.instruction_count()).map(|i| i as InstId)
     }
 
     pub fn jir_block_ids(&self) -> impl ExactSizeIterator<Item = JIRBlockId> + DoubleEndedIterator {
@@ -45,12 +60,29 @@ impl TargetBasicBlock {
     pub fn jir_block_inst_ids(
         &self,
         block: JIRBlockId,
-    ) -> Option<impl ExactSizeIterator<Item = InstId> + DoubleEndedIterator> {
+    ) -> impl ExactSizeIterator<Item = InstId> + DoubleEndedIterator {
         self.0
             .jir_blocks
-            .get(block)?
-            .as_ref()
-            .map(|block| block.range.clone())
+            .get(block)
+            .map(|block| block.as_ref().map(|b| b.range.clone()))
+            .flatten()
+            // Return an empty iterator if there is no corresponding block.
+            .unwrap_or(0..0)
+    }
+
+    pub fn jir_block_insts(
+        &self,
+        block: JIRBlockId,
+    ) -> impl ExactSizeIterator<Item = (InstId, &JIRInstruction)> + DoubleEndedIterator {
+        let range = self
+            .0
+            .jir_blocks
+            .get(block)
+            .map(|block| block.as_ref().map(|block| block.range.clone()))
+            .flatten();
+        self.0.jir_instructions[range.unwrap_or(0..0)]
+            .iter()
+            .enumerate()
     }
 
     /// The address where this block starts.

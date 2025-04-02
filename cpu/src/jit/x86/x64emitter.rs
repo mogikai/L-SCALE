@@ -50,7 +50,11 @@ use crate::jit::regalloc::requirements::{
     OperandRequest,
     OperandRequirements,
 };
-use crate::jit::regalloc::result::AllocatorResult;
+use crate::jit::regalloc::result::{
+    AllocatorResult,
+    LoadSpillDirective,
+};
+use crate::jit::trace_jit;
 use crate::jit::x86::registers::RegisterTracker;
 use crate::jit::x86::{
     X86GlobalContext,
@@ -71,6 +75,7 @@ use mogi_sleigh::spec::jir::values::{
 use mogi_utilities::addresses::EVAddr;
 
 pub struct X64Emitter<'a> {
+    allocations: &'a AllocatorResult,
     global_context: &'a X86GlobalContext,
     processor_spec: &'a ProcessorSpecification,
     register_tracker: &'a mut RegisterTracker,
@@ -80,8 +85,6 @@ pub struct X64Emitter<'a> {
 
     /// The block the emitter should emit instructions for.
     target_block: &'a TargetBasicBlock,
-
-    alloc_requirements: X64AllocRequirements,
 }
 
 /// This struct contains the data that is needed by the allocator.
@@ -151,7 +154,7 @@ impl X64AllocRequirements {
             JIRInstruction::Copy(args) => self.append_copy_operands(args.output, args.input),
             JIRInstruction::Load { target, address, space } => self.append_load_operands(*target, *address, *space),
             JIRInstruction::Store { address, value, space } => self.append_store_operands(*address, *space, *value),
-            JIRInstruction::IntAdd(args) => HostRegSet::empty(),
+            JIRInstruction::IntAdd(args) => self.append_add_operands(args.output, args.input_a, args.input_b),
             JIRInstruction::IntSubtract(args) => HostRegSet::empty(),
             JIRInstruction::IntMul(_) => HostRegSet::empty(),
             JIRInstruction::IntDiv(_) => HostRegSet::empty(),
@@ -220,6 +223,18 @@ impl X64AllocRequirements {
             JIRInstruction::CustomOp { .. } => HostRegSet::empty(),
         }
     }
+
+    pub fn make_emitter<'a>(
+        &self,
+        allocations: &'a AllocatorResult,
+        global_context: &'a X86GlobalContext,
+        processor_spec: &'a ProcessorSpecification,
+        register_tracker: &'a mut RegisterTracker,
+        block: &'a mut CompiledBasicBlock<X64Relocation>,
+        target_block: &'a TargetBasicBlock,
+    ) -> X64Emitter<'a> {
+        X64Emitter::<'a>::new(allocations, global_context, processor_spec, register_tracker, block, target_block)
+    }
 }
 
 impl EmitterAllocRequirements for X64AllocRequirements {
@@ -243,7 +258,8 @@ impl EmitterAllocRequirements for X64AllocRequirements {
 }
 
 impl X64Emitter<'_> {
-    pub fn new<'a>(
+    fn new<'a>(
+        allocations: &'a AllocatorResult,
         global_context: &'a X86GlobalContext,
         processor_spec: &'a ProcessorSpecification,
         register_tracker: &'a mut RegisterTracker,
@@ -251,25 +267,18 @@ impl X64Emitter<'_> {
         target_block: &'a TargetBasicBlock,
     ) -> X64Emitter<'a> {
         X64Emitter {
+            allocations,
             global_context,
             processor_spec,
             register_tracker,
             block,
             target_block,
-            alloc_requirements: X64AllocRequirements::new(target_block),
         }
     }
 
-    pub fn emitter_requirements(&self) -> &impl EmitterAllocRequirements {
-        &self.alloc_requirements
-    }
-
-    pub fn emit_block(
-        mut self,
-        allocations: AllocatorResult,
-    ) -> JITResult {
-        for inst in self.target_block.instructions() {
-            self.emit_inst(inst)?;
+    pub fn emit_block(mut self) -> JITResult {
+        for (inst_id, inst) in self.target_block.instructions_with_ids() {
+            self.emit_inst(inst_id, inst)?;
         }
         self.finalize()
     }
@@ -300,104 +309,104 @@ impl X64Emitter<'_> {
 
     fn emit_inst(
         &mut self,
+        inst_id: InstId,
         jinst: &JIRInstruction,
     ) -> JITResult {
-        trace!("Emitting {jinst}");
+        trace_jit!("Emitting {jinst}");
+        self.emit_directives(
+            self.allocations
+                .directives()
+                .before_inst_directives(inst_id),
+        )?;
         self.register_tracker.new_alloc_version();
         // TODO: Maybe we can "allocate" the registers ahead of time and provide some hints
         //       or something similar. Allocating the registers when having a complete
         //       view on all relevant instructions may be more efficient.
         match jinst {
-            JIRInstruction::BlockStart(block_id) => return Ok(()),
-            JIRInstruction::BlockEnd(block_id) => return Ok(()),
-            JIRInstruction::InstructionStart(addr) => return Ok(()),
-            JIRInstruction::InstructionEnd(addr) => return Ok(()),
-            JIRInstruction::Copy(args) => return self.emit_copy(args.output, args.input),
-            JIRInstruction::Load { target, address, space } => return self.emit_load(*target, *address, *space),
-            JIRInstruction::Store { address, value, space } => return self.emit_store(*address, *space, *value),
-            JIRInstruction::IntAdd(args) => return self.emit_add(args.output, args.input_a, args.input_b),
-            JIRInstruction::IntSubtract(args) => return self.emit_subtract(args.output, args.input_a, args.input_b),
-            JIRInstruction::IntMul(args) => return self.emit_multiply(args.output, args.input_a, args.input_b),
-            JIRInstruction::IntDiv(args) => return self.emit_divide(args.output, args.input_a, args.input_b),
-            JIRInstruction::IntSDiv(args) => return self.emit_signed_divide(args.output, args.input_a, args.input_b),
-            JIRInstruction::IntRemainder(args) => return self.emit_remainder(args.output, args.input_a, args.input_b),
+            JIRInstruction::BlockStart(block_id) => {}
+            JIRInstruction::BlockEnd(block_id) => {}
+            JIRInstruction::InstructionStart(addr) => {}
+            JIRInstruction::InstructionEnd(addr) => {}
+            JIRInstruction::Copy(args) => self.emit_copy(args.output, args.input)?,
+            JIRInstruction::Load { target, address, space } => self.emit_load(*target, *address, *space)?,
+            JIRInstruction::Store { address, value, space } => self.emit_store(*address, *space, *value)?,
+            JIRInstruction::IntAdd(args) => self.emit_add(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntSubtract(args) => self.emit_subtract(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntMul(args) => self.emit_multiply(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntDiv(args) => self.emit_divide(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntSDiv(args) => self.emit_signed_divide(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntRemainder(args) => self.emit_remainder(args.output, args.input_a, args.input_b)?,
             JIRInstruction::IntSRemainder(args) => {
-                return self.emit_signed_remainder(args.output, args.input_a, args.input_b);
+                self.emit_signed_remainder(args.output, args.input_a, args.input_b)?
             }
-            JIRInstruction::IntLeft(args) => return self.emit_shift_left(args.output, args.input_a, args.input_b),
-            JIRInstruction::IntRight(args) => return self.emit_shift_right(args.output, args.input_a, args.input_b),
-            JIRInstruction::IntSRight(args) => {
-                return self.emit_shift_right_signed(args.output, args.input_a, args.input_b);
-            }
-            JIRInstruction::IntOr(args) => return self.emit_bitwise_or(args.output, args.input_a, args.input_b),
-            JIRInstruction::IntAnd(args) => return self.emit_bitwise_and(args.output, args.input_a, args.input_b),
-            JIRInstruction::IntXor(args) => return self.emit_bitwise_xor(args.output, args.input_a, args.input_b),
-            JIRInstruction::IntSLess(args) => {
-                return self.emit_compare_lt_signed(args.output, args.input_a, args.input_b);
-            }
+            JIRInstruction::IntLeft(args) => self.emit_shift_left(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntRight(args) => self.emit_shift_right(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntSRight(args) => self.emit_shift_right_signed(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntOr(args) => self.emit_bitwise_or(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntAnd(args) => self.emit_bitwise_and(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntXor(args) => self.emit_bitwise_xor(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntSLess(args) => self.emit_compare_lt_signed(args.output, args.input_a, args.input_b)?,
             JIRInstruction::IntSGreater(args) => {
-                return self.emit_compare_gt_signed(args.output, args.input_a, args.input_b);
+                self.emit_compare_gt_signed(args.output, args.input_a, args.input_b)?
             }
             JIRInstruction::IntSLessEqual(args) => {
-                return self.emit_compare_le_signed(args.output, args.input_a, args.input_b);
+                self.emit_compare_le_signed(args.output, args.input_a, args.input_b)?
             }
             JIRInstruction::IntSGreaterEqual(args) => {
-                return self.emit_compare_ge_signed(args.output, args.input_a, args.input_b);
+                self.emit_compare_ge_signed(args.output, args.input_a, args.input_b)?
             }
-            JIRInstruction::IntLess(args) => return self.emit_compare_lt(args.output, args.input_a, args.input_b),
-            JIRInstruction::IntGreater(args) => return self.emit_compare_gt(args.output, args.input_a, args.input_b),
-            JIRInstruction::IntLessEqual(args) => return self.emit_compare_le(args.output, args.input_a, args.input_b),
-            JIRInstruction::IntGreaterEqual(args) => {
-                return self.emit_compare_ge(args.output, args.input_a, args.input_b);
-            }
-            JIRInstruction::IntEquals(args) => return self.emit_compare_eq(args.output, args.input_a, args.input_b),
-            JIRInstruction::IntNotEquals(args) => return self.emit_compare_ne(args.output, args.input_a, args.input_b),
-            JIRInstruction::BitNegate(args) => return self.emit_bitwise_negate(args.output, args.input),
-            JIRInstruction::IntNegate(args) => return self.emit_negate(args.output, args.input),
-            JIRInstruction::FloatDiv(args) => {}
-            JIRInstruction::FloatMul(args) => {}
-            JIRInstruction::FloatAdd(args) => {}
-            JIRInstruction::FloatSubtract(args) => {}
-            JIRInstruction::FloatLess(args) => {}
-            JIRInstruction::FloatGreater(args) => {}
-            JIRInstruction::FloatLessEqual(args) => {}
-            JIRInstruction::FloatGreaterEqual(args) => {}
-            JIRInstruction::FloatEquals(args) => {}
-            JIRInstruction::FloatNotEquals(args) => {}
-            JIRInstruction::FloatNegate(args) => {}
-            JIRInstruction::BoolOr(args) => return self.emit_boolean_or(args.output, args.input_a, args.input_b),
-            JIRInstruction::BoolAnd(args) => return self.emit_boolean_and(args.output, args.input_a, args.input_b),
-            JIRInstruction::BoolXor(args) => return self.emit_boolean_xor(args.output, args.input_a, args.input_b),
-            JIRInstruction::BoolNegate(args) => return self.emit_boolean_negate(args.output, args.input),
-            JIRInstruction::CallDirect(..) => {}
-            JIRInstruction::CallIndirect(..) => {}
-            JIRInstruction::ReturnDirect(_) => {}
-            JIRInstruction::ReturnIndirect(_) => {}
-            JIRInstruction::GotoDirect(target) => return self.emit_goto_direct(*target),
-            JIRInstruction::GotoIndirect(target) => return self.emit_goto_indirect(*target),
-            JIRInstruction::GotoDirectIf { condition, target } => return self.emit_goto_direct_if(*target, *condition),
-            JIRInstruction::GotoIndirectIf { condition, target } => {}
-            JIRInstruction::JCodeGoto(block_id) => {}
+            JIRInstruction::IntLess(args) => self.emit_compare_lt(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntGreater(args) => self.emit_compare_gt(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntLessEqual(args) => self.emit_compare_le(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntGreaterEqual(args) => self.emit_compare_ge(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntEquals(args) => self.emit_compare_eq(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntNotEquals(args) => self.emit_compare_ne(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::BitNegate(args) => self.emit_bitwise_negate(args.output, args.input)?,
+            JIRInstruction::IntNegate(args) => self.emit_negate(args.output, args.input)?,
+            JIRInstruction::FloatDiv(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::FloatMul(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::FloatAdd(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::FloatSubtract(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::FloatLess(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::FloatGreater(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::FloatLessEqual(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::FloatGreaterEqual(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::FloatEquals(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::FloatNotEquals(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::FloatNegate(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::BoolOr(args) => self.emit_boolean_or(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::BoolAnd(args) => self.emit_boolean_and(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::BoolXor(args) => self.emit_boolean_xor(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::BoolNegate(args) => self.emit_boolean_negate(args.output, args.input)?,
+            JIRInstruction::CallDirect(..) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::CallIndirect(..) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::ReturnDirect(_) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::ReturnIndirect(_) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::GotoDirect(target) => self.emit_goto_direct(*target)?,
+            JIRInstruction::GotoIndirect(target) => self.emit_goto_indirect(*target)?,
+            JIRInstruction::GotoDirectIf { condition, target } => self.emit_goto_direct_if(*target, *condition)?,
+            JIRInstruction::GotoIndirectIf { condition, target } => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::JCodeGoto(block_id) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::JCodeGotoIf {
                 condition,
                 target_block,
-            } => {}
-            JIRInstruction::PopCount(args) => return self.emit_popcount(args.output, args.input),
-            JIRInstruction::LZCount(args) => return self.emit_lzcount(args.output, args.input),
-            JIRInstruction::ZeroExtend(args) => return self.emit_zero_extend(args.output, args.input),
-            JIRInstruction::SignExtend(args) => return self.emit_sign_extend(args.output, args.input),
-            JIRInstruction::Carry(args) => return self.emit_carry(args.output, args.input_a, args.input_b),
-            JIRInstruction::SignCarry(args) => return self.emit_scarry(args.output, args.input_a, args.input_b),
-            JIRInstruction::SignBorrow(args) => return self.emit_sborrow(args.output, args.input_a, args.input_b),
-            JIRInstruction::Nan(args) => {}
-            JIRInstruction::Abs(args) => {}
-            JIRInstruction::Sqrt(args) => {}
-            JIRInstruction::IntToFloat(args) => {}
-            JIRInstruction::FloatToFloat(args) => {}
-            JIRInstruction::Trunc(args) => {}
-            JIRInstruction::Ceil(args) => {}
-            JIRInstruction::Floor(args) => {}
-            JIRInstruction::Round(args) => {}
+            } => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::PopCount(args) => self.emit_popcount(args.output, args.input)?,
+            JIRInstruction::LZCount(args) => self.emit_lzcount(args.output, args.input)?,
+            JIRInstruction::ZeroExtend(args) => self.emit_zero_extend(args.output, args.input)?,
+            JIRInstruction::SignExtend(args) => self.emit_sign_extend(args.output, args.input)?,
+            JIRInstruction::Carry(args) => self.emit_carry(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::SignCarry(args) => self.emit_scarry(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::SignBorrow(args) => self.emit_sborrow(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::Nan(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::Abs(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::Sqrt(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::IntToFloat(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::FloatToFloat(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::Trunc(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::Ceil(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::Floor(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::Round(args) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::CustomOp {
                 output,
                 input_a,
@@ -405,9 +414,21 @@ impl X64Emitter<'_> {
                 op_id,
                 extra_args,
             } => {
-                return self.emit_custom_op_call(*op_id, *output, *input_a, *input_b, extra_args);
+                self.emit_custom_op_call(*op_id, *output, *input_a, *input_b, extra_args)?;
             }
         }
-        todo!("Instruction not yet implemented: {jinst}")
+        self.emit_directives(self.allocations.directives().after_inst_directives(inst_id))?;
+        Ok(())
+    }
+
+    fn emit_directives(
+        &self,
+        directives: &[LoadSpillDirective],
+    ) -> JITResult {
+        for directive in directives {
+            trace_jit!("Emitting directive: {directive:?}");
+            // TODO: Emit directives
+        }
+        Ok(())
     }
 }

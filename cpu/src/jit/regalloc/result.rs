@@ -1,11 +1,15 @@
 use crate::jit::api::JITResult;
 use crate::jit::host::register::HostReg;
+use crate::jit::regalloc::requirements::EmitterAllocRequirements;
 use crate::jit::trace_jit;
-use mogi_sleigh::spec::jir::basic_block::InstId;
+use mogi_sleigh::spec::jir::basic_block::{
+    InstId,
+    TargetBasicBlock,
+};
 use mogi_sleigh::spec::jir::values::JIRSlice;
 use std::ops::Range;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum Allocation {
     /// The operand is loaded in the provided host register.
     Register(HostReg),
@@ -14,22 +18,61 @@ pub enum Allocation {
     /// to not use memory operands. However, for seldom used operands,
     /// it may make sense to directly use them from memory.
     Slice(JIRSlice),
+    /// No allocation exists for this operand.
+    None,
 }
 
 #[derive(Debug)]
 pub struct AllocatorResult {
     pub(super) allocations: Vec<Allocation>,
-    pub(super) allocation_ranges: Vec<Range<usize>>,
+    pub(super) allocation_offsets: Vec<usize>,
     pub(super) load_spill_directives: LoadSpillDirectives,
 }
 
 impl AllocatorResult {
-    pub fn new(inst_count: usize) -> Self {
-        Self {
-            allocations: vec![],
-            allocation_ranges: vec![0..0; inst_count],
-            load_spill_directives: LoadSpillDirectives::new(inst_count),
+    pub fn new<E>(
+        target_block: &TargetBasicBlock,
+        requirements: &E,
+    ) -> Self
+    where
+        E: EmitterAllocRequirements,
+    {
+        let mut allocation_offsets = Vec::new();
+        // we only need exactly this amount
+        allocation_offsets.reserve_exact(target_block.instruction_count());
+        let mut operands_so_far = 0;
+
+        // We want to save an offset in the allocations vector for each instruction, and reserve the next
+        // elements to fit the allocations for the operands of the instruction.
+        for inst in target_block.inst_ids() {
+            let operands = requirements.operands(inst).len();
+            allocation_offsets.push(operands_so_far);
+            operands_so_far += operands;
         }
+
+        let allocations = vec![Allocation::None; operands_so_far];
+
+        Self {
+            // Most operations have one output and two inputs, so we slightly overestimate here.
+            allocations,
+            allocation_offsets,
+            load_spill_directives: LoadSpillDirectives::new(target_block.instruction_count()),
+        }
+    }
+
+    /// Set the allocation for operand `op_id` of instruction `inst` to `allocation`.
+    pub(super) fn set_allocation(
+        &mut self,
+        inst: InstId,
+        op_id: usize,
+        allocation: Allocation,
+    ) {
+        let alloc_id = self.allocation_offsets[inst] + op_id;
+        self.allocations[alloc_id] = allocation;
+    }
+
+    pub fn directives(&self) -> &LoadSpillDirectives {
+        &self.load_spill_directives
     }
 }
 
@@ -72,6 +115,20 @@ impl LoadSpillDirectives {
             inst_to_directives: vec![InstToDirectiveMapping::default(); inst_count],
             current_inst: 0,
         }
+    }
+
+    pub fn before_inst_directives(
+        &self,
+        inst: InstId,
+    ) -> &[LoadSpillDirective] {
+        &self.before_directives[self.inst_to_directives[inst].before.clone()]
+    }
+
+    pub fn after_inst_directives(
+        &self,
+        inst: InstId,
+    ) -> &[LoadSpillDirective] {
+        &self.after_directives[self.inst_to_directives[inst].after.clone()]
     }
 }
 
