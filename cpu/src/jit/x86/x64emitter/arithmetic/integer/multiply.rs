@@ -44,7 +44,7 @@ impl X64Emitter<'_> {
         input_b: JIRConst,
     ) -> Result<(), JitError> {
         let size = output.size();
-        self.emit_copy(
+        self.emit_copy_deprecated(
             output,
             JIRConst::new(input_a.value().wrapping_mul(input_b.value()) % (1u128 << (size * 8)), size),
         )?;
@@ -60,7 +60,7 @@ impl X64Emitter<'_> {
     ) -> Result<(), JitError> {
         if input_b.value() == 0 {
             // We can just zero the target, since multiplying by zero always results in zero.
-            self.emit_copy(output, input_b)?;
+            self.emit_copy_deprecated(output, input_b)?;
             return Ok(());
         }
         // The size in bytes needed for the immediate
@@ -96,7 +96,7 @@ impl X64Emitter<'_> {
             5..=8 => {
                 // We need to copy the input to the output, since imul reg, reg uses the first argument as
                 // input and output argument.
-                self.emit_copy(output, input_a)?;
+                self.emit_copy_deprecated(output, input_a)?;
                 let output_gpr = self.load_slice_gpr(output, SliceType::Output);
                 let temp_gpr = self.get_temp_gpr();
                 self.emit_load_const_to_gpr(temp_gpr, input_b)?;

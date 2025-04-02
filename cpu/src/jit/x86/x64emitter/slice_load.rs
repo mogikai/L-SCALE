@@ -151,7 +151,7 @@ impl X64Emitter<'_> {
         // The register has not been loaded before.
         // We need to insert an instruction that loads it from context.
         // For that we first need to calculate the offset in the cpu context.
-        let varnode_offset = X86TaskContext::varnode_offset(slice);
+        let varnode_offset = X86TaskContext::slice_offset(slice);
         trace!("Loading slice {slice:?} that refers to varnode group {:?} into {register:?}", slice.group_id);
         // Emit the instruction that loads the varnode from the specified space in the context.
         // We always load to a 32 bit register. This avoids false dependencies.
@@ -469,7 +469,7 @@ impl X64Emitter<'_> {
             (self.load_slice_gpr(input_b, SliceType::Output), self.load_slice_gpr(input_a, SliceType::Input))
         } else {
             // Copy one of the operands to the output and then do the and operation
-            self.emit_copy(output, input_a)?;
+            self.emit_copy_deprecated(output, input_a)?;
             (self.load_slice_gpr(output, SliceType::Output), self.load_slice_gpr(input_b, SliceType::Input))
         };
         Ok((target_gp, operand_gp))

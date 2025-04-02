@@ -76,7 +76,7 @@ impl X86TaskContext {
         }
     }
 
-    pub fn varnode_offset(slice: JIRSlice) -> usize {
+    pub fn slice_offset(slice: JIRSlice) -> usize {
         // TODO: We need to either make sure in the spec generation, that space_id is in range, or
         //       perform some kind of mapping.
         assert!(slice.space_id.to_index() < Self::max_spaces());

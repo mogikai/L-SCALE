@@ -169,7 +169,7 @@ impl X64Emitter<'_> {
         match (input_a, input_b) {
             (JIRValue::Const(input_a), JIRValue::Const(input_b)) => {
                 // In the const case we can simply calculate the value ahead of time and move it into the output.
-                self.emit_copy(output, op_const(input_a, input_b))?
+                self.emit_copy_deprecated(output, op_const(input_a, input_b))?
             }
             (JIRValue::Slice(input_a), JIRValue::Const(input_b))
             | (JIRValue::Const(input_b), JIRValue::Slice(input_a)) => {
@@ -178,14 +178,14 @@ impl X64Emitter<'_> {
                 let immediate_size = input_b.size();
                 if immediate_size <= 4 {
                     // Copy the input into the output, since x86 uses the first operand as output.
-                    self.emit_copy(output, input_a)?;
+                    self.emit_copy_deprecated(output, input_a)?;
                     let output_gp = self.load_slice_gpr(output, SliceType::Output);
                     op_gp_imm(self, output_gp, immediate, immediate_size)?;
                 } else if immediate_size <= 8 {
                     // Immediates up to 64 bits need to be moved into a register first.
                     let (output_gp, operand_gp) = if output != input_a {
                         // If the output is not input_a, we can just copy the immediate into the output
-                        self.emit_copy(output, input_b)?;
+                        self.emit_copy_deprecated(output, input_b)?;
                         let input_a_gp = self.load_slice_gpr(input_a, SliceType::Input);
                         // CAVEAT: the load needs to happen here, otherwise we perform unnecessary operations.
                         let output_gp = self.load_slice_gpr(output, SliceType::Output);
@@ -223,10 +223,10 @@ impl X64Emitter<'_> {
         match input_a {
             JIRValue::Const(input_a) => {
                 // In the const case we can simply calculate the value ahead of time and move it into the output.
-                self.emit_copy(output, JIRConst::new(!input_a.value(), input_a.size()))?;
+                self.emit_copy_deprecated(output, JIRConst::new(!input_a.value(), input_a.size()))?;
             }
             JIRValue::Slice(input_a) => {
-                self.emit_copy(output, input_a)?;
+                self.emit_copy_deprecated(output, input_a)?;
                 let output_gpr = self.load_slice_gpr(output, SliceType::Output);
                 assemble!(self.block.assembler();
                     ; not Rq(output_gpr as u8)

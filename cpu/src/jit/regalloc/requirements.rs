@@ -3,6 +3,7 @@ use crate::jit::host::register::{
     HostRegSet,
     RegClass,
 };
+use mogi_sleigh::spec::jir::basic_block::InstId;
 use mogi_sleigh::spec::jir::values::JIRSlice;
 
 #[derive(Debug, Copy, Clone)]
@@ -66,6 +67,62 @@ impl OperandRequest {
             class: RegClass::Int,
         }
     }
+
+    pub fn int_read_reg(slice: JIRSlice) -> Self {
+        OperandRequest {
+            slice,
+            constraint: OperandConstraint::Reg,
+            kind: OperandKind::Read,
+            class: RegClass::Int,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct TempRequest {
+    requests: [u8; 3],
+}
+
+impl TempRequest {
+    pub const fn new() -> TempRequest {
+        TempRequest { requests: [0; 3] }
+    }
+
+    pub const fn int(
+        mut self,
+        count: u8,
+    ) -> TempRequest {
+        self.requests[RegClass::Int as usize] = count;
+        self
+    }
+
+    pub const fn float(
+        mut self,
+        count: u8,
+    ) -> TempRequest {
+        self.requests[RegClass::Float as usize] = count;
+        self
+    }
+
+    pub const fn vector(
+        mut self,
+        count: u8,
+    ) -> TempRequest {
+        self.requests[RegClass::Vector as usize] = count;
+        self
+    }
+
+    pub fn requested_int(&self) -> u8 {
+        self.requests[RegClass::Int as usize]
+    }
+
+    pub fn requested_float(&self) -> u8 {
+        self.requests[RegClass::Float as usize]
+    }
+
+    pub fn requested_vector(&self) -> u8 {
+        self.requests[RegClass::Vector as usize]
+    }
 }
 
 /// This struct provides some convenience view methods on the operand request slice.
@@ -111,14 +168,21 @@ pub trait EmitterAllocRequirements {
     /// is reused later on. Clobbered registers may be allocated again after the instruction is emitted.
     fn clobbers(
         &self,
-        inst_id: usize,
+        inst_id: InstId,
     ) -> HostRegSet;
 
     /// Return the required operands for the provided instruction.
     fn operands(
         &self,
-        inst_id: usize,
+        inst_id: InstId,
     ) -> OperandRequirements;
+
+    /// The instruction can request a number of temps where the instruction doesn't care which register
+    /// this temp is located in. This is similar to clobbers, but we don't require a specific register.
+    fn required_temps(
+        &self,
+        inst_id: InstId,
+    ) -> TempRequest;
 
     /// Returns the total number of different operands used in this emitter instance.
     fn total_opereands(&self) -> usize;

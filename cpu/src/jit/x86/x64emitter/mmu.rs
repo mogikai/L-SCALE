@@ -4,8 +4,17 @@ use crate::jit::api::{
     JitError,
     TlbMissHelper,
 };
-use crate::jit::host::register::HostRegSet;
-use crate::jit::regalloc::requirements::OperandRequest;
+use crate::jit::host::register::{
+    HostReg,
+    HostRegSet,
+    RegClass,
+};
+use crate::jit::regalloc::requirements::{
+    OperandRequest,
+    TempRequest,
+};
+use crate::jit::regalloc::result::Allocation;
+use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
 use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::task_context::X86TaskContext;
@@ -23,6 +32,7 @@ use crate::tlb::{
     PageTag,
 };
 use mogi_sleigh::spec::SpaceId;
+use mogi_sleigh::spec::jir::basic_block::InstId;
 use mogi_sleigh::spec::jir::common::JIRSize;
 use mogi_sleigh::spec::jir::values::{
     JIRSlice,
@@ -36,88 +46,110 @@ use mogi_utilities::index_map::MapKey;
 use std::marker::PhantomData;
 
 impl X64AllocRequirements {
-    pub fn append_load_operands(
-        &mut self,
+    pub fn load_requirements(
+        requirement: &mut AllocRequirement,
         output: JIRSlice,
         addr: JIRValue,
-        space_id: SpaceId,
-    ) -> HostRegSet {
+        _space_id: SpaceId,
+    ) {
         // We always need the output
-        self.operand_requests
-            .push(OperandRequest::int_write_any(output));
+        requirement.add_request(OperandRequest::int_write_any(output));
         // The address might be in a slice, so request it if it is not const.
-        addr.is_slice_then(|addr| {
-            self.operand_requests
-                .push(OperandRequest::int_read_any(*addr))
-        });
-        HostRegSet::empty().with(GPRegister::DX.into_host_reg())
+        match addr {
+            JIRValue::Slice(addr) => {
+                requirement.add_request(OperandRequest::int_read_reg(addr));
+                *requirement.required_temps_mut() = TempRequest::new().int(1);
+                *requirement.clobbers_mut() = HostRegSet::empty().with(GPRegister::DX.into_host_reg())
+            }
+            JIRValue::Const(_) => {
+                *requirement.required_temps_mut() = TempRequest::new().int(2);
+                *requirement.clobbers_mut() = HostRegSet::empty().with(GPRegister::DX.into_host_reg());
+            }
+        }
     }
 
-    pub fn append_store_operands(
-        &mut self,
+    pub fn store_requirements(
+        requirement: &mut AllocRequirement,
         addr: JIRValue,
-        space_id: SpaceId,
+        _space_id: SpaceId,
         value: JIRValue,
-    ) -> HostRegSet {
+    ) {
+        *requirement.required_temps_mut() = TempRequest::new().int(2);
         addr.is_slice_then(|addr| {
-            self.operand_requests
-                .push(OperandRequest::int_read_any(*addr))
+            *requirement.required_temps_mut() = TempRequest::new().int(1);
+            requirement.add_request(OperandRequest::int_read_any(*addr))
         });
-        value.is_slice_then(|value| {
-            self.operand_requests
-                .push(OperandRequest::int_read_any(*value))
-        });
-        HostRegSet::empty().with(GPRegister::DX.into_host_reg())
+        value.is_slice_then(|value| requirement.add_request(OperandRequest::int_read_any(*value)));
+        *requirement.clobbers_mut() = HostRegSet::empty().with(GPRegister::DX.into_host_reg())
     }
 }
 
 impl X64Emitter<'_> {
     pub fn emit_load(
         &mut self,
+        inst: InstId,
         output: JIRSlice,
         addr: JIRValue,
         space_id: SpaceId,
     ) -> JITResult {
-        // We reserve RDX as temp since it will be used to pass the address to the helper
-        // in case of a tlb miss
-        let host_address_gpr = self.reserve_gp_as_temp(GPRegister::DX)?;
-        self.emit_tlb_lookup(host_address_gpr, addr, space_id, output.size(), AccessType::Load)?;
-        self.emit_host_load(output, host_address_gpr)?;
-        self.temp_free(host_address_gpr)
+        // Address is the second operand
+        let addr_index = 1;
+        self.emit_tlb_lookup(inst, addr_index, addr, space_id, output.size(), AccessType::Load)?;
+        self.emit_host_load(inst, output)
     }
 
     pub fn emit_store(
         &mut self,
+        inst: InstId,
         addr: JIRValue,
         space_id: SpaceId,
         value: JIRValue,
     ) -> JITResult {
-        let host_address_gpr = self.reserve_gp_as_temp(GPRegister::DX)?;
-        self.emit_tlb_lookup(host_address_gpr, addr, space_id, value.size(), AccessType::Store)?;
-        self.emit_host_store(value, host_address_gpr)?;
-        self.temp_free(host_address_gpr)
+        // Addr index is always zero. When addr is a const, then we just don't access this.
+        let addr_index = 0;
+        // Value index is 1 if the address is a slice, since it is then the second operand.
+        let value_index = if addr.is_slice() { 1 } else { 0 };
+        self.emit_tlb_lookup(inst, addr_index, addr, space_id, value.size(), AccessType::Store)?;
+        self.emit_host_store(inst, value_index, value)
     }
 
     /// Translate the provided guest address into a host address
     fn emit_tlb_lookup(
         &mut self,
-        translated_address_gpr: GPRegister,
+        inst: InstId,
+        addr_index: usize,
         addr: JIRValue,
         space_id: SpaceId,
         size: JIRSize,
         access_type: AccessType,
     ) -> JITResult {
-        // the tlb lookup assumes that the translated address is in DX
-        assert_eq!(translated_address_gpr, GPRegister::DX);
-        // TODO: Check page boundaries. Also, how do we handle a cross-page access?
-        let addr_gpr = self.get_temp_gpr();
-        self.emit_load_value_to_gpr(addr_gpr, addr)?;
+        let temps = self.allocations.get_temp_allocations(inst);
+        let tag_reg = temps
+            .get_nth_from_class(0, RegClass::Int)
+            .expect("We requested this allocation")
+            .hw_enc();
 
-        let tag_gpr = self.temp_alloc();
-        // TODO: Rewrite temp allocation to automatically free the allocated variables when they go out of scope.
-        let tlb_offset = X86TaskContext::tlb_offset(access_type);
-        let tag_offset = tlb_offset + TLBEntry::tag_offset();
-        let target_offset = tlb_offset + TLBEntry::target_offset();
+        // the tlb lookup assumes that the translated address is in DX
+        // TODO: Check page boundaries. Also, how do we handle a cross-page access?
+        let addr_gpr = match addr {
+            JIRValue::Slice(_) => {
+                // Address is the second operand.
+                let Allocation::Register(reg) = self.allocations.get_allocation(inst, addr_index) else {
+                    unreachable!("We requested a register allocation")
+                };
+                reg
+            }
+            JIRValue::Const(addr) => {
+                let addr_temp = temps
+                    .get_nth_from_class(1, RegClass::Int)
+                    .expect("We requested this allocation");
+                // We load the address into ax, which is specified in clobbers.
+                self.load_const(addr_temp, addr)?;
+                addr_temp
+            }
+        }
+        .hw_enc();
+
         let entry_size = TLBEntry::size();
         // Various assertions that are needed for now until this is made more generic.
         // We currently assume addresses of size 8 bytes, and that a tlb entry has
@@ -130,7 +162,7 @@ impl X64Emitter<'_> {
             .expect("The exponent must fit into u8");
         assemble!(self.block.assembler();
             // We copy over the whole address in case of a tlb miss.
-            ; mov Rq(translated_address_gpr as u8), Rq(addr_gpr as u8)
+            ; mov rdx, Rq(addr_gpr)
         );
 
         // If the size is 1 the address is always aligned.
@@ -141,31 +173,34 @@ impl X64Emitter<'_> {
             assert!(size.is_power_of_two());
             assemble!(self.block.assembler();
                 // Check alignment
-                ; test Rq(addr_gpr as u8), (size - 1) as i32
+                ; test Rq(addr_gpr), (size - 1) as i32
                 // TODO: Jump to unaligned access code.
                 ; jnz >tlb_miss
             )
         }
 
+        let tlb_offset = X86TaskContext::tlb_offset(access_type);
+        let tag_offset = tlb_offset + TLBEntry::tag_offset();
+        let target_offset = tlb_offset + TLBEntry::target_offset();
         assemble!(self.block.assembler();
-            ; shr Rq(addr_gpr as u8), BYTE EVAddr::<u8>::index_shift_from_start::<PageData>() as _
-            ; mov Rq(tag_gpr as u8), Rq(addr_gpr as u8)
-            ; and Rd(addr_gpr as u8), DWORD EVAddr::<u8>::index_mask() as _
-            ; shr Rq(tag_gpr as u8), BYTE EVAddr::<u8>::tag_shift_from_index() as _
-            ; and Rq(tag_gpr as u8), EVAddr::<u8>::tag_mask::<PageData>() as _
+            ; shr Rq(addr_gpr), BYTE EVAddr::<u8>::index_shift_from_start::<PageData>() as _
+            ; mov Rq(tag_reg), Rq(addr_gpr)
+            ; and Rd(addr_gpr), DWORD EVAddr::<u8>::index_mask() as _
+            ; shr Rq(tag_reg), BYTE EVAddr::<u8>::tag_shift_from_index() as _
+            ; and Rq(tag_reg), EVAddr::<u8>::tag_mask::<PageData>() as _
             // addr_gpr now contains the index.
             // look at tlb_offset + index * entry_size
             // index = index * entry_size
-            ; shl Rd(addr_gpr as u8), BYTE entry_shift as _
+            ; shl Rd(addr_gpr), BYTE entry_shift as _
             // compare tag and entry.tag
-            ; cmp Rq(tag_gpr as u8), QWORD [Rq(addr_gpr as u8) + tag_offset as _ + cpu_context]
+            ; cmp Rq(tag_reg), QWORD [Rq(addr_gpr) + tag_offset as _ + cpu_context]
             ; jne >tlb_miss
             // TLB hit. Extract the page offset from the EVAddr
-            ; and Rd(translated_address_gpr as u8), WORD PageData::page_offset_mask() as _
+            ; and edx, WORD PageData::page_offset_mask() as _
             // Add target onto the page offset
-            ; add Rq(translated_address_gpr as u8), QWORD [Rq(addr_gpr as u8) + target_offset as _ + cpu_context]
+            ; add rdx, QWORD [Rq(addr_gpr) + target_offset as _ + cpu_context]
             // Permissions do not need to be checked, since we have two tlb tables. One for read and one for write.
-            // If the address is on a page that is in the read table, then it is readable, and if it is in the
+            // If the address is on a page in the read table, then it is readable, and if it is in the
             // write table, it is writable. Execute permissions are handled via the jit buffer, i.e. code is flushed
             // as soon as it is made non-executable. The permission check is performed on a tlb miss. If the check
             // succeeds, then any future accesses will go through the tlb until the line is flushed.
@@ -175,9 +210,9 @@ impl X64Emitter<'_> {
         // TODO: Move the tlb miss code out of the happy path.
         //       We most likely want to defer writing the slow path to the end of the basic block?
         // We emit flush code first, and then the call into the memory helper. On TLB hit this code is skipped.
-        // TODO: This needs to be changed with the new register allocator. I.e. we will also need to restore
-        //       the preserved registers after the callback.
-        self.preserve_registers_caller()?;
+
+        // TODO: Does it make sense to only flush those slices that are clobbered by a function call here?
+        self.save_loaded_slices()?;
 
         let Some(callback) = match access_type {
             AccessType::Load => &self.global_context.tlb_miss_read_callback,
@@ -212,47 +247,50 @@ impl X64Emitter<'_> {
             ; test rax, rax
             // If the translation returns zero, we encountered an error.
             // Jump to the exit code to exit the jit.
+            // CAVEAT: The slices are already flushed in preparation for the helper call.
+            //         If we change this in the future to only flush clobbered registers,
+            //         then we need to flush the rest here.
             ; jz ->exit_failure
             //--- End of trampoline call sequence
             // The result of the helper is the host address
-            ; mov Rq(translated_address_gpr as u8), rax
+            ; mov rdx, rax
             // tlb hit skips to here. Regardless of hit or miss, the address will be in addr_gpr if possible.
             ; success:
         );
-        // TODO: Restore registers here
-        // We reserve the translated_address_gpr again here, since the flush cleared the reservation.
-        // This does not touch the contents of the register, since it is marked as free.
-        self.reserve_gp_as_temp(translated_address_gpr)?;
-        self.temp_free(tag_gpr)
+        self.reload_loaded_slices()?;
+        Ok(())
     }
 
+    /// Emit the code to load the value from memory. The address is assumed to be in RDX
     fn emit_host_load(
         &mut self,
+        inst: InstId,
         output: JIRSlice,
-        host_address_gpr: GPRegister,
     ) -> JITResult {
         // TODO: Make sure the load does not cross page boundaries.
-        // Allocate the output slice gpr, or get an existing one.
-        let out_gpr = self.allocate_slice_gpr(output, SliceType::Output);
+        let Allocation::Register(out_reg) = self.allocations.get_allocation(inst, 0) else {
+            todo!()
+        };
+        let out_reg = out_reg.hw_enc();
         match output.size() {
             1 => {
                 assemble!(self.block.assembler();
-                    ; movzx Rd(out_gpr as u8), BYTE [Rq(host_address_gpr as u8)]
+                    ; movzx Rd(out_reg), BYTE [rdx]
                 );
             }
             2 => {
                 assemble!(self.block.assembler();
-                    ; movzx Rd(out_gpr as u8), WORD [Rq(host_address_gpr as u8)]
+                    ; movzx Rd(out_reg), WORD [rdx]
                 );
             }
             3..=4 => {
                 assemble!(self.block.assembler();
-                    ; mov Rd(out_gpr as u8), DWORD [Rq(host_address_gpr as u8)]
+                    ; mov Rd(out_reg), DWORD [rdx]
                 );
             }
             5..=8 => {
                 assemble!(self.block.assembler();
-                    ; mov Rq(out_gpr as u8), QWORD [Rq(host_address_gpr as u8)]
+                    ; mov Rq(out_reg), QWORD [rdx]
                 );
             }
             _ => {
@@ -264,47 +302,54 @@ impl X64Emitter<'_> {
 
     fn emit_host_store(
         &mut self,
+        inst: InstId,
+        value_index: usize,
         value: JIRValue,
-        host_address_gpr: GPRegister,
     ) -> JITResult {
+        let temp_allocations = self.allocations.get_temp_allocations(inst);
         // TODO: Make sure the store does not cross page boundaries.
         // TODO: This can be optimized to directly move into the memory location.
         //       For JIRConsts this can be done with immediate values.
-        let out_gpr = match value {
-            JIRValue::Slice(slice) => self.load_slice_gpr(slice, SliceType::Input),
-            JIRValue::Const(value) => {
-                let out_gpr = self.temp_alloc();
-                self.emit_load_const_to_gpr(out_gpr, value)?;
-                out_gpr
+        let value_reg = match value {
+            JIRValue::Slice(_) => {
+                let Allocation::Register(value_reg) = self.allocations.get_allocation(inst, value_index) else {
+                    todo!()
+                };
+                value_reg
             }
-        };
+            JIRValue::Const(value) => {
+                let value_reg = temp_allocations
+                    .get_nth_from_class(0, RegClass::Int)
+                    .expect("We requested this");
+                self.load_const(value_reg, value)?;
+                value_reg
+            }
+        }
+        .hw_enc();
         match value.size() {
             1 => {
                 assemble!(self.block.assembler();
-                    ; mov BYTE [Rq(host_address_gpr as u8)], Rb(out_gpr as u8)
+                    ; mov BYTE [rdx], Rb(value_reg as u8)
                 );
             }
             2 => {
                 assemble!(self.block.assembler();
-                    ; mov WORD [Rq(host_address_gpr as u8)], Rw(out_gpr as u8)
+                    ; mov WORD [rdx], Rw(value_reg as u8)
                 );
             }
             3..=4 => {
                 assemble!(self.block.assembler();
-                    ; mov DWORD [Rq(host_address_gpr as u8)], Rd(out_gpr as u8)
+                    ; mov DWORD [rdx], Rd(value_reg as u8)
                 );
             }
             5..=8 => {
                 assemble!(self.block.assembler();
-                    ; mov QWORD [Rq(host_address_gpr as u8)], Rq(out_gpr as u8)
+                    ; mov QWORD [rdx], Rq(value_reg as u8)
                 );
             }
             _ => {
                 todo!()
             }
-        }
-        if let JIRValue::Const(_) = value {
-            self.temp_free(out_gpr)?;
         }
         Ok(())
     }

@@ -10,12 +10,14 @@ use crate::jit::host::register::{
     HostReg,
     HostRegMap,
     HostRegSet,
+    RegClass,
 };
 use crate::jit::regalloc::requirements::{
     OperandConstraint,
     OperandKind,
     OperandPos,
     OperandRequest,
+    TempRequest,
 };
 use crate::jit::regalloc::result::Allocation;
 use crate::jit::trace_jit;
@@ -100,6 +102,8 @@ where
         for (reg, slice) in self.loaded_slices.drain() {
             // We are at the start of a block. Make sure that the slice is loaded in the
             // register as specified.
+            // TODO: We need to track whether the register is only ever written to and omit loads
+            //       to these registers here, and probably at some other locations as well.
             self.allocations
                 .load_spill_directives
                 .add_load_before(reg, slice);
@@ -143,6 +147,7 @@ where
 
         let clobbers = self.emitter_requirements.clobbers(inst);
         let operands = self.emitter_requirements.operands(inst);
+        let required_temps = self.emitter_requirements.required_temps(inst);
         if clobbers.is_empty() && operands.all().len() == 0 {
             trace_jit!("No operands or clobbers for {inst}, skipping allocation");
             return Ok(());
@@ -159,7 +164,7 @@ where
             self.clear_clobber(clobber);
         }
 
-        trace_jit!("Available registers after fixed reg and clobber constraints:\n{}", self.available_registers,);
+        trace_jit!("Available registers after fixed reg and clobber constraints:\n{}", self.available_registers);
 
         // TODO: Can we combine this?
         for (op_id, operand) in operands.write() {
@@ -173,6 +178,9 @@ where
             trace_jit!("Allocated read operand {operand:?} for instruction {inst} as {allocation:?}");
             self.allocations.set_allocation(inst, op_id, allocation);
         }
+
+        let temp_regs = self.allocate_temp_regs(required_temps)?;
+        self.allocations.temp_allocations[inst] = temp_regs;
 
         // TODO: We might need to track the number of uses per allocation, such that we can
         //       replace register allocations with memory allocations, in case the value is
@@ -214,6 +222,56 @@ where
             })
     }
 
+    fn find_suitable_reg(
+        &mut self,
+        class: RegClass,
+    ) -> JITResult<HostReg> {
+        self.available_registers
+            .into_iter()
+            .filter(|r| r.class() == class)
+            .nth(0)
+            .ok_or_else(|| -> JitError { todo!("Error handling") })
+    }
+
+    fn allocate_temp_regs(
+        &mut self,
+        request: TempRequest,
+    ) -> JITResult<HostRegSet> {
+        trace_jit!("Allocating temps: {request:?}");
+        let mut temp_regs = HostRegSet::empty();
+
+        for reg in self
+            .available_registers
+            .iter_class(RegClass::Int)
+            .take(request.requested_int() as usize)
+        {
+            trace_jit!("Allocating temp int register {reg}");
+            self.available_registers.remove(reg);
+            temp_regs.add(reg);
+        }
+
+        for reg in self
+            .available_registers
+            .iter_class(RegClass::Float)
+            .take(request.requested_float() as usize)
+        {
+            trace_jit!("Allocating temp float register {reg}");
+            self.available_registers.remove(reg);
+            temp_regs.add(reg);
+        }
+
+        for reg in self
+            .available_registers
+            .iter_class(RegClass::Vector)
+            .take(request.requested_vector() as usize)
+        {
+            trace_jit!("Allocating temp vector register {reg}");
+            self.available_registers.remove(reg);
+            temp_regs.add(reg);
+        }
+        Ok(temp_regs)
+    }
+
     /// Allocates the provided operand.
     /// The operand will either reside in an allocated register or is kept in memory.
     /// Returns an error if no operand could be allocated.
@@ -226,12 +284,7 @@ where
 
         // TODO: Potentially return a memory allocation if the operand is used infrequently.
         let reg = match operand.constraint {
-            OperandConstraint::Any | OperandConstraint::Reg => self
-                .available_registers
-                .into_iter()
-                .filter(|r| r.class() == operand.class)
-                .nth(0)
-                .ok_or_else(|| -> JitError { todo!("Error handling") })?,
+            OperandConstraint::Any | OperandConstraint::Reg => self.find_suitable_reg(operand.class)?,
             OperandConstraint::FixedReg(reg) => reg,
         };
 

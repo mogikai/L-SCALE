@@ -109,7 +109,7 @@ impl VarnodeGroup {
     }
 }
 
-new_map_key_8! { pub struct VarnodeGroupId; "VGI"; }
+new_map_key_8! { pub struct VarnodeGroupId; "VG"; }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct JIRSlice {
@@ -208,6 +208,10 @@ impl JIRValue {
         if let JIRValue::Slice(slice) = self {
             f(slice)
         }
+    }
+
+    pub fn is_slice(&self) -> bool {
+        matches!(self, JIRValue::Slice(_))
     }
 
     pub fn size(&self) -> JIRSize {

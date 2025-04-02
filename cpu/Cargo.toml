@@ -22,6 +22,7 @@ fnv = "1.0.7"
 zerocopy = "0.9.0-alpha.0"
 ansi_term = "0.12.1"
 either = "1.15.0"
+strum = { version = "0.27.1", features = ["derive"] }
 
 [features]
 trace_jit = []

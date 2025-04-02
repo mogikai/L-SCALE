@@ -106,7 +106,7 @@ impl X64Emitter<'_> {
         if val > max {
             overflow = true;
         }
-        self.emit_copy(output, JIRConst::new(overflow as u128, 1))
+        self.emit_copy_deprecated(output, JIRConst::new(overflow as u128, 1))
     }
     fn emit_add_flag_const_const_signed(
         &mut self,
@@ -127,7 +127,7 @@ impl X64Emitter<'_> {
         if input_a < 0 && input_b < 0 && val < min {
             overflow = true;
         }
-        self.emit_copy(output, JIRConst::new(overflow as u128, 1))
+        self.emit_copy_deprecated(output, JIRConst::new(overflow as u128, 1))
     }
 
     fn emit_add_flag_slice_const(
@@ -286,7 +286,7 @@ impl X64Emitter<'_> {
         if input_a <= 0 && input_b > 0 && val < min {
             overflow = true;
         }
-        self.emit_copy(output, JIRConst::new(overflow as u128, 1))
+        self.emit_copy_deprecated(output, JIRConst::new(overflow as u128, 1))
     }
 
     fn emit_set_flag(

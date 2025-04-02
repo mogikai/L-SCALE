@@ -25,12 +25,12 @@ impl X64Emitter<'_> {
     ) -> JITResult {
         match input {
             JIRValue::Const(value) => {
-                self.emit_copy(output, JIRConst::new((value.value() as i128).wrapping_neg() as u128, value.size()))?
+                self.emit_copy_deprecated(output, JIRConst::new((value.value() as i128).wrapping_neg() as u128, value.size()))?
             }
             JIRValue::Slice(slice) => {
                 // Copy into output, since neg uses the same register for input and output.
                 // If output==input this is a no-op.
-                self.emit_copy(output, input)?;
+                self.emit_copy_deprecated(output, input)?;
                 let output_gpr = self.load_slice_gpr(output, SliceType::Output);
                 assemble!(self.block.assembler();
                     ; neg Rq(output_gpr as u8)

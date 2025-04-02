@@ -163,7 +163,7 @@ impl X64Emitter<'_> {
                 self.load_slice_gpr_exact(GPRegister::CX, shift, SliceType::Input)?;
                 // We want to directly load the input into the output and then shift the output.
                 // The x86 shl operation operates in place.
-                self.emit_copy(output, input)?;
+                self.emit_copy_deprecated(output, input)?;
                 let out_gpr = self.load_slice_gpr(output, SliceType::Output);
                 asm_reg(self.block.assembler(), out_gpr, output.size());
             }
@@ -173,7 +173,7 @@ impl X64Emitter<'_> {
                 let shift = shift.value() as i8;
                 // We want to directly load the input into the output and then shift the output.
                 // The x86 shl operation operates in place.
-                self.emit_copy(output, input)?;
+                self.emit_copy_deprecated(output, input)?;
                 let out_gpr = self.load_slice_gpr(output, SliceType::Output);
                 asm_imm(self.block.assembler(), out_gpr, output.size(), shift);
             }

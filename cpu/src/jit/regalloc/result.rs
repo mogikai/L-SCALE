@@ -1,5 +1,8 @@
 use crate::jit::api::JITResult;
-use crate::jit::host::register::HostReg;
+use crate::jit::host::register::{
+    HostReg,
+    HostRegSet,
+};
 use crate::jit::regalloc::requirements::EmitterAllocRequirements;
 use crate::jit::trace_jit;
 use mogi_sleigh::spec::jir::basic_block::{
@@ -26,6 +29,7 @@ pub enum Allocation {
 pub struct AllocatorResult {
     pub(super) allocations: Vec<Allocation>,
     pub(super) allocation_offsets: Vec<usize>,
+    pub(super) temp_allocations: Vec<HostRegSet>,
     pub(super) load_spill_directives: LoadSpillDirectives,
 }
 
@@ -56,6 +60,8 @@ impl AllocatorResult {
             // Most operations have one output and two inputs, so we slightly overestimate here.
             allocations,
             allocation_offsets,
+            // By default, each instruction gets an empty set of temporaries
+            temp_allocations: vec![HostRegSet::empty(); target_block.instruction_count()],
             load_spill_directives: LoadSpillDirectives::new(target_block.instruction_count()),
         }
     }
@@ -69,6 +75,23 @@ impl AllocatorResult {
     ) {
         let alloc_id = self.allocation_offsets[inst] + op_id;
         self.allocations[alloc_id] = allocation;
+    }
+
+    #[inline(always)]
+    pub fn get_allocation(
+        &self,
+        inst: InstId,
+        op_id: usize,
+    ) -> Allocation {
+        let alloc_id = self.allocation_offsets[inst] + op_id;
+        self.allocations[alloc_id]
+    }
+
+    pub fn get_temp_allocations(
+        &self,
+        inst: InstId,
+    ) -> HostRegSet {
+        self.temp_allocations[inst]
     }
 
     pub fn directives(&self) -> &LoadSpillDirectives {

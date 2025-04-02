@@ -2,6 +2,9 @@ use crate::jit::api::JITResult;
 use crate::jit::code_buffer::CompiledBasicBlock;
 use crate::jit::host::register::HostRegSet;
 use crate::jit::regalloc::requirements::OperandRequest;
+use crate::jit::regalloc::result::Allocation;
+use crate::jit::x86::alloc_requirement::AllocRequirement;
+use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::x64emitter::arithmetic::integer::AddSub;
 use crate::jit::x86::x64emitter::regalloc::SliceType;
 use crate::jit::x86::x64emitter::{
@@ -15,6 +18,7 @@ use crate::jit::x86::{
 };
 use dynasmrt::x64::X64Relocation;
 use either::Either;
+use mogi_sleigh::spec::jir::basic_block::InstId;
 use mogi_sleigh::spec::jir::values::{
     JIRConst,
     JIRSlice,
@@ -24,27 +28,39 @@ use std::iter::once;
 use tracing::trace;
 
 impl X64AllocRequirements {
-    pub fn append_add_operands(
-        &mut self,
+    pub fn add_requirements(
+        requirement: &mut AllocRequirement,
         output: JIRSlice,
         input_a: JIRValue,
         input_b: JIRValue,
-    ) -> HostRegSet {
-        self.operand_requests
-            .push(OperandRequest::int_write_any(output));
+    ) {
         match (input_a, input_b) {
             (JIRValue::Slice(a), JIRValue::Slice(b)) => {
-                self.operand_requests.push(OperandRequest::int_read_any(a));
-                self.operand_requests.push(OperandRequest::int_read_any(b));
+                requirement.add_request(OperandRequest::int_write_any(output));
+                requirement.add_request(OperandRequest::int_read_any(a));
+                requirement.add_request(OperandRequest::int_read_any(b));
             }
             (JIRValue::Slice(a), JIRValue::Const(b)) | (JIRValue::Const(b), JIRValue::Slice(a)) => {
-                // If one of the operands is const, we only need one register.
-                // The other value will be used as immediate.
-                self.operand_requests.push(OperandRequest::int_read_any(a));
+                Self::add_slice_const_requirements(requirement, output, a, b);
             }
-            (_, _) => {}
+            (JIRValue::Const(a), JIRValue::Const(b)) => {
+                // Delegate to copy
+                Self::copy_requirements(requirement, output, add_constants(a, b).into())
+            }
         }
-        HostRegSet::empty()
+    }
+
+    pub fn add_slice_const_requirements(
+        requirement: &mut AllocRequirement,
+        output: JIRSlice,
+        input_a: JIRSlice,
+        input_b: JIRConst,
+    ) {
+        // If one of the operands is const, we only need one register.
+        // The other value will be used as immediate.
+        requirement.add_request(OperandRequest::int_write_any(output));
+        requirement.add_request(OperandRequest::int_read_any(input_a));
+        *requirement.clobbers_mut() = HostRegSet::empty().with(GPRegister::AX.into_host_reg())
     }
 }
 
@@ -55,6 +71,7 @@ impl X64Emitter<'_> {
     #[inline]
     pub fn emit_add(
         &mut self,
+        inst: InstId,
         output: JIRSlice,
         a: JIRValue,
         b: JIRValue,
@@ -64,21 +81,24 @@ impl X64Emitter<'_> {
         match (a, b) {
             (JIRValue::Const(a), JIRValue::Const(b)) => {
                 trace!("Const add optimized to move");
-                let a = a.value();
-                let b = b.value();
-                let size = output.size();
-                self.emit_copy(output, JIRConst::new((a + b) % (1u128 << (size * 8)), size))?;
+                self.emit_copy(inst, output, add_constants(a, b))?;
             }
             // Addition is commutative, so we can simply swap a and b if one is const and the other is a varnode.
             (JIRValue::Const(b), JIRValue::Slice(a)) | (JIRValue::Slice(a), JIRValue::Const(b)) => {
-                self.emit_add_reg_const(output, a, b.value())?;
+                self.emit_add_reg_const(inst, output, a, b.value())?;
             }
             (JIRValue::Slice(a), JIRValue::Slice(b)) => {
-                let a: u8 = self.load_slice_gpr(a, SliceType::Input).into();
-                let b: u8 = self.load_slice_gpr(b, SliceType::Input).into();
-                let output: u8 = self.load_slice_gpr(output, SliceType::Output).into();
+                let Allocation::Register(output) = self.allocations.get_allocation(inst, 0) else {
+                    todo!()
+                };
+                let Allocation::Register(a) = self.allocations.get_allocation(inst, 1) else {
+                    todo!()
+                };
+                let Allocation::Register(b) = self.allocations.get_allocation(inst, 2) else {
+                    todo!()
+                };
                 assemble!(self.block.assembler();
-                    ; lea Rq(output), [Rq(a) + Rq(b)]
+                    ; lea Rq(output.hw_enc()), [Rq(a.hw_enc()) + Rq(b.hw_enc())]
                 );
             }
         }
@@ -88,11 +108,12 @@ impl X64Emitter<'_> {
     #[inline]
     fn emit_add_reg_const(
         &mut self,
+        inst: InstId,
         output: JIRSlice,
         a: JIRSlice,
         b: u128,
     ) -> JITResult {
-        self.emit_add_sub_reg_const(output, a, b, AddSub::Add)
+        self.emit_add_sub_reg_const(inst, output, a, b, AddSub::Add)
     }
 
     /// Emit instructions to add or subtract the provided constant value to the register `a`.
@@ -100,14 +121,22 @@ impl X64Emitter<'_> {
     #[inline]
     pub(super) fn emit_add_sub_reg_const(
         &mut self,
+        inst: InstId,
         output: JIRSlice,
         a: JIRSlice,
         b: u128,
         add_sub: AddSub,
     ) -> JITResult {
         let size = output.size();
-        let a: u8 = self.load_slice_gpr(a, SliceType::Input).into();
-        let output: u8 = self.load_slice_gpr(output, SliceType::Output).into();
+        let Allocation::Register(output) = self.allocations.get_allocation(inst, 0) else {
+            todo!()
+        };
+        let Allocation::Register(a) = self.allocations.get_allocation(inst, 1) else {
+            todo!()
+        };
+        let output = output.hw_enc();
+        let a = a.hw_enc();
+
         if b < i8::MAX as u128 {
             // Use byte sized displacement for operands that fit into one byte.
             let mut b = b as i8;
@@ -136,15 +165,24 @@ impl X64Emitter<'_> {
             if let AddSub::Sub = add_sub {
                 b = -b;
             }
-            let tmp = self.get_temp_gpr();
             assemble!(self.block.assembler();
                 ;; mov64!(self.block.assembler(); output, a)
-                ; mov Rq(tmp as u8), QWORD b as _
-                ; add Rq(output), Rq(tmp as u8)
+                ; mov rax, QWORD b as _
+                ; add Rq(output), rax
             );
         } else {
             todo!("Immediates > u64::MAX currently unsupported")
         }
         Ok(())
     }
+}
+
+fn add_constants(
+    a: JIRConst,
+    b: JIRConst,
+) -> JIRConst {
+    let size = a.size();
+    let a = a.value();
+    let b = b.value();
+    JIRConst::new((a + b) % (1u128 << (size * 8)), size)
 }

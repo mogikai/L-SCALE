@@ -33,7 +33,7 @@ impl X64Emitter<'_> {
         if let (JIRValue::Const(dividend), JIRValue::Const(divisor)) = (dividend, divisor) {
             // If both arguments are const we can emit a move of the calculated value.
             return self
-                .emit_copy(output, JIRConst::new(dividend.value().wrapping_div(divisor.value()), dividend.size()));
+                .emit_copy_deprecated(output, JIRConst::new(dividend.value().wrapping_div(divisor.value()), dividend.size()));
         }
         self.emit_divide_value_value(DivisionType::Unsigned, output, dividend.into(), divisor)?;
         Ok(())
@@ -114,7 +114,7 @@ impl X64Emitter<'_> {
         match (dividend, divisor) {
             (JIRValue::Const(dividend), JIRValue::Const(divisor)) => {
                 let result = (dividend.value() as i128).wrapping_div(divisor.value() as i128) as u128;
-                return self.emit_copy(output, JIRConst::new(result, dividend.size()));
+                return self.emit_copy_deprecated(output, JIRConst::new(result, dividend.size()));
             }
             _ => {}
         }

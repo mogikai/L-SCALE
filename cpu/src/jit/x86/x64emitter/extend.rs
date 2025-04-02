@@ -22,7 +22,7 @@ impl X64Emitter<'_> {
             JIRValue::Const(value) => {
                 // For const values we simply copy
                 let value = value.zext(output.size()).expect("Invalid zero extend");
-                self.emit_copy(output, value)?;
+                self.emit_copy_deprecated(output, value)?;
             }
         }
         Ok(())

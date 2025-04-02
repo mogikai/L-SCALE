@@ -3,6 +3,7 @@
 mod arithmetic;
 mod bits;
 mod copy;
+mod directives;
 mod extend;
 mod flags;
 mod flow;
@@ -43,19 +44,25 @@ use crate::jit::api::{
     RuntimeError,
 };
 use crate::jit::code_buffer::CompiledBasicBlock;
-use crate::jit::host::register::HostRegSet;
+use crate::jit::host::register::{
+    HostRegMap,
+    HostRegSet,
+};
 use crate::jit::regalloc::RegisterAllocator;
 use crate::jit::regalloc::requirements::{
     EmitterAllocRequirements,
     OperandRequest,
     OperandRequirements,
+    TempRequest,
 };
 use crate::jit::regalloc::result::{
     AllocatorResult,
     LoadSpillDirective,
 };
 use crate::jit::trace_jit;
+use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::registers::RegisterTracker;
+use crate::jit::x86::x64emitter::regalloc::RegAllocIntention::Temp;
 use crate::jit::x86::{
     X86GlobalContext,
     assemble,
@@ -76,6 +83,9 @@ use mogi_utilities::addresses::EVAddr;
 
 pub struct X64Emitter<'a> {
     allocations: &'a AllocatorResult,
+    /// Keeps track of the slices currently loaded (tracked in forward direction).
+    /// Any callback or external branch can then flush everything currently loaded.
+    loaded_slices: HostRegMap<JIRSlice>,
     global_context: &'a X86GlobalContext,
     processor_spec: &'a ProcessorSpecification,
     register_tracker: &'a mut RegisterTracker,
@@ -102,6 +112,8 @@ pub struct X64AllocRequirements {
 
     /// The clobber registers for each instruction.
     clobbers: Vec<HostRegSet>,
+    /// contains the number of temps each instruction requires.
+    required_temps: Vec<TempRequest>,
 }
 
 impl X64AllocRequirements {
@@ -111,7 +123,8 @@ impl X64AllocRequirements {
             // This may need adjustment based on further testing.
             operand_requests: Vec::with_capacity(target_block.instructions().len() * 2),
             instruction_operand_ranges: Vec::with_capacity(target_block.instructions().len()),
-            clobbers: Vec::with_capacity(target_block.instructions().len()),
+            clobbers: vec![HostRegSet::empty(); target_block.instructions().len()],
+            required_temps: vec![TempRequest::new(); target_block.instructions().len()],
         };
         slf.calculate_inst_requirements(target_block);
         slf
@@ -124,103 +137,106 @@ impl X64AllocRequirements {
     ) {
         // TODO: Potentially, this step could be put into the IR generation step, so that we can directly add
         //       the requirements when the instruction is inserted, avoiding one iteration.
-        for inst in target_block.instructions() {
-            let range = self.add_instruction_operands(inst);
-            self.instruction_operand_ranges.push(range);
+        for (inst_id, inst) in target_block.instructions_with_ids() {
+            self.fetch_inst_operands(inst_id, inst);
         }
     }
 
-    fn add_instruction_operands(
+    fn fetch_inst_operands(
         &mut self,
+        inst_id: InstId,
         inst: &JIRInstruction,
-    ) -> Range<usize> {
-        let start = self.operand_requests.len();
-        let clobberes = self.append_inst_operands(inst);
-        self.clobbers.push(clobberes);
-        let end = self.operand_requests.len();
-        start..end
-    }
-
-    #[must_use]
-    fn append_inst_operands(
-        &mut self,
-        inst: &JIRInstruction,
-    ) -> HostRegSet {
+    ) {
+        let mut requirement = AllocRequirement::new(
+            inst_id,
+            &mut self.operand_requests,
+            &mut self.instruction_operand_ranges,
+            &mut self.clobbers,
+            &mut self.required_temps,
+        );
         match inst {
-            JIRInstruction::BlockStart(_) => HostRegSet::empty(),
-            JIRInstruction::BlockEnd(_) => HostRegSet::empty(),
-            JIRInstruction::InstructionStart(_) => HostRegSet::empty(),
-            JIRInstruction::InstructionEnd(_) => HostRegSet::empty(),
-            JIRInstruction::Copy(args) => self.append_copy_operands(args.output, args.input),
-            JIRInstruction::Load { target, address, space } => self.append_load_operands(*target, *address, *space),
-            JIRInstruction::Store { address, value, space } => self.append_store_operands(*address, *space, *value),
-            JIRInstruction::IntAdd(args) => self.append_add_operands(args.output, args.input_a, args.input_b),
-            JIRInstruction::IntSubtract(args) => HostRegSet::empty(),
-            JIRInstruction::IntMul(_) => HostRegSet::empty(),
-            JIRInstruction::IntDiv(_) => HostRegSet::empty(),
-            JIRInstruction::IntSDiv(_) => HostRegSet::empty(),
-            JIRInstruction::IntRemainder(_) => HostRegSet::empty(),
-            JIRInstruction::IntSRemainder(_) => HostRegSet::empty(),
-            JIRInstruction::IntLeft(_) => HostRegSet::empty(),
-            JIRInstruction::IntRight(_) => HostRegSet::empty(),
-            JIRInstruction::IntSRight(_) => HostRegSet::empty(),
-            JIRInstruction::IntOr(_) => HostRegSet::empty(),
-            JIRInstruction::IntAnd(_) => HostRegSet::empty(),
-            JIRInstruction::IntXor(_) => HostRegSet::empty(),
-            JIRInstruction::IntSLess(_) => HostRegSet::empty(),
-            JIRInstruction::IntSGreater(_) => HostRegSet::empty(),
-            JIRInstruction::IntSLessEqual(_) => HostRegSet::empty(),
-            JIRInstruction::IntSGreaterEqual(_) => HostRegSet::empty(),
-            JIRInstruction::IntLess(_) => HostRegSet::empty(),
-            JIRInstruction::IntGreater(_) => HostRegSet::empty(),
-            JIRInstruction::IntLessEqual(_) => HostRegSet::empty(),
-            JIRInstruction::IntGreaterEqual(_) => HostRegSet::empty(),
-            JIRInstruction::IntEquals(_) => HostRegSet::empty(),
-            JIRInstruction::IntNotEquals(_) => HostRegSet::empty(),
-            JIRInstruction::BitNegate(_) => HostRegSet::empty(),
-            JIRInstruction::IntNegate(_) => HostRegSet::empty(),
-            JIRInstruction::FloatDiv(_) => HostRegSet::empty(),
-            JIRInstruction::FloatMul(_) => HostRegSet::empty(),
-            JIRInstruction::FloatAdd(_) => HostRegSet::empty(),
-            JIRInstruction::FloatSubtract(_) => HostRegSet::empty(),
-            JIRInstruction::FloatLess(_) => HostRegSet::empty(),
-            JIRInstruction::FloatGreater(_) => HostRegSet::empty(),
-            JIRInstruction::FloatLessEqual(_) => HostRegSet::empty(),
-            JIRInstruction::FloatGreaterEqual(_) => HostRegSet::empty(),
-            JIRInstruction::FloatEquals(_) => HostRegSet::empty(),
-            JIRInstruction::FloatNotEquals(_) => HostRegSet::empty(),
-            JIRInstruction::FloatNegate(_) => HostRegSet::empty(),
-            JIRInstruction::BoolOr(_) => HostRegSet::empty(),
-            JIRInstruction::BoolAnd(_) => HostRegSet::empty(),
-            JIRInstruction::BoolXor(_) => HostRegSet::empty(),
-            JIRInstruction::BoolNegate(_) => HostRegSet::empty(),
-            JIRInstruction::CallDirect(..) => HostRegSet::empty(),
-            JIRInstruction::CallIndirect(..) => HostRegSet::empty(),
-            JIRInstruction::ReturnDirect(_) => HostRegSet::empty(),
-            JIRInstruction::ReturnIndirect(_) => HostRegSet::empty(),
-            JIRInstruction::GotoDirect(_) => HostRegSet::empty(),
-            JIRInstruction::GotoIndirect(_) => HostRegSet::empty(),
-            JIRInstruction::GotoDirectIf { .. } => HostRegSet::empty(),
-            JIRInstruction::GotoIndirectIf { .. } => HostRegSet::empty(),
-            JIRInstruction::JCodeGoto(_) => HostRegSet::empty(),
-            JIRInstruction::JCodeGotoIf { .. } => HostRegSet::empty(),
-            JIRInstruction::PopCount(_) => HostRegSet::empty(),
-            JIRInstruction::LZCount(_) => HostRegSet::empty(),
-            JIRInstruction::ZeroExtend(_) => HostRegSet::empty(),
-            JIRInstruction::SignExtend(_) => HostRegSet::empty(),
-            JIRInstruction::Carry(_) => HostRegSet::empty(),
-            JIRInstruction::SignCarry(_) => HostRegSet::empty(),
-            JIRInstruction::SignBorrow(_) => HostRegSet::empty(),
-            JIRInstruction::Nan(_) => HostRegSet::empty(),
-            JIRInstruction::Abs(_) => HostRegSet::empty(),
-            JIRInstruction::Sqrt(_) => HostRegSet::empty(),
-            JIRInstruction::IntToFloat(_) => HostRegSet::empty(),
-            JIRInstruction::FloatToFloat(_) => HostRegSet::empty(),
-            JIRInstruction::Trunc(_) => HostRegSet::empty(),
-            JIRInstruction::Ceil(_) => HostRegSet::empty(),
-            JIRInstruction::Floor(_) => HostRegSet::empty(),
-            JIRInstruction::Round(_) => HostRegSet::empty(),
-            JIRInstruction::CustomOp { .. } => HostRegSet::empty(),
+            JIRInstruction::BlockStart(_) => {}
+            JIRInstruction::BlockEnd(_) => {}
+            JIRInstruction::InstructionStart(_) => {}
+            JIRInstruction::InstructionEnd(_) => {}
+            JIRInstruction::Copy(args) => Self::copy_requirements(&mut requirement, args.output, args.input),
+            JIRInstruction::Load { target, address, space } => {
+                Self::load_requirements(&mut requirement, *target, *address, *space)
+            }
+            JIRInstruction::Store { address, value, space } => {
+                Self::store_requirements(&mut requirement, *address, *space, *value)
+            }
+            JIRInstruction::IntAdd(args) => {
+                Self::add_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::IntSubtract(args) => {
+                Self::subtract_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::IntMul(_) => {}
+            JIRInstruction::IntDiv(_) => {}
+            JIRInstruction::IntSDiv(_) => {}
+            JIRInstruction::IntRemainder(_) => {}
+            JIRInstruction::IntSRemainder(_) => {}
+            JIRInstruction::IntLeft(_) => {}
+            JIRInstruction::IntRight(_) => {}
+            JIRInstruction::IntSRight(_) => {}
+            JIRInstruction::IntOr(_) => {}
+            JIRInstruction::IntAnd(_) => {}
+            JIRInstruction::IntXor(_) => {}
+            JIRInstruction::IntSLess(_) => {}
+            JIRInstruction::IntSGreater(_) => {}
+            JIRInstruction::IntSLessEqual(_) => {}
+            JIRInstruction::IntSGreaterEqual(_) => {}
+            JIRInstruction::IntLess(_) => {}
+            JIRInstruction::IntGreater(_) => {}
+            JIRInstruction::IntLessEqual(_) => {}
+            JIRInstruction::IntGreaterEqual(_) => {}
+            JIRInstruction::IntEquals(_) => {}
+            JIRInstruction::IntNotEquals(_) => {}
+            JIRInstruction::BitNegate(_) => {}
+            JIRInstruction::IntNegate(_) => {}
+            JIRInstruction::FloatDiv(_) => {}
+            JIRInstruction::FloatMul(_) => {}
+            JIRInstruction::FloatAdd(_) => {}
+            JIRInstruction::FloatSubtract(_) => {}
+            JIRInstruction::FloatLess(_) => {}
+            JIRInstruction::FloatGreater(_) => {}
+            JIRInstruction::FloatLessEqual(_) => {}
+            JIRInstruction::FloatGreaterEqual(_) => {}
+            JIRInstruction::FloatEquals(_) => {}
+            JIRInstruction::FloatNotEquals(_) => {}
+            JIRInstruction::FloatNegate(_) => {}
+            JIRInstruction::BoolOr(_) => {}
+            JIRInstruction::BoolAnd(_) => {}
+            JIRInstruction::BoolXor(_) => {}
+            JIRInstruction::BoolNegate(_) => {}
+            JIRInstruction::CallDirect(..) => {}
+            JIRInstruction::CallIndirect(..) => {}
+            JIRInstruction::ReturnDirect(_) => {}
+            JIRInstruction::ReturnIndirect(_) => {}
+            JIRInstruction::GotoDirect(_) => {}
+            JIRInstruction::GotoIndirect(_) => {}
+            JIRInstruction::GotoDirectIf { .. } => {}
+            JIRInstruction::GotoIndirectIf { .. } => {}
+            JIRInstruction::JCodeGoto(_) => {}
+            JIRInstruction::JCodeGotoIf { .. } => {}
+            JIRInstruction::PopCount(_) => {}
+            JIRInstruction::LZCount(_) => {}
+            JIRInstruction::ZeroExtend(_) => {}
+            JIRInstruction::SignExtend(_) => {}
+            JIRInstruction::Carry(_) => {}
+            JIRInstruction::SignCarry(_) => {}
+            JIRInstruction::SignBorrow(_) => {}
+            JIRInstruction::Nan(_) => {}
+            JIRInstruction::Abs(_) => {}
+            JIRInstruction::Sqrt(_) => {}
+            JIRInstruction::IntToFloat(_) => {}
+            JIRInstruction::FloatToFloat(_) => {}
+            JIRInstruction::Trunc(_) => {}
+            JIRInstruction::Ceil(_) => {}
+            JIRInstruction::Floor(_) => {}
+            JIRInstruction::Round(_) => {}
+            JIRInstruction::CustomOp { .. } => {}
         }
     }
 
@@ -252,6 +268,13 @@ impl EmitterAllocRequirements for X64AllocRequirements {
         OperandRequirements::new(&self.operand_requests[self.instruction_operand_ranges[inst_id].clone()])
     }
 
+    fn required_temps(
+        &self,
+        inst_id: InstId,
+    ) -> TempRequest {
+        self.required_temps[inst_id]
+    }
+
     fn total_opereands(&self) -> usize {
         todo!()
     }
@@ -268,6 +291,7 @@ impl X64Emitter<'_> {
     ) -> X64Emitter<'a> {
         X64Emitter {
             allocations,
+            loaded_slices: Default::default(),
             global_context,
             processor_spec,
             register_tracker,
@@ -327,11 +351,13 @@ impl X64Emitter<'_> {
             JIRInstruction::BlockEnd(block_id) => {}
             JIRInstruction::InstructionStart(addr) => {}
             JIRInstruction::InstructionEnd(addr) => {}
-            JIRInstruction::Copy(args) => self.emit_copy(args.output, args.input)?,
-            JIRInstruction::Load { target, address, space } => self.emit_load(*target, *address, *space)?,
-            JIRInstruction::Store { address, value, space } => self.emit_store(*address, *space, *value)?,
-            JIRInstruction::IntAdd(args) => self.emit_add(args.output, args.input_a, args.input_b)?,
-            JIRInstruction::IntSubtract(args) => self.emit_subtract(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::Copy(args) => self.emit_copy(inst_id, args.output, args.input)?,
+            JIRInstruction::Load { target, address, space } => self.emit_load(inst_id, *target, *address, *space)?,
+            JIRInstruction::Store { address, value, space } => self.emit_store(inst_id, *address, *space, *value)?,
+            JIRInstruction::IntAdd(args) => self.emit_add(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntSubtract(args) => {
+                self.emit_subtract(inst_id, args.output, args.input_a, args.input_b)?
+            }
             JIRInstruction::IntMul(args) => self.emit_multiply(args.output, args.input_a, args.input_b)?,
             JIRInstruction::IntDiv(args) => self.emit_divide(args.output, args.input_a, args.input_b)?,
             JIRInstruction::IntSDiv(args) => self.emit_signed_divide(args.output, args.input_a, args.input_b)?,
@@ -383,7 +409,7 @@ impl X64Emitter<'_> {
             JIRInstruction::ReturnDirect(_) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::ReturnIndirect(_) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::GotoDirect(target) => self.emit_goto_direct(*target)?,
-            JIRInstruction::GotoIndirect(target) => self.emit_goto_indirect(*target)?,
+            JIRInstruction::GotoIndirect(target) => self.emit_goto_indirect(inst_id, *target)?,
             JIRInstruction::GotoDirectIf { condition, target } => self.emit_goto_direct_if(*target, *condition)?,
             JIRInstruction::GotoIndirectIf { condition, target } => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::JCodeGoto(block_id) => todo!("Instruction not yet implemented: {jinst}"),
@@ -418,17 +444,6 @@ impl X64Emitter<'_> {
             }
         }
         self.emit_directives(self.allocations.directives().after_inst_directives(inst_id))?;
-        Ok(())
-    }
-
-    fn emit_directives(
-        &self,
-        directives: &[LoadSpillDirective],
-    ) -> JITResult {
-        for directive in directives {
-            trace_jit!("Emitting directive: {directive:?}");
-            // TODO: Emit directives
-        }
         Ok(())
     }
 }

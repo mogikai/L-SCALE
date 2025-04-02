@@ -50,6 +50,7 @@ use registers::RegisterTracker;
 use task_context::X86TaskContext;
 use x64emitter::CustomOpCallback;
 
+mod alloc_requirement;
 mod registers;
 mod scaffolding;
 mod task_context;

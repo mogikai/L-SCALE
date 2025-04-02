@@ -257,7 +257,7 @@ impl X64Emitter<'_> {
         let out_gpr = self.allocate_slice_gpr(output, SliceType::Output);
         match (input_a, input_b) {
             (JIRValue::Const(input_a), JIRValue::Const(input_b)) => {
-                self.emit_copy(output, JIRConst::new(cmp(input_a.value(), input_b.value()), 1))
+                self.emit_copy_deprecated(output, JIRConst::new(cmp(input_a.value(), input_b.value()), 1))
             }
             (JIRValue::Slice(input_a), JIRValue::Const(input_b))
             | (JIRValue::Const(input_b), JIRValue::Slice(input_a)) => {
@@ -284,7 +284,7 @@ impl X64Emitter<'_> {
         let out_gpr = self.allocate_slice_gpr(output, SliceType::Output);
         match (input_a, input_b) {
             (JIRValue::Const(input_a), JIRValue::Const(input_b)) => {
-                self.emit_copy(output, JIRConst::new(cmp(input_a.value(), input_b.value()), 1))
+                self.emit_copy_deprecated(output, JIRConst::new(cmp(input_a.value(), input_b.value()), 1))
             }
             (JIRValue::Slice(input_a), JIRValue::Const(input_b)) => {
                 self.emit_cmp_slice_const(asm_set, out_gpr, input_a, input_b)

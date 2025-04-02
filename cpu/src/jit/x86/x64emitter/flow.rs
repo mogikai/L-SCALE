@@ -5,6 +5,7 @@ use crate::jit::x86::{
     X86GlobalContext,
     assemble,
 };
+use mogi_sleigh::spec::jir::basic_block::InstId;
 use mogi_sleigh::spec::jir::values::{
     JIRConst,
     JIRValue,
@@ -34,9 +35,10 @@ impl X64Emitter<'_> {
     /// For directly jumping to `target` instead of the address at that location, see [emit_goto_direct](Self::emit_goto_direct)
     pub fn emit_goto_indirect(
         &mut self,
+        inst: InstId,
         target: JIRValue,
     ) -> JITResult {
-        self.emit_load_pc(target)?;
+        self.emit_load_pc(inst, target)?;
         self.emit_flush_slices()?;
         assemble!(self.block.assembler();
             ; jmp ->exit_success
@@ -85,16 +87,17 @@ impl X64Emitter<'_> {
         address: JIRValue,
     ) -> JITResult {
         let pc = self.processor_spec.program_counter_slice();
-        self.emit_copy(pc, address)
+        self.emit_copy_deprecated(pc, address)
     }
 
     /// Load the program counter from the memory location pointed to by `address`.
     pub fn emit_load_pc(
         &mut self,
+        inst: InstId,
         address: JIRValue,
     ) -> JITResult {
         let pc = self.processor_spec.program_counter_slice();
         let space = self.processor_spec.default_space();
-        self.emit_load(pc, address, space)
+        self.emit_load(inst, pc, address, space)
     }
 }

@@ -3,6 +3,7 @@ use std::fmt::{
     Debug,
     Display,
 };
+use strum::EnumCount;
 
 /// Register classes.
 ///
@@ -17,7 +18,7 @@ use std::fmt::{
 /// class of float/vector registers used both for FP and for vector
 /// operations. Additionally for machines with totally separate vector
 /// registers a third class is provided.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, EnumCount)]
 pub enum RegClass {
     Int    = 0,
     Float  = 1,
@@ -45,7 +46,7 @@ pub struct HostReg {
 
 impl HostReg {
     pub const MAX_BITS: usize = 6;
-    pub const MAX_HW_ENC: u8 = (1 << Self::MAX_BITS) - 1;
+    pub const HW_ENC_MASK: u8 = (1 << Self::MAX_BITS) - 1;
     pub const NUM_INDEX: usize = 1 << (Self::MAX_BITS + 2); // including RegClass bits
 
     /// Create a new PReg. The `hw_enc` range is 6 bits.
@@ -54,16 +55,16 @@ impl HostReg {
         hw_enc: u8,
         class: RegClass,
     ) -> Self {
-        debug_assert!(hw_enc <= HostReg::MAX_HW_ENC);
+        debug_assert!(hw_enc <= HostReg::HW_ENC_MASK);
         HostReg {
-            bits: ((class as u8) << Self::MAX_BITS) | (hw_enc as u8),
+            bits: ((class as u8) << Self::MAX_BITS) | hw_enc,
         }
     }
 
     /// The physical register number, as encoded by the ISA for the particular register class.
     #[inline(always)]
     pub const fn hw_enc(self) -> u8 {
-        self.bits & Self::MAX_HW_ENC
+        self.bits & Self::HW_ENC_MASK
     }
 
     /// The register class.
@@ -97,7 +98,7 @@ impl HostReg {
     /// data structures.
     #[inline(always)]
     pub const fn invalid() -> Self {
-        HostReg::new(Self::MAX_HW_ENC, RegClass::Int)
+        HostReg::new(Self::HW_ENC_MASK, RegClass::Int)
     }
 }
 
@@ -211,34 +212,22 @@ impl<T> HostRegMap<T> {
     }
 }
 
-/// A type for internal bit arrays.
-type Bits = u64;
-
 /// A host register set. Used to represent clobbers efficiently.
 ///
 /// The set is `Copy` and is guaranteed to have constant, and small,
 /// size, as it is based on a bitset internally.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct HostRegSet {
-    bits: [Bits; Self::LEN],
+    // 64 bits, because register numbers can be up to 6 bits in length. 2^6 = 64
+    bits: [u64; RegClass::COUNT],
 }
 
 impl HostRegSet {
-    /// The number of bits per element in the internal bit array.
-    const BITS: usize = core::mem::size_of::<Bits>() * 8;
-
-    /// Length of the internal bit array.
-    const LEN: usize = (HostReg::NUM_INDEX + Self::BITS - 1) / Self::BITS;
-
     /// Create an empty set.
     pub const fn empty() -> Self {
-        Self { bits: [0; Self::LEN] }
-    }
-
-    /// Splits the given register index into parts to access the internal bit array.
-    const fn split_index(reg: HostReg) -> (usize, usize) {
-        let index = reg.index();
-        (index >> Self::BITS.ilog2(), index & (Self::BITS - 1))
+        Self {
+            bits: [0; RegClass::COUNT],
+        }
     }
 
     /// Returns whether the given register is part of the set.
@@ -246,8 +235,7 @@ impl HostRegSet {
         &self,
         reg: HostReg,
     ) -> bool {
-        let (index, bit) = Self::split_index(reg);
-        self.bits[index] & (1 << bit) != 0
+        self.bits[reg.class() as usize] & (1 << reg.hw_enc()) != 0
     }
 
     /// Add a physical register (PReg) to the set, returning the new value.
@@ -255,9 +243,8 @@ impl HostRegSet {
         self,
         reg: HostReg,
     ) -> Self {
-        let (index, bit) = Self::split_index(reg);
         let mut out = self;
-        out.bits[index] |= 1 << bit;
+        out.bits[reg.class() as usize] |= 1 << reg.hw_enc();
         out
     }
 
@@ -266,8 +253,7 @@ impl HostRegSet {
         &mut self,
         reg: HostReg,
     ) {
-        let (index, bit) = Self::split_index(reg);
-        self.bits[index] |= 1 << bit;
+        self.bits[reg.class() as usize] |= 1 << reg.hw_enc();
     }
 
     /// Remove a physical register (PReg) from the set.
@@ -275,8 +261,7 @@ impl HostRegSet {
         &mut self,
         reg: HostReg,
     ) {
-        let (index, bit) = Self::split_index(reg);
-        self.bits[index] &= !(1 << bit);
+        self.bits[reg.class() as usize] &= !(1 << reg.hw_enc());
     }
 
     /// Add all of the registers in one set to this one, mutating in
@@ -307,6 +292,16 @@ impl HostRegSet {
         HostRegSet { bits: set }
     }
 
+    pub fn iter_class(
+        &self,
+        reg_class: RegClass,
+    ) -> impl Iterator<Item = HostReg> + use<> {
+        HostRegClassIter {
+            bits: self.bits[reg_class as usize],
+            reg_class,
+        }
+    }
+
     pub fn class_is_empty(
         &self,
         regclass: RegClass,
@@ -321,6 +316,27 @@ impl HostRegSet {
             }
         }
         true
+    }
+
+    pub fn get_nth_from_class(
+        &self,
+        n: usize,
+        regclass: RegClass,
+    ) -> Option<HostReg> {
+        if n >= self.bits[regclass as usize].count_ones() as usize {
+            return None;
+        }
+        let bits = self.bits[regclass as usize];
+        let mut count = 0;
+        for i in 0..64u64 {
+            if (bits & (1 << i)) != 0 {
+                if count == n {
+                    return Some(HostReg::new(i as u8, regclass));
+                }
+                count += 1;
+            }
+        }
+        None
     }
 }
 
@@ -361,8 +377,28 @@ impl IntoIterator for HostRegSet {
     }
 }
 
+pub struct HostRegClassIter {
+    bits: u64,
+    reg_class: RegClass,
+}
+
+impl Iterator for HostRegClassIter {
+    type Item = HostReg;
+    fn next(&mut self) -> Option<HostReg> {
+        loop {
+            if self.bits == 0 {
+                return None;
+            }
+            let bit = self.bits.trailing_zeros();
+            self.bits &= !(1 << bit);
+            let hw_enc = bit as u8;
+            return Some(HostReg::new(hw_enc, self.reg_class));
+        }
+    }
+}
+
 pub struct PRegSetIter {
-    bits: [Bits; HostRegSet::LEN],
+    bits: [u64; RegClass::COUNT],
     cur: usize,
 }
 
@@ -374,7 +410,7 @@ impl Iterator for PRegSetIter {
             if *bits != 0 {
                 let bit = bits.trailing_zeros();
                 *bits &= !(1 << bit);
-                let index = bit as usize + self.cur * HostRegSet::BITS;
+                let index = bit as usize + self.cur * RegClass::COUNT;
                 return Some(HostReg::from_index(index));
             }
             self.cur += 1;
