@@ -1,5 +1,9 @@
 mod and;
+mod bitand;
 mod bitnegate;
+mod bitor;
+mod bitxor;
+mod complex;
 mod equals;
 mod greater;
 mod greaterequals;
