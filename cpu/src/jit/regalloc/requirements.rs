@@ -76,6 +76,18 @@ impl OperandRequest {
             class: RegClass::Int,
         }
     }
+
+    pub fn int_read_fixed_reg(
+        reg: HostReg,
+        slice: JIRSlice,
+    ) -> Self {
+        OperandRequest {
+            slice,
+            constraint: OperandConstraint::FixedReg(reg),
+            kind: OperandKind::Read,
+            class: RegClass::Int,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -135,20 +147,38 @@ impl<'a> OperandRequirements<'a> {
     }
 
     /// Returns an iterator over all operand requests with a fixed register.
-    pub fn fixed(&self) -> impl Iterator<Item = &OperandRequest> {
-        self.0
-            .iter()
-            .filter(|req| matches!(req.constraint, OperandConstraint::FixedReg(_)))
+    pub fn fixed(&self) -> impl Iterator<Item = (usize, &OperandRequest)> {
+        self.all()
+            .filter(|(_, req)| matches!(req.constraint, OperandConstraint::FixedReg(_)))
     }
 
-    pub fn write(&self) -> impl Iterator<Item = (usize, &OperandRequest)> {
+    pub fn non_fixed(&self) -> impl Iterator<Item = (usize, &OperandRequest)> {
         self.all()
-            .filter(|(_, req)| matches!(req.kind, OperandKind::Write))
+            .filter(|(_, req)| !matches!(req.constraint, OperandConstraint::FixedReg(_)))
     }
 
-    pub fn read(&self) -> impl Iterator<Item = (usize, &OperandRequest)> {
-        self.all()
-            .filter(|(_, req)| matches!(req.kind, OperandKind::Read))
+    pub fn write_non_fixed(&self) -> impl Iterator<Item = (usize, &OperandRequest)> {
+        self.all().filter(|(_, req)| {
+            matches!(req.kind, OperandKind::Write) && !matches!(req.constraint, OperandConstraint::FixedReg(_))
+        })
+    }
+
+    pub fn write_fixed(&self) -> impl Iterator<Item = (usize, &OperandRequest)> {
+        self.all().filter(|(_, req)| {
+            matches!(req.kind, OperandKind::Write) && matches!(req.constraint, OperandConstraint::FixedReg(_))
+        })
+    }
+
+    pub fn read_non_fixed(&self) -> impl Iterator<Item = (usize, &OperandRequest)> {
+        self.all().filter(|(_, req)| {
+            matches!(req.kind, OperandKind::Read) && !matches!(req.constraint, OperandConstraint::FixedReg(_))
+        })
+    }
+
+    pub fn read_fixed(&self) -> impl Iterator<Item = (usize, &OperandRequest)> {
+        self.all().filter(|(_, req)| {
+            matches!(req.kind, OperandKind::Read) && matches!(req.constraint, OperandConstraint::FixedReg(_))
+        })
     }
 
     pub fn all(&self) -> impl Iterator<Item = (usize, &OperandRequest)> + ExactSizeIterator {

@@ -156,7 +156,7 @@ where
         trace_jit!("Allocating registers for {inst}. It is clobbering {clobbers} and requesting {operands:?}");
         trace_jit!("Available registers at the start:\n{}", self.available_registers,);
 
-        for operand in operands.fixed() {
+        for (_, operand) in operands.fixed() {
             self.reserve_reg_for_fixed_operand(operand)?;
         }
 
@@ -166,16 +166,15 @@ where
 
         trace_jit!("Available registers after fixed reg and clobber constraints:\n{}", self.available_registers);
 
-        // TODO: Can we combine this?
-        for (op_id, operand) in operands.write() {
+        for (op_id, operand) in operands.fixed() {
             let allocation = self.alloc_operand(operand)?;
-            trace_jit!("Allocated write operand {operand:?} for instruction {inst} as {allocation:?}");
+            trace_jit!("Allocated fixed reg operand {operand:?} for instruction {inst} as {allocation:?}");
             self.allocations.set_allocation(inst, op_id, allocation);
         }
 
-        for (op_id, operand) in operands.read() {
+        for (op_id, operand) in operands.non_fixed() {
             let allocation = self.alloc_operand(operand)?;
-            trace_jit!("Allocated read operand {operand:?} for instruction {inst} as {allocation:?}");
+            trace_jit!("Allocated operand {operand:?} for instruction {inst} as {allocation:?}");
             self.allocations.set_allocation(inst, op_id, allocation);
         }
 

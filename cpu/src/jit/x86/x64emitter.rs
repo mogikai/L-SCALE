@@ -173,8 +173,12 @@ impl X64AllocRequirements {
                 Self::subtract_requirements(&mut requirement, args.output, args.input_a, args.input_b)
             }
             JIRInstruction::IntMul(_) => {}
-            JIRInstruction::IntDiv(_) => {}
-            JIRInstruction::IntSDiv(_) => {}
+            JIRInstruction::IntDiv(args) => {
+                Self::divide_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::IntSDiv(args) => {
+                Self::divide_signed_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
             JIRInstruction::IntRemainder(_) => {}
             JIRInstruction::IntSRemainder(_) => {}
             JIRInstruction::IntLeft(_) => {}
@@ -359,8 +363,10 @@ impl X64Emitter<'_> {
                 self.emit_subtract(inst_id, args.output, args.input_a, args.input_b)?
             }
             JIRInstruction::IntMul(args) => self.emit_multiply(args.output, args.input_a, args.input_b)?,
-            JIRInstruction::IntDiv(args) => self.emit_divide(args.output, args.input_a, args.input_b)?,
-            JIRInstruction::IntSDiv(args) => self.emit_signed_divide(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntDiv(args) => self.emit_divide(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntSDiv(args) => {
+                self.emit_signed_divide(inst_id, args.output, args.input_a, args.input_b)?
+            }
             JIRInstruction::IntRemainder(args) => self.emit_remainder(args.output, args.input_a, args.input_b)?,
             JIRInstruction::IntSRemainder(args) => {
                 self.emit_signed_remainder(args.output, args.input_a, args.input_b)?
