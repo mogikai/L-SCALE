@@ -192,9 +192,9 @@ impl X64AllocRequirements {
             JIRInstruction::IntSRight(args) => {
                 Self::shift_requirements(&mut requirement, args.output, args.input_a, args.input_b)
             }
-            JIRInstruction::IntOr(_) => {}
-            JIRInstruction::IntAnd(_) => {}
-            JIRInstruction::IntXor(_) => {}
+            JIRInstruction::IntOr(args) => Self::bitwise_requirements(&mut requirement, args.output, args.input_a, args.input_b),
+            JIRInstruction::IntAnd(args) => Self::bitwise_requirements(&mut requirement, args.output, args.input_a, args.input_b),
+            JIRInstruction::IntXor(args) => Self::bitwise_requirements(&mut requirement, args.output, args.input_a, args.input_b),
             JIRInstruction::IntSLess(_) => {}
             JIRInstruction::IntSGreater(_) => {}
             JIRInstruction::IntSLessEqual(_) => {}
@@ -205,7 +205,7 @@ impl X64AllocRequirements {
             JIRInstruction::IntGreaterEqual(_) => {}
             JIRInstruction::IntEquals(_) => {}
             JIRInstruction::IntNotEquals(_) => {}
-            JIRInstruction::BitNegate(_) => {}
+            JIRInstruction::BitNegate(args) => Self::bitwise_negate_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::IntNegate(args) => Self::negate_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::FloatDiv(_) => {}
             JIRInstruction::FloatMul(_) => {}
@@ -218,10 +218,10 @@ impl X64AllocRequirements {
             JIRInstruction::FloatEquals(_) => {}
             JIRInstruction::FloatNotEquals(_) => {}
             JIRInstruction::FloatNegate(_) => {}
-            JIRInstruction::BoolOr(_) => {}
-            JIRInstruction::BoolAnd(_) => {}
-            JIRInstruction::BoolXor(_) => {}
-            JIRInstruction::BoolNegate(_) => {}
+            JIRInstruction::BoolOr(args) => Self::boolean_requirements(&mut requirement, args.output, args.input_a, args.input_b),
+            JIRInstruction::BoolAnd(args) => Self::boolean_requirements(&mut requirement, args.output, args.input_a, args.input_b),
+            JIRInstruction::BoolXor(args) => Self::boolean_requirements(&mut requirement, args.output, args.input_a, args.input_b),
+            JIRInstruction::BoolNegate(args) => Self::boolean_negate_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::CallDirect(..) => {}
             JIRInstruction::CallIndirect(..) => {}
             JIRInstruction::ReturnDirect(_) => {}
@@ -386,9 +386,9 @@ impl X64Emitter<'_> {
             JIRInstruction::IntSRight(args) => {
                 self.emit_shift_right_signed(inst_id, args.output, args.input_a, args.input_b)?
             }
-            JIRInstruction::IntOr(args) => self.emit_bitwise_or(args.output, args.input_a, args.input_b)?,
-            JIRInstruction::IntAnd(args) => self.emit_bitwise_and(args.output, args.input_a, args.input_b)?,
-            JIRInstruction::IntXor(args) => self.emit_bitwise_xor(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntOr(args) => self.emit_bitwise_or(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntAnd(args) => self.emit_bitwise_and(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntXor(args) => self.emit_bitwise_xor(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::IntSLess(args) => self.emit_compare_lt_signed(args.output, args.input_a, args.input_b)?,
             JIRInstruction::IntSGreater(args) => {
                 self.emit_compare_gt_signed(args.output, args.input_a, args.input_b)?
@@ -405,7 +405,7 @@ impl X64Emitter<'_> {
             JIRInstruction::IntGreaterEqual(args) => self.emit_compare_ge(args.output, args.input_a, args.input_b)?,
             JIRInstruction::IntEquals(args) => self.emit_compare_eq(args.output, args.input_a, args.input_b)?,
             JIRInstruction::IntNotEquals(args) => self.emit_compare_ne(args.output, args.input_a, args.input_b)?,
-            JIRInstruction::BitNegate(args) => self.emit_bitwise_negate(args.output, args.input)?,
+            JIRInstruction::BitNegate(args) => self.emit_bitwise_negate(inst_id, args.output, args.input)?,
             JIRInstruction::IntNegate(args) => self.emit_negate(inst_id, args.output, args.input)?,
             JIRInstruction::FloatDiv(args) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::FloatMul(args) => todo!("Instruction not yet implemented: {jinst}"),
@@ -418,10 +418,10 @@ impl X64Emitter<'_> {
             JIRInstruction::FloatEquals(args) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::FloatNotEquals(args) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::FloatNegate(args) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::BoolOr(args) => self.emit_boolean_or(args.output, args.input_a, args.input_b)?,
-            JIRInstruction::BoolAnd(args) => self.emit_boolean_and(args.output, args.input_a, args.input_b)?,
-            JIRInstruction::BoolXor(args) => self.emit_boolean_xor(args.output, args.input_a, args.input_b)?,
-            JIRInstruction::BoolNegate(args) => self.emit_boolean_negate(args.output, args.input)?,
+            JIRInstruction::BoolOr(args) => self.emit_boolean_or(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::BoolAnd(args) => self.emit_boolean_and(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::BoolXor(args) => self.emit_boolean_xor(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::BoolNegate(args) => self.emit_boolean_negate(inst_id, args.output, args.input)?,
             JIRInstruction::CallDirect(..) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::CallIndirect(..) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::ReturnDirect(_) => todo!("Instruction not yet implemented: {jinst}"),
