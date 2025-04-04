@@ -389,10 +389,14 @@ impl MOIRConstructor {
             MOIROperation::IntNegate => jinst!({ output? } = -{ input_a? }),
             MOIROperation::FloatNegate => jinst!({ output? } =  fneg{ input_a? }),
         };
+
+        target_inst.push_jir_instruction(inst)?;
+
         if let Some(output_store) = output_store {
             target_inst.push_jir_instruction(output_store)?;
         }
-        target_inst.push_jir_instruction(inst)
+
+        Ok(())
     }
 
     fn resolve_custom_op_args(

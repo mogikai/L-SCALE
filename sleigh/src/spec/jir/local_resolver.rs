@@ -514,18 +514,24 @@ impl<'a> JIRResolver<'a> {
                         // offset as the constant value. I.e. the position in the const address space
                         // corresponds to its value.
                         // TODO: Replace with api call
-                        if let Some(optimized) = self.optimize_const_load(spec, address, space, size)? {
-                            return Ok(optimized.into());
-                        }
+                        // TODO move this to a later stage since we can only optimize const loads
+                        // that appear on
 
-                        // In case of a dynamic reference as address for the current reference (i.e. **addr)
-                        // we need to insert a load instruction to resolve the first indirection to *addr
-                        // The final load or store operation needs to be inserted by the instruction resolver,
-                        // since only it knows whether we need a load or store instruction.
-                        let tmp = instruction_builder.alloc_temporary(size)?;
-                        instruction_builder.push_jir_instruction(jinst!(tmp = *[space]address))?;
-                        // Create an rvalue
-                        JIRValue::Slice(tmp)
+                        if let Some(optimized) = self.optimize_const_load(spec, address, space, size)? {
+                            // space is const
+                            optimized.into()
+                        } else {
+                            // space is not const
+
+                            // In case of a dynamic reference as address for the current reference (i.e. **addr)
+                            // we need to insert a load instruction to resolve the first indirection to *addr
+                            // The final load or store operation needs to be inserted by the instruction resolver,
+                            // since only it knows whether we need a load or store instruction.
+                            let tmp = instruction_builder.alloc_temporary(size)?;
+                            instruction_builder.push_jir_instruction(jinst!(tmp = *[space]address))?;
+                            // Create an rvalue
+                            JIRValue::Slice(tmp)
+                        }
                     }
                 };
                 Ok(JIRResolvedValue::Reference {
