@@ -183,9 +183,15 @@ impl X64AllocRequirements {
             }
             JIRInstruction::IntRemainder(_) => {}
             JIRInstruction::IntSRemainder(_) => {}
-            JIRInstruction::IntLeft(_) => {}
-            JIRInstruction::IntRight(_) => {}
-            JIRInstruction::IntSRight(_) => {}
+            JIRInstruction::IntLeft(args) => {
+                Self::shift_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::IntRight(args) => {
+                Self::shift_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::IntSRight(args) => {
+                Self::shift_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
             JIRInstruction::IntOr(_) => {}
             JIRInstruction::IntAnd(_) => {}
             JIRInstruction::IntXor(_) => {}
@@ -373,9 +379,13 @@ impl X64Emitter<'_> {
             JIRInstruction::IntSRemainder(args) => {
                 self.emit_signed_remainder(args.output, args.input_a, args.input_b)?
             }
-            JIRInstruction::IntLeft(args) => self.emit_shift_left(args.output, args.input_a, args.input_b)?,
-            JIRInstruction::IntRight(args) => self.emit_shift_right(args.output, args.input_a, args.input_b)?,
-            JIRInstruction::IntSRight(args) => self.emit_shift_right_signed(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntLeft(args) => self.emit_shift_left(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntRight(args) => {
+                self.emit_shift_right(inst_id, args.output, args.input_a, args.input_b)?
+            }
+            JIRInstruction::IntSRight(args) => {
+                self.emit_shift_right_signed(inst_id, args.output, args.input_a, args.input_b)?
+            }
             JIRInstruction::IntOr(args) => self.emit_bitwise_or(args.output, args.input_a, args.input_b)?,
             JIRInstruction::IntAnd(args) => self.emit_bitwise_and(args.output, args.input_a, args.input_b)?,
             JIRInstruction::IntXor(args) => self.emit_bitwise_xor(args.output, args.input_a, args.input_b)?,
