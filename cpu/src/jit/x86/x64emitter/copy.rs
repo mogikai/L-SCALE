@@ -5,6 +5,7 @@ use crate::jit::host::register::{
 };
 use crate::jit::regalloc::requirements::OperandRequest;
 use crate::jit::regalloc::result::Allocation;
+use crate::jit::trace_jit;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
 use crate::jit::x86::x64emitter::regalloc::SliceType;
@@ -83,28 +84,24 @@ impl X64Emitter<'_> {
             todo!("Implement non int copy")
         }
         debug_assert_eq!(target.class(), source.class());
-        let target = target.hw_enc();
-        let source = source.hw_enc();
         match extend_mode {
             CopyExtendMode::ZeroExtend(new_size) => {
-                todo!()
-                // if target == source && size == new_size {
-                //     trace_jit!("Zero extend with equal sizes: no-op");
-                //     return Ok(());
-                // }
-                // trace_jit!("Zero extending from {source:?}:{size} to {target:?}:{new_size}");
-                // self.copy_gpr_to_gpr_zext(source, target, size, new_size)?;
-                // Ok(())
+                if target == source && size == new_size {
+                    trace_jit!("Zero extend with equal sizes: no-op");
+                    return Ok(());
+                }
+                trace_jit!("Zero extending from {source:?}:{size} to {target:?}:{new_size}");
+                self.copy_reg_zext(target, source, size, new_size)?;
+                Ok(())
             }
             CopyExtendMode::SignExtend(new_size) => {
-                todo!()
-                // if target == source && size == new_size {
-                //     trace_jit!("Sign extend with equal sizes: no-op");
-                //     return Ok(());
-                // }
-                // trace_jit!("Sign extending from {source:?}:{size} to {target:?}:{new_size}");
-                // self.copy_gpr_to_gpr_sext(source, target, size, new_size)?;
-                // Ok(())
+                if target == source && size == new_size {
+                    trace_jit!("Sign extend with equal sizes: no-op");
+                    return Ok(());
+                }
+                trace_jit!("Sign extending from {source:?}:{size} to {target:?}:{new_size}");
+                self.copy_reg_sext(target, source, size, new_size)?;
+                Ok(())
             }
             CopyExtendMode::None => {
                 // Only emit a copy instruction, if target and source are different.
@@ -114,12 +111,12 @@ impl X64Emitter<'_> {
                 match size {
                     1..=4 => {
                         assemble!(self.block.assembler();
-                            ; mov Rd(target), Rd(source)
+                            ; mov Rd(target.hw_enc()), Rd(source.hw_enc())
                         );
                     }
                     5..=8 => {
                         assemble!(self.block.assembler();
-                            ; mov Rq(target), Rq(source)
+                            ; mov Rq(target.hw_enc()), Rq(source.hw_enc())
                         );
                     }
                     _ => unimplemented!("Unsupported size for gpr copy"),
@@ -127,6 +124,110 @@ impl X64Emitter<'_> {
                 Ok(())
             }
         }
+    }
+
+    fn copy_reg_zext(
+        &mut self,
+        target: HostReg,
+        source: HostReg,
+        source_size: JIRSize,
+        target_size: JIRSize,
+    ) -> JITResult {
+        match target_size {
+            1 => match source_size {
+                1 => (),
+                2.. => todo!("Narrowing zero extend makes no sense"),
+                _ => todo!("Unsupported zero extend size"),
+            },
+            2 => match source_size {
+                1 => assemble!(self.block.assembler();
+                    ; movzx Rw(target.hw_enc()), Rb(source.hw_enc())
+                ),
+                2 => (/* zext size 4 to 4 is a no-op */),
+                3.. => todo!("Narrowing zero extend makes no sense"),
+                _ => todo!("Unsupported zero extend size"),
+            },
+            4 => match source_size {
+                1 => assemble!(self.block.assembler();
+                    ; movzx Rd(target.hw_enc()), Rb(source.hw_enc())
+                ),
+                2 => assemble!(self.block.assembler();
+                    ; movzx Rd(target.hw_enc()), Rw(source.hw_enc())
+                ),
+                4 => (/* zext size 4 to 4 is a no-op*/),
+                5.. => todo!("Narrowing zero extend makes no sense"),
+                _ => todo!("Unsupported zero extend size"),
+            },
+            8 => match source_size {
+                // moving to the lower 32 bit automatically zeros the upper 32 bit.
+                1 => assemble!(self.block.assembler();
+                    ; movzx Rd(target.hw_enc()), Rb(source.hw_enc())
+                ),
+                2 => assemble!(self.block.assembler();
+                    ; movzx Rd(target.hw_enc()), Rw(source.hw_enc())
+                ),
+                4 => assemble!(self.block.assembler();
+                    ; mov Rd(target.hw_enc()), Rd(source.hw_enc())
+                ),
+                8 => (/* zext size 8 to 8 is a no-op */),
+                9.. => todo!("Narrowing zero extend makes no sense"),
+                _ => todo!("Unsupported zero extend size"),
+            },
+            _ => todo!("Unsupported zero extend target"),
+        }
+        Ok(())
+    }
+
+    fn copy_reg_sext(
+        &mut self,
+        target: HostReg,
+        source: HostReg,
+        source_size: JIRSize,
+        target_size: JIRSize,
+    ) -> JITResult {
+        match target_size {
+            1 => match source_size {
+                1 => (),
+                2.. => todo!("Narrowing zero extend makes no sense"),
+                _ => todo!("Unsupported zero extend size"),
+            },
+            2 => match source_size {
+                1 => assemble!(self.block.assembler();
+                    ; movsx Rw(target.hw_enc()), Rb(source.hw_enc())
+                ),
+                2 => (/* zext size 4 to 4 is a no-op */),
+                3.. => todo!("Narrowing zero extend makes no sense"),
+                _ => todo!("Unsupported zero extend size"),
+            },
+            4 => match source_size {
+                1 => assemble!(self.block.assembler();
+                    ; movsx Rd(target.hw_enc()), Rb(source.hw_enc())
+                ),
+                2 => assemble!(self.block.assembler();
+                    ; movsx Rd(target.hw_enc()), Rw(source.hw_enc())
+                ),
+                4 => (/* zext size 4 to 4 is a no-op*/),
+                5.. => todo!("Narrowing zero extend makes no sense"),
+                _ => todo!("Unsupported zero extend size"),
+            },
+            8 => match source_size {
+                // moving to the lower 32 bit automatically zeros the upper 32 bit.
+                1 => assemble!(self.block.assembler();
+                    ; movsx Rq(target.hw_enc()), Rb(source.hw_enc())
+                ),
+                2 => assemble!(self.block.assembler();
+                    ; movsx Rq(target.hw_enc()), Rw(source.hw_enc())
+                ),
+                4 => assemble!(self.block.assembler();
+                    ; movsx Rq(target.hw_enc()), Rd(source.hw_enc())
+                ),
+                8 => (/* zext size 8 to 8 is a no-op */),
+                9.. => todo!("Narrowing zero extend makes no sense"),
+                _ => todo!("Unsupported zero extend size"),
+            },
+            _ => todo!("Unsupported zero extend target"),
+        }
+        Ok(())
     }
 
     /// Emit an instruction that loads the provided constant into the provided target gp register.
