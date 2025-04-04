@@ -25,10 +25,10 @@ impl X64AllocRequirements {
     pub fn copy_requirements(
         requirement: &mut AllocRequirement,
         target: JIRSlice,
-        source: JIRValue,
+        source: impl Into<JIRValue>,
     ) {
         requirement.add_request(OperandRequest::int_write_any(target));
-        if let JIRValue::Slice(source) = source {
+        if let JIRValue::Slice(source) = source.into() {
             requirement.add_request(OperandRequest::int_read_any(source));
         }
     }

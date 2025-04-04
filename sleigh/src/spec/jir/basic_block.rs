@@ -108,6 +108,11 @@ impl TargetBasicBlock {
     }
 }
 
+enum BlockTermination {
+    Fallthrough(usize),
+    Terminate(usize),
+}
+
 #[derive(Debug, Clone)]
 struct TargetBasicBlockInner {
     jir_instructions: Vec<JIRInstruction>,

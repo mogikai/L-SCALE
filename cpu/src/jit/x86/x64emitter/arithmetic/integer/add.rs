@@ -45,7 +45,7 @@ impl X64AllocRequirements {
             }
             (JIRValue::Const(a), JIRValue::Const(b)) => {
                 // Delegate to copy
-                Self::copy_requirements(requirement, output, add_constants(a, b).into())
+                Self::copy_requirements(requirement, output, add_constants(a, b))
             }
         }
     }

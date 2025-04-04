@@ -34,7 +34,7 @@ impl X64AllocRequirements {
     ) {
         match (input_a, input_b) {
             (JIRValue::Const(input_a), JIRValue::Const(input_b)) => {
-                Self::copy_requirements(requirement, output, sub_const(input_a, input_b).into());
+                Self::copy_requirements(requirement, output, sub_const(input_a, input_b));
             }
             (JIRValue::Slice(input_a), JIRValue::Const(input_b)) => {
                 Self::add_slice_const_requirements(requirement, output, input_a, input_b)
@@ -49,7 +49,7 @@ impl X64AllocRequirements {
                 requirement.add_request(OperandRequest::int_write_any(input_b));
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) if input_a == input_b => {
-                Self::copy_requirements(requirement, output, JIRConst::new(0, output.size()).into());
+                Self::copy_requirements(requirement, output, JIRConst::new(0, output.size()));
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) if output == input_b => {
                 // If the second input is also the output, we need a temporary,

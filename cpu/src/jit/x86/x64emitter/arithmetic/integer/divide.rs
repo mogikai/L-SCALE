@@ -42,7 +42,7 @@ impl X64AllocRequirements {
     ) {
         match (dividend, divisor) {
             (JIRValue::Const(dividend), JIRValue::Const(divisor)) => {
-                Self::copy_requirements(requirement, output, divide_const(dividend, divisor).into());
+                Self::copy_requirements(requirement, output, divide_const(dividend, divisor));
             }
             (JIRValue::Const(dividend), JIRValue::Slice(divisor)) => {
                 // Dividend is loaded into RDX:RAX
@@ -81,7 +81,7 @@ impl X64AllocRequirements {
     ) {
         match (dividend, divisor) {
             (JIRValue::Const(dividend), JIRValue::Const(divisor)) => {
-                Self::copy_requirements(requirement, output, divide_const(dividend, divisor).into());
+                Self::copy_requirements(requirement, output, divide_const(dividend, divisor));
             }
             (dividend, divisor) => Self::divide_requirements(requirement, output, dividend, divisor),
         }

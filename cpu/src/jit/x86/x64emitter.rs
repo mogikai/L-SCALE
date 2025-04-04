@@ -172,7 +172,9 @@ impl X64AllocRequirements {
             JIRInstruction::IntSubtract(args) => {
                 Self::subtract_requirements(&mut requirement, args.output, args.input_a, args.input_b)
             }
-            JIRInstruction::IntMul(_) => {}
+            JIRInstruction::IntMul(args) => {
+                Self::multiply_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
             JIRInstruction::IntDiv(args) => {
                 Self::divide_requirements(&mut requirement, args.output, args.input_a, args.input_b)
             }
@@ -362,7 +364,7 @@ impl X64Emitter<'_> {
             JIRInstruction::IntSubtract(args) => {
                 self.emit_subtract(inst_id, args.output, args.input_a, args.input_b)?
             }
-            JIRInstruction::IntMul(args) => self.emit_multiply(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntMul(args) => self.emit_multiply(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::IntDiv(args) => self.emit_divide(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::IntSDiv(args) => {
                 self.emit_signed_divide(inst_id, args.output, args.input_a, args.input_b)?
