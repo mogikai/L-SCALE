@@ -200,7 +200,7 @@ impl X64AllocRequirements {
             JIRInstruction::IntEquals(_) => {}
             JIRInstruction::IntNotEquals(_) => {}
             JIRInstruction::BitNegate(_) => {}
-            JIRInstruction::IntNegate(_) => {}
+            JIRInstruction::IntNegate(args) => Self::negate_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::FloatDiv(_) => {}
             JIRInstruction::FloatMul(_) => {}
             JIRInstruction::FloatAdd(_) => {}
@@ -396,7 +396,7 @@ impl X64Emitter<'_> {
             JIRInstruction::IntEquals(args) => self.emit_compare_eq(args.output, args.input_a, args.input_b)?,
             JIRInstruction::IntNotEquals(args) => self.emit_compare_ne(args.output, args.input_a, args.input_b)?,
             JIRInstruction::BitNegate(args) => self.emit_bitwise_negate(args.output, args.input)?,
-            JIRInstruction::IntNegate(args) => self.emit_negate(args.output, args.input)?,
+            JIRInstruction::IntNegate(args) => self.emit_negate(inst_id, args.output, args.input)?,
             JIRInstruction::FloatDiv(args) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::FloatMul(args) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::FloatAdd(args) => todo!("Instruction not yet implemented: {jinst}"),

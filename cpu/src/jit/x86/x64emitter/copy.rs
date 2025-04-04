@@ -68,6 +68,9 @@ impl X64Emitter<'_> {
         }
     }
 
+    /// Emit a copy instruction that copies `source` to `target`.
+    /// In case a copy instruction would be a no-op, e.g. if source == target, then
+    /// nothing will be emitted.
     #[inline]
     pub fn copy_reg(
         &mut self,
