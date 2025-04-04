@@ -296,6 +296,7 @@ impl From<FileDescriptorMapError> for LinuxKernelError {
     fn from(e: FileDescriptorMapError) -> Self {
         match e {
             FileDescriptorMapError::InvalidFD => LinuxKernelError::EBADF,
+            FileDescriptorMapError::InvalidTaskId => LinuxKernelError::EINVAL,
             FileDescriptorMapError::NoFreeFD => todo!(),
             FileDescriptorMapError::FDExists => todo!(),
         }

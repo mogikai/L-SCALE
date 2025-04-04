@@ -543,4 +543,14 @@ where
         self.cwds.insert(*task_id, cwd);
         Ok(())
     }
+
+    pub fn get_cwd(
+        &mut self,
+        task_id: &TaskId,
+    ) -> Result<FileDescriptor<D>, FileDescriptorMapError> {
+        self.cwds
+            .get(&task_id)
+            .ok_or(FileDescriptorMapError::InvalidTaskId)
+            .map(|fd| fd.to_owned())
+    }
 }

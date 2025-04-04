@@ -1,4 +1,5 @@
 use std::cell::RefMut;
+use std::os::unix::ffi::OsStrExt;
 
 use bitflags::{
     Flags,
@@ -330,15 +331,23 @@ where
             .into())
     }
 
-    #[unfinished]
     pub fn getcwd(
         &self,
         buf: EVAddr,
         size: u64,
     ) -> SyscallResult {
-        error!("getcwd currently unimplemented");
-        todo!();
-        Err(LinuxKernelError::EINVAL.into())
+        let mut memory = sys_component_mut!(self, memory);
+        let mut cpu = sys_component_mut!(self, cpu);
+        let mut memory = memory.accessor(&mut cpu, self.task_id);
+        let buf_content = read_osstring!(memory, buf)?;
+        let cwd_fd = sys_component_mut!(self, fd_map).get_cwd(&self.task_id)?;
+        let cwd_path = cwd_fd.data.file.unwrap().path.unwrap();
+        if cwd_path.as_os_str().len() as u64 > size {
+            Err(SyscallError::KernelError(LinuxKernelError::EINVAL))
+        } else {
+            memory.write_bytes(buf, cwd_path.as_os_str().as_bytes());
+            Ok(size)
+        }
     }
 
 <<<<<<< HEAD

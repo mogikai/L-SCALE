@@ -3,4 +3,5 @@ pub enum FileDescriptorMapError {
     InvalidFD,
     NoFreeFD,
     FDExists,
+    InvalidTaskId,
 }
