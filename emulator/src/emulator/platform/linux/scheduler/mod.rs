@@ -1,6 +1,9 @@
 use std::marker::PhantomData;
 use std::ops::Try;
-use std::path::PathBuf;
+use std::path::{
+    Path,
+    PathBuf,
+};
 use std::time::Duration;
 
 use byteorder::ByteOrder;
@@ -71,13 +74,14 @@ where
         binary_path: PathBuf,
         binary_args: &[&str],
         binary_env: &[&str],
-    ) -> Result<LinuxX86Scheduler<'a, CpuT, MmuT, TcpT, Endianness>, SchedulerError> {
+        binary_cwd: PathBuf,
+    ) -> Result<LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>, SchedulerError> {
         let mut sched = LinuxX86Scheduler {
             system,
             phantom: Default::default(),
         };
 
-        sched.setup_initial_task(initial_task, binary_path, binary_args, binary_env)?;
+        sched.setup_initial_task(initial_task, binary_path, binary_args, binary_env, binary_cwd)?;
 
         sched.setup_cpu()?;
 

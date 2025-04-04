@@ -223,6 +223,8 @@ where
         PRLIMIT64 => do_syscall!(4, system, kernel::prlimit64, debug_str),
         GETRANDOM => do_syscall!(3, system, kernel::getrandom, debug_str),
         RSEQ => do_syscall!(4, system, kernel::rseq, debug_str),
+        CHDIR => do_syscall!(1, system, kernel::chdir, debug_str),
+        FCHDIR => do_syscall!(1, system, kernel::fchdir, debug_str),
         _ => Err(SyscallError::NotImplemented),
     }
 }

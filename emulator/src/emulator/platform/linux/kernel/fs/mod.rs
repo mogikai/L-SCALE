@@ -5,6 +5,7 @@ use bitflags::{
     bitflags,
 };
 use byteorder::ByteOrder;
+use libc::dirname;
 use mogi_derive::unfinished;
 use mogi_system::components::cpu::CPU;
 use num_enum::TryFromPrimitive;
@@ -340,6 +341,7 @@ where
         Err(LinuxKernelError::EINVAL.into())
     }
 
+<<<<<<< HEAD
     pub fn lseek(
         &self,
         fd: FD,
@@ -364,6 +366,61 @@ where
             unimplemented!()
         };
         Ok(new_pos as u64)
+    }
+
+    pub fn chdir(
+        &self,
+        path: EVAddr,
+    ) -> SyscallResult {
+        let mut memory = sys_component_mut!(self, memory);
+        let mut cpu = sys_component_mut!(self, cpu);
+        let mut filesystem = sys_component_mut!(self, filesystem);
+        let memory = memory.accessor(&mut cpu, self.task_id);
+        let mut fd_map = sys_component_mut!(self, fd_map);
+
+        let pathname = read_osstring!(memory, path)?;
+        let dir = filesystem.resolve_last(Path::new(&pathname), true)?;
+        let mut cwd_fd = FileDescriptor::new(Box::new(FileOps::new()));
+        cwd_fd.data.file = Some(FileData::new(self.system.filesystem.clone(), dir, Some(PathBuf::from(&pathname))));
+        drop(filesystem);
+        if !cwd_fd.stat()?.S_ISDIR() {
+            return Err(SyscallError::KernelError(LinuxKernelError::ENOTDIR));
+        }
+        fd_map.insert_cwd(&self.task_id, cwd_fd)?;
+        Ok(0)
+    }
+
+    pub fn chdir_external(
+        &self,
+        path: PathBuf,
+    ) -> SyscallResult {
+        let dir = sys_component_mut!(self, filesystem).resolve_last(Path::new(&path), true)?;
+        let mut cwd_fd = FileDescriptor::new(Box::new(FileOps::new()));
+        cwd_fd.data.file = Some(FileData::new(self.system.filesystem.clone(), dir, Some(PathBuf::from(&path))));
+        if !cwd_fd.stat()?.S_ISDIR() {
+            return Err(SyscallError::KernelError(LinuxKernelError::ENOTDIR));
+        }
+        sys_component_mut!(self, fd_map).insert_cwd(&self.task_id, cwd_fd)?;
+        Ok(0)
+    }
+
+    pub fn fchdir(
+        &self,
+        fd: FD,
+    ) -> SyscallResult {
+        let fd_map = sys_component_mut!(self, fd_map);
+        let cwd_fd = fd_map.get(&self.task_id, &fd);
+        if cwd_fd.is_none() {
+            return Err(SyscallError::KernelError(LinuxKernelError::ENOENT));
+        }
+        let cwd_fd = cwd_fd.unwrap().to_owned();
+        drop(fd_map);
+        if !cwd_fd.to_owned().stat()?.S_ISDIR() {
+            return Err(SyscallError::KernelError(LinuxKernelError::ENOTDIR));
+        }
+        let mut fd_map = sys_component_mut!(self, fd_map);
+        fd_map.insert_cwd(&self.task_id, cwd_fd);
+        Ok(0)
     }
 }
 

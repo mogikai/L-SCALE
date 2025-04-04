@@ -14,6 +14,7 @@ use std::ops::{
     Deref,
     DerefMut,
 };
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use generational_arena::{
@@ -34,6 +35,7 @@ use crate::emulator::abstractions::network::{
     SocketAddress,
 };
 use crate::emulator::platform::linux::fd::FileDescriptorData;
+use crate::emulator::platform::linux::kernel::fs::FileData;
 use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
 use crate::emulator::platform::linux::kernel::socket::Optval;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
@@ -229,6 +231,7 @@ where
     //       processed the call.
     // hooks: HashMap<TaskId, HashMap<FD, VecDeque<Box<dyn FileDescriptorOps<D>>>>>,
     snapshots: Vec<Snapshot<FD, TaskId, D>>,
+    cwds: BTreeMap<TaskId, FileDescriptor<D>>,
 }
 
 #[derive(Debug)]
@@ -529,6 +532,15 @@ where
         if file.ref_count() == 0 {
             self.files.remove(key);
         }
+        Ok(())
+    }
+
+    pub fn insert_cwd(
+        &mut self,
+        task_id: &TaskId,
+        cwd: FileDescriptor<D>,
+    ) -> Result<(), FileDescriptorMapError> {
+        self.cwds.insert(*task_id, cwd);
         Ok(())
     }
 }

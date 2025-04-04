@@ -103,8 +103,16 @@ fn main() {
 
     let args = [];
     let env = ["SHELL=/bin/sh", "LD_DEBUG=none", "LD_BIND_NOW=true"];
-    let scheduler =
-        LinuxX86Scheduler::new(system.clone(), initial_task, PathBuf::from(&fuzzer_args.binary), &args, &env).unwrap();
+    let binary_path = PathBuf::from(&fuzzer_args.binary);
+    let scheduler = LinuxX86Scheduler::new(
+        system.clone(),
+        initial_task,
+        binary_path.to_owned(),
+        &args,
+        &env,
+        binary_path.parent().unwrap().to_path_buf(),
+    )
+    .unwrap();
 
     let mut emulator = GenericEmulator::new(scheduler, system);
 

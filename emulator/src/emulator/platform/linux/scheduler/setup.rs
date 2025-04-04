@@ -3,6 +3,11 @@ use mogi_system::components::mmu::{
     MemoryAction,
 };
 use mogi_system::errors::cpu::CPUError;
+use crate::emulator::abstractions::kernel_task::KernelTask;
+use crate::emulator::platform::linux::fd::FileDescriptorData;
+use crate::emulator::platform::linux::kernel::fs::FileData;
+use crate::emulator::platform::linux::kernel::sys_component_mut;
+use crate::emulator::system::fd_map::FileDescriptor;
 use mogi_utilities::addresses::EVAddr;
 use tracing::{
     debug,
@@ -71,12 +76,16 @@ where
         binary_path: PathBuf,
         binary_args: &[&str],
         binary_env: &[&str],
+        binary_cwd: PathBuf,
     ) -> Result<(), SchedulerError> {
         initial_task.add_stdio_handles();
 
         // TODO: Do more specific error mapping
         initial_task
             .load_binary(binary_path.as_path(), binary_args, binary_env)
+            .map_err(|_| SchedulerError::Unknown)?;
+        initial_task
+            .chdir_external(binary_cwd)
             .map_err(|_| SchedulerError::Unknown)?;
         debug!("Loaded initial binary");
 

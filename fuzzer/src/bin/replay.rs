@@ -55,38 +55,45 @@ struct Args {
 }
 
 fn main() {
-    // TODO: Adapt to new emulation architecture once finished.
-    // core_affinity::set_for_current(CoreId { id: 0 });
-    // tracing_subscriber::registry()
-    //     .with(fmt::layer())
-    //     .with(EnvFilter::from_env("FUZE_LOG"))
-    //     .init();
-    // let fuzzer_args = Args::parse();
-    // let cpu = UCWrapper::new();
-    // let task_manager = TaskManager::new();
-    // let filesystem = Filesystem::from_disk(1_073_741_824, Path::new(&fuzzer_args.system_root)).unwrap();
-    // let memory = Memory::<LittleEndian>::new();
-    // let clock = Clock::new(Duration::from_nanos(1662647309301240322));
-    // let prng_map = SeedablePrngMap::new(0xcafef00dd15ea5e5cafef00dd15ea5e5_u128.to_ne_bytes());
-    // let file_descriptor_map = FileDescriptorMap::new();
-    // let tcp = Rc::new(RefCell::new(TCP::new()));
-    // let system =
-    //     System::new(cpu.clone(), memory, filesystem, clock, prng_map, file_descriptor_map, task_manager, tcp.clone());
-    //
-    // let initial_task = LinuxKernelTask::new(system.clone(), 1337, 1);
-    //
-    // let args = [];
-    // let env = ["SHELL=/bin/sh", "LD_DEBUG=none", "LD_BIND_NOW=true"];
-    // let scheduler =
-    //     LinuxX86Scheduler::new(system.clone(), initial_task, PathBuf::from(&fuzzer_args.binary), &args, &env).unwrap();
-    //
-    // let mut emulator = GenericEmulator::new(scheduler, system);
-    //
-    // if fuzzer_args.decode {
-    //     emulator.enable_trace().unwrap();
-    // }
-    //
-    // setup_fuzzer(fuzzer_args, emulator);
+    core_affinity::set_for_current(CoreId { id: 0 });
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(EnvFilter::from_env("FUZE_LOG"))
+        .init();
+    let fuzzer_args = Args::parse();
+    let cpu = UCWrapper::new();
+    let task_manager = TaskManager::new();
+    let filesystem = Filesystem::from_disk(1_073_741_824, Path::new(&fuzzer_args.system_root)).unwrap();
+    let memory = Memory::<LittleEndian>::new();
+    let clock = Clock::new(Duration::from_nanos(1662647309301240322));
+    let prng_map = SeedablePrngMap::new(0xcafef00dd15ea5e5cafef00dd15ea5e5_u128.to_ne_bytes());
+    let file_descriptor_map = FileDescriptorMap::new();
+    let tcp = Rc::new(RefCell::new(TCP::new()));
+    let system =
+        System::new(cpu.clone(), memory, filesystem, clock, prng_map, file_descriptor_map, task_manager, tcp.clone());
+
+    let initial_task = LinuxKernelTask::new(system.clone(), 1337, 1);
+
+    let args = [];
+    let env = ["SHELL=/bin/sh", "LD_DEBUG=none", "LD_BIND_NOW=true"];
+    let binary_path = PathBuf::from(&fuzzer_args.binary);
+    let scheduler = LinuxX86Scheduler::new(
+        system.clone(),
+        initial_task,
+        binary_path.to_owned(),
+        &args,
+        &env,
+        binary_path.parent().unwrap().to_path_buf(),
+    )
+    .unwrap();
+
+    let mut emulator = GenericEmulator::new(scheduler, system);
+
+    if fuzzer_args.decode {
+        emulator.enable_trace().unwrap();
+    }
+
+    setup_fuzzer(fuzzer_args, emulator);
 }
 
 fn setup_fuzzer<EmulatorT>(
