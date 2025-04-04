@@ -4,6 +4,7 @@ use crate::jit::api::{
 };
 use crate::jit::x86::X86MogiJit;
 use mogi_mem::mmu::MogiMMU;
+use mogi_sleigh::spec::jir::common::JIRSize;
 use mogi_sleigh::SleighPreprocessorFactory;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
 use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
@@ -26,6 +27,7 @@ use std::fmt::{
     LowerHex,
 };
 use std::path::PathBuf;
+use std::ptr::NonNull;
 use std::rc::Rc;
 
 pub(super) fn setup(

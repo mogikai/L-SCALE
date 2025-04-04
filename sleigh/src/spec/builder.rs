@@ -83,7 +83,10 @@ use std::io::{
     BufWriter,
     Write,
 };
-use std::path::Path;
+use std::path::{
+    Path,
+    PathBuf,
+};
 use strum_macros::Display;
 use tracing::debug;
 
@@ -503,9 +506,7 @@ impl ProcessorSpecificationBuilder {
             .expect("Every defined symbol must have come from somewhere in the spec")
     }
 
-    pub(crate) fn context_ids(
-        &self,
-    ) -> impl Iterator<Item = ContextId> {
+    pub(crate) fn context_ids(&self) -> impl Iterator<Item = ContextId> {
         self.context.keys()
     }
 

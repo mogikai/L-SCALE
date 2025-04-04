@@ -18,6 +18,7 @@ use crate::spec::moir::actions::{
     MOIRAction,
     MOIRPatternExpression,
 };
+use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::MOIRConstructor;
 use crate::spec::moir::display::{
     MOIRDisplay,
@@ -191,7 +192,7 @@ impl SleighCompiler {
         let local_id = self.pc_resolve_local(scope, sast_action_lhs)?;
 
         // local can be a context field or a temporary which we need to check for
-        let slice = scope.resolve_local(local_id)?;
+        let slice = scope.resolve_local(local_id);
         if let MOIRReference::Field(field_id) = slice.reference {
             let field = self.spec_builder.field_by_id(field_id);
             if matches!(field.parent, MOIRFieldParent::Context(_)) {
@@ -403,26 +404,18 @@ impl SleighCompiler {
             for atom in &conjunction.atoms {
                 match atom {
                     MatcherAtom::Field { field_id, matcher: _ } => {
-                        if let Some(local_id) = scope.get_used_field(*field_id) {
-                            let field = self.spec_builder.field_by_id(*field_id);
+                        let field = self.spec_builder.field_by_id(*field_id);
 
-                            match bytes_consumed {
-                                Some(bytes_consumed) => {
-                                    // field used and fixed offset
-                                    let fe = FieldExtractor::new(
-                                        local_id,
-                                        0,
-                                        bytes_consumed.into(),
-                                        field.bits,
-                                        field.signed,
-                                    );
-                                    matcher.static_field_extractors.push(fe);
-                                }
-                                None => {
-                                    // field used and dynamic offset
-                                    let fe = FieldExtractor::new(local_id, 0, 0, field.bits, field.signed);
-                                    conjunction.dynamic_field_extractors.push(fe);
-                                }
+                        match bytes_consumed {
+                            Some(bytes_consumed) => {
+                                // field used and fixed offset
+                                let fe = FieldExtractor::new(*field_id, bytes_consumed.into(), field.bits, field.signed);
+                                matcher.static_field_extractors.push(fe);
+                            }
+                            None => {
+                                // field used and dynamic offset
+                                let fe = FieldExtractor::new(*field_id, 0, field.bits, field.signed);
+                                conjunction.dynamic_field_extractors.push(fe);
                             }
                         }
                     }

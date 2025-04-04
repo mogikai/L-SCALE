@@ -498,8 +498,9 @@ impl MOIRScope {
         self.slices.get(self.local_id_by_ident(ident)?)
     }
 
-    /// Return the size of the field specified by `field_id` or an error if no
-    /// size is stored.
+    /// Return the required size of the field specified by `field_id` or an error if no size is
+    /// stored. This does not have to equal the size of the field as defined in the token but
+    /// rather is determined by how it's used as a local.
     pub fn field_size(
         &self,
         field_id: FieldId,
@@ -618,6 +619,7 @@ impl MOIRScope {
             .slices
             .get_mut(local)
             .ok_or_else(|| -> InternalError { todo!() })?;
+
         match slice.reference {
             MOIRReference::Temporary(temp) => {
                 let temp = self.temporaries[temp]
@@ -659,10 +661,8 @@ impl MOIRScope {
     pub fn resolve_local(
         &self,
         local: MOIRLocalId,
-    ) -> InternalCompilerResult<&MOIRSlice> {
-        self.slices
-            .get(local)
-            .ok_or(InternalErrorType::UndeclaredSymbol.into())
+    ) -> &MOIRSlice {
+        self.slices.get(local).expect("There must be a slice")
     }
 
     /// Defines the label to point to a specific instruction.
@@ -756,11 +756,13 @@ impl MOIRScope {
         })
     }
 
-    pub fn get_used_field(
+    /// A field can be referenced by multiple locals which all need to receive
+    /// its value.
+    pub fn get_used_field_locals(
         &self,
         field_id: FieldId,
-    ) -> Option<MOIRLocalId> {
-        self.used_locals.iter().find_map(|local_id| {
+    ) -> impl Iterator<Item = MOIRLocalId> {
+        self.used_locals.iter().filter_map(move |local_id| {
             let slice = self
                 .slices
                 .get(*local_id)

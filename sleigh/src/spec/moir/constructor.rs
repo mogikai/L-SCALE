@@ -176,7 +176,6 @@ impl MOIRConstructor {
                     let reference = self
                         .local_scope
                         .resolve_local(*local_id)
-                        .map_err(|_| -> ProcessorSpecificationError { todo!("Map error") })?
                         .reference;
 
                     match reference {

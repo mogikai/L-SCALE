@@ -16,7 +16,9 @@ use super::local_resolver::JIRResolver;
 use super::values::JIRValue;
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
+use crate::spec::jir::common::JIRSize;
 use crate::spec::jir::trace_jir;
+use crate::spec::jir::values::JIRConst;
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::{
     ConstructorId,
@@ -370,19 +372,24 @@ impl<'a> MatchContext<'a> {
         trace_jir!("Sublists: {:#?}", sublists);
         trace_jir!("Field extractors: {:#?}", field_extractors);
 
-        let mut values = SecondaryMap::<MOIRLocalId, Option<JIRValue>>::default();
+        // the resolver with all local values is needed for the actions so we
+        // instantiate it here
+        let mut resolver = JIRResolver::new(constructor, constructor_id);
 
         // variable-offset field extractors
         for (offset, field_extractor_map) in &state.field_extractors {
             if let Some(field_extractors) = field_extractor_map.get(&constructor_id) {
                 for field_extractor in field_extractors {
-                    trace_jir!(
-                        "Extracting local {} with entry extractor {:#?}",
-                        field_extractor.local_id(),
-                        field_extractor
-                    );
                     let extracted_value = field_extractor.extract_value(&bytes[*offset..])?;
-                    values[field_extractor.local_id()] = extracted_value;
+
+                    trace_jir!(
+                        "Extracted field {} with entry extractor {:#?}: {}",
+                        field_extractor.field_id(),
+                        field_extractor,
+                        extracted_value,
+                    );
+
+                    resolver.define_field(field_extractor.field_id(), extracted_value);
                 }
             }
         }
@@ -390,13 +397,10 @@ impl<'a> MatchContext<'a> {
         // extract token and context fields with fixed offset into map
         for field_extractor in field_extractors {
             let extracted_value = field_extractor.extract_value(bytes)?;
-            trace_jir!("Field extractor is defining {} := {:#?}", field_extractor.local_id(), extracted_value);
-            values[field_extractor.local_id()] = extracted_value;
+            trace_jir!("Field extractor is defining context field {} := {:#?}", field_extractor.field_id(), extracted_value);
+            resolver.define_field(field_extractor.field_id(), extracted_value);
         }
 
-        // the resolver with all local values is needed for the actions so we
-        // instantiate it here
-        let mut resolver = JIRResolver::new(constructor, constructor_id, values);
 
         trace_jir!("Context fields: {:#?}", context_fields);
 
@@ -407,7 +411,7 @@ impl<'a> MatchContext<'a> {
         for context_field_id in context_fields.iter() {
             let value = context_stack.field_value(*context_field_id)?;
             trace_jir!("Defining context field value {context_field_id:?} := {value:?}");
-            resolver.define_field(*context_field_id, value)?;
+            resolver.define_field(*context_field_id, value);
         }
 
         context_stack.push_state();

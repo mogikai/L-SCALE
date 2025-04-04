@@ -13,7 +13,7 @@ pub mod source;
 
 pub type LifterResult<T = ()> = Result<T, LifterError>;
 
-#[derive(Debug, Error, Copy, Clone)]
+#[derive(Debug, Error, Clone)]
 pub enum LifterError {
     #[error("An unknown error occurred")]
     Unknown,
@@ -23,6 +23,12 @@ pub enum LifterError {
     BlockAlreadyCached(EVAddr),
     #[error("The cache has no entry for the requested address {0:?}")]
     MissingCacheEntry(EVAddr),
+    #[error("Could not load input bytes from address {0:?}")]
+    InputLoad(EVAddr),
+    #[error("There are not enough input bytes left")]
+    EndOfBytes,
+    #[error("Input bytes were provided but did not match anything: {0:X?}")]
+    NoMatch(Vec<u8>),
 }
 
 /// The lifter trait defines the functionality of a lifter.

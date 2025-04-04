@@ -12,7 +12,7 @@ macro_rules! addr_impl {
             derive_more::UpperHex,
         )]
         #[rustfmt::skip]
-        #[upper_hex("{}", _0)]
+        #[upper_hex("{:X}", _0)]
         #[repr(transparent)]
         pub struct $name<T = u8>(u64, std::marker::PhantomData::<T>);
 

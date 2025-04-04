@@ -57,9 +57,8 @@ fn main() {
     let specification = load_specification(spec_path);
     // println!("{:?}", specification.list_global_varnode_strings());
 
-    // let testelf_content = std::fs::read("./ls").unwrap();
-    // let testelf_content = b"\x58\x5B\x48\x03\x03\x48\xF7\xE3\x48\x89\xD8\x53\x50\xEB\xF1";
-    let testelf_content = b"\x48\x89\x04\x25\x34\x12\x00\x00\xEB\xF6";
+    // MOV RAX, 0x1234
+    let testelf_content = b"\x48\xc7\xc0\x34\x12\x00\x00";
     let page_count = (testelf_content.len() + PAGE_SIZE - 1) / PAGE_SIZE;
 
     let specification = Rc::new(RefCell::new(specification));
@@ -80,7 +79,7 @@ fn main() {
             .unwrap();
         }
         // And then write the instruction to the allocated memory.
-        mmu.write(0x100u64.into(), &testelf_content[..]).unwrap();
+        mmu.write(0x0u64.into(), &testelf_content[..]).unwrap();
     }
 
     let mut stack_page = Box::new(PageData::zero());
@@ -107,12 +106,15 @@ fn main() {
     let mut cpu = MogiCPU::new(jit, specification, mmu);
 
     // Set the instruction pointer to the address we want to start executing at.
-    // *cpu.register_mut("RIP").unwrap() = 0x113Au64;
-    *cpu.register_mut("RIP").unwrap() = 0x100u64;
+    // *cpu.register_mut("RIP").unwrap() = 0x1F540u64;
+    // *cpu.register_mut("RIP").unwrap() = 0x2A8E2u64;
+    *cpu.register_mut("RIP").unwrap() = 0x0u64;
     *cpu.register_mut("RSP").unwrap() = 0xffff_ffff_ffff_0220u64;
 
     // Now lets roll! (forever :>)
-    cpu.run(RunLimit::Unlimited).unwrap();
+    cpu.run(RunLimit::InstructionCount(1)).unwrap();
+    let rax: u64 = *cpu.register("RAX").unwrap();
+    eprintln!("rax = {:#?}", rax);
 }
 
 fn load_specification(spec_path: &Path) -> ProcessorSpecification {

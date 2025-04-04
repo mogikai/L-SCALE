@@ -17,6 +17,7 @@ use mogi_utilities::addresses::EVAddr;
 use std::cell::Ref;
 use std::time::Instant;
 
+use super::jir::common::JIRSize;
 use super::jir::jumplist::MatchContext;
 
 impl Lifter for ProcessorSpecification {
@@ -57,12 +58,12 @@ impl Lifter for ProcessorSpecification {
 
         let now = Instant::now();
         match matching_result {
-            MatcherResult::EndOfByteStream => todo!("Handle end of byte stream"),
-            MatcherResult::None => todo!("Handle no match"),
+            MatcherResult::EndOfByteStream => Err(LifterError::EndOfBytes)?,
+            MatcherResult::None => Err(LifterError::NoMatch(buffer.to_vec()))?,
             MatcherResult::Some {
                 table: _,
                 resolver,
-                bytes_consumed: _,
+                bytes_consumed,
             } => {
                 let mut block_builder = TargetBasicBlockBuilder::new(addr, self.temp_space);
                 trace_jir!("{}", resolver.hierarchy_debug_string().unwrap());
@@ -98,13 +99,15 @@ impl Lifter for ProcessorSpecification {
 
         let now = Instant::now();
         let mut block_builder = TargetBasicBlockBuilder::new(addr, self.temp_space);
+        let mut block_size = 0;
         // Start with a block. Any intermediate blocks will end this block and create a new one.
         block_builder.start_block().unwrap();
         loop {
             trace_jir!("Loading instruction bytes at {:?}", addr);
             source
                 .load(addr, &mut buffer)
-                .map_err(|_| -> LifterError { todo!() })?;
+                .map_err(|_| -> LifterError { LifterError::InputLoad(addr) })?;
+
 
             // TODO error type
             // TODO: Initially fill the context stack with the value from the context provider that needs to be passed in.
@@ -117,8 +120,8 @@ impl Lifter for ProcessorSpecification {
             let now = Instant::now();
             #[allow(unused_variables)]
             match matching_result {
-                MatcherResult::EndOfByteStream => todo!("Handle end of byte stream"),
-                MatcherResult::None => todo!("Handle no match"),
+                MatcherResult::EndOfByteStream => Err(LifterError::EndOfBytes)?,
+                MatcherResult::None => Err(LifterError::NoMatch(buffer.to_vec()))?,
                 MatcherResult::Some {
                     table: _,
                     resolver,
@@ -135,6 +138,8 @@ impl Lifter for ProcessorSpecification {
                         ContinueLifting::Continue(next_addr) => addr = next_addr,
                         ContinueLifting::Stop => break,
                     }
+
+                    block_size += bytes_consumed;
                     self.lifter_diagnostics.borrow_mut().total_time_build += now.elapsed();
                 }
             }

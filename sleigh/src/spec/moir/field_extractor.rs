@@ -9,6 +9,7 @@ use crate::spec::jir::values::{
     JIRConst,
     JIRValue,
 };
+use crate::spec::FieldId;
 
 use super::common::MOIRSize;
 use super::field::MOIRBitRange;
@@ -21,8 +22,7 @@ use super::scope::MOIRLocalId;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
 pub(crate) struct FieldExtractor {
-    local_id: MOIRLocalId,
-    local_size: MOIRSize,
+    field_id: FieldId,
     byte_index: usize,
     bits: MOIRBitRange,
     signed: bool,
@@ -30,23 +30,21 @@ pub(crate) struct FieldExtractor {
 
 impl FieldExtractor {
     pub(crate) fn new(
-        local_id: MOIRLocalId,
-        local_size: MOIRSize,
+        field_id: FieldId,
         byte_index: usize,
         bits: MOIRBitRange,
         signed: bool,
     ) -> Self {
         Self {
-            local_id,
-            local_size,
+            field_id,
             byte_index,
             bits,
             signed,
         }
     }
 
-    pub(crate) fn local_id(&self) -> MOIRLocalId {
-        self.local_id
+    pub(crate) fn field_id(&self) -> FieldId {
+        self.field_id
     }
 
     pub(crate) fn byte_index(&self) -> usize {
@@ -57,7 +55,7 @@ impl FieldExtractor {
     pub(crate) fn extract_value(
         &self,
         bytes: &[u8],
-    ) -> InternalCompilerResult<Option<JIRValue>> {
+    ) -> InternalCompilerResult<u128> {
         if bytes.len() <= self.byte_index + usize::from(self.bits.bits().checked_sub(1).unwrap_or(0) / 8) {
             todo!("Generate error report for out of bounds token index");
         }
@@ -79,13 +77,8 @@ impl FieldExtractor {
             value = (((value << (128 - self.bits.bits())) as i128) >> (128 - self.bits.bits())) as u128;
         };
 
-        trace_jir!("Extracted local_id {} := {}", self.local_id, value);
+        trace_jir!("Extracted field_id {} := {}", self.field_id, value);
 
-        Ok(Some(JIRValue::Const(JIRConst::new(
-            value,
-            self.local_size
-                .try_into()
-                .expect("The size must fit into JIRSize"),
-        ))))
+        Ok(value)
     }
 }

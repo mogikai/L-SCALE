@@ -85,12 +85,11 @@ impl<'a> JIRResolver<'a> {
     pub fn new(
         constructor: &'a MOIRConstructor,
         constructor_id: ConstructorId,
-        values: SecondaryMap<MOIRLocalId, Option<JIRValue>>,
     ) -> Self {
         Self {
             constructor,
             constructor_id,
-            values,
+            values: Default::default(),
             temporaries: Default::default(),
             subtables: Default::default(),
         }
@@ -239,31 +238,28 @@ impl<'a> JIRResolver<'a> {
         &mut self,
         field_id: FieldId,
         value: u128,
-    ) -> InternalCompilerResult {
-        let local_id = self
-            .constructor
-            .local_scope
-            .local_id_by_field_id(field_id)
-            .ok_or_else(|| -> InternalError { todo!("Generate error report for missing field id in scope") })?;
+    ) {
+        // this is only used for context fields; token fields are defined by the field extractors
+        // directly using `define_id`
 
-        let field_size = self
-            .constructor
-            .local_scope
-            .field_size(field_id)?
-            .determined_or(0);
+        for field_local in self.constructor.local_scope.get_used_field_locals(field_id) {
+            let slice_size = match self
+                .constructor
+                .local_scope
+                .resolve_local(field_local)
+                .size()
+            {
+                MOIRMaybeSize::Determined(det_size) => det_size,
+                MOIRMaybeSize::Undetermined => 0,
+            };
 
-        let jir_value = self.values[local_id].get_or_insert(JIRValue::Const(JIRConst::new(
-            0,
-            field_size
-                .try_into()
-                .expect("The size must fit into JIRSize"),
-        )));
-        let JIRValue::Const(c) = jir_value else {
-            todo!("Generate error report for slice in field extractor");
-        };
-
-        *c.value_mut() = value;
-        Ok(())
+            self.values[field_local] = Some(JIRValue::Const(JIRConst::new(
+                value,
+                slice_size
+                    .try_into()
+                    .expect("The size must fit into JIRSize"),
+            )));
+        }
     }
 
     /// Return the [MOIRReference::Const] assigned to the local `local_id` or return an error if no
@@ -380,11 +376,7 @@ impl<'a> JIRResolver<'a> {
         instruction_builder: &mut TargetInstructionBuilder,
         local: MOIRLocalId,
     ) -> ProcessorSpecResult<JIRResolvedValue> {
-        let value = self
-            .constructor
-            .local_scope
-            .resolve_local(local)
-            .map_err(|_| todo!("Map error correctly"))?;
+        let value = self.constructor.local_scope.resolve_local(local);
         trace_jir!("Local {local} is {value:?}");
         let start = value.start;
         let end = value.end;
@@ -398,7 +390,7 @@ impl<'a> JIRResolver<'a> {
                     varnode.space_id,
                     spec.varnode_to_group[varnode_id].expect("Every varnode must have a group id"),
                     varnode.offset + start,
-                    JIRSize::try_from(end.ok_or_else(|| todo!("Generate error for undefined size"))?)
+                    JIRSize::try_from(end.ok_or_else(|| todo!("Generate error for undefined size"))? - start)
                         .expect("The size must fit into JIRSize")
                         - JIRSize::try_from(start).expect("The size must fit into JIRSize"),
                 )
@@ -470,11 +462,7 @@ impl<'a> JIRResolver<'a> {
                     } else {
                         JIRResolvedValue::Value(JIRValue::Const(JIRConst::new(
                             field_value,
-                            field
-                                .bits
-                                .bits()
-                                .try_into()
-                                .expect("The size must fit into JIRSize"),
+                            JIRSize::try_from(end.ok_or_else(|| todo!("Generate error for undefined size"))? - start).expect("The size must fit into JIRSize"),
                         )))
                     }
                 } else {
