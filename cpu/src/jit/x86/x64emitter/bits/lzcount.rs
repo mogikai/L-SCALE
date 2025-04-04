@@ -1,56 +1,97 @@
 use crate::jit::api::JITResult;
+use crate::jit::host::register::RegClass;
+use crate::jit::regalloc::requirements::{
+    OperandRequest,
+    TempRequest,
+};
+use crate::jit::regalloc::result::Allocation;
+use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
-use crate::jit::x86::x64emitter::X64Emitter;
 use crate::jit::x86::x64emitter::regalloc::SliceType;
 use crate::jit::x86::x64emitter::slice_load::CopyExtendMode;
+use crate::jit::x86::x64emitter::{
+    X64AllocRequirements,
+    X64Emitter,
+};
+use mogi_sleigh::spec::jir::basic_block::InstId;
 use mogi_sleigh::spec::jir::values::{
     JIRSlice,
     JIRValue,
 };
 
+impl X64AllocRequirements {
+    pub fn lzcount_requirements(
+        requirement: &mut AllocRequirement,
+        output: JIRSlice,
+        input: JIRValue,
+    ) {
+        requirement.add_request(OperandRequest::int_write_any(output));
+        match input {
+            JIRValue::Slice(input) => {
+                requirement.add_request(OperandRequest::int_read_any(input));
+            }
+            JIRValue::Const(_) => {
+                // For const operands we need a temporary register to load it into.
+                *requirement.required_temps_mut() = TempRequest::new().int(1);
+            }
+        }
+    }
+}
+
 impl X64Emitter<'_> {
     pub fn emit_lzcount(
         &mut self,
+        inst: InstId,
         output: JIRSlice,
         input: JIRValue,
     ) -> JITResult {
-        let input_gpr = match input {
-            JIRValue::Slice(input) => self.load_slice_gpr(input, SliceType::Input),
+        let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
+            todo!()
+        };
+        let input_reg = match input {
+            JIRValue::Slice(input) => {
+                let Allocation::Register(input_reg) = self.allocations.get_allocation(inst, 1) else {
+                    todo!()
+                };
+                input_reg
+            }
             JIRValue::Const(input) => {
-                let out_gpr = self.temp_alloc();
-                self.emit_load_const_to_gpr(out_gpr, input)?;
-                out_gpr
+                let reg = self
+                    .allocations
+                    .get_temp_allocations(inst)
+                    .get_nth_from_class(0, RegClass::Int)
+                    .expect("We requested this");
+                self.load_const(reg, input)?;
+                reg
             }
         };
-        let out_gpr = self.allocate_slice_gpr(output, SliceType::Output);
         match input.size() {
             1 => {
                 let correction = -8i32;
                 // We need to mask out the first 8 bits and then correct for these bits.
-                self.copy_gpr_to_gpr(out_gpr, input_gpr, 1, CopyExtendMode::ZeroExtend(2))?;
+                self.copy_reg(output_reg, input_reg, 1, CopyExtendMode::ZeroExtend(2))?;
                 assemble!(self.block.assembler();
-                    ; lzcnt Rw(out_gpr as u8), Rw(input_gpr as u8)
-                    ; lea Rw(out_gpr as u8), [Rq(out_gpr as u8) + correction]
+                    ; lzcnt Rw(output_reg.hw_enc()), Rw(input_reg.hw_enc())
+                    ; lea Rw(output_reg.hw_enc()), [Rq(output_reg.hw_enc()) + correction]
                 );
             }
             2 => {
                 assemble!(self.block.assembler();
-                    ; lzcnt Rw(out_gpr as u8), Rw(input_gpr as u8)
+                    ; lzcnt Rw(output_reg.hw_enc()), Rw(input_reg.hw_enc())
                 );
             }
             4 => {
                 assemble!(self.block.assembler();
-                    ; lzcnt Rd(out_gpr as u8), Rd(input_gpr as u8)
+                    ; lzcnt Rd(output_reg.hw_enc()), Rd(input_reg.hw_enc())
                 );
             }
             8 => {
                 assemble!(self.block.assembler();
-                    ; lzcnt Rq(out_gpr as u8), Rq(input_gpr as u8)
+                    ; lzcnt Rq(output_reg.hw_enc()), Rq(input_reg.hw_enc())
                 );
             }
             _ => todo!("Unsupported size"),
         }
-        self.temp_free(input_gpr)?;
         Ok(())
     }
 }

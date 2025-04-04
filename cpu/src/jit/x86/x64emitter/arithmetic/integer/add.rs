@@ -184,5 +184,5 @@ fn add_constants(
     let size = a.size();
     let a = a.value();
     let b = b.value();
-    JIRConst::new((a + b) % (1u128 << (size * 8)), size)
+    JIRConst::new((a.wrapping_add(b)) % (1u128 << (size * 8)), size)
 }

@@ -232,8 +232,12 @@ impl X64AllocRequirements {
             JIRInstruction::GotoIndirectIf { .. } => {}
             JIRInstruction::JCodeGoto(_) => {}
             JIRInstruction::JCodeGotoIf { .. } => {}
-            JIRInstruction::PopCount(args) => { Self::popcount_requirements(&mut requirement, args.output, args.input); }
-            JIRInstruction::LZCount(_) => {}
+            JIRInstruction::PopCount(args) => {
+                Self::popcount_requirements(&mut requirement, args.output, args.input);
+            }
+            JIRInstruction::LZCount(args) => {
+                Self::lzcount_requirements(&mut requirement, args.output, args.input);
+            }
             JIRInstruction::ZeroExtend(_) => {}
             JIRInstruction::SignExtend(_) => {}
             JIRInstruction::Carry(_) => {}
@@ -436,7 +440,7 @@ impl X64Emitter<'_> {
                 target_block,
             } => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::PopCount(args) => self.emit_popcount(inst_id, args.output, args.input)?,
-            JIRInstruction::LZCount(args) => self.emit_lzcount(args.output, args.input)?,
+            JIRInstruction::LZCount(args) => self.emit_lzcount(inst_id, args.output, args.input)?,
             JIRInstruction::ZeroExtend(args) => self.emit_zero_extend(args.output, args.input)?,
             JIRInstruction::SignExtend(args) => self.emit_sign_extend(args.output, args.input)?,
             JIRInstruction::Carry(args) => self.emit_carry(args.output, args.input_a, args.input_b)?,
