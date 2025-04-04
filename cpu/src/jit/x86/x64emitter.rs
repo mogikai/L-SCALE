@@ -195,16 +195,36 @@ impl X64AllocRequirements {
             JIRInstruction::IntOr(args) => Self::bitwise_requirements(&mut requirement, args.output, args.input_a, args.input_b),
             JIRInstruction::IntAnd(args) => Self::bitwise_requirements(&mut requirement, args.output, args.input_a, args.input_b),
             JIRInstruction::IntXor(args) => Self::bitwise_requirements(&mut requirement, args.output, args.input_a, args.input_b),
-            JIRInstruction::IntSLess(_) => {}
-            JIRInstruction::IntSGreater(_) => {}
-            JIRInstruction::IntSLessEqual(_) => {}
-            JIRInstruction::IntSGreaterEqual(_) => {}
-            JIRInstruction::IntLess(_) => {}
-            JIRInstruction::IntGreater(_) => {}
-            JIRInstruction::IntLessEqual(_) => {}
-            JIRInstruction::IntGreaterEqual(_) => {}
-            JIRInstruction::IntEquals(_) => {}
-            JIRInstruction::IntNotEquals(_) => {}
+            JIRInstruction::IntSLess(args) => {
+                Self::compare_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::IntSGreater(args) => {
+                Self::compare_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::IntSLessEqual(args) => {
+                Self::compare_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::IntSGreaterEqual(args) => {
+                Self::compare_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::IntLess(args) => {
+                Self::compare_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::IntGreater(args) => {
+                Self::compare_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::IntLessEqual(args) => {
+                Self::compare_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::IntGreaterEqual(args) => {
+                Self::compare_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::IntEquals(args) => {
+                Self::compare_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::IntNotEquals(args) => {
+                Self::compare_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
             JIRInstruction::BitNegate(args) => Self::bitwise_negate_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::IntNegate(args) => Self::negate_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::FloatDiv(_) => {}
@@ -393,22 +413,34 @@ impl X64Emitter<'_> {
             JIRInstruction::IntOr(args) => self.emit_bitwise_or(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::IntAnd(args) => self.emit_bitwise_and(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::IntXor(args) => self.emit_bitwise_xor(inst_id, args.output, args.input_a, args.input_b)?,
-            JIRInstruction::IntSLess(args) => self.emit_compare_lt_signed(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntSLess(args) => {
+                self.emit_compare_lt_signed(inst_id, args.output, args.input_a, args.input_b)?
+            }
             JIRInstruction::IntSGreater(args) => {
-                self.emit_compare_gt_signed(args.output, args.input_a, args.input_b)?
+                self.emit_compare_gt_signed(inst_id, args.output, args.input_a, args.input_b)?
             }
             JIRInstruction::IntSLessEqual(args) => {
-                self.emit_compare_le_signed(args.output, args.input_a, args.input_b)?
+                self.emit_compare_le_signed(inst_id, args.output, args.input_a, args.input_b)?
             }
             JIRInstruction::IntSGreaterEqual(args) => {
-                self.emit_compare_ge_signed(args.output, args.input_a, args.input_b)?
+                self.emit_compare_ge_signed(inst_id, args.output, args.input_a, args.input_b)?
             }
-            JIRInstruction::IntLess(args) => self.emit_compare_lt(args.output, args.input_a, args.input_b)?,
-            JIRInstruction::IntGreater(args) => self.emit_compare_gt(args.output, args.input_a, args.input_b)?,
-            JIRInstruction::IntLessEqual(args) => self.emit_compare_le(args.output, args.input_a, args.input_b)?,
-            JIRInstruction::IntGreaterEqual(args) => self.emit_compare_ge(args.output, args.input_a, args.input_b)?,
-            JIRInstruction::IntEquals(args) => self.emit_compare_eq(args.output, args.input_a, args.input_b)?,
-            JIRInstruction::IntNotEquals(args) => self.emit_compare_ne(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntLess(args) => self.emit_compare_lt(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntGreater(args) => {
+                self.emit_compare_gt(inst_id, args.output, args.input_a, args.input_b)?
+            }
+            JIRInstruction::IntLessEqual(args) => {
+                self.emit_compare_le(inst_id, args.output, args.input_a, args.input_b)?
+            }
+            JIRInstruction::IntGreaterEqual(args) => {
+                self.emit_compare_ge(inst_id, args.output, args.input_a, args.input_b)?
+            }
+            JIRInstruction::IntEquals(args) => {
+                self.emit_compare_eq(inst_id, args.output, args.input_a, args.input_b)?
+            }
+            JIRInstruction::IntNotEquals(args) => {
+                self.emit_compare_ne(inst_id, args.output, args.input_a, args.input_b)?
+            }
             JIRInstruction::BitNegate(args) => self.emit_bitwise_negate(inst_id, args.output, args.input)?,
             JIRInstruction::IntNegate(args) => self.emit_negate(inst_id, args.output, args.input)?,
             JIRInstruction::FloatDiv(args) => todo!("Instruction not yet implemented: {jinst}"),
