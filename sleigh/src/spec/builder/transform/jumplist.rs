@@ -328,41 +328,8 @@ impl<'a> JumplistBuilder<'a> {
             })
             .collect::<InternalCompilerResult<Vec<_>>>()?;
 
-        // 2. partition rows by data provider
-        let partitioned_rows = partition_by_data_provider(rows);
-
-        // 3. create jumplists for each partition
-        let jumplists = partitioned_rows
-            .into_iter()
-            .map(|(_, rows)| Ok(self.create_jumplist_bytes(rows, token_index, 0)?))
-            .collect::<InternalCompilerResult<Vec<_>>>()?;
-
-        self.diagnostics.byte_level_count += 1;
-
-        // 4. either use directly or combine
-        if jumplists.len() > 1 {
-            // multiple lists => create dummy list
-            self.diagnostics.dummy_jumplist_count += 1;
-
-            let mut jumplist_new = Jumplist::default();
-            for jumplist in jumplists.into_iter() {
-                let jumplist_id = self.jumplist_cache.insert(jumplist);
-                jumplist_new.insert(
-                    0,
-                    JumplistEntry::new(NextJumplistEntry::TrailingSame(jumplist_id), vec![], FnvHashMap::default()),
-                    false,
-                )?;
-                self.diagnostics.entry_count += 1;
-            }
-
-            Ok(jumplist_new)
-        } else {
-            // only a single list => use directly
-            Ok(jumplists
-                .into_iter()
-                .nth(0)
-                .expect("At least one list must have been created"))
-        }
+        // 2. create jumplist
+        self.create_jumplist_bytes(rows, token_index, 0)
     }
 
     /// Recursion used to process tokens of different length but with the same provider into a
@@ -814,17 +781,6 @@ fn is_submask(
     supermask: u128,
 ) -> bool {
     (submask ^ supermask) & submask == 0
-}
-
-/// Rows with different data providers can't be merged together so we need to
-/// partition them before passing them to [create_jumplist].
-fn partition_by_data_provider(rows: Vec<Row>) -> BTreeMap<DataProvider, Vec<Row>> {
-    let mut partitions = BTreeMap::<DataProvider, Vec<Row>>::new();
-    for row in rows.into_iter() {
-        partitions.entry(row.data_provider).or_default().push(row)
-    }
-
-    partitions
 }
 
 /// Merge rows into sets such that the set mask (the disjunction of all masks of this set)

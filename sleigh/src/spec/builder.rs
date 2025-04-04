@@ -503,6 +503,12 @@ impl ProcessorSpecificationBuilder {
             .expect("Every defined symbol must have come from somewhere in the spec")
     }
 
+    pub(crate) fn context_ids(
+        &self,
+    ) -> impl Iterator<Item = ContextId> {
+        self.context.keys()
+    }
+
     /// Helper function to define a symbol. Return an error if the symbol has been defined
     /// previously.
     fn define_symbol(
@@ -710,7 +716,7 @@ impl ProcessorSpecificationBuilder {
         debug!("Found {} global varnodes", self.symbol_tables.varnodes.len());
         debug!("Found {} custom operations", self.symbol_tables.custom_ops.len());
 
-        // self.dump_symbols_to_file(&PathBuf::from("symbol_strings.txt"));
+        self.dump_symbols_to_file(&PathBuf::from("symbol_strings.txt"));
 
         let root_table = self.table_id_by_ident(&self.root_table)?;
         let context = MOIRToJIRTransformer::new(

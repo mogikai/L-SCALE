@@ -122,7 +122,7 @@ impl Default for MatcherConjunction {
 // :ADD is (byte=0x3F; r64) | (byte_subtable; r64) { ... }
 
 impl MatcherConjunction {
-    pub fn new(
+    pub(crate) fn new(
         atoms: BTreeSet<MatcherAtom>,
         token: MatcherToken,
     ) -> Self {

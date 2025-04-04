@@ -265,7 +265,10 @@ impl Jumplist {
     /// Each entry stores the number of times it was part of a matching branch in
     /// [JumplistEntry::hit_count]. This function sorts the entries by their hit count in
     /// descending order and subsequently resets the hit counts to zero.
+    /// TODO Don't use; ordering is important right now which needs to be handled
     pub fn rearrange_entries(&mut self) {
+        todo!("Keep necessary ordering");
+
         for (_, entry_vec) in self.entries_mut() {
             entry_vec.sort_by(|e0, e1| e0.hit_count.get().cmp(&e1.hit_count.get()).reverse());
         }

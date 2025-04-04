@@ -13,6 +13,7 @@ use crate::spec::builder::{
     CustomInterner,
     MOIRSymbolId,
 };
+use crate::spec::jir::values::ContextId;
 use crate::spec::moir::actions::{
     MOIRAction,
     MOIRPatternExpression,
@@ -45,7 +46,10 @@ use itertools::{
     FoldWhile,
     Itertools,
 };
-use matcher::MatcherConjunction;
+use matcher::{
+    MatcherConjunction,
+    MatcherToken,
+};
 use mogi_sleigh_parser::ast::common::SASTIdent;
 use mogi_sleigh_parser::ast::constructor::SASTConstructor;
 use mogi_sleigh_parser::ast::constructor::disassembly_section::{
@@ -64,8 +68,15 @@ use mogi_sleigh_parser::{
 };
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::MapKey;
-use std::collections::HashSet;
-use tracing::debug;
+use std::collections::{
+    BTreeSet,
+    HashSet,
+};
+use std::ops::Deref;
+use tracing::{
+    debug,
+    trace,
+};
 
 pub(crate) mod matcher;
 pub(crate) mod matcher_builder;
@@ -149,6 +160,7 @@ impl SleighCompiler {
         trace_build!("{}", moir_constructor.mcode_debug_string(self.spec_builder.interner()));
 
         self.pc_populate_sublists_and_extractors(&mut matchers, &moir_constructor.local_scope, table_id);
+        self.pc_pad_and_sort_context(&mut matchers);
 
         // Define the constructor and insert it into the corresponding table.
         self.spec_builder.define_constructor(moir_constructor)?;
@@ -367,11 +379,19 @@ impl SleighCompiler {
         // the number of bytes consumed which is why if there is any padding at
         // all, we make all sublists dynamic except in the following cases:
         // - recursive entries at the initial position (to avoid infinite recursion)
+        // - padding at the end (since nothing follows that's not a problem)
         let mut bytes_consumed = Some(0);
         let contains_padding = matcher
             .conjunctions
             .iter()
-            .any(|conjunction| conjunction.token.parent.is_none() && conjunction.atoms.is_empty());
+            .enumerate()
+            .any(|(i, conjunction)| {
+                conjunction.token.parent.is_none()
+                    && conjunction.atoms.is_empty()
+                    && matcher.conjunctions[i..]
+                        .iter()
+                        .any(|fc| fc.token.parent.is_some() || !fc.atoms.is_empty())
+            });
 
         // process non-context
         for (i, conjunction) in matcher
@@ -468,6 +488,46 @@ impl SleighCompiler {
     ) {
         for matcher in matchers.iter_mut() {
             self.populate_matcher(matcher, scope, table_id);
+        }
+    }
+
+    /// Jumplist creation is made easier if all matchers begin with a uniform context since special
+    /// treatments for context and non-context matchers might create priority issues if they
+    /// overlap, i.e. one context constrains for zero.
+    fn pc_pad_and_sort_context(
+        &self,
+        matchers: &mut Vec<Matcher>,
+    ) {
+        for matcher in matchers.iter_mut() {
+            let mut padded_conjunctions = self
+                .spec_builder
+                .context_ids()
+                .map(|cid| {
+                    MatcherConjunction::new(
+                        Default::default(),
+                        MatcherToken {
+                            parent: Some(MOIRFieldParent::Context(cid)),
+                        },
+                    )
+                })
+                .collect::<Vec<_>>();
+
+            let matcher_conjunctions = std::mem::take(&mut matcher.conjunctions);
+
+            for matcher_conjunction in matcher_conjunctions.into_iter() {
+                if let Some(MOIRFieldParent::Context(cid)) = matcher_conjunction.token.parent {
+                    // is context => add atoms to padded_conjunctions
+                    padded_conjunctions
+                        .get_mut(cid.to_index())
+                        .expect("This must exist")
+                        .atoms = matcher_conjunction.atoms;
+                } else {
+                    // is token => add conjunction
+                    padded_conjunctions.push(matcher_conjunction);
+                }
+            }
+
+            matcher.conjunctions = padded_conjunctions;
         }
     }
 
