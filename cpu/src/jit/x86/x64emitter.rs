@@ -181,8 +181,12 @@ impl X64AllocRequirements {
             JIRInstruction::IntSDiv(args) => {
                 Self::divide_signed_requirements(&mut requirement, args.output, args.input_a, args.input_b)
             }
-            JIRInstruction::IntRemainder(_) => {}
-            JIRInstruction::IntSRemainder(_) => {}
+            JIRInstruction::IntRemainder(args) => {
+                Self::remainder_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::IntSRemainder(args) => {
+                Self::signed_remainder_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
             JIRInstruction::IntLeft(args) => {
                 Self::shift_requirements(&mut requirement, args.output, args.input_a, args.input_b)
             }

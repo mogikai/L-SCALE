@@ -8,7 +8,11 @@ mod subtract;
 mod test;
 
 use crate::jit::api::JITResult;
-use crate::jit::x86::x64emitter::X64Emitter;
+use crate::jit::x86::alloc_requirement::AllocRequirement;
+use crate::jit::x86::x64emitter::{
+    X64AllocRequirements,
+    X64Emitter,
+};
 use mogi_sleigh::spec::jir::values::{
     JIRSlice,
     JIRValue,
@@ -17,6 +21,26 @@ use mogi_sleigh::spec::jir::values::{
 enum AddSub {
     Add,
     Sub,
+}
+
+impl X64AllocRequirements {
+    pub fn remainder_requirements(
+        requirement: &mut AllocRequirement,
+        output: JIRSlice,
+        input_a: JIRValue,
+        input_b: JIRValue,
+    ) {
+        todo!()
+    }
+
+    pub fn signed_remainder_requirements(
+        requirement: &mut AllocRequirement,
+        output: JIRSlice,
+        input_a: JIRValue,
+        input_b: JIRValue,
+    ) {
+        todo!()
+    }
 }
 
 impl X64Emitter<'_> {

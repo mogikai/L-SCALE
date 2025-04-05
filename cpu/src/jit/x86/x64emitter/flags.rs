@@ -44,7 +44,7 @@ impl X64AllocRequirements {
             (JIRValue::Slice(input_a), JIRValue::Const(input_b))
             | (JIRValue::Const(input_b), JIRValue::Slice(input_a)) => {
                 requirement.add_request(OperandRequest::int_write_any(output));
-                requirement.add_request(OperandRequest::int_write_any(input_a));
+                requirement.add_request(OperandRequest::int_read_any(input_a));
                 if input_b.size() >= 8 {
                     *requirement.required_temps_mut() = TempRequest::new().int(1);
                 }
@@ -71,7 +71,7 @@ impl X64AllocRequirements {
             (JIRValue::Slice(input_a), JIRValue::Const(input_b))
             | (JIRValue::Const(input_b), JIRValue::Slice(input_a)) => {
                 requirement.add_request(OperandRequest::int_write_any(output));
-                requirement.add_request(OperandRequest::int_write_any(input_a));
+                requirement.add_request(OperandRequest::int_read_any(input_a));
                 if input_b.size() >= 8 {
                     *requirement.required_temps_mut() = TempRequest::new().int(1);
                 }
@@ -98,7 +98,7 @@ impl X64AllocRequirements {
             (JIRValue::Slice(input_a), JIRValue::Const(input_b))
             | (JIRValue::Const(input_b), JIRValue::Slice(input_a)) => {
                 requirement.add_request(OperandRequest::int_write_any(output));
-                requirement.add_request(OperandRequest::int_write_any(input_a));
+                requirement.add_request(OperandRequest::int_read_any(input_a));
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
                 requirement.add_request(OperandRequest::int_write_any(output));

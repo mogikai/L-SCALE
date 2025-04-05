@@ -213,7 +213,7 @@ where
         self.loaded_slices
             .iter_class(operand.class)
             .find_map(|(reg, loaded_slice)| {
-                if loaded_slice.group_id == operand.slice.group_id {
+                if loaded_slice.group_id == operand.slice.group_id && loaded_slice.space_id == operand.slice.space_id {
                     Some((reg, *loaded_slice))
                 } else {
                     None
@@ -225,7 +225,12 @@ where
         &mut self,
         class: RegClass,
     ) -> JITResult<HostReg> {
-        self.available_registers
+        // TODO: Use lru cache to pick least recently used register to allocate to
+        let mut available_regs = self.available_registers;
+        for (reg, _) in self.loaded_slices.iter_class(class) {
+            available_regs.remove(reg);
+        }
+        available_regs
             .into_iter()
             .filter(|r| r.class() == class)
             .nth(0)
@@ -305,17 +310,30 @@ where
         existing_slice: JIRSlice,
         operand: &OperandRequest,
     ) -> JITResult<HostReg> {
-        trace_jit!("Slice group is already loaded in register {reg} with slice {existing_slice:?}.");
-        if existing_slice.offset != operand.slice.offset || existing_slice.size != operand.slice.size {
-            todo!("Aliased loads currently not supported")
-        }
-        if let OperandConstraint::FixedReg(fixed_reg) = operand.constraint {
-            if reg != fixed_reg {
-                todo!("Move allocation to target_reg")
+        trace_jit!(
+            "Slice group is already loaded in register {reg} with slice {existing_slice:?}. Trying to also fit {:?}",
+            operand.slice
+        );
+        // if we have an exact match, we can return the register if it is not fixed
+        if existing_slice.offset == operand.slice.offset && existing_slice.size == operand.slice.size {
+            if let OperandConstraint::FixedReg(fixed_reg) = operand.constraint {
+                // If the fixed constraint specifies a different register, we have to move the allocation there
+                if reg != fixed_reg {
+                    todo!("Move allocation to target_reg")
+                }
+            }
+            self.available_registers.remove(reg);
+            Ok(reg)
+        } else {
+            // If this is not an exact match, we need to check if the allocations overlap in any way
+            if existing_slice.overlaps(&operand.slice) {
+                todo!("Aliased loads currently not supported")
+            } else {
+                // If they don't overlap, we can just return the existing allocation.
+                self.available_registers.remove(reg);
+                Ok(reg)
             }
         }
-        self.available_registers.remove(reg);
-        Ok(reg)
     }
 
     fn alloc_operand(

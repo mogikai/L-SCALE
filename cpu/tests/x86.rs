@@ -1,4 +1,14 @@
-use mogi_cpu::new_cpu_trait::{RunLimit, CPU};
+use mogi_cpu::new_cpu_trait::{
+    CPU,
+    RunLimit,
+};
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{
+    EnvFilter,
+    fmt,
+};
 
 mod common;
 
@@ -20,17 +30,17 @@ fn test_mov_reg_reg() {
     let mut cpu = common::setup_with_bytes(instr);
 
     // RBX = 0x1234
-    *cpu.register_mut("RAX").unwrap() = 0x9876u64;
+    *cpu.register_mut("RBX").unwrap() = 0x9876u64;
     cpu.run(RunLimit::InstructionCount(1)).unwrap();
 
     let rax: u64 = *cpu.register("RAX").unwrap();
-    assert_eq!(rax, 0x1234);
+    assert_eq!(rax, 0x9876u64);
 }
 
 #[test]
 fn test_mov_mem_imm() {
     // MOV [RBP + 4*RSI + 8], 0x1234
-    let instr = b"\x48\xc7\x44\x35\x08\x34\x12\x00\x00";
+    let instr = b"\x48\xC7\x44\xB5\x08\x34\x12\x00\x00";
     let mut cpu = common::setup_with_bytes(instr);
 
     // RBP = 8
