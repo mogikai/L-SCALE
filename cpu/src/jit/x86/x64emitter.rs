@@ -192,9 +192,15 @@ impl X64AllocRequirements {
             JIRInstruction::IntSRight(args) => {
                 Self::shift_requirements(&mut requirement, args.output, args.input_a, args.input_b)
             }
-            JIRInstruction::IntOr(args) => Self::bitwise_requirements(&mut requirement, args.output, args.input_a, args.input_b),
-            JIRInstruction::IntAnd(args) => Self::bitwise_requirements(&mut requirement, args.output, args.input_a, args.input_b),
-            JIRInstruction::IntXor(args) => Self::bitwise_requirements(&mut requirement, args.output, args.input_a, args.input_b),
+            JIRInstruction::IntOr(args) => {
+                Self::bitwise_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::IntAnd(args) => {
+                Self::bitwise_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::IntXor(args) => {
+                Self::bitwise_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
             JIRInstruction::IntSLess(args) => {
                 Self::compare_requirements(&mut requirement, args.output, args.input_a, args.input_b)
             }
@@ -225,7 +231,9 @@ impl X64AllocRequirements {
             JIRInstruction::IntNotEquals(args) => {
                 Self::compare_requirements(&mut requirement, args.output, args.input_a, args.input_b)
             }
-            JIRInstruction::BitNegate(args) => Self::bitwise_negate_requirements(&mut requirement, args.output, args.input),
+            JIRInstruction::BitNegate(args) => {
+                Self::bitwise_negate_requirements(&mut requirement, args.output, args.input)
+            }
             JIRInstruction::IntNegate(args) => Self::negate_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::FloatDiv(_) => {}
             JIRInstruction::FloatMul(_) => {}
@@ -238,10 +246,18 @@ impl X64AllocRequirements {
             JIRInstruction::FloatEquals(_) => {}
             JIRInstruction::FloatNotEquals(_) => {}
             JIRInstruction::FloatNegate(_) => {}
-            JIRInstruction::BoolOr(args) => Self::boolean_requirements(&mut requirement, args.output, args.input_a, args.input_b),
-            JIRInstruction::BoolAnd(args) => Self::boolean_requirements(&mut requirement, args.output, args.input_a, args.input_b),
-            JIRInstruction::BoolXor(args) => Self::boolean_requirements(&mut requirement, args.output, args.input_a, args.input_b),
-            JIRInstruction::BoolNegate(args) => Self::boolean_negate_requirements(&mut requirement, args.output, args.input),
+            JIRInstruction::BoolOr(args) => {
+                Self::boolean_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::BoolAnd(args) => {
+                Self::boolean_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::BoolXor(args) => {
+                Self::boolean_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::BoolNegate(args) => {
+                Self::boolean_negate_requirements(&mut requirement, args.output, args.input)
+            }
             JIRInstruction::CallDirect(..) => {}
             JIRInstruction::CallIndirect(..) => {}
             JIRInstruction::ReturnDirect(_) => {}
@@ -264,9 +280,15 @@ impl X64AllocRequirements {
             JIRInstruction::SignExtend(args) => {
                 Self::sign_extend_requirements(&mut requirement, args.output, args.input)
             }
-            JIRInstruction::Carry(_) => {}
-            JIRInstruction::SignCarry(_) => {}
-            JIRInstruction::SignBorrow(_) => {}
+            JIRInstruction::Carry(args) => {
+                Self::carry_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::SignCarry(args) => {
+                Self::scarry_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::SignBorrow(args) => {
+                Self::sborrow_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
             JIRInstruction::Nan(_) => {}
             JIRInstruction::Abs(_) => {}
             JIRInstruction::Sqrt(_) => {}
@@ -479,9 +501,9 @@ impl X64Emitter<'_> {
             JIRInstruction::LZCount(args) => self.emit_lzcount(inst_id, args.output, args.input)?,
             JIRInstruction::ZeroExtend(args) => self.emit_zero_extend(inst_id, args.output, args.input)?,
             JIRInstruction::SignExtend(args) => self.emit_sign_extend(inst_id, args.output, args.input)?,
-            JIRInstruction::Carry(args) => self.emit_carry(args.output, args.input_a, args.input_b)?,
-            JIRInstruction::SignCarry(args) => self.emit_scarry(args.output, args.input_a, args.input_b)?,
-            JIRInstruction::SignBorrow(args) => self.emit_sborrow(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::Carry(args) => self.emit_carry(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::SignCarry(args) => self.emit_scarry(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::SignBorrow(args) => self.emit_sborrow(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::Nan(args) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::Abs(args) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::Sqrt(args) => todo!("Instruction not yet implemented: {jinst}"),

@@ -287,6 +287,7 @@ impl MogiJit for X86MogiJit {
         // We create a new emitter for the target architecture. The emitter will directly emit instructions
         // into the provided `compiled_block` for each instruction in the provided `target_block`.
         let spec = self.processor_specification.borrow();
+        // TODO: Maybe it would make sense to reuse the alloc requirements buffers to avoid allocations?
         let alloc_requirements = X64AllocRequirements::new(target_block);
 
         let usable_registers = HostRegSet::empty()

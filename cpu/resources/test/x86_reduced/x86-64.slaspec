@@ -1,0 +1,2 @@
+@define IA64 "IA64"
+@include "x86.slaspec"

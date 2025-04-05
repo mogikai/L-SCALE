@@ -4,11 +4,11 @@ use crate::jit::api::{
 };
 use crate::jit::x86::X86MogiJit;
 use mogi_mem::mmu::MogiMMU;
-use mogi_sleigh::spec::jir::common::JIRSize;
 use mogi_sleigh::SleighPreprocessorFactory;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
 use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
 use mogi_sleigh::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
+use mogi_sleigh::spec::jir::common::JIRSize;
 use mogi_sleigh::spec::jir::jcode::JIRInstruction;
 use mogi_sleigh::spec::jir::values::JIRSlice;
 use mogi_sleigh::spec::{
@@ -34,7 +34,7 @@ pub(super) fn setup(
     debug: bool
 ) -> (X86MogiJit, Rc<RefCell<ProcessorSpecification>>, Box<<X86MogiJit as MogiJit>::RuntimeContext>) {
     let mut spec_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    spec_path.push("resources/test/x86/x86-64.slaspec");
+    spec_path.push("resources/test/x86_reduced/x86-64.slaspec");
     let spec_dir = spec_path.parent().unwrap();
     let factory = SleighPreprocessorFactory::new().working_dir(spec_dir.to_path_buf());
     let compiler = SleighCompilerBuilder::new()

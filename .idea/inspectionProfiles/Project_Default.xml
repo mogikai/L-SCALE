@@ -4,5 +4,6 @@
     <inspection_tool class="RsUnusedImport" enabled="true" level="WARNING" enabled_by_default="true">
       <option name="enableOnlyIfProcMacrosEnabled" value="false" />
     </inspection_tool>
+    <inspection_tool class="StructuralWrap" enabled="false" level="TYPO" enabled_by_default="false" />
   </profile>
 </component>
