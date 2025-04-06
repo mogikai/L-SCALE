@@ -96,8 +96,12 @@ impl TargetBasicBlockBuilder {
         &mut self,
         size: JIRSize,
     ) -> ProcessorSpecResult<JIRSlice> {
+        if self.target_block.temporaries.len() >= 255 {
+            todo!("No more temporaries available")
+        }
         // TODO: Maybe it makes sense padding the varnodes to a specific byte boundary?
         // The offset of the new temporary is either the end of the last, or zero, if no other temps were allocated yet.
+        let temp_group = self.target_block.temporaries.len();
         let offset: JIROffset = self
             .target_block
             .temporaries
@@ -111,7 +115,7 @@ impl TargetBasicBlockBuilder {
             offset: offset.into(),
             size,
         });
-        Ok(JIRSlice::new_temp(self.temp_space, offset, size))
+        Ok(JIRSlice::new_temp(self.temp_space, temp_group as u8, offset, size))
     }
 
     /// Allocate a temporary of size `size` and load the contents at `address` in `space` to it.

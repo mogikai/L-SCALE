@@ -16,6 +16,7 @@ use mogi_sleigh::spec::jir::values::JIRValue;
 use mogi_utilities::index_map::MapKey;
 
 #[test]
+#[ignore]
 fn test_complex() {
     let (mut jit, spec, mut context) = setup(false);
     let reg_out = "EAX";

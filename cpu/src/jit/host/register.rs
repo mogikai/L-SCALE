@@ -169,6 +169,18 @@ impl<T> HostRegMap<T> {
         self.mapping[reg.index()] = None;
     }
 
+    /// Moves the contents of the slot at `src_reg` to `dst_reg`.
+    /// Returns the item that was previously at `dst_reg` if there was one.
+    pub fn r#move(
+        &mut self,
+        dst_reg: HostReg,
+        src_reg: HostReg,
+    ) -> Option<T> {
+        let out = self.mapping[dst_reg.index()].take();
+        self.mapping[dst_reg.index()] = self.mapping[src_reg.index()].take();
+        out
+    }
+
     /// Removes the associated item for the provided [HostReg],
     /// returning it, if there was a previous element.
     /// Otherwise [None] is returned.
@@ -248,6 +260,15 @@ impl HostRegSet {
         out
     }
 
+    pub const fn without(
+        self,
+        reg: HostReg,
+    ) -> Self {
+        let mut out = self;
+        out.bits[reg.class() as usize] &= !(1 << reg.hw_enc());
+        out
+    }
+
     /// Add a physical register (PReg) to the set.
     pub fn add(
         &mut self,
@@ -257,7 +278,7 @@ impl HostRegSet {
     }
 
     /// Remove a physical register (PReg) from the set.
-    pub fn remove(
+    pub const fn remove(
         &mut self,
         reg: HostReg,
     ) {

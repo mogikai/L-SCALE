@@ -43,6 +43,7 @@ use mogi_utilities::addresses::{
     HVAddr,
 };
 use mogi_utilities::index_map::MapKey;
+use std::hint::black_box;
 use std::marker::PhantomData;
 
 impl X64AllocRequirements {
@@ -92,6 +93,17 @@ impl X64Emitter<'_> {
         addr: JIRValue,
         space_id: SpaceId,
     ) -> JITResult {
+        if space_id == self.processor_spec.const_space() {
+            let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
+                todo!()
+            };
+            let JIRValue::Const(addr) = addr else {
+                panic!("Load from const space must have a constant address")
+            };
+            // Const address is interpreted as the value at that address.
+            // TODO: Perform these const loads in the optimizer instead and propagate the constants.
+            return self.load_const(output_reg, addr);
+        }
         // Address is the second operand
         let addr_index = 1;
         self.emit_tlb_lookup(inst, addr_index, addr, space_id, output.size(), AccessType::Load)?;
@@ -397,13 +409,15 @@ where
     CB: TlbMissHelper<ContextT>,
     ContextT: JITTaskRuntimeContext,
 {
-    let callback = callback as *mut CB;
-    unsafe { (*callback)(context, addr, size, space_id) }
-        .map_err(|e| {
-            // Set the error in the runtime context so that it can be retrieved upon exiting
-            // the jited code. The JIT will then return the error, instead of continuing execution.
-            context.set_runtime_error(e);
-            e
-        })
-        .ok()
+    black_box({
+        let callback = callback as *mut CB;
+        unsafe { (*callback)(context, addr, size, space_id) }
+            .map_err(|e| {
+                // Set the error in the runtime context so that it can be retrieved upon exiting
+                // the jited code. The JIT will then return the error, instead of continuing execution.
+                context.set_runtime_error(e);
+                e
+            })
+            .ok()
+    })
 }

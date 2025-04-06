@@ -29,10 +29,35 @@ use mogi_sleigh::spec::jir::jir_block::JIRBlockId;
 use mogi_sleigh::spec::jir::values::JIRSlice;
 use requirements::EmitterAllocRequirements;
 use result::AllocatorResult;
+use strum::EnumCount;
 
 #[derive(Debug)]
 pub struct RegAllocHostConstraints {
-    pub usable_registers: HostRegSet,
+    usable_registers: HostRegSet,
+    /// Some instructions need a scratch register. This register can be used
+    /// by any instruction and any directive, but it gives no guarantees
+    /// to its contents before or after the corresponding instruction or directive.
+    /// This register can never be allocated to a slice.
+    /// Each class has one scratch register.
+    scratch_register: [HostReg; RegClass::COUNT],
+}
+
+impl RegAllocHostConstraints {
+    pub const fn new(usable_registers: HostRegSet) -> Self {
+        RegAllocHostConstraints {
+            usable_registers,
+            scratch_register: [HostReg::invalid(); RegClass::COUNT],
+        }
+    }
+
+    pub const fn with_scratch(
+        mut self,
+        reg: HostReg,
+    ) -> Self {
+        self.usable_registers.remove(reg);
+        self.scratch_register[reg.class() as usize] = reg;
+        self
+    }
 }
 
 pub struct RegisterAllocator<'a, E> {
@@ -79,7 +104,11 @@ where
         RegisterAllocator::<'a, E> {
             target_block: translation_unit,
             emitter_requirements,
-            allocations: AllocatorResult::new(translation_unit, emitter_requirements),
+            allocations: AllocatorResult::new(
+                translation_unit,
+                emitter_requirements,
+                host_constraints.scratch_register,
+            ),
             loaded_slices: Default::default(),
             host_constraints,
             available_registers,
@@ -213,7 +242,7 @@ where
         self.loaded_slices
             .iter_class(operand.class)
             .find_map(|(reg, loaded_slice)| {
-                if loaded_slice.group_id == operand.slice.group_id && loaded_slice.space_id == operand.slice.space_id {
+                if loaded_slice.same_group(&operand.slice) && loaded_slice.space_id == operand.slice.space_id {
                     Some((reg, *loaded_slice))
                 } else {
                     None
@@ -319,7 +348,24 @@ where
             if let OperandConstraint::FixedReg(fixed_reg) = operand.constraint {
                 // If the fixed constraint specifies a different register, we have to move the allocation there
                 if reg != fixed_reg {
-                    todo!("Move allocation to target_reg")
+                    trace_jit!("Allocation is wanted in {fixed_reg}, but is already in {reg}. Moving allocation");
+                    // We add a move such that the allocation will be in `reg` after the instruction.
+                    // This is necessary, since any following instructions (in forward order)
+                    // are already allocated to the register `reg`.
+                    self.allocations
+                        .load_spill_directives
+                        .add_move_after(reg, fixed_reg, existing_slice.size);
+                    // And update the loaded slices to point to the new reg
+                    // We update this for the reverse direction, since the loaded_slices map is relevant for not yet
+                    // allocated slices.
+                    let slice = self
+                        .loaded_slices
+                        .take(reg)
+                        .expect("Slice should be loaded");
+                    self.loaded_slices.insert(fixed_reg, slice);
+                    // We remove the fixed_reg, since this is now not available anymore for this instruction.
+                    self.available_registers.remove(fixed_reg);
+                    return Ok(fixed_reg);
                 }
             }
             self.available_registers.remove(reg);
@@ -327,7 +373,15 @@ where
         } else {
             // If this is not an exact match, we need to check if the allocations overlap in any way
             if existing_slice.overlaps(&operand.slice) {
-                todo!("Aliased loads currently not supported")
+                if !self.available_registers.contains(reg) && existing_slice.offset != operand.slice.offset {
+                    // We already allocated something to `reg` and it has a different offset.
+                    todo!("Different offset aliasing in the same instruction currently unsupported")
+                }
+                self.allocations
+                    .load_spill_directives
+                    .add_adjust_before(reg, existing_slice, operand.slice);
+                self.available_registers.remove(reg);
+                Ok(reg)
             } else {
                 // If they don't overlap, we can just return the existing allocation.
                 self.available_registers.remove(reg);

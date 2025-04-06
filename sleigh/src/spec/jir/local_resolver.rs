@@ -379,7 +379,8 @@ impl<'a> JIRResolver<'a> {
         let value = self.constructor.local_scope.resolve_local(local);
         trace_jir!("Local {local} is {value:?}");
         let start = value.start;
-        let end = value.end;
+        // let end = value.end;
+        let size = value.size();
         Ok(match value.reference {
             MOIRReference::VarNode(varnode_id) => {
                 if self.values[local].is_some() {
@@ -390,9 +391,8 @@ impl<'a> JIRResolver<'a> {
                     varnode.space_id,
                     spec.varnode_to_group[varnode_id].expect("Every varnode must have a group id"),
                     varnode.offset + start,
-                    JIRSize::try_from(end.ok_or_else(|| todo!("Generate error for undefined size"))? - start)
-                        .expect("The size must fit into JIRSize")
-                        - JIRSize::try_from(start).expect("The size must fit into JIRSize"),
+                    JIRSize::try_from(size.ok_or_else(|| todo!("Generate error for undefined size"))?)
+                        .expect("The size must fit into JIRSize"),
                 )
                 .into()
             }
@@ -401,7 +401,7 @@ impl<'a> JIRResolver<'a> {
                 Some(value) => value
                     .slice(
                         start,
-                        JIRSize::try_from(end.ok_or_else(|| todo!("Generate error for undefined size"))? - start)
+                        JIRSize::try_from(size.ok_or_else(|| todo!("Generate error for undefined size"))?)
                             .expect("The size must fit into JIRSize"),
                     )
                     .into(),
@@ -432,14 +432,12 @@ impl<'a> JIRResolver<'a> {
                         let varnode_id = field.variables[usize::try_from(field_value).unwrap()];
                         let varnode = spec.symbol_tables.varnodes.get(varnode_id).unwrap();
 
-                        let slice = JIRSlice {
-                            space_id: varnode.space_id,
-                            group_id: Some(
-                                spec.varnode_to_group[varnode_id].expect("Every varnode must have a group id"),
-                            ),
-                            offset: varnode.offset.try_into().unwrap(),
-                            size: varnode.size,
-                        };
+                        let slice = JIRSlice::new(
+                            varnode.space_id,
+                            spec.varnode_to_group[varnode_id].expect("Every varnode must have a group id"),
+                            varnode.offset.try_into().unwrap(),
+                            varnode.size,
+                        );
 
                         JIRResolvedValue::Value(JIRValue::Slice(slice))
                     } else if !field.values.is_empty() {
@@ -462,7 +460,8 @@ impl<'a> JIRResolver<'a> {
                     } else {
                         JIRResolvedValue::Value(JIRValue::Const(JIRConst::new(
                             field_value,
-                            JIRSize::try_from(end.ok_or_else(|| todo!("Generate error for undefined size"))? - start).expect("The size must fit into JIRSize"),
+                            JIRSize::try_from(size.ok_or_else(|| todo!("Generate error for undefined size"))?)
+                                .expect("The size must fit into JIRSize"),
                         )))
                     }
                 } else {

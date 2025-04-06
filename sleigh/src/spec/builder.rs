@@ -718,7 +718,12 @@ impl ProcessorSpecificationBuilder {
         debug!("Found {} custom operations", self.symbol_tables.custom_ops.len());
 
         self.dump_symbols_to_file(&PathBuf::from("symbol_strings.txt"));
-
+        let const_space = self.space_id_by_ident(&Spanned::new(
+            self.interner
+                .lookup("const")
+                .expect("We previously created this"),
+            InputSpan::default(),
+        ))?;
         let root_table = self.table_id_by_ident(&self.root_table)?;
         let context = MOIRToJIRTransformer::new(
             &self.interner,
@@ -750,6 +755,7 @@ impl ProcessorSpecificationBuilder {
                 .ok_or(ProcessorSpecificationError::MissingDefaultSpace)?
                 .into_value(),
             temp_space: self.temp_space,
+            const_space,
             endianness: self
                 .endianness
                 .ok_or(ProcessorSpecificationError::MissingEndiannessDefinition)?

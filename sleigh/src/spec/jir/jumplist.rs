@@ -16,6 +16,7 @@ use super::local_resolver::JIRResolver;
 use super::values::JIRValue;
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
+use crate::spec::FieldId;
 use crate::spec::jir::common::JIRSize;
 use crate::spec::jir::trace_jir;
 use crate::spec::jir::values::JIRConst;
@@ -28,7 +29,6 @@ use crate::spec::moir::context::ContextId;
 use crate::spec::moir::field_extractor::FieldExtractor;
 use crate::spec::moir::scope::MOIRLocalId;
 use crate::spec::moir::table::TableId;
-use crate::spec::FieldId;
 use fnv::FnvHashMap;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::{
@@ -397,10 +397,13 @@ impl<'a> MatchContext<'a> {
         // extract token and context fields with fixed offset into map
         for field_extractor in field_extractors {
             let extracted_value = field_extractor.extract_value(bytes)?;
-            trace_jir!("Field extractor is defining context field {} := {:#?}", field_extractor.field_id(), extracted_value);
+            trace_jir!(
+                "Field extractor is defining context field {} := {:#?}",
+                field_extractor.field_id(),
+                extracted_value
+            );
             resolver.define_field(field_extractor.field_id(), extracted_value);
         }
-
 
         trace_jir!("Context fields: {:#?}", context_fields);
 
@@ -630,14 +633,27 @@ impl<'a> MatchContext<'a> {
 
 new_map_key! { pub struct JumplistId; "JMPLST"; }
 
+#[cfg(test)]
 mod test {
     use std::path::Path;
 
-    use mogi_sleigh_parser::preprocessor::SleighPreprocessorFactory;
-
     use crate::compiler::SleighCompilerResult;
     use crate::compiler::builder::SleighCompilerBuilder;
-    use crate::spec::ProcessorSpecification;
+    use crate::lifter::context_provider::{
+        ContextProvider,
+        SimpleContextProvider,
+    };
+    use crate::spec::jir::jumplist::{
+        ContextStack,
+        MatcherResult,
+    };
+    use crate::spec::{
+        ConstructorId,
+        ProcessorSpecification,
+        TableId,
+    };
+    use mogi_sleigh_parser::preprocessor::SleighPreprocessorFactory;
+    use mogi_utilities::index_map::MapKey;
 
     const ASSETS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/resources/test/");
 

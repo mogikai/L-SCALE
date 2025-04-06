@@ -325,8 +325,11 @@ impl MogiJit for X86MogiJit {
             .with(XMMRegister::XMM15.into_host_reg());
 
         // And then start the register allocator for the block and target architecture.
-        let regalloc =
-            RegisterAllocator::new(&target_block, &alloc_requirements, RegAllocHostConstraints { usable_registers });
+        let regalloc = RegisterAllocator::new(
+            &target_block,
+            &alloc_requirements,
+            RegAllocHostConstraints::new(usable_registers).with_scratch(GPRegister::R15.into_host_reg()),
+        );
         let allocations = regalloc.run()?;
 
         trace_jit!("Register allocations for target block:\n{:#?}", allocations);

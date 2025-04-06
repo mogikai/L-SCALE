@@ -59,6 +59,18 @@ impl OperandRequest {
         }
     }
 
+    pub fn int_write_fixed(
+        reg: HostReg,
+        slice: JIRSlice,
+    ) -> Self {
+        OperandRequest {
+            slice,
+            constraint: OperandConstraint::FixedReg(reg),
+            kind: OperandKind::Write,
+            class: RegClass::Int,
+        }
+    }
+
     pub fn int_read_any(slice: JIRSlice) -> Self {
         OperandRequest {
             slice,

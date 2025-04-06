@@ -10,8 +10,10 @@ use crate::jit::x86::assemble;
 use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::task_context::X86TaskContext;
 use crate::jit::x86::x64emitter::X64Emitter;
+use crate::jit::x86::x64emitter::slice_load::CopyExtendMode;
 use dynasmrt::relocations::Relocation;
 use dynasmrt::x64::X64Relocation;
+use mogi_sleigh::spec::jir::common::JIRSize;
 use mogi_sleigh::spec::jir::values::JIRSlice;
 use tracing::trace;
 
@@ -31,7 +33,25 @@ impl X64Emitter<'_> {
                     self.loaded_slices.remove(*reg);
                     emit_spill_directive(self.block.assembler(), *reg, *slice)?
                 }
-                LoadSpillDirective::Move(_, _) => todo!(),
+                LoadSpillDirective::Move { dst, src, size } => {
+                    self.loaded_slices.r#move(*dst, *src);
+                    self.copy_reg(*dst, *src, *size, CopyExtendMode::None)?
+                }
+                LoadSpillDirective::Adjust {
+                    reg,
+                    old_slice,
+                    new_slice,
+                } => {
+                    // Overwrite the old loaded slice info with the adjusted one.
+                    self.loaded_slices.insert(*reg, *new_slice);
+                    emit_adjust_directive(
+                        self.block.assembler(),
+                        *reg,
+                        self.allocations.scratch_register(RegClass::Int),
+                        *old_slice,
+                        *new_slice,
+                    )?
+                }
             }
         }
         Ok(())
@@ -68,10 +88,9 @@ where
 {
     match reg.class() {
         RegClass::Int => load_slice_to_int_reg(assembler, reg, slice),
-        RegClass::Float => {}
-        RegClass::Vector => {}
+        RegClass::Float => todo!(),
+        RegClass::Vector => todo!(),
     }
-    Ok(())
 }
 
 #[inline]
@@ -79,7 +98,8 @@ fn load_slice_to_int_reg<R>(
     assembler: &mut MogiAssembler<R>,
     reg: HostReg,
     slice: JIRSlice,
-) where
+) -> JITResult
+where
     R: Relocation,
 {
     // We want to load the provided slice into the register.
@@ -114,6 +134,7 @@ fn load_slice_to_int_reg<R>(
             panic!("Unsupported load size")
         }
     }
+    Ok(())
 }
 
 fn emit_spill_directive<R>(
@@ -146,22 +167,22 @@ where
     match slice.size() {
         1 => {
             assemble!(assembler;
-                ; mov BYTE [cpu_context + varnode_offset as _], Rb(reg as u8)
+                ; mov BYTE [cpu_context + varnode_offset as _], Rb(reg)
             );
         }
         2 => {
             assemble!(assembler;
-                ; mov WORD [cpu_context + varnode_offset as _], Rw(reg as u8)
+                ; mov WORD [cpu_context + varnode_offset as _], Rw(reg)
             );
         }
         4 => {
             assemble!(assembler;
-                ; mov DWORD [cpu_context + varnode_offset as _], Rd(reg as u8)
+                ; mov DWORD [cpu_context + varnode_offset as _], Rd(reg)
             );
         }
         8 => {
             assemble!(assembler;
-                ; mov QWORD [cpu_context + varnode_offset as _], Rq(reg as u8)
+                ; mov QWORD [cpu_context + varnode_offset as _], Rq(reg)
             );
         }
         _ => {
@@ -169,4 +190,107 @@ where
         }
     }
     Ok(())
+}
+
+fn emit_adjust_directive<R>(
+    assembler: &mut MogiAssembler<R>,
+    reg: HostReg,
+    scratch: HostReg,
+    old_slice: JIRSlice,
+    new_slice: JIRSlice,
+) -> JITResult
+where
+    R: Relocation,
+{
+    match reg.class() {
+        RegClass::Int => adjust_int(assembler, reg, scratch, old_slice, new_slice),
+        RegClass::Float => todo!(),
+        RegClass::Vector => todo!(),
+    }
+}
+
+fn adjust_int<R>(
+    assembler: &mut MogiAssembler<R>,
+    reg: HostReg,
+    scratch: HostReg,
+    old_slice: JIRSlice,
+    new_slice: JIRSlice,
+) -> JITResult
+where
+    R: Relocation,
+{
+    assert_eq!(reg.class(), RegClass::Int);
+    if old_slice.offset == new_slice.offset {
+        adjust_int_same_offset(assembler, reg, scratch, old_slice, new_slice)
+    } else {
+        adjust_int_different_offset(assembler, reg, scratch, old_slice, new_slice)
+    }
+}
+
+fn adjust_int_same_offset<R>(
+    assembler: &mut MogiAssembler<R>,
+    reg: HostReg,
+    scratch: HostReg,
+    old_slice: JIRSlice,
+    new_slice: JIRSlice,
+) -> JITResult
+where
+    R: Relocation,
+{
+    assert_eq!(old_slice.offset, new_slice.offset);
+    match (old_slice.size(), new_slice.size()) {
+        (old_size, new_size) if old_size < new_size => {
+            if new_size > 8 {
+                todo!("Unsupported size")
+            }
+            // The already loaded slice is smaller, we can just load the additional contents.
+            let to_load = new_size - old_size;
+            // We load the currently unloaded data into the scratch register
+            let unloaded = new_slice.slice(old_size.into(), to_load);
+            let old_data_mask = (1 << old_size) - 1;
+            load_slice_to_int_reg(assembler, scratch, unloaded)?;
+            assemble!(assembler;
+                // Make sure that the registers upper bits are all zero and do not contain any trash.
+                ; and Rq(scratch.hw_enc()), old_data_mask as _
+                // Shift the loaded data
+                ; shl Rq(scratch.hw_enc()), old_size as _
+                // Or it into the old data.
+                ; or Rq(reg.hw_enc()), Rq(scratch.hw_enc())
+            );
+            Ok(())
+        }
+        (old_size, new_size) if old_size > new_size => {
+            if old_size > 8 {
+                todo!("Unsupported size")
+            }
+            // The already loaded slice is larger. We flush the content that is no longer needed.
+            let to_store = old_size - new_size;
+            let to_unload = old_slice.slice(old_size.into(), to_store);
+            assemble!(assembler;
+                // Move the whole data to scratch
+                ; mov Rq(scratch.hw_enc()), Rq(reg.hw_enc())
+                // Shift right so we only have the part that needs a flush
+                ; shr Rq(scratch.hw_enc()), to_store as _
+            );
+            // Spill the data that is no longer needed.
+            spill_int_reg_to_slice(assembler, scratch, to_unload)
+        }
+        (old, new) if old == new => Ok((/* Nothing to do here */)),
+        _ => unreachable!(),
+    }
+}
+
+fn adjust_int_different_offset<R>(
+    assembler: &mut MogiAssembler<R>,
+    reg: HostReg,
+    scratch: HostReg,
+    old_slice: JIRSlice,
+    new_slice: JIRSlice,
+) -> JITResult
+where
+    R: Relocation,
+{
+    // TODO: Do this more efficiently?
+    spill_int_reg_to_slice(assembler, reg, old_slice)?;
+    load_slice_to_int_reg(assembler, reg, new_slice)
 }

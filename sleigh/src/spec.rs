@@ -158,6 +158,7 @@ pub struct ProcessorSpecification {
 
     pub(crate) default_space: SpaceId,
     pub(crate) temp_space: SpaceId,
+    pub(crate) const_space: SpaceId,
 
     pub(crate) endianness: MOIREndianness,
     /// The alignment of instructions. This defaults to 1 if no alignment is specified.
@@ -192,6 +193,10 @@ impl ProcessorSpecification {
 
     pub fn default_space(&self) -> SpaceId {
         self.default_space
+    }
+
+    pub fn const_space(&self) -> SpaceId {
+        self.const_space
     }
 
     /// Lookup a varnode by its string identifier.

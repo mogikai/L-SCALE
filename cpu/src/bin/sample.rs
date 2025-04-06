@@ -88,14 +88,14 @@ fn main() {
     // Set up the just in time compiler. TODO: Maybe we can refactor this such that the jit doesn't need the spec.
     let mut jit = X86MogiJit::new(specification.clone(), mmu.clone(), false);
 
-    jit.register_tlb_read_miss_callback(|ctx, addr, _size, _space| {
+    jit.register_tlb_read_miss_callback(move |ctx, addr, _size, _space| {
         let tlb = ctx.tlb_mut();
         tlb.insert_read(addr, stack_page_addr);
         unsafe { Ok(stack_page_addr.byte_offset(PageData::page_offset(addr) as isize)) }
     })
     .unwrap();
 
-    jit.register_tlb_write_miss_callback(|ctx, addr, _size, _space| {
+    jit.register_tlb_write_miss_callback(move |ctx, addr, _size, _space| {
         let tlb = ctx.tlb_mut();
         tlb.insert_write(addr, stack_page_addr);
         unsafe { Ok(stack_page_addr.byte_offset(PageData::page_offset(addr) as isize)) }

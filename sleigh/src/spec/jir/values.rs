@@ -117,6 +117,9 @@ pub struct JIRSlice {
     pub space_id: SpaceId,
     /// The group of varnodes this slice belongs to. Temps do not have a group
     pub group_id: Option<VarnodeGroupId>,
+    /// A `group id` for temps. Any temps that derive from a temp by slicing
+    /// have the same identifier.
+    temp_group_id: Option<u8>,
     /// The offset in the space where this slice is located.
     pub offset: JIROffset,
     /// The size of the slice in bytes.
@@ -129,9 +132,11 @@ impl Debug for JIRSlice {
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
         if let Some(group_id) = self.group_id {
-            write!(f, "{}::<{}>[{:#x}..{:#x}]", group_id, self.space_id, self.offset, self.end())
+            write!(f, "{}::<{}>[{:#x};{}]", group_id, self.space_id, self.offset, self.size)
+        } else if let Some(temp_group_id) = self.temp_group_id {
+            write!(f, "TG{}::<TMP>[{:#x};{}]", temp_group_id, self.offset, self.size)
         } else {
-            write!(f, "TMP::<{}>[{:#x}..{:#x}]", self.space_id, self.offset, self.end())
+            panic!("Invalid JIRSlice: No group id or temp group id set.")
         }
     }
 }
@@ -299,6 +304,7 @@ impl JIRSlice {
         Self {
             space_id,
             group_id: Some(group_id),
+            temp_group_id: None,
             offset,
             size,
         }
@@ -306,12 +312,14 @@ impl JIRSlice {
 
     pub fn new_temp(
         space_id: SpaceId,
+        temp_group_id: u8,
         offset: JIROffset,
         size: JIRSize,
     ) -> Self {
         Self {
             space_id,
             group_id: None,
+            temp_group_id: Some(temp_group_id),
             offset,
             size,
         }
@@ -323,12 +331,13 @@ impl JIRSlice {
         start: JIROffset,
         size: JIRSize,
     ) -> JIRSlice {
-        if self.end() < start {
+        if self.end() < start || (start + JIROffset::from(size)) > self.end() {
             todo!()
         }
         Self {
             space_id: self.space_id,
             group_id: self.group_id,
+            temp_group_id: self.temp_group_id,
             offset: self.offset + JIROffset::from(start),
             size,
         }
@@ -341,6 +350,13 @@ impl JIRSlice {
         other: &JIRSlice,
     ) -> bool {
         overlaps_generic(self, other)
+    }
+
+    pub fn same_group(
+        &self,
+        other: &JIRSlice,
+    ) -> bool {
+        self.group_id == other.group_id && self.temp_group_id == other.temp_group_id
     }
 
     #[inline]

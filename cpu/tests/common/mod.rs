@@ -1,7 +1,4 @@
-use mogi_cpu::new_cpu_trait::{
-    CPU,
-    RunLimit,
-};
+use mogi_cpu::new_cpu_trait::CPU;
 use mogi_cpu::tlb::{
     PageData,
     PageMetaInfo,
@@ -71,16 +68,19 @@ pub(crate) fn setup_with_bytes(bytes: &[u8]) -> MogiCPU<X86MogiJit, MogiMMU> {
     let stack_page_addr = unsafe { HVAddr::new_unchecked(stack_page.as_mut() as *mut _) };
 
     // Set up the just in time compiler. TODO: Maybe we can refactor this such that the jit doesn't need the spec.
-    let mut jit = X86MogiJit::new(spec.clone(), mmu.clone(), false);
+    let mut jit =
+        X86MogiJit::new(spec.clone(), mmu.clone(), std::env::var("MOGI_DEBUG_JIT").map_or(false, |val| val == "true"));
 
-    jit.register_tlb_read_miss_callback(|ctx, addr, size, space| {
+    jit.register_tlb_read_miss_callback(move |ctx, addr, size, space| {
         let tlb = ctx.tlb_mut();
         tlb.insert_read(addr, stack_page_addr);
         unsafe { Ok(stack_page_addr.byte_offset(PageData::page_offset(addr) as isize)) }
     })
     .unwrap();
 
-    jit.register_tlb_write_miss_callback(|ctx, addr, size, space| {
+    // FIXME: If the move is omitted, this causes a segfault because stack_page_addr is zero.
+    //        This might be a compiler bug. Maybe we can construct a minimal example?
+    jit.register_tlb_write_miss_callback(move |ctx, addr, size, space| {
         let tlb = ctx.tlb_mut();
         tlb.insert_write(addr, stack_page_addr);
         unsafe { Ok(stack_page_addr.byte_offset(PageData::page_offset(addr) as isize)) }
@@ -92,7 +92,7 @@ pub(crate) fn setup_with_bytes(bytes: &[u8]) -> MogiCPU<X86MogiJit, MogiMMU> {
 
     // Set the instruction pointer to the address we want to start executing at.
     *cpu.register_mut("RIP").unwrap() = 0x0u64;
-    *cpu.register_mut("RSP").unwrap() = 0xffff_ffff_ffff_0220u64;
+    *cpu.register_mut("RSP").unwrap() = 0xffff_ffff_ffff_0000u64;
 
     cpu
 }

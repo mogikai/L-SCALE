@@ -2,6 +2,7 @@ use crate::jit::api::JITResult;
 use crate::jit::host::register::{
     HostReg,
     HostRegSet,
+    RegClass,
 };
 use crate::jit::regalloc::requirements::EmitterAllocRequirements;
 use crate::jit::trace_jit;
@@ -9,8 +10,10 @@ use mogi_sleigh::spec::jir::basic_block::{
     InstId,
     TargetBasicBlock,
 };
+use mogi_sleigh::spec::jir::common::JIRSize;
 use mogi_sleigh::spec::jir::values::JIRSlice;
 use std::ops::Range;
+use strum::EnumCount;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Allocation {
@@ -31,12 +34,14 @@ pub struct AllocatorResult {
     pub(super) allocation_offsets: Vec<usize>,
     pub(super) temp_allocations: Vec<HostRegSet>,
     pub(super) load_spill_directives: LoadSpillDirectives,
+    scratch_registers: [HostReg; RegClass::COUNT],
 }
 
 impl AllocatorResult {
     pub fn new<E>(
         target_block: &TargetBasicBlock,
         requirements: &E,
+        scratch_registers: [HostReg; RegClass::COUNT],
     ) -> Self
     where
         E: EmitterAllocRequirements,
@@ -63,6 +68,7 @@ impl AllocatorResult {
             // By default, each instruction gets an empty set of temporaries
             temp_allocations: vec![HostRegSet::empty(); target_block.instruction_count()],
             load_spill_directives: LoadSpillDirectives::new(target_block.instruction_count()),
+            scratch_registers,
         }
     }
 
@@ -75,6 +81,13 @@ impl AllocatorResult {
     ) {
         let alloc_id = self.allocation_offsets[inst] + op_id;
         self.allocations[alloc_id] = allocation;
+    }
+
+    pub fn scratch_register(
+        &self,
+        class: RegClass,
+    ) -> HostReg {
+        self.scratch_registers[class as usize]
     }
 
     #[inline(always)]
@@ -103,7 +116,22 @@ impl AllocatorResult {
 pub enum LoadSpillDirective {
     Load(HostReg, JIRSlice),
     Spill(HostReg, JIRSlice),
-    Move(HostReg, HostReg),
+    /// Adjust the aliased slice in the register to the new slice.
+    /// This spills any modifications of old_slice that are not in new_slice
+    /// and loads any new content from new_slice that is not in old_slice.
+    /// This is only allowed for slices with equal offsets for now.
+    Adjust {
+        reg: HostReg,
+        old_slice: JIRSlice,
+        new_slice: JIRSlice,
+    },
+    /// Move the register `src` to the register `dst`since the allocation of a slice moved.
+    /// `size` specifies the size of the move.
+    Move {
+        dst: HostReg,
+        src: HostReg,
+        size: JIRSize,
+    },
 }
 
 #[derive(Debug, Default, Clone)]
@@ -234,22 +262,50 @@ impl LoadSpillDirectives {
             .push(LoadSpillDirective::Spill(reg, slice));
     }
 
+    pub fn add_adjust_before(
+        &mut self,
+        reg: HostReg,
+        old_slice: JIRSlice,
+        new_slice: JIRSlice,
+    ) {
+        self.before_directives.push(LoadSpillDirective::Adjust {
+            reg,
+            old_slice,
+            new_slice,
+        });
+    }
+
+    pub fn add_adjust_after(
+        &mut self,
+        reg: HostReg,
+        old_slice: JIRSlice,
+        new_slice: JIRSlice,
+    ) {
+        self.after_directives.push(LoadSpillDirective::Adjust {
+            reg,
+            old_slice,
+            new_slice,
+        })
+    }
+
     pub fn add_move_before(
         &mut self,
         dst: HostReg,
         src: HostReg,
+        size: JIRSize,
     ) {
         self.before_directives
-            .push(LoadSpillDirective::Move(dst, src));
+            .push(LoadSpillDirective::Move { dst, src, size });
     }
 
     pub fn add_move_after(
         &mut self,
         dst: HostReg,
         src: HostReg,
+        size: JIRSize,
     ) {
         self.after_directives
-            .push(LoadSpillDirective::Move(dst, src));
+            .push(LoadSpillDirective::Move { dst, src, size });
     }
 }
 
