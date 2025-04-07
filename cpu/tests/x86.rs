@@ -126,15 +126,6 @@ fn test_imul_reg_imm() {
 
 #[test]
 fn test_cqo() {
-    tracing_subscriber::registry()
-        .with(fmt::layer())
-        .with(
-            EnvFilter::builder()
-                .with_default_directive(LevelFilter::TRACE.into())
-                .with_env_var("MOGI_LOG")
-                .from_env_lossy(),
-        )
-        .init();
     // CQO
     let instr = b"\x48\x99";
     let (mut cpu, mmu) = common::setup_with_bytes(instr);
