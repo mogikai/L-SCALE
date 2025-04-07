@@ -255,7 +255,7 @@ pub struct JIRConst {
 }
 
 impl JIRConst {
-    pub fn new(
+    pub const fn new(
         value: u128,
         size: JIRSize,
     ) -> Self {
@@ -280,6 +280,23 @@ impl JIRConst {
         _size: JIRSize,
     ) -> JIRConst {
         todo!()
+    }
+
+    /// Split the const into two slices that each contain the corresponding remaining bytes.
+    pub fn split(
+        self,
+        offset: JIROffset,
+    ) -> (JIRConst, JIRConst) {
+        assert!(offset <= 16);
+        let offset = JIRSize::try_from(offset).expect("Offset in const split too large");
+        let bit_offset = offset * 8;
+        let mask = u128::MAX >> (128 - bit_offset);
+        let lower_value = self.value & mask;
+        let upper_value = self.value >> bit_offset;
+
+        let lower = JIRConst::new(lower_value, offset);
+        let upper = JIRConst::new(upper_value, self.size - offset);
+        (lower, upper)
     }
 
     pub fn zext(
@@ -341,6 +358,30 @@ impl JIRSlice {
             offset: self.offset + JIROffset::from(start),
             size,
         }
+    }
+
+    #[inline]
+    pub fn split(
+        self,
+        offset: JIROffset,
+    ) -> (JIRSlice, JIRSlice) {
+        let offset = JIRSize::try_from(offset).expect("Offset in slice split too large");
+        assert!(offset < self.size);
+        let a = Self {
+            space_id: self.space_id,
+            group_id: self.group_id,
+            temp_group_id: self.temp_group_id,
+            offset: self.offset,
+            size: offset,
+        };
+        let b = Self {
+            space_id: self.space_id,
+            group_id: self.group_id,
+            temp_group_id: self.temp_group_id,
+            offset: a.end(),
+            size: self.size - offset,
+        };
+        (a, b)
     }
 
     /// Checks whether `self` overlaps with `other`.

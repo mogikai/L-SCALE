@@ -14,6 +14,8 @@ use crate::jit::regalloc::requirements::{
 use crate::jit::regalloc::result::Allocation;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
+use crate::jit::x86::registers::general_purpose::GPRegister;
+use crate::jit::x86::x64emitter::helpers::reg;
 use crate::jit::x86::x64emitter::regalloc::SliceType;
 use crate::jit::x86::x64emitter::slice_load::CopyExtendMode;
 use crate::jit::x86::x64emitter::{
@@ -40,23 +42,31 @@ impl X64AllocRequirements {
                 Self::copy_requirements(requirement, output, const_multiply(input_a, input_b))
             }
             (JIRValue::Slice(input_a), JIRValue::Const(input_b))
-            | (JIRValue::Const(input_b), JIRValue::Slice(input_a))
-                if input_b.value() == 0 =>
-            {
-                Self::copy_requirements(requirement, output, input_b)
-            }
-            (JIRValue::Slice(input_a), JIRValue::Const(input_b))
             | (JIRValue::Const(input_b), JIRValue::Slice(input_a)) => {
-                requirement.add_request(OperandRequest::int_write_any(output));
-                requirement.add_request(OperandRequest::int_read_any(input_a));
-                if immediate_size(&input_b) >= 8 {
-                    *requirement.required_temps_mut() = TempRequest::new().int(1);
+                if input_b.value() == 0 {
+                    Self::copy_requirements(requirement, output, input_b)
+                } else {
+                    Self::require_large_int_write_any(requirement, output);
+                    Self::require_large_int_read_any(requirement, input_a);
+                    if output.size() > 8 {
+                        // We need two additional temp for the 16 byte case to load both arguments.
+                        *requirement.required_temps_mut() = TempRequest::new().int(2);
+                    }
                 }
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
-                requirement.add_request(OperandRequest::int_write_any(output));
-                requirement.add_request(OperandRequest::int_read_any(input_a));
-                requirement.add_request(OperandRequest::int_read_any(input_b));
+                Self::require_large_int_write_fixed(
+                    requirement,
+                    output,
+                    GPRegister::AX.into_host_reg(),
+                    GPRegister::DX.into_host_reg(),
+                );
+                Self::require_large_int_read_any(requirement, input_a);
+                Self::require_large_int_read_any(requirement, input_b);
+                if output.size() > 8 {
+                    // We need one additional temp for the 16 byte case.
+                    *requirement.required_temps_mut() = TempRequest::new().int(1);
+                }
             }
         }
     }
@@ -71,6 +81,8 @@ impl X64Emitter<'_> {
         input_a: JIRValue,
         input_b: JIRValue,
     ) -> JITResult {
+        debug_assert_eq!(output.size(), input_a.size());
+        debug_assert_eq!(input_a.size(), input_b.size());
         match (input_a, input_b) {
             (JIRValue::Const(input_a), JIRValue::Const(input_b)) => {
                 self.emit_multiply_const_const(inst, output, input_a, input_b)?;
@@ -108,18 +120,17 @@ impl X64Emitter<'_> {
         output: JIRSlice,
         input_a: JIRSlice,
         input_b: JIRConst,
-    ) -> Result<(), JitError> {
+    ) -> JITResult {
+        if output.size() > 8 {
+            self.emit_multiply_slice_const_large(inst, output, input_a, input_b)?;
+        }
         if input_b.value() == 0 {
             // We can just zero the target, since multiplying by zero always results in zero.
             return self.emit_copy(inst, output, input_b);
         }
 
-        let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
-            todo!()
-        };
-        let Allocation::Register(input_a_reg) = self.allocations.get_allocation(inst, 1) else {
-            todo!()
-        };
+        let output_reg = reg!(self.allocations, inst, 0);
+        let input_a_reg = reg!(self.allocations, inst, 1);
         // The size in bytes needed for the immediate
         let imm_size = immediate_size(&input_b);
         match imm_size {
@@ -147,11 +158,7 @@ impl X64Emitter<'_> {
             5..=8 => {
                 // We need to copy the input to the output, since imul reg, reg uses the first argument as
                 // input and output argument.
-                let temp = self
-                    .allocations
-                    .get_temp_allocations(inst)
-                    .get_nth_from_class(0, RegClass::Int)
-                    .expect("We requested this");
+                let temp = self.allocations.scratch_register(RegClass::Int);
                 self.load_const(temp, input_b)?;
                 if output_reg != input_a_reg {
                     // TODO: Can we task the reg allocator to put the input into the output beforehand?
@@ -168,6 +175,41 @@ impl X64Emitter<'_> {
         Ok(())
     }
 
+    fn emit_multiply_slice_const_large(
+        &mut self,
+        inst: InstId,
+        output: JIRSlice,
+        input_a: JIRSlice,
+        input_b: JIRConst,
+    ) -> JITResult {
+        debug_assert_eq!(output.size(), 16);
+        debug_assert_eq!(output.size(), input_a.size());
+        debug_assert_eq!(input_a.size(), input_b.size());
+        let output_reg_0 = reg!(self.allocations, inst, 0);
+        let output_reg_1 = reg!(self.allocations, inst, 1);
+        let input_a_reg_0 = reg!(self.allocations, inst, 2);
+        let input_a_reg_1 = reg!(self.allocations, inst, 3);
+
+        let input_b_reg_0 = self
+            .allocations
+            .get_temp_allocations(inst)
+            .get_nth_from_class(0, RegClass::Int)
+            .expect("We requested this");
+        let input_b_reg_1 = self
+            .allocations
+            .get_temp_allocations(inst)
+            .get_nth_from_class(1, RegClass::Int)
+            .expect("We requested this");
+        let (input_b_lower, input_b_upper) = input_b.split(8);
+        self.load_const(input_b_reg_0, input_b_lower)?;
+        self.load_const(input_b_reg_1, input_b_upper)?;
+        self.emit_multiply_reg_reg_large(
+            (output_reg_0, output_reg_1),
+            (input_a_reg_0, input_a_reg_1),
+            (input_b_reg_0, input_b_reg_1),
+        )
+    }
+
     #[inline]
     fn emit_multiply_slice_slice(
         &mut self,
@@ -176,15 +218,12 @@ impl X64Emitter<'_> {
         input_a: JIRSlice,
         input_b: JIRSlice,
     ) -> Result<(), JitError> {
-        let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
-            todo!()
-        };
-        let Allocation::Register(input_a_reg) = self.allocations.get_allocation(inst, 1) else {
-            todo!()
-        };
-        let Allocation::Register(input_b_reg) = self.allocations.get_allocation(inst, 2) else {
-            todo!()
-        };
+        if output.size() > 8 {
+            return self.emit_multiply_slice_slice_large(inst, output, input_a, input_b);
+        }
+        let output_reg = reg!(self.allocations, inst, 0);
+        let input_a_reg = reg!(self.allocations, inst, 1);
+        let input_b_reg = reg!(self.allocations, inst, 2);
 
         if output_reg == input_a_reg {
             // input_a is already in output, so we just multiply by input_b
@@ -197,6 +236,97 @@ impl X64Emitter<'_> {
             self.copy_reg(output_reg, input_a_reg, output.size(), CopyExtendMode::None)?;
             self.reg_mul(output_reg, input_b_reg);
         }
+        Ok(())
+    }
+
+    fn emit_multiply_slice_slice_large(
+        &mut self,
+        inst: InstId,
+        output: JIRSlice,
+        input_a: JIRSlice,
+        input_b: JIRSlice,
+    ) -> JITResult {
+        debug_assert_eq!(output.size(), 16);
+        debug_assert_eq!(output.size(), input_a.size());
+        debug_assert_eq!(input_a.size(), input_b.size());
+        let output_reg_0 = reg!(self.allocations, inst, 0);
+        let output_reg_1 = reg!(self.allocations, inst, 1);
+        // We want to make sure that input_a is always the input that is potentially already in the output.
+        let (input_a_reg_0, input_b_reg_0) = {
+            let input_a_reg_0 = reg!(self.allocations, inst, 2);
+            let input_b_reg_0 = reg!(self.allocations, inst, 4);
+            if input_b_reg_0 == output_reg_0 {
+                (input_b_reg_0, input_a_reg_0)
+            } else {
+                (input_a_reg_0, input_b_reg_0)
+            }
+        };
+        let (input_a_reg_1, input_b_reg_1) = {
+            let input_a_reg_1 = reg!(self.allocations, inst, 3);
+            let input_b_reg_1 = reg!(self.allocations, inst, 5);
+            if input_b_reg_1 == output_reg_1 {
+                (input_b_reg_1, input_a_reg_1)
+            } else {
+                (input_a_reg_1, input_b_reg_1)
+            }
+        };
+        let temp = self
+            .allocations
+            .get_temp_allocations(inst)
+            .get_nth_from_class(0, RegClass::Int)
+            .expect("We requested this");
+        // Make sure that input b is in registers that can be clobbered.
+        self.copy_reg(temp, input_b_reg_0, 8, CopyExtendMode::None)?;
+        self.emit_multiply_reg_reg_large(
+            (output_reg_0, output_reg_1),
+            (input_a_reg_0, input_a_reg_1),
+            (temp, input_b_reg_1),
+        )
+    }
+
+    /// Multiply two 16 byte values loaded in register pairs.
+    /// The output and input_a may be loaded in the same register.
+    /// It is forbidden that input_b is loaded in the same register as output.
+    /// input_b_0 must be loaded in a register that can be clobbered/modified.
+    /// Since this function uses the scratch register, it must be kept free.
+    fn emit_multiply_reg_reg_large(
+        &mut self,
+        (output_reg_0, output_reg_1): (HostReg, HostReg),
+        (input_a_reg_0, input_a_reg_1): (HostReg, HostReg),
+        (input_b_reg_0, input_b_reg_1): (HostReg, HostReg),
+    ) -> JITResult {
+        // q1:q0 = a0*b0 // need q1 and q0
+        // r1:r0 = a0*b1 // only need r0
+        // s1:s0 = a1*b0 // only need s0
+        // t1:t0 = a1*b1 // not needed
+        // result = t1:(t0+s1+r1):(s0+r0+q1):q0
+        // Since we only need the lower 128 bits, the result is (s0+r0+q1):q0
+        debug_assert_ne!(input_b_reg_0, output_reg_0);
+        debug_assert_ne!(input_b_reg_1, output_reg_1);
+        debug_assert_eq!(output_reg_0, GPRegister::AX.into_host_reg());
+        debug_assert_eq!(output_reg_1, GPRegister::DX.into_host_reg());
+        self.copy_reg(output_reg_0, input_a_reg_0, 8, CopyExtendMode::None)?;
+        let scratch = self.allocations.scratch_register(RegClass::Int);
+        // Save a1 from the clutches of mul
+        self.copy_reg(scratch, input_a_reg_1, 8, CopyExtendMode::None)?;
+        assemble!(self.block.assembler();
+            // a0 is loaded in RAX
+            // RDX:RAX = q1:q0 = a0 * b0
+            // RAX = q0! Don't touch RAX anymore
+            ; mul Rq(input_b_reg_0.hw_enc())
+            // s1:s0 = b0 * a1
+            // We only need s0, hence we use imul
+            // b0 is no longer needed here, and we can use it as output.
+            ; imul Rq(input_b_reg_0.hw_enc()), Rq(scratch.hw_enc())
+            // RDX = s0 + q1
+            ; add Rq(output_reg_1.hw_enc()), Rq(input_b_reg_0.hw_enc())
+            // r1:r0 = a0 * b1
+            // We only need r0, hence we use imul
+            ; imul Rq(scratch.hw_enc()), Rq(input_b_reg_1.hw_enc())
+            // RDX = RDX + r0 = r0 + s0 + q1
+            ; add Rq(output_reg_1.hw_enc()), Rq(scratch.hw_enc())
+            // Done! RDX:RAX = (r0 + s0 + q1):q0
+        );
         Ok(())
     }
 

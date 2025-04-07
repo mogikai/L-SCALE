@@ -7,6 +7,7 @@ mod directives;
 mod extend;
 mod flags;
 mod flow;
+mod helpers;
 mod host_call;
 mod logic;
 mod mmu;

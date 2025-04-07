@@ -42,6 +42,15 @@ fn test_mov_reg_reg() {
 
 #[test]
 fn test_mov_mem_imm() {
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::TRACE.into())
+                .with_env_var("MOGI_LOG")
+                .from_env_lossy(),
+        )
+        .init();
     // MOV [RSP + 4*RSI + 8], 0x1234
     let instr = b"\x48\xC7\x44\xB4\x08\x34\x12\x00\x00";
     let (mut cpu, mmu) = common::setup_with_bytes(instr);
@@ -109,19 +118,18 @@ fn test_sub_reg_imm() {
 }
 
 #[test]
-#[ignore]
 fn test_imul_reg_imm() {
-    // FIXME: Support 16 byte multiplication
     // IMUL RAX, 0x1234
     let instr = b"\x48\x69\xc0\x34\x12\x00\x00";
     let (mut cpu, mmu) = common::setup_with_bytes(instr);
 
     // RAX = 0x9876
-    *cpu.register_mut("RAX").unwrap() = 0x9876u64;
+    *cpu.register_mut("RAX").unwrap() = i64::MIN;
     cpu.run(RunLimit::InstructionCount(1)).unwrap();
 
-    let rax: u64 = *cpu.register("RAX").unwrap();
-    assert_eq!(rax, 0x9876 * 0x1234);
+    let rax: i64 = *cpu.register("RAX").unwrap();
+    let expected = i64::MIN.wrapping_mul(0x1234);
+    assert_eq!(rax, expected);
 }
 
 #[test]
