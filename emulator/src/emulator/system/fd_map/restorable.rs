@@ -24,6 +24,7 @@ where
             file_descriptors: self.file_descriptors.clone(),
             internal_file_descriptors: self.internal_file_descriptors.clone(),
             free_fds: self.free_fds.clone(),
+            cwds: self.cwds.clone(),
         });
         Ok(())
     }
@@ -46,6 +47,7 @@ where
         self.internal_file_descriptors
             .clone_from(&snapshot.internal_file_descriptors);
         self.free_fds.clone_from(&snapshot.free_fds);
+        self.cwds.clone_from(&snapshot.cwds);
         Ok(())
     }
 }

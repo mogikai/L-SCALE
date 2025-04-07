@@ -313,6 +313,7 @@ where
     file_descriptors: BTreeMap<TaskId, BTreeMap<FD, AutoKey>>,
     internal_file_descriptors: BTreeMap<TaskId, Arena<AutoKey>>,
     free_fds: BTreeMap<TaskId, BinaryHeap<FD>>,
+    cwds: BTreeMap<TaskId, FileDescriptor<D>>,
 }
 
 impl<FD, TaskId, D> FileDescriptorMap<FD, TaskId, D>
