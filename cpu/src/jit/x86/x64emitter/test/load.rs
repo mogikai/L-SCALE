@@ -10,12 +10,13 @@ use crate::jit::x86::test::{
     set_slice,
     setup,
 };
-use crate::tlb::{
-    PageData,
-    PageMetaInfo,
-};
+use mogi_mem::physical::page::PageData;
 use mogi_sleigh::jinst;
 use mogi_sleigh::spec::SpaceId;
+use mogi_system::components::mmu::{
+    PageMetaInfo,
+    TLB,
+};
 use mogi_utilities::addresses::{
     EVAddr,
     HVAddr,
@@ -72,10 +73,8 @@ fn test_load_tlb_miss_success() {
 
     let page_addr = unsafe { HVAddr::new_unchecked(page.as_mut() as *mut _) };
     // for this test we simply return a fixed address.
-    jit.register_tlb_read_miss_callback(|context, evaddr, size, space_id| unsafe {
-        Ok(page_addr.byte_offset(PageData::page_offset(evaddr) as isize))
-    })
-    .unwrap();
+    jit.register_tlb_read_miss_callback(|context, evaddr, size, space_id| unsafe { Ok(page_addr) })
+        .unwrap();
 
     let addr = EVAddr::<u8>::from(0x800fafafu64);
     set_slice(&mut *context, addr_slice, u64::from(addr));

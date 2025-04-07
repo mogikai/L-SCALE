@@ -20,10 +20,13 @@ use mogi_system::components::cpu::{
     CPU,
 };
 use mogi_system::components::mmu::{
+    MemoryAction,
     MmuResult,
     PageFaultCallback,
+    PageMetaInfo,
     Permission,
     MMU,
+    TLB,
 };
 use mogi_system::components::restore::Restorable;
 use mogi_system::errors::cpu::{
@@ -34,12 +37,25 @@ use mogi_system::errors::generic::GenericError;
 use mogi_utilities::addresses::{
     EPAddr,
     EVAddr,
+    HVAddr,
 };
 use mogi_utilities::error::memory::MemoryError;
 use std::time::Duration;
 
+pub struct DummyData;
+impl PageMetaInfo for DummyData {
+    fn page_size() -> usize {
+        todo!()
+    }
+
+    fn page_offset_bits() -> usize {
+        todo!()
+    }
+}
+
 impl MMU for Cpu {
     type MemoryContext = MemoryContext;
+    type PageData = DummyData;
 
     fn new_context(&self) -> Self::MemoryContext {
         self.core.mem.borrow().new_context()
@@ -156,6 +172,18 @@ impl MMU for Cpu {
         callback: PageFaultCallback,
     ) -> MmuResult<()> {
         self.core.mem.borrow_mut().set_page_fault_callback(callback)
+    }
+
+    unsafe fn populate_tlb<T>(
+        &self,
+        tlb: &mut T,
+        addr: EVAddr,
+        action: MemoryAction,
+    ) -> Result<HVAddr<Self::PageData>, MemoryError>
+    where
+        T: TLB<PageData = Self::PageData>,
+    {
+        todo!()
     }
 }
 

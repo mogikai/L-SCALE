@@ -1,5 +1,8 @@
 use crate::PAGE_SIZE;
-use mogi_system::components::mmu::Permission;
+use mogi_system::components::mmu::{
+    PageMetaInfo,
+    Permission,
+};
 use mogi_utilities::addresses::HVAddr;
 use std::fmt::{
     Debug,
@@ -82,6 +85,16 @@ pub struct PageData {
     pub data: [u8; PAGE_SIZE],
     // TODO: Move permissions to page table
     pub permissions: [Permission; PAGE_SIZE],
+}
+
+impl PageMetaInfo for PageData {
+    fn page_size() -> usize {
+        todo!()
+    }
+
+    fn page_offset_bits() -> usize {
+        todo!()
+    }
 }
 
 impl Debug for PageData {

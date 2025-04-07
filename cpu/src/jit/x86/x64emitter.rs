@@ -403,15 +403,16 @@ impl X64Emitter<'_> {
         jinst: &JIRInstruction,
     ) -> JITResult {
         trace_jit!("Emitting {jinst}");
+        // Remove any clobbers from the loaded slices.
+        let clobbers = self.allocations.get_clobbers(inst_id);
+        trace_jit!("Removing clobbers from loaded slices: {clobbers}");
+        self.loaded_slices.remove_set(clobbers);
         self.emit_directives(
             self.allocations
                 .directives()
                 .before_inst_directives(inst_id),
         )?;
         self.register_tracker.new_alloc_version();
-        // TODO: Maybe we can "allocate" the registers ahead of time and provide some hints
-        //       or something similar. Allocating the registers when having a complete
-        //       view on all relevant instructions may be more efficient.
         match jinst {
             JIRInstruction::BlockStart(block_id) => {}
             JIRInstruction::BlockEnd(block_id) => {}

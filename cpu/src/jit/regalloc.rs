@@ -73,6 +73,11 @@ pub struct RegisterAllocator<'a, E> {
     /// Maps the [HostReg]
     loaded_slices: HostRegMap<JIRSlice>,
 
+    /// Keeps track of registers that have been written to previously.
+    // written_regs: HostRegSet,
+    /// Keeps track of registers that have been read previously.
+    // read_regs: HostRegSet,
+
     /// TODO: Add the appropriate env constraints. We probably need to be able to exclude some registers for example.
     ///       It might also make sense to define the set of usable registers this way.
     host_constraints: RegAllocHostConstraints,
@@ -192,6 +197,7 @@ where
         for clobber in clobbers {
             self.clear_clobber(clobber);
         }
+        self.allocations.clobbers[inst].union_from(clobbers);
 
         trace_jit!("Available registers after fixed reg and clobber constraints:\n{}", self.available_registers);
 
@@ -208,6 +214,8 @@ where
         }
 
         let temp_regs = self.allocate_temp_regs(required_temps)?;
+        // We add the temp regs to the clobbers to signal that these may not contain any valid data.
+        self.allocations.clobbers[inst].union_from(temp_regs);
         self.allocations.temp_allocations[inst] = temp_regs;
 
         // TODO: We might need to track the number of uses per allocation, such that we can
@@ -233,7 +241,7 @@ where
         Ok(())
     }
 
-    /// Checks if the slice group is already loaded, and returns the host reg and loaded slice
+    /// Checks if the slice group is already loaded with an overlap, and returns the host reg and loaded slice
     /// if it exists.
     fn get_loaded_slice_group(
         &self,
@@ -242,7 +250,10 @@ where
         self.loaded_slices
             .iter_class(operand.class)
             .find_map(|(reg, loaded_slice)| {
-                if loaded_slice.same_group(&operand.slice) && loaded_slice.space_id == operand.slice.space_id {
+                if loaded_slice.same_group(&operand.slice)
+                    && loaded_slice.space_id == operand.slice.space_id
+                    && loaded_slice.overlaps(&operand.slice)
+                {
                     Some((reg, *loaded_slice))
                 } else {
                     None
@@ -280,6 +291,7 @@ where
         {
             trace_jit!("Allocating temp int register {reg}");
             self.available_registers.remove(reg);
+            self.spill_reg(reg);
             temp_regs.add(reg);
         }
 
@@ -290,6 +302,7 @@ where
         {
             trace_jit!("Allocating temp float register {reg}");
             self.available_registers.remove(reg);
+            self.spill_reg(reg);
             temp_regs.add(reg);
         }
 
@@ -300,6 +313,7 @@ where
         {
             trace_jit!("Allocating temp vector register {reg}");
             self.available_registers.remove(reg);
+            self.spill_reg(reg);
             temp_regs.add(reg);
         }
         Ok(temp_regs)
@@ -344,7 +358,7 @@ where
             operand.slice
         );
         // if we have an exact match, we can return the register if it is not fixed
-        if existing_slice.offset == operand.slice.offset && existing_slice.size == operand.slice.size {
+        if existing_slice == operand.slice {
             if let OperandConstraint::FixedReg(fixed_reg) = operand.constraint {
                 // If the fixed constraint specifies a different register, we have to move the allocation there
                 if reg != fixed_reg {
@@ -358,11 +372,7 @@ where
                     // And update the loaded slices to point to the new reg
                     // We update this for the reverse direction, since the loaded_slices map is relevant for not yet
                     // allocated slices.
-                    let slice = self
-                        .loaded_slices
-                        .take(reg)
-                        .expect("Slice should be loaded");
-                    self.loaded_slices.insert(fixed_reg, slice);
+                    self.loaded_slices.r#move(fixed_reg, reg);
                     // We remove the fixed_reg, since this is now not available anymore for this instruction.
                     self.available_registers.remove(fixed_reg);
                     return Ok(fixed_reg);
@@ -371,22 +381,17 @@ where
             self.available_registers.remove(reg);
             Ok(reg)
         } else {
-            // If this is not an exact match, we need to check if the allocations overlap in any way
-            if existing_slice.overlaps(&operand.slice) {
-                if !self.available_registers.contains(reg) && existing_slice.offset != operand.slice.offset {
-                    // We already allocated something to `reg` and it has a different offset.
-                    todo!("Different offset aliasing in the same instruction currently unsupported")
-                }
-                self.allocations
-                    .load_spill_directives
-                    .add_adjust_before(reg, existing_slice, operand.slice);
-                self.available_registers.remove(reg);
-                Ok(reg)
-            } else {
-                // If they don't overlap, we can just return the existing allocation.
-                self.available_registers.remove(reg);
-                Ok(reg)
+            if !self.available_registers.contains(reg) && existing_slice.offset != operand.slice.offset {
+                // We already allocated something to `reg` and it has a different offset.
+                todo!("Different offset aliasing in the same instruction currently unsupported")
             }
+            // After the instruction is finished, adjust the slice to the one that was previously expected.
+            // (that is expected next when viewing in forward direction)
+            self.allocations
+                .load_spill_directives
+                .add_adjust_after(reg, operand.slice, existing_slice);
+            self.available_registers.remove(reg);
+            Ok(reg)
         }
     }
 

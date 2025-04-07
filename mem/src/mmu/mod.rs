@@ -2,12 +2,11 @@ pub mod restorable;
 
 use crate::mmu::restorable::Snapshot;
 use crate::page_table::PageTable;
+use crate::physical::page::PageData;
 use crate::physical::{
-    Page,
     PageId,
     PhysicalMemory,
 };
-use crate::tlb::tlb::TLB;
 use crate::{
     PAGE_SIZE,
     PageOffset,
@@ -20,10 +19,12 @@ use mogi_system::components::mmu::{
     MmuResult,
     PageFaultCallback,
     Permission,
+    TLB,
 };
 use mogi_utilities::addresses::{
     EPAddr,
     EVAddr,
+    HVAddr,
 };
 use mogi_utilities::error::memory::MemoryError;
 use std::cell::RefCell;
@@ -39,15 +40,12 @@ pub type MemResult<T> = Result<T, MemoryError>;
 
 #[derive(Clone, Debug)]
 pub struct MemoryContext {
-    /// The tlb is stored behind a pointer, since it needs to be passed to the JIT context.
-    tlb: Box<TLB>,
     page_table: PageTable,
 }
 
 impl MemoryContext {
     fn new() -> Self {
         Self {
-            tlb: Box::new(TLB::new()),
             page_table: PageTable::new(),
         }
     }
@@ -93,10 +91,6 @@ impl MogiMMU {
             page_fault_callback: Rc::new(RefCell::new(Box::new(|_, _| None))),
             snapshots: vec![],
         }
-    }
-
-    pub fn debug_tlb(&self) {
-        debug!("{:?}", self.memory_context.borrow().tlb);
     }
 
     // pub fn physical_memory(&self) -> &PhysicalMemory {
@@ -164,11 +158,10 @@ impl MogiMMU {
             } else {
                 physical.page_by_id(page_id)?
             };
-            populate_tlb(&mut self.memory_context.borrow_mut().tlb, addr, page, action);
+            check_permissions(page.permissions(), action.required_permissions())?;
             let size = min(len, PAGE_SIZE - addr.page_offset());
             let page_start = addr.page_offset();
             let page_end = page_start + size;
-            check_permissions(&page.permissions()[page_start..page_end], action.required_permissions())?;
             buffer[i..i + size].copy_from_slice(&page.data()[page_start..page_end]);
             i += size;
             addr += size;
@@ -192,10 +185,10 @@ impl MogiMMU {
             // TODO: This could maybe be optimized a bit, so we dont have to look up each page individually
             let physical = self.physical_memory.borrow();
             let page = physical.page(addr)?;
+            check_permissions(page.permissions(), action.required_permissions())?;
             let size = min(len, PAGE_SIZE - addr.page_offset());
             let page_start = addr.page_offset();
             let page_end = page_start + size;
-            check_permissions(&page.permissions()[page_start..page_end], action.required_permissions())?;
             buffer[i..i + size].copy_from_slice(&page.data()[page_start..page_end]);
             i += size;
             addr += i;
@@ -216,12 +209,11 @@ impl MogiMMU {
             .borrow_mut()
             .page_table
             .insert(addr, page_id); // override existing
-        self.physical_memory
+        *self
+            .physical_memory
             .borrow_mut()
             .page_by_id_mut(page_id)?
-            .permissions_mut()
-            .iter_mut()
-            .for_each(|p| *p = permissions);
+            .permissions_mut() = permissions;
 
         Ok(())
     }
@@ -230,6 +222,7 @@ impl MogiMMU {
 // main trait implementation
 impl MMU for MogiMMU {
     type MemoryContext = MemoryContext;
+    type PageData = PageData;
 
     fn new_context(&self) -> MemoryContext {
         MemoryContext::new()
@@ -256,7 +249,6 @@ impl MMU for MogiMMU {
 
     fn flush_all(&mut self) -> MmuResult<()> {
         self.memory_context.borrow_mut().page_table.flush();
-        self.memory_context.borrow_mut().tlb.flush();
 
         Ok(())
     }
@@ -275,7 +267,6 @@ impl MMU for MogiMMU {
         addr: EVAddr,
     ) -> MmuResult<()> {
         self.memory_context.borrow_mut().page_table.clear(addr);
-        self.memory_context.borrow_mut().tlb.remove(addr);
 
         Ok(())
     }
@@ -300,11 +291,11 @@ impl MMU for MogiMMU {
         while len > 0 {
             let mut physical = self.physical_memory.borrow_mut();
             let page = physical.page_mut(addr)?;
+            check_permissions(page.permissions(), MemoryAction::WRITE.required_permissions())?;
             let size = min(len, PAGE_SIZE - addr.page_offset());
-            let page_start = addr.page_offset();
-            let page_end = page_start + size;
-            check_permissions(&page.permissions()[page_start..page_end], MemoryAction::WRITE.required_permissions())?;
-            page.data_mut()[page_start..page_end].copy_from_slice(&data[i..i + size]);
+            let data_start = addr.page_offset();
+            let data_end = data_start + size;
+            page.data_mut()[data_start..data_end].copy_from_slice(&data[i..i + size]);
             i += size;
             addr += size;
             len -= size;
@@ -341,12 +332,11 @@ impl MMU for MogiMMU {
             let page_id = self.resolve_to_page_id(addr, MemoryAction::WRITE)?;
             let mut physical = self.physical_memory.borrow_mut();
             let page = physical.page_by_id_mut(page_id)?;
+            check_permissions(page.permissions(), MemoryAction::WRITE.required_permissions())?;
             let size = min(len, PAGE_SIZE - addr.page_offset());
-            let page_start = addr.page_offset();
-            let page_end = page_start + size;
-            check_permissions(&page.permissions()[page_start..page_end], MemoryAction::WRITE.required_permissions())?;
-            page.data_mut()[page_start..page_end].copy_from_slice(&data[i..i + size]);
-            populate_tlb(&mut self.memory_context.borrow_mut().tlb, addr, page, MemoryAction::WRITE);
+            let data_start = addr.page_offset();
+            let data_end = data_start + size;
+            page.data_mut()[data_start..data_end].copy_from_slice(&data[i..i + size]);
             i += size;
             addr += size;
             len -= size;
@@ -390,6 +380,27 @@ impl MMU for MogiMMU {
 
         Ok(())
     }
+
+    unsafe fn populate_tlb<T>(
+        &self,
+        tlb: &mut T,
+        addr: EVAddr,
+        action: MemoryAction,
+    ) -> Result<HVAddr<Self::PageData>, MemoryError>
+    where
+        T: TLB<PageData = Self::PageData>,
+    {
+        let page_id = self.resolve_to_page_id(addr, action)?;
+        let mut physical = self.physical_memory.borrow_mut();
+        let page = physical.page_by_id_mut(page_id)?;
+        match action {
+            MemoryAction::READ => tlb.insert_read(addr, page.tlb_entry_ptr()),
+            MemoryAction::WRITE => tlb.insert_write(addr, page.tlb_entry_ptr()),
+            MemoryAction::FETCH => todo!(),
+            _ => todo!(),
+        }
+        Ok(page.tlb_entry_ptr())
+    }
 }
 
 impl TargetInstructionSource for MogiMMU {
@@ -404,31 +415,28 @@ impl TargetInstructionSource for MogiMMU {
     }
 }
 
-fn populate_tlb(
-    tlb: &mut TLB,
-    addr: EVAddr,
-    page: &Page,
-    action: MemoryAction,
-) {
-    match action {
-        MemoryAction::READ => tlb.insert_read(addr, page.tlb_entry_ptr()),
-        MemoryAction::WRITE => tlb.insert_write(addr, page.tlb_entry_ptr()),
-        MemoryAction::FETCH => tlb.remove(addr),
-        _ => (),
-    }
-}
+// fn populate_tlb(
+//     addr: EVAddr,
+//     page: &Page,
+//     action: MemoryAction,
+// ) {
+//     match action {
+//         MemoryAction::READ => tlb.insert_read(addr, page.tlb_entry_ptr()),
+//         MemoryAction::WRITE => tlb.insert_write(addr, page.tlb_entry_ptr()),
+//         MemoryAction::FETCH => tlb.remove(addr),
+//         _ => (),
+//     }
+// }
 
 fn check_permissions(
-    permissions: &[Permission],
+    permissions: Permission,
     required_permissions: Permission,
 ) -> Result<(), MemoryError> {
-    if permissions
-        .iter()
-        .any(|&perm| !perm.contains(required_permissions))
-    {
-        Err(MemoryError::InvalidPermission)?
+    if permissions.contains(required_permissions) {
+        Ok(())
+    } else {
+        Err(MemoryError::InvalidPermission)
     }
-    Ok(())
 }
 
 #[cfg(test)]

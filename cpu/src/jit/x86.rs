@@ -85,7 +85,6 @@ use crate::jit::regalloc::{
 use crate::jit::trace_jit;
 use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::registers::xmm::XMMRegister;
-use crate::tlb::PageMetaInfo;
 use assemble;
 use mogi_mem::mmu::MogiMMU;
 use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
@@ -187,7 +186,6 @@ impl X86MogiJit {
         mmu: Rc<RefCell<MogiMMU>>,
         debug: bool,
     ) -> Self {
-        let map = MmapOptions::new().len(4096 * (2 << 16)).map_anon().unwrap();
         let mut code_buffer = CodeBuffer::new().unwrap();
         let (prelude_block, prelude) = build_prelude(&mut code_buffer, debug).unwrap();
         let epilogue_block = build_epilogue(&mut code_buffer).unwrap();

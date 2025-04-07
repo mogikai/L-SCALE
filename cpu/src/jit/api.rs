@@ -2,10 +2,10 @@ use crate::jit::cache::JitCacheError;
 use crate::jit::code_buffer::CodeBufferError;
 use crate::tlb::{
     AccessType,
-    PageData,
     TLB,
 };
 use dynasmrt::DynasmError;
+use mogi_mem::physical::page::PageData;
 use mogi_sleigh::lifter::context_provider::ContextProvider;
 use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
 use mogi_sleigh::spec::jir::jcode::JIRInstruction;

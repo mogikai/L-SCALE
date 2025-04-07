@@ -61,7 +61,7 @@ impl PhysicalMemory {
         slf.zero_pages
             .iter_mut()
             .enumerate()
-            .for_each(|(i, page)| page.set_permissions(Permission::from_bits(i as u8).unwrap()));
+            .for_each(|(i, page)| page.set_permission(Permission::from_bits(i as u8).unwrap()));
         slf
     }
 
@@ -81,7 +81,7 @@ impl PhysicalMemory {
             .free_pages
             .slice(..min(requested_pages, self.free_pages.len()));
         for id in page_ids.iter() {
-            self.pages[id.0].set_permissions(permission);
+            self.pages[id.0].set_permission(permission);
         }
 
         let requested_pages = requested_pages.saturating_sub(reused_pages);
@@ -108,7 +108,7 @@ impl PhysicalMemory {
         permission: Permission,
     ) -> Result<PageId, MemoryError> {
         if let Some(index) = self.free_pages.pop_back() {
-            self.pages[index.0].set_permissions(permission);
+            self.pages[index.0].set_permission(permission);
             Ok(index)
         } else {
             if self.pages.len() >= self.max_pages {

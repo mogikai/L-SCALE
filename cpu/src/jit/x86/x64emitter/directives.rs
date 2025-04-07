@@ -30,7 +30,8 @@ impl X64Emitter<'_> {
                     emit_load_directive(self.block.assembler(), *reg, *slice)?
                 }
                 LoadSpillDirective::Spill(reg, slice) => {
-                    self.loaded_slices.remove(*reg);
+                    // Spilling a register does not necessarily unload it. It just
+                    // means we have written the current changes. It may still be used in read accesses
                     emit_spill_directive(self.block.assembler(), *reg, *slice)?
                 }
                 LoadSpillDirective::Move { dst, src, size } => {
@@ -54,6 +55,7 @@ impl X64Emitter<'_> {
                 }
             }
         }
+        trace_jit!("Loaded slices after directives: {:?}", self.loaded_slices);
         Ok(())
     }
 

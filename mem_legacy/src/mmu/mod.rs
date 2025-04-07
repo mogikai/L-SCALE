@@ -2,6 +2,7 @@ pub mod restorable;
 
 use crate::mmu::restorable::Snapshot;
 use crate::page_table::PageTable;
+use crate::physical::page::PageData;
 use crate::physical::{
     Page,
     PageId,
@@ -22,6 +23,7 @@ use mogi_system::components::mmu::{
 use mogi_utilities::addresses::{
     EPAddr,
     EVAddr,
+    HVAddr,
 };
 use mogi_utilities::error::memory::MemoryError;
 use std::cell::RefCell;
@@ -238,6 +240,7 @@ impl MogiMMU {
 // main trait implementation
 impl MMU for MogiMMU {
     type MemoryContext = MemoryContext;
+    type PageData = PageData;
 
     fn new_context(&self) -> MemoryContext {
         MemoryContext::new()
@@ -402,6 +405,18 @@ impl MMU for MogiMMU {
         self.page_fault_callback = Rc::new(RefCell::new(callback));
 
         Ok(())
+    }
+
+    unsafe fn populate_tlb<T>(
+        &self,
+        tlb: &mut T,
+        addr: EVAddr,
+        action: MemoryAction,
+    ) -> Result<HVAddr<Self::PageData>, MemoryError>
+    where
+        T: mogi_system::components::mmu::TLB<PageData = Self::PageData>,
+    {
+        todo!()
     }
 }
 

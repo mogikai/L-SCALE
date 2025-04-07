@@ -3,11 +3,14 @@ use mogi_system::components::mmu::{
     MemoryAction,
     MmuResult,
     PageFaultCallback,
+    PageMetaInfo,
     Permission,
+    TLB,
 };
 use mogi_utilities::addresses::{
     EPAddr,
     EVAddr,
+    HVAddr,
 };
 use mogi_utilities::error::memory::MemoryError;
 use tracing::trace;
@@ -19,8 +22,21 @@ use unicorn_engine::unicorn_const::{
 
 use crate::emulator::system::hardware::unicorn::UCWrapper;
 
+#[derive(Debug)]
+pub struct DummyData;
+impl PageMetaInfo for DummyData {
+    fn page_size() -> usize {
+        todo!()
+    }
+
+    fn page_offset_bits() -> usize {
+        todo!()
+    }
+}
+
 impl MMU for UCWrapper<'_> {
-    type MemoryContext = u64; // TODO
+    type MemoryContext = u64;
+    type PageData = DummyData;
 
     fn new_context(&self) -> Self::MemoryContext {
         todo!()
@@ -133,6 +149,18 @@ impl MMU for UCWrapper<'_> {
         &mut self,
         callback: PageFaultCallback, // TODO
     ) -> MmuResult<()> {
+        todo!()
+    }
+
+    unsafe fn populate_tlb<T>(
+        &self,
+        tlb: &mut T,
+        addr: EVAddr,
+        action: MemoryAction,
+    ) -> Result<HVAddr<Self::PageData>, MemoryError>
+    where
+        T: TLB<PageData = Self::PageData>,
+    {
         todo!()
     }
 }

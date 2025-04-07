@@ -1,5 +1,8 @@
 use crate::PAGE_SIZE;
-use mogi_system::components::mmu::Permission;
+use mogi_system::components::mmu::{
+    PageMetaInfo,
+    Permission,
+};
 use mogi_utilities::addresses::HVAddr;
 use std::fmt::{
     Debug,
@@ -17,39 +20,24 @@ pub struct Page {
 
     /// Keeps track of whether code within this page has been lifted.
     pub executed: bool,
-}
-/*
-
-0x100 -> p0x8000 -> PageData(R)
-
-0x500 -> p0x8000 |
-
-page_faulthook {
-    let paddr = get_free_physical(PAGE_SIZE);
-    mapping.update(addr, paddr);
-    return paddr;
+    permission: Permission,
 }
 
- */
 impl Page {
     pub fn new() -> Self {
         Self {
             data: Rc::new(PageData::zero()),
             modified: false,
             executed: false,
+            permission: Permission::empty(),
         }
     }
 
-    pub fn set_permissions(
+    pub fn set_permission(
         &mut self,
         permission: Permission,
     ) {
-        Rc::make_mut(&mut self.data)
-            .permissions
-            .iter_mut()
-            .for_each(|perm| {
-                *perm = permission;
-            })
+        self.permission = permission;
     }
 
     pub fn tlb_entry_ptr(&self) -> HVAddr<PageData> {
@@ -65,25 +53,45 @@ impl Page {
         &mut Rc::make_mut(&mut self.data).data
     }
 
-    pub fn permissions(&self) -> &[Permission; PAGE_SIZE] {
-        &self.data.permissions
+    pub fn permissions(&self) -> Permission {
+        self.permission
     }
 
-    pub fn permissions_mut(&mut self) -> &mut [Permission; PAGE_SIZE] {
-        &mut Rc::make_mut(&mut self.data).permissions
+    pub fn permissions_mut(&mut self) -> &mut Permission {
+        &mut self.permission
     }
 }
 
 #[derive(Clone, Copy)]
-#[repr(C)]
 #[repr(align(4096))]
 pub struct PageData {
-    // TODO: Remove pub
-    pub data: [u8; PAGE_SIZE],
-    // TODO: Move permissions to page table
-    pub permissions: [Permission; PAGE_SIZE],
+    data: [u8; PAGE_SIZE],
 }
 
+impl PageData {
+    pub fn zero() -> Self {
+        assert!(PAGE_SIZE.is_power_of_two());
+        Self { data: [0; PAGE_SIZE] }
+    }
+
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+
+    pub fn data_mut(&mut self) -> &mut [u8] {
+        &mut self.data
+    }
+}
+
+impl PageMetaInfo for PageData {
+    fn page_size() -> usize {
+        PAGE_SIZE
+    }
+
+    fn page_offset_bits() -> usize {
+        PAGE_SIZE.trailing_zeros() as usize
+    }
+}
 impl Debug for PageData {
     fn fmt(
         &self,
@@ -92,15 +100,6 @@ impl Debug for PageData {
         write!(f, "PageData {{")?;
         for i in 0..self.data.len() {
             let str = format!("{:02X} ", self.data[i]);
-            let str = match self.permissions[i] {
-                Permission::READ => ansi_term::Colour::Green.paint(str),
-                Permission::WRITE => ansi_term::Colour::Blue.paint(str),
-                Permission::EXEC => ansi_term::Colour::Red.paint(str),
-                Permission::READ_WRITE => ansi_term::Colour::Cyan.paint(str),
-                Permission::READ_EXEC => ansi_term::Colour::Yellow.paint(str),
-                Permission::WRITE_EXEC => ansi_term::Colour::Purple.paint(str),
-                _ => ansi_term::Colour::Black.paint(str),
-            };
             if i % 16 == 0 {
                 write!(f, "\noffset: {:03X}     ", i)?;
             }
@@ -108,14 +107,5 @@ impl Debug for PageData {
         }
         write!(f, "\n}}")?;
         Ok(())
-    }
-}
-
-impl PageData {
-    pub fn zero() -> Self {
-        Self {
-            data: [0u8; PAGE_SIZE],
-            permissions: [Default::default(); PAGE_SIZE],
-        }
     }
 }

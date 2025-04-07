@@ -8,12 +8,13 @@ use crate::jit::x86::test::{
     set_slice,
     setup,
 };
-use crate::tlb::PageData;
+use mogi_mem::physical::page::PageData;
 use mogi_sleigh::jinst;
 use mogi_sleigh::spec::{
     CustomOpId,
     SpaceId,
 };
+use mogi_system::components::mmu::TLB;
 use mogi_utilities::addresses::{
     EVAddr,
     HVAddr,

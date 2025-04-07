@@ -4,8 +4,10 @@ pub mod tlb_entry;
 use mogi_utilities::addresses::{
     EPAddr,
     EVAddr,
+    HVAddr,
 };
 use mogi_utilities::error::memory::MemoryError;
+use std::ops::BitAnd;
 
 use bitflags::bitflags;
 
@@ -21,6 +23,7 @@ pub type PageFaultCallback = Box<dyn FnMut(EVAddr, MemoryAction) -> Option<(EVAd
 /// page tables can be created and modified through `PageTableContextHandle` objects.
 pub trait MMU {
     type MemoryContext;
+    type PageData: PageMetaInfo;
 
     // A loaded context can be viewed as the emulated equivalent of a page table
     // currently loaded into cr3 (for x86). All virtual operations will take
@@ -128,6 +131,52 @@ pub trait MMU {
         &mut self,
         callback: PageFaultCallback,
     ) -> MmuResult<()>;
+
+    /// Resolve `addr` to the internal page address and put it into the appropriate tlb table.
+    /// Also returns the resolved host address that points to the correct offset in the page
+    /// to the just in time compiled code for direct access.
+    unsafe fn populate_tlb<T>(
+        &self,
+        tlb: &mut T,
+        addr: EVAddr,
+        action: MemoryAction,
+    ) -> Result<HVAddr<Self::PageData>, MemoryError>
+    where
+        T: TLB<PageData = Self::PageData>;
+}
+
+pub trait TLB {
+    type PageData: PageMetaInfo;
+
+    fn insert_read(
+        &mut self,
+        addr: EVAddr,
+        page_addr: HVAddr<Self::PageData>,
+    );
+
+    fn insert_write(
+        &mut self,
+        addr: EVAddr,
+        page_addr: HVAddr<Self::PageData>,
+    );
+}
+
+pub trait PageMetaInfo {
+    fn page_size() -> usize;
+    fn page_offset_bits() -> usize;
+
+    fn page_offset_mask() -> u64 {
+        (1 << Self::page_offset_bits()) - 1
+    }
+
+    /// Calculate the offset from the start of the page where the provided address lives.
+    fn page_offset(addr: impl BitAnd<u64, Output = u64>) -> usize {
+        (addr & Self::page_offset_mask()) as usize
+    }
+
+    fn page_index(addr: impl BitAnd<u64, Output = u64>) -> usize {
+        (addr & Self::page_offset_mask()) as usize
+    }
 }
 
 bitflags! {

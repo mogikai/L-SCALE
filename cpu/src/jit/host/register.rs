@@ -169,6 +169,15 @@ impl<T> HostRegMap<T> {
         self.mapping[reg.index()] = None;
     }
 
+    pub fn remove_set(
+        &mut self,
+        reg_set: HostRegSet,
+    ) {
+        for reg in reg_set {
+            self.mapping[reg.index()] = None;
+        }
+    }
+
     /// Moves the contents of the slot at `src_reg` to `dst_reg`.
     /// Returns the item that was previously at `dst_reg` if there was one.
     pub fn r#move(

@@ -33,6 +33,7 @@ pub struct AllocatorResult {
     pub(super) allocations: Vec<Allocation>,
     pub(super) allocation_offsets: Vec<usize>,
     pub(super) temp_allocations: Vec<HostRegSet>,
+    pub(super) clobbers: Vec<HostRegSet>,
     pub(super) load_spill_directives: LoadSpillDirectives,
     scratch_registers: [HostReg; RegClass::COUNT],
 }
@@ -67,6 +68,7 @@ impl AllocatorResult {
             allocation_offsets,
             // By default, each instruction gets an empty set of temporaries
             temp_allocations: vec![HostRegSet::empty(); target_block.instruction_count()],
+            clobbers: vec![HostRegSet::empty(); target_block.instruction_count()],
             load_spill_directives: LoadSpillDirectives::new(target_block.instruction_count()),
             scratch_registers,
         }
@@ -105,6 +107,13 @@ impl AllocatorResult {
         inst: InstId,
     ) -> HostRegSet {
         self.temp_allocations[inst]
+    }
+
+    pub fn get_clobbers(
+        &self,
+        inst: InstId,
+    ) -> HostRegSet {
+        self.clobbers[inst]
     }
 
     pub fn directives(&self) -> &LoadSpillDirectives {

@@ -2,6 +2,8 @@ mod debug;
 pub mod entry;
 
 use crate::tlb::entry::TLBEntry;
+use mogi_mem::physical::page::PageData;
+use mogi_system::components::mmu::PageMetaInfo;
 use mogi_utilities::addresses::{
     Address,
     Addressable,
@@ -42,25 +44,7 @@ const PAGE_OFFSET_BITS: usize = 12;
 pub const TLB_INDEX_BITS: usize = 12;
 const TLB_SIZE: usize = 1 << TLB_INDEX_BITS;
 
-pub trait PageMetaInfo: Copy {
-    fn page_size() -> usize;
-    fn page_offset_bits() -> usize;
-
-    fn page_offset_mask() -> u64 {
-        (1 << Self::page_offset_bits()) - 1
-    }
-
-    /// Calculate the offset from the start of the page where the provided address lives.
-    fn page_offset(addr: impl BitAnd<u64, Output = u64>) -> usize {
-        (addr & Self::page_offset_mask()) as usize
-    }
-
-    fn page_index(addr: impl BitAnd<u64, Output = u64>) -> usize {
-        (addr & Self::page_offset_mask()) as usize
-    }
-}
-
-pub trait PageIndex {
+pub(crate) trait PageIndex {
     fn index<PageDataT: PageMetaInfo>(&self) -> u64;
 
     /// The number of bits to shift to get the index
@@ -70,7 +54,7 @@ pub trait PageIndex {
     fn index_mask() -> u64;
 }
 
-pub trait PageTag {
+pub(crate) trait PageTag {
     fn tag<PageDataT: PageMetaInfo>(&self) -> u64;
 
     fn tag_bits<PageDataT: PageMetaInfo>() -> u64;
@@ -118,39 +102,6 @@ impl<T> PageTag for EVAddr<T> {
     }
 }
 
-const PAGE_SIZE: usize = 4096;
-
-#[derive(Clone, Copy, Debug)]
-#[repr(align(4096))]
-pub struct PageData {
-    data: [u8; PAGE_SIZE],
-}
-
-impl PageData {
-    pub fn zero() -> Self {
-        assert!(PAGE_SIZE.is_power_of_two());
-        Self { data: [0; PAGE_SIZE] }
-    }
-
-    pub fn data(&self) -> &[u8] {
-        &self.data
-    }
-
-    pub fn data_mut(&mut self) -> &mut [u8] {
-        &mut self.data
-    }
-}
-
-impl PageMetaInfo for PageData {
-    fn page_size() -> usize {
-        PAGE_SIZE
-    }
-
-    fn page_offset_bits() -> usize {
-        PAGE_SIZE.trailing_zeros() as usize
-    }
-}
-
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct TLB {
@@ -178,6 +129,30 @@ impl Display for AccessType {
                 AccessType::Store => "store",
             }
         )
+    }
+}
+
+impl mogi_system::components::mmu::TLB for TLB {
+    type PageData = PageData;
+
+    fn insert_read(
+        &mut self,
+        addr: EVAddr,
+        page: HVAddr<PageData>,
+    ) {
+        let entry = TLBEntry::new(addr, page);
+        trace_tlb!("New read entry {:?} for {:?} at index {:#x}", entry, addr, addr.index::<PageData>(),);
+        self.read_entries[addr.index::<PageData>() as usize] = entry;
+    }
+
+    fn insert_write(
+        &mut self,
+        addr: EVAddr,
+        page: HVAddr<PageData>,
+    ) {
+        let entry = TLBEntry::new(addr, page);
+        trace_tlb!("New write entry {:?} for {:?} at index {:#x}", entry, addr, addr.index::<PageData>(),);
+        self.write_entries[addr.index::<PageData>() as usize] = entry;
     }
 }
 
@@ -212,26 +187,6 @@ impl TLB {
 }
 
 impl TLB {
-    pub fn insert_read(
-        &mut self,
-        addr: EVAddr,
-        page: HVAddr<PageData>,
-    ) {
-        let entry = TLBEntry::new(addr, page);
-        trace_tlb!("New read entry {:?} for {:?} at index {:#x}", entry, addr, addr.index::<PageData>(),);
-        self.read_entries[addr.index::<PageData>() as usize] = entry;
-    }
-
-    pub fn insert_write(
-        &mut self,
-        addr: EVAddr,
-        page: HVAddr<PageData>,
-    ) {
-        let entry = TLBEntry::new(addr, page);
-        trace_tlb!("New write entry {:?} for {:?} at index {:#x}", entry, addr, addr.index::<PageData>(),);
-        self.write_entries[addr.index::<PageData>() as usize] = entry;
-    }
-
     pub fn remove(
         &mut self,
         addr: EVAddr,

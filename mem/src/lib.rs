@@ -6,7 +6,6 @@ use mogi_utilities::addresses::{
 pub mod mmu;
 pub mod page_table;
 pub mod physical;
-pub mod tlb;
 
 /// The number of bits required to represent an offset in a page from the page base address
 pub const PAGE_OFFSET_BITS: usize = 12;
