@@ -346,7 +346,7 @@ where
             Err(SyscallError::KernelError(LinuxKernelError::EINVAL))
         } else {
             memory.write_bytes(buf, cwd_path.as_os_str().as_bytes());
-            Ok(size)
+            Ok(buf.into())
         }
     }
 
