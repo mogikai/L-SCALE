@@ -11,7 +11,7 @@ use crate::jit::regalloc::requirements::{
 use crate::jit::regalloc::result::Allocation;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::registers::general_purpose::GPRegister;
-use crate::jit::x86::x64emitter::regalloc::SliceType;
+use crate::jit::x86::x64emitter::helpers::reg;
 use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
     X64Emitter,
@@ -79,12 +79,7 @@ impl X64AllocRequirements {
         dividend: JIRValue,
         divisor: JIRValue,
     ) {
-        match (dividend, divisor) {
-            (JIRValue::Const(dividend), JIRValue::Const(divisor)) => {
-                Self::copy_requirements(requirement, output, divide_const(dividend, divisor));
-            }
-            (dividend, divisor) => Self::divide_requirements(requirement, output, dividend, divisor),
-        }
+        Self::divide_requirements(requirement, output, dividend, divisor)
     }
 }
 
@@ -102,7 +97,7 @@ impl X64Emitter<'_> {
         assert_eq!(dividend.size(), output.size());
         if let (JIRValue::Const(dividend), JIRValue::Const(divisor)) = (dividend, divisor) {
             // If both arguments are const we can emit a move of the calculated value.
-            return self.emit_copy_deprecated(output, divide_const(dividend, divisor));
+            return self.emit_copy(inst, output, divide_const(dividend, divisor));
         }
         self.emit_divide_value_value(inst, DivisionType::Unsigned, output, dividend.into(), divisor)?;
         Ok(())
@@ -117,9 +112,7 @@ impl X64Emitter<'_> {
         dividend: JIRValue,
         divisor: JIRValue,
     ) -> JITResult {
-        let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
-            todo!()
-        };
+        let output_reg = reg!(self.allocations, inst, 0);
         // Div expects the dividend in D:A (or just AX for word/byte size)
         // Since we only deal with 64-bit numbers currently, it is enough to load A and zero D
         let mut divisor_operand_id = 1;
@@ -128,9 +121,7 @@ impl X64Emitter<'_> {
             JIRValue::Slice(_) => {
                 // The dividend was also allocated, so the divisor is located in the third slot.
                 divisor_operand_id += 1;
-                let Allocation::Register(dividend_reg) = self.allocations.get_allocation(inst, 1) else {
-                    panic!("Regalloc bug. We requested a register for the dividend, but did not get one.")
-                };
+                let dividend_reg = reg!(self.allocations, inst, 1);
                 assert_eq!(dividend_reg, GPRegister::AX.into_host_reg(), "Expected the dividend to be in AX");
                 dividend_reg
             }

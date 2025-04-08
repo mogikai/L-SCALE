@@ -46,7 +46,6 @@ use mogi_utilities::index_map::{
     MapKey,
     SecondaryMap,
 };
-use registers::RegisterTracker;
 use task_context::X86TaskContext;
 use x64emitter::CustomOpCallback;
 
@@ -104,10 +103,7 @@ pub struct X86MogiJit {
     /// that the blocks have already been translated and are still valid.
     /// The epilogue will fully flush all registers into their corresponding varnodes.
     jit_epilogue_block: AnonymousBlockId,
-    /// The register tracker keeps track of the registers used in the currently constructed block.
-    /// If all registers are occupied, one of the registers must be spilled into memory, to free
-    /// up space for the current operation.
-    register_tracker: RegisterTracker,
+
     /// The global context pointer is baked into translated blocks for, e.g., custom op callbacks.
     /// Since the pointer is unmovable as lang as the jit exists, and the block cache is deleted
     /// along with the jit, this is safe to access.
@@ -195,7 +191,6 @@ impl X86MogiJit {
             jit_prelude_block: prelude_block,
             jit_prelude: prelude,
             jit_epilogue_block: epilogue_block,
-            register_tracker: Default::default(),
             global_context: Box::pin(X86GlobalContext::default()),
         }
     }
@@ -286,7 +281,7 @@ impl MogiJit for X86MogiJit {
         // into the provided `compiled_block` for each instruction in the provided `target_block`.
         let spec = self.processor_specification.borrow();
         // TODO: Maybe it would make sense to reuse the alloc requirements buffers to avoid allocations?
-        let alloc_requirements = X64AllocRequirements::new(target_block);
+        let alloc_requirements = X64AllocRequirements::new(&spec, target_block);
 
         let usable_registers = HostRegSet::empty()
             .with(GPRegister::AX.into_host_reg())
@@ -333,14 +328,8 @@ impl MogiJit for X86MogiJit {
         trace_jit!("Register allocations for target block:\n{:#?}", allocations);
 
         // And finally we emit the instructions, using the allocations we just calculated.
-        let emitter = alloc_requirements.make_emitter(
-            &allocations,
-            &self.global_context,
-            &spec,
-            &mut self.register_tracker,
-            compiled_block,
-            target_block,
-        );
+        let emitter =
+            alloc_requirements.make_emitter(&allocations, &self.global_context, &spec, compiled_block, target_block);
         emitter.emit_block()?;
         self.code_buffer.write_block(target_block.start())?;
         Ok(())

@@ -11,8 +11,8 @@ use crate::jit::regalloc::result::Allocation;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
 use crate::jit::x86::x64emitter::arithmetic::integer::AddSub;
-use crate::jit::x86::x64emitter::regalloc::SliceType;
-use crate::jit::x86::x64emitter::slice_load::CopyExtendMode;
+use crate::jit::x86::x64emitter::copy::CopyExtendMode;
+use crate::jit::x86::x64emitter::helpers::reg;
 use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
     X64Emitter,
@@ -84,7 +84,7 @@ impl X64Emitter<'_> {
         let size = output.size();
         match (input_a, input_b) {
             (JIRValue::Const(input_a), JIRValue::Const(input_b)) => {
-                self.emit_sub_const_const(output, input_a, input_b)?;
+                self.emit_sub_const_const(inst, output, input_a, input_b)?;
             }
             (JIRValue::Slice(input_a), JIRValue::Const(input_b)) => {
                 self.emit_add_sub_reg_const(inst, output, input_a, input_b.value(), AddSub::Sub)?;
@@ -102,12 +102,13 @@ impl X64Emitter<'_> {
     #[inline]
     fn emit_sub_const_const(
         &mut self,
+        inst: InstId,
         output: JIRSlice,
         input_a: JIRConst,
         input_b: JIRConst,
     ) -> Result<(), JitError> {
         let size = output.size();
-        self.emit_copy_deprecated(output, sub_const(input_a, input_b))?;
+        self.emit_copy(inst, output, sub_const(input_a, input_b))?;
         Ok(())
     }
 
@@ -124,15 +125,10 @@ impl X64Emitter<'_> {
             // A-A = 0, so we can just zero out the output.
             return self.emit_copy(inst, output, JIRConst::new(0, size));
         }
-        let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
-            todo!("Non register allocations currently unsupported")
-        };
-        let Allocation::Register(input_a_reg) = self.allocations.get_allocation(inst, 1) else {
-            todo!("Non register allocations currently unsupported")
-        };
-        let Allocation::Register(input_b_reg) = self.allocations.get_allocation(inst, 2) else {
-            todo!("Non register allocations currently unsupported")
-        };
+        let output_reg = reg!(self.allocations, inst, 0);
+        let input_a_reg = reg!(self.allocations, inst, 1);
+        let input_b_reg = reg!(self.allocations, inst, 2);
+
         if output == input_b {
             let temp_reg = self
                 .allocations

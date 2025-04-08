@@ -955,12 +955,13 @@ impl JIRInstruction {
         JIRInstruction::ReturnIndirect(target.into())
     }
 
-    pub fn goto_direct_if<I>(
-        target: I,
-        cond: I,
+    pub fn goto_direct_if<T, C>(
+        target: T,
+        cond: C,
     ) -> Self
     where
-        I: Into<JIRValue>,
+        T: Into<JIRValue>,
+        C: Into<JIRValue>,
     {
         JIRInstruction::GotoDirectIf {
             condition: cond.into(),
@@ -968,12 +969,13 @@ impl JIRInstruction {
         }
     }
 
-    pub fn goto_indirect_if<I>(
-        target: I,
-        cond: I,
+    pub fn goto_indirect_if<T, C>(
+        target: T,
+        cond: C,
     ) -> Self
     where
-        I: Into<JIRValue>,
+        T: Into<JIRValue>,
+        C: Into<JIRValue>,
     {
         JIRInstruction::GotoIndirectIf {
             condition: cond.into(),
@@ -1039,6 +1041,23 @@ impl JIRInstruction {
         }
     }
 
+    pub fn is_branch(&self) -> bool {
+        use JIRInstruction::*;
+        matches!(
+            self,
+            CallDirect(..)
+                | CallIndirect(..)
+                | ReturnDirect(_)
+                | ReturnIndirect(_)
+                | GotoDirect(_)
+                | GotoIndirect(_)
+                | JCodeGoto(_)
+                | GotoDirectIf { .. }
+                | GotoIndirectIf { .. }
+                | JCodeGotoIf { .. }
+        )
+    }
+
     pub fn is_unconditional_branch(&self) -> bool {
         use JIRInstruction::*;
         matches!(
@@ -1061,7 +1080,7 @@ impl JIRInstruction {
         )
     }
 
-    pub fn ist_conditional_branch(&self) -> bool {
+    pub fn is_conditional_branch(&self) -> bool {
         use JIRInstruction::*;
         matches!(self, GotoDirectIf { .. } | GotoIndirectIf { .. } | JCodeGotoIf { .. })
     }

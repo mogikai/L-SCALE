@@ -18,7 +18,7 @@ use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
 use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::task_context::X86TaskContext;
-use crate::jit::x86::x64emitter::regalloc::SliceType;
+use crate::jit::x86::x64emitter::helpers::reg;
 use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
     X64Emitter,
@@ -91,9 +91,7 @@ impl X64Emitter<'_> {
         space_id: SpaceId,
     ) -> JITResult {
         if space_id == self.processor_spec.const_space() {
-            let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
-                todo!()
-            };
+            let output_reg = reg!(self.allocations, inst, 0);
             let JIRValue::Const(addr) = addr else {
                 panic!("Load from const space must have a constant address")
             };

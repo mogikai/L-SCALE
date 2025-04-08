@@ -4,8 +4,7 @@ use crate::jit::regalloc::result::Allocation;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
 use crate::jit::x86::registers::general_purpose::GPRegister;
-use crate::jit::x86::x64emitter::regalloc::SliceType;
-use crate::jit::x86::x64emitter::slice_load::CopyExtendMode;
+use crate::jit::x86::x64emitter::copy::CopyExtendMode;
 use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
     X64Emitter,

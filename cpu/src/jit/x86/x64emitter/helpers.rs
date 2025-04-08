@@ -67,7 +67,7 @@ impl X64AllocRequirements {
 macro_rules! reg {
     ($allocations:expr, $inst:expr, $op_id:expr) => {
         match $allocations.get_allocation($inst, $op_id) {
-            Allocation::Register(reg) => reg,
+            crate::jit::regalloc::result::Allocation::Register(reg) => reg,
             _ => panic!("We expected a register allocation."),
         }
     };

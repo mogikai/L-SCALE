@@ -11,8 +11,6 @@ mod helpers;
 mod host_call;
 mod logic;
 mod mmu;
-pub(crate) mod regalloc;
-pub(super) mod slice_load;
 #[cfg(test)]
 mod test;
 
@@ -62,8 +60,6 @@ use crate::jit::regalloc::result::{
 };
 use crate::jit::trace_jit;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
-use crate::jit::x86::registers::RegisterTracker;
-use crate::jit::x86::x64emitter::regalloc::RegAllocIntention::Temp;
 use crate::jit::x86::{
     X86GlobalContext,
     assemble,
@@ -76,6 +72,7 @@ use mogi_sleigh::spec::jir::basic_block::{
 };
 use mogi_sleigh::spec::jir::jcode::JIRInstruction;
 use mogi_sleigh::spec::jir::values::{
+    JIRConst,
     JIRSlice,
     JIRValue,
     JIRVarNodeId,
@@ -89,7 +86,6 @@ pub struct X64Emitter<'a> {
     loaded_slices: HostRegMap<JIRSlice>,
     global_context: &'a X86GlobalContext,
     processor_spec: &'a ProcessorSpecification,
-    register_tracker: &'a mut RegisterTracker,
 
     /// The block to emit instructions into.
     block: &'a mut CompiledBasicBlock<X64Relocation>,
@@ -118,7 +114,10 @@ pub struct X64AllocRequirements {
 }
 
 impl X64AllocRequirements {
-    pub fn new(target_block: &TargetBasicBlock) -> Self {
+    pub fn new(
+        spec: &ProcessorSpecification,
+        target_block: &TargetBasicBlock,
+    ) -> Self {
         let mut slf = Self {
             // Let's pessimistically allocate at least inst_count times two space.
             // This may need adjustment based on further testing.
@@ -127,25 +126,27 @@ impl X64AllocRequirements {
             clobbers: vec![HostRegSet::empty(); target_block.instructions().len()],
             required_temps: vec![TempRequest::new(); target_block.instructions().len()],
         };
-        slf.calculate_inst_requirements(target_block);
+        slf.calculate_inst_requirements(spec, target_block);
         slf
     }
 
     /// Calculates the requirements for a given target basic block.
     fn calculate_inst_requirements(
         &mut self,
+        spec: &ProcessorSpecification,
         target_block: &TargetBasicBlock,
     ) {
         // TODO: Potentially, this step could be put into the IR generation step, so that we can directly add
         //       the requirements when the instruction is inserted, avoiding one iteration.
         for (inst_id, inst) in target_block.instructions_with_ids() {
-            self.fetch_inst_operands(inst_id, inst);
+            self.fetch_inst_operands(inst_id, spec, inst);
         }
     }
 
     fn fetch_inst_operands(
         &mut self,
         inst_id: InstId,
+        spec: &ProcessorSpecification,
         inst: &JIRInstruction,
     ) {
         let mut requirement = AllocRequirement::new(
@@ -267,9 +268,15 @@ impl X64AllocRequirements {
             JIRInstruction::CallIndirect(..) => {}
             JIRInstruction::ReturnDirect(_) => {}
             JIRInstruction::ReturnIndirect(_) => {}
-            JIRInstruction::GotoDirect(_) => {}
-            JIRInstruction::GotoIndirect(_) => {}
-            JIRInstruction::GotoDirectIf { .. } => {}
+            JIRInstruction::GotoDirect(target) => Self::goto_direct_requirements(&mut requirement, *target),
+            JIRInstruction::GotoIndirect(target) => {
+                let pc = spec.program_counter_slice();
+                let space = spec.default_space();
+                Self::goto_indirect_requirements(&mut requirement, pc, *target, space);
+            }
+            JIRInstruction::GotoDirectIf { condition, target } => {
+                Self::goto_direct_if_requirements(&mut requirement, *condition, *target);
+            }
             JIRInstruction::GotoIndirectIf { .. } => {}
             JIRInstruction::JCodeGoto(_) => {}
             JIRInstruction::JCodeGotoIf { .. } => {}
@@ -307,16 +314,15 @@ impl X64AllocRequirements {
         }
     }
 
-    pub fn make_emitter<'a>(
+    pub fn make_emitter<'e>(
         &self,
-        allocations: &'a AllocatorResult,
-        global_context: &'a X86GlobalContext,
-        processor_spec: &'a ProcessorSpecification,
-        register_tracker: &'a mut RegisterTracker,
-        block: &'a mut CompiledBasicBlock<X64Relocation>,
-        target_block: &'a TargetBasicBlock,
-    ) -> X64Emitter<'a> {
-        X64Emitter::<'a>::new(allocations, global_context, processor_spec, register_tracker, block, target_block)
+        allocations: &'e AllocatorResult,
+        global_context: &'e X86GlobalContext,
+        processor_spec: &'e ProcessorSpecification,
+        block: &'e mut CompiledBasicBlock<X64Relocation>,
+        target_block: &'e TargetBasicBlock,
+    ) -> X64Emitter<'e> {
+        X64Emitter::<'e>::new(allocations, global_context, processor_spec, block, target_block)
     }
 }
 
@@ -352,7 +358,6 @@ impl X64Emitter<'_> {
         allocations: &'a AllocatorResult,
         global_context: &'a X86GlobalContext,
         processor_spec: &'a ProcessorSpecification,
-        register_tracker: &'a mut RegisterTracker,
         block: &'a mut CompiledBasicBlock<X64Relocation>,
         target_block: &'a TargetBasicBlock,
     ) -> X64Emitter<'a> {
@@ -361,7 +366,6 @@ impl X64Emitter<'_> {
             loaded_slices: Default::default(),
             global_context,
             processor_spec,
-            register_tracker,
             block,
             target_block,
         }
@@ -388,8 +392,8 @@ impl X64Emitter<'_> {
             Some(next) => {
                 // Write the pc before we exit the block to make it visible to the jit.
                 // TODO: This could maybe be optimized such that we do not write the pc on chained blocks?
-                self.emit_write_pc(u64::from(next).into())?;
-                self.emit_flush_slices()?;
+                self.emit_write_pc(JIRConst::from(u64::from(next)).into())?;
+                // self.save_loaded_slices()?;
                 assemble!(self.block.assembler();
                     ; jmp ->exit_success
                 );
@@ -413,7 +417,6 @@ impl X64Emitter<'_> {
                 .directives()
                 .before_inst_directives(inst_id),
         )?;
-        self.register_tracker.new_alloc_version();
         match jinst {
             JIRInstruction::BlockStart(block_id) => {}
             JIRInstruction::BlockEnd(block_id) => {}
@@ -494,9 +497,11 @@ impl X64Emitter<'_> {
             JIRInstruction::CallIndirect(..) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::ReturnDirect(_) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::ReturnIndirect(_) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::GotoDirect(target) => self.emit_goto_direct(*target)?,
+            JIRInstruction::GotoDirect(target) => self.emit_goto_direct(inst_id, *target)?,
             JIRInstruction::GotoIndirect(target) => self.emit_goto_indirect(inst_id, *target)?,
-            JIRInstruction::GotoDirectIf { condition, target } => self.emit_goto_direct_if(*target, *condition)?,
+            JIRInstruction::GotoDirectIf { condition, target } => {
+                self.emit_goto_direct_if(inst_id, *target, *condition)?
+            }
             JIRInstruction::GotoIndirectIf { condition, target } => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::JCodeGoto(block_id) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::JCodeGotoIf {
@@ -529,7 +534,12 @@ impl X64Emitter<'_> {
                 self.emit_custom_op_call(*op_id, *output, *input_a, *input_b, extra_args)?;
             }
         }
-        self.emit_directives(self.allocations.directives().after_inst_directives(inst_id))?;
+
+        // We don't need to emit directives on unconditional branches since the jump is emitted beforehand.
+        if !jinst.is_unconditional_branch() {
+            self.emit_directives(self.allocations.directives().after_inst_directives(inst_id))?;
+        }
+
         Ok(())
     }
 }

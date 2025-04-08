@@ -1,4 +1,7 @@
-use crate::jit::api::JITResult;
+use crate::jit::api::{
+    JITResult,
+    JitError,
+};
 use crate::jit::host::register::{
     HostReg,
     RegClass,
@@ -8,8 +11,7 @@ use crate::jit::regalloc::result::Allocation;
 use crate::jit::trace_jit;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
-use crate::jit::x86::x64emitter::regalloc::SliceType;
-use crate::jit::x86::x64emitter::slice_load::CopyExtendMode;
+use crate::jit::x86::task_context::X86TaskContext;
 use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
     X64Emitter,
@@ -230,6 +232,92 @@ impl X64Emitter<'_> {
         Ok(())
     }
 
+    /// Writes a constant directly into the memory location associated with the target slice.
+    /// This function may use the scratch register.
+    #[inline]
+    pub(super) fn write_const_to_mem(
+        &mut self,
+        target: JIRSlice,
+        value: JIRConst,
+    ) -> JITResult {
+        debug_assert_eq!(target.size(), value.size());
+        let value = value.value();
+        let slice_offset = i32::try_from(X86TaskContext::slice_offset(target))
+            .map_err(|_| -> JitError { todo!("Invalid offset size") })?;
+        match target.size() {
+            1 => {
+                // Move to 32 bit register to zero extend.
+                assemble!(self.block.assembler();
+                    ; mov BYTE [cpu_context + slice_offset], BYTE value as _
+                );
+            }
+            2 => {
+                // Move to 32 bit register to zero extend.
+                assemble!(self.block.assembler();
+                    ; mov WORD [cpu_context + slice_offset], WORD value as _
+                );
+            }
+            4 => {
+                // We need to move to 32 bit register here, since the 64 bit move sign extends?????
+                assemble!(self.block.assembler();
+                    ; mov DWORD [cpu_context + slice_offset], DWORD value as _
+                );
+            }
+            8 => {
+                // We don't care which RegClass this is and just use int since only the size is relevant.
+                let scratch = self.allocations.scratch_register(RegClass::Int);
+                // A 64-bit immediate can only be moved into registers.
+                assemble!(self.block.assembler();
+                    ; mov Rq(scratch.hw_enc()), QWORD value as _
+                    ; mov QWORD [cpu_context + slice_offset], Rq(scratch.hw_enc())
+                );
+            }
+            size => {
+                todo!("Unsupported size {size}")
+            }
+        }
+        Ok(())
+    }
+
+    /// Writes a register directly into the memory location associated with the target slice.
+    /// This function may use the scratch register.
+    #[inline]
+    pub(super) fn write_int_reg_to_mem(
+        &mut self,
+        target: JIRSlice,
+        reg: HostReg,
+    ) -> JITResult {
+        let slice_offset = i32::try_from(X86TaskContext::slice_offset(target))
+            .map_err(|_| -> JitError { todo!("Invalid offset size") })?;
+        let reg = reg.hw_enc();
+        match target.size() {
+            1 => {
+                assemble!(self.block.assembler();
+                    ; mov BYTE [cpu_context + slice_offset as _], Rb(reg)
+                );
+            }
+            2 => {
+                assemble!(self.block.assembler();
+                    ; mov WORD [cpu_context + slice_offset as _], Rw(reg)
+                );
+            }
+            4 => {
+                assemble!(self.block.assembler();
+                    ; mov DWORD [cpu_context + slice_offset as _], Rd(reg)
+                );
+            }
+            8 => {
+                assemble!(self.block.assembler();
+                    ; mov QWORD [cpu_context + slice_offset as _], Rq(reg)
+                );
+            }
+            _ => {
+                todo!("Unsupported store size")
+            }
+        }
+        Ok(())
+    }
+
     /// Emit an instruction that loads the provided constant into the provided target gp register.
     #[inline]
     pub(super) fn load_const(
@@ -299,28 +387,13 @@ impl X64Emitter<'_> {
         }
         Ok(())
     }
+}
 
-    /// Emit instructions to copy the source [JIRValue] into the target [JIRSlice].
-    #[inline]
-    pub fn emit_copy_deprecated(
-        &mut self,
-        target: JIRSlice,
-        source: impl Into<JIRValue>,
-    ) -> JITResult {
-        let source = source.into();
-        debug_assert_eq!(target.size(), source.size());
-
-        let size = target.size();
-
-        if target == source {
-            // If target==source we just need to make sure the target is loaded.
-            self.load_slice_gpr(target, SliceType::Output);
-            return Ok(());
-        }
-
-        // Allocate and associate a GP register with the slice.
-        // No load is needed, since we overwrite the data anyway for a copy.
-        let target_reg = self.allocate_slice_gpr(target, SliceType::Output);
-        self.emit_load_value_to_gpr(target_reg, source)
-    }
+#[derive(Debug)]
+pub enum CopyExtendMode {
+    /// Extend to the provided size
+    ZeroExtend(JIRSize),
+    /// Sign extend to the provided size.
+    SignExtend(JIRSize),
+    None,
 }

@@ -483,6 +483,54 @@ impl From<i8> for JIRValue {
     }
 }
 
+impl From<u64> for JIRConst {
+    fn from(value: u64) -> Self {
+        JIRConst::new(value as u128, 8)
+    }
+}
+
+impl From<u32> for JIRConst {
+    fn from(value: u32) -> Self {
+        JIRConst::new(value as u128, 4)
+    }
+}
+
+impl From<u16> for JIRConst {
+    fn from(value: u16) -> Self {
+        JIRConst::new(value as u128, 2)
+    }
+}
+
+impl From<u8> for JIRConst {
+    fn from(value: u8) -> Self {
+        JIRConst::new(value as u128, 1)
+    }
+}
+
+impl From<i64> for JIRConst {
+    fn from(value: i64) -> Self {
+        JIRConst::new(value as u128, 8)
+    }
+}
+
+impl From<i32> for JIRConst {
+    fn from(value: i32) -> Self {
+        JIRConst::new(value as u128, 4)
+    }
+}
+
+impl From<i16> for JIRConst {
+    fn from(value: i16) -> Self {
+        JIRConst::new(value as u128, 2)
+    }
+}
+
+impl From<i8> for JIRConst {
+    fn from(value: i8) -> Self {
+        JIRConst::new(value as u128, 1)
+    }
+}
+
 impl TryFrom<JIRConst> for EVAddr {
     type Error = ProcessorSpecificationError;
 

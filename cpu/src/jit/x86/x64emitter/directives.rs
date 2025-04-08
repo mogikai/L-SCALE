@@ -10,7 +10,7 @@ use crate::jit::x86::assemble;
 use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::task_context::X86TaskContext;
 use crate::jit::x86::x64emitter::X64Emitter;
-use crate::jit::x86::x64emitter::slice_load::CopyExtendMode;
+use crate::jit::x86::x64emitter::copy::CopyExtendMode;
 use dynasmrt::relocations::Relocation;
 use dynasmrt::x64::X64Relocation;
 use mogi_sleigh::spec::jir::common::JIRSize;
@@ -163,28 +163,28 @@ where
     R: Relocation,
 {
     debug_assert_eq!(reg.class(), RegClass::Int);
-    let varnode_offset = X86TaskContext::slice_offset(slice);
+    let slice_offset = X86TaskContext::slice_offset(slice);
     // Emit the instruction that loads the varnode from the specified space in the context.
     let reg = reg.hw_enc();
     match slice.size() {
         1 => {
             assemble!(assembler;
-                ; mov BYTE [cpu_context + varnode_offset as _], Rb(reg)
+                ; mov BYTE [cpu_context + slice_offset as _], Rb(reg)
             );
         }
         2 => {
             assemble!(assembler;
-                ; mov WORD [cpu_context + varnode_offset as _], Rw(reg)
+                ; mov WORD [cpu_context + slice_offset as _], Rw(reg)
             );
         }
         4 => {
             assemble!(assembler;
-                ; mov DWORD [cpu_context + varnode_offset as _], Rd(reg)
+                ; mov DWORD [cpu_context + slice_offset as _], Rd(reg)
             );
         }
         8 => {
             assemble!(assembler;
-                ; mov QWORD [cpu_context + varnode_offset as _], Rq(reg)
+                ; mov QWORD [cpu_context + slice_offset as _], Rq(reg)
             );
         }
         _ => {

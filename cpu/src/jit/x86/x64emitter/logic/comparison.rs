@@ -9,7 +9,6 @@ use crate::jit::regalloc::result::Allocation;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
 use crate::jit::x86::registers::general_purpose::GPRegister;
-use crate::jit::x86::x64emitter::regalloc::SliceType;
 use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
     X64Emitter,
@@ -346,7 +345,7 @@ impl X64Emitter<'_> {
         // TODO: Write compare for 16 byte values.
         match (input_a, input_b) {
             (JIRValue::Const(input_a), JIRValue::Const(input_b)) => {
-                self.emit_copy_deprecated(output, JIRConst::new(cmp(input_a.value(), input_b.value()), 1))
+                self.emit_copy(inst, output, JIRConst::new(cmp(input_a.value(), input_b.value()), 1))
             }
             (JIRValue::Slice(input_a), JIRValue::Const(input_b)) => {
                 self.emit_cmp_slice_const(inst, asm_set, output, input_a, input_b)

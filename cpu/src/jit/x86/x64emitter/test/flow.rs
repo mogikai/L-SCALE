@@ -13,8 +13,19 @@ use crate::jit::x86::test::{
     setup,
 };
 use mogi_sleigh::jinst;
-use mogi_sleigh::spec::jir::values::JIRSlice;
+use mogi_sleigh::spec::jir::values::{
+    JIRConst,
+    JIRSlice,
+    JIRValue,
+};
 use mogi_utilities::addresses::EVAddr;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{
+    EnvFilter,
+    fmt,
+};
 
 #[test]
 fn test_goto_direct_if_true() {

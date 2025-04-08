@@ -440,7 +440,7 @@ impl Iterator for PRegSetIter {
             if *bits != 0 {
                 let bit = bits.trailing_zeros();
                 *bits &= !(1 << bit);
-                let index = bit as usize + self.cur * RegClass::COUNT;
+                let index = bit as usize | self.cur << HostReg::MAX_BITS;
                 return Some(HostReg::from_index(index));
             }
             self.cur += 1;

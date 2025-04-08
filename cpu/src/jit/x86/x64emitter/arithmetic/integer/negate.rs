@@ -3,9 +3,8 @@ use crate::jit::code_buffer::CompiledBasicBlock;
 use crate::jit::regalloc::requirements::OperandRequest;
 use crate::jit::regalloc::result::Allocation;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
-use crate::jit::x86::registers::RegisterTracker;
-use crate::jit::x86::x64emitter::regalloc::SliceType;
-use crate::jit::x86::x64emitter::slice_load::CopyExtendMode;
+use crate::jit::x86::x64emitter::copy::CopyExtendMode;
+use crate::jit::x86::x64emitter::helpers::reg;
 use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
     X64Emitter,
@@ -59,12 +58,8 @@ impl X64Emitter<'_> {
             JIRValue::Slice(slice) => {
                 // Copy into output, since neg uses the same register for input and output.
                 // If output==input this is a no-op.
-                let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
-                    todo!()
-                };
-                let Allocation::Register(input_reg) = self.allocations.get_allocation(inst, 1) else {
-                    todo!()
-                };
+                let output_reg = reg!(self.allocations, inst, 0);
+                let input_reg = reg!(self.allocations, inst, 1);
 
                 self.copy_reg(output_reg, input_reg, output.size(), CopyExtendMode::None)?;
                 assemble!(self.block.assembler();

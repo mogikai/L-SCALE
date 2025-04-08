@@ -4,7 +4,6 @@ use crate::jit::regalloc::requirements::OperandRequest;
 use crate::jit::regalloc::result::Allocation;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
-use crate::jit::x86::x64emitter::regalloc::SliceType;
 use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
     X64Emitter,
@@ -100,12 +99,17 @@ impl X64Emitter<'_> {
         inst: InstId,
         input_reg: HostReg,
     ) -> JITResult {
-        // TODO: We can emit this normalization in some cases, if we have a marker somewhere
+        // TODO: We can omit this normalization in some cases, if we have a marker somewhere
         //       where we can save if a value has already been normalized.
         //       this is also the case for example if `input` is the result of a boolean expression.
+
+        // TODO: The register allocator has to be extended such that we can signal to the register allocator
+        //       when we normalize an input, such that it can a) pass this information to the instruction
+        //       such that the normalization can be omitted, and b) the register allocator can reload
+        //       the input if a non-normalized input is requested.
         assemble!(self.block.assembler();
-            ; cmp Rb(input_reg.hw_enc()), 0
-            ; setnz Rb(input_reg.hw_enc())
+            ; test Rb(input_reg.hw_enc()), Rb(input_reg.hw_enc())
+            ; setne Rb(input_reg.hw_enc())
         );
         Ok(())
     }
@@ -158,9 +162,8 @@ impl X64Emitter<'_> {
         output: JIRSlice,
         mut input: JIRValue,
     ) -> JITResult {
-        if output.size() != 1 || output.size() != input.size() {
-            todo!("Invalid boolean size")
-        }
+        debug_assert_eq!(output.size(), 1);
+        debug_assert_eq!(input.size(), 1);
         self.emit_normalize_boolean_input(inst, &mut input)?;
         self.emit_bitwise_xor(inst, output, input, JIRConst::new(1, 1).into())
     }

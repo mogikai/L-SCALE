@@ -2,11 +2,6 @@ use crate::jit::host::register::{
     HostReg,
     RegClass,
 };
-use crate::jit::x86::registers::{
-    InitialAllocation,
-    RegAlloc,
-    RegAllocType,
-};
 use num_enum::{
     IntoPrimitive,
     TryFromPrimitive,
@@ -39,25 +34,6 @@ pub enum GPRegister {
 impl GPRegister {
     pub const fn into_host_reg(self) -> HostReg {
         HostReg::new(self as u8, RegClass::Int)
-    }
-}
-
-impl InitialAllocation for GPRegister {
-    fn initial_allocation(&self) -> RegAlloc {
-        let ty = match self {
-            // we reserve RAX as temporary since there are some instructions that can only use RAX
-            GPRegister::AX => RegAllocType::Reserved,
-            // RBP is reserved for the cpu_context
-            GPRegister::BP => RegAllocType::Reserved,
-            // We don't want to mess with the stack pointer.
-            // TODO: It may make sense to keep the emulated stack pointer loaded in some register.
-            //       This might even be the host SP register, but we will have to save the value somewhere.
-            //       Maybe it even makes sense to provide an api where one can specify target registers
-            //       that should be loaded into fixed host registers upon entering the jit. (SP?, FLAGS?)
-            GPRegister::SP => RegAllocType::Reserved,
-            _ => RegAllocType::Free,
-        };
-        RegAlloc { ty, version: 0 }
     }
 }
 
