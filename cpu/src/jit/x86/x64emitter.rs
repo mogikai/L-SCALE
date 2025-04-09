@@ -434,9 +434,11 @@ impl X64Emitter<'_> {
             JIRInstruction::IntSDiv(args) => {
                 self.emit_signed_divide(inst_id, args.output, args.input_a, args.input_b)?
             }
-            JIRInstruction::IntRemainder(args) => self.emit_remainder(args.output, args.input_a, args.input_b)?,
+            JIRInstruction::IntRemainder(args) => {
+                self.emit_remainder(inst_id, args.output, args.input_a, args.input_b)?
+            }
             JIRInstruction::IntSRemainder(args) => {
-                self.emit_signed_remainder(args.output, args.input_a, args.input_b)?
+                self.emit_signed_remainder(inst_id, args.output, args.input_a, args.input_b)?
             }
             JIRInstruction::IntLeft(args) => self.emit_shift_left(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::IntRight(args) => {

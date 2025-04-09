@@ -1,26 +1,18 @@
 use crate::jit::api::JITResult;
-use crate::jit::code_buffer::CompiledBasicBlock;
 use crate::jit::host::register::{
     HostRegSet,
     RegClass,
 };
-use crate::jit::regalloc::requirements::{
-    OperandRequest,
-    TempRequest,
-};
-use crate::jit::regalloc::result::Allocation;
+use crate::jit::regalloc::requirements::OperandRequest;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
+use crate::jit::x86::assemble;
 use crate::jit::x86::registers::general_purpose::GPRegister;
+use crate::jit::x86::x64emitter::copy::CopyExtendMode;
 use crate::jit::x86::x64emitter::helpers::reg;
 use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
     X64Emitter,
 };
-use crate::jit::x86::{
-    X86MogiJit,
-    assemble,
-};
-use dynasmrt::x64::X64Relocation;
 use mogi_sleigh::spec::jir::basic_block::InstId;
 use mogi_sleigh::spec::jir::values::{
     JIRConst,
@@ -33,6 +25,11 @@ enum DivisionType {
     Unsigned,
 }
 
+enum KeepDivisionResult {
+    Quotient,
+    Remainder,
+}
+
 impl X64AllocRequirements {
     pub fn divide_requirements(
         requirement: &mut AllocRequirement,
@@ -40,35 +37,61 @@ impl X64AllocRequirements {
         dividend: JIRValue,
         divisor: JIRValue,
     ) {
+        Self::div_rem_requirements(requirement, output, dividend, divisor, KeepDivisionResult::Quotient);
+    }
+
+    fn div_rem_requirements(
+        requirement: &mut AllocRequirement,
+        output: JIRSlice,
+        dividend: JIRValue,
+        divisor: JIRValue,
+        keep: KeepDivisionResult,
+    ) {
+        if dividend.size() != divisor.size() {
+            todo!("Support division with differently sized arguments?")
+        }
         match (dividend, divisor) {
             (JIRValue::Const(dividend), JIRValue::Const(divisor)) => {
                 Self::copy_requirements(requirement, output, divide_const(dividend, divisor));
             }
             (JIRValue::Const(dividend), JIRValue::Slice(divisor)) => {
                 // Dividend is loaded into RDX:RAX
-                *requirement.clobbers_mut() = HostRegSet::empty()
-                    .with(GPRegister::AX.into_host_reg())
-                    .with(GPRegister::DX.into_host_reg());
-                requirement.add_request(OperandRequest::int_write_any(output));
+                Self::load_output(requirement, output, keep);
                 requirement.add_request(OperandRequest::int_read_any(divisor));
             }
             (JIRValue::Slice(dividend), JIRValue::Const(divisor)) => {
-                *requirement.clobbers_mut() = HostRegSet::empty().with(GPRegister::DX.into_host_reg());
-                requirement.add_request(OperandRequest::int_write_any(output));
-                // The dividend must always be in RDX:RAX.
-                // Currently we only load RAX, since we only support 64 bits.
-                // TODO: Support more than 64 bit dividend
-                requirement.add_request(OperandRequest::int_read_fixed_reg(GPRegister::AX.into_host_reg(), dividend));
-                *requirement.required_temps_mut() = TempRequest::new().int(1);
+                Self::load_output(requirement, output, keep);
+                if dividend.size() > 8 {
+                    todo!("Unsupported divide size")
+                }
+                requirement.add_request(OperandRequest::int_read_any(dividend));
             }
             (JIRValue::Slice(dividend), JIRValue::Slice(divisor)) => {
-                *requirement.clobbers_mut() = HostRegSet::empty().with(GPRegister::DX.into_host_reg());
-                requirement.add_request(OperandRequest::int_write_any(output));
-                // The dividend must always be in RDX:RAX.
-                // Currently we only load RAX, since we only support 64 bits.
-                // TODO: Support more than 64 bit dividend
-                requirement.add_request(OperandRequest::int_read_fixed_reg(GPRegister::AX.into_host_reg(), dividend));
+                Self::load_output(requirement, output, keep);
+                if dividend.size() > 8 {
+                    todo!("Unsupported divide size")
+                }
+                requirement.add_request(OperandRequest::int_read_any(dividend));
                 requirement.add_request(OperandRequest::int_read_any(divisor));
+            }
+        }
+    }
+
+    fn load_output(
+        requirement: &mut AllocRequirement,
+        output: JIRSlice,
+        keep: KeepDivisionResult,
+    ) {
+        match keep {
+            KeepDivisionResult::Quotient => {
+                // The quotient is always put into AX, and the remainder into DX
+                requirement.add_request(OperandRequest::int_write_fixed(GPRegister::AX.into_host_reg(), output));
+                *requirement.clobbers_mut() = HostRegSet::empty().with(GPRegister::DX.into_host_reg());
+            }
+            KeepDivisionResult::Remainder => {
+                // The quotient is always put into AX, and the remainder into DX
+                *requirement.clobbers_mut() = HostRegSet::empty().with(GPRegister::AX.into_host_reg());
+                requirement.add_request(OperandRequest::int_write_fixed(GPRegister::DX.into_host_reg(), output));
             }
         }
     }
@@ -80,6 +103,24 @@ impl X64AllocRequirements {
         divisor: JIRValue,
     ) {
         Self::divide_requirements(requirement, output, dividend, divisor)
+    }
+
+    pub fn remainder_requirements(
+        requirement: &mut AllocRequirement,
+        output: JIRSlice,
+        input_a: JIRValue,
+        input_b: JIRValue,
+    ) {
+        Self::div_rem_requirements(requirement, output, input_a, input_b, KeepDivisionResult::Remainder);
+    }
+
+    pub fn signed_remainder_requirements(
+        requirement: &mut AllocRequirement,
+        output: JIRSlice,
+        input_a: JIRValue,
+        input_b: JIRValue,
+    ) {
+        Self::div_rem_requirements(requirement, output, input_a, input_b, KeepDivisionResult::Remainder);
     }
 }
 
@@ -93,14 +134,39 @@ impl X64Emitter<'_> {
         dividend: JIRValue,
         divisor: JIRValue,
     ) -> JITResult {
+        self.emit_divide_internal(inst, output, dividend, divisor, DivisionType::Unsigned, KeepDivisionResult::Quotient)
+    }
+
+    fn emit_divide_internal(
+        &mut self,
+        inst: InstId,
+        output: JIRSlice,
+        dividend: JIRValue,
+        divisor: JIRValue,
+        division_type: DivisionType,
+        keep: KeepDivisionResult,
+    ) -> JITResult {
         assert_eq!(dividend.size(), divisor.size());
         assert_eq!(dividend.size(), output.size());
         if let (JIRValue::Const(dividend), JIRValue::Const(divisor)) = (dividend, divisor) {
             // If both arguments are const we can emit a move of the calculated value.
-            return self.emit_copy(inst, output, divide_const(dividend, divisor));
+            match (division_type, keep) {
+                (DivisionType::Unsigned, KeepDivisionResult::Quotient) => {
+                    self.emit_copy(inst, output, divide_const(dividend, divisor))
+                }
+                (DivisionType::Unsigned, KeepDivisionResult::Remainder) => {
+                    self.emit_copy(inst, output, remainder_const(dividend, divisor))
+                }
+                (DivisionType::Signed, KeepDivisionResult::Quotient) => {
+                    self.emit_copy(inst, output, divide_signed_const(dividend, divisor))
+                }
+                (DivisionType::Signed, KeepDivisionResult::Remainder) => {
+                    self.emit_copy(inst, output, remainder_signed_const(dividend, divisor))
+                }
+            }
+        } else {
+            self.emit_divide_value_value(inst, division_type, output, dividend, divisor)
         }
-        self.emit_divide_value_value(inst, DivisionType::Unsigned, output, dividend.into(), divisor)?;
-        Ok(())
     }
 
     #[inline]
@@ -113,56 +179,70 @@ impl X64Emitter<'_> {
         divisor: JIRValue,
     ) -> JITResult {
         let output_reg = reg!(self.allocations, inst, 0);
-        // Div expects the dividend in D:A (or just AX for word/byte size)
-        // Since we only deal with 64-bit numbers currently, it is enough to load A and zero D
-        let mut divisor_operand_id = 1;
-        let dividend_upper_reg = GPRegister::DX.into_host_reg();
-        let dividend_lower_reg = match dividend {
+        debug_assert!(
+            output_reg == GPRegister::AX.into_host_reg() || output_reg == GPRegister::DX.into_host_reg(),
+            "Expected the output to be in AX or DX"
+        );
+
+        // Fetch the divisor register and load the value.
+        let mut divisor_reg = match divisor {
             JIRValue::Slice(_) => {
-                // The dividend was also allocated, so the divisor is located in the third slot.
-                divisor_operand_id += 1;
-                let dividend_reg = reg!(self.allocations, inst, 1);
-                assert_eq!(dividend_reg, GPRegister::AX.into_host_reg(), "Expected the dividend to be in AX");
-                dividend_reg
+                let divisor_reg = reg!(self.allocations, inst, if dividend.is_slice() { 2 } else { 1 });
+                // We extend to rdx:rax, so the input must not be in DX.
+                if divisor_reg == GPRegister::DX.into_host_reg() {
+                    let scratch = self.allocations.scratch_register(RegClass::Int);
+                    self.copy_reg(scratch, divisor_reg, divisor.size(), CopyExtendMode::None)?;
+                    scratch
+                } else {
+                    divisor_reg
+                }
             }
-            JIRValue::Const(dividend) => {
-                self.load_const(GPRegister::AX.into_host_reg(), dividend)?;
-                GPRegister::AX.into_host_reg()
+            JIRValue::Const(divisor_const) => {
+                let tmp = self.allocations.scratch_register(RegClass::Int);
+                self.load_const(tmp, divisor_const)?;
+                tmp
             }
         };
+
+        match dividend {
+            JIRValue::Slice(_) => {
+                // The dividend was also allocated, so the divisor is located in the third slot.
+                let dividend_reg = reg!(self.allocations, inst, 1);
+                // Copy over the dividend into RAX
+                self.copy_reg(GPRegister::AX.into_host_reg(), dividend_reg, output.size(), CopyExtendMode::None)?;
+            }
+            JIRValue::Const(dividend) => {
+                // The divisor might be in RAX, so we have to move it away first.
+                if divisor_reg == GPRegister::AX.into_host_reg() {
+                    let scratch = self.allocations.scratch_register(RegClass::Int);
+                    self.copy_reg(scratch, divisor_reg, divisor.size(), CopyExtendMode::None)?;
+                    divisor_reg = scratch;
+                }
+                self.load_const(GPRegister::AX.into_host_reg(), dividend)?;
+            }
+        };
+
         match division_type {
             DivisionType::Signed => {
+                // Sign extend the divisor
+                self.copy_reg(divisor_reg, divisor_reg, divisor.size(), CopyExtendMode::SignExtend(8))?;
+                // First sign extend AX to 8 bytes.
+                self.copy_reg(
+                    GPRegister::AX.into_host_reg(),
+                    GPRegister::AX.into_host_reg(),
+                    dividend.size(),
+                    CopyExtendMode::SignExtend(8),
+                )?;
                 // Sign extend rax to rdx:rax
-                // TODO: Use cwd or cdq for other sizes?
                 assemble!(self.block.assembler();
                     ; cqo
                 );
             }
             DivisionType::Unsigned => {
-                // Set the upper part of the dividend to zero, since we are only dealing with 64 bit values here.
-                self.load_zero(dividend_upper_reg, dividend.size())?;
+                // Set the upper part of the dividend to zero, since we are only dealing with 64-bit values here.
+                self.load_zero(GPRegister::DX.into_host_reg(), dividend.size())?;
             }
         }
-
-        // Fetch the divisor register and load the value.
-        let divisor_reg = match divisor {
-            JIRValue::Slice(_) => {
-                let Allocation::Register(divisor_reg) = self.allocations.get_allocation(inst, divisor_operand_id)
-                else {
-                    todo!()
-                };
-                divisor_reg
-            }
-            JIRValue::Const(divisor_const) => {
-                let tmp = self
-                    .allocations
-                    .get_temp_allocations(inst)
-                    .get_nth_from_class(0, RegClass::Int)
-                    .expect("We requested this");
-                self.load_const(tmp, divisor_const)?;
-                tmp
-            }
-        };
 
         // Do the thing
         match division_type {
@@ -177,14 +257,6 @@ impl X64Emitter<'_> {
                 );
             }
         }
-        // Finally we can copy over the result into the output if they are in different registers.
-        if output_reg != dividend_lower_reg {
-            assemble!(self.block.assembler();
-                // dividend_lower contains the quotient
-                // dividend_upper contains the remainder, which we do not need here.
-                ; mov Rq(output_reg.hw_enc()), Rq(dividend_lower_reg.hw_enc())
-            );
-        }
         Ok(())
     }
 
@@ -195,13 +267,38 @@ impl X64Emitter<'_> {
         dividend: JIRValue,
         divisor: JIRValue,
     ) -> JITResult {
-        match (dividend, divisor) {
-            (JIRValue::Const(dividend), JIRValue::Const(divisor)) => {
-                return self.emit_copy(inst, output, divide_signed_const(dividend, divisor));
-            }
-            _ => {}
-        }
-        self.emit_divide_value_value(inst, DivisionType::Signed, output, dividend, divisor)
+        self.emit_divide_internal(inst, output, dividend, divisor, DivisionType::Signed, KeepDivisionResult::Quotient)
+    }
+
+    pub fn emit_remainder(
+        &mut self,
+        inst: InstId,
+        output: JIRSlice,
+        dividend: JIRValue,
+        divisor: JIRValue,
+    ) -> JITResult {
+        // We can delegate to this, since divide always calculates both quotient and remainder.
+        // It is just a matter of which register the output is allocated to.
+        self.emit_divide_internal(
+            inst,
+            output,
+            dividend,
+            divisor,
+            DivisionType::Unsigned,
+            KeepDivisionResult::Remainder,
+        )
+    }
+
+    pub fn emit_signed_remainder(
+        &mut self,
+        inst: InstId,
+        output: JIRSlice,
+        dividend: JIRValue,
+        divisor: JIRValue,
+    ) -> JITResult {
+        // We can delegate to this, since divide always calculates both quotient and remainder.
+        // It is just a matter of which register the output is allocated to.
+        self.emit_divide_internal(inst, output, dividend, divisor, DivisionType::Signed, KeepDivisionResult::Remainder)
     }
 }
 
@@ -212,10 +309,25 @@ fn divide_const(
     JIRConst::new(dividend.value().wrapping_div(divisor.value()), dividend.size())
 }
 
+fn remainder_const(
+    dividend: JIRConst,
+    divisor: JIRConst,
+) -> JIRConst {
+    JIRConst::new(dividend.value().wrapping_rem(divisor.value()), dividend.size())
+}
+
 fn divide_signed_const(
     dividend: JIRConst,
     divisor: JIRConst,
 ) -> JIRConst {
     let result = (dividend.value() as i128).wrapping_div(divisor.value() as i128) as u128;
+    JIRConst::new(result, dividend.size())
+}
+
+fn remainder_signed_const(
+    dividend: JIRConst,
+    divisor: JIRConst,
+) -> JIRConst {
+    let result = (dividend.value() as i128).wrapping_rem(divisor.value() as i128) as u128;
     JIRConst::new(result, dividend.size())
 }
