@@ -4,6 +4,9 @@ use std::rc::Rc;
 use std::time::Duration;
 use clap::Parser;
 use tracing::trace;
+use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use mogi_emulator::emulator::GenericEmulator;
 use mogi_emulator::emulator::interface::emulator::Emulator;
 use mogi_emulator::emulator::platform::linux::kernel::LinuxKernelTask;
@@ -39,6 +42,11 @@ struct Args {
 }
 
 fn main() {
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(EnvFilter::from_env("FUZE_LOG"))
+        .init();
+    
     let fuzzer_args = Args::parse();
     let cpu = UCWrapper::new();
     let task_manager = TaskManager::new();
