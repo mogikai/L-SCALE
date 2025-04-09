@@ -110,7 +110,7 @@ where
                     StopReason::Unknown => Ok(ExitReason::Stopped),
                     StopReason::Killed(_) => todo!(),
                     StopReason::MissingSyscall(_) => todo!(),
-                    StopReason::ProcessExit(_) => todo!(),
+                    StopReason::ProcessExit(_) => Ok(ExitReason::Stopped),
                     StopReason::Yield(_) => Ok(ExitReason::Yielded),
                     StopReason::Breakpoint => Ok(ExitReason::Breakpoint),
                 },

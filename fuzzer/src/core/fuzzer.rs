@@ -1109,21 +1109,22 @@ where
         // FIXME: For now, we simply create one tcp stream in the beginning. The fuzzer is not allowed to create
         //        any new streams at the moment (during fuzzing)
         let mut tcp = self.emulator.system().tcp().borrow_mut();
-        let listener_id = *tcp
+        let listener_id = tcp
             .sockets()
-            .find(|(_, sock)| sock.is_listener())
-            .unwrap()
-            .0;
-        tcp.new_connection(
-            &listener_id,
-            SocketAddress::IP(IPAddress::V6 {
-                port: 1337,
-                flowinfo: 0,
-                addr: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-                scope_id: 0,
-            }),
-        )
-        .unwrap();
+            .find(|(_, sock)| sock.is_listener());
+        if listener_id.is_some() { 
+            let listener_id = *listener_id.unwrap().0;
+            tcp.new_connection(
+                &listener_id,
+                SocketAddress::IP(IPAddress::V6 {
+                    port: 1337,
+                    flowinfo: 0,
+                    addr: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+                    scope_id: 0,
+                }),
+            )
+                .unwrap();
+        }
         /////////
         // Only load states if not loaded from state
         // TODO: FIXME: Refactor this. This is currently very hacky. Need clean api for fuzzer state init
@@ -1380,21 +1381,22 @@ where
                     // TODO: How to decide which one of the listeners to use? The fuzzer most likely needs to factor
                     //       in this knowledge into its fuzzing strategy, i.e. it needs to keep track of streams?
                     //       For now we just pick the first one we find.
-                    let listener_id = *tcp
+                    let listener_id = tcp
                         .sockets()
-                        .find(|(_, sock)| sock.is_listener())
-                        .unwrap()
-                        .0;
-                    tcp.new_connection(
-                        &listener_id,
-                        SocketAddress::IP(IPAddress::V6 {
-                            port: 1337,
-                            flowinfo: 0,
-                            addr: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-                            scope_id: 0,
-                        }),
-                    )
-                    .unwrap();
+                        .find(|(_, sock)| sock.is_listener());
+                    if listener_id.is_some() {
+                        let listener_id = *listener_id.unwrap().0;
+                        tcp.new_connection(
+                            &listener_id,
+                            SocketAddress::IP(IPAddress::V6 {
+                                port: 1337,
+                                flowinfo: 0,
+                                addr: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+                                scope_id: 0,
+                            }),
+                        )
+                            .unwrap();
+                    }
                 }
             }
         }
