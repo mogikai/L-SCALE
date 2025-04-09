@@ -16,6 +16,6 @@ mod common;
 #[test]
 fn test_getrandom() -> Result<(), TestFailure> {
     setup_test();
-    prepare_binary("getrandom");
+    prepare_binary("getrandom")?;
     emulate(&get_sysdir(), Path::new("/home/user/getrandom"))
 }

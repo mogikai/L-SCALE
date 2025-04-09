@@ -14,6 +14,6 @@ mod common;
 #[test]
 fn dup() -> Result<(), TestFailure> {
     setup_test();
-    prepare_binary("dup");
+    prepare_binary("dup")?;
     emulate(&get_sysdir(), Path::new("/home/user/dup"))
 }

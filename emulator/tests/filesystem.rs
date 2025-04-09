@@ -13,13 +13,13 @@ mod common;
 #[test]
 fn fstatat() -> Result<(), TestFailure> {
     setup_test();
-    prepare_binary("fstatat");
+    prepare_binary("fstatat")?;
     emulate(&get_sysdir(), Path::new("/home/user/fstatat"))
 }
 
 #[test]
 fn chdir() -> Result<(), TestFailure> {
     setup_test();
-    prepare_binary("chdir");
+    prepare_binary("chdir")?;
     emulate(&get_sysdir(), Path::new("/home/user/chdir"))
 }

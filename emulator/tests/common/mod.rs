@@ -39,40 +39,69 @@ pub fn get_sysdir() -> PathBuf {
     return r;
 }
 
-pub fn prepare_binary(bin: &str) {
+pub fn prepare_binary(bin: &str) -> Result<(), BuildError>{
     let sysdir = get_sysdir();
     let homedir = sysdir.join(Path::new("home/user"));
-    let pwd = env::current_dir().unwrap();
+    let opwd = env::current_dir()?;
+    let pwd = env::current_dir()?;
+    eprintln!("{}", pwd.display());
     let assetdir = pwd.join(Path::new("tests/assets"));
     if !homedir.exists() {
-        fs::create_dir_all(&homedir).unwrap();
+        fs::create_dir_all(&homedir)?;
     }
-    env::set_current_dir(homedir).unwrap();
-    let _ret = Command::new("make")
+    env::set_current_dir(homedir)?;
+    let ret = Command::new("make")
         .arg("-f")
         .arg(format!("{}/Makefile", assetdir.display()))
         .arg(bin)
         .env("VPATH", format!("{}", assetdir.display()))
-        .env("CC", "clang-14")
+        .env("CC", "clang-15")
         .env(
             "CFLAGS",
             format!("--sysroot {} -B {} -fuse-ld={} -pie", sysdir.display(), "/usr/lib/llvm-14/bin", "lld"),
         )
         .env("LDFLAGS", "-Wl,-allow-shlib-undefined -fPIC")
-        .status()
-        .unwrap();
-    env::set_current_dir(&pwd).unwrap();
+        .status()?;
+    env::set_current_dir(&opwd)?;
+    if !ret.success() {
+        match ret.code() {
+            Some(code) => return Err(BuildError::RetCode(code)),
+            None => return Err(BuildError::Crash),
+        }
+    }
+    return Ok(());
 }
+
+#[derive(Debug)]
+pub enum BuildError {
+    IO(std::io::Error),
+    RetCode(i32),
+    Crash,
+}
+
+impl From<std::io::Error> for BuildError {
+    fn from(item: std::io::Error) -> Self {
+        Self::IO ( item )
+    }
+}
+
 
 #[derive(Debug)]
 pub enum TestFailure {
     ProcessFailure(StopReason),
     SchedulerFailure(SchedulerError),
+    PrepareError(BuildError),
     Unknown,
 }
 
 impl From<SchedulerError> for TestFailure {
     fn from(e: SchedulerError) -> Self {
         Self::SchedulerFailure(e)
+    }
+}
+
+impl From<BuildError> for TestFailure {
+    fn from(e: BuildError) -> Self {
+        Self::PrepareError(e)
     }
 }

@@ -17,10 +17,11 @@ mod common;
 fn test_assert_works() -> Result<(), TestFailure> {
     setup_test();
     let d = get_sysdir();
-    prepare_binary("assert_false");
-    prepare_binary("assert_true");
+    prepare_binary("assert_false")?;
+    prepare_binary("assert_true")?;
     // TODO: Reenable once done adapting to new cpu emulator.
     // assert!(emulate(&d, Path::new("/home/user/assert_false")).is_err());
+    assert!(emulate(&d, Path::new("/home/user/assert_false")).is_err());
     assert!(emulate(&d, Path::new("/home/user/assert_true")).is_ok());
     Ok(())
 }

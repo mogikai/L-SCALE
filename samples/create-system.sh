@@ -13,8 +13,8 @@ fi
 export REGISTRY_AUTH_FILE="$(mktemp)"
 echo '{}' > "$REGISTRY_AUTH_FILE"
 
-skopeo copy docker://"$image" oci:"$image"
-oci-image-tool unpack --ref name="${name}" "${os}" "${os}_${name}"
+skopeo copy docker://"$image" oci:"$image" || exit 1
+oci-image-tool unpack --ref name="${name}" "${os}" "${os}_${name}" || exit 1
 
 cd "${os}_${name}"
 
