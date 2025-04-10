@@ -284,8 +284,15 @@ impl X64AllocRequirements {
                 let space = spec.default_space();
                 Self::goto_indirect_if_requirements(&mut requirement, *condition, pc, *target, space);
             }
-            JIRInstruction::JCodeGoto(_) => {}
-            JIRInstruction::JCodeGotoIf { .. } => {}
+            JIRInstruction::JCodeGoto(block_id) => {
+                Self::jcode_goto_requirements(&mut requirement, *block_id);
+            }
+            JIRInstruction::JCodeGotoIf {
+                condition,
+                target_block,
+            } => {
+                Self::jcode_goto_if_requirements(&mut requirement, *condition, *target_block);
+            }
             JIRInstruction::PopCount(args) => {
                 Self::popcount_requirements(&mut requirement, args.output, args.input);
             }
@@ -424,8 +431,13 @@ impl X64Emitter<'_> {
                 .before_inst_directives(inst_id),
         )?;
         match jinst {
-            JIRInstruction::BlockStart(block_id) => {}
-            JIRInstruction::BlockEnd(block_id) => {}
+            JIRInstruction::BlockStart(block_id) => {
+                let label = self.block.dynamic_label(*block_id);
+                assemble!(self.block.assembler();
+                    ; => label
+                );
+            }
+            JIRInstruction::BlockEnd(block_id) => self.loaded_slices.clear(),
             JIRInstruction::InstructionStart(addr) => {}
             JIRInstruction::InstructionEnd(addr) => {}
             JIRInstruction::Copy(args) => self.emit_copy(inst_id, args.output, args.input)?,
@@ -513,11 +525,11 @@ impl X64Emitter<'_> {
             JIRInstruction::GotoIndirectIf { condition, target } => {
                 self.emit_goto_indirect_if(inst_id, *target, *condition)?
             }
-            JIRInstruction::JCodeGoto(block_id) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::JCodeGoto(block_id) => self.emit_jcode_goto(inst_id, *block_id)?,
             JIRInstruction::JCodeGotoIf {
                 condition,
                 target_block,
-            } => todo!("Instruction not yet implemented: {jinst}"),
+            } => self.emit_jcode_goto_if(inst_id, *condition, *target_block)?,
             JIRInstruction::PopCount(args) => self.emit_popcount(inst_id, args.output, args.input)?,
             JIRInstruction::LZCount(args) => self.emit_lzcount(inst_id, args.output, args.input)?,
             JIRInstruction::ZeroExtend(args) => self.emit_zero_extend(inst_id, args.output, args.input)?,

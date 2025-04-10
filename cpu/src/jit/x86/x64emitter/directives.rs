@@ -18,9 +18,9 @@ use mogi_sleigh::spec::jir::values::JIRSlice;
 use tracing::trace;
 
 impl X64Emitter<'_> {
-    pub fn emit_directives(
+    pub fn emit_directives<'a>(
         &mut self,
-        directives: &[LoadSpillDirective],
+        directives: impl Iterator<Item = &'a LoadSpillDirective>,
     ) -> JITResult {
         for directive in directives {
             trace_jit!("Emitting directive: {directive:?}");

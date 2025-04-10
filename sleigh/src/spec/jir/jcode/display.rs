@@ -88,7 +88,7 @@ impl Display for JIRInstruction {
                 condition,
                 target_block,
             } => {
-                write!(f, "if ({}) goto <{:?}>", condition, target_block)
+                write!(f, "if ({}) goto <{}>", condition, target_block)
             }
             OP::GotoDirectIf { condition, target } => write!(f, "if ({}) goto [{}]", condition, target),
             OP::GotoIndirectIf { condition, target } => write!(f, "if ({}) goto {}", condition, target),

@@ -233,6 +233,15 @@ impl<T> HostRegMap<T> {
     }
 }
 
+impl<T> HostRegMap<T>
+where
+    T: Clone,
+{
+    pub fn clear(&mut self) {
+        self.mapping.fill(None);
+    }
+}
+
 /// A host register set. Used to represent clobbers efficiently.
 ///
 /// The set is `Copy` and is guaranteed to have constant, and small,

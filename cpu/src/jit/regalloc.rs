@@ -291,7 +291,7 @@ where
         {
             trace_jit!("Allocating temp int register {reg}");
             self.available_registers.remove(reg);
-            self.spill_reg(reg);
+            self.unload_reg(reg);
             temp_regs.add(reg);
         }
 
@@ -302,7 +302,7 @@ where
         {
             trace_jit!("Allocating temp float register {reg}");
             self.available_registers.remove(reg);
-            self.spill_reg(reg);
+            self.unload_reg(reg);
             temp_regs.add(reg);
         }
 
@@ -313,7 +313,7 @@ where
         {
             trace_jit!("Allocating temp vector register {reg}");
             self.available_registers.remove(reg);
-            self.spill_reg(reg);
+            self.unload_reg(reg);
             temp_regs.add(reg);
         }
         Ok(temp_regs)
@@ -339,7 +339,7 @@ where
 
         // Spill the register if it is occupied by a slice, since we need to make sure it is loaded
         // with the correct value after the instruction finishs.
-        self.spill_reg(reg);
+        self.unload_reg(reg);
         self.loaded_slices.insert(reg, operand.slice);
         Ok(Allocation::Register(reg))
     }
@@ -378,6 +378,7 @@ where
                     return Ok(fixed_reg);
                 }
             }
+            // The slices match and are already loaded in the same register. Nothing to do here.
             self.available_registers.remove(reg);
             Ok(reg)
         } else {
@@ -409,12 +410,7 @@ where
         if let Allocation::Register(reg) = allocation
             && let OperandKind::Write = operand.kind
         {
-            // If this is a write operand, we need to make sure that it is spilled correctly on the first write we
-            // encounter (viewing in reverse).
-            // TODO: Only spill on first write (viewing in reverse)
-            self.allocations
-                .load_spill_directives
-                .add_spill_after(reg, operand.slice);
+            self.spill_reg(reg, operand.slice);
         }
         Ok(allocation)
     }
@@ -450,13 +446,13 @@ where
                 It could also mean that the register is generally not available, since it is reserved."
             )
         }
-        self.spill_reg(clobber);
+        self.unload_reg(clobber);
         self.available_registers.remove(clobber);
     }
 
     /// Spill the provided register at the `after` position of the current instruction.
     #[inline]
-    fn spill_reg(
+    fn unload_reg(
         &mut self,
         reg: HostReg,
     ) {
@@ -467,5 +463,20 @@ where
                 .load_spill_directives
                 .add_load_after(reg, slice);
         }
+    }
+
+    /// Spill the register if it is the last write occurrence (viewing in forward direction)
+    #[inline]
+    fn spill_reg(
+        &mut self,
+        reg: HostReg,
+        slice: JIRSlice,
+    ) {
+        // If this is a write operand, we need to make sure that it is spilled correctly on the first write we
+        // encounter (viewing in reverse).
+        // TODO: Only spill on first write (viewing in reverse)
+        self.allocations
+            .load_spill_directives
+            .add_spill_after(reg, slice);
     }
 }

@@ -11,6 +11,7 @@ use crate::jit::regalloc::result::Allocation;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
 use crate::jit::x86::x64emitter::copy::CopyExtendMode;
+use crate::jit::x86::x64emitter::helpers::reg;
 use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
     X64Emitter,
@@ -45,9 +46,6 @@ impl X64AllocRequirements {
             | (JIRValue::Const(input_b), JIRValue::Slice(input_a)) => {
                 requirement.add_request(OperandRequest::int_write_any(output));
                 requirement.add_request(OperandRequest::int_read_any(input_a));
-                if input_b.size() >= 8 {
-                    *requirement.required_temps_mut() = TempRequest::new().int(1);
-                }
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
                 requirement.add_request(OperandRequest::int_write_any(output));
@@ -63,25 +61,7 @@ impl X64AllocRequirements {
         input_a: JIRValue,
         input_b: JIRValue,
     ) {
-        match (input_a, input_b) {
-            (JIRValue::Const(input_a), JIRValue::Const(input_b)) => {
-                // Add copy requirements for a dummy value with size one since we delegate to copy.
-                Self::copy_requirements(requirement, output, JIRConst::new(0, 1));
-            }
-            (JIRValue::Slice(input_a), JIRValue::Const(input_b))
-            | (JIRValue::Const(input_b), JIRValue::Slice(input_a)) => {
-                requirement.add_request(OperandRequest::int_write_any(output));
-                requirement.add_request(OperandRequest::int_read_any(input_a));
-                if input_b.size() >= 8 {
-                    *requirement.required_temps_mut() = TempRequest::new().int(1);
-                }
-            }
-            (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
-                requirement.add_request(OperandRequest::int_write_any(output));
-                requirement.add_request(OperandRequest::int_read_any(input_a));
-                requirement.add_request(OperandRequest::int_read_any(input_b));
-            }
-        }
+        Self::carry_requirements(requirement, output, input_b, input_a);
     }
 
     pub fn sborrow_requirements(
@@ -90,22 +70,7 @@ impl X64AllocRequirements {
         input_a: JIRValue,
         input_b: JIRValue,
     ) {
-        match (input_a, input_b) {
-            (JIRValue::Const(input_a), JIRValue::Const(input_b)) => {
-                // Add copy requirements for a dummy value with size one since we delegate to copy.
-                Self::copy_requirements(requirement, output, JIRConst::new(0, 1));
-            }
-            (JIRValue::Slice(input_a), JIRValue::Const(input_b))
-            | (JIRValue::Const(input_b), JIRValue::Slice(input_a)) => {
-                requirement.add_request(OperandRequest::int_write_any(output));
-                requirement.add_request(OperandRequest::int_read_any(input_a));
-            }
-            (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
-                requirement.add_request(OperandRequest::int_write_any(output));
-                requirement.add_request(OperandRequest::int_read_any(input_a));
-                requirement.add_request(OperandRequest::int_read_any(input_b));
-            }
-        }
+        Self::carry_requirements(requirement, output, input_a, input_b);
     }
 }
 
@@ -236,12 +201,8 @@ impl X64Emitter<'_> {
         input_b: JIRConst,
         flag_type: FlagType,
     ) -> JITResult {
-        let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
-            todo!()
-        };
-        let Allocation::Register(input_a_reg) = self.allocations.get_allocation(inst, 1) else {
-            todo!()
-        };
+        let output_reg = reg!(self.allocations, inst, 0);
+        let input_a_reg = reg!(self.allocations, inst, 1);
         // Move input_a to output so we can modify it. Output is later overridden by the actual flag.
         self.copy_reg(output_reg, input_a_reg, input_a.size(), CopyExtendMode::None)?;
         match input_a.size() {
@@ -256,11 +217,7 @@ impl X64Emitter<'_> {
             ),
             8 => {
                 // There are no 64 bit immediates for add, hence we need to load the immediate into a temp first.
-                let temp_reg = self
-                    .allocations
-                    .get_temp_allocations(inst)
-                    .get_nth_from_class(0, RegClass::Int)
-                    .expect("We requested this");
+                let temp_reg = self.allocations.scratch_register(RegClass::Int);
                 self.load_const(temp_reg, input_b)?;
                 assemble!(self.block.assembler();
                     ; add Rq(output_reg.hw_enc()), Rq(temp_reg.hw_enc())
@@ -281,15 +238,10 @@ impl X64Emitter<'_> {
     ) -> JITResult {
         assert_eq!(output.size(), 1);
         assert_eq!(input_a.size(), input_b.size());
-        let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
-            todo!()
-        };
-        let Allocation::Register(input_a_reg) = self.allocations.get_allocation(inst, 1) else {
-            todo!()
-        };
-        let Allocation::Register(input_b_reg) = self.allocations.get_allocation(inst, 2) else {
-            todo!()
-        };
+        let output_reg = reg!(self.allocations, inst, 0);
+        let input_a_reg = reg!(self.allocations, inst, 1);
+        let input_b_reg = reg!(self.allocations, inst, 2);
+
         self.copy_reg(output_reg, input_a_reg, input_a.size(), CopyExtendMode::None)?;
         match input_a.size() {
             1 => assemble!(self.block.assembler();
@@ -317,9 +269,7 @@ impl X64Emitter<'_> {
         input_b: JIRSlice,
         flag_type: FlagType,
     ) -> JITResult {
-        let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
-            todo!()
-        };
+        let output_reg = reg!(self.allocations, inst, 0);
         let (input_a_reg, input_b_op_id) = match input_a {
             JIRValue::Const(input_a) => {
                 // If the first argument is const, we load it into the output reg, since we will write
@@ -328,15 +278,11 @@ impl X64Emitter<'_> {
                 (output_reg, 1)
             }
             JIRValue::Slice(input_a) => {
-                let Allocation::Register(input_a_reg) = self.allocations.get_allocation(inst, 1) else {
-                    todo!()
-                };
+                let input_a_reg = reg!(self.allocations, inst, 1);
                 (input_a_reg, 2)
             }
         };
-        let Allocation::Register(input_b_reg) = self.allocations.get_allocation(inst, input_b_op_id) else {
-            todo!()
-        };
+        let input_b_reg = reg!(self.allocations, inst, input_b_op_id);
 
         match input_a.size() {
             1 => assemble!(self.block.assembler();
@@ -364,12 +310,8 @@ impl X64Emitter<'_> {
         input_b: JIRConst,
         flag_type: FlagType,
     ) -> JITResult {
-        let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
-            todo!()
-        };
-        let Allocation::Register(input_a_reg) = self.allocations.get_allocation(inst, 1) else {
-            todo!()
-        };
+        let output_reg = reg!(self.allocations, inst, 0);
+        let input_a_reg = reg!(self.allocations, inst, 1);
         match input_a.size() {
             1 => assemble!(self.block.assembler();
                 ; cmp Rb(input_a_reg.hw_enc()), input_b.value() as i8

@@ -16,6 +16,7 @@ use crate::jit::x86::{
 };
 use mogi_sleigh::spec::SpaceId;
 use mogi_sleigh::spec::jir::basic_block::InstId;
+use mogi_sleigh::spec::jir::jir_block::JIRBlockId;
 use mogi_sleigh::spec::jir::values::{
     JIRConst,
     JIRSlice,
@@ -72,6 +73,20 @@ impl X64AllocRequirements {
         space: SpaceId,
     ) {
         Self::load_requirements(requirement, pc, target, space);
+        condition.is_slice_then(|s| requirement.add_request(OperandRequest::int_read_any(*s)));
+    }
+
+    pub fn jcode_goto_requirements(
+        requirement: &mut AllocRequirement,
+        block_id: JIRBlockId,
+    ) {
+    }
+
+    pub fn jcode_goto_if_requirements(
+        requirement: &mut AllocRequirement,
+        condition: JIRValue,
+        block_id: JIRBlockId,
+    ) {
         condition.is_slice_then(|s| requirement.add_request(OperandRequest::int_read_any(*s)));
     }
 }
@@ -224,5 +239,41 @@ impl X64Emitter<'_> {
         let pc = self.processor_spec.program_counter_slice();
         let space = self.processor_spec.default_space();
         self.emit_load(inst, pc, address, space)
+    }
+
+    pub fn emit_jcode_goto(
+        &mut self,
+        inst: InstId,
+        block_id: JIRBlockId,
+    ) -> JITResult {
+        let label = self.block.dynamic_label(block_id);
+        assemble!(self.block.assembler();
+            ; jmp =>label
+        );
+        Ok(())
+    }
+
+    pub fn emit_jcode_goto_if(
+        &mut self,
+        inst: InstId,
+        condition: JIRValue,
+        block_id: JIRBlockId,
+    ) -> JITResult {
+        let condition_reg = match condition {
+            JIRValue::Slice(slice) => reg!(self.allocations, inst, 0),
+            JIRValue::Const(value) => {
+                let scratch = self.allocations.scratch_register(RegClass::Int);
+                self.load_const(scratch, value)?;
+                scratch
+            }
+        };
+        let label = self.block.dynamic_label(block_id);
+        assemble!(self.block.assembler();
+            // condition_reg == 0?
+            ; test Rq(condition_reg.hw_enc()), Rq(condition_reg.hw_enc())
+            // Jump to alternate jir block if condition_reg != 0
+            ; jnz =>label
+        );
+        Ok(())
     }
 }

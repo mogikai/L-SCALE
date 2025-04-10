@@ -5,6 +5,10 @@ use crate::jit::api::{
 };
 use crate::jit::assembler::MogiAssembler;
 use dynasmrt::relocations::Relocation;
+use dynasmrt::{
+    DynamicLabel,
+    DynasmLabelApi,
+};
 use libc::{
     MADV_HUGEPAGE,
     MAP_ANONYMOUS,
@@ -13,7 +17,9 @@ use libc::{
     PROT_READ,
     PROT_WRITE,
 };
+use mogi_sleigh::spec::jir::jir_block::JIRBlockId;
 use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::index_map::SecondaryMap;
 use std::collections::HashMap;
 use std::ptr::{
     NonNull,
@@ -78,6 +84,7 @@ pub struct CompiledBasicBlock<R: Relocation> {
     /// TODO: Check performance impact and maybe bake the arguments into the generated code?
     custom_op_args: Vec<Box<CustomOpArgs>>,
     assembler: MogiAssembler<R>,
+    labels: SecondaryMap<JIRBlockId, Option<DynamicLabel>>,
     /// The next block that needs to be executed when following the normal execution path.
     /// This is cleared when the block ends with a non-conditional goto instruction.
     fallthrough: Option<EVAddr>,
@@ -99,6 +106,15 @@ impl<R: Relocation + Clone> CompiledBasicBlock<R> {
 
     pub(super) fn clear_fallthrough(&mut self) {
         self.fallthrough = None;
+    }
+
+    /// Create or get the dynamic label associated with the provided block id
+    pub fn dynamic_label(
+        &mut self,
+        block_id: JIRBlockId,
+    ) -> DynamicLabel {
+        let label = &mut self.labels[block_id];
+        *label.get_or_insert_with(|| self.assembler.new_dynamic_label())
     }
 
     pub fn assembler(&mut self) -> &mut MogiAssembler<R> {
@@ -215,6 +231,7 @@ impl<R: Relocation + Clone> CodeBuffer<R> {
                 code: None,
                 custom_op_args: vec![],
                 assembler: MogiAssembler::new(),
+                labels: Default::default(),
                 fallthrough: successor,
             },
         );
@@ -276,6 +293,7 @@ impl<R: Relocation + Clone> CodeBuffer<R> {
             code: Some(code),
             custom_op_args: Vec::new(),
             assembler: MogiAssembler::new(),
+            labels: Default::default(),
             fallthrough: None,
         });
         self.occupied += size;

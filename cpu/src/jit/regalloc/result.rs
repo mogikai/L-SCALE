@@ -180,15 +180,19 @@ impl LoadSpillDirectives {
     pub fn before_inst_directives(
         &self,
         inst: InstId,
-    ) -> &[LoadSpillDirective] {
-        &self.before_directives[self.inst_to_directives[inst].before.clone()]
+    ) -> impl Iterator<Item = &LoadSpillDirective> {
+        self.before_directives[self.inst_to_directives[inst].before.clone()]
+            .iter()
+            .rev()
     }
 
     pub fn after_inst_directives(
         &self,
         inst: InstId,
-    ) -> &[LoadSpillDirective] {
-        &self.after_directives[self.inst_to_directives[inst].after.clone()]
+    ) -> impl Iterator<Item = &LoadSpillDirective> {
+        self.after_directives[self.inst_to_directives[inst].after.clone()]
+            .iter()
+            .rev()
     }
 }
 
