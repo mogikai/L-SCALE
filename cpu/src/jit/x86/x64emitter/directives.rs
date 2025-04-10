@@ -91,7 +91,7 @@ where
     match reg.class() {
         RegClass::Int => load_slice_to_int_reg(assembler, reg, slice),
         RegClass::Float => todo!(),
-        RegClass::Vector => todo!(),
+        RegClass::Vector => load_slice_to_vec_reg(assembler, reg, slice),
     }
 }
 
@@ -139,6 +139,52 @@ where
     Ok(())
 }
 
+#[inline]
+fn load_slice_to_vec_reg<R>(
+    assembler: &mut MogiAssembler<R>,
+    reg: HostReg,
+    slice: JIRSlice,
+) -> JITResult
+where
+    R: Relocation,
+{
+    let slice_offset = X86TaskContext::slice_offset(slice);
+
+    let reg = reg.hw_enc();
+    match slice.size() {
+        4 => {
+            assemble!(assembler;
+                ; vmovd Rx(reg), DWORD [cpu_context + slice_offset as _]
+            );
+        }
+        8 => {
+            assemble!(assembler;
+                ; vmovq Rx(reg), QWORD [cpu_context + slice_offset as _]
+            );
+        }
+        16 => {
+            // XMM => XMM
+            assemble!(assembler;
+                ; movupd Rx(reg), OWORD [cpu_context + slice_offset as _]
+            );
+        }
+        32 => {
+            // YMM => YMM
+            assemble!(assembler;
+                ; vmovupd Ry(reg), YWORD [cpu_context + slice_offset as _]
+            );
+        }
+        64 => {
+            // ZMM => ZMM
+            todo!("64-byte vector load")
+        }
+        size => {
+            panic!("Unsupported load size: {size}")
+        }
+    }
+    Ok(())
+}
+
 fn emit_spill_directive<R>(
     assembler: &mut MogiAssembler<R>,
     reg: HostReg,
@@ -150,7 +196,7 @@ where
     match reg.class() {
         RegClass::Int => spill_int_reg_to_slice(assembler, reg, slice),
         RegClass::Float => todo!(),
-        RegClass::Vector => todo!(),
+        RegClass::Vector => spill_vec_reg_to_slice(assembler, reg, slice),
     }
 }
 
@@ -189,6 +235,51 @@ where
         }
         _ => {
             panic!("Unsupported store size")
+        }
+    }
+    Ok(())
+}
+
+fn spill_vec_reg_to_slice<R>(
+    assembler: &mut MogiAssembler<R>,
+    reg: HostReg,
+    slice: JIRSlice,
+) -> JITResult
+where
+    R: Relocation,
+{
+    let slice_offset = X86TaskContext::slice_offset(slice);
+
+    let reg = reg.hw_enc();
+    match slice.size() {
+        4 => {
+            assemble!(assembler;
+                ; vmovd DWORD [cpu_context + slice_offset as _], Rx(reg)
+            );
+        }
+        8 => {
+            assemble!(assembler;
+                ; vmovq QWORD [cpu_context + slice_offset as _], Rx(reg)
+            );
+        }
+        16 => {
+            // XMM => XMM
+            assemble!(assembler;
+                ; movupd OWORD [cpu_context + slice_offset as _], Rx(reg)
+            );
+        }
+        32 => {
+            // YMM => YMM
+            assemble!(assembler;
+                ; vmovupd YWORD [cpu_context + slice_offset as _], Ry(reg)
+            );
+        }
+        64 => {
+            // ZMM => ZMM
+            todo!("64-byte vector load")
+        }
+        size => {
+            panic!("Unsupported load size: {size}")
         }
     }
     Ok(())

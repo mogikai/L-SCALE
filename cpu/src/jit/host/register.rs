@@ -90,7 +90,7 @@ impl HostReg {
     #[inline(always)]
     pub const fn from_index(index: usize) -> Self {
         HostReg {
-            bits: (index & (Self::NUM_INDEX - 1)) as u8,
+            bits: index as u8,
         }
     }
 

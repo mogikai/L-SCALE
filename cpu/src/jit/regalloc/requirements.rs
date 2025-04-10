@@ -100,6 +100,24 @@ impl OperandRequest {
             class: RegClass::Int,
         }
     }
+
+    pub fn vec_write_any(slice: JIRSlice) -> Self {
+        OperandRequest {
+            slice,
+            constraint: OperandConstraint::Any,
+            kind: OperandKind::Write,
+            class: RegClass::Vector,
+        }
+    }
+
+    pub fn vec_read_any(slice: JIRSlice) -> Self {
+        OperandRequest {
+            slice,
+            constraint: OperandConstraint::Any,
+            kind: OperandKind::Read,
+            class: RegClass::Vector,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]

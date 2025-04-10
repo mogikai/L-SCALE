@@ -45,7 +45,7 @@ use crate::jit::api::{
 use crate::jit::code_buffer::CompiledBasicBlock;
 use crate::jit::host::register::{
     HostRegMap,
-    HostRegSet,
+    HostRegSet, RegClass,
 };
 use crate::jit::regalloc::RegisterAllocator;
 use crate::jit::regalloc::requirements::{
@@ -241,10 +241,10 @@ impl X64AllocRequirements {
                 Self::bitwise_negate_requirements(&mut requirement, args.output, args.input)
             }
             JIRInstruction::IntNegate(args) => Self::negate_requirements(&mut requirement, args.output, args.input),
-            JIRInstruction::FloatDiv(_) => {}
-            JIRInstruction::FloatMul(_) => {}
-            JIRInstruction::FloatAdd(_) => {}
-            JIRInstruction::FloatSubtract(_) => {}
+            JIRInstruction::FloatDiv(args) => Self::fdiv_requirements(&mut requirement, args.output, args.input_a, args.input_b),
+            JIRInstruction::FloatMul(args) => Self::fmul_requirements(&mut requirement, args.output, args.input_a, args.input_b),
+            JIRInstruction::FloatAdd(args) => Self::fadd_requirements(&mut requirement, args.output, args.input_a, args.input_b),
+            JIRInstruction::FloatSubtract(args) => Self::fsub_requirements(&mut requirement, args.output, args.input_a, args.input_b),
             JIRInstruction::FloatLess(_) => {}
             JIRInstruction::FloatGreater(_) => {}
             JIRInstruction::FloatLessEqual(_) => {}
@@ -317,12 +317,12 @@ impl X64AllocRequirements {
             JIRInstruction::Nan(_) => {}
             JIRInstruction::Abs(_) => {}
             JIRInstruction::Sqrt(_) => {}
-            JIRInstruction::IntToFloat(_) => {}
-            JIRInstruction::FloatToFloat(_) => {}
-            JIRInstruction::Trunc(_) => {}
-            JIRInstruction::Ceil(_) => {}
-            JIRInstruction::Floor(_) => {}
-            JIRInstruction::Round(_) => {}
+            JIRInstruction::IntToFloat(args) => Self::itof_requirements(&mut requirement, args.output, args.input),
+            JIRInstruction::FloatToFloat(args) => Self::ftof_requirements(&mut requirement, args.output, args.input),
+            JIRInstruction::Trunc(args) => Self::trunc_requirements(&mut requirement, args.output, args.input),
+            JIRInstruction::Ceil(args) => Self::round_requirements(&mut requirement, args.output, args.input),
+            JIRInstruction::Floor(args) => Self::round_requirements(&mut requirement, args.output, args.input),
+            JIRInstruction::Round(args) => Self::round_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::CustomOp { .. } => {}
         }
     }
@@ -498,10 +498,10 @@ impl X64Emitter<'_> {
             }
             JIRInstruction::BitNegate(args) => self.emit_bitwise_negate(inst_id, args.output, args.input)?,
             JIRInstruction::IntNegate(args) => self.emit_negate(inst_id, args.output, args.input)?,
-            JIRInstruction::FloatDiv(args) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::FloatMul(args) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::FloatAdd(args) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::FloatSubtract(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::FloatDiv(args) => self.emit_fdiv(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::FloatMul(args) => self.emit_fmul(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::FloatAdd(args) => self.emit_fadd(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::FloatSubtract(args) => self.emit_fsub(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::FloatLess(args) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::FloatGreater(args) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::FloatLessEqual(args) => todo!("Instruction not yet implemented: {jinst}"),
@@ -540,12 +540,12 @@ impl X64Emitter<'_> {
             JIRInstruction::Nan(args) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::Abs(args) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::Sqrt(args) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::IntToFloat(args) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::FloatToFloat(args) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::Trunc(args) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::Ceil(args) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::Floor(args) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::Round(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::IntToFloat(args) => self.emit_itof(inst_id, args.output, args.input)?,
+            JIRInstruction::FloatToFloat(args) => self.emit_ftof(inst_id, args.output, args.input)?,
+            JIRInstruction::Trunc(args) => self.emit_trunc(inst_id, args.output, args.input)?,
+            JIRInstruction::Ceil(args) => self.emit_ceil(inst_id, args.output, args.input)?,
+            JIRInstruction::Floor(args) => self.emit_floor(inst_id, args.output, args.input)?,
+            JIRInstruction::Round(args) => self.emit_round(inst_id, args.output, args.input)?,
             JIRInstruction::CustomOp {
                 output,
                 input_a,

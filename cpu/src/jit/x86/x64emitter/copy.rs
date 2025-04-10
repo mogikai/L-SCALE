@@ -82,10 +82,20 @@ impl X64Emitter<'_> {
         size: JIRSize,
         extend_mode: CopyExtendMode,
     ) -> JITResult {
-        if !matches!(target.class(), RegClass::Int) {
-            todo!("Implement non int copy")
+        match target.class() {
+            RegClass::Int => self.copy_reg_int(target, source, size, extend_mode),
+            RegClass::Vector => self.copy_reg_vec(target, source, size),
+            RegClass::Float => todo!("copy_reg for floats"),
         }
-        debug_assert_eq!(target.class(), source.class());
+    }
+
+    fn copy_reg_int(
+        &mut self,
+        target: HostReg,
+        source: HostReg,
+        size: JIRSize,
+        extend_mode: CopyExtendMode,
+    ) -> JITResult {
         match extend_mode {
             CopyExtendMode::ZeroExtend(new_size) => {
                 if target == source && size == new_size {
@@ -232,6 +242,33 @@ impl X64Emitter<'_> {
         Ok(())
     }
 
+    fn copy_reg_vec(
+        &mut self,
+        target: HostReg,
+        source: HostReg,
+        size: JIRSize,
+    ) -> JITResult {
+        match size {
+            4 => {
+                // single-precision
+                assemble!(self.block.assembler();
+                    ; movss Rx(target.hw_enc()), Rx(source.hw_enc())
+                );
+            }
+            8 => {
+                // double-precision
+                assemble!(self.block.assembler();
+                    ; movsd Rx(target.hw_enc()), Rx(source.hw_enc())
+                );
+            }
+            size => {
+                todo!("Unsupported size {size}")
+            }
+        }
+
+        Ok(())
+    }
+
     /// Writes a constant directly into the memory location associated with the target slice.
     /// This function may use the scratch register.
     #[inline]
@@ -325,9 +362,20 @@ impl X64Emitter<'_> {
         target: HostReg,
         value: JIRConst,
     ) -> JITResult {
-        if !matches!(target.class(), RegClass::Int) {
-            todo!("Implement non int const load")
+        match target.class() {
+            RegClass::Int => self.load_const_int(target, value)?,
+            RegClass::Vector => self.load_const_vec(target, value)?,
+            RegClass::Float => todo!("Implement float const load"),
         }
+
+        Ok(())
+    }
+
+    fn load_const_int(
+        &mut self,
+        target: HostReg,
+        value: JIRConst,
+    ) -> JITResult {
         let size = value.size();
         let value = value.value();
         if value == 0 {
@@ -363,6 +411,44 @@ impl X64Emitter<'_> {
                 todo!("Unsupported size {size}")
             }
         }
+        Ok(())
+    }
+
+    fn load_const_vec(
+        &mut self,
+        target: HostReg,
+        value: JIRConst,
+    ) -> JITResult {
+        let size = value.size();
+        let value = value.value();
+        // TODO more efficient zeroing
+        // if value == 0 {
+        //     // Zeroing out a register can be done more efficiently
+        //     return self.load_zero(target, size);
+        // }
+        todo!("const vec loading");
+        // let target = target.hw_enc();
+        // match size {
+        //     ..=16 => {
+        //         // XMM => XMM
+        //         assemble!(self.block.assembler();
+        //             ; movups Rx(target), OWORD value as _
+        //         );
+        //     }
+        //     ..=32 => {
+        //         // YMM => YMM
+        //         assemble!(self.block.assembler();
+        //             ; movups Rx(target), YWORD value as _
+        //         );
+        //     }
+        //     ..=64 => {
+        //         // ZMM => ZMM
+        //         todo!("AVX-512 is currently not supported")
+        //     }
+        //     size => {
+        //         todo!("Unsupported size {size}")
+        //     }
+        // }
         Ok(())
     }
 
