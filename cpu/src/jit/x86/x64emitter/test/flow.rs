@@ -11,6 +11,7 @@ use crate::jit::x86::test::{
     make_basic_block_from_instructions,
     set_slice,
     setup,
+    setup_with_memory,
 };
 use mogi_sleigh::jinst;
 use mogi_sleigh::spec::jir::values::{
@@ -18,6 +19,7 @@ use mogi_sleigh::spec::jir::values::{
     JIRSlice,
     JIRValue,
 };
+use mogi_system::components::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
@@ -26,6 +28,7 @@ use tracing_subscriber::{
     EnvFilter,
     fmt,
 };
+use zerocopy::IntoBytes;
 
 #[test]
 fn test_goto_direct_if_true() {
@@ -43,6 +46,36 @@ fn test_goto_direct_if_true() {
     let instructions = vec![
         //
         jinst!(if slice_a goto slice_addr),
+    ];
+    exec_instructions(&mut jit, &mut context, instructions);
+    let actual: u32 = get_slice_value(context.as_ref(), &spec, result);
+
+    let program_counter = jit.instruction_pointer(context.as_ref()).unwrap();
+    assert_eq!(u64::from(program_counter), 0x1234u64)
+}
+
+#[test]
+fn test_goto_indirect() {
+    let stack_addr = EVAddr::from(0xffff_ffff_ffff_0000u64);
+    let (mut jit, spec, mut context, mut mmu) = setup_with_memory(stack_addr);
+    let reg_out = "EAX";
+    let reg_addr = "RDX";
+    let reg_a = "EBX";
+    let a = 2348u32;
+    let result = get_reg_slice(&spec, reg_out);
+    let slice_a = get_reg_slice(&spec, reg_a);
+    let slice_target = get_reg_slice(&spec, reg_addr);
+    set_slice(&mut *context, slice_a, a);
+    set_slice(&mut *context, slice_target, u64::from(stack_addr));
+
+    let jump_target = 0x1234u64;
+    mmu.borrow_mut()
+        .write(stack_addr, jump_target.as_bytes())
+        .unwrap();
+
+    let instructions = vec![
+        //
+        jinst!(goto[slice_target]),
     ];
     exec_instructions(&mut jit, &mut context, instructions);
     let actual: u32 = get_slice_value(context.as_ref(), &spec, result);
@@ -76,6 +109,36 @@ fn test_goto_direct_if_false() {
 }
 
 #[test]
+fn test_goto_indirect_if_false() {
+    let stack_addr = EVAddr::from(0xffff_ffff_ffff_0000u64);
+    let (mut jit, spec, mut context, mut mmu) = setup_with_memory(stack_addr);
+    let reg_out = "EAX";
+    let reg_addr = "RDX";
+    let reg_a = "EBX";
+    let a = 0u32;
+    let result = get_reg_slice(&spec, reg_out);
+    let slice_a = get_reg_slice(&spec, reg_a);
+    let slice_target = get_reg_slice(&spec, reg_addr);
+    set_slice(&mut *context, slice_a, a);
+    set_slice(&mut *context, slice_target, u64::from(stack_addr));
+
+    let jump_target = 0x1234u64;
+    mmu.borrow_mut()
+        .write(stack_addr, jump_target.as_bytes())
+        .unwrap();
+
+    let instructions = vec![
+        //
+        jinst!(if slice_a goto [slice_target]),
+    ];
+    exec_instructions(&mut jit, &mut context, instructions);
+    let actual: u32 = get_slice_value(context.as_ref(), &spec, result);
+
+    let program_counter = jit.instruction_pointer(context.as_ref()).unwrap();
+    assert_eq!(u64::from(program_counter), 0x800200u64)
+}
+
+#[test]
 fn test_goto_direct_if_true_chained() {
     let (mut jit, spec, mut context) = setup(false);
     let reg_out = "EAX";
@@ -88,8 +151,43 @@ fn test_goto_direct_if_true_chained() {
     set_slice(&mut *context, slice_cond, cond);
     set_slice(&mut *context, slice_addr, 0x8000200u64);
 
-    let end_block_addr = setup_blocks(&mut jit, &mut context, slice_cond, slice_addr, slice_result);
+    let end_block_addr = setup_blocks(&mut jit, &mut context, slice_cond, slice_addr, slice_result, false, true);
 
+    let ip = jit.instruction_pointer(&context).unwrap();
+    jit.execute(&mut context, ip).unwrap();
+
+    let actual: u32 = get_slice_value(context.as_ref(), &spec, slice_result);
+
+    assert_eq!(actual, 0x042u32);
+
+    let program_counter = jit.instruction_pointer(context.as_ref()).unwrap();
+    assert_eq!(program_counter, end_block_addr)
+}
+
+#[test]
+fn test_goto_indirect_if_true() {
+    let stack_addr = EVAddr::from(0xffff_ffff_ffff_0000u64);
+    let (mut jit, spec, mut context, mut mmu) = setup_with_memory(stack_addr);
+    let reg_out = "EAX";
+    let reg_addr = "RDX";
+    let reg_cond = "EBX";
+    let cond = 2348u32;
+    let slice_result = get_reg_slice(&spec, reg_out);
+    let slice_cond = get_reg_slice(&spec, reg_cond);
+    let slice_target = get_reg_slice(&spec, reg_addr);
+    set_slice(&mut *context, slice_cond, cond);
+    set_slice(&mut *context, slice_target, u64::from(stack_addr));
+
+    let jump_target = 0x8000200u64;
+    mmu.borrow_mut()
+        .write(stack_addr, jump_target.as_bytes())
+        .unwrap();
+
+    let end_block_addr = setup_blocks(&mut jit, &mut context, slice_cond, slice_target, slice_result, true, false);
+
+    let ip = jit.instruction_pointer(&context).unwrap();
+    jit.execute(&mut context, ip).unwrap();
+    // Run again, since we want to execute another block.
     let ip = jit.instruction_pointer(&context).unwrap();
     jit.execute(&mut context, ip).unwrap();
 
@@ -115,7 +213,7 @@ fn test_goto_direct_if_false_chained() {
     set_slice(&mut *context, slice_addr, 0x8000200u64);
     set_slice(&mut *context, slice_result, 0x0u32);
 
-    let end_block_addr = setup_blocks(&mut jit, &mut context, slice_cond, slice_addr, slice_result);
+    let end_block_addr = setup_blocks(&mut jit, &mut context, slice_cond, slice_addr, slice_result, false, true);
 
     let ip = jit.instruction_pointer(&context).unwrap();
     jit.execute(&mut context, ip).unwrap();
@@ -134,6 +232,8 @@ fn setup_blocks(
     slice_cond: JIRSlice,
     slice_addr: JIRSlice,
     slice_result: JIRSlice,
+    indirect: bool,
+    chain: bool,
 ) -> EVAddr {
     let start_block_addr = EVAddr::from(0x8000000u64);
     let false_block_addr = EVAddr::from(0x8000100u64);
@@ -146,7 +246,11 @@ fn setup_blocks(
     jit.compile_target_block(&make_basic_block_from_instructions(
         start_block_addr,
         false_block_addr,
-        [jinst!(if slice_cond goto slice_addr)],
+        if indirect {
+            [jinst!(if slice_cond goto [slice_addr])]
+        } else {
+            [jinst!(if slice_cond goto slice_addr)]
+        },
     ))
     .unwrap();
 
@@ -164,9 +268,11 @@ fn setup_blocks(
     ))
     .unwrap();
 
-    jit.chain_blocks(start_block_addr, false_block_addr, JITPathChoice::Main)
-        .unwrap();
-    jit.chain_blocks(start_block_addr, true_block_addr, JITPathChoice::Alternate)
-        .unwrap();
+    if chain {
+        jit.chain_blocks(start_block_addr, false_block_addr, JITPathChoice::Main)
+            .unwrap();
+        jit.chain_blocks(start_block_addr, true_block_addr, JITPathChoice::Alternate)
+            .unwrap();
+    }
     end_block_addr
 }

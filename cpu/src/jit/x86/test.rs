@@ -1,8 +1,11 @@
+use crate::cpu::MogiCPU;
 use crate::jit::api::{
     JITTaskRuntimeContext,
     MogiJit,
 };
 use crate::jit::x86::X86MogiJit;
+use crate::new_cpu_trait::CPU;
+use mogi_mem::PAGE_SIZE;
 use mogi_mem::mmu::MogiMMU;
 use mogi_sleigh::SleighPreprocessorFactory;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
@@ -14,6 +17,11 @@ use mogi_sleigh::spec::jir::values::JIRSlice;
 use mogi_sleigh::spec::{
     ProcessorSpecification,
     SpaceId,
+};
+use mogi_system::components::mmu::{
+    MMU,
+    MemoryAction,
+    Permission,
 };
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::MapKey;
@@ -45,6 +53,93 @@ pub(super) fn setup(
     let mut jit = X86MogiJit::new(specification.clone(), mmu.clone(), debug);
     let context = Box::new(jit.new_runtime_context());
     (jit, specification, context)
+}
+
+pub(super) fn setup_with_memory(
+    stack_addr: EVAddr
+) -> (
+    X86MogiJit,
+    Rc<RefCell<ProcessorSpecification>>,
+    Box<<X86MogiJit as MogiJit>::RuntimeContext>,
+    Rc<RefCell<MogiMMU>>,
+) {
+    let mut spec_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    spec_path.push("resources/test/x86_reduced/x86-64.slaspec");
+    let spec_dir = spec_path.parent().unwrap();
+    let factory = SleighPreprocessorFactory::new().working_dir(spec_dir.to_path_buf());
+    let compiler = SleighCompilerBuilder::new()
+        .preprocessor_factory(factory)
+        .build();
+    let specification = Rc::new(RefCell::new(compiler.compile(spec_path.as_path()).unwrap()));
+
+    let stack_page_count = 10;
+    let page_count = 10;
+    let stack_addr = u64::from(stack_addr);
+
+    // Set up the mmu.
+    let mmu = Rc::new(RefCell::new(MogiMMU::new()));
+    {
+        let mut mmu = mmu.borrow_mut();
+        // We allocate enough memory
+        mmu.alloc_physical(0x0u64.into(), (page_count + stack_page_count) * PAGE_SIZE)
+            .unwrap();
+
+        // And identity-map the virtual addresses
+        for page_id in 0..page_count {
+            mmu.set_page_table_entry(
+                (page_id as u64 * 4096u64).into(),
+                (page_id as u64 * 4096u64).into(),
+                Permission::ALL,
+            )
+            .unwrap();
+        }
+        // Map stack pages downwards.
+        for page_id in 0..stack_page_count {
+            mmu.set_page_table_entry(
+                (stack_addr - (page_id as u64 * 4096u64)).into(),
+                ((page_id + page_count) as u64 * 4096u64).into(),
+                Permission::ALL,
+            )
+            .unwrap();
+        }
+    }
+
+    // Set up the just in time compiler. TODO: Maybe we can refactor this such that the jit doesn't need the spec.
+    let mut jit = X86MogiJit::new(
+        specification.clone(),
+        mmu.clone(),
+        std::env::var("MOGI_DEBUG_JIT").map_or(false, |val| val == "true"),
+    );
+    let mut context = Box::new(jit.new_runtime_context());
+
+    let mmu_tlb = mmu.clone();
+    jit.register_tlb_read_miss_callback(move |ctx, addr, size, space| {
+        let mmu = mmu_tlb.borrow();
+        let tlb = ctx.tlb_mut();
+        unsafe {
+            mmu.populate_tlb(tlb, addr, MemoryAction::READ)
+                .map_err(|e| todo!())
+        }
+    })
+    .unwrap();
+
+    let mmu_tlb = mmu.clone();
+    jit.register_tlb_write_miss_callback(move |ctx, addr, size, space| {
+        let mmu = mmu_tlb.borrow();
+        let tlb = ctx.tlb_mut();
+        unsafe {
+            mmu.populate_tlb(tlb, addr, MemoryAction::WRITE)
+                .map_err(|e| todo!())
+        }
+    })
+    .unwrap();
+
+    let rip_slice = get_reg_slice(&specification, "RIP");
+    set_slice(&mut *context, rip_slice, 0x0u64);
+    let rsp_slice = get_reg_slice(&specification, "RSP");
+    set_slice(&mut *context, rsp_slice, stack_addr);
+
+    (jit, specification, context, mmu)
 }
 
 pub(super) fn set_slice<T: JITTaskRuntimeContext, V: ToBytes>(

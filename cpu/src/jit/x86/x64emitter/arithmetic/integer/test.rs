@@ -6,5 +6,6 @@ mod remainder;
 mod shift_left;
 mod shift_right;
 mod shift_right_signed;
+mod signed_divide;
 mod signed_remainder;
 mod subtract;

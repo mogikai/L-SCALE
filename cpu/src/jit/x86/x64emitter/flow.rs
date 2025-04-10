@@ -27,6 +27,11 @@ pub enum ProgramCounter {
     Constant(JIRConst),
 }
 
+enum JumpType {
+    Direct,
+    Indirect,
+}
+
 impl From<JIRConst> for ProgramCounter {
     fn from(value: JIRConst) -> Self {
         ProgramCounter::Constant(value)
@@ -58,6 +63,17 @@ impl X64AllocRequirements {
         target.is_slice_then(|s| requirement.add_request(OperandRequest::int_read_any(*s)));
         condition.is_slice_then(|s| requirement.add_request(OperandRequest::int_read_any(*s)));
     }
+
+    pub fn goto_indirect_if_requirements(
+        requirement: &mut AllocRequirement,
+        condition: JIRValue,
+        pc: JIRSlice,
+        target: JIRValue,
+        space: SpaceId,
+    ) {
+        Self::load_requirements(requirement, pc, target, space);
+        condition.is_slice_then(|s| requirement.add_request(OperandRequest::int_read_any(*s)));
+    }
 }
 
 impl X64Emitter<'_> {
@@ -70,26 +86,7 @@ impl X64Emitter<'_> {
         inst: InstId,
         target: JIRValue,
     ) -> JITResult {
-        self.block.clear_fallthrough();
-        let pc = match target {
-            JIRValue::Slice(address) => ProgramCounter::Register(reg!(self.allocations, inst, 0)),
-            JIRValue::Const(address) => ProgramCounter::Constant(address),
-        };
-        self.emit_write_pc(pc)?;
-        // TODO: Check overlap of inputs for next block and adjust allocations instead of saving slices
-        //       if the blocks are chained?
-        // Saving slices is not necessary, since the register allocator will have emitted spill directives
-        // for all previous writes.
-        // self.save_loaded_slices()?;
-
-        // Emit all after directives now, since we jump afterward.
-        self.emit_directives(self.allocations.directives().after_inst_directives(inst))?;
-
-        // We jump to the exit label. This will either jump to the epilogue or to the chained block.
-        assemble!(self.block.assembler();
-            ; jmp ->exit_success
-        );
-        Ok(())
+        self.emit_goto(inst, target, JumpType::Direct)
     }
 
     /// Emit a goto instruction that jumps to the address loaded from memory located at `target`.
@@ -99,7 +96,18 @@ impl X64Emitter<'_> {
         inst: InstId,
         target: JIRValue,
     ) -> JITResult {
-        self.emit_load_pc(inst, target)?;
+        self.emit_goto(inst, target, JumpType::Indirect)
+    }
+
+    fn emit_goto(
+        &mut self,
+        inst: InstId,
+        target: JIRValue,
+        jump_type: JumpType,
+    ) -> JITResult {
+        self.block.clear_fallthrough();
+
+        self.emit_write_pc(inst, target, jump_type)?;
 
         // Emit all after directives now, since we jump afterward.
         self.emit_directives(self.allocations.directives().after_inst_directives(inst))?;
@@ -116,9 +124,34 @@ impl X64Emitter<'_> {
         target: JIRValue,
         condition: JIRValue,
     ) -> JITResult {
+        self.emit_goto_if(inst, target, condition, JumpType::Direct)
+    }
+
+    pub fn emit_goto_indirect_if(
+        &mut self,
+        inst: InstId,
+        target: JIRValue,
+        condition: JIRValue,
+    ) -> JITResult {
+        self.emit_goto_if(inst, target, condition, JumpType::Indirect)
+    }
+
+    pub fn emit_goto_if(
+        &mut self,
+        inst: InstId,
+        target: JIRValue,
+        condition: JIRValue,
+        jump_type: JumpType,
+    ) -> JITResult {
         let condition_reg = match condition {
             JIRValue::Slice(slice) => {
-                let condition_op_id = if target.is_slice() { 1 } else { 0 };
+                let mut condition_op_id = if target.is_slice() { 1 } else { 0 };
+                if let JumpType::Indirect = jump_type {
+                    // If the jump is indirect, we load the pc directly. The load is delegated to the load
+                    // implementation, which always requests the output, in this case the pc.
+                    // The target is only requested if it is a slice just like in the direct jump case.
+                    condition_op_id += 1;
+                }
                 reg!(self.allocations, inst, condition_op_id)
             }
             JIRValue::Const(value) => {
@@ -138,12 +171,9 @@ impl X64Emitter<'_> {
             ; jmp >proceed
             ; alternate:
         );
+
         // If the condition is met, write the alternate target pc and then jump to the alternate exit routine.
-        let alternate = match target {
-            JIRValue::Slice(target) => ProgramCounter::Register(reg!(self.allocations, inst, 0)),
-            JIRValue::Const(target) => ProgramCounter::Constant(target),
-        };
-        self.emit_write_pc(alternate)?;
+        self.emit_write_pc(inst, target, jump_type)?;
 
         // Emit all after directives now, since we jump afterward.
         self.emit_directives(self.allocations.directives().after_inst_directives(inst))?;
@@ -155,8 +185,26 @@ impl X64Emitter<'_> {
         Ok(())
     }
 
+    fn emit_write_pc(
+        &mut self,
+        inst: InstId,
+        target: JIRValue,
+        jump_type: JumpType,
+    ) -> JITResult {
+        match jump_type {
+            JumpType::Direct => {
+                let alternate = match target {
+                    JIRValue::Slice(target) => ProgramCounter::Register(reg!(self.allocations, inst, 0)),
+                    JIRValue::Const(target) => ProgramCounter::Constant(target),
+                };
+                self.emit_load_pc_from_reg(alternate)
+            }
+            JumpType::Indirect => self.emit_load_pc_from_mem(inst, target),
+        }
+    }
+
     /// Write the provided address to the program counter slice.
-    pub fn emit_write_pc(
+    pub fn emit_load_pc_from_reg(
         &mut self,
         address: ProgramCounter,
     ) -> JITResult {
@@ -168,7 +216,7 @@ impl X64Emitter<'_> {
     }
 
     /// Load the program counter from the memory location pointed to by `address`.
-    pub fn emit_load_pc(
+    pub fn emit_load_pc_from_mem(
         &mut self,
         inst: InstId,
         address: JIRValue,

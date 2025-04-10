@@ -264,12 +264,14 @@ impl X64AllocRequirements {
             JIRInstruction::BoolNegate(args) => {
                 Self::boolean_negate_requirements(&mut requirement, args.output, args.input)
             }
-            JIRInstruction::CallDirect(..) => {}
-            JIRInstruction::CallIndirect(..) => {}
-            JIRInstruction::ReturnDirect(_) => {}
-            JIRInstruction::ReturnIndirect(_) => {}
-            JIRInstruction::GotoDirect(target) => Self::goto_direct_requirements(&mut requirement, *target),
-            JIRInstruction::GotoIndirect(target) => {
+            JIRInstruction::GotoDirect(target)
+            | JIRInstruction::CallDirect(target, _)
+            | JIRInstruction::ReturnDirect(target) => {
+                Self::goto_direct_requirements(&mut requirement, *target);
+            }
+            JIRInstruction::GotoIndirect(target)
+            | JIRInstruction::CallIndirect(target, _)
+            | JIRInstruction::ReturnIndirect(target) => {
                 let pc = spec.program_counter_slice();
                 let space = spec.default_space();
                 Self::goto_indirect_requirements(&mut requirement, pc, *target, space);
@@ -277,7 +279,11 @@ impl X64AllocRequirements {
             JIRInstruction::GotoDirectIf { condition, target } => {
                 Self::goto_direct_if_requirements(&mut requirement, *condition, *target);
             }
-            JIRInstruction::GotoIndirectIf { .. } => {}
+            JIRInstruction::GotoIndirectIf { condition, target } => {
+                let pc = spec.program_counter_slice();
+                let space = spec.default_space();
+                Self::goto_indirect_if_requirements(&mut requirement, *condition, pc, *target, space);
+            }
             JIRInstruction::JCodeGoto(_) => {}
             JIRInstruction::JCodeGotoIf { .. } => {}
             JIRInstruction::PopCount(args) => {
@@ -392,7 +398,7 @@ impl X64Emitter<'_> {
             Some(next) => {
                 // Write the pc before we exit the block to make it visible to the jit.
                 // TODO: This could maybe be optimized such that we do not write the pc on chained blocks?
-                self.emit_write_pc(JIRConst::from(u64::from(next)).into())?;
+                self.emit_load_pc_from_reg(JIRConst::from(u64::from(next)).into())?;
                 // self.save_loaded_slices()?;
                 assemble!(self.block.assembler();
                     ; jmp ->exit_success
@@ -495,16 +501,18 @@ impl X64Emitter<'_> {
             JIRInstruction::BoolAnd(args) => self.emit_boolean_and(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::BoolXor(args) => self.emit_boolean_xor(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::BoolNegate(args) => self.emit_boolean_negate(inst_id, args.output, args.input)?,
-            JIRInstruction::CallDirect(..) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::CallIndirect(..) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::ReturnDirect(_) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::ReturnIndirect(_) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::GotoDirect(target) => self.emit_goto_direct(inst_id, *target)?,
-            JIRInstruction::GotoIndirect(target) => self.emit_goto_indirect(inst_id, *target)?,
+            JIRInstruction::GotoDirect(target)
+            | JIRInstruction::CallDirect(target, _)
+            | JIRInstruction::ReturnDirect(target) => self.emit_goto_direct(inst_id, *target)?,
+            JIRInstruction::GotoIndirect(target)
+            | JIRInstruction::CallIndirect(target, _)
+            | JIRInstruction::ReturnIndirect(target) => self.emit_goto_indirect(inst_id, *target)?,
             JIRInstruction::GotoDirectIf { condition, target } => {
                 self.emit_goto_direct_if(inst_id, *target, *condition)?
             }
-            JIRInstruction::GotoIndirectIf { condition, target } => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::GotoIndirectIf { condition, target } => {
+                self.emit_goto_indirect_if(inst_id, *target, *condition)?
+            }
             JIRInstruction::JCodeGoto(block_id) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::JCodeGotoIf {
                 condition,
