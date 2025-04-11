@@ -7,3 +7,4 @@ mod itof;
 mod round;
 mod trunc;
 mod unaryops;
+mod comparison;

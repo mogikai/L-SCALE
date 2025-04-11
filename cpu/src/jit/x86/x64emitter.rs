@@ -245,12 +245,12 @@ impl X64AllocRequirements {
             JIRInstruction::FloatMul(args) => Self::fmul_requirements(&mut requirement, args.output, args.input_a, args.input_b),
             JIRInstruction::FloatAdd(args) => Self::fadd_requirements(&mut requirement, args.output, args.input_a, args.input_b),
             JIRInstruction::FloatSubtract(args) => Self::fsub_requirements(&mut requirement, args.output, args.input_a, args.input_b),
-            JIRInstruction::FloatLess(_) => {}
-            JIRInstruction::FloatGreater(_) => {}
-            JIRInstruction::FloatLessEqual(_) => {}
-            JIRInstruction::FloatGreaterEqual(_) => {}
-            JIRInstruction::FloatEquals(_) => {}
-            JIRInstruction::FloatNotEquals(_) => {}
+            JIRInstruction::FloatLess(args) => Self::fless_requirements(&mut requirement, args.output, args.input_a, args.input_b),
+            JIRInstruction::FloatGreater(args) => Self::fgreater_requirements(&mut requirement, args.output, args.input_a, args.input_b),
+            JIRInstruction::FloatLessEqual(args) => Self::flesseq_requirements(&mut requirement, args.output, args.input_a, args.input_b),
+            JIRInstruction::FloatGreaterEqual(args) => Self::fgreatereq_requirements(&mut requirement, args.output, args.input_a, args.input_b),
+            JIRInstruction::FloatEquals(args) => Self::feq_requirements(&mut requirement, args.output, args.input_a, args.input_b),
+            JIRInstruction::FloatNotEquals(args) => Self::fneq_requirements(&mut requirement, args.output, args.input_a, args.input_b),
             JIRInstruction::FloatNegate(args) => Self::fneg_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::BoolOr(args) => {
                 Self::boolean_requirements(&mut requirement, args.output, args.input_a, args.input_b)
@@ -502,12 +502,12 @@ impl X64Emitter<'_> {
             JIRInstruction::FloatMul(args) => self.emit_fmul(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::FloatAdd(args) => self.emit_fadd(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::FloatSubtract(args) => self.emit_fsub(inst_id, args.output, args.input_a, args.input_b)?,
-            JIRInstruction::FloatLess(args) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::FloatGreater(args) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::FloatLessEqual(args) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::FloatGreaterEqual(args) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::FloatEquals(args) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::FloatNotEquals(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::FloatLess(args) => self.emit_fless(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::FloatGreater(args) => self.emit_fgreater(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::FloatLessEqual(args) => self.emit_flesseq(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::FloatGreaterEqual(args) => self.emit_fgreatereq(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::FloatEquals(args) => self.emit_feq(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::FloatNotEquals(args) => self.emit_fneq(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::FloatNegate(args) => self.emit_fneg(inst_id, args.output, args.input)?,
             JIRInstruction::BoolOr(args) => self.emit_boolean_or(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::BoolAnd(args) => self.emit_boolean_and(inst_id, args.output, args.input_a, args.input_b)?,
