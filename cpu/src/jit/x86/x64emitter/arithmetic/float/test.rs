@@ -6,3 +6,5 @@ mod mul;
 mod round;
 mod sub;
 mod trunc;
+mod sqrt;
+mod neg;

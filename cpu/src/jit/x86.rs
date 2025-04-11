@@ -321,7 +321,9 @@ impl MogiJit for X86MogiJit {
         let regalloc = RegisterAllocator::new(
             &target_block,
             &alloc_requirements,
-            RegAllocHostConstraints::new(usable_registers).with_scratch(GPRegister::R15.into_host_reg()),
+            RegAllocHostConstraints::new(usable_registers)
+                .with_scratch(GPRegister::R15.into_host_reg())
+                .with_scratch(XMMRegister::XMM15.into_host_reg()),
         );
         let allocations = regalloc.run()?;
 

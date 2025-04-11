@@ -251,7 +251,7 @@ impl X64AllocRequirements {
             JIRInstruction::FloatGreaterEqual(_) => {}
             JIRInstruction::FloatEquals(_) => {}
             JIRInstruction::FloatNotEquals(_) => {}
-            JIRInstruction::FloatNegate(_) => {}
+            JIRInstruction::FloatNegate(args) => Self::fneg_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::BoolOr(args) => {
                 Self::boolean_requirements(&mut requirement, args.output, args.input_a, args.input_b)
             }
@@ -316,7 +316,7 @@ impl X64AllocRequirements {
             }
             JIRInstruction::Nan(_) => {}
             JIRInstruction::Abs(_) => {}
-            JIRInstruction::Sqrt(_) => {}
+            JIRInstruction::Sqrt(args) => Self::fsqrt_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::IntToFloat(args) => Self::itof_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::FloatToFloat(args) => Self::ftof_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::Trunc(args) => Self::trunc_requirements(&mut requirement, args.output, args.input),
@@ -508,7 +508,7 @@ impl X64Emitter<'_> {
             JIRInstruction::FloatGreaterEqual(args) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::FloatEquals(args) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::FloatNotEquals(args) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::FloatNegate(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::FloatNegate(args) => self.emit_fneg(inst_id, args.output, args.input)?,
             JIRInstruction::BoolOr(args) => self.emit_boolean_or(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::BoolAnd(args) => self.emit_boolean_and(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::BoolXor(args) => self.emit_boolean_xor(inst_id, args.output, args.input_a, args.input_b)?,
@@ -539,7 +539,7 @@ impl X64Emitter<'_> {
             JIRInstruction::SignBorrow(args) => self.emit_sborrow(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::Nan(args) => todo!("Instruction not yet implemented: {jinst}"),
             JIRInstruction::Abs(args) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::Sqrt(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::Sqrt(args) => self.emit_fsqrt(inst_id, args.output, args.input)?,
             JIRInstruction::IntToFloat(args) => self.emit_itof(inst_id, args.output, args.input)?,
             JIRInstruction::FloatToFloat(args) => self.emit_ftof(inst_id, args.output, args.input)?,
             JIRInstruction::Trunc(args) => self.emit_trunc(inst_id, args.output, args.input)?,
