@@ -32,6 +32,7 @@ impl X64Emitter<'_> {
                 LoadSpillDirective::Spill(reg, slice) => {
                     // Spilling a register does not necessarily unload it. It just
                     // means we have written the current changes. It may still be used in read accesses
+                    self.loaded_slices.insert(*reg, *slice);
                     emit_spill_directive(self.block.assembler(), *reg, *slice)?
                 }
                 LoadSpillDirective::Move { dst, src, size } => {
@@ -55,7 +56,6 @@ impl X64Emitter<'_> {
                 }
             }
         }
-        trace_jit!("Loaded slices after directives: {:?}", self.loaded_slices);
         Ok(())
     }
 
@@ -358,7 +358,7 @@ where
             }
             // The already loaded slice is larger. We flush the content that is no longer needed.
             let to_store = old_size - new_size;
-            let to_unload = old_slice.slice(old_size.into(), to_store);
+            let to_unload = old_slice.slice(new_size.into(), to_store);
             assemble!(assembler;
                 // Move the whole data to scratch
                 ; mov Rq(scratch.hw_enc()), Rq(reg.hw_enc())

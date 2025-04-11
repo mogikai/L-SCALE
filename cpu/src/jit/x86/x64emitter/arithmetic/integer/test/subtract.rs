@@ -3,6 +3,13 @@ use crate::jit::x86::test::{
     test_multiple_binary_instruction_generic,
 };
 use mogi_sleigh::jinst;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{
+    EnvFilter,
+    fmt,
+};
 
 #[test]
 fn test_subtract_const_const_8() {

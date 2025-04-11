@@ -1,3 +1,17 @@
+//!
+//!
+//! Register allocation:
+//!
+//! Slices can be allocated as input or output arguments. Output arguments will be written to backing-memory
+//! at some point, whereas Input arguments will be loaded from backing memory at some point.
+//!
+//! Problematic: Different sized slice inputs.
+//! What happens for instructions like a:8 = zext(a:4)?
+//! In this case there will be two operand requests: One for writing a:8 and one for reading a:4.
+//! We need to allocate the same register for these two.
+//!
+//!
+
 mod instruction;
 pub mod requirements;
 pub mod result;
@@ -74,9 +88,14 @@ pub struct RegisterAllocator<'a, E> {
     loaded_slices: HostRegMap<JIRSlice>,
 
     /// Keeps track of registers that have been written to previously.
-    // written_regs: HostRegSet,
+    /// This info is kept in reverse direction.
+    /// Registers that are already in this set do not need another spill instruction emitted, since
+    /// they have already been written.
+    written_regs: HostRegSet,
     /// Keeps track of registers that have been read previously.
-    // read_regs: HostRegSet,
+    /// This info is kept in reverse direction.
+    /// Any register that has been read that is in this set needs to be loaded at the start of a block.
+    read_regs: HostRegSet,
 
     /// TODO: Add the appropriate env constraints. We probably need to be able to exclude some registers for example.
     ///       It might also make sense to define the set of usable registers this way.
@@ -87,6 +106,10 @@ pub struct RegisterAllocator<'a, E> {
     /// the instructions' and environments' constraints.
     available_registers: HostRegSet,
 
+    /// Keeps track of the fixed registers that need to be allocated per instruction.
+    /// This is needed to make sure that no existing allocations that by chance
+    /// are already in the fixed register slot are kept there.
+    /// If this case is encountered, then the allocation will be moved to a free register.
     fixed_regs: HostRegSet,
 }
 
@@ -117,9 +140,11 @@ where
                 host_constraints.scratch_register,
             ),
             loaded_slices: Default::default(),
+            written_regs: HostRegSet::empty(),
+            read_regs: HostRegSet::empty(),
             host_constraints,
             available_registers,
-            fixed_regs: Default::default(),
+            fixed_regs: HostRegSet::empty(),
         }
     }
 
@@ -141,10 +166,14 @@ where
             // register as specified.
             // TODO: We need to track whether the register is only ever written to and omit loads
             //       to these registers here, and probably at some other locations as well.
-            self.allocations
-                .load_spill_directives
-                .add_load_before(reg, slice);
+            if self.read_regs.contains(reg) {
+                self.allocations
+                    .load_spill_directives
+                    .add_load_before(reg, slice);
+            }
         }
+        self.read_regs = HostRegSet::empty();
+        self.written_regs = HostRegSet::empty();
         self.allocations
             .load_spill_directives
             .update_current_inst_directives_end();
@@ -360,6 +389,26 @@ where
         Ok(Allocation::Register(reg))
     }
 
+    fn mark_and_spill(
+        &mut self,
+        reg: HostReg,
+        operand: &OperandRequest,
+    ) {
+        match operand.kind {
+            OperandKind::Write => {
+                self.spill_reg(reg, operand.slice);
+                self.fixed_regs.remove(reg);
+                self.written_regs.add(reg);
+                // Remove from read, since we write to the register. No fetches have to be performed beforehand
+                // If another operand request also reads from the same slice, the read will be inserted back.
+                self.read_regs.remove(reg);
+            }
+            OperandKind::Read => {
+                self.read_regs.add(reg);
+            }
+        }
+    }
+
     /// Makes sure that the already loaded slice group corresponds to the operand request.
     /// The slice group needs to be adjusted if the offset or length do not match.
     /// Also, the slice needs to be moved, if the operand request contains a fixed reg constraint.
@@ -406,14 +455,29 @@ where
                 reg
             };
             if existing_slice != operand.slice {
-                if !self.available_registers.contains(reg) && existing_slice.offset != operand.slice.offset {
-                    // We already allocated something to `reg` and it has a different offset.
-                    todo!("Different offset aliasing in the same instruction currently unsupported")
+                if !self.available_registers.contains(reg) {
+                    if existing_slice.offset != operand.slice.offset {
+                        // We already allocated something to `reg` and it has a different offset.
+                        todo!("Different offset aliasing in the same instruction currently unsupported")
+                    } else {
+                        if let OperandKind::Write = operand.kind {
+                            todo!()
+                        } else {
+                            // Offsets are the same and we already allocated a different size for this instruction.
+                            // Overwrite the old allocation if the new one has larger size.
+                            // This way we request a larger slice than we need, which is fine because we only use
+                            // the smaller size.
+                            if operand.slice.size > existing_slice.size {
+                                self.loaded_slices.insert(reg, operand.slice);
+                            }
+                        }
+                        // And remove it from the available registers for current allocations.
+                    }
                 } else {
+                    // The register has not been allocated for this instruction yet. Insert an adjust directive.
                     // After the instruction is finished, adjust the slice to the one that was previously expected.
                     // (that is expected next when viewing in forward direction)
                     self.adjust_reg(reg, existing_slice, operand.slice);
-                    // And remove it from the available registers for current allocations.
                 }
             }
             // Exact match and no register requirement. Everything is ok.
@@ -427,19 +491,17 @@ where
         &mut self,
         operand: &OperandRequest,
     ) -> JITResult<Allocation> {
+        trace_jit!("Written regs: {}", self.written_regs);
         let allocation = if let Some((reg, existing_slice)) = self.get_loaded_slice_group(operand) {
             Allocation::Register(self.ensure_valid_reg_allocation(reg, existing_slice, operand)?)
         } else {
             // Slice group is not in any register. We can allocate one from the free regs.
             self.alloc_unloaded_operand(operand)?
         };
-
-        if let Allocation::Register(reg) = allocation
-            && let OperandKind::Write = operand.kind
-        {
-            self.spill_reg(reg, operand.slice);
-            self.fixed_regs.remove(reg);
+        if let Allocation::Register(reg) = allocation {
+            self.mark_and_spill(reg, operand);
         }
+        trace_jit!("Written regs: {}", self.written_regs);
         Ok(allocation)
     }
 
@@ -498,6 +560,8 @@ where
         // We update this for the reverse direction, since the loaded_slices map is relevant for not yet
         // allocated slices.
         self.loaded_slices.r#move(current_reg, previous_reg);
+        self.read_regs.r#move(current_reg, previous_reg);
+        self.written_regs.r#move(current_reg, previous_reg);
     }
 
     fn adjust_reg(
@@ -516,19 +580,21 @@ where
         self.loaded_slices.insert(reg, new_slice);
     }
 
-    /// Spill the provided register at the `after` position of the current instruction.
+    /// Unload the register, thus making sure that the register is loaded for all previous instructions,
+    /// but usable for any future instruction for now.
     #[inline]
     fn unload_reg(
         &mut self,
         reg: HostReg,
     ) {
-        // Spilling the register
         if let Some(slice) = self.loaded_slices.take(reg) {
-            trace_jit!("Spilling register {reg} to slice {slice}");
+            trace_jit!("Loading register {reg} from slice {slice}");
             self.allocations
                 .load_spill_directives
                 .add_load_after(reg, slice);
         }
+        self.read_regs.remove(reg);
+        self.written_regs.remove(reg);
     }
 
     /// Spill the register if it is the last write occurrence (viewing in forward direction)
@@ -540,9 +606,12 @@ where
     ) {
         // If this is a write operand, we need to make sure that it is spilled correctly on the first write we
         // encounter (viewing in reverse).
-        // TODO: Only spill on first write (viewing in reverse)
-        self.allocations
-            .load_spill_directives
-            .add_spill_after(reg, slice);
+
+        if !self.written_regs.contains(reg) {
+            // The register was not written to the context yet. Insert a write now.
+            self.allocations
+                .load_spill_directives
+                .add_spill_after(reg, slice);
+        }
     }
 }

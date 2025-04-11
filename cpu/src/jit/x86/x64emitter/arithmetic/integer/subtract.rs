@@ -40,15 +40,15 @@ impl X64AllocRequirements {
                 Self::add_slice_const_requirements(requirement, output, input_a, input_b)
             }
             (JIRValue::Const(input_a), JIRValue::Slice(input_b)) if output == input_b => {
-                *requirement.required_temps_mut() = TempRequest::new().int(1);
                 requirement.add_request(OperandRequest::int_write_any(output));
-                requirement.add_request(OperandRequest::int_write_any(input_b));
+                requirement.add_request(OperandRequest::int_read_any(input_b));
             }
             (JIRValue::Const(input_a), JIRValue::Slice(input_b)) => {
                 requirement.add_request(OperandRequest::int_write_any(output));
-                requirement.add_request(OperandRequest::int_write_any(input_b));
+                requirement.add_request(OperandRequest::int_read_any(input_b));
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) if input_a == input_b => {
+                // a - a = 0
                 Self::copy_requirements(requirement, output, JIRConst::new(0, output.size()));
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) if output == input_b => {
@@ -167,12 +167,8 @@ impl X64Emitter<'_> {
         input_a: JIRConst,
         input_b: JIRSlice,
     ) -> JITResult {
-        let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
-            todo!()
-        };
-        let Allocation::Register(input_b_reg) = self.allocations.get_allocation(inst, 1) else {
-            todo!()
-        };
+        let output_reg = reg!(self.allocations, inst, 0);
+        let input_b_reg = reg!(self.allocations, inst, 1);
         if output != input_b {
             // If the output register does not appear on the rhs, we can use it to load the constant
             self.load_const(output_reg, input_a)?;
@@ -181,11 +177,7 @@ impl X64Emitter<'_> {
                 ; sub Rq(output_reg.hw_enc()), Rq(input_b_reg.hw_enc())
             );
         } else {
-            let temp_reg = self
-                .allocations
-                .get_temp_allocations(inst)
-                .get_nth_from_class(0, RegClass::Int)
-                .expect("We requested this");
+            let temp_reg = self.allocations.scratch_register(RegClass::Int);
             // Output appears on rhs (out = const - out)
             // Move the output into a temporary register
             self.copy_reg(temp_reg, output_reg, output.size(), CopyExtendMode::None)?;

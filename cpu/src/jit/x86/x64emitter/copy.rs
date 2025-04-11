@@ -12,6 +12,7 @@ use crate::jit::trace_jit;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
 use crate::jit::x86::task_context::X86TaskContext;
+use crate::jit::x86::x64emitter::helpers::reg;
 use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
     X64Emitter,
@@ -57,14 +58,10 @@ impl X64Emitter<'_> {
 
         // Allocate and associate a GP register with the slice.
         // No load is needed, since we overwrite the data anyway for a copy.
-        let Allocation::Register(target_reg) = self.allocations.get_allocation(inst, 0) else {
-            todo!()
-        };
+        let target_reg = reg!(self.allocations, inst, 0);
         match source {
             JIRValue::Slice(source) => {
-                let Allocation::Register(source) = self.allocations.get_allocation(inst, 1) else {
-                    todo!()
-                };
+                let source = reg!(self.allocations, inst, 1);
                 self.copy_reg(target_reg, source, size, CopyExtendMode::None)
             }
             JIRValue::Const(source) => self.load_const(target_reg, source),
@@ -82,6 +79,7 @@ impl X64Emitter<'_> {
         size: JIRSize,
         extend_mode: CopyExtendMode,
     ) -> JITResult {
+        trace_jit!("Copying {source:?} to {target:?} ({size})");
         match target.class() {
             RegClass::Int => self.copy_reg_int(target, source, size, extend_mode),
             RegClass::Vector => self.copy_reg_vec(target, source, size),
@@ -362,6 +360,7 @@ impl X64Emitter<'_> {
         target: HostReg,
         value: JIRConst,
     ) -> JITResult {
+        trace_jit!("Loading {value:?} into {target:?}");
         match target.class() {
             RegClass::Int => self.load_const_int(target, value)?,
             RegClass::Vector => self.load_const_vec(target, value)?,

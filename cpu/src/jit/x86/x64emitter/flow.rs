@@ -16,6 +16,7 @@ use crate::jit::x86::{
 };
 use mogi_sleigh::spec::SpaceId;
 use mogi_sleigh::spec::jir::basic_block::InstId;
+use mogi_sleigh::spec::jir::common::JIRSize;
 use mogi_sleigh::spec::jir::jir_block::JIRBlockId;
 use mogi_sleigh::spec::jir::values::{
     JIRConst,
@@ -178,9 +179,8 @@ impl X64Emitter<'_> {
         let Some(fallthrough) = self.block.fallthrough() else {
             panic!("Conditional branch requires the block to have a fallthrough.")
         };
+        self.check_condition(condition_reg, condition.size())?;
         assemble!(self.block.assembler();
-            // condition_reg == 0?
-            ; test Rq(condition_reg.hw_enc()), Rq(condition_reg.hw_enc())
             // Jump over load of alternate if condition_reg == 0
             ; jnz >alternate
             ; jmp >proceed
@@ -268,12 +268,38 @@ impl X64Emitter<'_> {
             }
         };
         let label = self.block.dynamic_label(block_id);
+        self.check_condition(condition_reg, condition.size())?;
         assemble!(self.block.assembler();
-            // condition_reg == 0?
-            ; test Rq(condition_reg.hw_enc()), Rq(condition_reg.hw_enc())
             // Jump to alternate jir block if condition_reg != 0
             ; jnz =>label
         );
+        Ok(())
+    }
+
+    pub fn check_condition(
+        &mut self,
+        condition_reg: HostReg,
+        condition_size: JIRSize,
+    ) -> JITResult {
+        match condition_size {
+            1 => assemble!(self.block.assembler();
+                // condition_reg == 0?
+                ; test Rb(condition_reg.hw_enc()), Rb(condition_reg.hw_enc())
+            ),
+            2 => assemble!(self.block.assembler();
+                // condition_reg == 0?
+                ; test Rw(condition_reg.hw_enc()), Rw(condition_reg.hw_enc())
+            ),
+            4 => assemble!(self.block.assembler();
+                // condition_reg == 0?
+                ; test Rd(condition_reg.hw_enc()), Rd(condition_reg.hw_enc())
+            ),
+            8 => assemble!(self.block.assembler();
+                // condition_reg == 0?
+                ; test Rq(condition_reg.hw_enc()), Rq(condition_reg.hw_enc())
+            ),
+            _ => todo!("Unsupported condition size"),
+        }
         Ok(())
     }
 }

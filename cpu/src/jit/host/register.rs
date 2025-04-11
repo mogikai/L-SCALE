@@ -89,9 +89,7 @@ impl HostReg {
     /// Construct a PReg from the value returned from `.index()`.
     #[inline(always)]
     pub const fn from_index(index: usize) -> Self {
-        HostReg {
-            bits: index as u8,
-        }
+        HostReg { bits: index as u8 }
     }
 
     /// Return the "invalid PReg", which can be used to initialize
@@ -261,7 +259,7 @@ impl HostRegSet {
     }
 
     /// Returns whether the given register is part of the set.
-    pub fn contains(
+    pub const fn contains(
         &self,
         reg: HostReg,
     ) -> bool {
@@ -288,7 +286,7 @@ impl HostRegSet {
     }
 
     /// Add a physical register (PReg) to the set.
-    pub fn add(
+    pub const fn add(
         &mut self,
         reg: HostReg,
     ) {
@@ -301,6 +299,18 @@ impl HostRegSet {
         reg: HostReg,
     ) {
         self.bits[reg.class() as usize] &= !(1 << reg.hw_enc());
+    }
+
+    /// If the set contained previous_reg, then set new_reg. Otherwise, nothing is done.
+    pub const fn r#move(
+        &mut self,
+        previous_reg: HostReg,
+        new_reg: HostReg,
+    ) {
+        if self.contains(previous_reg) {
+            self.remove(previous_reg);
+            self.add(new_reg);
+        }
     }
 
     /// Add all of the registers in one set to this one, mutating in

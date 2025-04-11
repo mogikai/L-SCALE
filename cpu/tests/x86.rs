@@ -53,9 +53,8 @@ fn test_mov_mem_imm() {
 
     let rax: u64 = *cpu.register("RAX").unwrap();
     let mut result = 0u64;
-    let bytes = result.as_mut_bytes();
     mmu.borrow_mut()
-        .read(EVAddr::from(rsp + 12 * 4 + 8), bytes)
+        .read(EVAddr::from(rsp + 12 * 4 + 8), result.as_mut_bytes())
         .unwrap();
     assert_eq!(result, 0x1234);
 }
@@ -245,6 +244,7 @@ fn test_bsr_reg_imm() {
 
 #[test]
 fn test_idiv_32() {
+    // IDIV EAX
     let instr = b"\xF7\xF8";
     let (mut cpu, mmu) = common::setup_with_bytes(instr);
 
@@ -253,5 +253,7 @@ fn test_idiv_32() {
     cpu.run(RunLimit::InstructionCount(1)).unwrap();
 
     let rax: i64 = *cpu.register("RAX").unwrap();
+    let rdx: i64 = *cpu.register("RDX").unwrap();
     assert_eq!(rax, 0x1234i64 / 0x1234i64);
+    assert_eq!(rdx, 0x0i64);
 }
