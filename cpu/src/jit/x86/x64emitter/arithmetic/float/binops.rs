@@ -39,7 +39,7 @@ impl X64AllocRequirements {
         input_a: JIRValue,
         input_b: JIRValue,
     ) {
-        Self::fop_requirements(requirement, output, input_a, input_b);
+        Self::binary_fop_requirements(requirement, output, input_a, input_b);
     }
 
     pub fn fmul_requirements(
@@ -48,7 +48,7 @@ impl X64AllocRequirements {
         input_a: JIRValue,
         input_b: JIRValue,
     ) {
-        Self::fop_requirements(requirement, output, input_a, input_b);
+        Self::binary_fop_requirements(requirement, output, input_a, input_b);
     }
 
     pub fn fadd_requirements(
@@ -57,7 +57,7 @@ impl X64AllocRequirements {
         input_a: JIRValue,
         input_b: JIRValue,
     ) {
-        Self::fop_requirements(requirement, output, input_a, input_b);
+        Self::binary_fop_requirements(requirement, output, input_a, input_b);
     }
 
     pub fn fsub_requirements(
@@ -66,10 +66,10 @@ impl X64AllocRequirements {
         input_a: JIRValue,
         input_b: JIRValue,
     ) {
-        Self::fop_requirements(requirement, output, input_a, input_b);
+        Self::binary_fop_requirements(requirement, output, input_a, input_b);
     }
 
-    fn fop_requirements(
+    fn binary_fop_requirements(
         requirement: &mut AllocRequirement,
         output: JIRSlice,
         input_a: JIRValue,
@@ -78,11 +78,11 @@ impl X64AllocRequirements {
         requirement.add_request(OperandRequest::vec_write_any(output));
         match (input_a, input_b) {
             (JIRValue::Const(input_a), JIRValue::Const(input_b)) => {
-                todo!("Handle float const");
+                // no additional requirements (result can be written directly to output)
             }
             (JIRValue::Slice(input_a), JIRValue::Const(input_b))
             | (JIRValue::Const(input_b), JIRValue::Slice(input_a)) => {
-                todo!("Handle float const");
+                requirement.add_request(OperandRequest::vec_read_any(input_a));
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
                 requirement.add_request(OperandRequest::vec_read_any(input_a));
@@ -103,7 +103,7 @@ impl X64Emitter<'_> {
         input_a: JIRValue,
         input_b: JIRValue,
     ) -> JITResult {
-        self.emit_fop(inst, output, input_a, input_b, FloatOp::Add)
+        self.emit_binary_fop(inst, output, input_a, input_b, FloatOp::Add)
     }
 
     /// Emit instructions that evaluate `a` f- `b` and store the result in `output`.This function
@@ -116,7 +116,7 @@ impl X64Emitter<'_> {
         input_a: JIRValue,
         input_b: JIRValue,
     ) -> JITResult {
-        self.emit_fop(inst, output, input_a, input_b, FloatOp::Sub)
+        self.emit_binary_fop(inst, output, input_a, input_b, FloatOp::Sub)
     }
 
     /// Emit instructions that evaluate `a` f* `b` and store the result in `output`.This function
@@ -129,7 +129,7 @@ impl X64Emitter<'_> {
         input_a: JIRValue,
         input_b: JIRValue,
     ) -> JITResult {
-        self.emit_fop(inst, output, input_a, input_b, FloatOp::Mul)
+        self.emit_binary_fop(inst, output, input_a, input_b, FloatOp::Mul)
     }
 
     /// Emit instructions that evaluate `a` f/ `b` and store the result in `output`.This function
@@ -142,10 +142,10 @@ impl X64Emitter<'_> {
         input_a: JIRValue,
         input_b: JIRValue,
     ) -> JITResult {
-        self.emit_fop(inst, output, input_a, input_b, FloatOp::Div)
+        self.emit_binary_fop(inst, output, input_a, input_b, FloatOp::Div)
     }
 
-    fn emit_fop(
+    fn emit_binary_fop(
         &mut self,
         inst: InstId,
         output: JIRSlice,
@@ -153,26 +153,35 @@ impl X64Emitter<'_> {
         input_b: JIRValue,
         op: FloatOp,
     ) -> JITResult {
-        debug_assert_eq!(output.size(), input_a.size());
-        debug_assert_eq!(input_a.size(), input_b.size());
+        debug_assert_eq!(output.size(), input_a.size(), "Input and output must have the same size");
+        debug_assert_eq!(output.size(), input_b.size(), "Input and output must have the same size");
 
         match (input_a, input_b) {
             (JIRValue::Const(a), JIRValue::Const(b)) => {
-                todo!("implement const fops");
-                // self.emit_copy(inst, output, add_constants(a, b, output.size()))?;
+                let sum = add_constants(a, b, op);
+                let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
+                    todo!()
+                };
+
+                self.load_const(output_reg, sum)?;
             }
-            (JIRValue::Const(b), JIRValue::Slice(a)) | (JIRValue::Slice(a), JIRValue::Const(b)) => {
-                todo!("implement const fops");
-                self.emit_fop_reg_const(inst, output, a, b, op)?;
+            (JIRValue::Const(input_a), JIRValue::Slice(input_b)) => {
+                self.emit_fop_const_reg(inst, output, input_a, input_b, op)?;
             }
-            (JIRValue::Slice(a), JIRValue::Slice(b)) => {
-                self.emit_fop_reg_reg(inst, output, a, b, op)?;
+            (JIRValue::Slice(input_a), JIRValue::Const(input_b)) => {
+                self.emit_fop_reg_const(inst, output, input_a, input_b, op)?;
+            }
+            (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
+                self.emit_fop_reg_reg(inst, output, input_a, input_b, op)?;
             }
         }
 
         Ok(())
     }
 
+    /// Emit the fop for a register first operand and constant second operand by copying the first
+    /// operand into the output register and loading the second operand into the first operand
+    /// register.
     fn emit_fop_reg_const(
         &mut self,
         inst: InstId,
@@ -181,23 +190,45 @@ impl X64Emitter<'_> {
         input_b: JIRConst,
         op: FloatOp,
     ) -> JITResult {
+        let size = output.size();
+
         let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
             todo!()
         };
 
-        self.load_const(output_reg, input_b)?;
+        let Allocation::Register(input_a_reg) = self.allocations.get_allocation(inst, 1) else {
+            todo!()
+        };
 
-        match input_a.size() {
-            4 => {
-                // single-precision
-            }
-            8 => {
-                // double-precision
-            }
-            size => {
-                todo!("Unsupported size {size}")
-            }
-        }
+        self.copy_reg(output_reg, input_a_reg, size, CopyExtendMode::None)?;
+        self.load_const(input_a_reg, input_b)?;
+        self.emit_fop_hostregs(output_reg, input_a_reg, op, size)?;
+
+        Ok(())
+    }
+
+    /// Emit the fop for a constant first operand and register second operand by
+    /// loading the first operand into the output register.
+    fn emit_fop_const_reg(
+        &mut self,
+        inst: InstId,
+        output: JIRSlice,
+        input_a: JIRConst,
+        input_b: JIRSlice,
+        op: FloatOp,
+    ) -> JITResult {
+        let size = output.size();
+
+        let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
+            todo!()
+        };
+
+        let Allocation::Register(input_b_reg) = self.allocations.get_allocation(inst, 1) else {
+            todo!()
+        };
+
+        self.load_const(output_reg, input_a)?;
+        self.emit_fop_hostregs(output_reg, input_b_reg, op, size)?;
 
         Ok(())
     }
@@ -224,56 +255,69 @@ impl X64Emitter<'_> {
             todo!()
         };
 
-        self.copy_reg(output_reg, input_a_reg, input_a.size(), CopyExtendMode::None);
+        self.copy_reg(output_reg, input_a_reg, input_a.size(), CopyExtendMode::None)?;
+        self.emit_fop_hostregs(output_reg, input_b_reg, op, size)?;
 
+        Ok(())
+    }
+
+    /// Emit the final floating-point instruction with one operand stored in `output_reg`
+    /// and the other in `input_reg`.
+    fn emit_fop_hostregs(
+        &mut self,
+        output_reg: HostReg,
+        input_reg: HostReg,
+        op: FloatOp,
+        size: JIRSize,
+    ) -> JITResult {
         match size {
             4 => match op {
                 // single-precision
                 FloatOp::Add => {
                     assemble!(self.block.assembler();
-                        ; addss Rx(output_reg.hw_enc()), Rx(input_b_reg.hw_enc())
+                        ; addss Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
                     );
                 }
                 FloatOp::Sub => {
                     assemble!(self.block.assembler();
-                        ; subss Rx(output_reg.hw_enc()), Rx(input_b_reg.hw_enc())
+                        ; subss Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
                     );
                 }
                 FloatOp::Mul => {
                     assemble!(self.block.assembler();
-                        ; mulss Rx(output_reg.hw_enc()), Rx(input_b_reg.hw_enc())
+                        ; mulss Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
                     );
                 }
                 FloatOp::Div => {
                     assemble!(self.block.assembler();
-                        ; divss Rx(output_reg.hw_enc()), Rx(input_b_reg.hw_enc())
+                        ; divss Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
                     );
                 }
-            }
+            },
             8 => match op {
                 // double-precision
                 FloatOp::Add => {
                     assemble!(self.block.assembler();
-                        ; addsd Rx(output_reg.hw_enc()), Rx(input_b_reg.hw_enc())
+                        ; addsd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
                     );
                 }
                 FloatOp::Sub => {
                     assemble!(self.block.assembler();
-                        ; subsd Rx(output_reg.hw_enc()), Rx(input_b_reg.hw_enc())
+                        ; subsd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
                     );
                 }
                 FloatOp::Mul => {
                     assemble!(self.block.assembler();
-                        ; mulsd Rx(output_reg.hw_enc()), Rx(input_b_reg.hw_enc())
+                        ; mulsd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
                     );
                 }
                 FloatOp::Div => {
                     assemble!(self.block.assembler();
-                        ; divsd Rx(output_reg.hw_enc()), Rx(input_b_reg.hw_enc())
+                        ; divsd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
                     );
                 }
-            }
-            size => todo!("Unsupported size {size}")
+            },
+            size => todo!("Unsupported size {size}"),
         }
 
         Ok(())
@@ -283,17 +327,36 @@ impl X64Emitter<'_> {
 fn add_constants(
     a: JIRConst,
     b: JIRConst,
-    size: JIRSize,
+    op: FloatOp,
 ) -> JIRConst {
     let size = a.size();
+
     let v = match size {
-        4 => u128::from(
-            (f32::from_bits(a.value().try_into().unwrap()) + f32::from_bits(b.value().try_into().unwrap())).to_bits(),
-        ),
-        8 => u128::from(
-            (f64::from_bits(a.value().try_into().unwrap()) + f64::from_bits(b.value().try_into().unwrap())).to_bits(),
-        ),
+        4 => {
+            let op = match op {
+                FloatOp::Add => |x, y| x + y,
+                FloatOp::Sub => |x, y| x - y,
+                FloatOp::Mul => |x, y| x * y,
+                FloatOp::Div => |x, y| x / y,
+            };
+            u128::from(
+                (op(f32::from_bits(a.value().try_into().unwrap()), f32::from_bits(b.value().try_into().unwrap())))
+                    .to_bits(),
+            )
+        }
+        8 => {
+            let op = match op {
+                FloatOp::Add => |x, y| x + y,
+                FloatOp::Sub => |x, y| x - y,
+                FloatOp::Mul => |x, y| x * y,
+                FloatOp::Div => |x, y| x / y,
+            };
+            u128::from(
+                (op(f64::from_bits(a.value().try_into().unwrap()), f64::from_bits(b.value().try_into().unwrap())))
+                    .to_bits(),
+            )
+        }
         _ => todo!("Unsupported size of {size}"),
     };
-    JIRConst::new(v, size)
+    JIRConst::new(v, a.size())
 }

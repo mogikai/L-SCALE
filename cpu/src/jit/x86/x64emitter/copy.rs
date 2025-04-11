@@ -421,34 +421,20 @@ impl X64Emitter<'_> {
     ) -> JITResult {
         let size = value.size();
         let value = value.value();
-        // TODO more efficient zeroing
-        // if value == 0 {
-        //     // Zeroing out a register can be done more efficiently
-        //     return self.load_zero(target, size);
-        // }
-        todo!("const vec loading");
-        // let target = target.hw_enc();
-        // match size {
-        //     ..=16 => {
-        //         // XMM => XMM
-        //         assemble!(self.block.assembler();
-        //             ; movups Rx(target), OWORD value as _
-        //         );
-        //     }
-        //     ..=32 => {
-        //         // YMM => YMM
-        //         assemble!(self.block.assembler();
-        //             ; movups Rx(target), YWORD value as _
-        //         );
-        //     }
-        //     ..=64 => {
-        //         // ZMM => ZMM
-        //         todo!("AVX-512 is currently not supported")
-        //     }
-        //     size => {
-        //         todo!("Unsupported size {size}")
-        //     }
-        // }
+
+        let scratch = self.allocations.scratch_register(RegClass::Int);
+        match size {
+            ..=8 => {
+                // things that fit into a quadword register can be moved directly
+                assemble!(self.block.assembler();
+                    ; mov Rq(scratch.hw_enc()), QWORD value as _
+                    ; movq Rx(target.hw_enc()), Rq(scratch.hw_enc())
+                );
+            }
+            size => {
+                todo!("Unsupported size {size}")
+            }
+        }
         Ok(())
     }
 
