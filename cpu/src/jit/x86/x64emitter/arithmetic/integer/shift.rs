@@ -13,6 +13,7 @@ use crate::jit::trace_jit;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::x64emitter::copy::CopyExtendMode;
+use crate::jit::x86::x64emitter::helpers::reg;
 use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
     X64Emitter,
@@ -205,14 +206,10 @@ impl X64Emitter<'_> {
         asm_reg: fn(&mut MogiAssembler<X64Relocation>, HostReg, size: JIRSize),
         asm_imm: fn(&mut MogiAssembler<X64Relocation>, HostReg, size: JIRSize, i8),
     ) -> JITResult {
-        let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
-            todo!()
-        };
+        let output_reg = reg!(self.allocations, inst, 0);
         match input {
             JIRValue::Slice(_) => {
-                let Allocation::Register(input_reg) = self.allocations.get_allocation(inst, 1) else {
-                    todo!()
-                };
+                let input_reg = reg!(self.allocations, inst, 1);
                 // Copy the input into the output.
                 // The x86 shl operation operates in place.
                 self.copy_reg(output_reg, input_reg, input.size(), CopyExtendMode::None)?;

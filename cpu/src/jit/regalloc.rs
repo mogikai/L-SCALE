@@ -86,6 +86,8 @@ pub struct RegisterAllocator<'a, E> {
     /// This set of registers is reset for each instruction according to
     /// the instructions' and environments' constraints.
     available_registers: HostRegSet,
+
+    fixed_regs: HostRegSet,
 }
 
 /// A struct to keep track of the registers that are available before and after an instruction.
@@ -117,6 +119,7 @@ where
             loaded_slices: Default::default(),
             host_constraints,
             available_registers,
+            fixed_regs: Default::default(),
         }
     }
 
@@ -164,6 +167,7 @@ where
 
     fn reset_available_host_registers(&mut self) {
         self.available_registers = self.host_constraints.usable_registers;
+        self.fixed_regs = HostRegSet::empty();
     }
 
     fn alloc_inst(
@@ -201,15 +205,27 @@ where
 
         trace_jit!("Available registers after fixed reg and clobber constraints:\n{}", self.available_registers);
 
-        for (op_id, operand) in operands.fixed() {
+        for (op_id, operand) in operands.write_fixed() {
             let allocation = self.alloc_operand(operand)?;
-            trace_jit!("Allocated fixed reg operand {operand:?} for instruction {inst} as {allocation:?}");
+            trace_jit!("Allocated fixed reg operand {op_id}|{operand:?} for instruction {inst} as {allocation:?}");
             self.allocations.set_allocation(inst, op_id, allocation);
         }
 
-        for (op_id, operand) in operands.non_fixed() {
+        for (op_id, operand) in operands.write_non_fixed() {
             let allocation = self.alloc_operand(operand)?;
-            trace_jit!("Allocated operand {operand:?} for instruction {inst} as {allocation:?}");
+            trace_jit!("Allocated operand {op_id}|{operand:?} for instruction {inst} as {allocation:?}");
+            self.allocations.set_allocation(inst, op_id, allocation);
+        }
+
+        for (op_id, operand) in operands.read_fixed() {
+            let allocation = self.alloc_operand(operand)?;
+            trace_jit!("Allocated fixed reg operand {op_id}|{operand:?} for instruction {inst} as {allocation:?}");
+            self.allocations.set_allocation(inst, op_id, allocation);
+        }
+
+        for (op_id, operand) in operands.read_non_fixed() {
+            let allocation = self.alloc_operand(operand)?;
+            trace_jit!("Allocated operand {op_id}|{operand:?} for instruction {inst} as {allocation:?}");
             self.allocations.set_allocation(inst, op_id, allocation);
         }
 
@@ -358,42 +374,53 @@ where
             operand.slice
         );
         // if we have an exact match, we can return the register if it is not fixed
-        if existing_slice == operand.slice {
-            if let OperandConstraint::FixedReg(fixed_reg) = operand.constraint {
+        let reg = if let OperandConstraint::FixedReg(fixed_reg) = operand.constraint {
+            if existing_slice == operand.slice {
                 // If the fixed constraint specifies a different register, we have to move the allocation there
                 if reg != fixed_reg {
-                    trace_jit!("Allocation is wanted in {fixed_reg}, but is already in {reg}. Moving allocation");
-                    // We add a move such that the allocation will be in `reg` after the instruction.
-                    // This is necessary, since any following instructions (in forward order)
-                    // are already allocated to the register `reg`.
-                    self.allocations
-                        .load_spill_directives
-                        .add_move_after(reg, fixed_reg, existing_slice.size);
-                    // And update the loaded slices to point to the new reg
-                    // We update this for the reverse direction, since the loaded_slices map is relevant for not yet
-                    // allocated slices.
-                    self.loaded_slices.r#move(fixed_reg, reg);
-                    // We remove the fixed_reg, since this is now not available anymore for this instruction.
-                    self.available_registers.remove(fixed_reg);
-                    return Ok(fixed_reg);
+                    // Move the allocation for any following instructions (in forward direction)
+                    // into reg.
+                    self.move_reg(reg, fixed_reg, existing_slice);
+                }
+                // The slices match and are already loaded in the correct register. Nothing to do here.
+            } else {
+                // We first check if the allocation is in the wrong register and insert the move first.
+                // The move will later be the last directive to be executed.
+                if reg != fixed_reg {
+                    // Move the allocation for any following instructions (in forward direction)
+                    // into reg.
+                    self.move_reg(reg, fixed_reg, existing_slice);
+                }
+                // We can now adjust the slice. The adjust directive will later be executed before the move.
+                self.adjust_reg(fixed_reg, existing_slice, operand.slice);
+            }
+            fixed_reg
+        } else {
+            let reg = if self.fixed_regs.contains(reg) {
+                // The register was already reserved for a fixed register allocation.
+                let new_reg = self.find_suitable_reg(operand.class)?;
+                self.unload_reg(new_reg);
+                self.move_reg(reg, new_reg, existing_slice);
+                new_reg
+            } else {
+                reg
+            };
+            if existing_slice != operand.slice {
+                if !self.available_registers.contains(reg) && existing_slice.offset != operand.slice.offset {
+                    // We already allocated something to `reg` and it has a different offset.
+                    todo!("Different offset aliasing in the same instruction currently unsupported")
+                } else {
+                    // After the instruction is finished, adjust the slice to the one that was previously expected.
+                    // (that is expected next when viewing in forward direction)
+                    self.adjust_reg(reg, existing_slice, operand.slice);
+                    // And remove it from the available registers for current allocations.
                 }
             }
-            // The slices match and are already loaded in the same register. Nothing to do here.
-            self.available_registers.remove(reg);
-            Ok(reg)
-        } else {
-            if !self.available_registers.contains(reg) && existing_slice.offset != operand.slice.offset {
-                // We already allocated something to `reg` and it has a different offset.
-                todo!("Different offset aliasing in the same instruction currently unsupported")
-            }
-            // After the instruction is finished, adjust the slice to the one that was previously expected.
-            // (that is expected next when viewing in forward direction)
-            self.allocations
-                .load_spill_directives
-                .add_adjust_after(reg, operand.slice, existing_slice);
-            self.available_registers.remove(reg);
-            Ok(reg)
-        }
+            // Exact match and no register requirement. Everything is ok.
+            reg
+        };
+        self.available_registers.remove(reg);
+        Ok(reg)
     }
 
     fn alloc_operand(
@@ -411,6 +438,7 @@ where
             && let OperandKind::Write = operand.kind
         {
             self.spill_reg(reg, operand.slice);
+            self.fixed_regs.remove(reg);
         }
         Ok(allocation)
     }
@@ -429,6 +457,7 @@ where
             todo!("Allocation error: Tried to allocate a fixed register for an unavailable register")
         }
         self.available_registers.remove(target_reg);
+        self.fixed_regs.add(target_reg);
         Ok(())
     }
 
@@ -448,6 +477,43 @@ where
         }
         self.unload_reg(clobber);
         self.available_registers.remove(clobber);
+    }
+
+    /// Moves the allocation such that for any previous instructions (when viewing in reverse)
+    /// the slice will be in `previous_reg`
+    fn move_reg(
+        &mut self,
+        previous_reg: HostReg,
+        current_reg: HostReg,
+        slice: JIRSlice,
+    ) {
+        trace_jit!("Allocation is wanted in {current_reg}, but is already in {previous_reg}. Moving allocation");
+        // We add a move such that the allocation will be in `previous_reg` after the instruction.
+        // This is necessary, since any following instructions (in forward order)
+        // are already allocated to the register `previous_reg`.
+        self.allocations
+            .load_spill_directives
+            .add_move_after(previous_reg, current_reg, slice.size);
+        // And update the loaded slices to point to current_reg
+        // We update this for the reverse direction, since the loaded_slices map is relevant for not yet
+        // allocated slices.
+        self.loaded_slices.r#move(current_reg, previous_reg);
+    }
+
+    fn adjust_reg(
+        &mut self,
+        reg: HostReg,
+        old_slice: JIRSlice,
+        new_slice: JIRSlice,
+    ) {
+        trace_jit!("Adjusting allocation of register {reg} from {old_slice} to {new_slice}");
+        // After the instruction is finished, adjust the slice to the one that was previously expected.
+        // (that is expected next when viewing in forward direction)
+        self.allocations
+            .load_spill_directives
+            .add_adjust_after(reg, new_slice, old_slice);
+        // Insert the new slice as loaded in the register.
+        self.loaded_slices.insert(reg, new_slice);
     }
 
     /// Spill the provided register at the `after` position of the current instruction.

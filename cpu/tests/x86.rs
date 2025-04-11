@@ -232,15 +232,6 @@ fn test_or_reg_imm() {
 
 #[test]
 fn test_bsr_reg_imm() {
-    tracing_subscriber::registry()
-        .with(fmt::layer())
-        .with(
-            EnvFilter::builder()
-                .with_default_directive(LevelFilter::TRACE.into())
-                .with_env_var("MOGI_LOG")
-                .from_env_lossy(),
-        )
-        .init();
     // BSR RAX, RBX
     let instr = b"\x48\x0F\xBD\xC3";
     let (mut cpu, mmu) = common::setup_with_bytes(instr);
@@ -250,4 +241,17 @@ fn test_bsr_reg_imm() {
 
     let rax: u64 = *cpu.register("RAX").unwrap();
     assert_eq!(rax, 63 - 0b1000011100u64.leading_zeros() as u64);
+}
+
+#[test]
+fn test_idiv_32() {
+    let instr = b"\xF7\xF8";
+    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+
+    *cpu.register_mut("RAX").unwrap() = 0x1234i64;
+    *cpu.register_mut("RDX").unwrap() = 0x0i64;
+    cpu.run(RunLimit::InstructionCount(1)).unwrap();
+
+    let rax: i64 = *cpu.register("RAX").unwrap();
+    assert_eq!(rax, 0x1234i64 / 0x1234i64);
 }

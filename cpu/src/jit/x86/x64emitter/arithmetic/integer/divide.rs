@@ -181,7 +181,8 @@ impl X64Emitter<'_> {
         let output_reg = reg!(self.allocations, inst, 0);
         debug_assert!(
             output_reg == GPRegister::AX.into_host_reg() || output_reg == GPRegister::DX.into_host_reg(),
-            "Expected the output to be in AX or DX"
+            "Expected the output to be in AX or DX, not in {}",
+            output_reg
         );
 
         // Fetch the divisor register and load the value.

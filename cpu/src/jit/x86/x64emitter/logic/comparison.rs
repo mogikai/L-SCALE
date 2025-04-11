@@ -9,6 +9,7 @@ use crate::jit::regalloc::result::Allocation;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
 use crate::jit::x86::registers::general_purpose::GPRegister;
+use crate::jit::x86::x64emitter::helpers::reg;
 use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
     X64Emitter,
@@ -58,7 +59,7 @@ impl X64Emitter<'_> {
         input_a: JIRValue,
         input_b: JIRValue,
     ) -> JITResult {
-        self.emit_compare_commutative(
+        self.emit_compare_equality(
             inst,
             output,
             input_a,
@@ -81,7 +82,7 @@ impl X64Emitter<'_> {
         input_a: JIRValue,
         input_b: JIRValue,
     ) -> JITResult {
-        self.emit_compare_commutative(
+        self.emit_compare_equality(
             inst,
             output,
             input_a,
@@ -303,7 +304,7 @@ impl X64Emitter<'_> {
         )
     }
 
-    fn emit_compare_commutative(
+    fn emit_compare_equality(
         &mut self,
         inst: InstId,
         output: JIRSlice,
@@ -321,7 +322,7 @@ impl X64Emitter<'_> {
             (JIRValue::Slice(input_a), JIRValue::Const(input_b))
             | (JIRValue::Const(input_b), JIRValue::Slice(input_a)) => {
                 // We match either variant of const, slice because eq is commutative.
-                self.emit_cmp_slice_const(inst, asm_set, output, input_a, input_b)
+                self.emit_cmp_slice_const_equality(inst, asm_set, output, input_a, input_b)
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
                 self.emit_cmp_slice_slice(inst, asm_set, output, input_a, input_b)
@@ -399,6 +400,44 @@ impl X64Emitter<'_> {
         Ok(())
     }
 
+    fn emit_cmp_slice_const_equality(
+        &mut self,
+        inst: InstId,
+        asm_set: fn(&mut MogiAssembler<X64Relocation>, HostReg),
+        output: JIRSlice,
+        input_a: JIRSlice,
+        input_b: JIRConst,
+    ) -> JITResult {
+        if input_a.size() > 8 {
+            todo!()
+        }
+        let output_reg = reg!(self.allocations, inst, 0);
+        let input_a_reg = reg!(self.allocations, inst, 1);
+
+        if input_b.value() == 0 {
+            // Testing against zero is the same as test a, a
+            match input_a.size() {
+                1 => assemble!(self.block.assembler();
+                    ; test Rb(input_a_reg.hw_enc()), Rb(input_a_reg.hw_enc())
+                ),
+                2 => assemble!(self.block.assembler();
+                    ; test Rw(input_a_reg.hw_enc()), Rw(input_a_reg.hw_enc())
+                ),
+                4 => assemble!(self.block.assembler();
+                    ; test Rd(input_a_reg.hw_enc()), Rd(input_a_reg.hw_enc())
+                ),
+                8 => assemble!(self.block.assembler();
+                    ; test Rq(input_a_reg.hw_enc()), Rq(input_a_reg.hw_enc())
+                ),
+                _ => todo!(),
+            }
+        } else {
+            self.cmp_reg_imm(output_reg, input_a_reg, input_b)?;
+        }
+        asm_set(self.block.assembler(), output_reg);
+        Ok(())
+    }
+
     fn emit_cmp_slice_const(
         &mut self,
         inst: InstId,
@@ -407,34 +446,43 @@ impl X64Emitter<'_> {
         input_a: JIRSlice,
         input_b: JIRConst,
     ) -> JITResult {
-        if input_a.size() > 8 {}
-        let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
+        if input_a.size() > 8 {
             todo!()
-        };
-        let Allocation::Register(input_a_reg) = self.allocations.get_allocation(inst, 1) else {
-            todo!()
-        };
-        let imm_32 = input_b.value() as i32;
-        match input_a.size() {
+        }
+        let output_reg = reg!(self.allocations, inst, 0);
+        let input_a_reg = reg!(self.allocations, inst, 1);
+
+        self.cmp_reg_imm(output_reg, input_a_reg, input_b)?;
+        asm_set(self.block.assembler(), output_reg);
+        Ok(())
+    }
+
+    fn cmp_reg_imm(
+        &mut self,
+        output_reg: HostReg,
+        reg: HostReg,
+        imm: JIRConst,
+    ) -> JITResult {
+        let imm_32 = imm.value() as i32;
+        match imm.size() {
             1 => assemble!(self.block.assembler();
-                ; cmp Rb(input_a_reg.hw_enc()), imm_32 as i8
+                ; cmp Rb(reg.hw_enc()), imm_32 as i8
             ),
             2 => assemble!(self.block.assembler();
-                ; cmp Rw(input_a_reg.hw_enc()), imm_32 as i16
+                ; cmp Rw(reg.hw_enc()), imm_32 as i16
             ),
             4 => assemble!(self.block.assembler();
-                ; cmp Rd(input_a_reg.hw_enc()), imm_32
+                ; cmp Rd(reg.hw_enc()), imm_32
             ),
             8 => {
                 // For 64 bit constants, we need to load the constant into a register.
-                self.load_const(output_reg, input_b)?;
+                self.load_const(output_reg, imm)?;
                 assemble!(self.block.assembler();
-                    ; cmp Rq(input_a_reg.hw_enc()), Rq(output_reg.hw_enc())
+                    ; cmp Rq(reg.hw_enc()), Rq(output_reg.hw_enc())
                 );
             }
             _ => todo!(),
         }
-        asm_set(self.block.assembler(), output_reg);
         Ok(())
     }
 
