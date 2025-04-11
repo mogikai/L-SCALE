@@ -1,4 +1,8 @@
-use mogi_sleigh::{jinst, spec::jir::values::{JIRConst, JIRValue}};
+use mogi_sleigh::jinst;
+use mogi_sleigh::spec::jir::values::{
+    JIRConst,
+    JIRValue,
+};
 
 use crate::jit::x86::test::{
     exec_instructions,
@@ -188,7 +192,7 @@ fn test_floor_f64_const() {
         let i_jirvalue: JIRValue = JIRConst::new(i.to_bits().into(), 8).into();
         let exp: f64 = *exp as f64;
 
-        let instructions = vec![jinst!(xmm1_qa = ceil(i_jirvalue))];
+        let instructions = vec![jinst!(xmm1_qa = floor(i_jirvalue))];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -316,7 +320,7 @@ fn test_round_f64_const() {
         let i_jirvalue: JIRValue = JIRConst::new(i.to_bits().into(), 8).into();
         let exp: f64 = *exp as f64;
 
-        let instructions = vec![jinst!(xmm1_qa = ceil(i_jirvalue))];
+        let instructions = vec![jinst!(xmm1_qa = round(i_jirvalue))];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
