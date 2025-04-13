@@ -10,3 +10,4 @@ mod sqrt;
 mod neg;
 mod comparison;
 mod abs;
+mod nan;

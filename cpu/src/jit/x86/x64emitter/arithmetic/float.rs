@@ -8,3 +8,4 @@ mod round;
 mod trunc;
 mod unaryops;
 mod comparison;
+mod nan;

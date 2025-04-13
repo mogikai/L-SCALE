@@ -1,7 +1,4 @@
-use crate::jit::regalloc::requirements::{
-    OperandRequest,
-    TempRequest,
-};
+use crate::jit::regalloc::requirements::OperandRequest;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
 use crate::jit::x86::x64emitter::copy::CopyExtendMode;
@@ -64,7 +61,7 @@ impl X64AllocRequirements {
         requirement.add_request(OperandRequest::vec_write_any(output));
         match input {
             JIRValue::Const(input) => {
-                *requirement.required_temps_mut() = TempRequest::new().vector(1);
+                // no additional requirements
             }
             JIRValue::Slice(input) => {
                 requirement.add_request(OperandRequest::vec_read_any(input));
@@ -85,44 +82,51 @@ impl X64Emitter<'_> {
     ) -> JITResult {
         debug_assert_eq!(output.size(), input.size(), "Input and output must have the same size");
 
+        let size = output.size();
+
         let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
             todo!();
         };
 
-        let input_reg = match input {
-            JIRValue::Slice(jirslice) => {
+        match input {
+            JIRValue::Slice(_) => {
                 let Allocation::Register(input_reg) = self.allocations.get_allocation(inst, 1) else {
                     todo!();
                 };
 
-                input_reg
+                match size {
+                    4 => {
+                        // single-precision sqrt
+                        assemble!(self.block.assembler();
+                        ; sqrtss Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
+                        );
+                    }
+                    8 => {
+                        // double-precision sqrt
+                        assemble!(self.block.assembler();
+                        ; sqrtsd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
+                        );
+                    }
+                    size => todo!("Unsupported size {size}"),
+                }
             }
-            JIRValue::Const(jirconst) => {
-                let temp_reg = self
-                    .allocations
-                    .get_temp_allocations(inst)
-                    .get_nth_from_class(0, RegClass::Vector)
-                    .expect("We allocated this above");
-                self.load_const(temp_reg, jirconst)?;
-                temp_reg
+            JIRValue::Const(input) => {
+                // const input => directly write result to register
+                match size {
+                    4 => {
+                        // single-precision const sqrt
+                        let result = f32::from_bits(input.value().try_into().expect("This must fit for valid floats")).sqrt();
+                        self.load_const(output_reg, JIRConst::new(result.to_bits().into(), 4))?;
+                    }
+                    8 => {
+                        // double-precision const sqrt
+                        let result = f64::from_bits(input.value().try_into().expect("This must fit for valid floats")).sqrt();
+                        self.load_const(output_reg, JIRConst::new(result.to_bits().into(), 8))?;
+                    }
+                    size => todo!("Unsupported size {size}"),
+                }
             }
         };
-
-        match input.size() {
-            4 => {
-                // single-precision sqrt
-                assemble!(self.block.assembler();
-                ; sqrtss Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
-                );
-            }
-            8 => {
-                // double-precision sqrt
-                assemble!(self.block.assembler();
-                ; sqrtsd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
-                );
-            }
-            size => todo!("Unsupported size {size}"),
-        }
 
         Ok(())
     }
