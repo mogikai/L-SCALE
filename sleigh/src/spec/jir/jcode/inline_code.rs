@@ -34,7 +34,7 @@ macro_rules! jinst {
         $crate::spec::jir::jcode::JIRInstruction::nan($to, $from)
     };
     ($to:tt = abs($from:tt)) => {
-        $crate::spec::jir::jcode::JIRInstruction::nan($to, $from)
+        $crate::spec::jir::jcode::JIRInstruction::abs($to, $from)
     };
     ($to:tt = sqrt($from:tt)) => {
         $crate::spec::jir::jcode::JIRInstruction::sqrt($to, $from)

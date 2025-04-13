@@ -315,7 +315,7 @@ impl X64AllocRequirements {
                 Self::sborrow_requirements(&mut requirement, args.output, args.input_a, args.input_b)
             }
             JIRInstruction::Nan(_) => {}
-            JIRInstruction::Abs(_) => {}
+            JIRInstruction::Abs(args) => Self::fabs_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::Sqrt(args) => Self::fsqrt_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::IntToFloat(args) => Self::itof_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::FloatToFloat(args) => Self::ftof_requirements(&mut requirement, args.output, args.input),
@@ -538,7 +538,7 @@ impl X64Emitter<'_> {
             JIRInstruction::SignCarry(args) => self.emit_scarry(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::SignBorrow(args) => self.emit_sborrow(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::Nan(args) => todo!("Instruction not yet implemented: {jinst}"),
-            JIRInstruction::Abs(args) => todo!("Instruction not yet implemented: {jinst}"),
+            JIRInstruction::Abs(args) => self.emit_fabs(inst_id, args.output, args.input)?,
             JIRInstruction::Sqrt(args) => self.emit_fsqrt(inst_id, args.output, args.input)?,
             JIRInstruction::IntToFloat(args) => self.emit_itof(inst_id, args.output, args.input)?,
             JIRInstruction::FloatToFloat(args) => self.emit_ftof(inst_id, args.output, args.input)?,

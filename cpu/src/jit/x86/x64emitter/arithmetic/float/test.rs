@@ -9,3 +9,4 @@ mod trunc;
 mod sqrt;
 mod neg;
 mod comparison;
+mod abs;

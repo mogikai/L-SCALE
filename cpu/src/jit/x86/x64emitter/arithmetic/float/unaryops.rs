@@ -48,6 +48,14 @@ impl X64AllocRequirements {
         Self::unary_fop_requirements(requirement, output, input);
     }
 
+    pub fn fabs_requirements(
+        requirement: &mut AllocRequirement,
+        output: JIRSlice,
+        input: JIRValue,
+    ) {
+        Self::unary_fop_requirements(requirement, output, input);
+    }
+
     fn unary_fop_requirements(
         requirement: &mut AllocRequirement,
         output: JIRSlice,
@@ -175,6 +183,68 @@ impl X64Emitter<'_> {
                 let negated =
                     u64::try_from(jirconst.value()).expect("If this is a valid float it can't fail") ^ xor_signflip;
                 self.load_const(output_reg, JIRConst::new(negated.into(), size))?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Emit instructions that calculate the absolute of `input` and store the result in `output`.
+    #[inline]
+    pub fn emit_fabs(
+        &mut self,
+        inst: InstId,
+        output: JIRSlice,
+        input: JIRValue,
+    ) -> JITResult {
+        debug_assert_eq!(output.size(), input.size(), "Input and output must have the same size");
+
+        let size = output.size();
+
+        let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
+            todo!();
+        };
+
+        let notsign_mask: u64 = match size {
+            4 => !0x80000000,
+            8 => !0x8000000000000000,
+            size => todo!("Unsupported size {size}"),
+        };
+
+        match input {
+            JIRValue::Slice(jirslice) => {
+                let Allocation::Register(input_reg) = self.allocations.get_allocation(inst, 1) else {
+                    todo!();
+                };
+
+                // load notsign-mask pattern into scratch register
+                let scratch_vec = self.allocations.scratch_register(RegClass::Vector);
+                self.load_const(scratch_vec, JIRConst::new(notsign_mask.into(), size).into())?;
+
+                // load input into output and xor
+                self.copy_reg(output_reg, input_reg, size, CopyExtendMode::None)?;
+
+                match size {
+                    4 => {
+                        // single-precision xor
+                        assemble!(self.block.assembler();
+                        ; andps Rx(output_reg.hw_enc()), Rx(scratch_vec.hw_enc())
+                        );
+                    }
+                    8 => {
+                        // double-precision xor
+                        assemble!(self.block.assembler();
+                        ; andpd Rx(output_reg.hw_enc()), Rx(scratch_vec.hw_enc())
+                        );
+                    }
+                    size => todo!("Unsupported size {size}"),
+                }
+            }
+            JIRValue::Const(jirconst) => {
+                // absolute by applying notsign-mask and write to output
+                let absolute =
+                    u64::try_from(jirconst.value()).expect("If this is a valid float it can't fail") & notsign_mask;
+                self.load_const(output_reg, JIRConst::new(absolute.into(), size))?;
             }
         }
 
