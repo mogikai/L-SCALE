@@ -819,7 +819,7 @@ mod test {
         let cid_xmmreg2_m128 = ConstructorId::try_from_index(271).unwrap();
         let cid_m128 = ConstructorId::try_from_index(209).unwrap();
         let cid_mem = ConstructorId::try_from_index(198).unwrap();
-        let cid_addr64 = ConstructorId::try_from_index(160).unwrap();
+        let cid_addr64 = ConstructorId::try_from_index(162).unwrap();
         let cid_simm32_64 = ConstructorId::try_from_index(59).unwrap();
 
         assert_eq!(resolver.constructor_id(), cid_instr);
@@ -842,5 +842,38 @@ mod test {
         assert_eq!(res_addr64.constructor_id(), cid_addr64);
         let res_simm32_64 = res_addr64.subtables().get(&tid_simm32_64).unwrap();
         assert_eq!(res_simm32_64.constructor_id(), cid_simm32_64);
+    }
+
+    #[test]
+    fn test_endbr64() {
+        let path = ASSETS_PATH.to_string() + "x86/x86-64.slaspec";
+        let spec = build(path).unwrap();
+
+        let mut context_provider = SimpleContextProvider::default();
+        context_provider.set(&spec, "longMode", 1);
+        context_provider.set(&spec, "addrsize", 2);
+        context_provider.set(&spec, "opsize", 1);
+
+        // endbr64
+        let bytes = b"\xF3\x0F\x1E\xFA";
+        let mut context_stack = ContextStack::new(&spec, &context_provider).unwrap();
+        let match_context = spec.new_match_context(0x0u64.into()).unwrap();
+        let MatcherResult::Some {
+            table,
+            resolver,
+            bytes_consumed,
+        } = match_context.r#match(bytes, &mut context_stack).unwrap()
+        else {
+            panic!("No match");
+        };
+
+        let tid_instr = TableId::try_from_index(0).unwrap();
+
+        let cid_instr = ConstructorId::try_from_index(444).unwrap();
+        let cid_endbr64 = ConstructorId::try_from_index(4813).unwrap();
+
+        assert_eq!(resolver.constructor_id(), cid_instr);
+        let res_endbr64 = resolver.subtables().get(&tid_instr).unwrap();
+        assert_eq!(res_endbr64.constructor_id(), cid_endbr64);
     }
 }
