@@ -98,13 +98,13 @@ impl X64Emitter<'_> {
                     4 => {
                         // single-precision sqrt
                         assemble!(self.block.assembler();
-                        ; sqrtss Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
+                        ; vsqrtss Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc()), Rx(input_reg.hw_enc())
                         );
                     }
                     8 => {
                         // double-precision sqrt
                         assemble!(self.block.assembler();
-                        ; sqrtsd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
+                        ; vsqrtsd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc()), Rx(input_reg.hw_enc())
                         );
                     }
                     size => todo!("Unsupported size {size}"),
@@ -115,12 +115,24 @@ impl X64Emitter<'_> {
                 match size {
                     4 => {
                         // single-precision const sqrt
-                        let result = f32::from_bits(input.value().try_into().expect("This must fit for valid floats")).sqrt();
+                        let result = f32::from_bits(
+                            input
+                                .value()
+                                .try_into()
+                                .expect("This must fit for valid floats"),
+                        )
+                        .sqrt();
                         self.load_const(output_reg, JIRConst::new(result.to_bits().into(), 4))?;
                     }
                     8 => {
                         // double-precision const sqrt
-                        let result = f64::from_bits(input.value().try_into().expect("This must fit for valid floats")).sqrt();
+                        let result = f64::from_bits(
+                            input
+                                .value()
+                                .try_into()
+                                .expect("This must fit for valid floats"),
+                        )
+                        .sqrt();
                         self.load_const(output_reg, JIRConst::new(result.to_bits().into(), 8))?;
                     }
                     size => todo!("Unsupported size {size}"),
@@ -163,20 +175,17 @@ impl X64Emitter<'_> {
                 let scratch_vec = self.allocations.scratch_register(RegClass::Vector);
                 self.load_const(scratch_vec, JIRConst::new(xor_signflip.into(), size).into())?;
 
-                // load input into output and xor
-                self.copy_reg(output_reg, input_reg, size, CopyExtendMode::None)?;
-
                 match size {
                     4 => {
                         // single-precision xor
                         assemble!(self.block.assembler();
-                        ; xorps Rx(output_reg.hw_enc()), Rx(scratch_vec.hw_enc())
+                        ; vxorps Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc()), Rx(scratch_vec.hw_enc())
                         );
                     }
                     8 => {
                         // double-precision xor
                         assemble!(self.block.assembler();
-                        ; xorpd Rx(output_reg.hw_enc()), Rx(scratch_vec.hw_enc())
+                        ; vxorpd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc()), Rx(scratch_vec.hw_enc())
                         );
                     }
                     size => todo!("Unsupported size {size}"),
@@ -225,20 +234,17 @@ impl X64Emitter<'_> {
                 let scratch_vec = self.allocations.scratch_register(RegClass::Vector);
                 self.load_const(scratch_vec, JIRConst::new(notsign_mask.into(), size).into())?;
 
-                // load input into output and xor
-                self.copy_reg(output_reg, input_reg, size, CopyExtendMode::None)?;
-
                 match size {
                     4 => {
                         // single-precision xor
                         assemble!(self.block.assembler();
-                        ; andps Rx(output_reg.hw_enc()), Rx(scratch_vec.hw_enc())
+                        ; vandps Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc()), Rx(scratch_vec.hw_enc())
                         );
                     }
                     8 => {
                         // double-precision xor
                         assemble!(self.block.assembler();
-                        ; andpd Rx(output_reg.hw_enc()), Rx(scratch_vec.hw_enc())
+                        ; vandpd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc()), Rx(scratch_vec.hw_enc())
                         );
                     }
                     size => todo!("Unsupported size {size}"),

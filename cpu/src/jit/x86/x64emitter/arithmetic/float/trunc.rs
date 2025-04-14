@@ -1,7 +1,6 @@
 use mogi_sleigh::spec::jir::basic_block::InstId;
 use mogi_sleigh::spec::jir::values::{
-    JIRSlice,
-    JIRValue,
+    JIRConst, JIRSlice, JIRValue
 };
 
 use crate::jit::api::JITResult;
@@ -31,13 +30,14 @@ impl X64AllocRequirements {
                 requirement.add_request(OperandRequest::vec_read_any(jirslice));
             }
             JIRValue::Const(jirconst) => {
-                *requirement.required_temps_mut() = TempRequest::new().vector(1);
+                // no additional registers required
             }
         }
     }
 }
 
 impl X64Emitter<'_> {
+    /// Emit instructions that convert a float to an integer by truncating towards zero.
     pub fn emit_trunc(
         &mut self,
         inst: InstId,
@@ -51,54 +51,58 @@ impl X64Emitter<'_> {
             todo!()
         };
 
-        // either the slice register or a temporary register which contains the value
-        let input_reg = match input {
-            JIRValue::Const(jirconst) => {
-                // load input into register if not already in one
-                let input_reg = self
-                    .allocations
-                    .get_temp_allocations(inst)
-                    .get_nth_from_class(0, RegClass::Vector)
-                    .expect("We allocated this above");
-                self.load_const(input_reg, jirconst)?;
-                input_reg
+        match input {
+            JIRValue::Const(input) => {
+                // directly write result
+                let result_const = match in_size {
+                    4 => {
+                        // single-precision truncate
+                        JIRConst::new(f32::from_bits(input.value().try_into().expect("This must fit")).trunc().to_bits().into(), out_size)
+                    }
+                    8 => {
+                        // double-precision truncate
+                        JIRConst::new(f64::from_bits(input.value().try_into().expect("This must fit")).trunc().to_bits().into(), out_size)
+                    }
+                    size => todo!("Unsupported input size {in_size}")
+                };
+
+                self.load_const(output_reg, result_const)?;
+
             }
-            JIRValue::Slice(jirslice) => {
+            JIRValue::Slice(input) => {
                 let Allocation::Register(input_reg) = self.allocations.get_allocation(inst, 1) else {
                     todo!()
                 };
 
-                input_reg
+                match (in_size, out_size) {
+                    (4, 4) => {
+                        // single-precision truncate to dword singed integer
+                        assemble!(self.block.assembler();
+                            ; vcvttss2si Rd(output_reg.hw_enc()), Rx(input_reg.hw_enc())
+                        )
+                    }
+                    (4, 8) => {
+                        // single-precision truncate to qword singed integer
+                        assemble!(self.block.assembler();
+                            ; vcvttss2si Rq(output_reg.hw_enc()), Rx(input_reg.hw_enc())
+                        )
+                    }
+                    (8, 4) => {
+                        // double-precision truncate to dword singed integer
+                        assemble!(self.block.assembler();
+                            ; vcvttsd2si Rd(output_reg.hw_enc()), Rx(input_reg.hw_enc())
+                        )
+                    }
+                    (8, 8) => {
+                        // double-precision truncate to qword singed integer
+                        assemble!(self.block.assembler();
+                            ; vcvttsd2si Rq(output_reg.hw_enc()), Rx(input_reg.hw_enc())
+                        )
+                    }
+                    size => todo!("Unsupported size {:?}", size),
+                }
             }
         };
-
-        match (in_size, out_size) {
-            (4, 4) => {
-                // single-precision truncate to dword singed integer
-                assemble!(self.block.assembler();
-                    ; cvttss2si Rd(output_reg.hw_enc()), Rx(input_reg.hw_enc())
-                )
-            }
-            (4, 8) => {
-                // single-precision truncate to qword singed integer
-                assemble!(self.block.assembler();
-                    ; cvttss2si Rq(output_reg.hw_enc()), Rx(input_reg.hw_enc())
-                )
-            }
-            (8, 4) => {
-                // double-precision truncate to dword singed integer
-                assemble!(self.block.assembler();
-                    ; cvttsd2si Rd(output_reg.hw_enc()), Rx(input_reg.hw_enc())
-                )
-            }
-            (8, 8) => {
-                // double-precision truncate to qword singed integer
-                assemble!(self.block.assembler();
-                    ; cvttsd2si Rq(output_reg.hw_enc()), Rx(input_reg.hw_enc())
-                )
-            }
-            size => todo!("Unsupported size {:?}", size),
-        }
 
         Ok(())
     }

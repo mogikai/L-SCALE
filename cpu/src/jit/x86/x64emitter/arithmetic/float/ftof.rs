@@ -1,7 +1,6 @@
 use mogi_sleigh::spec::jir::basic_block::InstId;
 use mogi_sleigh::spec::jir::values::{
-    JIRSlice,
-    JIRValue,
+    JIRConst, JIRSlice, JIRValue
 };
 
 use crate::jit::api::JITResult;
@@ -31,7 +30,7 @@ impl X64AllocRequirements {
                 requirement.add_request(OperandRequest::vec_read_any(jirslice));
             }
             JIRValue::Const(jirconst) => {
-                *requirement.required_temps_mut() = TempRequest::new().vector(1);
+                // no registers necessary, directly write result
             }
         }
     }
@@ -55,42 +54,50 @@ impl X64Emitter<'_> {
             todo!()
         };
 
-        // either the slice register or a temporary register which contains the value
-        let input_reg = match input {
-            JIRValue::Const(jirconst) => {
-                // load input into register if not already in one
-                let input_reg = self
-                    .allocations
-                    .get_temp_allocations(inst)
-                    .get_nth_from_class(0, RegClass::Vector)
-                    .expect("We allocated this above");
-                self.load_const(input_reg, jirconst)?;
-                input_reg
-            }
-            JIRValue::Slice(jirslice) => {
-                let Allocation::Register(input_reg) = self.allocations.get_allocation(inst, 1) else {
-                    todo!()
+        match input {
+            JIRValue::Const(input) => {
+                // const input => directly load result
+                let output_jirconst = match (in_size, out_size) {
+                    (4, 8) => {
+                        // single-precision to double-precision
+                        let input: f32 = f32::from_bits(input.value().try_into().expect("This must fit"));
+                        let output: f64 = input as f64;
+                        JIRConst::new(output.to_bits().into(), 8)
+                    }
+                    (8, 4) => {
+                        // double-precision to single-precision
+                        let input: f64 = f64::from_bits(input.value().try_into().expect("This must fit"));
+                        let output: f32 = input as f32;
+                        JIRConst::new(output.to_bits().into(), 4)
+                    }
+                    size => todo!("Unsupported size {:?}", size),
                 };
 
-                input_reg
+                self.load_const(output_reg, output_jirconst)?;
+            }
+            JIRValue::Slice(input) => {
+                // slice => emit conversion instruction
+                let Allocation::Register(input_reg) = self.allocations.get_allocation(inst, 1) else {
+                    todo!();
+                };
+
+                match (in_size, out_size) {
+                    (4, 8) => {
+                        // single-precision to double-precision
+                        assemble!(self.block.assembler();
+                            ; vcvtss2sd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc()), Rx(input_reg.hw_enc())
+                        );
+                    }
+                    (8, 4) => {
+                        // double-precision to single-precision
+                        assemble!(self.block.assembler();
+                            ; vcvtsd2ss Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc()), Rx(input_reg.hw_enc())
+                        );
+                    }
+                    size => todo!("Unsupported size {:?}", size),
+                }
             }
         };
-
-        match (in_size, out_size) {
-            (4, 8) => {
-                // single-precision to double-precision
-                assemble!(self.block.assembler();
-                    ; cvtss2sd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
-                );
-            }
-            (8, 4) => {
-                // double-precision to single-precision
-                assemble!(self.block.assembler();
-                    ; cvtsd2ss Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
-                );
-            }
-            size => todo!("Unsupported size {:?}", size),
-        }
 
         Ok(())
     }

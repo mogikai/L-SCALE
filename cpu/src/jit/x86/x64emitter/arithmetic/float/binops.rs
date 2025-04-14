@@ -200,9 +200,10 @@ impl X64Emitter<'_> {
             todo!()
         };
 
-        self.copy_reg(output_reg, input_a_reg, size, CopyExtendMode::None)?;
-        self.load_const(input_a_reg, input_b)?;
-        self.emit_fop_hostregs(output_reg, input_a_reg, op, size)?;
+        // use scratch reg as input_b and load const
+        let input_b_reg = self.allocations.scratch_register(RegClass::Vector);
+        self.load_const(input_b_reg, input_b)?;
+        self.emit_fop_hostregs(output_reg, input_a_reg, input_b_reg, op, size)?;
 
         Ok(())
     }
@@ -227,8 +228,10 @@ impl X64Emitter<'_> {
             todo!()
         };
 
-        self.load_const(output_reg, input_a)?;
-        self.emit_fop_hostregs(output_reg, input_b_reg, op, size)?;
+        // use scratch reg as input_a and load const
+        let input_a_reg = self.allocations.scratch_register(RegClass::Vector);
+        self.load_const(input_a_reg, input_a)?;
+        self.emit_fop_hostregs(output_reg, input_a_reg, input_b_reg, op, size)?;
 
         Ok(())
     }
@@ -255,18 +258,17 @@ impl X64Emitter<'_> {
             todo!()
         };
 
-        self.copy_reg(output_reg, input_a_reg, input_a.size(), CopyExtendMode::None)?;
-        self.emit_fop_hostregs(output_reg, input_b_reg, op, size)?;
+        self.emit_fop_hostregs(output_reg, input_a_reg, input_b_reg, op, size)?;
 
         Ok(())
     }
 
-    /// Emit the final floating-point instruction with one operand stored in `output_reg`
-    /// and the other in `input_reg`.
+    /// Emit the final floating-point instruction with the given [HostReg]s.
     fn emit_fop_hostregs(
         &mut self,
         output_reg: HostReg,
-        input_reg: HostReg,
+        input_a_reg: HostReg,
+        input_b_reg: HostReg,
         op: FloatOp,
         size: JIRSize,
     ) -> JITResult {
@@ -275,22 +277,22 @@ impl X64Emitter<'_> {
                 // single-precision
                 FloatOp::Add => {
                     assemble!(self.block.assembler();
-                        ; addss Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
+                        ; vaddss Rx(output_reg.hw_enc()), Rx(input_a_reg.hw_enc()), Rx(input_b_reg.hw_enc())
                     );
                 }
                 FloatOp::Sub => {
                     assemble!(self.block.assembler();
-                        ; subss Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
+                        ; vsubss Rx(output_reg.hw_enc()), Rx(input_a_reg.hw_enc()), Rx(input_b_reg.hw_enc())
                     );
                 }
                 FloatOp::Mul => {
                     assemble!(self.block.assembler();
-                        ; mulss Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
+                        ; vmulss Rx(output_reg.hw_enc()), Rx(input_a_reg.hw_enc()), Rx(input_b_reg.hw_enc())
                     );
                 }
                 FloatOp::Div => {
                     assemble!(self.block.assembler();
-                        ; divss Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
+                        ; vdivss Rx(output_reg.hw_enc()), Rx(input_a_reg.hw_enc()), Rx(input_b_reg.hw_enc())
                     );
                 }
             },
@@ -298,22 +300,22 @@ impl X64Emitter<'_> {
                 // double-precision
                 FloatOp::Add => {
                     assemble!(self.block.assembler();
-                        ; addsd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
+                        ; vaddsd Rx(output_reg.hw_enc()), Rx(input_a_reg.hw_enc()), Rx(input_b_reg.hw_enc())
                     );
                 }
                 FloatOp::Sub => {
                     assemble!(self.block.assembler();
-                        ; subsd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
+                        ; vsubsd Rx(output_reg.hw_enc()), Rx(input_a_reg.hw_enc()), Rx(input_b_reg.hw_enc())
                     );
                 }
                 FloatOp::Mul => {
                     assemble!(self.block.assembler();
-                        ; mulsd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
+                        ; vmulsd Rx(output_reg.hw_enc()), Rx(input_a_reg.hw_enc()), Rx(input_b_reg.hw_enc())
                     );
                 }
                 FloatOp::Div => {
                     assemble!(self.block.assembler();
-                        ; divsd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc())
+                        ; vdivsd Rx(output_reg.hw_enc()), Rx(input_a_reg.hw_enc()), Rx(input_b_reg.hw_enc())
                     );
                 }
             },

@@ -8,6 +8,7 @@ use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
 use mogi_sleigh::spec::jir::basic_block::InstId;
 use mogi_sleigh::spec::jir::values::{
+    JIRConst,
     JIRSlice,
     JIRValue,
 };
@@ -31,7 +32,7 @@ impl X64AllocRequirements {
                 requirement.add_request(OperandRequest::int_read_any(jirslice));
             }
             JIRValue::Const(jirconst) => {
-                *requirement.required_temps_mut() = TempRequest::new().int(1);
+                // no additional registers necessary
             }
         }
     }
@@ -53,54 +54,69 @@ impl X64Emitter<'_> {
             todo!()
         };
 
-        // either the slice register or a temporary register which contains the value
-        let input_reg = match input {
-            JIRValue::Const(jirconst) => {
-                // load input into register if not already in one
-                let input_reg = self
-                    .allocations
-                    .get_temp_allocations(inst)
-                    .get_nth_from_class(0, RegClass::Int)
-                    .expect("We allocated this above");
-                self.load_const(input_reg, jirconst)?;
-                input_reg
+        match input {
+            JIRValue::Const(input) => {
+                // const => directly emit result
+                let result_jirconst = match (in_size, out_size) {
+                    (4, 4) => {
+                        // DWORD integer to single-precision
+                        let input = input.value() as i32;
+                        JIRConst::new((input as f32).to_bits().into(), 4)
+                    }
+                    (8, 4) => {
+                        // QWORD integer single-precision
+                        let input = input.value() as i64;
+                        JIRConst::new((input as f32).to_bits().into(), 4)
+                    }
+                    (4, 8) => {
+                        // DWORD integer to double-precision
+                        let input = input.value() as i32;
+                        JIRConst::new((input as f64).to_bits().into(), 8)
+                    }
+                    (8, 8) => {
+                        // QWORD integer double-precision
+                        let input = input.value() as i64;
+                        JIRConst::new((input as f64).to_bits().into(), 8)
+                    }
+                    size => todo!("Unsupported size {:?}", size),
+                };
+
+                self.load_const(output_reg, result_jirconst)?;
             }
-            JIRValue::Slice(jirslice) => {
+            JIRValue::Slice(_) => {
                 let Allocation::Register(input_reg) = self.allocations.get_allocation(inst, 1) else {
                     todo!()
                 };
 
-                input_reg
+                match (in_size, out_size) {
+                    (4, 4) => {
+                        // DWORD integer to single-precision float
+                        assemble!(self.block.assembler();
+                            ; vcvtsi2ss Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc()), Rd(input_reg.hw_enc())
+                        );
+                    }
+                    (4, 8) => {
+                        // DWORD integer to double-precision float
+                        assemble!(self.block.assembler();
+                            ; vcvtsi2sd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc()), Rd(input_reg.hw_enc())
+                        );
+                    }
+                    (8, 4) => {
+                        // QWORD integer to single-precision float
+                        assemble!(self.block.assembler();
+                            ; vcvtsi2ss Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc()), Rq(input_reg.hw_enc())
+                        );
+                    }
+                    (8, 8) => {
+                        // QWORD integer to double-precision float
+                        assemble!(self.block.assembler();
+                            ; vcvtsi2sd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc()), Rq(input_reg.hw_enc())
+                        );
+                    }
+                    size => todo!("Unsupported size {:?}", size),
+                }
             }
         };
-
-        match (in_size, out_size) {
-            (4, 4) => {
-                // DWORD integer to single-precision float
-                assemble!(self.block.assembler();
-                    ; cvtsi2ss Rx(output_reg.hw_enc()), Rd(input_reg.hw_enc())
-                );
-            }
-            (4, 8) => {
-                // DWORD integer to double-precision float
-                assemble!(self.block.assembler();
-                    ; cvtsi2sd Rx(output_reg.hw_enc()), Rd(input_reg.hw_enc())
-                );
-            }
-            (8, 4) => {
-                // QWORD integer to single-precision float
-                assemble!(self.block.assembler();
-                    ; cvtsi2ss Rx(output_reg.hw_enc()), Rq(input_reg.hw_enc())
-                );
-            }
-            (8, 8) => {
-                // QWORD integer to double-precision float
-                assemble!(self.block.assembler();
-                    ; cvtsi2sd Rx(output_reg.hw_enc()), Rq(input_reg.hw_enc())
-                );
-            }
-            size => todo!("Unsupported size {:?}", size),
-        }
 
         Ok(())
     }

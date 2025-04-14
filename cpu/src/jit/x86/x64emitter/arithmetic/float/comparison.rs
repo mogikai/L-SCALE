@@ -103,7 +103,6 @@ impl X64AllocRequirements {
                 // directly write result, no registers necessary
             }
             (JIRValue::Slice(input_a), JIRValue::Const(_)) | (JIRValue::Const(_), JIRValue::Slice(input_a)) => {
-                *requirements.required_temps_mut() = TempRequest::new().vector(1);
                 requirements.add_request(OperandRequest::vec_read_any(input_a));
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
@@ -220,14 +219,6 @@ impl X64Emitter<'_> {
         input_b: JIRConst,
         comp: FloatComp,
     ) -> JITResult {
-        // load input_b into temp register and emit comparison
-        let temp_reg = self
-            .allocations
-            .get_temp_allocations(inst)
-            .get_nth_from_class(0, RegClass::Vector)
-            .expect("We allocated this above");
-        self.load_const(temp_reg, input_b)?;
-
         let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
             todo!();
         };
@@ -236,7 +227,11 @@ impl X64Emitter<'_> {
             todo!();
         };
 
-        self.emit_fcomp_hostregs(inst, output_reg, input_a_reg, temp_reg, comp, input_a.size())
+        // load input_b into scratch register
+        let input_b_reg = self.allocations.scratch_register(RegClass::Vector);
+        self.load_const(input_b_reg, input_b)?;
+
+        self.emit_fcomp_hostregs(inst, output_reg, input_a_reg, input_b_reg, comp, input_a.size())
     }
 
     fn emit_fcomp_const_reg(
@@ -247,14 +242,6 @@ impl X64Emitter<'_> {
         input_b: JIRSlice,
         comp: FloatComp,
     ) -> JITResult {
-        // load input_a into temp register and emit comparison
-        let temp_reg = self
-            .allocations
-            .get_temp_allocations(inst)
-            .get_nth_from_class(0, RegClass::Vector)
-            .expect("We allocated this above");
-        self.load_const(temp_reg, input_a)?;
-
         let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
             todo!();
         };
@@ -263,7 +250,11 @@ impl X64Emitter<'_> {
             todo!();
         };
 
-        self.emit_fcomp_hostregs(inst, output_reg, temp_reg, input_b_reg, comp, input_a.size())
+        // load input_a into scratch register
+        let input_a_reg = self.allocations.scratch_register(RegClass::Vector);
+        self.load_const(input_a_reg, input_a)?;
+
+        self.emit_fcomp_hostregs(inst, output_reg, input_a_reg, input_b_reg, comp, input_a.size())
     }
 
     fn emit_fcomp_reg_reg(
@@ -302,13 +293,13 @@ impl X64Emitter<'_> {
             4 => {
                 // single-precision float comparison
                 assemble!(self.block.assembler();
-                ; ucomiss Rx(input_a_reg.hw_enc()), Rx(input_b_reg.hw_enc())
+                ; vucomiss Rx(input_a_reg.hw_enc()), Rx(input_b_reg.hw_enc())
                 );
             }
             8 => {
                 // double-precision float comparison
                 assemble!(self.block.assembler();
-                ; ucomisd Rx(input_a_reg.hw_enc()), Rx(input_b_reg.hw_enc())
+                ; vucomisd Rx(input_a_reg.hw_enc()), Rx(input_b_reg.hw_enc())
                 );
             }
             size => todo!("Unsupported size {size}"),

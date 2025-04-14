@@ -110,13 +110,13 @@ impl X64Emitter<'_> {
                     4 => {
                         // single-precision float rounding
                         assemble!(self.block.assembler();
-                            ; roundss Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc()), rounding_mode_imm
+                            ; vroundss Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc()), Rx(input_reg.hw_enc()), rounding_mode_imm
                         );
                     }
                     8 => {
                         // double-precision float to QWORD integer
                         assemble!(self.block.assembler();
-                            ; roundsd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc()), rounding_mode_imm
+                            ; vroundsd Rx(output_reg.hw_enc()), Rx(input_reg.hw_enc()), Rx(input_reg.hw_enc()), rounding_mode_imm
                         );
                     }
                     size => todo!("Unsupported size {:?}", size),

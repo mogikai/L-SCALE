@@ -13,7 +13,7 @@ fn test_itof_const_32_f32() {
     let (mut jit, processor_spec, mut context) = setup(false);
 
     for k in 0..i32::BITS {
-        let c_i32 = 1 << k;
+        let c_i32 = 1i32.wrapping_shl(k);
         let c_f32 = c_i32 as f32;
 
         let xmm0_da = get_reg_slice(&processor_spec, "XMM0_Da");
@@ -32,7 +32,7 @@ fn test_itof_const_64_f32() {
     let (mut jit, processor_spec, mut context) = setup(false);
 
     for k in 0..i64::BITS {
-        let c_i64 = 1i32.wrapping_shl(k);
+        let c_i64 = 1i64.wrapping_shl(k);
         let c_f32 = c_i64 as f32;
 
         let xmm0_da = get_reg_slice(&processor_spec, "XMM0_Da");
@@ -70,7 +70,7 @@ fn test_itof_const_64_f64() {
     let (mut jit, processor_spec, mut context) = setup(false);
 
     for k in 0..i64::BITS {
-        let c_i64 = 1i32.wrapping_shl(k);
+        let c_i64 = 1i64.wrapping_shl(k);
         let c_f64 = c_i64 as f64;
 
         let xmm0_qa = get_reg_slice(&processor_spec, "XMM0_Qa");
@@ -89,7 +89,7 @@ fn test_itof_reg_32_f32() {
     let (mut jit, processor_spec, mut context) = setup(false);
 
     for k in 0..i32::BITS {
-        let c_i32 = 1 << k;
+        let c_i32 = 1i32.wrapping_shl(k);
         let c_f32 = c_i32 as f32;
 
         let r8d = get_reg_slice(&processor_spec, "R8D");
@@ -111,7 +111,7 @@ fn test_itof_reg_64_f32() {
     let (mut jit, processor_spec, mut context) = setup(false);
 
     for k in 0..i64::BITS {
-        let c_i64 = 1 << k;
+        let c_i64 = 1i64.wrapping_shl(k);
         let c_f32 = c_i64 as f32;
 
         let r8 = get_reg_slice(&processor_spec, "R8");
@@ -133,7 +133,7 @@ fn test_itof_reg_32_f64() {
     let (mut jit, processor_spec, mut context) = setup(false);
 
     for k in 0..i32::BITS {
-        let c_i32 = 1 << k;
+        let c_i32 = 1i32.wrapping_shl(k);
         let c_f64 = c_i32 as f64;
 
         let r8d = get_reg_slice(&processor_spec, "R8D");
@@ -155,7 +155,7 @@ fn test_itof_reg_64_f64() {
     let (mut jit, processor_spec, mut context) = setup(false);
 
     for k in 0..i64::BITS {
-        let c_i64 = 1 << k;
+        let c_i64 = 1i64.wrapping_shl(k);
         let c_f64 = c_i64 as f64;
 
         let r8 = get_reg_slice(&processor_spec, "R8");

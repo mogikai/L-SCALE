@@ -71,14 +71,14 @@ impl X64Emitter<'_> {
                     4 => {
                         // single-precision NaN check
                         assemble!(self.block.assembler();
-                            ; ucomiss Rx(input_reg.hw_enc()), Rx(input_reg.hw_enc())
+                            ; vucomiss Rx(input_reg.hw_enc()), Rx(input_reg.hw_enc())
                             ; setp Rb(output_reg.hw_enc())
                         );
                     }
                     8 => {
                         // double-precision NaN check
                         assemble!(self.block.assembler();
-                            ; ucomisd Rx(input_reg.hw_enc()), Rx(input_reg.hw_enc())
+                            ; vucomisd Rx(input_reg.hw_enc()), Rx(input_reg.hw_enc())
                             ; setp Rb(output_reg.hw_enc())
                         );
                     }
