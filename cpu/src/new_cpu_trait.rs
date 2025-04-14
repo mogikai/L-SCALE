@@ -2,6 +2,7 @@
 
 use crate::cpu::StopReason;
 use mogi_system::errors::cpu::CPUError;
+use std::num::NonZeroUsize;
 use zerocopy::{
     FromBytes,
     Immutable,
@@ -14,7 +15,7 @@ pub type CPUResult<T> = Result<T, CPUError>;
 #[derive(Debug, Copy, Clone)]
 pub enum RunLimit {
     Unlimited,
-    InstructionCount(usize),
+    InstructionCount(NonZeroUsize),
 }
 
 pub trait CPU {

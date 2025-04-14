@@ -30,12 +30,16 @@ use mogi_utilities::addresses::EVAddr;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::process::exit;
 use std::rc::Rc;
 use std::time::Instant;
 use thiserror::Error;
-use tracing::trace;
+use tracing::{
+    debug,
+    trace,
+};
 use zerocopy::{
     FromBytes,
     Immutable,
@@ -69,8 +73,8 @@ enum MustInterpret {
 #[derive(Debug, Copy, Clone)]
 pub enum TranslationLimit {
     Unlimited,
-    BlockCount(usize),
-    InstructionCount(usize),
+    BlockCount(NonZeroUsize),
+    InstructionCount(NonZeroUsize),
 }
 
 #[repr(C)]
@@ -89,7 +93,7 @@ where
     jit: RefCell<JitT>,
     mmu: Rc<RefCell<MmuT>>,
     processor_specification: Rc<RefCell<ProcessorSpecification>>,
-    mir_cache: (),
+    block_cache: FnvHashMap<EVAddr, TargetBasicBlock>,
 }
 
 impl<JitT, MmuT> MogiCPU<JitT, MmuT>
@@ -116,7 +120,7 @@ where
             jit: RefCell::new(jit),
             mmu,
             processor_specification,
-            mir_cache: (),
+            block_cache: Default::default(),
         }
     }
 }
@@ -135,6 +139,8 @@ where
             RunLimit::InstructionCount(count) => TranslationLimit::InstructionCount(count),
         };
 
+        let mut executed_instructions = 0usize;
+
         loop {
             trace_jit!("Next block");
             self.handle_interrupt()?;
@@ -146,7 +152,13 @@ where
                     }
                     let jit = self.jit.borrow();
                     let ip = jit.instruction_pointer(&self.runtime_context)?;
+                    debug!("Executing block at {:?}", ip);
                     jit.execute(&mut self.runtime_context, ip)?;
+                    executed_instructions += self
+                        .block_cache
+                        .get(&ip)
+                        .unwrap()
+                        .target_instruction_count();
                     if let Some(error) = self.runtime_context.runtime_error() {
                         Err(error)?
                     }
@@ -156,11 +168,13 @@ where
                 }
             }
 
-            match translation_limit {
-                TranslationLimit::Unlimited => {}
-                // we only translate as much as necessary so we can break here
-                TranslationLimit::BlockCount(_) => break,
-                TranslationLimit::InstructionCount(_) => break,
+            match limit {
+                RunLimit::Unlimited => {}
+                RunLimit::InstructionCount(inst_count) => {
+                    if executed_instructions >= inst_count.into() {
+                        break;
+                    }
+                }
             }
         }
 
@@ -241,32 +255,30 @@ where
         let mut target_addresses = vec![jit.instruction_pointer(&self.runtime_context)?];
         // TODO this should reside somewhere outside to prevent duplicate lifting
         // for multiple calls of translate
-        let mut block_cache: FnvHashMap<EVAddr, TargetBasicBlock> = Default::default();
-        let mut translated_block_count = 0;
-        let mut translated_instr_count = 0;
+        let mut translated_block_count = 0usize;
+        let mut translated_instr_count = 0usize;
         trace_jit!("Translation limit is {:?}", translation_limit);
 
         while let Some(current_addr) = target_addresses.pop() {
-            trace_jit!("Translating block at {:?}", current_addr);
+            debug!("Translating block at {:?}", current_addr);
 
-            if block_cache.contains_key(&current_addr) {
+            if self.block_cache.contains_key(&current_addr) {
                 trace_jit!("Skipping aleady translated block");
                 continue;
             }
 
-            let block = if let TranslationLimit::InstructionCount(_) = translation_limit {
-                // if we have an instruction limit, we must lift instructions
-                // individually
-                self.processor_specification.borrow().lift_instruction(
-                    &*mmu,
-                    self.runtime_context.as_mut(),
-                    current_addr,
-                )?
+            let limit = if let TranslationLimit::InstructionCount(instr_count) = translation_limit {
+                Some(instr_count)
             } else {
-                self.processor_specification
-                    .borrow()
-                    .lift_block(&*mmu, self.runtime_context.as_mut(), current_addr)?
+                None
             };
+
+            let block = self.processor_specification.borrow().lift_block(
+                &*mmu,
+                self.runtime_context.as_mut(),
+                current_addr,
+                limit,
+            )?;
 
             // TODO: Most likely, if the runtime context was modified, we will first need to emulate before translating
             //       more blocks?
@@ -276,9 +288,21 @@ where
 
             jit.compile_target_block(&block)?;
 
+            // add direct branch targets
+            if let Some(branch_targets) = block.branch_targets() {
+                for branch_target in branch_targets {
+                    match branch_target {
+                        NextBlockTarget::Direct(target_addr) => target_addresses.push(*target_addr),
+                        NextBlockTarget::Return(return_addr) => target_addresses.push(*return_addr),
+                        _ => {}
+                    }
+                }
+            }
+
             // add fallthrough
             match block.fallthrough() {
                 Some(fallthrough_addr) => {
+                    target_addresses.push(fallthrough_addr);
                     let block_range = current_addr..fallthrough_addr;
                     let disassembly = self
                         .processor_specification
@@ -295,31 +319,20 @@ where
                 }
             }
 
-            // add direct branch targets
-            if let Some(branch_targets) = block.branch_targets() {
-                for branch_target in branch_targets {
-                    match branch_target {
-                        NextBlockTarget::Direct(target_addr) => target_addresses.push(*target_addr),
-                        NextBlockTarget::Return(return_addr) => target_addresses.push(*return_addr),
-                        _ => {}
-                    }
-                }
-            }
-
             translated_block_count += 1;
-            translated_instr_count += block.instruction_count();
-            block_cache.insert(current_addr, block);
+            translated_instr_count += block.target_instruction_count();
+            self.block_cache.insert(current_addr, block);
 
             match translation_limit {
                 TranslationLimit::Unlimited => {}
                 TranslationLimit::BlockCount(block_count) => {
-                    if translated_block_count > block_count {
+                    if translated_block_count >= block_count.into() {
                         trace_jit!("Hit block translation limit");
                         break;
                     }
                 }
                 TranslationLimit::InstructionCount(instr_count) => {
-                    if translated_instr_count > instr_count {
+                    if translated_instr_count >= instr_count.into() {
                         trace_jit!("Hit instruction translation limit");
                         break;
                     }
@@ -327,11 +340,12 @@ where
             }
         }
 
-        let total_instr_count: usize = block_cache
+        let total_instr_count: usize = self
+            .block_cache
             .values()
-            .map(|block| block.instruction_count())
+            .map(|block| block.target_instruction_count())
             .sum();
-        trace_jit!("Translated {}/{} blocks/instructions in total", block_cache.len(), total_instr_count);
+        trace_jit!("Translated {}/{} blocks/instructions in total", self.block_cache.len(), total_instr_count);
 
         Ok(())
     }

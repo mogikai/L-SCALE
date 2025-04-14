@@ -315,12 +315,14 @@ impl HostRegSet {
 
     /// Add all of the registers in one set to this one, mutating in
     /// place.
-    pub fn union_from(
+    pub const fn union_from(
         &mut self,
         other: HostRegSet,
     ) {
-        for i in 0..self.bits.len() {
+        let mut i = 0;
+        while i < self.bits.len() {
             self.bits[i] |= other.bits[i];
+            i += 1;
         }
     }
 
@@ -331,6 +333,22 @@ impl HostRegSet {
         for i in 0..self.bits.len() {
             self.bits[i] &= other.bits[i];
         }
+    }
+
+    /// Check if `self` intersects with `other`.
+    /// If any register is contained in both sets, returns true, and otherwise false.
+    pub const fn intersects(
+        &self,
+        other: HostRegSet,
+    ) -> bool {
+        let mut i = 0;
+        while i < self.bits.len() {
+            if self.bits[i] & other.bits[i] != 0 {
+                return true;
+            }
+            i += 1;
+        }
+        false
     }
 
     pub fn invert(&self) -> HostRegSet {

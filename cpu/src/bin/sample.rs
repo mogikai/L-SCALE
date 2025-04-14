@@ -28,6 +28,7 @@ use std::fs::{
     File,
     OpenOptions,
 };
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::rc::Rc;
 use std::time::Instant;
@@ -131,7 +132,8 @@ fn main() {
     *cpu.register_mut("RSP").unwrap() = stack_addr;
 
     // Now lets roll! (forever :>)
-    cpu.run(RunLimit::InstructionCount(1)).unwrap();
+    cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(1).unwrap()))
+        .unwrap();
     let rax: u64 = *cpu.register("RAX").unwrap();
     eprintln!("rax = {:#?}", rax);
 }

@@ -173,10 +173,7 @@ impl MOIRConstructor {
                     write!(display_string, "{}", string).unwrap();
                 }
                 MOIRDisplayFragment::Local(local_id) => {
-                    let reference = self
-                        .local_scope
-                        .resolve_local(*local_id)
-                        .reference;
+                    let reference = self.local_scope.resolve_local(*local_id).reference;
 
                     match reference {
                         MOIRReference::Field(field_id) => {
@@ -512,9 +509,22 @@ impl MOIRConstructor {
                     .resolve_local(spec, instruction_builder, input)
                     .and_then(|resolved| match resolved {
                         JIRResolvedValue::Value(value) => Ok(value),
-                        JIRResolvedValue::Reference { address, space, size } => instruction_builder
-                            .load_temp(address, space, size)
-                            .map(JIRValue::from),
+                        JIRResolvedValue::Reference {
+                            mut address,
+                            space,
+                            size,
+                        } => {
+                            // FIXME: Set the size of address at the correct location and not in a hacky manner here.
+                            let address = match address {
+                                JIRValue::Slice(a) => {
+                                    JIRSlice::new(a.space_id, a.group_id.unwrap(), a.offset, size).into()
+                                }
+                                JIRValue::Const(a) => JIRConst::new(a.value(), 0x8).into(),
+                            };
+                            instruction_builder
+                                .load_temp(address, space, size)
+                                .map(JIRValue::from)
+                        }
                     })
             })
             .ok_or(ProcessorSpecificationError::MissingInput)?

@@ -2,6 +2,8 @@ use crate::lifter::source::TargetInstructionSource;
 use crate::spec::jir::basic_block::TargetBasicBlock;
 use mogi_utilities::addresses::EVAddr;
 use std::cell::Ref;
+use std::num::NonZeroUsize;
+use std::ptr::NonNull;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -37,24 +39,12 @@ pub enum LifterError {
 /// to compile down to host assembly. Some Architectures decode instructions based on some cpu
 /// context, e.g. long mode in x86. This context is provided via the [ContextProviderr] trait.
 pub trait Lifter {
-    /// Lift a single instruction if possible, by fetching the bytes for the instruction from
-    /// `source`. Returns the address of the next instruction, and the lifted basic block,
-    /// containing only this single instruction.
-    /// To decode the entire target basic block, use [Self::lift_block] instead.
-    /// One target instruction corresponds to multiple lifted instructions most of the time.
-    /// See [TargetBasicBlock] for more detail.
-    fn lift_instruction<S: TargetInstructionSource, C: ContextProvider>(
-        &self,
-        source: &S,
-        context_provider: &mut C,
-        addr: EVAddr,
-    ) -> LifterResult<TargetBasicBlock>;
-
     fn lift_block<S: TargetInstructionSource, C: ContextProvider>(
         &self,
         source: &S,
         context_provider: &mut C,
         addr: EVAddr,
+        max_instructions: Option<NonZeroUsize>,
     ) -> LifterResult<TargetBasicBlock>;
 
     fn diagnostics(&self) -> Ref<LifterDiagnostics>;

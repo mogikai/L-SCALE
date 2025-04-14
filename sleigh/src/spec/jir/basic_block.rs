@@ -46,6 +46,10 @@ impl TargetBasicBlock {
         self.0.jir_instructions.len()
     }
 
+    pub fn target_instruction_count(&self) -> usize {
+        self.0.target_inst_count
+    }
+
     /// Get an iterator over all instructions in the target basic block. This includes all instructions from
     /// all jir blocks.
     pub fn inst_ids(&self) -> impl ExactSizeIterator<Item = InstId> + DoubleEndedIterator {
@@ -134,4 +138,6 @@ struct TargetBasicBlockInner {
     /// that stops execution.
     fallthrough: Option<EVAddr>,
     branch_targets: Option<Vec<NextBlockTarget>>,
+    /// The number of target instructions contained in this block.
+    target_inst_count: usize,
 }

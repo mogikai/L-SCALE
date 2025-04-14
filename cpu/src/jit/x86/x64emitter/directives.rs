@@ -132,8 +132,8 @@ where
                 ; mov Rq(reg), QWORD [cpu_context + slice_offset as _]
             );
         }
-        _ => {
-            panic!("Unsupported load size")
+        s => {
+            panic!("Unsupported load size {s}")
         }
     }
     Ok(())

@@ -283,15 +283,27 @@ impl MogiJit for X86MogiJit {
         // TODO: Maybe it would make sense to reuse the alloc requirements buffers to avoid allocations?
         let alloc_requirements = X64AllocRequirements::new(&spec, target_block);
 
-        let usable_registers = HostRegSet::empty()
+        let preferred_registers = HostRegSet::empty()
             .with(GPRegister::AX.into_host_reg())
             .with(GPRegister::BX.into_host_reg())
             .with(GPRegister::CX.into_host_reg())
             .with(GPRegister::DX.into_host_reg())
             .with(GPRegister::SI.into_host_reg())
-            .with(GPRegister::DI.into_host_reg())
+            .with(GPRegister::DI.into_host_reg()) // scratch register
             // .with(GPRegister::BP.into_host_reg()) // bp is reserved
             // .with(GPRegister::SP.into_host_reg()) // sp is reserved
+            .with(XMMRegister::XMM0.into_host_reg())
+            .with(XMMRegister::XMM1.into_host_reg())
+            .with(XMMRegister::XMM2.into_host_reg())
+            .with(XMMRegister::XMM3.into_host_reg())
+            .with(XMMRegister::XMM4.into_host_reg())
+            .with(XMMRegister::XMM5.into_host_reg())
+            .with(XMMRegister::XMM6.into_host_reg())
+            .with(XMMRegister::XMM7.into_host_reg()); // scratch register
+
+        // Mark the registers with longer encodings as non_preferred.
+        // For most architectures, this should only impact code size and not performance.
+        let non_preferred_registers = HostRegSet::empty()
             .with(GPRegister::R8.into_host_reg())
             .with(GPRegister::R9.into_host_reg())
             .with(GPRegister::R10.into_host_reg())
@@ -300,14 +312,6 @@ impl MogiJit for X86MogiJit {
             .with(GPRegister::R13.into_host_reg())
             .with(GPRegister::R14.into_host_reg())
             .with(GPRegister::R15.into_host_reg())
-            .with(XMMRegister::XMM0.into_host_reg())
-            .with(XMMRegister::XMM1.into_host_reg())
-            .with(XMMRegister::XMM2.into_host_reg())
-            .with(XMMRegister::XMM3.into_host_reg())
-            .with(XMMRegister::XMM4.into_host_reg())
-            .with(XMMRegister::XMM5.into_host_reg())
-            .with(XMMRegister::XMM6.into_host_reg())
-            .with(XMMRegister::XMM7.into_host_reg())
             .with(XMMRegister::XMM8.into_host_reg())
             .with(XMMRegister::XMM9.into_host_reg())
             .with(XMMRegister::XMM10.into_host_reg())
@@ -321,9 +325,9 @@ impl MogiJit for X86MogiJit {
         let regalloc = RegisterAllocator::new(
             &target_block,
             &alloc_requirements,
-            RegAllocHostConstraints::new(usable_registers)
-                .with_scratch(GPRegister::R15.into_host_reg())
-                .with_scratch(XMMRegister::XMM15.into_host_reg()),
+            RegAllocHostConstraints::new(preferred_registers, non_preferred_registers)
+                .with_scratch(GPRegister::DI.into_host_reg())
+                .with_scratch(XMMRegister::XMM7.into_host_reg()),
         );
         let allocations = regalloc.run()?;
 

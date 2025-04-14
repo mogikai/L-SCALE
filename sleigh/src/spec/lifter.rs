@@ -15,80 +15,20 @@ use crate::spec::jir::jumplist::MatcherResult;
 use crate::spec::jir::trace_jir;
 use mogi_utilities::addresses::EVAddr;
 use std::cell::Ref;
+use std::num::NonZeroUsize;
+use std::ptr::NonNull;
 use std::time::Instant;
 
 use super::jir::common::JIRSize;
 use super::jir::jumplist::MatchContext;
 
 impl Lifter for ProcessorSpecification {
-    fn lift_instruction<S: TargetInstructionSource, C: ContextProvider>(
-        &self,
-        source: &S,
-        context_provider: &mut C,
-        addr: EVAddr,
-    ) -> LifterResult<TargetBasicBlock> {
-        // // Check the cache. If it contains the instruction we can simply return it.
-        // if self.cache.is_instruction_cached(addr) {
-        //     // TODO: Remove the outer check once the conditional control flow borrow checking lands
-        //     //       See https://github.com/rust-lang/rfcs/blob/master/text/2094-nll.md#problem-case-3-conditional-control-flow-across-functions
-        //     match self.cache.fetch_instruction(addr) {
-        //         Ok(instruction) => {
-        //             return Ok((instruction.next(), instruction));
-        //         }
-        //         Err(_) => unreachable!(),
-        //     }
-        // }
-        // // No cache entry? Fetch data now.
-        self.lifter_diagnostics
-            .borrow_mut()
-            .inst_lifted_since_last_reset += 1;
-
-        // TODO: Allocate buffer size depending on the target instruction sets maximum instruction size.
-        let mut buffer = [0u8; 16];
-        source
-            .load(addr, &mut buffer)
-            .map_err(|_| -> LifterError { todo!() })?;
-
-        let now = Instant::now();
-
-        let mut context_stack = ContextStack::new(self, context_provider).expect("Couldn't create context stack");
-        let match_context = MatchContext::new(addr, &self.jumplist_cache, &self.symbol_tables.constructors);
-        let matching_result = match_context.r#match(&buffer, &mut context_stack).unwrap();
-        self.lifter_diagnostics.borrow_mut().total_time_match += now.elapsed();
-
-        let now = Instant::now();
-        match matching_result {
-            MatcherResult::EndOfByteStream => Err(LifterError::EndOfBytes)?,
-            MatcherResult::None => Err(LifterError::NoMatch(buffer.to_vec()))?,
-            MatcherResult::Some {
-                table: _,
-                resolver,
-                bytes_consumed,
-            } => {
-                let mut block_builder = TargetBasicBlockBuilder::new(addr, self.temp_space);
-                trace_jir!("{}", resolver.hierarchy_debug_string().unwrap());
-
-                block_builder.start_block().unwrap();
-                resolver
-                    .build(self, &mut block_builder)
-                    .map_err(|_| -> LifterError { todo!() })?;
-                block_builder.finish_block().unwrap();
-
-                let block = block_builder
-                    .finish()
-                    .map_err(|_| -> LifterError { todo!() })?;
-
-                self.lifter_diagnostics.borrow_mut().total_time_build += now.elapsed();
-                Ok(block)
-            }
-        }
-    }
-
     fn lift_block<S, C>(
         &self,
         source: &S,
         context_provider: &mut C,
         mut addr: EVAddr,
+        max_instructions: Option<NonZeroUsize>,
     ) -> LifterResult<TargetBasicBlock>
     where
         S: TargetInstructionSource,
@@ -102,12 +42,12 @@ impl Lifter for ProcessorSpecification {
         let mut block_size = 0;
         // Start with a block. Any intermediate blocks will end this block and create a new one.
         block_builder.start_block().unwrap();
+        let mut instruction_count = 0usize;
         loop {
             trace_jir!("Loading instruction bytes at {:?}", addr);
             source
                 .load(addr, &mut buffer)
                 .map_err(|_| -> LifterError { LifterError::InputLoad(addr) })?;
-
 
             // TODO error type
             // TODO: Initially fill the context stack with the value from the context provider that needs to be passed in.
@@ -141,6 +81,12 @@ impl Lifter for ProcessorSpecification {
 
                     block_size += bytes_consumed;
                     self.lifter_diagnostics.borrow_mut().total_time_build += now.elapsed();
+                    instruction_count += 1;
+                    if let Some(max_instructions) = max_instructions
+                        && instruction_count >= max_instructions.into()
+                    {
+                        break;
+                    }
                 }
             }
         }

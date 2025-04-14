@@ -70,6 +70,7 @@ impl TargetBasicBlockBuilder {
                 start,
                 fallthrough: None,
                 branch_targets: None,
+                target_inst_count: 0,
             },
             current_block_id: None,
             previous_block_id: None,
@@ -173,6 +174,7 @@ impl TargetBasicBlockBuilder {
             .push(JIRInstruction::instruction_end(address));
         self.target_block.fallthrough = fallthrough;
         self.target_block.branch_targets = branch_targets;
+        self.target_block.target_inst_count += 1;
         Ok(())
     }
 

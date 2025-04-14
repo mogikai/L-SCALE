@@ -13,6 +13,7 @@
 //!
 
 mod instruction;
+mod lru;
 pub mod requirements;
 pub mod result;
 
@@ -26,6 +27,7 @@ use crate::jit::host::register::{
     HostRegSet,
     RegClass,
 };
+use crate::jit::regalloc::lru::Lru;
 use crate::jit::regalloc::requirements::{
     OperandConstraint,
     OperandKind,
@@ -43,11 +45,17 @@ use mogi_sleigh::spec::jir::jir_block::JIRBlockId;
 use mogi_sleigh::spec::jir::values::JIRSlice;
 use requirements::EmitterAllocRequirements;
 use result::AllocatorResult;
+use std::ops::{
+    Index,
+    IndexMut,
+};
 use strum::EnumCount;
 
 #[derive(Debug)]
 pub struct RegAllocHostConstraints {
-    usable_registers: HostRegSet,
+    all_available_registers: HostRegSet,
+    preferred_registers: HostRegSet,
+    non_preferred_registers: HostRegSet,
     /// Some instructions need a scratch register. This register can be used
     /// by any instruction and any directive, but it gives no guarantees
     /// to its contents before or after the corresponding instruction or directive.
@@ -57,20 +65,97 @@ pub struct RegAllocHostConstraints {
 }
 
 impl RegAllocHostConstraints {
-    pub const fn new(usable_registers: HostRegSet) -> Self {
+    pub const fn new(
+        preferred_registers: HostRegSet,
+        non_preferred_registers: HostRegSet,
+    ) -> Self {
+        assert!(!preferred_registers.intersects(non_preferred_registers));
+        let mut all_available_registers = preferred_registers;
+        all_available_registers.union_from(non_preferred_registers);
         RegAllocHostConstraints {
-            usable_registers,
+            all_available_registers,
+            preferred_registers,
+            non_preferred_registers,
             scratch_register: [HostReg::invalid(); RegClass::COUNT],
         }
     }
 
+    /// Add `reg` as scratch register.
+    /// This automatically removes it from the preferred and non-preferred register sets.
     pub const fn with_scratch(
         mut self,
         reg: HostReg,
     ) -> Self {
-        self.usable_registers.remove(reg);
+        self.preferred_registers.remove(reg);
+        self.non_preferred_registers.remove(reg);
         self.scratch_register[reg.class() as usize] = reg;
         self
+    }
+}
+
+struct Lrus {
+    lrus: [Lru; RegClass::COUNT],
+}
+
+impl Index<RegClass> for Lrus {
+    type Output = Lru;
+
+    fn index(
+        &self,
+        index: RegClass,
+    ) -> &Self::Output {
+        &self.lrus[index as usize]
+    }
+}
+
+impl IndexMut<RegClass> for Lrus {
+    fn index_mut(
+        &mut self,
+        index: RegClass,
+    ) -> &mut Self::Output {
+        &mut self.lrus[index as usize]
+    }
+}
+
+impl Lrus {
+    pub fn new(host_constraints: &RegAllocHostConstraints) -> Self {
+        // TODO: Would it make sense to abe able to specify an exact initial lru state?
+        let initial_lru_order_int = host_constraints
+            .preferred_registers
+            .iter_class(RegClass::Int)
+            .chain(
+                host_constraints
+                    .non_preferred_registers
+                    .iter_class(RegClass::Int),
+            )
+            .collect::<Vec<_>>();
+        let initial_lru_order_vec = host_constraints
+            .preferred_registers
+            .iter_class(RegClass::Vector)
+            .chain(
+                host_constraints
+                    .non_preferred_registers
+                    .iter_class(RegClass::Vector),
+            )
+            .collect::<Vec<_>>();
+        let initial_lru_order_float = host_constraints
+            .preferred_registers
+            .iter_class(RegClass::Float)
+            .chain(
+                host_constraints
+                    .non_preferred_registers
+                    .iter_class(RegClass::Float),
+            )
+            .collect::<Vec<_>>();
+        // TODO: can we somehow create this array in a way that depends on the order of the enum variants, instead
+        //       of just assuming that they are ordered in this way?
+        Self {
+            lrus: [
+                Lru::new(RegClass::Int, &initial_lru_order_int),
+                Lru::new(RegClass::Float, &initial_lru_order_float),
+                Lru::new(RegClass::Vector, &initial_lru_order_vec),
+            ],
+        }
     }
 }
 
@@ -111,6 +196,10 @@ pub struct RegisterAllocator<'a, E> {
     /// are already in the fixed register slot are kept there.
     /// If this case is encountered, then the allocation will be moved to a free register.
     fixed_regs: HostRegSet,
+
+    /// Keeps track of which register was least recently used, such that we can spill
+    /// this register if needed.
+    lrus: Lrus,
 }
 
 /// A struct to keep track of the registers that are available before and after an instruction.
@@ -130,7 +219,7 @@ where
         emitter_requirements: &'a E,
         host_constraints: RegAllocHostConstraints,
     ) -> Self {
-        let available_registers = host_constraints.usable_registers;
+        let lrus = Lrus::new(&host_constraints);
         RegisterAllocator::<'a, E> {
             target_block: translation_unit,
             emitter_requirements,
@@ -142,9 +231,10 @@ where
             loaded_slices: Default::default(),
             written_regs: HostRegSet::empty(),
             read_regs: HostRegSet::empty(),
+            available_registers: host_constraints.all_available_registers,
             host_constraints,
-            available_registers,
             fixed_regs: HostRegSet::empty(),
+            lrus,
         }
     }
 
@@ -195,7 +285,7 @@ where
     }
 
     fn reset_available_host_registers(&mut self) {
-        self.available_registers = self.host_constraints.usable_registers;
+        self.available_registers = self.host_constraints.all_available_registers;
         self.fixed_regs = HostRegSet::empty();
     }
 
@@ -312,14 +402,10 @@ where
     ) -> JITResult<HostReg> {
         // TODO: Use lru cache to pick least recently used register to allocate to
         let mut available_regs = self.available_registers;
-        for (reg, _) in self.loaded_slices.iter_class(class) {
-            available_regs.remove(reg);
-        }
-        available_regs
-            .into_iter()
-            .filter(|r| r.class() == class)
-            .nth(0)
-            .ok_or_else(|| -> JitError { todo!("Error handling") })
+        let Some(reg) = self.lrus[class].last(available_regs) else {
+            todo!("Error: No registers available")
+        };
+        Ok(reg)
     }
 
     fn allocate_temp_regs(
@@ -389,6 +475,8 @@ where
         Ok(Allocation::Register(reg))
     }
 
+    /// Updates lru cache and marks it as written read in the respective tracking sets.
+    /// If the register is written to, it is spilled if this is the first write for the currently loaded slice.
     fn mark_and_spill(
         &mut self,
         reg: HostReg,
@@ -407,6 +495,7 @@ where
                 self.read_regs.add(reg);
             }
         }
+        self.lrus[reg.class()].poke(reg);
     }
 
     /// Makes sure that the already loaded slice group corresponds to the operand request.

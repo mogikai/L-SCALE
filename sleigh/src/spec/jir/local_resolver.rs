@@ -380,7 +380,12 @@ impl<'a> JIRResolver<'a> {
         trace_jir!("Local {local} is {value:?}");
         let start = value.start;
         // let end = value.end;
-        let size = value.size();
+        let size = JIRSize::try_from(
+            value
+                .size()
+                .ok_or_else(|| todo!("Generate error for undefined size"))?,
+        )
+        .expect("The size must fit into JIRSize");
         Ok(match value.reference {
             MOIRReference::VarNode(varnode_id) => {
                 if self.values[local].is_some() {
@@ -391,20 +396,13 @@ impl<'a> JIRResolver<'a> {
                     varnode.space_id,
                     spec.varnode_to_group[varnode_id].expect("Every varnode must have a group id"),
                     varnode.offset + start,
-                    JIRSize::try_from(size.ok_or_else(|| todo!("Generate error for undefined size"))?)
-                        .expect("The size must fit into JIRSize"),
+                    size,
                 )
                 .into()
             }
             MOIRReference::Temporary(temp_id) => match self.temporaries[temp_id] {
                 None => todo!("Generate error for unresolved temporary."),
-                Some(value) => value
-                    .slice(
-                        start,
-                        JIRSize::try_from(size.ok_or_else(|| todo!("Generate error for undefined size"))?)
-                            .expect("The size must fit into JIRSize"),
-                    )
-                    .into(),
+                Some(value) => value.slice(start, size).into(),
             },
             MOIRReference::Const(_) => match self.values[local] {
                 None => todo!("Generate error for unresolved temporary."),
@@ -447,22 +445,11 @@ impl<'a> JIRResolver<'a> {
                             .ok_or_else(|| -> ProcessorSpecificationError {
                                 todo!("Generate error report for out of bounds attached field")
                             })?;
-                        JIRResolvedValue::Value(JIRValue::Const(JIRConst::new(
-                            attached_value.into(),
-                            field
-                                .bits
-                                .bits()
-                                .try_into()
-                                .expect("The size must fit into JIRSize"),
-                        )))
+                        JIRResolvedValue::Value(JIRValue::Const(JIRConst::new(attached_value.into(), size)))
                     } else if !field.strings.is_empty() {
                         todo!("display");
                     } else {
-                        JIRResolvedValue::Value(JIRValue::Const(JIRConst::new(
-                            field_value,
-                            JIRSize::try_from(size.ok_or_else(|| todo!("Generate error for undefined size"))?)
-                                .expect("The size must fit into JIRSize"),
-                        )))
+                        JIRResolvedValue::Value(JIRValue::Const(JIRConst::new(field_value, size)))
                     }
                 } else {
                     todo!("Generate error for field resolving to non-const");
