@@ -604,7 +604,7 @@ where
         trace_jit!("Reserving register {target_reg} for fixed operand");
 
         // Check if the register is free, and remove it from the available set.
-        if !self.available_registers.contains(target_reg) {
+        if !self.available_registers.contains(target_reg) && !self.fixed_regs.contains(target_reg) {
             todo!("Allocation error: Tried to allocate a fixed register for an unavailable register")
         }
         self.available_registers.remove(target_reg);

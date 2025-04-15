@@ -15,6 +15,8 @@ define space register type=register_space size=4;
 
 # General purpose registers
 
+define register offset=0x5000 size=16      [ QAX QBX QCX ];
+
 @ifdef IA64
 define register offset=0 size=8      [  RAX               RCX               RDX               RBX               RSP               RBP               RSI               RDI ];
 define register offset=0 size=4      [  EAX _             ECX _             EDX _             EBX _             ESP _             EBP _             ESI _             EDI ];

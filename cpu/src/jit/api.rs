@@ -68,6 +68,8 @@ pub enum RuntimeError {
     MissingOutput,
     #[error("The instruction is missing an input parameter and cannot be translated.")]
     MissingInput,
+    #[error("The instruction encountered a division error")]
+    DivisionError,
 }
 
 pub type JITResult<T = ()> = Result<T, JitError>;

@@ -1,4 +1,8 @@
-use crate::jit::api::JITResult;
+use crate::jit::api::{
+    JITResult,
+    JITTaskRuntimeContext,
+    RuntimeError,
+};
 use crate::jit::host::register::{
     HostRegSet,
     RegClass,
@@ -7,6 +11,7 @@ use crate::jit::regalloc::requirements::OperandRequest;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
 use crate::jit::x86::registers::general_purpose::GPRegister;
+use crate::jit::x86::task_context::X86TaskContext;
 use crate::jit::x86::x64emitter::copy::CopyExtendMode;
 use crate::jit::x86::x64emitter::helpers::reg;
 use crate::jit::x86::x64emitter::{
@@ -19,6 +24,7 @@ use mogi_sleigh::spec::jir::values::{
     JIRSlice,
     JIRValue,
 };
+use std::ffi::c_void;
 
 enum DivisionType {
     Signed,
@@ -50,6 +56,9 @@ impl X64AllocRequirements {
         if dividend.size() != divisor.size() {
             todo!("Support division with differently sized arguments?")
         }
+        if dividend.size() > 8 {
+            return Self::div_rem_external_requirements(requirement, output, dividend, divisor);
+        }
         match (dividend, divisor) {
             (JIRValue::Const(dividend), JIRValue::Const(divisor)) => {
                 Self::copy_requirements(requirement, output, divide_const(dividend, divisor));
@@ -61,18 +70,79 @@ impl X64AllocRequirements {
             }
             (JIRValue::Slice(dividend), JIRValue::Const(divisor)) => {
                 Self::load_output(requirement, output, keep);
-                if dividend.size() > 8 {
-                    todo!("Unsupported divide size")
-                }
                 requirement.add_request(OperandRequest::int_read_any(dividend));
             }
             (JIRValue::Slice(dividend), JIRValue::Slice(divisor)) => {
                 Self::load_output(requirement, output, keep);
-                if dividend.size() > 8 {
-                    todo!("Unsupported divide size")
-                }
                 requirement.add_request(OperandRequest::int_read_any(dividend));
                 requirement.add_request(OperandRequest::int_read_any(divisor));
+            }
+        }
+    }
+
+    fn div_rem_external_requirements(
+        requirement: &mut AllocRequirement,
+        output: JIRSlice,
+        dividend: JIRValue,
+        divisor: JIRValue,
+    ) {
+        debug_assert_eq!(output.size(), 16);
+        debug_assert_eq!(output.size(), dividend.size());
+        debug_assert_eq!(output.size(), divisor.size());
+        // rdi = divisor.low
+        // rsi = divisor.high
+        // rdx = dividend.low
+        // rcx = dividend.high
+        // r8 = cpu_context
+
+        // rax, rdi, rsi, rdx, rcx, r8, r9, r10, r11 are clobbered by function calls.
+        // rax, rdx are already used as output. rdi, rsi, rdx, r8 are used as inputs.
+        let clobbers = HostRegSet::empty()
+            // RBX is also clobbered since we need to save the stack pointer.
+            .with(GPRegister::BX.into_host_reg())
+            .with(GPRegister::R9.into_host_reg())
+            .with(GPRegister::R10.into_host_reg())
+            .with(GPRegister::R11.into_host_reg());
+
+        let (output_lower, output_upper) = output.split(8);
+        requirement.add_request(OperandRequest::int_write_fixed(GPRegister::AX.into_host_reg(), output_lower));
+        requirement.add_request(OperandRequest::int_write_fixed(GPRegister::DX.into_host_reg(), output_upper));
+
+        match (dividend, divisor) {
+            (JIRValue::Const(dividend), JIRValue::Const(divisor)) => {
+                unreachable!("Const Const division is handled elsewhere");
+            }
+            (JIRValue::Const(dividend), JIRValue::Slice(divisor)) => {
+                let (divisor_lower, divisor_upper) = divisor.split(8);
+                requirement
+                    .add_request(OperandRequest::int_read_fixed_reg(GPRegister::DI.into_host_reg(), divisor_lower));
+                requirement
+                    .add_request(OperandRequest::int_read_fixed_reg(GPRegister::SI.into_host_reg(), divisor_upper));
+                *requirement.clobbers_mut() = clobbers
+                    .with(GPRegister::DX.into_host_reg())
+                    .with(GPRegister::CX.into_host_reg());
+            }
+            (JIRValue::Slice(dividend), JIRValue::Const(divisor)) => {
+                let (dividend_lower, dividend_upper) = dividend.split(8);
+                requirement
+                    .add_request(OperandRequest::int_read_fixed_reg(GPRegister::DX.into_host_reg(), dividend_lower));
+                requirement
+                    .add_request(OperandRequest::int_read_fixed_reg(GPRegister::CX.into_host_reg(), dividend_upper));
+                *requirement.clobbers_mut() = clobbers
+                    .with(GPRegister::DI.into_host_reg())
+                    .with(GPRegister::SI.into_host_reg());
+            }
+            (JIRValue::Slice(dividend), JIRValue::Slice(divisor)) => {
+                let (dividend_lower, dividend_upper) = dividend.split(8);
+                requirement
+                    .add_request(OperandRequest::int_read_fixed_reg(GPRegister::DX.into_host_reg(), dividend_lower));
+                requirement
+                    .add_request(OperandRequest::int_read_fixed_reg(GPRegister::CX.into_host_reg(), dividend_upper));
+                let (divisor_lower, divisor_upper) = divisor.split(8);
+                requirement
+                    .add_request(OperandRequest::int_read_fixed_reg(GPRegister::DI.into_host_reg(), divisor_lower));
+                requirement
+                    .add_request(OperandRequest::int_read_fixed_reg(GPRegister::SI.into_host_reg(), divisor_upper));
             }
         }
     }
@@ -165,6 +235,9 @@ impl X64Emitter<'_> {
                 }
             }
         } else {
+            if output.size() > 8 {
+                return self.emit_divide_value_value_128(inst, division_type, keep, output, dividend, divisor);
+            }
             self.emit_divide_value_value(inst, division_type, output, dividend, divisor)
         }
     }
@@ -261,6 +334,74 @@ impl X64Emitter<'_> {
         Ok(())
     }
 
+    fn emit_divide_value_value_128(
+        &mut self,
+        inst: InstId,
+        division_type: DivisionType,
+        keep_division_result: KeepDivisionResult,
+        output: JIRSlice,
+        dividend: JIRValue,
+        divisor: JIRValue,
+    ) -> JITResult {
+        let output_lower = reg!(self.allocations, inst, 0);
+        let output_upper = reg!(self.allocations, inst, 1);
+        debug_assert_eq!(output_lower, GPRegister::AX.into_host_reg());
+        debug_assert_eq!(output_upper, GPRegister::DX.into_host_reg());
+
+        match (dividend, divisor) {
+            (JIRValue::Const(dividend), JIRValue::Const(divisor)) => {
+                unreachable!("Const Const division is handled elsewhere");
+            }
+            (JIRValue::Const(dividend), JIRValue::Slice(divisor)) => {
+                let (dividend_lower, dividend_upper) = dividend.split(8);
+                let dividend_lower_reg = reg!(self.allocations, inst, 2);
+                let dividend_upper_reg = reg!(self.allocations, inst, 3);
+                self.load_const(dividend_lower_reg, dividend_lower)?;
+                self.load_const(dividend_upper_reg, dividend_upper)?;
+            }
+            (JIRValue::Slice(dividend), JIRValue::Const(divisor)) => {
+                let (divisor_lower, divisor_upper) = divisor.split(8);
+                let divisor_lower_reg = reg!(self.allocations, inst, 2);
+                let divisor_upper_reg = reg!(self.allocations, inst, 3);
+                self.load_const(divisor_lower_reg, divisor_lower)?;
+                self.load_const(divisor_upper_reg, divisor_upper)?;
+            }
+            (JIRValue::Slice(dividend), JIRValue::Slice(divisor)) => {
+                // Arguments are already loaded correctly.
+            }
+        }
+
+        let div_func = match (division_type, keep_division_result) {
+            (DivisionType::Signed, KeepDivisionResult::Quotient) => sdiv128,
+            (DivisionType::Unsigned, KeepDivisionResult::Quotient) => div128,
+            (DivisionType::Signed, KeepDivisionResult::Remainder) => srem128,
+            (DivisionType::Unsigned, KeepDivisionResult::Remainder) => rem128,
+        };
+
+        assemble!(self.block.assembler();
+            // Load cpu context into r8
+            ; rdgsbase r8
+            // Save the current stack pointer. RBX is preserved by the caller.
+            ; mov rbx, rsp
+            // Important: Make sure the stack is aligned to 16 bytes according to System V ABI before calling
+            ; and rsp, DWORD -16
+            ; mov rax, QWORD div_func as _
+            ; call rax
+            // Restore the stack pointer
+            ; mov rsp, rbx
+            ; gs cmp [X86TaskContext::runtime_error_offset() as _], 0
+            ; je >failure
+            ; jmp >success
+            ; failure:
+        );
+        self.save_loaded_slices()?;
+        assemble!(self.block.assembler();
+            ; jmp ->exit_failure
+            ; success:
+        );
+        Ok(())
+    }
+
     pub fn emit_signed_divide(
         &mut self,
         inst: InstId,
@@ -331,4 +472,120 @@ fn remainder_signed_const(
 ) -> JIRConst {
     let result = (dividend.value() as i128).wrapping_rem(divisor.value() as i128) as u128;
     JIRConst::new(result, dividend.size())
+}
+
+#[repr(C)]
+struct U128 {
+    low: u64,
+    high: u64,
+}
+
+unsafe extern "sysv64" fn div128(
+    dividend: U128,
+    divisor: U128,
+    cpu_context: *mut X86TaskContext,
+) -> U128 {
+    // rdi = divisor.low
+    // rsi = divisor.high
+    // rdx = dividend.low
+    // rcx = dividend.high
+    // r8 = cpu_context
+    // r9 not used
+    let dividend: u128 = dividend.low as u128 | ((dividend.high as u128) << 64);
+    let divisor: u128 = divisor.low as u128 | ((divisor.high as u128) << 64);
+    let result = dividend.checked_div(divisor);
+    let Some(result) = result else {
+        // SAFETY: By contract, the cpu_context pointer is passed by the jit and must be valid.
+        unsafe { &mut (*cpu_context) }.set_runtime_error(RuntimeError::DivisionError);
+        // SAFETY: The error variable in the runtime is checked. In case of an error, the emulation will exit
+        //         and the unsafe value is not used.
+        return unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+    };
+    U128 {
+        low: result as u64,
+        high: (result >> 64) as u64,
+    }
+}
+
+unsafe extern "sysv64" fn sdiv128(
+    dividend: U128,
+    divisor: U128,
+    cpu_context: *mut X86TaskContext,
+) -> U128 {
+    // rdi = divisor.low
+    // rsi = divisor.high
+    // rdx = dividend.low
+    // rcx = dividend.high
+    // r8 = cpu_context
+    // r9 not used
+    let dividend: u128 = dividend.low as u128 | ((dividend.high as u128) << 64);
+    let divisor: u128 = divisor.low as u128 | ((divisor.high as u128) << 64);
+    let result = (dividend as i128).checked_div(divisor as i128);
+    let Some(result) = result else {
+        // SAFETY: By contract, the cpu_context pointer is passed by the jit and must be valid.
+        unsafe { &mut (*cpu_context) }.set_runtime_error(RuntimeError::DivisionError);
+        // SAFETY: The error variable in the runtime is checked. In case of an error, the emulation will exit
+        //         and the unsafe value is not used.
+        return unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+    };
+    let result = result as u128;
+    U128 {
+        low: result as u64,
+        high: (result >> 64) as u64,
+    }
+}
+
+unsafe extern "sysv64" fn rem128(
+    dividend: U128,
+    divisor: U128,
+    cpu_context: *mut X86TaskContext,
+) -> U128 {
+    // rdi = divisor.low
+    // rsi = divisor.high
+    // rdx = dividend.low
+    // rcx = dividend.high
+    // r8 = cpu_context
+    // r9 not used
+    let dividend: u128 = dividend.low as u128 | ((dividend.high as u128) << 64);
+    let divisor: u128 = divisor.low as u128 | ((divisor.high as u128) << 64);
+    let result = dividend.checked_rem(divisor);
+    let Some(result) = result else {
+        // SAFETY: By contract, the cpu_context pointer is passed by the jit and must be valid.
+        unsafe { &mut (*cpu_context) }.set_runtime_error(RuntimeError::DivisionError);
+        // SAFETY: The error variable in the runtime is checked. In case of an error, the emulation will exit
+        //         and the unsafe value is not used.
+        return unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+    };
+    U128 {
+        low: result as u64,
+        high: (result >> 64) as u64,
+    }
+}
+
+unsafe extern "sysv64" fn srem128(
+    dividend: U128,
+    divisor: U128,
+    cpu_context: *mut X86TaskContext,
+) -> U128 {
+    // rdi = divisor.low
+    // rsi = divisor.high
+    // rdx = dividend.low
+    // rcx = dividend.high
+    // r8 = cpu_context
+    // r9 not used
+    let dividend: u128 = dividend.low as u128 | ((dividend.high as u128) << 64);
+    let divisor: u128 = divisor.low as u128 | ((divisor.high as u128) << 64);
+    let result = (dividend as i128).checked_rem(divisor as i128);
+    let Some(result) = result else {
+        // SAFETY: By contract, the cpu_context pointer is passed by the jit and must be valid.
+        unsafe { &mut (*cpu_context) }.set_runtime_error(RuntimeError::DivisionError);
+        // SAFETY: The error variable in the runtime is checked. In case of an error, the emulation will exit
+        //         and the unsafe value is not used.
+        return unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+    };
+    let result = result as u128;
+    U128 {
+        low: result as u64,
+        high: (result >> 64) as u64,
+    }
 }

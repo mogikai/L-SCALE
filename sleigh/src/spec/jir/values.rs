@@ -435,6 +435,12 @@ impl From<&JIRConst> for JIRValue {
     }
 }
 
+impl From<u128> for JIRValue {
+    fn from(value: u128) -> Self {
+        JIRConst::new(value, 16).into()
+    }
+}
+
 impl From<u64> for JIRValue {
     fn from(value: u64) -> Self {
         JIRConst::new(value as u128, 8).into()

@@ -6,6 +6,23 @@ use mogi_sleigh::jinst;
 use std::ops::Shl;
 
 #[test]
+fn test_shift_left_slice_slice_128bit() {
+    let (mut jit, processor_spec, mut context) = setup(false);
+    test_multiple_binary_instruction_generic_different_sizes(
+        &processor_spec,
+        &mut jit,
+        &mut context,
+        |result, a, b, _, _| (jinst!(result = a << b), result),
+        |a, b| a.shl(b),
+        (u128::MIN..u128::MIN + 100).chain(u128::MAX - 100..u128::MAX),
+        0..64u8,
+        "QAX",
+        "QBX",
+        "CL",
+    );
+}
+
+#[test]
 fn test_shift_left_slice_slice_64bit() {
     let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_binary_instruction_generic_different_sizes(
@@ -40,6 +57,23 @@ fn test_shift_left_output_same_slice_64bit() {
 }
 
 #[test]
+fn test_shift_left_slice_const_128bit() {
+    let (mut jit, processor_spec, mut context) = setup(false);
+    test_multiple_binary_instruction_generic_different_sizes(
+        &processor_spec,
+        &mut jit,
+        &mut context,
+        |result, a, _, _, b| (jinst!(result = a << b), result),
+        |a, b| a.shl(b),
+        (u128::MIN..u128::MIN + 100).chain(u128::MAX - 100..u128::MAX),
+        0..64u8,
+        "QAX",
+        "QBX",
+        "CL",
+    );
+}
+
+#[test]
 fn test_shift_left_slice_const_64bit() {
     let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_binary_instruction_generic_different_sizes(
@@ -52,6 +86,23 @@ fn test_shift_left_slice_const_64bit() {
         0..64u8,
         "RAX",
         "RBX",
+        "CL",
+    );
+}
+
+#[test]
+fn test_shift_left_const_slice_128bit() {
+    let (mut jit, processor_spec, mut context) = setup(false);
+    test_multiple_binary_instruction_generic_different_sizes(
+        &processor_spec,
+        &mut jit,
+        &mut context,
+        |result, _, b, a, _| (jinst!(result = a << b), result),
+        |a, b| a.shl(b),
+        (u128::MIN..u128::MIN + 100).chain(u128::MAX - 100..u128::MAX),
+        0..64u8,
+        "QAX",
+        "QBX",
         "CL",
     );
 }

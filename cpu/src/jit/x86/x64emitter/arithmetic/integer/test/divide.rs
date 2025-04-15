@@ -156,6 +156,33 @@ fn test_divide_slice_slice_64() {
 }
 
 #[test]
+fn test_divide_slice_slice_128() {
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::TRACE.into())
+                .with_env_var("MOGI_LOG")
+                .from_env_lossy(),
+        )
+        .init();
+    let (mut jit, processor_spec, mut context) = setup(true);
+    test_multiple_binary_instruction_generic(
+        &processor_spec,
+        &mut jit,
+        &mut context,
+        |result, a, b, _, _| (jinst!(result = a / b), result),
+        |a, b| a.wrapping_div(b),
+        (u128::MIN..u128::MIN + 1000)
+            .chain(u128::MAX - 1000..u128::MAX)
+            .filter(|i| i != &0),
+        "QAX",
+        "QBX",
+        "QCX",
+    );
+}
+
+#[test]
 fn test_divide_slice_const_8() {
     let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_binary_instruction_generic(

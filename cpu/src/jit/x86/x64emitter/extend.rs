@@ -5,6 +5,7 @@ use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
 use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::x64emitter::copy::CopyExtendMode;
+use crate::jit::x86::x64emitter::helpers::reg;
 use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
     X64Emitter,
@@ -22,7 +23,15 @@ impl X64AllocRequirements {
         output: JIRSlice,
         input: JIRValue,
     ) {
-        requirement.add_request(OperandRequest::int_write_any(output));
+        match output.size() {
+            size if size <= 8 => requirement.add_request(OperandRequest::int_write_any(output)),
+            size if size == 16 => {
+                let (output_lower, output_upper) = output.split(8);
+                requirement.add_request(OperandRequest::int_write_any(output_lower));
+                requirement.add_request(OperandRequest::int_write_any(output_upper));
+            }
+            _ => todo!("unsupported size"),
+        }
         input.is_slice_then(|s| requirement.add_request(OperandRequest::int_read_any(*s)));
     }
 
@@ -56,20 +65,23 @@ impl X64Emitter<'_> {
         output: JIRSlice,
         input: JIRValue,
     ) -> JITResult {
-        let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
-            todo!()
-        };
+        let output_reg = reg!(self.allocations, inst, 0);
         match input {
-            JIRValue::Slice(slice) => {
-                let Allocation::Register(input_reg) = self.allocations.get_allocation(inst, 1) else {
-                    todo!()
-                };
+            JIRValue::Slice(slice) if output.size() <= 8 => {
+                let input_reg = reg!(self.allocations, inst, 1);
                 self.copy_reg(output_reg, input_reg, input.size(), CopyExtendMode::ZeroExtend(output.size()))?;
+            }
+            JIRValue::Slice(slice) if output.size() == 16 => {
+                let output_upper_reg = reg!(self.allocations, inst, 1);
+                let input_reg = reg!(self.allocations, inst, 2);
+                self.copy_reg(output_reg, input_reg, input.size(), CopyExtendMode::ZeroExtend(8))?;
+                self.load_zero(output_upper_reg, 8)?;
             }
             JIRValue::Const(value) => {
                 let value = value.zext(output.size()).expect("Invalid zero extend");
                 self.load_const(output_reg, value)?;
             }
+            _ => todo!("Unsupported operands"),
         }
         Ok(())
     }
@@ -80,23 +92,17 @@ impl X64Emitter<'_> {
         output: JIRSlice,
         input: JIRValue,
     ) -> JITResult {
-        let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
-            todo!()
-        };
+        let output_reg = reg!(self.allocations, inst, 0);
         match input {
             JIRValue::Slice(slice) => {
                 match output.size() {
                     size if size <= 8 => {
-                        let Allocation::Register(input_reg) = self.allocations.get_allocation(inst, 1) else {
-                            todo!()
-                        };
+                        let input_reg = reg!(self.allocations, inst, 1);
                         self.copy_reg(output_reg, input_reg, input.size(), CopyExtendMode::SignExtend(output.size()))?;
                     }
                     size if size == 16 => {
                         // Input is in slot 2, because we have two output registers.
-                        let Allocation::Register(input_reg) = self.allocations.get_allocation(inst, 2) else {
-                            todo!()
-                        };
+                        let input_reg = reg!(self.allocations, inst, 2);
                         // If the size is 16, the outputs are in RDX:RAX.
                         // The input is also RAX, so we need to copy the input there.
                         self.copy_reg(GPRegister::AX.into_host_reg(), input_reg, input.size(), CopyExtendMode::None)?;
