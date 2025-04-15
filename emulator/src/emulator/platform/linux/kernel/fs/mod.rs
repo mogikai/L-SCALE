@@ -345,7 +345,7 @@ where
         if cwd_path.as_os_str().len() as u64 > size {
             Err(SyscallError::KernelError(LinuxKernelError::EINVAL))
         } else {
-            memory.write_bytes(buf, cwd_path.as_os_str().as_bytes());
+            memory.write_bytes(buf, format!("{}\x00", cwd_path.as_os_str().to_str().unwrap()).as_bytes());
             Ok(buf.into())
         }
     }

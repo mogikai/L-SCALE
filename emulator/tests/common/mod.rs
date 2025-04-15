@@ -53,10 +53,10 @@ pub fn prepare_binary(bin: &str) {
         .arg(format!("{}/Makefile", assetdir.display()))
         .arg(bin)
         .env("VPATH", format!("{}", assetdir.display()))
-        .env("CC", "clang-13")
+        .env("CC", "clang-14")
         .env(
             "CFLAGS",
-            format!("--sysroot {} -B {} -fuse-ld={} -pie", sysdir.display(), "/usr/lib/llvm-13/bin", "lld"),
+            format!("--sysroot {} -B {} -fuse-ld={} -pie", sysdir.display(), "/usr/lib/llvm-14/bin", "lld"),
         )
         .env("LDFLAGS", "-Wl,-allow-shlib-undefined -fPIC")
         .status()
