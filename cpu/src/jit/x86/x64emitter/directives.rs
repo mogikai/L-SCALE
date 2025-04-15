@@ -113,23 +113,23 @@ where
     match slice.size() {
         1 => {
             assemble!(assembler;
-                ; movzx Rd(reg), BYTE [cpu_context + slice_offset as _]
+                ; gs movzx Rd(reg), BYTE [slice_offset as _]
             );
         }
         2 => {
             assemble!(assembler;
-                ; movzx Rd(reg), WORD [cpu_context + slice_offset as _]
+                ; gs movzx Rd(reg), WORD [slice_offset as _]
             );
         }
         4 => {
             // Moving to the lower 32 bits of a register zeros the upper 32 bits
             assemble!(assembler;
-                ; mov Rd(reg), DWORD [cpu_context + slice_offset as _]
+                ; gs mov Rd(reg), DWORD [slice_offset as _]
             );
         }
         8 => {
             assemble!(assembler;
-                ; mov Rq(reg), QWORD [cpu_context + slice_offset as _]
+                ; gs mov Rq(reg), QWORD [slice_offset as _]
             );
         }
         s => {
@@ -154,24 +154,24 @@ where
     match slice.size() {
         4 => {
             assemble!(assembler;
-                ; vmovd Rx(reg), DWORD [cpu_context + slice_offset as _]
+                ; gs vmovd Rx(reg), DWORD [slice_offset as _]
             );
         }
         8 => {
             assemble!(assembler;
-                ; vmovq Rx(reg), QWORD [cpu_context + slice_offset as _]
+                ; gs vmovq Rx(reg), QWORD [slice_offset as _]
             );
         }
         16 => {
             // XMM => XMM
             assemble!(assembler;
-                ; movupd Rx(reg), OWORD [cpu_context + slice_offset as _]
+                ; gs movupd Rx(reg), OWORD [slice_offset as _]
             );
         }
         32 => {
             // YMM => YMM
             assemble!(assembler;
-                ; vmovupd Ry(reg), YWORD [cpu_context + slice_offset as _]
+                ; gs vmovupd Ry(reg), YWORD [slice_offset as _]
             );
         }
         64 => {
@@ -215,22 +215,22 @@ where
     match slice.size() {
         1 => {
             assemble!(assembler;
-                ; mov BYTE [cpu_context + slice_offset as _], Rb(reg)
+                ; gs mov BYTE [slice_offset as _], Rb(reg)
             );
         }
         2 => {
             assemble!(assembler;
-                ; mov WORD [cpu_context + slice_offset as _], Rw(reg)
+                ; gs mov WORD [slice_offset as _], Rw(reg)
             );
         }
         4 => {
             assemble!(assembler;
-                ; mov DWORD [cpu_context + slice_offset as _], Rd(reg)
+                ; gs mov DWORD [slice_offset as _], Rd(reg)
             );
         }
         8 => {
             assemble!(assembler;
-                ; mov QWORD [cpu_context + slice_offset as _], Rq(reg)
+                ; gs mov QWORD [slice_offset as _], Rq(reg)
             );
         }
         _ => {
@@ -254,24 +254,24 @@ where
     match slice.size() {
         4 => {
             assemble!(assembler;
-                ; vmovd DWORD [cpu_context + slice_offset as _], Rx(reg)
+                ; gs vmovd DWORD [slice_offset as _], Rx(reg)
             );
         }
         8 => {
             assemble!(assembler;
-                ; vmovq QWORD [cpu_context + slice_offset as _], Rx(reg)
+                ; gs vmovq QWORD [slice_offset as _], Rx(reg)
             );
         }
         16 => {
             // XMM => XMM
             assemble!(assembler;
-                ; movupd OWORD [cpu_context + slice_offset as _], Rx(reg)
+                ; gs movupd OWORD [slice_offset as _], Rx(reg)
             );
         }
         32 => {
             // YMM => YMM
             assemble!(assembler;
-                ; vmovupd YWORD [cpu_context + slice_offset as _], Ry(reg)
+                ; gs vmovupd YWORD [slice_offset as _], Ry(reg)
             );
         }
         64 => {

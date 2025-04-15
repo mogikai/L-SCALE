@@ -201,13 +201,13 @@ impl X64Emitter<'_> {
             // index = index * entry_size
             ; shl Rd(tmp_addr_reg), BYTE entry_shift as _
             // compare tag and entry.tag
-            ; cmp Rq(tag_reg.hw_enc()), QWORD [Rq(tmp_addr_reg) + tag_offset as _ + cpu_context]
+            ; gs cmp Rq(tag_reg.hw_enc()), QWORD [Rq(tmp_addr_reg) + tag_offset as _]
             ; jne >tlb_miss
             // TLB hit. Copy the untouched address into the tag_reg which we will reuse here for the address
             ; mov Rq(tag_reg.hw_enc()), Rq(addr_reg)
             ; and Rd(tag_reg.hw_enc()), WORD PageData::page_offset_mask() as _
             // Add target onto the page offset
-            ; add Rq(tag_reg.hw_enc()), QWORD [Rq(tmp_addr_reg) + target_offset as _ + cpu_context]
+            ; gs add Rq(tag_reg.hw_enc()), QWORD [Rq(tmp_addr_reg) + target_offset as _]
             // Permissions do not need to be checked, since we have two tlb tables. One for read and one for write.
             // If the address is on a page in the read table, then it is readable, and if it is in the
             // write table, it is writable. Execute permissions are handled via the jit buffer, i.e. code is flushed
@@ -236,7 +236,7 @@ impl X64Emitter<'_> {
             // trampoline(context, callback, evaddr, size, space_id) -> page_addr
             //    ^^^       ^^^       ^^^     ^^^    ^^^      ^^^          ^^^
             //    eax       rdi       rsi     rdx    rcx      r8           rax
-            ; mov rdi, cpu_context
+            ; rdgsbase rdi
             ; mov rsi, QWORD translate_callback as _
             // evaddr is already loaded in RDX.
             ; mov rcx, WORD size as _

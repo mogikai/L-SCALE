@@ -283,19 +283,19 @@ impl X64Emitter<'_> {
             1 => {
                 // Move to 32 bit register to zero extend.
                 assemble!(self.block.assembler();
-                    ; mov BYTE [cpu_context + slice_offset], BYTE value as _
+                    ; gs mov BYTE [slice_offset], BYTE value as _
                 );
             }
             2 => {
                 // Move to 32 bit register to zero extend.
                 assemble!(self.block.assembler();
-                    ; mov WORD [cpu_context + slice_offset], WORD value as _
+                    ; gs mov WORD [slice_offset], WORD value as _
                 );
             }
             4 => {
                 // We need to move to 32 bit register here, since the 64 bit move sign extends?????
                 assemble!(self.block.assembler();
-                    ; mov DWORD [cpu_context + slice_offset], DWORD value as _
+                    ; gs mov DWORD [slice_offset], DWORD value as _
                 );
             }
             8 => {
@@ -304,7 +304,7 @@ impl X64Emitter<'_> {
                 // A 64-bit immediate can only be moved into registers.
                 assemble!(self.block.assembler();
                     ; mov Rq(scratch.hw_enc()), QWORD value as _
-                    ; mov QWORD [cpu_context + slice_offset], Rq(scratch.hw_enc())
+                    ; gs mov QWORD [slice_offset], Rq(scratch.hw_enc())
                 );
             }
             size => {
@@ -328,22 +328,22 @@ impl X64Emitter<'_> {
         match target.size() {
             1 => {
                 assemble!(self.block.assembler();
-                    ; mov BYTE [cpu_context + slice_offset as _], Rb(reg)
+                    ; gs mov BYTE [slice_offset as _], Rb(reg)
                 );
             }
             2 => {
                 assemble!(self.block.assembler();
-                    ; mov WORD [cpu_context + slice_offset as _], Rw(reg)
+                    ; gs mov WORD [slice_offset as _], Rw(reg)
                 );
             }
             4 => {
                 assemble!(self.block.assembler();
-                    ; mov DWORD [cpu_context + slice_offset as _], Rd(reg)
+                    ; gs mov DWORD [slice_offset as _], Rd(reg)
                 );
             }
             8 => {
                 assemble!(self.block.assembler();
-                    ; mov QWORD [cpu_context + slice_offset as _], Rq(reg)
+                    ; gs mov QWORD [slice_offset as _], Rq(reg)
                 );
             }
             _ => {

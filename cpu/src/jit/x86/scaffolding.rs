@@ -35,10 +35,13 @@ pub fn build_prelude(
         ; push r13
         ; push r14
         ; push r15
-        // Move context to rbp. Function arguments are passed in RDI, RSI, RDX, RCX, R8, R9
         // TODO: We might need to save RSP somewhere if we want to modify it.
         //       Otherwise we will break the calling code, if we don't restore RSP correctly.
-        ; mov rbp, rdi
+        // Move context pointer to gs segment register. Function arguments are passed in RDI, RSI, RDX, RCX, R8, R9
+        // https://docs.kernel.org/arch/x86/x86_64/fsgs.html
+        // --> The GS segment has no common use and can be used freely by applications.
+        //     GCC and Clang support GS based addressing via address space identifiers.
+        ; wrgsbase rdi
         // Jump to provided block
         ; jmp rsi
     );
@@ -50,7 +53,7 @@ pub fn build_prelude(
 /// Builds the epilogue of the jit. This block is jumped to, when the emulated code wants to exit into the emulator.
 /// The code pops all the saved registers and then returns into the function that called the prelude.
 pub fn build_epilogue(code_buffer: &mut CodeBuffer<X64Relocation>) -> Result<AnonymousBlockId, JitError> {
-    let block_id = code_buffer.create_anonymous_block(1024).unwrap();
+    let block_id = code_buffer.create_anonymous_block(1024)?;
     let block = code_buffer.anonymous_block_mut(block_id);
     assemble!(block.assembler();
         ; pop r15

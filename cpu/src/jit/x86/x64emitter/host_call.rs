@@ -52,7 +52,7 @@ impl X64Emitter<'_> {
             // Move the trampoline to rax. We later call rax.
             ; mov rax, QWORD trampoline as _
             // First argument of the trampoline: The cpu context
-            ; mov rdi, cpu_context
+            ; rdgsbase rdi
             // Second argument of the trampoline: The callback pointer.
             ; mov rsi, QWORD op_ptr as _
             // Third argument of the trampoline: The args pointer.

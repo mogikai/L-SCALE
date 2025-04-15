@@ -69,7 +69,7 @@ macro_rules! assemble {
             ; .arch x64
             // The cpu context is stored in RBP for as long as we are inside the jited code.
             // RBP must never be used in any other way.
-            ; .alias cpu_context, rbp
+            // ; .alias cpu_context, rbp
             $($t)*
         )
     }
@@ -290,7 +290,7 @@ impl MogiJit for X86MogiJit {
             .with(GPRegister::DX.into_host_reg())
             .with(GPRegister::SI.into_host_reg())
             .with(GPRegister::DI.into_host_reg()) // scratch register
-            // .with(GPRegister::BP.into_host_reg()) // bp is reserved
+            .with(GPRegister::BP.into_host_reg())
             // .with(GPRegister::SP.into_host_reg()) // sp is reserved
             .with(XMMRegister::XMM0.into_host_reg())
             .with(XMMRegister::XMM1.into_host_reg())
