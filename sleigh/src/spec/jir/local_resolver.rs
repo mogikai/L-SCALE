@@ -53,6 +53,28 @@ pub enum JIRResolvedValue {
     },
 }
 
+impl JIRResolvedValue {
+    /// The size of a resolved value can be further constrained by subpieces.
+    /// We therefore set its size manually if necessary.
+    fn shrink_size(&mut self, shrink_to: JIRSize) -> ProcessorSpecResult {
+        match self {
+            JIRResolvedValue::Value(value) => {
+                *value = value.slice(0, shrink_to);
+            }
+            JIRResolvedValue::Reference { size, .. } => {
+                if *size < shrink_to {
+                    // we can only make slices smaller
+                    todo!("Generate error report for shrink_size with larger size");
+                }
+
+                *size = shrink_to;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 impl From<JIRConst> for JIRResolvedValue {
     fn from(value: JIRConst) -> Self {
         JIRResolvedValue::Value(value.into())
@@ -461,7 +483,9 @@ impl<'a> JIRResolver<'a> {
                     .get(&table_id)
                     .ok_or_else(|| todo!("Generate error: 'Failed to match subtable'"))?;
                 // Check the subtable resolver for the symbol that is exported and resolve it to a JIRValue.
-                subtable_resolver.resolve_export(spec, instruction_builder)?
+                let mut resolved_value = subtable_resolver.resolve_export(spec, instruction_builder)?;
+                resolved_value.shrink_size(size)?;
+                resolved_value
             }
         })
     }

@@ -75,6 +75,7 @@ pub enum TranslationLimit {
     Unlimited,
     BlockCount(NonZeroUsize),
     InstructionCount(NonZeroUsize),
+    Address(EVAddr),
 }
 
 #[repr(C)]
@@ -137,6 +138,7 @@ where
         let translation_limit = match limit {
             RunLimit::Unlimited => TranslationLimit::Unlimited,
             RunLimit::InstructionCount(count) => TranslationLimit::InstructionCount(count),
+            RunLimit::Address(addr) => TranslationLimit::Address(addr),
         };
 
         let mut executed_instructions = 0usize;
@@ -168,13 +170,12 @@ where
                 }
             }
 
-            match limit {
-                RunLimit::Unlimited => {}
-                RunLimit::InstructionCount(inst_count) => {
-                    if executed_instructions >= inst_count.into() {
-                        break;
-                    }
-                }
+            match translation_limit {
+                TranslationLimit::Unlimited => {}
+                // we only translate as much as necessary so we can break here
+                TranslationLimit::BlockCount(_) => break,
+                TranslationLimit::InstructionCount(_) => break,
+                TranslationLimit::Address(_) => break,
             }
         }
 
@@ -234,9 +235,10 @@ where
     }
 
     /// Translate the next instructions depending on `translation_limit`: -
-    /// [TranslationLimit::Unlimited]: translate as many blocks as possible -
-    /// [TranslationLimit::BlockCount]: translate at most n blocks -
-    /// [TranslationLimit::InstructionCount]: translate at most n instructions
+    /// - [TranslationLimit::Unlimited]: translate as many blocks as possible -
+    /// - [TranslationLimit::BlockCount]: translate at most n blocks -
+    /// - [TranslationLimit::InstructionCount]: translate at most n instructions
+    /// - [TranslationLimit::Address]: translate until a given address (exclusively)
     fn translate(
         &mut self,
         translation_limit: TranslationLimit,
@@ -259,6 +261,16 @@ where
         let mut translated_instr_count = 0usize;
         trace_jit!("Translation limit is {:?}", translation_limit);
 
+        let instr_limit = match translation_limit {
+            TranslationLimit::InstructionCount(instr_count) => Some(instr_count),
+            _ => None,
+        };
+
+        let stop_addr = match translation_limit {
+            TranslationLimit::Address(stop_addr) => Some(stop_addr),
+            _ => None,
+        };
+
         while let Some(current_addr) = target_addresses.pop() {
             debug!("Translating block at {:?}", current_addr);
 
@@ -267,17 +279,12 @@ where
                 continue;
             }
 
-            let limit = if let TranslationLimit::InstructionCount(instr_count) = translation_limit {
-                Some(instr_count)
-            } else {
-                None
-            };
-
             let block = self.processor_specification.borrow().lift_block(
                 &*mmu,
                 self.runtime_context.as_mut(),
                 current_addr,
-                limit,
+                instr_limit,
+                stop_addr,
             )?;
 
             // TODO: Most likely, if the runtime context was modified, we will first need to emulate before translating
@@ -302,7 +309,8 @@ where
             // add fallthrough
             match block.fallthrough() {
                 Some(fallthrough_addr) => {
-                    target_addresses.push(fallthrough_addr);
+                    add_target_address(&mut target_addresses, fallthrough_addr, translation_limit);
+
                     let block_range = current_addr..fallthrough_addr;
                     let disassembly = self
                         .processor_specification
@@ -319,8 +327,23 @@ where
                 }
             }
 
+            // add direct branch targets
+            if let Some(branch_targets) = block.branch_targets() {
+                for branch_target in branch_targets {
+                    match branch_target {
+                        NextBlockTarget::Direct(target_addr) => {
+                            add_target_address(&mut target_addresses, *target_addr, translation_limit)
+                        }
+                        NextBlockTarget::Return(return_addr) => {
+                            add_target_address(&mut target_addresses, *return_addr, translation_limit)
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
             translated_block_count += 1;
-            translated_instr_count += block.target_instruction_count();
+            translated_instr_count += block.instruction_count();
             self.block_cache.insert(current_addr, block);
 
             match translation_limit {
@@ -337,6 +360,9 @@ where
                         break;
                     }
                 }
+                TranslationLimit::Address(_) => {
+                    // this is handled by not exploring the address
+                }
             }
         }
 
@@ -348,5 +374,20 @@ where
         trace_jit!("Translated {}/{} blocks/instructions in total", self.block_cache.len(), total_instr_count);
 
         Ok(())
+    }
+}
+
+fn add_target_address(
+    target_addresses: &mut Vec<EVAddr>,
+    addr: EVAddr,
+    limit: TranslationLimit,
+) {
+    match limit {
+        TranslationLimit::Address(evaddr) => {
+            if addr != evaddr {
+                target_addresses.push(addr);
+            }
+        }
+        _ => target_addresses.push(addr),
     }
 }

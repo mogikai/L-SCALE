@@ -102,6 +102,8 @@ fn test_fadd_f64_const_const() {
         let xmm2_qa_v: f64 = get_slice_value(&*context, &processor_spec, xmm2_qa);
         assert_eq!(xmm2_qa_v, a_f64 + b_f64);
     }
+    
+    
 }
 
 #[test]

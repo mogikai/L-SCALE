@@ -402,10 +402,11 @@ where
     ) -> JITResult<HostReg> {
         // TODO: Use lru cache to pick least recently used register to allocate to
         let mut available_regs = self.available_registers;
-        let Some(reg) = self.lrus[class].last(available_regs) else {
-            todo!("Error: No registers available")
-        };
-        Ok(reg)
+        available_regs
+            .into_iter()
+            .filter(|r| r.class() == class)
+            .nth(0)
+            .ok_or_else(|| -> JitError { todo!("Error handling") })
     }
 
     fn allocate_temp_regs(
@@ -471,7 +472,9 @@ where
         // Spill the register if it is occupied by a slice, since we need to make sure it is loaded
         // with the correct value after the instruction finishs.
         self.unload_reg(reg);
-        self.loaded_slices.insert(reg, operand.slice);
+        if matches!(operand.kind, OperandKind::Read) {
+            self.loaded_slices.insert(reg, operand.slice);
+        }
         Ok(Allocation::Register(reg))
     }
 
@@ -490,6 +493,7 @@ where
                 // Remove from read, since we write to the register. No fetches have to be performed beforehand
                 // If another operand request also reads from the same slice, the read will be inserted back.
                 self.read_regs.remove(reg);
+                self.loaded_slices.remove(reg);
             }
             OperandKind::Read => {
                 self.read_regs.add(reg);
@@ -550,6 +554,16 @@ where
                         todo!("Different offset aliasing in the same instruction currently unsupported")
                     } else {
                         if let OperandKind::Write = operand.kind {
+                            /* 
+                             * ADD EAX, EBX
+                             * MOVZX EAX(HW1), AH(HW1)  [(HW0: EDX), (HW1: AH)]
+                             * SPILL(EAX, HW1)
+                             * ADD EDX(HW0), EAX(HW1)   [(HW1: EAX)]
+                             * SPILL(EDX, HW0)
+                             * ADD ESI(HW1), EDX(HW0)   [(EDX: HW0)]
+                             * SPILL(ESX, HW1)
+                             */
+                            
                             todo!()
                         } else {
                             // Offsets are the same and we already allocated a different size for this instruction.

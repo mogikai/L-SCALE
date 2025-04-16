@@ -11,6 +11,7 @@ pub use crate::spec::moir::varnode::VarNodeId;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::new_map_key_8;
 use mogi_utilities::overlap::overlaps_generic;
+use serde::de::Error;
 use serde_derive::{
     Deserialize,
     Serialize,
@@ -236,11 +237,15 @@ impl JIRValue {
         }
     }
 
-    pub fn slice(
+    pub fn slice<T>(
         self,
-        start: JIROffset,
+        start: T,
         size: JIRSize,
-    ) -> JIRValue {
+    ) -> JIRValue
+    where
+        T: TryInto<JIRSize>,
+        <T as TryInto<JIRSize>>::Error: Debug,
+    {
         match self {
             JIRValue::Slice(slice) => slice.slice(start, size).into(),
             JIRValue::Const(value) => value.slice(start, size).into(),
@@ -274,11 +279,15 @@ impl JIRConst {
         self.size
     }
 
-    pub fn slice(
+    pub fn slice<T>(
         self,
-        _offset: JIROffset,
+        _offset: T,
         _size: JIRSize,
-    ) -> JIRConst {
+    ) -> JIRConst
+    where
+        T: TryInto<JIRSize>,
+        <T as TryInto<JIRSize>>::Error: Debug,
+    {
         todo!()
     }
 
@@ -343,12 +352,18 @@ impl JIRSlice {
     }
 
     #[inline]
-    pub fn slice(
+    pub fn slice<T>(
         self,
-        start: JIROffset,
+        start: T,
         size: JIRSize,
-    ) -> JIRSlice {
-        if self.end() < start || (start + JIROffset::from(size)) > self.end() {
+    ) -> JIRSlice
+    where
+        T: TryInto<JIRSize>,
+        <T as TryInto<JIRSize>>::Error: Debug,
+    {
+        let start = start.try_into().unwrap();
+
+        if self.size() <= start || (size - start > self.size()) {
             todo!()
         }
         Self {

@@ -29,6 +29,7 @@ impl Lifter for ProcessorSpecification {
         context_provider: &mut C,
         mut addr: EVAddr,
         max_instructions: Option<NonZeroUsize>,
+        stop_addr: Option<EVAddr>,
     ) -> LifterResult<TargetBasicBlock>
     where
         S: TargetInstructionSource,
@@ -44,6 +45,12 @@ impl Lifter for ProcessorSpecification {
         block_builder.start_block().unwrap();
         let mut instruction_count = 0usize;
         loop {
+            if let Some(stop_addr) = stop_addr {
+                if stop_addr == addr {
+                    break;
+                }
+            }
+
             trace_jir!("Loading instruction bytes at {:?}", addr);
             source
                 .load(addr, &mut buffer)

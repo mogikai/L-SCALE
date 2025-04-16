@@ -157,16 +157,7 @@ fn test_divide_slice_slice_64() {
 
 #[test]
 fn test_divide_slice_slice_128() {
-    tracing_subscriber::registry()
-        .with(fmt::layer())
-        .with(
-            EnvFilter::builder()
-                .with_default_directive(LevelFilter::TRACE.into())
-                .with_env_var("MOGI_LOG")
-                .from_env_lossy(),
-        )
-        .init();
-    let (mut jit, processor_spec, mut context) = setup(true);
+    let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_binary_instruction_generic(
         &processor_spec,
         &mut jit,

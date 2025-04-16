@@ -331,8 +331,6 @@ impl MogiJit for X86MogiJit {
         );
         let allocations = regalloc.run()?;
 
-        trace_jit!("Register allocations for target block:\n{:#?}", allocations);
-
         // And finally we emit the instructions, using the allocations we just calculated.
         let emitter =
             alloc_requirements.make_emitter(&allocations, &self.global_context, &spec, compiled_block, target_block);

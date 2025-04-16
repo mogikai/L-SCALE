@@ -169,7 +169,7 @@ impl X64Emitter<'_> {
     ) -> JITResult {
         let output_reg = reg!(self.allocations, inst, 0);
         let input_b_reg = reg!(self.allocations, inst, 1);
-        if output != input_b {
+        if output_reg != input_b_reg {
             // If the output register does not appear on the rhs, we can use it to load the constant
             self.load_const(output_reg, input_a)?;
             // and then just subtract the operand register from the constant in the output register.

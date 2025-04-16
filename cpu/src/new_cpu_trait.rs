@@ -1,8 +1,10 @@
 //! TODO: This will be moved to the system crate once the new api is fixed.
 
+use std::num::NonZeroUsize;
+
 use crate::cpu::StopReason;
 use mogi_system::errors::cpu::CPUError;
-use std::num::NonZeroUsize;
+use mogi_utilities::addresses::EVAddr;
 use zerocopy::{
     FromBytes,
     Immutable,
@@ -16,6 +18,7 @@ pub type CPUResult<T> = Result<T, CPUError>;
 pub enum RunLimit {
     Unlimited,
     InstructionCount(NonZeroUsize),
+    Address(EVAddr),
 }
 
 pub trait CPU {

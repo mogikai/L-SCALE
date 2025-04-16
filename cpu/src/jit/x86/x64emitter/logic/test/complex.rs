@@ -15,6 +15,15 @@ use mogi_sleigh::spec::CustomOpId;
 use mogi_sleigh::spec::jir::values::JIRValue;
 use mogi_utilities::index_map::MapKey;
 
+use tracing::info;
+use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{
+    EnvFilter,
+    fmt,
+};
+
 #[test]
 fn test_complex() {
     let (mut jit, spec, mut context) = setup(false);

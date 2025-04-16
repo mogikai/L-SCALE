@@ -21,7 +21,7 @@ use crate::spec::jir::trace_jir;
 use crate::spec::jir::values::{
     JIRConst,
     JIRSlice,
-    JIRValue,
+    JIRValue, VarnodeGroupId,
 };
 use crate::spec::moir::code::{
     MOIRGotoType,
@@ -48,6 +48,7 @@ use mogi_sleigh_parser::{
     ParserContext,
     SleighInterner,
 };
+use mogi_utilities::index_map::MapKey;
 use mogi_utilities::new_map_key;
 use serde_derive::{
     Deserialize,
@@ -517,7 +518,8 @@ impl MOIRConstructor {
                             // FIXME: Set the size of address at the correct location and not in a hacky manner here.
                             let address = match address {
                                 JIRValue::Slice(a) => {
-                                    JIRSlice::new(a.space_id, a.group_id.unwrap(), a.offset, size).into()
+                                    // JIRSlice::new(a.space_id, a.group_id.unwrap(), a.offset, size).into()
+                                    JIRSlice::new(a.space_id, a.group_id.unwrap_or(VarnodeGroupId::try_from_index(0x69).unwrap()), a.offset, size).into()
                                 }
                                 JIRValue::Const(a) => JIRConst::new(a.value(), 0x8).into(),
                             };

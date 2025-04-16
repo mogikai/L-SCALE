@@ -37,7 +37,7 @@ pub enum LifterError {
 /// Lifting is the process of translating one or more target instructions to [JIR](crate::spec::jir).
 /// [JIR](crate::spec::jir) is an intermediate representation used by the Mogi just in time compiler
 /// to compile down to host assembly. Some Architectures decode instructions based on some cpu
-/// context, e.g. long mode in x86. This context is provided via the [ContextProviderr] trait.
+/// context, e.g. long mode in x86. This context is provided via the [ContextProvider] trait.
 pub trait Lifter {
     fn lift_block<S: TargetInstructionSource, C: ContextProvider>(
         &self,
@@ -45,6 +45,7 @@ pub trait Lifter {
         context_provider: &mut C,
         addr: EVAddr,
         max_instructions: Option<NonZeroUsize>,
+        stop_addr: Option<EVAddr>,
     ) -> LifterResult<TargetBasicBlock>;
 
     fn diagnostics(&self) -> Ref<LifterDiagnostics>;

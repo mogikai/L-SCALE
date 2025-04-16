@@ -339,14 +339,14 @@ where
             // The already loaded slice is smaller, we can just load the additional contents.
             let to_load = new_size - old_size;
             // We load the currently unloaded data into the scratch register
-            let unloaded = new_slice.slice(old_size.into(), to_load);
+            let unloaded = new_slice.slice(old_size, to_load);
             let old_data_mask = (1 << old_size) - 1;
             load_slice_to_int_reg(assembler, scratch, unloaded)?;
             assemble!(assembler;
                 // Make sure that the registers upper bits are all zero and do not contain any trash.
                 ; and Rq(scratch.hw_enc()), old_data_mask as _
                 // Shift the loaded data
-                ; shl Rq(scratch.hw_enc()), old_size as _
+                ; shl Rq(scratch.hw_enc()), (old_size * 8u8) as _
                 // Or it into the old data.
                 ; or Rq(reg.hw_enc()), Rq(scratch.hw_enc())
             );
@@ -358,12 +358,12 @@ where
             }
             // The already loaded slice is larger. We flush the content that is no longer needed.
             let to_store = old_size - new_size;
-            let to_unload = old_slice.slice(new_size.into(), to_store);
+            let to_unload = old_slice.slice(new_size, to_store);
             assemble!(assembler;
                 // Move the whole data to scratch
                 ; mov Rq(scratch.hw_enc()), Rq(reg.hw_enc())
                 // Shift right so we only have the part that needs a flush
-                ; shr Rq(scratch.hw_enc()), to_store as _
+                ; shr Rq(scratch.hw_enc()), (to_store * 8u8) as _
             );
             // Spill the data that is no longer needed.
             spill_int_reg_to_slice(assembler, scratch, to_unload)

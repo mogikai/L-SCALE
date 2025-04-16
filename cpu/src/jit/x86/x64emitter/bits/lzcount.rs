@@ -70,7 +70,7 @@ impl X64Emitter<'_> {
                 // We need to mask out the first 8 bits and then correct for these bits.
                 self.copy_reg(output_reg, input_reg, 1, CopyExtendMode::ZeroExtend(2))?;
                 assemble!(self.block.assembler();
-                    ; lzcnt Rw(output_reg.hw_enc()), Rw(input_reg.hw_enc())
+                    ; lzcnt Rw(output_reg.hw_enc()), Rw(output_reg.hw_enc())
                     ; lea Rw(output_reg.hw_enc()), [Rq(output_reg.hw_enc()) + correction]
                 );
             }
