@@ -6,6 +6,8 @@ use criterion::{
     criterion_group,
     criterion_main,
 };
+use mogi_sleigh::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
+use mogi_sleigh::spec::jir::jumplist::MatcherResult;
 use mogi_sleigh::SleighPreprocessorFactory;
 use mogi_sleigh::compiler::SleighCompilerResult;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
@@ -15,9 +17,10 @@ use mogi_sleigh::lifter::context_provider::{
     SimpleContextProvider,
 };
 use mogi_sleigh::lifter::source::TargetInstructionSource;
-use mogi_sleigh::spec::ProcessorSpecification;
+use mogi_sleigh::spec::{ProcessorSpecification, SpaceId};
 use mogi_sleigh::spec::jir::context_stack::ContextStack;
 use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::index_map::MapKey;
 
 struct MockInstructionSource {
     bytes: Vec<u8>,
@@ -77,6 +80,26 @@ pub fn matching_benchmark(c: &mut Criterion) {
         })
     });
 
+    let MatcherResult::Some { table, resolver, bytes_consumed } = match_context
+        .r#match(black_box(bytes), &mut context_stack)
+            .unwrap() else {
+                panic!("This can't fail :S");
+    };
+
+    c.bench_function("build pdep", |b| {
+        b.iter(|| {
+            let resolver = resolver.clone();
+
+            let mut block_builder = TargetBasicBlockBuilder::new(0x0u64.into(), SpaceId::try_from_index(0x41).unwrap());
+            block_builder.start_block().unwrap();
+
+            resolver.build(&spec, &mut block_builder).unwrap();
+
+            block_builder.finish_block().unwrap();
+            block_builder.finish().unwrap()
+        })
+    });
+
     // endbr64
     let bytes = b"\xF3\x0F\x1E\xFA";
 
@@ -91,6 +114,26 @@ pub fn matching_benchmark(c: &mut Criterion) {
         })
     });
 
+    let MatcherResult::Some { table, resolver, bytes_consumed } = match_context
+        .r#match(black_box(bytes), &mut context_stack)
+            .unwrap() else {
+                panic!("This can't fail :S");
+    };
+
+    c.bench_function("build endbr64", |b| {
+        b.iter(|| {
+            let resolver = resolver.clone();
+
+            let mut block_builder = TargetBasicBlockBuilder::new(0x0u64.into(), SpaceId::try_from_index(0x41).unwrap());
+            block_builder.start_block().unwrap();
+
+            resolver.build(&spec, &mut block_builder).unwrap();
+
+            block_builder.finish_block().unwrap();
+            block_builder.finish().unwrap()
+        })
+    });
+
     // vfmaddsub213pd xmm4, xmm1, xmmword ptr [0x1337]
     let bytes = b"\xC4\xE2\xF1\xA6\x24\x25\x37\x13\x00\x00";
 
@@ -102,6 +145,26 @@ pub fn matching_benchmark(c: &mut Criterion) {
             match_context
                 .r#match(black_box(bytes), &mut context_stack)
                 .unwrap();
+        })
+    });
+
+    let MatcherResult::Some { table, resolver, bytes_consumed } = match_context
+        .r#match(black_box(bytes), &mut context_stack)
+            .unwrap() else {
+                panic!("This can't fail :S");
+    };
+
+    c.bench_function("build vfmaddsub213pd", |b| {
+        b.iter(|| {
+            let resolver = resolver.clone();
+
+            let mut block_builder = TargetBasicBlockBuilder::new(0x0u64.into(), SpaceId::try_from_index(0x41).unwrap());
+            block_builder.start_block().unwrap();
+
+            resolver.build(&spec, &mut block_builder).unwrap();
+
+            block_builder.finish_block().unwrap();
+            block_builder.finish().unwrap()
         })
     });
 }
