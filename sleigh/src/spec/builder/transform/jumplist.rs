@@ -19,6 +19,7 @@ use crate::compiler::build::trace_build;
 use crate::compiler::error::InternalError;
 use crate::spec::ProcessorSpecificationError;
 use crate::spec::jir::jumplist::{
+    ConstructorEntry,
     DataProvider,
     Jumplist,
     JumplistEntry,
@@ -634,13 +635,16 @@ impl<'a> JumplistBuilder<'a> {
                     // same primary matching path but different subtables (TODO should we check
                     // this?)
                     // assert!(terminal_matcher_rows.len() < 2, "There can't be more than one matcher in the same path");
-                    let next_entry_matcher = NextJumplistEntry::Constructor {
-                        tid: terminal_matcher_row.matcher.table_id,
-                        cid: terminal_matcher_row.matcher.constructor_id,
-                        sublists: fixed_sublists,
-                        field_extractors: terminal_matcher_row.matcher.static_field_extractors.clone(),
-                        context_fields: terminal_matcher_row.matcher.context_fields.clone(),
-                    };
+
+                    let constructor_entry = ConstructorEntry::new(
+                        terminal_matcher_row.matcher.constructor_id,
+                        terminal_matcher_row.matcher.table_id,
+                        fixed_sublists,
+                        terminal_matcher_row.matcher.static_field_extractors.clone(),
+                        terminal_matcher_row.matcher.context_fields.clone(),
+                    );
+
+                    let next_entry_matcher = NextJumplistEntry::Constructor(Box::new(constructor_entry));
 
                     let entry = JumplistEntry::new(next_entry_matcher, sublist_ids, field_extractor_map);
                     jumplist_child.insert(value, entry.clone(), false)?;
@@ -870,16 +874,10 @@ fn save_graph(
                             stack.push(*jlid);
                             format!("S{}", jlid.to_index())
                         }
-                        NextJumplistEntry::Constructor {
-                            cid,
-                            tid: _,
-                            sublists,
-                            field_extractors: _,
-                            context_fields: _,
-                        } => {
-                            entry_sublists.extend(sublists.iter().map(|os| os.jumplist));
+                        NextJumplistEntry::Constructor(constructor_entry) => {
+                            entry_sublists.extend(constructor_entry.sublists.iter().map(|os| os.jumplist));
                             // process variable-offset sublists
-                            format!("C{}", cid)
+                            format!("C{}", constructor_entry.cid)
                         }
                     };
 

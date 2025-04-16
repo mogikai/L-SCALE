@@ -22,6 +22,7 @@ mogi_sleigh_parser = { path = "../sleigh_parser", version = "*" }
 itertools = "0.14.0"
 addr_align = "0.1.0"
 bon = "3.6.3"
+criterion = "0.5.1"
 
 [features]
 trace_build = []
@@ -32,3 +33,7 @@ trace_resolve = []
 [dev-dependencies]
 mogi_sleigh = { path = ".", features = ["trace_build"] }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+
+[[bench]]
+name = "sleigh_benches"
+harness = false

@@ -41,7 +41,7 @@ struct MatchState<'a> {
 }
 
 #[derive(Debug)]
-pub(crate) struct MatchContext<'a> {
+pub struct MatchContext<'a> {
     addr: EVAddr,
     jumplist_cache: &'a PrimaryMap<JumplistId, Jumplist>,
     constructors: &'a PrimaryMap<ConstructorId, MOIRConstructor>,
@@ -91,19 +91,40 @@ impl OffsettedJumplist {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub(crate) struct ConstructorEntry {
+    pub(crate) cid: ConstructorId,
+    pub(crate) tid: TableId,
+    // fixed-offset sublists and extractors
+    pub(crate) sublists: Vec<OffsettedJumplist>,
+    pub(crate) field_extractors: Vec<FieldExtractor>,
+    pub(crate) context_fields: Vec<FieldId>,
+}
+
+impl ConstructorEntry {
+    pub(crate) fn new(
+        cid: ConstructorId,
+        tid: TableId,
+        sublists: Vec<OffsettedJumplist>,
+        field_extractors: Vec<FieldExtractor>,
+        context_fields: Vec<FieldId>,
+    ) -> Self {
+        Self {
+            cid,
+            tid,
+            sublists,
+            field_extractors,
+            context_fields,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub(crate) enum NextJumplistEntry {
     // consume self.bytes bytes and continue with next
     TrailingNext(JumplistId),
     // don't consume any bytes and continue with next
     TrailingSame(JumplistId),
-    Constructor {
-        cid: ConstructorId,
-        tid: TableId,
-        // fixed-offset sublists and extractors
-        sublists: Vec<OffsettedJumplist>,
-        field_extractors: Vec<FieldExtractor>,
-        context_fields: Vec<FieldId>,
-    },
+    Constructor(Box<ConstructorEntry>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -233,13 +254,12 @@ impl Jumplist {
                     return Ok(None);
                 }
 
-                let offsetted_bytes = &bytes[consumed_so_far..];
+                let value_bytes = &bytes[consumed_so_far..consumed_so_far + usize::from(self.bytes)];
 
-                let mut value_bytes = [0u8; 16];
-                for (bytei, byte) in offsetted_bytes.iter().enumerate().take(self.bytes.into()) {
-                    value_bytes[bytei] = *byte;
+                let mut value = 0u128;
+                for (bytei, byte) in value_bytes.iter().enumerate() {
+                    value |= u128::from(byte << bytei);
                 }
-                let value = u128::from_le_bytes(value_bytes);
                 Ok(Some((value & self.mask, usize::from(self.bytes))))
             }
             DataProvider::Context(cid) => {
@@ -247,18 +267,6 @@ impl Jumplist {
                 Ok(Some((context_value & self.mask, 0)))
             }
         }
-    }
-
-    /// Each entry stores the number of times it was part of a matching branch in
-    /// [JumplistEntry::hit_count]. This function sorts the entries by their hit count in
-    /// descending order and subsequently resets the hit counts to zero.
-    /// TODO Don't use; ordering is important right now which needs to be handled
-    pub fn rearrange_entries(&mut self) {
-        todo!("Keep necessary ordering");
-
-        // for (_, entry_vec) in self.entries_mut() {
-        //     entry_vec.sort_by(|e0, e1| e0.hit_count.get().cmp(&e1.hit_count.get()).reverse());
-        // }
     }
 
     /// Get all entries for a given value.
@@ -330,19 +338,14 @@ impl<'a> MatchContext<'a> {
         consumed_so_far: usize,
         context_stack: &mut ContextStack,
         state: &MatchState<'a>,
-        // fixed offset
-        sublists: &Vec<OffsettedJumplist>,
-        field_extractors: &Vec<FieldExtractor>,
-        context_fields: &Vec<FieldId>,
-        constructor_id: ConstructorId,
-        table_id: TableId,
+        constructor_entry: &ConstructorEntry,
     ) -> InternalCompilerResult<MatcherResult<'a>> {
         // entry matches with constructor => extract fields, execute actions, save values
         // and descent into sublists
 
         let constructor = self
             .constructors
-            .get(constructor_id)
+            .get(constructor_entry.cid)
             .ok_or_else(|| -> InternalError {
                 todo!("Generate error report for missing constructor");
             })?;
@@ -354,16 +357,16 @@ impl<'a> MatchContext<'a> {
             consumed_so_far,
         );
 
-        trace_jir!("Sublists: {:#?}", sublists);
-        trace_jir!("Field extractors: {:#?}", field_extractors);
+        trace_jir!("Sublists: {:#?}", constructor_entry.sublists);
+        trace_jir!("Field extractors: {:#?}", constructor_entry.field_extractors);
 
         // the resolver with all local values is needed for the actions so we
         // instantiate it here
-        let mut resolver = JIRResolver::new(constructor, constructor_id);
+        let mut resolver = JIRResolver::new(constructor, constructor_entry.cid);
 
         // variable-offset field extractors
         for (offset, field_extractor_map) in &state.field_extractors {
-            if let Some(field_extractors) = field_extractor_map.get(&constructor_id) {
+            if let Some(field_extractors) = field_extractor_map.get(&constructor_entry.cid) {
                 for field_extractor in field_extractors {
                     let extracted_value = field_extractor.extract_value(&bytes[*offset..])?;
 
@@ -380,7 +383,7 @@ impl<'a> MatchContext<'a> {
         }
 
         // extract token and context fields with fixed offset into map
-        for field_extractor in field_extractors {
+        for field_extractor in &constructor_entry.field_extractors {
             let extracted_value = field_extractor.extract_value(bytes)?;
             trace_jir!(
                 "Field extractor is defining context field {} := {:#?}",
@@ -390,19 +393,21 @@ impl<'a> MatchContext<'a> {
             resolver.define_field(field_extractor.field_id(), extracted_value);
         }
 
-        trace_jir!("Context fields: {:#?}", context_fields);
+        trace_jir!("Context fields: {:#?}", constructor_entry.context_fields);
 
         for (subtable, subresolver) in &state.subresolvers {
             resolver.define_subtable_resolver(*subtable, subresolver.clone())?;
         }
 
-        for context_field_id in context_fields.iter() {
+        for context_field_id in constructor_entry.context_fields.iter() {
             let value = context_stack.field_value(*context_field_id)?;
             trace_jir!("Defining context field value {context_field_id:?} := {value:?}");
             resolver.define_field(*context_field_id, value);
         }
 
-        context_stack.push_state();
+        if constructor.modifies_context {
+            context_stack.push_state();
+        }
 
         // TODO actions will use this so it has to be set before descending into
         // sublists but sublists might alter the number of bytes consumed, what to do?
@@ -416,7 +421,7 @@ impl<'a> MatchContext<'a> {
         // sublists might consume bytes that the main match tree does not so we take the maximum
         let mut consumed_so_far_max = consumed_so_far;
 
-        for offsetted_sublist in sublists {
+        for offsetted_sublist in &constructor_entry.sublists {
             let sublist_bytes = &bytes[offsetted_sublist.offset..];
 
             let sublist = self
@@ -459,10 +464,12 @@ impl<'a> MatchContext<'a> {
         resolver.set_inst_addresses(self.addr, self.addr + addr_offset + consumed_so_far_max, None);
 
         // TODO handle context flow
-        context_stack.pop_state()?;
+        if constructor.modifies_context {
+            context_stack.push_state();
+        }
 
         return Ok(MatcherResult::Some {
-            table: table_id,
+            table: constructor_entry.tid,
             resolver,
             bytes_consumed: consumed_so_far_max,
         });
@@ -489,7 +496,6 @@ impl<'a> MatchContext<'a> {
             'next_entry: for entry in entries {
                 // store state for backtracking
                 let pl_subresolvers = state.subresolvers.len();
-                // entry.hit_count.set(entry.hit_count.get() + 1);
 
                 // immediately descend into any variable-offset sublists and add resolver if match
                 for sublist_id in &entry.sublists {
@@ -522,14 +528,8 @@ impl<'a> MatchContext<'a> {
                     .push((consumed_so_far, &entry.field_extractors));
 
                 let result = match &entry.next_entry {
-                    NextJumplistEntry::Constructor {
-                        cid,
-                        tid,
-                        sublists,
-                        field_extractors,
-                        context_fields,
-                    } => {
-                        trace_jir!("Reached leaf; cid={cid:?}, tid={tid:?}");
+                    NextJumplistEntry::Constructor(constructor_entry) => {
+                        trace_jir!("Reached leaf; cid={:?}, tid={:?}", constructor_entry.cid, constructor_entry.tid);
 
                         self.process_local_matching(
                             bytes,
@@ -537,11 +537,7 @@ impl<'a> MatchContext<'a> {
                             consumed_total,
                             context_stack,
                             state,
-                            sublists,
-                            field_extractors,
-                            context_fields,
-                            *cid,
-                            *tid,
+                            constructor_entry,
                         )?
                     }
                     NextJumplistEntry::TrailingNext(jlid) => {
@@ -567,7 +563,6 @@ impl<'a> MatchContext<'a> {
                         // no complete match => backtrack and try next entry
                         state.subresolvers.truncate(pl_subresolvers);
                         state.field_extractors.pop();
-                        // entry.hit_count.set(entry.hit_count.get() - 1);
                     }
                     // complete match or end of stream => return
                     _ => return Ok(result),

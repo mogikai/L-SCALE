@@ -1,0 +1,174 @@
+use std::path::Path;
+
+use criterion::{
+    Criterion,
+    black_box,
+    criterion_group,
+    criterion_main,
+};
+use mogi_sleigh::SleighPreprocessorFactory;
+use mogi_sleigh::compiler::SleighCompilerResult;
+use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
+use mogi_sleigh::lifter::Lifter;
+use mogi_sleigh::lifter::context_provider::{
+    ContextProvider,
+    SimpleContextProvider,
+};
+use mogi_sleigh::lifter::source::TargetInstructionSource;
+use mogi_sleigh::spec::ProcessorSpecification;
+use mogi_sleigh::spec::jir::context_stack::ContextStack;
+use mogi_utilities::addresses::EVAddr;
+
+struct MockInstructionSource {
+    bytes: Vec<u8>,
+}
+
+impl MockInstructionSource {
+    fn new(bytes: Vec<u8>) -> Self {
+        Self { bytes }
+    }
+}
+
+impl TargetInstructionSource for MockInstructionSource {
+    type Error = ();
+
+    fn load(
+        &self,
+        addr: EVAddr,
+        buffer: &mut [u8],
+    ) -> Result<(), Self::Error> {
+        buffer.copy_from_slice(&self.bytes[addr.into()..usize::from(addr) + buffer.len()]);
+        Ok(())
+    }
+}
+
+const ASSETS_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/resources/test/");
+
+fn build(path: String) -> SleighCompilerResult<ProcessorSpecification> {
+    let spec_path = Path::new(&path);
+    let spec_dir = spec_path.parent().unwrap();
+    let factory = SleighPreprocessorFactory::new().working_dir(spec_dir.to_path_buf());
+    let compiler = SleighCompilerBuilder::new()
+        .preprocessor_factory(factory)
+        .build();
+    compiler.compile(spec_path)
+}
+
+pub fn matching_benchmark(c: &mut Criterion) {
+    let path = ASSETS_PATH.to_string() + "x86/x86-64.slaspec";
+    let spec = build(path).unwrap();
+
+    let mut context_provider = SimpleContextProvider::default();
+    context_provider.set(&spec, "longMode", 1);
+    context_provider.set(&spec, "addrsize", 2);
+    context_provider.set(&spec, "opsize", 1);
+
+    // pdep rax, rcx, [rbp+8*rsi+0x1234]
+    let bytes = b"\xc4\xe2\xf3\xf5\x84\xf5\xcc\xed\xff\xff";
+
+    let mut context_stack = ContextStack::new(&spec, &context_provider).unwrap();
+    let match_context = spec.new_match_context(0x0u64.into()).unwrap();
+
+    c.bench_function("match pdep", |b| {
+        b.iter(|| {
+            match_context
+                .r#match(black_box(bytes), &mut context_stack)
+                .unwrap();
+        })
+    });
+
+    // endbr64
+    let bytes = b"\xF3\x0F\x1E\xFA";
+
+    let mut context_stack = ContextStack::new(&spec, &context_provider).unwrap();
+    let match_context = spec.new_match_context(0x0u64.into()).unwrap();
+
+    c.bench_function("match endbr64", |b| {
+        b.iter(|| {
+            match_context
+                .r#match(black_box(bytes), &mut context_stack)
+                .unwrap();
+        })
+    });
+
+    // vfmaddsub213pd xmm4, xmm1, xmmword ptr [0x1337]
+    let bytes = b"\xC4\xE2\xF1\xA6\x24\x25\x37\x13\x00\x00";
+
+    let mut context_stack = ContextStack::new(&spec, &context_provider).unwrap();
+    let match_context = spec.new_match_context(0x0u64.into()).unwrap();
+
+    c.bench_function("match vfmaddsub213pd", |b| {
+        b.iter(|| {
+            match_context
+                .r#match(black_box(bytes), &mut context_stack)
+                .unwrap();
+        })
+    });
+}
+
+pub fn lifting_benchmark(c: &mut Criterion) {
+    let path = ASSETS_PATH.to_string() + "x86/x86-64.slaspec";
+    let spec = build(path).unwrap();
+
+    let mut context_provider = SimpleContextProvider::default();
+    context_provider.set(&spec, "longMode", 1);
+    context_provider.set(&spec, "addrsize", 2);
+    context_provider.set(&spec, "opsize", 1);
+
+    /*
+    endbr64
+    push rbp
+    lea rcx, [0x00000000]
+    lea rax, [0x000392d8]
+    movq xmm1, rcx
+    movq xmm2, rax
+    punpcklqdq xmm1, xmm2
+    mov rbp, rsp
+    push r15
+    push r14
+    push r13
+    push r12
+    push rbx
+    sub rsp, 0x88
+    mov qword [var_88h], rdi    ; arg1
+    movaps xmmword [var_80h], xmm1
+    rdtsc
+    and byte [0x00038e06], 0xdf ; [0x38e06:1]=0
+    lea rsi, [0x00038af0]
+    mov r8d, 0x6fffffff
+    mov r9d, 0x70000029         ; ')'
+    shl rdx, 0x20               ; arg3
+    mov qword [0x00038ab0], rcx ; [0x38ab0:8]=0
+    mov r14, rcx
+    or rax, rdx                 ; arg3
+    lea rdx, segment.DYNAMIC    ; 0x37e58
+    mov qword [0x00037a60], rax ; [0x37a60:8]=0
+    mov rax, qword [segment.DYNAMIC] ; [0x37e58:8]=14
+    mov qword [0x00038ac0], rdx ; [0x38ac0:8]=0
+    test rax, rax
+    jne 0x20277 */
+
+    let block = [
+        0xF3, 0x0F, 0x1E, 0xFA, 0x55, 0x48, 0x8D, 0x0D, 0x24, 0xFE, 0xFD, 0xFF, 0x48, 0x8D, 0x05, 0xF5, 0x90, 0x01,
+        0x00, 0x66, 0x48, 0x0F, 0x6E, 0xC9, 0x66, 0x48, 0x0F, 0x6E, 0xD0, 0x66, 0x0F, 0x6C, 0xCA, 0x48, 0x89, 0xE5,
+        0x41, 0x57, 0x41, 0x56, 0x41, 0x55, 0x41, 0x54, 0x53, 0x48, 0x81, 0xEC, 0x88, 0x00, 0x00, 0x00, 0x48, 0x89,
+        0xBD, 0x78, 0xFF, 0xFF, 0xFF, 0x0F, 0x29, 0x4D, 0x80, 0x0F, 0x31, 0x80, 0x25, 0xEE, 0x8B, 0x01, 0x00, 0xDF,
+        0x48, 0x8D, 0x35, 0xD1, 0x88, 0x01, 0x00, 0x41, 0xB8, 0xFF, 0xFF, 0xFF, 0x6F, 0x41, 0xB9, 0x29, 0x00, 0x00,
+        0x70, 0x48, 0xC1, 0xE2, 0x20, 0x48, 0x89, 0x0D, 0x7A, 0x88, 0x01, 0x00, 0x49, 0x89, 0xCE, 0x48, 0x09, 0xD0,
+        0x48, 0x8D, 0x15, 0x15, 0x7C, 0x01, 0x00, 0x48, 0x89, 0x05, 0x16, 0x78, 0x01, 0x00, 0x48, 0x8B, 0x05, 0x07,
+        0x7C, 0x01, 0x00, 0x48, 0x89, 0x15, 0x68, 0x88, 0x01, 0x00, 0x48, 0x85, 0xC0, 0x75, 0x1A, 0xFF, 0xFF, 0xFF,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    ];
+
+    let source = MockInstructionSource::new(block.to_vec());
+
+    c.bench_function("lift block", |b| {
+        b.iter(|| {
+            spec.lift_block(&source, &mut context_provider, 0x0u64.into(), None)
+                .unwrap();
+        })
+    });
+}
+
+criterion_group!(benches, matching_benchmark, lifting_benchmark);
+criterion_main!(benches);

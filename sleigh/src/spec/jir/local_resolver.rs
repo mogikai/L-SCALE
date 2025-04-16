@@ -419,9 +419,10 @@ impl<'a> JIRResolver<'a> {
         let start = value.start;
         // let end = value.end;
         let size = JIRSize::try_from(
+            // TODO size probably doesn't have to be determined at this point
             value
                 .size()
-                .ok_or_else(|| todo!("Generate error for undefined size"))?,
+                .determined_or(0)
         )
         .expect("The size must fit into JIRSize");
         Ok(match value.reference {

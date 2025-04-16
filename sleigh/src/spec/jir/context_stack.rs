@@ -17,7 +17,7 @@ use mogi_utilities::index_map::{
 };
 
 #[derive(Debug, Default)]
-pub(crate) struct ContextStack<'a> {
+pub struct ContextStack<'a> {
     // context ids are assumed to be contiguous and therefore pushed onto and popped
     // from this vector when saving and restoring state
     context_values: Vec<u128>,
@@ -26,7 +26,7 @@ pub(crate) struct ContextStack<'a> {
 }
 
 impl<'a> ContextStack<'a> {
-    pub(crate) fn new<C: ContextProvider>(
+    pub fn new<C: ContextProvider>(
         specification: &'a ProcessorSpecification,
         context_provider: &C,
     ) -> ProcessorSpecResult<Self> {
