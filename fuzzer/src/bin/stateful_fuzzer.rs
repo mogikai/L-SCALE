@@ -43,7 +43,7 @@ struct Args {
     context: String,
 
     /// The path on the emulated system to the binary that will be emulated initially.
-    #[arg(long, default_value = "/home/user/open62541_server_fuzzing_fixed")]
+    #[arg(long, default_value = "/home/user/darkhttpd")]
     binary: String,
 
     /// If set to true, the entire execution will be traced and a disassembly is printed for each instruction that is executed.
@@ -101,7 +101,7 @@ fn main() {
 
     let initial_task = LinuxKernelTask::new(system.clone(), 1337, 1);
 
-    let args = [];
+    let args = ["/var/www"];
     let env = ["SHELL=/bin/sh", "LD_DEBUG=none", "LD_BIND_NOW=true"];
     let binary_path = PathBuf::from(&fuzzer_args.binary);
     let scheduler = LinuxX86Scheduler::new(

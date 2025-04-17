@@ -896,7 +896,7 @@ where
                 mapping
                     .label
                     .as_ref()
-                    .and_then(|label| label.contains("open62541").then_some(mapping))
+                    .and_then(|label| label.contains("darkhttpd").then_some(mapping))
             })
             .collect::<Vec<_>>();
         let start = exe_mappings
