@@ -554,7 +554,7 @@ where
                         todo!("Different offset aliasing in the same instruction currently unsupported")
                     } else {
                         if let OperandKind::Write = operand.kind {
-                            /* 
+                            /*
                              * ADD EAX, EBX
                              * MOVZX EAX(HW1), AH(HW1)  [(HW0: EDX), (HW1: AH)]
                              * SPILL(EAX, HW1)
@@ -563,7 +563,7 @@ where
                              * ADD ESI(HW1), EDX(HW0)   [(EDX: HW0)]
                              * SPILL(ESX, HW1)
                              */
-                            
+
                             todo!()
                         } else {
                             // Offsets are the same and we already allocated a different size for this instruction.

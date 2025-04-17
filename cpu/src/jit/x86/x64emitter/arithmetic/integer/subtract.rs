@@ -129,7 +129,7 @@ impl X64Emitter<'_> {
         let input_a_reg = reg!(self.allocations, inst, 1);
         let input_b_reg = reg!(self.allocations, inst, 2);
 
-        if output == input_b {
+        if output_reg == input_b_reg {
             let temp_reg = self
                 .allocations
                 .get_temp_allocations(inst)
@@ -146,7 +146,7 @@ impl X64Emitter<'_> {
             );
         } else {
             // Copy input_a into output. If output == input_a we can just load output.
-            if output != input_a {
+            if output_reg != input_a_reg {
                 self.copy_reg(output_reg, input_a_reg, input_a.size(), CopyExtendMode::None)?;
             };
             // We can just subtract from output
