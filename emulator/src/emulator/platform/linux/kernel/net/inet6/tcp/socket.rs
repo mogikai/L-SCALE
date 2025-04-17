@@ -1,4 +1,4 @@
-use std::ops::Not;
+use std::ops::{Deref, Not};
 
 use bitflags::Flags;
 use tracing::trace;
@@ -161,5 +161,10 @@ impl FileDescriptorOps for TcpSocketOps {
     ) -> Result<(), FileDescriptorError> {
         let tcp = fd.tcp.as_mut().ok_or(FileDescriptorError::NotASocket)?;
         Ok(tcp.tcp_system.borrow_mut().shutdown(tcp.id, how)?)
+    }
+
+    fn getsockname(&self, fd: &mut Self::D) -> Result<SocketAddress, FileDescriptorError> {
+        let tcp = fd.tcp.as_mut().ok_or(FileDescriptorError::NotASocket)?;
+        tcp.tcp_system.borrow().getsockname(tcp.id).map_err(|_| FileDescriptorError::FileNotFound)
     }
 }

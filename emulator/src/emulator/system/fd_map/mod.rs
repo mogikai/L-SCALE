@@ -148,7 +148,7 @@ impl<D: Default + Clone> FileDescriptor<D> {
         self.ops.bind(&mut self.data, sockaddr)
     }
 
-    pub fn getsockname(&mut self) -> Result<&SocketAddress, FileDescriptorError> {
+    pub fn getsockname(&mut self) -> Result<SocketAddress, FileDescriptorError> {
         self.ops.getsockname(&mut self.data)
     }
 

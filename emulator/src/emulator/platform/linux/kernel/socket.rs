@@ -300,8 +300,8 @@ where
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADFD)?;
         let fd = &mut *fd;
-        let sockaddr = Sockaddr::from(*fd.getsockname()?);
         let mut mmu = sys_component_mut!(self, mmu);
+        let sockaddr = Sockaddr::from(fd.getsockname()?);
         sys_component_mut!(self, memory)
             .accessor(&mut mmu, self.task_id)
             .write(usockaddr, sockaddr)?;

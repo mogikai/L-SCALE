@@ -99,10 +99,10 @@ pub trait FileDescriptorOps {
         todo!()
     }
 
-    fn getsockname<'a>(
+    fn getsockname(
         &self,
-        fd: &'a mut Self::D,
-    ) -> Result<&'a SocketAddress, FileDescriptorError> {
+        fd: &mut Self::D,
+    ) -> Result<SocketAddress, FileDescriptorError> {
         todo!()
     }
 

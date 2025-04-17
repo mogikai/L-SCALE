@@ -390,6 +390,13 @@ impl TCPSystem for TCP {
         let data = sock.incoming.read(len)?;
         Ok((data, addr))
     }
+
+    fn getsockname(&self, id: SocketId) -> Result<SocketAddress, NetworkError> {
+        self.sockets.get(&id)
+            .map(|socket| *socket.local_address)
+            .flatten()
+            .ok_or(NetworkError::Unknown)
+    }
 }
 
 impl Restorable for TCP {

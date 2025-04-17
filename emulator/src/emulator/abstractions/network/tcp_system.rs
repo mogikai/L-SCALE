@@ -1,4 +1,4 @@
-use crate::emulator::abstractions::file_descriptors::FileOperationsReady;
+use crate::emulator::abstractions::file_descriptors::{FileDescriptorError, FileOperationsReady};
 use std::fmt::Debug;
 
 use crate::emulator::abstractions::network::{
@@ -58,4 +58,6 @@ pub trait TCPSystem: Restorable + Debug {
         id: SocketId,
         len: usize,
     ) -> Result<(Vec<u8>, SocketAddress), NetworkError>;
+    
+    fn getsockname(&self, id: SocketId) -> Result<SocketAddress, NetworkError>;
 }

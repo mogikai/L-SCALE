@@ -113,16 +113,16 @@ impl<Endianness: ByteOrder> FileDescriptorOps for RTNetlinkSocket<Endianness> {
         Ok(())
     }
 
-    fn getsockname<'a>(
+    fn getsockname(
         &self,
-        fd: &'a mut Self::D,
-    ) -> Result<&'a SocketAddress, FileDescriptorError> {
+        fd: &mut Self::D,
+    ) -> Result<SocketAddress, FileDescriptorError> {
         let netlink = fd
             .netlink
             .as_mut()
             .ok_or(FileDescriptorError::NotSupported)?;
         match &netlink.sockaddr {
-            Some(s) => Ok(s),
+            Some(s) => Ok(*s),
             None => Err(FileDescriptorError::Unknown),
         }
     }
