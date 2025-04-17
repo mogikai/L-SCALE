@@ -842,6 +842,11 @@ where
         // TODO: Implement rseq https://git.kernel.org/pub/scm/libs/librseq/librseq.git/tree/doc/man/rseq.2
         Err(LinuxKernelError::ENOSYS.into())
     }
+    
+    pub fn getuid(&mut self) -> SyscallResult {
+        // TODO: Implement users and permissions properly
+        Ok(0)
+    }
 }
 
 #[derive(Encode, Decode, RequiredMem, Debug)]
