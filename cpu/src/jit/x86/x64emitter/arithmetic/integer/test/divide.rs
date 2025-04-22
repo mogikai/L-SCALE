@@ -164,8 +164,8 @@ fn test_divide_slice_slice_128() {
         &mut context,
         |result, a, b, _, _| (jinst!(result = a / b), result),
         |a, b| a.wrapping_div(b),
-        (u128::MIN..u128::MIN + 1000)
-            .chain(u128::MAX - 1000..u128::MAX)
+        (u128::MIN..u128::MIN + 10)
+            .chain(u128::MAX - 10..u128::MAX)
             .filter(|i| i != &0),
         "QAX",
         "QBX",

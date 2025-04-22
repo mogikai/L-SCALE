@@ -30,8 +30,7 @@ impl X64Emitter<'_> {
         // TODO: Use a different function to flush for callbacks.
         //       We don't really need to flush rbx, rsp, rbp, r12, r13, r14, and r15
         //       since these are preserved by the callee.
-        //       We also need to flush the temporary slice such that the custom op implementation
-        //       has access to the data.
+        // TODO: Flush all slices used by the custom op and leave the others as is.
         self.save_loaded_slices()?;
         let Some(op) = &self.global_context.custom_op_impls[op_id] else {
             todo!("Return error: 'Custom operation has no implementation'")

@@ -11,6 +11,31 @@
 //! We need to allocate the same register for these two.
 //!
 //!
+//! # Example:
+//! OP1s arguments are: (out, in, in)
+//! OP2s arguments are: (in)
+//!
+//! ```text
+//! OP1 RAX, RCX, RDX
+//!
+//!
+//! [RCX: hw0, RDX: hw1]
+//!
+//! OP2 RAX(hw2)
+//!
+//! [RCX: hw0, RDX: hw1]
+//!
+//! OP1 RAX(hw2), RCX(hw0), RDX(hw1)
+//! SPILL RAX, hw2
+//!
+//! [RDX: hw1, RAX: hw2]
+//!
+//! OP1 RCX(hw0), RDX(hw1), RAX(hw2)
+//! SPILL RCX, hw0
+//!
+//! []
+//! ```
+//!
 
 mod instruction;
 mod lru;

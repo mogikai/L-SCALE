@@ -65,7 +65,6 @@ impl Lifter for ProcessorSpecification {
             self.lifter_diagnostics.borrow_mut().total_time_match += now.elapsed();
 
             let now = Instant::now();
-            #[allow(unused_variables)]
             match matching_result {
                 MatcherResult::EndOfByteStream => Err(LifterError::EndOfBytes)?,
                 MatcherResult::None => Err(LifterError::NoMatch(buffer.to_vec()))?,

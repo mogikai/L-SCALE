@@ -338,6 +338,10 @@ where
             }
             // The already loaded slice is smaller, we can just load the additional contents.
             let to_load = new_size - old_size;
+            if !to_load.is_power_of_two() {
+                spill_int_reg_to_slice(assembler, reg, old_slice)?;
+                return load_slice_to_int_reg(assembler, reg, new_slice);
+            }
             // We load the currently unloaded data into the scratch register
             let unloaded = new_slice.slice(old_size, to_load);
             let old_data_mask = (1 << old_size) - 1;
@@ -358,6 +362,10 @@ where
             }
             // The already loaded slice is larger. We flush the content that is no longer needed.
             let to_store = old_size - new_size;
+            if !to_store.is_power_of_two() {
+                spill_int_reg_to_slice(assembler, reg, old_slice)?;
+                return load_slice_to_int_reg(assembler, reg, new_slice);
+            }
             let to_unload = old_slice.slice(new_size, to_store);
             assemble!(assembler;
                 // Move the whole data to scratch

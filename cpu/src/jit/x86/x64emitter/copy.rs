@@ -51,13 +51,6 @@ impl X64Emitter<'_> {
         let size = target.size();
         debug_assert_eq!(size, source.size());
 
-        if target == source {
-            // Nothing to do here
-            return Ok(());
-        }
-
-        // Allocate and associate a GP register with the slice.
-        // No load is needed, since we overwrite the data anyway for a copy.
         let target_reg = reg!(self.allocations, inst, 0);
         match source {
             JIRValue::Slice(source) => {
@@ -79,7 +72,6 @@ impl X64Emitter<'_> {
         size: JIRSize,
         extend_mode: CopyExtendMode,
     ) -> JITResult {
-        trace_jit!("Copying {source:?} to {target:?} ({size})");
         match target.class() {
             RegClass::Int => self.copy_reg_int(target, source, size, extend_mode),
             RegClass::Vector => self.copy_reg_vec(target, source, size),
@@ -96,24 +88,25 @@ impl X64Emitter<'_> {
     ) -> JITResult {
         match extend_mode {
             CopyExtendMode::ZeroExtend(new_size) => {
+                trace_jit!("Zero extending from {source:?}:{size} to {target:?}:{new_size}");
                 if target == source && size == new_size {
                     trace_jit!("Zero extend with equal sizes: no-op");
                     return Ok(());
                 }
-                trace_jit!("Zero extending from {source:?}:{size} to {target:?}:{new_size}");
                 self.copy_reg_zext(target, source, size, new_size)?;
                 Ok(())
             }
             CopyExtendMode::SignExtend(new_size) => {
+                trace_jit!("Sign extending from {source:?}:{size} to {target:?}:{new_size}");
                 if target == source && size == new_size {
                     trace_jit!("Sign extend with equal sizes: no-op");
                     return Ok(());
                 }
-                trace_jit!("Sign extending from {source:?}:{size} to {target:?}:{new_size}");
                 self.copy_reg_sext(target, source, size, new_size)?;
                 Ok(())
             }
             CopyExtendMode::None => {
+                trace_jit!("Copying {source:?} to {target:?} ({size})");
                 // Only emit a copy instruction, if target and source are different.
                 if target == source {
                     return Ok(());

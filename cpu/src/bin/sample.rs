@@ -28,7 +28,10 @@ use std::fs::{
     File,
     OpenOptions,
 };
-use std::path::{Path, PathBuf};
+use std::path::{
+    Path,
+    PathBuf,
+};
 use std::rc::Rc;
 use std::time::Instant;
 use tracing::info;
@@ -58,7 +61,7 @@ fn main() {
     // println!("{:?}", specification.list_global_varnode_strings());
 
     // MOV RAX, 0x1234
-    let testelf_content = std::fs::read(&PathBuf::from("./a.out")).unwrap();
+    let testelf_content = std::fs::read(&PathBuf::from("./cpu/resources/test/executables/test")).unwrap();
 
     let specification = Rc::new(RefCell::new(specification));
 
@@ -127,12 +130,13 @@ fn main() {
     // Set the instruction pointer to the address we want to start executing at.
     // *cpu.register_mut("RIP").unwrap() = 0x1F540u64;
     // *cpu.register_mut("RIP").unwrap() = 0x2A8E2u64;
-    *cpu.register_mut("RIP").unwrap() = 0x1140u64;
-    *cpu.register_mut("EDI").unwrap() = 5u32;
-    *cpu.register_mut("ESI").unwrap() = 8u32;
+    *cpu.register_mut("RIP").unwrap() = 0x01180u64;
+    *cpu.register_mut("EDI").unwrap() = 15u32;
+    // *cpu.register_mut("ESI").unwrap() = 8u32;
 
     // Now lets roll! (forever :>)
-    cpu.run(RunLimit::Address(0x1148u64.into())).unwrap();
+    cpu.run(RunLimit::Address(0x00000000000011b3u64.into()))
+        .unwrap();
     let eax: i32 = *cpu.register("EAX").unwrap();
     eprintln!("eax = {:#?}", eax);
 }

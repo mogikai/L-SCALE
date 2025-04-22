@@ -8,6 +8,7 @@ use crate::jit::regalloc::result::Allocation;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
 use crate::jit::x86::x64emitter::copy::CopyExtendMode;
+use crate::jit::x86::x64emitter::helpers::reg;
 use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
     X64Emitter,
@@ -25,14 +26,7 @@ impl X64AllocRequirements {
         input: JIRValue,
     ) {
         requirement.add_request(OperandRequest::int_write_any(output));
-        match input {
-            JIRValue::Slice(jirslice) => {
-                requirement.add_request(OperandRequest::int_read_any(jirslice));
-            }
-            JIRValue::Const(jirconst) => {
-                *requirement.required_temps_mut() = TempRequest::new().int(1);
-            }
-        }
+        input.is_slice_then(|s| requirement.add_request(OperandRequest::int_read_any(*s)));
     }
 }
 
@@ -43,25 +37,12 @@ impl X64Emitter<'_> {
         output: JIRSlice,
         input: JIRValue,
     ) -> JITResult {
-        let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
-            todo!()
-        };
+        let output_reg = reg!(self.allocations, inst, 0);
 
         let input_reg = match input {
-            JIRValue::Slice(input) => {
-                let Allocation::Register(input_reg) = self.allocations.get_allocation(inst, 1) else {
-                    todo!()
-                };
-
-                input_reg
-            }
+            JIRValue::Slice(input) => reg!(self.allocations, inst, 1),
             JIRValue::Const(input) => {
-                let tempreg = self
-                    .allocations
-                    .get_temp_allocations(inst)
-                    .get_nth_from_class(0, RegClass::Int)
-                    .expect("We allocated this above");
-
+                let tempreg = self.allocations.scratch_register(RegClass::Int);
                 self.load_const(tempreg, input)?;
                 tempreg
             }

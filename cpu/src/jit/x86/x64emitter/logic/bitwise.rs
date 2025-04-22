@@ -11,6 +11,7 @@ use crate::jit::regalloc::result::Allocation;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
 use crate::jit::x86::x64emitter::copy::CopyExtendMode;
+use crate::jit::x86::x64emitter::helpers::reg;
 use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
     X64Emitter,
@@ -39,9 +40,6 @@ impl X64AllocRequirements {
             (JIRValue::Const(input_a), JIRValue::Slice(input_b))
             | (JIRValue::Slice(input_b), JIRValue::Const(input_a)) => {
                 requirement.add_request(OperandRequest::int_read_any(input_b));
-                if input_a.size() >= 8 {
-                    *requirement.required_temps_mut() = TempRequest::new().int(1);
-                }
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
                 requirement.add_request(OperandRequest::int_read_any(input_a));
@@ -235,55 +233,31 @@ impl X64Emitter<'_> {
                 // In the const case we can simply calculate the value ahead of time and move it into the output.
                 self.emit_copy(inst, output, op_const(input_a, input_b))?
             }
-            (JIRValue::Slice(input_a), JIRValue::Const(input_b))
-            | (JIRValue::Const(input_b), JIRValue::Slice(input_a)) => {
+            (JIRValue::Slice(input_slice), JIRValue::Const(input_const))
+            | (JIRValue::Const(input_const), JIRValue::Slice(input_slice)) => {
                 // The order of arguments does not matter, so we can simply handle both cases here
-                let immediate = input_b.value();
-                let immediate_size = input_b.size();
+                let immediate = input_const.value();
+                let immediate_size = input_const.size();
 
-                let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
-                    todo!()
-                };
-
-                let Allocation::Register(input_a_reg) = self.allocations.get_allocation(inst, 1) else {
-                    todo!()
-                };
+                let output_reg = reg!(self.allocations, inst, 0);
+                let input_slice_reg = reg!(self.allocations, inst, 1);
+                // Copy the input into the output, since x86 uses the first operand as output.
+                self.copy_reg(output_reg, input_slice_reg, input_slice.size(), CopyExtendMode::None)?;
 
                 if immediate_size <= 4 {
-                    // Copy the input into the output, since x86 uses the first operand as output.
-
-                    self.copy_reg(output_reg, input_a_reg, input_a.size(), CopyExtendMode::None)?;
                     op_reg_imm(self, output_reg, immediate, immediate_size)?;
                 } else if immediate_size <= 8 {
-                    let tempreg = self
-                        .allocations
-                        .get_temp_allocations(inst)
-                        .get_nth_from_class(0, RegClass::Int)
-                        .expect("We allocated this above");
-
-                    let Allocation::Register(input_a_reg) = self.allocations.get_allocation(inst, 1) else {
-                        todo!()
-                    };
-
-                    self.copy_reg(output_reg, input_a_reg, output.size(), CopyExtendMode::None)?;
-                    self.load_const(tempreg, input_b)?;
-                    op_reg_reg(self, output_reg, tempreg, output.size())?;
+                    let scratch = self.allocations.scratch_register(RegClass::Int);
+                    self.load_const(scratch, input_const)?;
+                    op_reg_reg(self, output_reg, scratch, output.size())?;
                 } else {
                     todo!("Unsupported operation size")
                 }
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
-                let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
-                    todo!()
-                };
-
-                let Allocation::Register(input_a_reg) = self.allocations.get_allocation(inst, 1) else {
-                    todo!()
-                };
-
-                let Allocation::Register(input_b_reg) = self.allocations.get_allocation(inst, 2) else {
-                    todo!()
-                };
+                let output_reg = reg!(self.allocations, inst, 0);
+                let input_a_reg = reg!(self.allocations, inst, 1);
+                let input_b_reg = reg!(self.allocations, inst, 2);
 
                 if output_reg == input_a_reg {
                     op_reg_reg(self, output_reg, input_b_reg, output.size())?;

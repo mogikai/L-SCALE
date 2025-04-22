@@ -174,7 +174,11 @@ where
                 TranslationLimit::Unlimited => {}
                 // we only translate as much as necessary so we can break here
                 TranslationLimit::BlockCount(_) => break,
-                TranslationLimit::InstructionCount(_) => break,
+                TranslationLimit::InstructionCount(inst_limit) => {
+                    if executed_instructions >= inst_limit.into() {
+                        break;
+                    }
+                }
                 TranslationLimit::Address(_) => break,
             }
         }

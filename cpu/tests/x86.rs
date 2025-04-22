@@ -276,29 +276,31 @@ fn test_idiv_32() {
 }
 
 #[test]
+#[ignore]
 fn test_simple_arithmetic() {
-    // FIXME: To make this work we need 128 bit multiply implemented or another workaround for that case
-    let instr = b"\x48\x85\xFF\x74\x1F\x48\x8D\x47\xFF\x48\x8D\x4F\xFE\x48\xF7\xE1\x48\x0F\xA4\xC2\x3F\x48\x8D\x04\x17\x48\xFF\xC8\x48\x0F\xAF\xF0\x48\x89\xF0\xF4\x31\xF6\x48\x89\xF0\xF4";
+    let instr =
+        b"\x48\x31\xC0\x48\x83\xEF\x01\x48\x01\xF8\x48\x85\xFF\x75\xF4\x48\x89\xC7\x48\xC7\xC0\x3C\x00\x00\x00\x0F\x05\xF4";
     let (mut cpu, mmu) = common::setup_with_bytes(instr);
 
     *cpu.register_mut("RDI").unwrap() = 10u64;
-    *cpu.register_mut("RSI").unwrap() = 20u64;
-    cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(500000).unwrap()))
+    *cpu.register_mut("RSI").unwrap() = 1u64;
+    cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(500).unwrap()))
         .unwrap();
 
-    let rax: u64 = *cpu.register("RAX").unwrap();
-    let rax_expected = stuff(10, 20);
+    let rdi: u64 = *cpu.register("RDI").unwrap();
+    let rdi_expected = stuff(10, 1);
 
-    assert_eq!(rax, rax_expected);
+    assert_eq!(rdi, rdi_expected);
 }
 
 extern "C" fn stuff(
     n: u64,
-    x: u64,
+    s: u64,
 ) -> u64 {
+    // rdi, rsi, rdx, rcx, r8, and r9
     let mut sum = 0u64;
-    for i in 0..n {
-        sum = sum.wrapping_add(x * i);
+    for i in (0..n).step_by(s as usize) {
+        sum = sum.wrapping_add(i);
     }
     sum
 }

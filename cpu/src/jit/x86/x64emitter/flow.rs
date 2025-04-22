@@ -152,7 +152,7 @@ impl X64Emitter<'_> {
         self.emit_goto_if(inst, target, condition, JumpType::Indirect)
     }
 
-    pub fn emit_goto_if(
+    fn emit_goto_if(
         &mut self,
         inst: InstId,
         target: JIRValue,
