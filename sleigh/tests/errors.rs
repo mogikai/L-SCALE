@@ -68,7 +68,7 @@ fn symbol_undeclared() {
     let err = build(path).expect_err("expected error");
     assert!(matches!(err, SleighCompilerError::SemanticError(_)));
     if let SleighCompilerError::SemanticError(string) = err {
-        assert!(string.contains("The symbol was not declared before being defined"))
+        assert!(string.contains("Undefined identifier:"))
     }
 }
 

@@ -111,7 +111,7 @@ pub struct InvalidSymbolType {
 }
 
 #[derive(Error, Debug)]
-#[error("Undefined identifier")]
+#[error("{identifier} is not defined")]
 pub struct UndefinedIdentifier {
     pub identifier: String,
 }
@@ -328,6 +328,12 @@ impl InternalError {
                 let sym = self.get_span("symbol");
                 Report::build(ReportKind::Error, sym.clone()).with_label(
                     Label::new(sym.clone()).with_message(format!("Symbol {:?} is undefined", symbol.symbol)),
+                )
+            }
+            InternalErrorType::UndefinedIdentifier(identifier) => {
+                let sym = self.get_span("ident");
+                Report::build(ReportKind::Error, sym.clone()).with_label(
+                    Label::new(sym.clone()).with_message(format!("Symbol {:?} is undefined", identifier.identifier)),
                 )
             }
             InternalErrorType::InvalidSymbolType(invalid) => {
