@@ -99,6 +99,14 @@ impl AllocatorResult {
         op_id: usize,
     ) -> Allocation {
         let alloc_id = self.allocation_offsets[inst] + op_id;
+        debug_assert!(
+            alloc_id
+                < self
+                    .allocation_offsets
+                    .get(inst + 1)
+                    .copied()
+                    .unwrap_or(self.allocation_offsets.len())
+        );
         self.allocations[alloc_id]
     }
 
