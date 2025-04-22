@@ -44,7 +44,7 @@ fn build(spec_path: &Path) -> SleighCompilerResult<ProcessorSpecification> {
 
 pub(crate) fn setup_with_bytes(bytes: &[u8]) -> (MogiCPU<X86MogiJit, MogiMMU>, Rc<RefCell<MogiMMU>>) {
     let spec = Rc::new(RefCell::new(SPEC.read().unwrap().clone()));
-    let stack_page_count = 2;
+    let stack_page_count = 1;
     let page_count = (bytes.len() + PAGE_SIZE - 1) / PAGE_SIZE;
     let stack_addr = 0xffff_ffff_ffff_0000u64;
 
