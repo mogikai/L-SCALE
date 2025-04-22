@@ -138,7 +138,9 @@ impl X64Emitter<'_> {
     ) -> JITResult {
         match target_size {
             1 => match source_size {
-                1 => (),
+                1 => assemble!(self.block.assembler();
+                    ; mov Rb(target.hw_enc()), Rb(source.hw_enc())
+                ),
                 2.. => todo!("Narrowing zero extend makes no sense"),
                 _ => todo!("Unsupported zero extend size"),
             },
@@ -146,7 +148,9 @@ impl X64Emitter<'_> {
                 1 => assemble!(self.block.assembler();
                     ; movzx Rw(target.hw_enc()), Rb(source.hw_enc())
                 ),
-                2 => (/* zext size 4 to 4 is a no-op */),
+                2 => assemble!(self.block.assembler();
+                    ; mov Rw(target.hw_enc()), Rw(source.hw_enc())
+                ),
                 3.. => todo!("Narrowing zero extend makes no sense"),
                 _ => todo!("Unsupported zero extend size"),
             },
@@ -157,7 +161,9 @@ impl X64Emitter<'_> {
                 2 => assemble!(self.block.assembler();
                     ; movzx Rd(target.hw_enc()), Rw(source.hw_enc())
                 ),
-                4 => (/* zext size 4 to 4 is a no-op*/),
+                4 => assemble!(self.block.assembler();
+                    ; mov Rd(target.hw_enc()), Rd(source.hw_enc())
+                ),
                 5.. => todo!("Narrowing zero extend makes no sense"),
                 _ => todo!("Unsupported zero extend size"),
             },
@@ -172,7 +178,9 @@ impl X64Emitter<'_> {
                 4 => assemble!(self.block.assembler();
                     ; mov Rd(target.hw_enc()), Rd(source.hw_enc())
                 ),
-                8 => (/* zext size 8 to 8 is a no-op */),
+                8 => assemble!(self.block.assembler();
+                    ; mov Rq(target.hw_enc()), Rq(source.hw_enc())
+                ),
                 9.. => todo!("Narrowing zero extend makes no sense"),
                 _ => todo!("Unsupported zero extend size"),
             },
@@ -190,7 +198,9 @@ impl X64Emitter<'_> {
     ) -> JITResult {
         match target_size {
             1 => match source_size {
-                1 => (),
+                1 => assemble!(self.block.assembler();
+                    ; mov Rb(target.hw_enc()), Rb(source.hw_enc())
+                ),
                 2.. => todo!("Narrowing zero extend makes no sense"),
                 _ => todo!("Unsupported zero extend size"),
             },
@@ -198,7 +208,9 @@ impl X64Emitter<'_> {
                 1 => assemble!(self.block.assembler();
                     ; movsx Rw(target.hw_enc()), Rb(source.hw_enc())
                 ),
-                2 => (/* zext size 4 to 4 is a no-op */),
+                2 => assemble!(self.block.assembler();
+                    ; mov Rw(target.hw_enc()), Rw(source.hw_enc())
+                ),
                 3.. => todo!("Narrowing zero extend makes no sense"),
                 _ => todo!("Unsupported zero extend size"),
             },
@@ -209,7 +221,9 @@ impl X64Emitter<'_> {
                 2 => assemble!(self.block.assembler();
                     ; movsx Rd(target.hw_enc()), Rw(source.hw_enc())
                 ),
-                4 => (/* zext size 4 to 4 is a no-op*/),
+                4 => assemble!(self.block.assembler();
+                    ; mov Rd(target.hw_enc()), Rd(source.hw_enc())
+                ),
                 5.. => todo!("Narrowing zero extend makes no sense"),
                 _ => todo!("Unsupported zero extend size"),
             },
@@ -224,7 +238,9 @@ impl X64Emitter<'_> {
                 4 => assemble!(self.block.assembler();
                     ; movsx Rq(target.hw_enc()), Rd(source.hw_enc())
                 ),
-                8 => (/* zext size 8 to 8 is a no-op */),
+                8 => assemble!(self.block.assembler();
+                    ; mov Rq(target.hw_enc()), Rq(source.hw_enc())
+                ),
                 9.. => todo!("Narrowing zero extend makes no sense"),
                 _ => todo!("Unsupported zero extend size"),
             },

@@ -62,7 +62,6 @@ impl Lifter for ProcessorSpecification {
             let mut context_stack = ContextStack::new(self, context_provider).expect("Couldn't create context stack");
             let match_context = MatchContext::new(addr, &self.jumplist_cache, &self.symbol_tables.constructors);
             let matching_result = match_context.r#match(&buffer, &mut context_stack).unwrap();
-            self.lifter_diagnostics.borrow_mut().total_time_match += now.elapsed();
 
             let now = Instant::now();
             match matching_result {
@@ -86,7 +85,6 @@ impl Lifter for ProcessorSpecification {
                     }
 
                     block_size += bytes_consumed;
-                    self.lifter_diagnostics.borrow_mut().total_time_build += now.elapsed();
                     instruction_count += 1;
                     if let Some(max_instructions) = max_instructions
                         && instruction_count >= max_instructions.into()
@@ -103,13 +101,5 @@ impl Lifter for ProcessorSpecification {
         Ok(block_builder
             .finish()
             .map_err(|_| -> LifterError { todo!() })?)
-    }
-
-    fn diagnostics(&self) -> Ref<LifterDiagnostics> {
-        self.lifter_diagnostics.borrow()
-    }
-
-    fn reset_diagnostics(&mut self) {
-        *self.lifter_diagnostics.borrow_mut() = LifterDiagnostics::default();
     }
 }

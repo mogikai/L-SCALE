@@ -1,20 +1,12 @@
-use mogi_cpu::new_cpu_trait::CPU;
-use std::cell::RefCell;
-use std::path::{
-    Path,
-    PathBuf,
-};
-use std::rc::Rc;
-
 use mogi_cpu::cpu::MogiCPU;
 use mogi_cpu::jit::api::{
     JITTaskRuntimeContext,
     MogiJit,
 };
 use mogi_cpu::jit::x86::X86MogiJit;
+use mogi_cpu::new_cpu_trait::CPU;
 use mogi_mem::PAGE_SIZE;
 use mogi_mem::mmu::MogiMMU;
-use mogi_mem::physical::page::PageData;
 use mogi_sleigh::SleighPreprocessorFactory;
 use mogi_sleigh::compiler::SleighCompilerResult;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
@@ -22,10 +14,24 @@ use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_system::components::mmu::{
     MMU,
     MemoryAction,
-    PageMetaInfo,
     Permission,
 };
-use mogi_utilities::addresses::HVAddr;
+use std::cell::RefCell;
+use std::path::{
+    Path,
+    PathBuf,
+};
+use std::rc::Rc;
+use std::sync::{
+    LazyLock,
+    RwLock,
+};
+
+static SPEC: LazyLock<RwLock<ProcessorSpecification>> = LazyLock::new(|| {
+    let mut spec_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    spec_path.push("resources/test/x86/x86-64.slaspec");
+    RwLock::new(build(&spec_path).unwrap())
+});
 
 fn build(spec_path: &Path) -> SleighCompilerResult<ProcessorSpecification> {
     let spec_dir = spec_path.parent().unwrap();
@@ -37,10 +43,7 @@ fn build(spec_path: &Path) -> SleighCompilerResult<ProcessorSpecification> {
 }
 
 pub(crate) fn setup_with_bytes(bytes: &[u8]) -> (MogiCPU<X86MogiJit, MogiMMU>, Rc<RefCell<MogiMMU>>) {
-    let mut spec_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    spec_path.push("resources/test/x86/x86-64.slaspec");
-    let spec = Rc::new(RefCell::new(build(&spec_path).unwrap()));
-
+    let spec = Rc::new(RefCell::new(SPEC.read().unwrap().clone()));
     let stack_page_count = 1;
     let page_count = (bytes.len() + PAGE_SIZE - 1) / PAGE_SIZE;
     let stack_addr = 0xffff_ffff_ffff_0000u64;

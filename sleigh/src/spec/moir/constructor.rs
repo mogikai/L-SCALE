@@ -21,7 +21,8 @@ use crate::spec::jir::trace_jir;
 use crate::spec::jir::values::{
     JIRConst,
     JIRSlice,
-    JIRValue, VarnodeGroupId,
+    JIRValue,
+    VarnodeGroupId,
 };
 use crate::spec::moir::code::{
     MOIRGotoType,
@@ -57,7 +58,7 @@ use serde_derive::{
 use std::fmt::Write;
 use std::iter::once;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MOIRConstructor {
     pub local_scope: MOIRScope,
     pub instructions: Vec<MOIRInstruction>,
@@ -519,7 +520,14 @@ impl MOIRConstructor {
                             let address = match address {
                                 JIRValue::Slice(a) => {
                                     // JIRSlice::new(a.space_id, a.group_id.unwrap(), a.offset, size).into()
-                                    JIRSlice::new(a.space_id, a.group_id.unwrap_or(VarnodeGroupId::try_from_index(0x69).unwrap()), a.offset, size).into()
+                                    JIRSlice::new(
+                                        a.space_id,
+                                        a.group_id
+                                            .unwrap_or(VarnodeGroupId::try_from_index(0x69).unwrap()),
+                                        a.offset,
+                                        size,
+                                    )
+                                    .into()
                                 }
                                 JIRValue::Const(a) => JIRConst::new(a.value(), 0x8).into(),
                             };

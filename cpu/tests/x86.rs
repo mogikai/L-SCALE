@@ -1,3 +1,5 @@
+use mogi_cpu::cpu::StopReason;
+use mogi_cpu::jit::api::RuntimeError;
 use mogi_cpu::new_cpu_trait::{
     CPU,
     RunLimit,
@@ -136,19 +138,38 @@ fn test_idiv_reg_imm() {
     let instr = b"\x48\xF7\xF9";
     let (mut cpu, mmu) = common::setup_with_bytes(instr);
 
-    // RDX = 0
+    let dividend = 0x9876i64;
+    let divisor = 0x1234i64;
+
     *cpu.register_mut("RDX").unwrap() = 0x0i64;
-    // RAX = 0x9876
-    *cpu.register_mut("RAX").unwrap() = 0x9876i64;
-    // RCX = 0x1234
-    *cpu.register_mut("RCX").unwrap() = 0x1234i64;
+    *cpu.register_mut("RAX").unwrap() = dividend;
+    *cpu.register_mut("RCX").unwrap() = divisor;
 
     cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(1).unwrap()))
         .unwrap();
 
     let rax: i64 = *cpu.register("RAX").unwrap();
-    let expected = 0x9876i64.wrapping_div(0x1234i64);
+    let expected = dividend.wrapping_div(divisor);
     assert_eq!(rax, expected);
+}
+
+#[test]
+fn test_idiv_reg_imm_divide_by_zero() {
+    // IDIV RCX
+    let instr = b"\x48\xF7\xF9";
+    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+
+    let dividend = 0x9876i64;
+    let divisor = 0x0i64;
+
+    *cpu.register_mut("RDX").unwrap() = 0x0i64;
+    *cpu.register_mut("RAX").unwrap() = dividend;
+    *cpu.register_mut("RCX").unwrap() = divisor;
+
+    assert!(matches!(
+        cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(1).unwrap())),
+        Err(StopReason::RuntimeError(RuntimeError::DivisionError))
+    ));
 }
 
 #[test]

@@ -31,19 +31,19 @@ impl X64AllocRequirements {
         input_a: JIRValue,
         input_b: JIRValue,
     ) {
-        requirement.add_request(OperandRequest::int_write_any(output));
-
         match (input_a, input_b) {
             (JIRValue::Const(input_a), JIRValue::Const(input_b)) => {
                 Self::copy_requirements(requirement, output, input_a);
             }
             (JIRValue::Const(input_a), JIRValue::Slice(input_b))
             | (JIRValue::Slice(input_b), JIRValue::Const(input_a)) => {
-                requirement.add_request(OperandRequest::int_read_any(input_b));
+                Self::require_large_int_write_any(requirement, output);
+                Self::require_large_int_read_any(requirement, input_b);
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
-                requirement.add_request(OperandRequest::int_read_any(input_a));
-                requirement.add_request(OperandRequest::int_read_any(input_b));
+                Self::require_large_int_write_any(requirement, output);
+                Self::require_large_int_read_any(requirement, input_a);
+                Self::require_large_int_read_any(requirement, input_b);
             }
         }
     }
@@ -223,7 +223,8 @@ impl X64Emitter<'_> {
         op_reg_imm: fn(&mut X64Emitter<'_>, HostReg, u128, JIRSize) -> JITResult,
         op_reg_reg: fn(&mut X64Emitter<'_>, HostReg, HostReg, JIRSize) -> JITResult,
     ) -> JITResult {
-        assert_eq!(input_a.size(), input_b.size());
+        debug_assert_eq!(output.size(), input_a.size());
+        debug_assert_eq!(input_a.size(), input_b.size());
         // TODO: It might make sense to directly put the memory reference into the instruction, instead of loading
         //       to a register first. However, this requires that we know if the value is used in subsequent instructions
         //       because if it is used, we have to load it in a register. The exception to this is for cases like
@@ -254,22 +255,69 @@ impl X64Emitter<'_> {
                     todo!("Unsupported operation size")
                 }
             }
-            (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
-                let output_reg = reg!(self.allocations, inst, 0);
-                let input_a_reg = reg!(self.allocations, inst, 1);
-                let input_b_reg = reg!(self.allocations, inst, 2);
-
-                if output_reg == input_a_reg {
-                    op_reg_reg(self, output_reg, input_b_reg, output.size())?;
-                } else if output_reg == input_b_reg {
-                    op_reg_reg(self, output_reg, input_a_reg, output.size())?;
-                } else {
-                    self.copy_reg(output_reg, input_a_reg, output.size(), CopyExtendMode::None)?;
-                    op_reg_reg(self, output_reg, input_b_reg, output.size())?;
-                }
+            (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) if input_a.size() <= 8 => {
+                self.emit_bitwise_op_slice_slice(inst, output, input_a, input_b, op_reg_reg)?
             }
+            (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) if input_a.size() == 16 => {
+                self.emit_bitwise_op_slice_slice_128(inst, output, input_a, input_b, op_reg_reg)?
+            }
+            _ => todo!("Unsupported operands"),
         }
         Ok(())
+    }
+
+    fn emit_bitwise_op_slice_slice(
+        &mut self,
+        inst: InstId,
+        output: JIRSlice,
+        input_a: JIRSlice,
+        input_b: JIRSlice,
+        op_reg_reg: fn(&mut X64Emitter<'_>, HostReg, HostReg, JIRSize) -> JITResult,
+    ) -> JITResult {
+        let output_reg = reg!(self.allocations, inst, 0);
+        let input_a_reg = reg!(self.allocations, inst, 1);
+        let input_b_reg = reg!(self.allocations, inst, 2);
+        self.emit_bitwise_op_reg_reg(output_reg, input_a_reg, input_b_reg, output.size(), op_reg_reg)
+    }
+
+    fn emit_bitwise_op_reg_reg(
+        &mut self,
+        output_reg: HostReg,
+        input_a_reg: HostReg,
+        input_b_reg: HostReg,
+        size: JIRSize,
+        op_reg_reg: fn(&mut X64Emitter<'_>, HostReg, HostReg, JIRSize) -> JITResult,
+    ) -> JITResult {
+        if output_reg == input_a_reg {
+            op_reg_reg(self, output_reg, input_b_reg, size)
+        } else if output_reg == input_b_reg {
+            op_reg_reg(self, output_reg, input_a_reg, size)
+        } else {
+            self.copy_reg(output_reg, input_a_reg, size, CopyExtendMode::None)?;
+            op_reg_reg(self, output_reg, input_b_reg, size)
+        }
+    }
+
+    fn emit_bitwise_op_slice_slice_128(
+        &mut self,
+        inst: InstId,
+        output: JIRSlice,
+        input_a: JIRSlice,
+        input_b: JIRSlice,
+        op_reg_reg: fn(&mut X64Emitter<'_>, HostReg, HostReg, JIRSize) -> JITResult,
+    ) -> JITResult {
+        debug_assert_eq!(output.size(), 16);
+        debug_assert_eq!(input_a.size(), 16);
+        debug_assert_eq!(input_b.size(), 16);
+        let output_reg_lower = reg!(self.allocations, inst, 0);
+        let output_reg_upper = reg!(self.allocations, inst, 1);
+        let input_a_reg_lower = reg!(self.allocations, inst, 2);
+        let input_a_reg_upper = reg!(self.allocations, inst, 3);
+        let input_b_reg_lower = reg!(self.allocations, inst, 4);
+        let input_b_reg_upper = reg!(self.allocations, inst, 5);
+
+        self.emit_bitwise_op_reg_reg(output_reg_lower, input_a_reg_lower, input_b_reg_lower, 8, op_reg_reg)?;
+        self.emit_bitwise_op_reg_reg(output_reg_upper, input_a_reg_upper, input_b_reg_upper, 8, op_reg_reg)
     }
 
     pub fn emit_bitwise_negate(

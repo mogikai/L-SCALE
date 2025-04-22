@@ -46,16 +46,16 @@ impl X64AllocRequirements {
     /// Otherwise, only request one allocation.
     pub fn require_large_int_write_fixed(
         requirement: &mut AllocRequirement,
-        input: JIRSlice,
+        output: JIRSlice,
         fixed_lower: HostReg,
         fixed_upper: HostReg,
     ) {
-        match input.size() {
+        match output.size() {
             size if size <= 8 => {
-                requirement.add_request(OperandRequest::int_write_fixed(fixed_lower, input));
+                requirement.add_request(OperandRequest::int_write_fixed(fixed_lower, output));
             }
             size if size == 16 => {
-                let (lower, upper) = input.split(8);
+                let (lower, upper) = output.split(8);
                 requirement.add_request(OperandRequest::int_write_fixed(fixed_lower, lower));
                 requirement.add_request(OperandRequest::int_write_fixed(fixed_upper, upper));
             }

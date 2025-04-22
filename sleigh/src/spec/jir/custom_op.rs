@@ -3,7 +3,7 @@ use serde_derive::{
     Serialize,
 };
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JIRCustomOp {
     pub name: String,
 }

@@ -4,7 +4,7 @@ use serde::{
     Serialize,
 };
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 /// Each fragment will be resolved into a concrete string and then inserted into
 /// its corresponding final place. This happens recursively for subtables and
 /// is dependent on the scope.
@@ -15,7 +15,7 @@ pub(crate) enum MOIRDisplayFragment {
 
 /// The display section for converting a lifted byte sequence into a more human-readable disassembly
 /// string.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct MOIRDisplay {
     pub(crate) fragments: Vec<MOIRDisplayFragment>,
 }

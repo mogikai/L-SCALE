@@ -367,6 +367,14 @@ impl X64Emitter<'_> {
                 self.load_const(divisor_upper_reg, divisor_upper)?;
             }
             (JIRValue::Slice(dividend), JIRValue::Slice(divisor)) => {
+                let dividend_lower_reg = reg!(self.allocations, inst, 2);
+                let dividend_upper_reg = reg!(self.allocations, inst, 3);
+                let divisor_lower_reg = reg!(self.allocations, inst, 4);
+                let divisor_upper_reg = reg!(self.allocations, inst, 5);
+                debug_assert_eq!(dividend_lower_reg, GPRegister::DI.into_host_reg());
+                debug_assert_eq!(dividend_upper_reg, GPRegister::SI.into_host_reg());
+                debug_assert_eq!(divisor_lower_reg, GPRegister::DX.into_host_reg());
+                debug_assert_eq!(divisor_upper_reg, GPRegister::CX.into_host_reg());
                 // Arguments are already loaded correctly.
             }
         }
@@ -518,9 +526,9 @@ unsafe extern "sysv64" fn sdiv128(
     // rcx = dividend.high
     // r8 = cpu_context
     // r9 not used
-    let dividend: u128 = dividend.low as u128 | ((dividend.high as u128) << 64);
-    let divisor: u128 = divisor.low as u128 | ((divisor.high as u128) << 64);
-    let result = (dividend as i128).checked_div(divisor as i128);
+    let dividend = (dividend.low as u128 | ((dividend.high as u128) << 64)) as i128;
+    let divisor = (divisor.low as u128 | ((divisor.high as u128) << 64)) as i128;
+    let result = dividend.checked_div(divisor);
     let Some(result) = result else {
         // SAFETY: By contract, the cpu_context pointer is passed by the jit and must be valid.
         unsafe { &mut (*cpu_context) }.set_runtime_error(RuntimeError::DivisionError);

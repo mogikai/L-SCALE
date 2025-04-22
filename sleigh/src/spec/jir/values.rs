@@ -38,7 +38,7 @@ impl JIRVarNode {
 
 // Varnodes are compacted on transformation, but overlapping varnodes need to keep
 // their overlap. We group them into into intersection groups which we then compact.
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct VarnodeGroup {
     pub(crate) varnodes: Vec<VarNodeId>,
     // track the total size of the group

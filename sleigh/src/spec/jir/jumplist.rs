@@ -124,8 +124,6 @@ pub(crate) struct JumplistEntry {
     // not all field positions are known beforehand so we store additional extractors and lists here
     pub(crate) sublists: Vec<JumplistId>,
     pub(crate) field_extractors: FnvHashMap<ConstructorId, Vec<FieldExtractor>>,
-    // we count the number of hits for each entry and rearrange later
-    hit_count: Cell<u64>,
 }
 
 impl JumplistEntry {
@@ -138,7 +136,6 @@ impl JumplistEntry {
             next_entry,
             sublists,
             field_extractors,
-            hit_count: Cell::from(0),
         }
     }
 }
@@ -271,9 +268,9 @@ impl Jumplist {
     pub fn rearrange_entries(&mut self) {
         todo!("Keep necessary ordering");
 
-        for (_, entry_vec) in self.entries_mut() {
-            entry_vec.sort_by(|e0, e1| e0.hit_count.get().cmp(&e1.hit_count.get()).reverse());
-        }
+        // for (_, entry_vec) in self.entries_mut() {
+        //     entry_vec.sort_by(|e0, e1| e0.hit_count.get().cmp(&e1.hit_count.get()).reverse());
+        // }
     }
 
     /// Get all entries for a given value.
@@ -504,7 +501,7 @@ impl<'a> MatchContext<'a> {
             'next_entry: for entry in entries {
                 // store state for backtracking
                 let pl_subresolvers = state.subresolvers.len();
-                entry.hit_count.set(entry.hit_count.get() + 1);
+                // entry.hit_count.set(entry.hit_count.get() + 1);
 
                 // immediately descend into any variable-offset sublists and add resolver if match
                 for sublist_id in &entry.sublists {
@@ -582,7 +579,7 @@ impl<'a> MatchContext<'a> {
                         // no complete match => backtrack and try next entry
                         state.subresolvers.truncate(pl_subresolvers);
                         state.field_extractors.pop();
-                        entry.hit_count.set(entry.hit_count.get() - 1);
+                        // entry.hit_count.set(entry.hit_count.get() - 1);
                     }
                     // complete match or end of stream => return
                     _ => return Ok(result),

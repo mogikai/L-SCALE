@@ -116,8 +116,8 @@ impl X64Emitter<'_> {
                     ; shl Rq(out_reg_lower.hw_enc()), imm
                 ),
                 16 if imm >= 64 => assemble!(asm;
-                    ; mov Rq(out_reg_lower.hw_enc()), Rq(out_reg_upper.hw_enc())
-                    ; shl Rq(out_reg_upper.hw_enc()), imm
+                    ; mov Rq(out_reg_upper.hw_enc()), Rq(out_reg_lower.hw_enc())
+                    ; shl Rq(out_reg_upper.hw_enc()), imm % 64 // Shift modulo 64 because we already performed 64 bit shift by moving lower into upper
                     ; xor Rq(out_reg_lower.hw_enc()), Rq(out_reg_lower.hw_enc())
                 ),
                 _ => todo!(),

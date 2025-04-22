@@ -49,13 +49,13 @@ use serde_derive::{
     Deserialize,
     Serialize,
 };
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::io::{
     Read,
     Write,
 };
 use std::ops::Range;
+use std::sync::RwLock;
 use strum_macros::Display;
 use thiserror::Error;
 use tracing::debug;
@@ -101,7 +101,7 @@ impl TryFrom<MOIRSymbolId> for JIRSymbolId {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub(crate) struct JIRSymbolTables {
     // macros: TypedIndexTable<MOIRMacroId, MOIRMacro>,
     pub(crate) spaces: PrimaryMap<SpaceId, JIRSpace>,
@@ -126,7 +126,7 @@ impl JIRSymbolTables {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProcessorSpecification {
     pub(crate) interner: SleighInterner,
 
@@ -163,8 +163,6 @@ pub struct ProcessorSpecification {
     pub(crate) endianness: MOIREndianness,
     /// The alignment of instructions. This defaults to 1 if no alignment is specified.
     pub(crate) alignment: u16,
-    #[serde(skip_serializing, skip_deserializing)]
-    lifter_diagnostics: RefCell<LifterDiagnostics>,
 }
 
 impl ProcessorSpecification {

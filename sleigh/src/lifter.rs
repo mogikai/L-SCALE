@@ -47,9 +47,6 @@ pub trait Lifter {
         max_instructions: Option<NonZeroUsize>,
         stop_addr: Option<EVAddr>,
     ) -> LifterResult<TargetBasicBlock>;
-
-    fn diagnostics(&self) -> Ref<LifterDiagnostics>;
-    fn reset_diagnostics(&mut self);
 }
 
 #[derive(Debug, Default)]

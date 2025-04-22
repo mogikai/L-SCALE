@@ -59,7 +59,7 @@ pub trait ParserContext {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SleighInterner(StringInterner<StringBackend>);
 
 impl SleighInterner {

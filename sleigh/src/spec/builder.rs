@@ -87,6 +87,7 @@ use std::path::{
     Path,
     PathBuf,
 };
+use std::sync::RwLock;
 use strum_macros::Display;
 use tracing::debug;
 
@@ -762,7 +763,6 @@ impl ProcessorSpecificationBuilder {
                 .into_value(),
             // The default alignment is 1
             alignment: self.alignment.map(Spanned::into_value).unwrap_or(1),
-            lifter_diagnostics: RefCell::new(Default::default()),
         };
 
         Ok(spec)

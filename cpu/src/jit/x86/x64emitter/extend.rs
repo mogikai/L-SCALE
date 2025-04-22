@@ -45,12 +45,14 @@ impl X64AllocRequirements {
                 requirement.add_request(OperandRequest::int_write_any(output));
                 input.is_slice_then(|s| requirement.add_request(OperandRequest::int_read_any(*s)));
             }
-            size if size == 16 => {
+            size if size == 16 && input.size() <= 8 => {
                 // If we are extending to 16 bytes, the output must be put in RDX:RAX
-                requirement
-                    .add_request(OperandRequest::int_write_fixed(GPRegister::AX.into_host_reg(), output.slice(0, 8)));
-                requirement
-                    .add_request(OperandRequest::int_write_fixed(GPRegister::DX.into_host_reg(), output.slice(8, 8)));
+                Self::require_large_int_write_fixed(
+                    requirement,
+                    output,
+                    GPRegister::AX.into_host_reg(),
+                    GPRegister::DX.into_host_reg(),
+                );
                 input.is_slice_then(|s| requirement.add_request(OperandRequest::int_read_reg(*s)));
             }
             _ => todo!("unsupported size"),
@@ -92,20 +94,25 @@ impl X64Emitter<'_> {
         output: JIRSlice,
         input: JIRValue,
     ) -> JITResult {
-        let output_reg = reg!(self.allocations, inst, 0);
         match input {
             JIRValue::Slice(slice) => {
                 match output.size() {
                     size if size <= 8 => {
+                        let output_reg = reg!(self.allocations, inst, 0);
                         let input_reg = reg!(self.allocations, inst, 1);
                         self.copy_reg(output_reg, input_reg, input.size(), CopyExtendMode::SignExtend(output.size()))?;
                     }
                     size if size == 16 => {
-                        // Input is in slot 2, because we have two output registers.
+                        // Input is in slot 2, because we have two fixed output registers.
                         let input_reg = reg!(self.allocations, inst, 2);
                         // If the size is 16, the outputs are in RDX:RAX.
                         // The input is also RAX, so we need to copy the input there.
-                        self.copy_reg(GPRegister::AX.into_host_reg(), input_reg, input.size(), CopyExtendMode::None)?;
+                        self.copy_reg(
+                            GPRegister::AX.into_host_reg(),
+                            input_reg,
+                            input.size(),
+                            CopyExtendMode::SignExtend(8),
+                        )?;
                         assemble!(self.block.assembler();
                             ; cqo
                         );
