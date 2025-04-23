@@ -344,6 +344,8 @@ impl TCPSystem for TCP {
         id: SocketId,
         backlog: usize,
     ) -> Result<(), NetworkError> {
+        // This is the default maximum backlog size for Linux.
+        let backlog = if backlog > 4096 { 4096 } else { backlog };
         *self
             .sockets
             .get_mut(&id)
