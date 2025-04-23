@@ -57,6 +57,7 @@ use serde_derive::{
 };
 use std::fmt::Write;
 use std::iter::once;
+use std::process::exit;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MOIRConstructor {
@@ -518,17 +519,7 @@ impl MOIRConstructor {
                         } => {
                             // FIXME: Set the size of address at the correct location and not in a hacky manner here.
                             let address = match address {
-                                JIRValue::Slice(a) => {
-                                    // JIRSlice::new(a.space_id, a.group_id.unwrap(), a.offset, size).into()
-                                    JIRSlice::new(
-                                        a.space_id,
-                                        a.group_id
-                                            .unwrap_or(VarnodeGroupId::try_from_index(0x69).unwrap()),
-                                        a.offset,
-                                        size,
-                                    )
-                                    .into()
-                                }
+                                JIRValue::Slice(a) => a.into(),
                                 JIRValue::Const(a) => JIRConst::new(a.value(), 0x8).into(),
                             };
                             instruction_builder

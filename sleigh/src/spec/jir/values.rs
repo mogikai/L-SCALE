@@ -112,7 +112,7 @@ impl VarnodeGroup {
 
 new_map_key_8! { pub struct VarnodeGroupId; "VG"; }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct JIRSlice {
     /// The space this slice is located in.
     pub space_id: SpaceId,

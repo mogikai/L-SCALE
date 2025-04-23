@@ -1,5 +1,6 @@
 pub mod builder;
 mod display;
+pub mod optimizer;
 pub(crate) mod instruction;
 
 use crate::spec::jir::basic_block::instruction::JIRTempId;
@@ -17,6 +18,7 @@ use mogi_utilities::index_map::{
     PrimaryMap,
     SecondaryMap,
 };
+use optimizer::OptimizerAncillary;
 use std::ops::Deref;
 use std::rc::Rc;
 
@@ -26,7 +28,7 @@ pub type InstId = usize;
 /// the predecessors and successor. Cloning this structure simply creates a new pointer
 /// until the structure is accessed mutably, upon which the content is cloned.
 #[derive(Debug, Clone)]
-pub struct TargetBasicBlock(Rc<TargetBasicBlockInner>);
+pub struct TargetBasicBlock(pub Rc<TargetBasicBlockInner>);
 
 impl TargetBasicBlock {
     pub fn clone_with_instructions(&self, jir_instructions: Vec<JIRInstruction>) -> TargetBasicBlock {
@@ -125,7 +127,7 @@ enum BlockTermination {
 }
 
 #[derive(Debug, Clone)]
-struct TargetBasicBlockInner {
+pub struct TargetBasicBlockInner {
     jir_instructions: Vec<JIRInstruction>,
     /// Keeps track of the blocks and what range of instructions the block lives in.
     jir_blocks: PrimaryMap<JIRBlockId, Option<JIRBlock>>,
@@ -147,4 +149,7 @@ struct TargetBasicBlockInner {
     branch_targets: Option<Vec<NextBlockTarget>>,
     /// The number of target instructions contained in this block.
     target_inst_count: usize,
+
+    /// Ancillary information calculated by the optimizer can be stored here
+    optimizer_ancillary: OptimizerAncillary,
 }

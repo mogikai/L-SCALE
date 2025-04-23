@@ -8,7 +8,7 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 use std::ops::{
     Index,
-    IndexMut,
+    IndexMut, Range,
 };
 use std::slice::Iter;
 use std::vec::IntoIter;
@@ -218,7 +218,7 @@ impl<K: MapKey, V> PrimaryMap<K, V> {
         self.data.iter_mut()
     }
 
-    pub fn items(&self) -> impl Iterator<Item = (K, &V)> {
+    pub fn items(&self) -> impl ExactSizeIterator<Item = (K, &V)> + DoubleEndedIterator {
         self.data
             .iter()
             .enumerate()
@@ -307,6 +307,32 @@ impl<K: MapKey, V> IndexMut<K> for PrimaryMap<K, V> {
         key: K,
     ) -> &mut Self::Output {
         &mut self.data[key.to_index()]
+    }
+}
+
+impl<K: MapKey, V> Index<Range<K>> for PrimaryMap<K, V> {
+    type Output = [V];
+
+    fn index(
+        &self,
+        key: Range<K>,
+    ) -> &Self::Output {
+        // index - 1 is fine, since index is guaranteed to be non-zero
+        let index_start = key.start.to_index();
+        let index_end = key.end.to_index();
+        &self.data[index_start..index_end]
+    }
+}
+
+impl<K: MapKey, V> IndexMut<Range<K>> for PrimaryMap<K, V> {
+    fn index_mut(
+        &mut self,
+        key: Range<K>,
+    ) -> &mut Self::Output {
+        // index - 1 is fine, since index is guaranteed to be non-zero
+        let index_start = key.start.to_index();
+        let index_end = key.end.to_index();
+        &mut self.data[index_start..index_end]
     }
 }
 

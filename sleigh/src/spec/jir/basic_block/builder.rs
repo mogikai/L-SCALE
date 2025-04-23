@@ -30,6 +30,8 @@ use crate::spec::{
 use mogi_utilities::addresses::EVAddr;
 use std::rc::Rc;
 
+use super::optimizer::OptimizerOptions;
+
 /// A builder for constructing `TargetBasicBlock` structures.
 ///
 /// This builder manages the internal state of the basic block,
@@ -71,6 +73,7 @@ impl TargetBasicBlockBuilder {
                 fallthrough: None,
                 branch_targets: None,
                 target_inst_count: 0,
+                optimizer_ancillary: Default::default(),
             },
             current_block_id: None,
             previous_block_id: None,
@@ -275,6 +278,7 @@ impl TargetBasicBlockBuilder {
             // to the next instruction in line.
             self.target_block.fallthrough = self.next_instruction
         }
+
         Ok(TargetBasicBlock(Rc::new(self.target_block)))
     }
 }

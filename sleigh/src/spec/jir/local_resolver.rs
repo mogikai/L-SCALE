@@ -44,6 +44,7 @@ use mogi_utilities::index_map::SecondaryMap;
 use std::fmt::Write;
 use tracing::debug;
 
+#[derive(Debug)]
 pub enum JIRResolvedValue {
     Value(JIRValue),
     Reference {
@@ -53,13 +54,24 @@ pub enum JIRResolvedValue {
     },
 }
 
+#[cfg(feature = "trace_resolve")]
+macro_rules! trace_resolve {    ($($arg:tt)*) => {        tracing::trace!($($arg)*)    };}
+#[cfg(not(feature = "trace_resolve"))]
+macro_rules! trace_resolve {
+    ($($arg:tt)*) => {};
+}
+
 impl JIRResolvedValue {
     /// The size of a resolved value can be further constrained by subpieces.
     /// We therefore set its size manually if necessary.
-    fn shrink_size(&mut self, shrink_to: JIRSize) -> ProcessorSpecResult {
+    fn shrink_size(
+        &mut self,
+        shrink_to: JIRSize,
+    ) -> ProcessorSpecResult {
         match self {
             JIRResolvedValue::Value(value) => {
                 *value = value.slice(0, shrink_to);
+                trace_resolve!("Shrinking value to {shrink_to}");
             }
             JIRResolvedValue::Reference { size, .. } => {
                 if *size < shrink_to {
@@ -67,6 +79,7 @@ impl JIRResolvedValue {
                     todo!("Generate error report for shrink_size with larger size");
                 }
 
+                trace_resolve!("Shrinking reference of size {size} to {shrink_to}");
                 *size = shrink_to;
             }
         }
@@ -504,8 +517,9 @@ impl<'a> JIRResolver<'a> {
             MOIRExport::Local(local) => self.resolve_local(spec, instruction_builder, *local),
             MOIRExport::MemReference { address, space, size } => {
                 // We need to recursively resolve the address, since it might also be a dynamic reference
-                let address = self.resolve_local(spec, instruction_builder, *address)?;
-                let address = match address {
+                let resolved_address = self.resolve_local(spec, instruction_builder, *address)?;
+                trace_resolve!("Resolved mem reference {address} to {:?}", resolved_address);
+                let address = match resolved_address {
                     JIRResolvedValue::Value(address) => address,
                     JIRResolvedValue::Reference { address, space, size } => {
                         // If this is a load from the constant space, we can just interpret the address
@@ -517,6 +531,7 @@ impl<'a> JIRResolver<'a> {
 
                         if let Some(optimized) = self.optimize_const_load(spec, address, space, size)? {
                             // space is const
+                            trace_resolve!("Optimized const load to {optimized}");
                             optimized.into()
                         } else {
                             // space is not const
@@ -528,6 +543,7 @@ impl<'a> JIRResolver<'a> {
                             let tmp = instruction_builder.alloc_temporary(size)?;
                             instruction_builder.push_jir_instruction(jinst!(tmp = *[space]address))?;
                             // Create an rvalue
+                            trace_resolve!("Returning tmp slice {tmp}");
                             JIRValue::Slice(tmp)
                         }
                     }
