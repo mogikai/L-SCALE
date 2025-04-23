@@ -15,6 +15,7 @@ use crate::new_cpu_trait::{
     CPUResult,
     RunLimit,
 };
+use crate::optimizer::run_optimization_passes;
 use fnv::FnvHashMap;
 use mogi_sleigh::disassembler::Disassembler;
 use mogi_sleigh::lifter::context_provider::ContextProvider;
@@ -297,7 +298,11 @@ where
             trace_jit!("Fallthrough: {:?}", block.fallthrough());
             trace_jit!("Branch targets: {:?}", block.branch_targets());
 
-            jit.compile_target_block(&block)?;
+            let block = run_optimization_passes(block)?;
+
+            trace_jit!("{}", block);
+
+            // jit.compile_target_block(&block)?;
 
             // add direct branch targets
             if let Some(branch_targets) = block.branch_targets() {
@@ -347,7 +352,7 @@ where
             }
 
             translated_block_count += 1;
-            translated_instr_count += block.instruction_count();
+            translated_instr_count += block.target_instruction_count();
             self.block_cache.insert(current_addr, block);
 
             match translation_limit {

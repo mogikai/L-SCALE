@@ -17,6 +17,7 @@ use mogi_utilities::index_map::{
     PrimaryMap,
     SecondaryMap,
 };
+use std::ops::Deref;
 use std::rc::Rc;
 
 pub type InstId = usize;
@@ -28,6 +29,12 @@ pub type InstId = usize;
 pub struct TargetBasicBlock(Rc<TargetBasicBlockInner>);
 
 impl TargetBasicBlock {
+    pub fn clone_with_instructions(&self, jir_instructions: Vec<JIRInstruction>) -> TargetBasicBlock {
+        let mut slf = self.0.deref().clone();
+        slf.jir_instructions = jir_instructions;
+        Self(Rc::new(slf))
+    }
+
     /// Get an iterator over all instructions of the target basic block.
     /// The instructions are ordered such that the instructions of the next fallthrough block
     /// follow the ones of the current block.

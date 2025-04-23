@@ -399,13 +399,39 @@ impl JIRSlice {
         (a, b)
     }
 
-    /// Checks whether `self` overlaps with `other`.
+    /// Combine the intervals of `self` and `other`. This operation
+    /// is only meaningful if `self` and `other` overlap.
+    #[inline]
+    pub fn union(
+        &self,
+        other: &JIRSlice,
+    ) -> Self {
+        JIRSlice {
+            offset: self.offset.min(other.offset),
+            size: self.size.max(other.size),
+            ..*self
+        }
+    }
+
+    /// Checks whether `self` is a strict subset of `other` and their space ids are equal.
+    #[inline]
+    pub fn is_strict_subset_of(
+        &self,
+        other: &JIRSlice,
+    ) -> bool {
+        self.space_id == other.space_id
+            && self.offset >= other.offset
+            && self.offset + JIROffset::from(self.size) <= other.offset + JIROffset::from(other.size)
+            && self.size < other.size
+    }
+
+    /// Checks whether `self` overlaps with `other` and their space ids are equal.
     #[inline]
     pub fn overlaps(
         &self,
         other: &JIRSlice,
     ) -> bool {
-        overlaps_generic(self, other)
+        self.space_id == other.space_id && overlaps_generic(self, other)
     }
 
     pub fn same_group(
