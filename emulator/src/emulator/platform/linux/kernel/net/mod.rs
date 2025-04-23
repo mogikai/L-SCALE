@@ -1,4 +1,4 @@
-use byteorder::ByteOrder;
+use byteorder::{BigEndian, ByteOrder};
 use num_enum::{
     FromPrimitive,
     IntoPrimitive,
@@ -156,8 +156,8 @@ impl Decode for Sockaddr {
         use SocketDomain::*;
         Ok(match family {
             AF_INET => Sockaddr::IN {
-                sin_port: Endianness::read_u16(&val[2..4]),
-                sin_addr: Endianness::read_u32(&val[4..8]),
+                sin_port: BigEndian::read_u16(&val[2..4]),
+                sin_addr: BigEndian::read_u32(&val[4..8]),
             },
             AF_NETLINK => Sockaddr::NL {
                 nl_pad: Endianness::read_u16(&val[2..4]),
@@ -165,8 +165,8 @@ impl Decode for Sockaddr {
                 nl_groups: Endianness::read_u32(&val[8..12]),
             },
             AF_INET6 => Sockaddr::IN6 {
-                sin6_port: Endianness::read_u16(&val[2..4]),
-                sin6_flowinfo: Endianness::read_u32(&val[4..8]),
+                sin6_port: BigEndian::read_u16(&val[2..4]),
+                sin6_flowinfo: BigEndian::read_u32(&val[4..8]),
                 sin6_addr: <[u8; 16]>::try_from(&val[8..24]).unwrap(),
                 sin6_scope_id: Endianness::read_u32(&val[24..28]),
             },
@@ -210,10 +210,15 @@ impl Encode for Sockaddr {
                 sin6_scope_id,
             } => {
                 Endianness::write_u16(&mut buffer[start..start + 2], SocketDomain::AF_INET6 as u16);
-                Endianness::write_u16(&mut buffer[start + 2..start + 4], *sin6_port);
-                Endianness::write_u32(&mut buffer[start + 4..start + 8], *sin6_flowinfo);
+                BigEndian::write_u16(&mut buffer[start + 2..start + 4], *sin6_port);
+                BigEndian::write_u32(&mut buffer[start + 4..start + 8], *sin6_flowinfo);
                 buffer[start + 8..start + 24].copy_from_slice(sin6_addr.as_slice());
                 Endianness::write_u32(&mut buffer[start + 24..start + 28], *sin6_scope_id);
+            },
+            IN { sin_port, sin_addr } => {
+                Endianness::write_u16(&mut buffer[start..start + 2], SocketDomain::AF_INET as u16);
+                BigEndian::write_u16(&mut buffer[start + 2..start + 4], *sin_port);
+                BigEndian::write_u32(&mut buffer[start + 4..start + 8], *sin_addr);
             }
             _ => todo!(),
         }
