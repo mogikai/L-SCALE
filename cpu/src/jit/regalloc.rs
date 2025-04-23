@@ -497,7 +497,7 @@ where
         // Spill the register if it is occupied by a slice, since we need to make sure it is loaded
         // with the correct value after the instruction finishs.
         self.unload_reg(reg);
-        if matches!(operand.kind, OperandKind::Read) {
+        if matches!(operand.kind, OperandKind::Read | OperandKind::ReadReload) {
             self.loaded_slices.insert(reg, operand.slice);
         }
         Ok(Allocation::Register(reg))
@@ -520,7 +520,7 @@ where
                 self.read_regs.remove(reg);
                 self.loaded_slices.remove(reg);
             }
-            OperandKind::Read => {
+            OperandKind::Read | OperandKind::ReadReload => {
                 self.read_regs.add(reg);
             }
         }
@@ -621,7 +621,12 @@ where
     ) -> JITResult<Allocation> {
         trace_jit!("Written regs: {}", self.written_regs);
         let allocation = if let Some((reg, existing_slice)) = self.get_loaded_slice_group(operand) {
-            Allocation::Register(self.ensure_valid_reg_allocation(reg, existing_slice, operand)?)
+            if let OperandKind::ReadReload = operand.kind {
+                self.unload_reg(reg);
+                self.alloc_unloaded_operand(operand)?
+            } else {
+                Allocation::Register(self.ensure_valid_reg_allocation(reg, existing_slice, operand)?)
+            }
         } else {
             // Slice group is not in any register. We can allocate one from the free regs.
             self.alloc_unloaded_operand(operand)?

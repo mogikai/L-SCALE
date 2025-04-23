@@ -15,7 +15,6 @@ use crate::new_cpu_trait::{
     CPUResult,
     RunLimit,
 };
-use crate::optimizer::run_optimization_passes;
 use fnv::FnvHashMap;
 use mogi_sleigh::disassembler::Disassembler;
 use mogi_sleigh::lifter::context_provider::ContextProvider;
@@ -24,6 +23,7 @@ use mogi_sleigh::lifter::{
     Lifter,
     LifterError,
 };
+use mogi_sleigh::spec::jir::basic_block::optimizer::OptimizerOptions;
 use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
 use mogi_sleigh::spec::jir::jcode::NextBlockTarget;
@@ -180,7 +180,13 @@ where
                         break;
                     }
                 }
-                TranslationLimit::Address(_) => break,
+                TranslationLimit::Address(addr_limit) => {
+                    let ip = self.jit.borrow().instruction_pointer(&self.runtime_context)?;
+                    if ip == addr_limit {
+                        // ip can't go over addr_limit since we limit the translation
+                        break;
+                    }
+                }
             }
         }
 
@@ -298,11 +304,12 @@ where
             trace_jit!("Fallthrough: {:?}", block.fallthrough());
             trace_jit!("Branch targets: {:?}", block.branch_targets());
 
-            let block = run_optimization_passes(block)?;
-
+            let mut optimized_block = (*block.0).clone();
+            let optimizer_options = OptimizerOptions::default().with_enable_dse(true);
+            optimized_block.run_optimization_passes(optimizer_options).unwrap();
             trace_jit!("{}", block);
 
-            // jit.compile_target_block(&block)?;
+            jit.compile_target_block(&block)?;
 
             // add direct branch targets
             if let Some(branch_targets) = block.branch_targets() {

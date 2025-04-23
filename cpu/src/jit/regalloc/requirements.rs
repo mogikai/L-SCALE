@@ -28,6 +28,8 @@ pub enum OperandKind {
     Write,
     /// The operand is only read from.
     Read,
+    /// The operand is only read from, but even if it is already loaded it will be reloaded.
+    ReadReload,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -97,6 +99,18 @@ impl OperandRequest {
             slice,
             constraint: OperandConstraint::FixedReg(reg),
             kind: OperandKind::Read,
+            class: RegClass::Int,
+        }
+    }
+
+    pub fn int_read_fixed_reg_reload(
+        reg: HostReg,
+        slice: JIRSlice,
+    ) -> Self {
+        OperandRequest {
+            slice,
+            constraint: OperandConstraint::FixedReg(reg),
+            kind: OperandKind::ReadReload,
             class: RegClass::Int,
         }
     }
@@ -201,13 +215,13 @@ impl<'a> OperandRequirements<'a> {
 
     pub fn read_non_fixed(&self) -> impl Iterator<Item = (usize, &OperandRequest)> {
         self.all().filter(|(_, req)| {
-            matches!(req.kind, OperandKind::Read) && !matches!(req.constraint, OperandConstraint::FixedReg(_))
+            matches!(req.kind, OperandKind::Read | OperandKind::ReadReload) && !matches!(req.constraint, OperandConstraint::FixedReg(_))
         })
     }
 
     pub fn read_fixed(&self) -> impl Iterator<Item = (usize, &OperandRequest)> {
         self.all().filter(|(_, req)| {
-            matches!(req.kind, OperandKind::Read) && matches!(req.constraint, OperandConstraint::FixedReg(_))
+            matches!(req.kind, OperandKind::Read | OperandKind::ReadReload) && matches!(req.constraint, OperandConstraint::FixedReg(_))
         })
     }
 

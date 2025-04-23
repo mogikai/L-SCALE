@@ -87,6 +87,31 @@ fn test_mov_mem_reg() {
 }
 
 #[test]
+fn test_mov_reg_mem() {
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::TRACE.into())
+                .with_env_var("MOGI_LOG")
+                .from_env_lossy(),
+        )
+        .init();
+    // MOV EAX, [RBP - 0x4]
+    let instr = b"\x8B\x45\xFC";
+    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+    let stack_addr = 0xffff_ffff_ffff_1000u64;
+
+    *cpu.register_mut("RBP").unwrap() = stack_addr;
+    mmu.borrow_mut().write(EVAddr::from(stack_addr - 0x4), 0x12345678.as_bytes()).unwrap();
+    cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(1).unwrap()))
+        .unwrap();
+
+    let rax: u64 = *cpu.register("RAX").unwrap();
+    assert_eq!(rax, 0x12345678);
+}
+
+#[test]
 fn test_add_reg_imm() {
     // ADD RAX, 0x1234
     let instr = b"\x48\x05\x34\x12\x00\x00";
@@ -134,12 +159,23 @@ fn test_imul_reg_imm() {
 
 #[test]
 fn test_idiv_reg_imm() {
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::TRACE.into())
+                .with_env_var("MOGI_LOG")
+                .from_env_lossy(),
+        )
+        .init();
+
     // IDIV RCX
     let instr = b"\x48\xF7\xF9";
     let (mut cpu, mmu) = common::setup_with_bytes(instr);
 
     let dividend = 0x9876i64;
     let divisor = 0x1234i64;
+    let expected_remainder = dividend % divisor;
 
     *cpu.register_mut("RDX").unwrap() = 0x0i64;
     *cpu.register_mut("RAX").unwrap() = dividend;
@@ -149,7 +185,9 @@ fn test_idiv_reg_imm() {
         .unwrap();
 
     let rax: i64 = *cpu.register("RAX").unwrap();
+    let rdx: i64 = *cpu.register("RDX").unwrap();
     let expected = dividend.wrapping_div(divisor);
+    assert_eq!(rdx, expected_remainder);
     assert_eq!(rax, expected);
 }
 

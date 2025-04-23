@@ -24,6 +24,7 @@ use mogi_sleigh::spec::jir::values::{
     JIRSlice,
     JIRValue,
 };
+use std::arch::asm;
 use std::ffi::c_void;
 
 enum DivisionType {
@@ -115,9 +116,9 @@ impl X64AllocRequirements {
             (JIRValue::Const(dividend), JIRValue::Slice(divisor)) => {
                 let (divisor_lower, divisor_upper) = divisor.split(8);
                 requirement
-                    .add_request(OperandRequest::int_read_fixed_reg(GPRegister::DX.into_host_reg(), divisor_lower));
+                    .add_request(OperandRequest::int_read_fixed_reg_reload(GPRegister::DX.into_host_reg(), divisor_lower));
                 requirement
-                    .add_request(OperandRequest::int_read_fixed_reg(GPRegister::CX.into_host_reg(), divisor_upper));
+                    .add_request(OperandRequest::int_read_fixed_reg_reload(GPRegister::CX.into_host_reg(), divisor_upper));
                 *requirement.clobbers_mut() = clobbers
                     .with(GPRegister::DI.into_host_reg())
                     .with(GPRegister::SI.into_host_reg());
@@ -125,9 +126,9 @@ impl X64AllocRequirements {
             (JIRValue::Slice(dividend), JIRValue::Const(divisor)) => {
                 let (dividend_lower, dividend_upper) = dividend.split(8);
                 requirement
-                    .add_request(OperandRequest::int_read_fixed_reg(GPRegister::DI.into_host_reg(), dividend_lower));
+                    .add_request(OperandRequest::int_read_fixed_reg_reload(GPRegister::DI.into_host_reg(), dividend_lower));
                 requirement
-                    .add_request(OperandRequest::int_read_fixed_reg(GPRegister::SI.into_host_reg(), dividend_upper));
+                    .add_request(OperandRequest::int_read_fixed_reg_reload(GPRegister::SI.into_host_reg(), dividend_upper));
                 *requirement.clobbers_mut() = clobbers
                     .with(GPRegister::DX.into_host_reg())
                     .with(GPRegister::CX.into_host_reg());
@@ -135,14 +136,14 @@ impl X64AllocRequirements {
             (JIRValue::Slice(dividend), JIRValue::Slice(divisor)) => {
                 let (dividend_lower, dividend_upper) = dividend.split(8);
                 requirement
-                    .add_request(OperandRequest::int_read_fixed_reg(GPRegister::DI.into_host_reg(), dividend_lower));
+                    .add_request(OperandRequest::int_read_fixed_reg_reload(GPRegister::DI.into_host_reg(), dividend_lower));
                 requirement
-                    .add_request(OperandRequest::int_read_fixed_reg(GPRegister::SI.into_host_reg(), dividend_upper));
+                    .add_request(OperandRequest::int_read_fixed_reg_reload(GPRegister::SI.into_host_reg(), dividend_upper));
                 let (divisor_lower, divisor_upper) = divisor.split(8);
                 requirement
-                    .add_request(OperandRequest::int_read_fixed_reg(GPRegister::DX.into_host_reg(), divisor_lower));
+                    .add_request(OperandRequest::int_read_fixed_reg_reload(GPRegister::DX.into_host_reg(), divisor_lower));
                 requirement
-                    .add_request(OperandRequest::int_read_fixed_reg(GPRegister::CX.into_host_reg(), divisor_upper));
+                    .add_request(OperandRequest::int_read_fixed_reg_reload(GPRegister::CX.into_host_reg(), divisor_upper));
             }
         }
     }
@@ -575,12 +576,13 @@ unsafe extern "sysv64" fn srem128(
     divisor: U128,
     cpu_context: *mut X86TaskContext,
 ) -> U128 {
-    // rdi = divisor.low
-    // rsi = divisor.high
-    // rdx = dividend.low
-    // rcx = dividend.high
+    // rdi = dividend.low
+    // rsi = dividend.high
+    // rdx = divisor.low
+    // rcx = divisor.high
     // r8 = cpu_context
     // r9 not used
+
     let dividend: u128 = dividend.low as u128 | ((dividend.high as u128) << 64);
     let divisor: u128 = divisor.low as u128 | ((divisor.high as u128) << 64);
     let result = (dividend as i128).checked_rem(divisor as i128);
@@ -592,6 +594,7 @@ unsafe extern "sysv64" fn srem128(
         return unsafe { std::mem::MaybeUninit::uninit().assume_init() };
     };
     let result = result as u128;
+
     U128 {
         low: result as u64,
         high: (result >> 64) as u64,

@@ -26,6 +26,7 @@ addr_align = "0.1.0"
 trace_build = []
 trace_pp = ["mogi_sleigh_parser/trace_pp"]
 trace_jir = []
+trace_resolve = []
 
 [dev-dependencies]
 mogi_sleigh = { path = ".", features = ["trace_build"] }

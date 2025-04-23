@@ -61,7 +61,7 @@ fn main() {
     // println!("{:?}", specification.list_global_varnode_strings());
 
     // MOV RAX, 0x1234
-    let testelf_content = std::fs::read(&PathBuf::from("./cpu/resources/test/executables/test")).unwrap();
+    let testelf_content = std::fs::read(&PathBuf::from("./a.out")).unwrap();
 
     let specification = Rc::new(RefCell::new(specification));
 
@@ -127,18 +127,19 @@ fn main() {
     // Set up the cpu emulator
     let mut cpu = MogiCPU::new(jit, specification, mmu);
 
-    // Set the instruction pointer to the address we want to start executing at.
-    // *cpu.register_mut("RIP").unwrap() = 0x1F540u64;
-    // *cpu.register_mut("RIP").unwrap() = 0x2A8E2u64;
-    *cpu.register_mut("RIP").unwrap() = 0x01180u64;
-    *cpu.register_mut("EDI").unwrap() = 15u32;
-    // *cpu.register_mut("ESI").unwrap() = 8u32;
+    let stack_addr = stack_addr + 0x1000;
 
-    // Now lets roll! (forever :>)
-    cpu.run(RunLimit::Address(0x00000000000011b3u64.into()))
-        .unwrap();
-    let eax: i32 = *cpu.register("EAX").unwrap();
-    eprintln!("eax = {:#?}", eax);
+    // Set the instruction pointer to the address we want to start executing at.
+    for i in 2..20 {
+        *cpu.register_mut("RSP").unwrap() = stack_addr;
+        *cpu.register_mut("RIP").unwrap() = 0x1170u64;
+        *cpu.register_mut("RDI").unwrap() = i as u64;
+
+        // Now lets roll! (forever :>)
+        cpu.run(RunLimit::Address(0x11BCu64.into())).unwrap();
+        let eax: i32 = *cpu.register("EAX").unwrap();
+        eprintln!("i = {}, eax = {:#?}", i, eax);
+    }
 }
 
 fn load_specification(spec_path: &Path) -> ProcessorSpecification {

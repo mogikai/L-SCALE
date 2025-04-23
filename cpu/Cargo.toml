@@ -25,7 +25,7 @@ either = "1.15.0"
 strum = { version = "0.27.1", features = ["derive"] }
 
 [features]
-default = ["trace_jit"]
+default = ["mogi_sleigh/trace_resolve"]
 trace_jit = []
 trace_tlb = []
 trace_jir = ["mogi_sleigh/trace_jir"]
