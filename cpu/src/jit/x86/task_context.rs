@@ -14,6 +14,7 @@ use fnv::FnvHashMap;
 use mogi_sleigh::lifter::context_provider::ContextProvider;
 use mogi_sleigh::spec::jir::values::JIRSlice;
 use mogi_sleigh::spec::{
+    CustomOpId,
     FieldId,
     ProcessorSpecification,
 };
@@ -41,7 +42,7 @@ pub struct X86TaskContext {
     global_context: NonNull<X86GlobalContext>,
     /// If a runtime error occurred, it is stored here, and the jit exits as soon
     /// as possible.
-    runtime_error: Option<RuntimeError>,
+    runtime_error: u64,
     /// The context values of the cpu. This includes stuff like longMode for example.
     context_values: FnvHashMap<FieldId, u128>,
 }
@@ -53,7 +54,7 @@ impl X86TaskContext {
             tlb: TLB::new(),
             pc: 0,
             global_context,
-            runtime_error: None,
+            runtime_error: 0,
             context_values: Default::default(),
         }
     }
@@ -119,11 +120,16 @@ impl JITTaskRuntimeContext for X86TaskContext {
         &mut self,
         error: RuntimeError,
     ) {
-        self.runtime_error = Some(error);
+        self.runtime_error = error.into();
     }
 
     fn runtime_error(&self) -> Option<RuntimeError> {
-        self.runtime_error
+        let error = RuntimeError::from(self.runtime_error);
+        if let RuntimeError::None = error {
+            None
+        } else {
+            Some(error)
+        }
     }
 }
 

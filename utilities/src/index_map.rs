@@ -1,3 +1,4 @@
+use bitvec::prelude::BitVec;
 use itertools::Itertools;
 use serde::{
     Deserialize,
@@ -8,7 +9,8 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 use std::ops::{
     Index,
-    IndexMut, Range,
+    IndexMut,
+    Range,
 };
 use std::slice::Iter;
 use std::vec::IntoIter;
@@ -440,5 +442,56 @@ where
             .iter()
             .enumerate()
             .map(|(k, v)| (MapKey::try_from_index(k).expect("Enumarating must produce a valid index"), v))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SecondarySet<K: MapKey> {
+    data: BitVec,
+    phantom_data: PhantomData<K>,
+}
+
+impl<K: MapKey> Default for SecondarySet<K> {
+    fn default() -> Self {
+        Self {
+            data: BitVec::new(),
+            phantom_data: Default::default(),
+        }
+    }
+}
+
+impl<K> SecondarySet<K>
+where
+    K: MapKey,
+{
+    pub fn contains(
+        &self,
+        index: K,
+    ) -> bool {
+        self.data
+            .get(index.to_index())
+            .map(|v| v == true)
+            .unwrap_or(false)
+    }
+
+    pub fn add(
+        &mut self,
+        index: K,
+    ) {
+        let index = index.to_index();
+        if index >= self.data.len() {
+            self.data.resize(index + 1, false);
+        }
+        self.data.set(index, true);
+    }
+
+    pub fn remove(
+        &mut self,
+        index: K,
+    ) {
+        let index = index.to_index();
+        if index < self.data.len() {
+            self.data.set(index, false);
+        }
     }
 }

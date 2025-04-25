@@ -8,18 +8,32 @@ use crate::disassembler::{
     DisassemblerError,
     DisassemblerResult,
 };
+use crate::lifter::BlockEndingOpDecider;
 use crate::lifter::context_provider::ContextProvider;
 use crate::lifter::source::TargetInstructionSource;
 use crate::spec::jir::jcode::ContinueLifting;
 use crate::spec::jir::trace_jir;
 
-use super::ProcessorSpecification;
 use super::jir::basic_block::builder::TargetBasicBlockBuilder;
 use super::jir::context_stack::ContextStack;
 use super::jir::jumplist::{
     MatchContext,
     MatcherResult,
 };
+use super::{
+    CustomOpId,
+    ProcessorSpecification,
+};
+
+struct NonEndingCustomOps {}
+impl BlockEndingOpDecider for NonEndingCustomOps {
+    fn is_block_ending_custom_op(
+        &self,
+        custom_op_id: CustomOpId,
+    ) -> bool {
+        false
+    }
+}
 
 impl Disassembler for ProcessorSpecification {
     fn disassemble_instruction<S: TargetInstructionSource, C: ContextProvider>(
@@ -97,7 +111,7 @@ impl Disassembler for ProcessorSpecification {
                     disassembly.push(instr);
 
                     match resolver
-                        .build(self, &mut block_builder)
+                        .build(self, &mut block_builder, &NonEndingCustomOps {})
                         .map_err(|e| -> DisassemblerError { todo!("{e:?}") })?
                     {
                         ContinueLifting::Continue(next_addr) => addr = next_addr,

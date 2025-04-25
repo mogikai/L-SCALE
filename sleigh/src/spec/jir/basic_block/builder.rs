@@ -254,9 +254,9 @@ impl TargetBasicBlockBuilder {
         Ok(())
     }
 
-    pub fn finish_block(&mut self) -> ProcessorSpecResult<JIRBlockId> {
+    pub fn finish_block(&mut self) -> ProcessorSpecResult {
         let Some(block_id) = self.current_block_id else {
-            todo!("Error for 'Finished block without having started a block'")
+            return Ok(());
         };
         // Update the end of the range to the current instructions vec end.
         self.target_block.jir_blocks[block_id]
@@ -269,7 +269,7 @@ impl TargetBasicBlockBuilder {
         self.target_block
             .jir_instructions
             .push(JIRInstruction::block_end(block_id));
-        Ok(block_id)
+        Ok(())
     }
 
     pub fn finish(mut self) -> ProcessorSpecResult<TargetBasicBlock> {

@@ -4,7 +4,6 @@ use self::jir::jumplist::{
 };
 use self::moir::field::MOIRField;
 use crate::compiler::error::InternalError;
-use crate::lifter::LifterDiagnostics;
 use crate::spec::builder::MOIRSymbolId;
 use crate::spec::jir::custom_op::JIRCustomOp;
 use crate::spec::jir::jir_block::JIRBlockId;
@@ -261,7 +260,7 @@ impl ProcessorSpecification {
     /// id in subsequent lookups if performance is critical.
     pub fn varnode_id_by_string(
         &self,
-        name: &str,
+        name: impl AsRef<str>,
     ) -> Option<VarNodeId> {
         let ident = self.interner.lookup(name)?;
         let JIRSymbolId::VarNode(varnode_id) = self.symbol_ids.get(&ident)? else {
@@ -270,10 +269,21 @@ impl ProcessorSpecification {
         Some(*varnode_id)
     }
 
+    pub fn custom_op_id_by_string(
+        &self,
+        name: impl AsRef<str>,
+    ) -> Option<CustomOpId> {
+        let ident = self.interner.lookup(name)?;
+        let JIRSymbolId::CustomOp(custom_op_id) = self.symbol_ids.get(&ident)? else {
+            return None;
+        };
+        Some(*custom_op_id)
+    }
+
     /// Look up a field by its string identifier.
     pub fn field_id_by_string(
         &self,
-        name: &str,
+        name: impl AsRef<str>,
     ) -> Option<FieldId> {
         let ident = self.interner.lookup(name)?;
         match self.symbol_ids.get(&ident)? {

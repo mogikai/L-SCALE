@@ -22,6 +22,7 @@ use mogi_utilities::addresses::{
     EVAddr,
     HVAddr,
 };
+use mogi_utilities::index_map::MapKey;
 use std::ffi::c_void;
 use std::ptr::NonNull;
 use thiserror::Error;
@@ -62,6 +63,8 @@ pub enum JitError {
 
 #[derive(Error, Debug, Copy, Clone)]
 pub enum RuntimeError {
+    #[error("There was no error")]
+    None,
     #[error("The jit encountered a permission error.")]
     PermissionError,
     #[error("The instruction is missing an output and cannot be translated.")]
@@ -70,6 +73,44 @@ pub enum RuntimeError {
     MissingInput,
     #[error("The instruction encountered a division error")]
     DivisionError,
+    #[error("A custom operation needs to be evaluated.")]
+    CustomOp(CustomOpId),
+    #[error("Unknown error")]
+    Unknown,
+}
+
+impl From<RuntimeError> for u64 {
+    fn from(value: RuntimeError) -> Self {
+        match value {
+            RuntimeError::None => 0,
+            RuntimeError::PermissionError => 1,
+            RuntimeError::MissingOutput => 2,
+            RuntimeError::MissingInput => 3,
+            RuntimeError::DivisionError => 4,
+            RuntimeError::CustomOp(op_id) => {
+                5u64 | ((u32::try_from(op_id.to_index()).expect("CustomOpId is a 16 bit integer") as u64) << 32)
+            }
+            RuntimeError::Unknown => u32::MAX as u64,
+        }
+    }
+}
+
+impl From<u64> for RuntimeError {
+    fn from(value: u64) -> Self {
+        match value as u32 {
+            0 => RuntimeError::None,
+            1 => RuntimeError::PermissionError,
+            2 => RuntimeError::MissingOutput,
+            3 => RuntimeError::MissingInput,
+            4 => RuntimeError::DivisionError,
+            5 => RuntimeError::CustomOp(
+                CustomOpId::try_from_index((value >> 32) as usize)
+                    .expect("The encoding process must have made sure that the index fits in a u16"),
+            ),
+            u32::MAX => RuntimeError::Unknown,
+            _ => panic!("Invalid decoding of runtime error. Possibly missing case?"),
+        }
+    }
 }
 
 pub type JITResult<T = ()> = Result<T, JitError>;
@@ -93,6 +134,23 @@ pub trait MogiJit {
     ) -> JITResult
     where
         CB: CustomOpImpl<Self::RuntimeContext>;
+
+    /// This function marks the provided custom op as externally implemented.
+    /// This will force the jit to exit, raising an exception.
+    /// The operation can then be performed, changing the cpu context as needed, after
+    /// which the jit can be entered again. Any context is completely flushed before exiting,
+    /// just like when normally exiting the jit.
+    /// Since this incurs quite a lot of overhead, this should only be used for very expensive
+    /// custom ops, like syscalls, that have to perform significant calculations anyway.
+    /// One can think of this as a kind of interrupt mechanism.
+    ///
+    /// CAVEAT: These custom ops may only appear at the end of the semantic section of an instruction.
+    ///         If any operations follow such a custom op, this is an error and will result in the jit
+    ///         returning an error.
+    fn mark_custom_op_as_externally_implemented(
+        &mut self,
+        op_id: CustomOpId,
+    ) -> JITResult;
 
     fn register_tlb_read_miss_callback<CB>(
         &mut self,

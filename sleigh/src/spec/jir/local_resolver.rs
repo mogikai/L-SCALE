@@ -1,6 +1,7 @@
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
 use crate::jinst;
+use crate::lifter::BlockEndingOpDecider;
 use crate::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
 use crate::spec::jir::basic_block::instruction::TargetInstructionBuilder;
 use crate::spec::jir::common::JIRSize;
@@ -222,12 +223,14 @@ impl<'a> JIRResolver<'a> {
         Ok(())
     }
 
-    pub fn build(
+    pub fn build<D: BlockEndingOpDecider>(
         self,
         spec: &ProcessorSpecification,
         block_builder: &mut TargetBasicBlockBuilder,
+        block_ending_op_decider: &D,
     ) -> ProcessorSpecResult<ContinueLifting> {
-        self.constructor.generate_jcode(spec, self, block_builder)
+        self.constructor
+            .generate_jcode(spec, block_ending_op_decider, self, block_builder)
     }
 
     pub fn build_display(

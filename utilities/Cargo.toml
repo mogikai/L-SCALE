@@ -17,6 +17,7 @@ thiserror = "2.0.11"
 derive_more = { version = "1.0.0-beta.6", features = ["full"] }
 serde = { version = "1.0.217", features = ["derive"], optional = true }
 itertools = "0.14.0"
+bitvec = { version = "1.0.1", features = ["serde"] }
 
 [features]
 serde = ["dep:serde"]

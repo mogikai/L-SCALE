@@ -1,6 +1,9 @@
 use crate::spec::moir::scope::MOIRMaybeSize;
 use mogi_sleigh_parser::StringId;
-use mogi_utilities::new_map_key;
+use mogi_utilities::{
+    new_map_key,
+    new_map_key_16,
+};
 
 /// A custom operation defined in the sleigh specification
 /// The operation will be called from jited code. Any implementation
@@ -20,4 +23,4 @@ pub enum MOIRCustomOp {
     },
 }
 
-new_map_key! { pub struct CustomOpId; "OP"; }
+new_map_key_16! { pub struct CustomOpId; "OP"; }

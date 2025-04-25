@@ -318,16 +318,28 @@ fn test_idiv_32() {
 }
 
 #[test]
-#[ignore]
 fn test_simple_arithmetic() {
+    // xor rax, rax
+    // loop:
+    // sub rdi, 1
+    // add rax, rdi
+    // test rdi, rdi
+    // jnz loop
+    // mov rdi, rax
+    // mov rax, 60
+    // syscall
+    // hlt
     let instr =
         b"\x48\x31\xC0\x48\x83\xEF\x01\x48\x01\xF8\x48\x85\xFF\x75\xF4\x48\x89\xC7\x48\xC7\xC0\x3C\x00\x00\x00\x0F\x05\xF4";
     let (mut cpu, mmu) = common::setup_with_bytes(instr);
 
     *cpu.register_mut("RDI").unwrap() = 10u64;
     *cpu.register_mut("RSI").unwrap() = 1u64;
-    cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(500).unwrap()))
-        .unwrap();
+    let result = cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(500).unwrap()));
+    // The code performs a syscall. We assert here that the syscall was called.
+    // Syscall number should be in rax and have the value 60
+    assert!(matches!(result, Err(StopReason::RuntimeError(RuntimeError::CustomOp(_)))));
+    assert_eq!(*cpu.register::<u64>("RAX").unwrap(), 60u64);
 
     let rdi: u64 = *cpu.register("RDI").unwrap();
     let rdi_expected = stuff(10, 1);

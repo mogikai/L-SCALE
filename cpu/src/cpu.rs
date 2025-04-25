@@ -20,19 +20,28 @@ use mogi_sleigh::disassembler::Disassembler;
 use mogi_sleigh::lifter::context_provider::ContextProvider;
 use mogi_sleigh::lifter::source::TargetInstructionSource;
 use mogi_sleigh::lifter::{
+    BlockEndingOpDecider,
     Lifter,
+    LifterConfig,
     LifterError,
 };
-use mogi_sleigh::spec::jir::basic_block::optimizer::OptimizerOptions;
 use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
+use mogi_sleigh::spec::jir::basic_block::optimizer::OptimizerOptions;
 use mogi_sleigh::spec::jir::jcode::NextBlockTarget;
 use mogi_utilities::addresses::EVAddr;
-use std::cell::RefCell;
+use std::cell::{
+    Ref,
+    RefCell,
+    RefMut,
+};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::num::NonZeroUsize;
-use std::ops::Deref;
+use std::ops::{
+    Deref,
+    Range,
+};
 use std::process::exit;
 use std::rc::Rc;
 use std::time::Instant;
@@ -50,12 +59,6 @@ use zerocopy::{
 
 #[derive(Error, Debug)]
 pub enum StopReason {
-    #[error("The cpu encountered the halt instruction")]
-    Halt,
-    #[error("The user aborted execution")]
-    UserAbort,
-    #[error("An interrupt was encountered")]
-    Interrupt,
     #[error("The jit runtime encountered an error")]
     RuntimeError(#[from] RuntimeError),
     #[error("The just in time compiler encountered an error")]
@@ -117,6 +120,8 @@ where
             runtime_context
         };
 
+        Self::setup_custom_ops(&mut jit, &processor_specification.borrow());
+
         Self {
             runtime_context,
             jit: RefCell::new(jit),
@@ -125,11 +130,25 @@ where
             block_cache: Default::default(),
         }
     }
+
+    fn setup_custom_ops(
+        jit: &mut JitT,
+        spec: &ProcessorSpecification,
+    ) {
+        // TODO: This should be handled by some processor extension file or something similar.
+        //       This file specifies the implementations for the custom ops and also if they end a block.
+        //       There are three options: (1) block ending op that exits the jit with an exception
+        //                                (2) custom op that is implemented via callback
+        //                                (3) custom op that is implemented via a custom emitter.
+        let syscall_id = spec.custom_op_id_by_string("syscall").unwrap();
+        jit.mark_custom_op_as_externally_implemented(syscall_id)
+            .unwrap();
+    }
 }
 
 impl<JitT, MmuT> CPU for MogiCPU<JitT, MmuT>
 where
-    JitT: MogiJit,
+    JitT: MogiJit + BlockEndingOpDecider,
     MmuT: TargetInstructionSource,
 {
     fn run(
@@ -181,7 +200,10 @@ where
                     }
                 }
                 TranslationLimit::Address(addr_limit) => {
-                    let ip = self.jit.borrow().instruction_pointer(&self.runtime_context)?;
+                    let ip = self
+                        .jit
+                        .borrow()
+                        .instruction_pointer(&self.runtime_context)?;
                     if ip == addr_limit {
                         // ip can't go over addr_limit since we limit the translation
                         break;
@@ -232,7 +254,7 @@ where
 
 impl<JitT, MmuT> MogiCPU<JitT, MmuT>
 where
-    JitT: MogiJit,
+    JitT: MogiJit + BlockEndingOpDecider,
     MmuT: TargetInstructionSource,
 {
     fn handle_interrupt(&mut self) -> Result<(), StopReason> {
@@ -254,14 +276,6 @@ where
         &mut self,
         translation_limit: TranslationLimit,
     ) -> Result<(), StopReason> {
-        // // TODO: Return translate error instead of stop reason?
-        // // Load target instructions into mir cache
-        // let new_blocks = self.mir_cache.populate(self.context.pc());
-        // // Translate to host blocks
-        // let blocks = new_blocks.translate();
-        // self.jit_cache.populate(blocks);
-
-        // TODO: Remove demo block
         let mut jit = self.jit.borrow_mut();
         let mmu = self.mmu.borrow();
 
@@ -290,95 +304,33 @@ where
                 continue;
             }
 
+            let config = LifterConfig::new(
+                &*jit,
+                instr_limit.map(|limit| {
+                    NonZeroUsize::new(limit.get().saturating_sub(translated_instr_count))
+                        .expect("We should have aborted before this happens")
+                }),
+                stop_addr,
+            );
+
             let block = self.processor_specification.borrow().lift_block(
                 &*mmu,
                 self.runtime_context.as_mut(),
+                &config,
                 current_addr,
-                instr_limit,
-                stop_addr,
             )?;
 
-            // TODO: Most likely, if the runtime context was modified, we will first need to emulate before translating
-            //       more blocks?
-            trace_jit!("{}", block);
-            trace_jit!("Fallthrough: {:?}", block.fallthrough());
-            trace_jit!("Branch targets: {:?}", block.branch_targets());
+            compile(&mut *jit, &block)?;
 
-            let mut optimized_block = (*block.0).clone();
-            let optimizer_options = OptimizerOptions::default().with_enable_dse(true);
-            optimized_block.run_optimization_passes(optimizer_options).unwrap();
-            trace_jit!("{}", block);
-
-            jit.compile_target_block(&block)?;
-
-            // add direct branch targets
-            if let Some(branch_targets) = block.branch_targets() {
-                for branch_target in branch_targets {
-                    match branch_target {
-                        NextBlockTarget::Direct(target_addr) => target_addresses.push(*target_addr),
-                        NextBlockTarget::Return(return_addr) => target_addresses.push(*return_addr),
-                        _ => {}
-                    }
-                }
-            }
-
-            // add fallthrough
-            match block.fallthrough() {
-                Some(fallthrough_addr) => {
-                    add_target_address(&mut target_addresses, fallthrough_addr, translation_limit);
-
-                    let block_range = current_addr..fallthrough_addr;
-                    let disassembly = self
-                        .processor_specification
-                        .borrow()
-                        .disassemble_range(&*mmu, self.runtime_context.as_mut(), block_range)
-                        .unwrap();
-
-                    for disassembled_instr in &disassembly {
-                        trace_jit!("{}", disassembled_instr);
-                    }
-                }
-                None => {
-                    trace_jit!("Block has no fallthrough, skipping disassembling");
-                }
-            }
-
-            // add direct branch targets
-            if let Some(branch_targets) = block.branch_targets() {
-                for branch_target in branch_targets {
-                    match branch_target {
-                        NextBlockTarget::Direct(target_addr) => {
-                            add_target_address(&mut target_addresses, *target_addr, translation_limit)
-                        }
-                        NextBlockTarget::Return(return_addr) => {
-                            add_target_address(&mut target_addresses, *return_addr, translation_limit)
-                        }
-                        _ => {}
-                    }
-                }
-            }
+            process_branch_targets(&mut target_addresses, &block, translation_limit);
+            process_block_fallthrough(&mut target_addresses, &block, translation_limit);
 
             translated_block_count += 1;
             translated_instr_count += block.target_instruction_count();
             self.block_cache.insert(current_addr, block);
 
-            match translation_limit {
-                TranslationLimit::Unlimited => {}
-                TranslationLimit::BlockCount(block_count) => {
-                    if translated_block_count >= block_count.into() {
-                        trace_jit!("Hit block translation limit");
-                        break;
-                    }
-                }
-                TranslationLimit::InstructionCount(instr_count) => {
-                    if translated_instr_count >= instr_count.into() {
-                        trace_jit!("Hit instruction translation limit");
-                        break;
-                    }
-                }
-                TranslationLimit::Address(_) => {
-                    // this is handled by not exploring the address
-                }
+            if !can_continue_translating(translation_limit, translated_instr_count, translated_block_count) {
+                break;
             }
         }
 
@@ -398,12 +350,107 @@ fn add_target_address(
     addr: EVAddr,
     limit: TranslationLimit,
 ) {
-    match limit {
-        TranslationLimit::Address(evaddr) => {
-            if addr != evaddr {
-                target_addresses.push(addr);
+    if !matches!(limit, TranslationLimit::Address(limit_addr) if addr == limit_addr) {
+        target_addresses.push(addr);
+    }
+}
+
+/// Processes branch targets from a basic block and adds them to the target addresses vector.
+///
+/// # Arguments
+/// * `translation_limit` - Limit for the translation process
+/// * `target_addresses` - Vector to store discovered target addresses
+/// * `block` - Basic block to process branch targets from
+fn process_branch_targets(
+    mut target_addresses: &mut Vec<EVAddr>,
+    block: &TargetBasicBlock,
+    translation_limit: TranslationLimit,
+) {
+    // add direct branch targets
+    if let Some(branch_targets) = block.branch_targets() {
+        for branch_target in branch_targets {
+            if let NextBlockTarget::Direct(addr) | NextBlockTarget::Return(addr) = branch_target {
+                add_target_address(&mut target_addresses, *addr, translation_limit);
             }
         }
-        _ => target_addresses.push(addr),
+    }
+}
+
+fn process_block_fallthrough(
+    mut target_addresses: &mut Vec<EVAddr>,
+    block: &TargetBasicBlock,
+    translation_limit: TranslationLimit,
+) {
+    // add fallthrough
+    match block.fallthrough() {
+        Some(fallthrough_addr) => {
+            add_target_address(&mut target_addresses, fallthrough_addr, translation_limit);
+        }
+        None => {
+            trace_jit!("Block has no fallthrough, skipping disassembling");
+        }
+    }
+}
+
+fn compile<JitT: MogiJit>(
+    jit: &mut JitT,
+    block: &TargetBasicBlock,
+) -> Result<(), StopReason> {
+    // TODO: Most likely, if the runtime context was modified, we will first need to emulate before translating
+    //       more blocks?
+    trace_jit!("{}", block);
+    trace_jit!("Fallthrough: {:?}", block.fallthrough());
+    trace_jit!("Branch targets: {:?}", block.branch_targets());
+
+    let mut optimized_block = (*block.0).clone();
+    let optimizer_options = OptimizerOptions::default().with_enable_dse(true);
+    optimized_block
+        .run_optimization_passes(optimizer_options)
+        .unwrap();
+    trace_jit!("{}", block);
+    jit.compile_target_block(&block)?;
+    Ok(())
+}
+
+fn can_continue_translating(
+    translation_limit: TranslationLimit,
+    translated_instr_count: usize,
+    translated_block_count: usize,
+) -> bool {
+    match translation_limit {
+        TranslationLimit::Unlimited => true,
+        TranslationLimit::BlockCount(block_count) => {
+            if translated_block_count >= block_count.into() {
+                trace_jit!("Hit block translation limit");
+                false
+            } else {
+                true
+            }
+        }
+        TranslationLimit::InstructionCount(instr_count) => {
+            if translated_instr_count >= instr_count.into() {
+                trace_jit!("Hit instruction translation limit");
+                false
+            } else {
+                true
+            }
+        }
+        TranslationLimit::Address(_) => {
+            // TODO: We need to handle this more correctly, since the target address might also be inside a block
+            true
+        }
+    }
+}
+
+fn disassemble(
+    spec: &ProcessorSpecification,
+    mmu: &impl TargetInstructionSource,
+    runtime_context: &mut impl ContextProvider,
+    range: Range<EVAddr>,
+) {
+    let disassembly = spec.disassemble_range(mmu, runtime_context, range).unwrap();
+
+    for disassembled_instr in &disassembly {
+        trace_jit!("{}", disassembled_instr);
     }
 }

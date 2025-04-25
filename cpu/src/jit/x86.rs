@@ -45,6 +45,7 @@ use crate::jit::x86::x64emitter::{
 use mogi_utilities::index_map::{
     MapKey,
     SecondaryMap,
+    SecondarySet,
 };
 use task_context::X86TaskContext;
 use x64emitter::CustomOpCallback;
@@ -86,6 +87,7 @@ use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::registers::xmm::XMMRegister;
 use assemble;
 use mogi_mem::mmu::MogiMMU;
+use mogi_sleigh::lifter::BlockEndingOpDecider;
 use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
 
 pub struct X86MogiJit {
@@ -108,6 +110,14 @@ pub struct X86MogiJit {
     /// Since the pointer is unmovable as lang as the jit exists, and the block cache is deleted
     /// along with the jit, this is safe to access.
     global_context: Pin<Box<X86GlobalContext>>,
+
+    extra_emitter_info: X86ExtraEmitterInfo,
+}
+
+#[derive(Debug, Default)]
+struct X86ExtraEmitterInfo {
+    /// A set of custom op ids that end a block.
+    block_ending_custom_ops: SecondarySet<CustomOpId>,
 }
 
 /// The global jit context. Each task context contains a pointer to this context.
@@ -192,7 +202,19 @@ impl X86MogiJit {
             jit_prelude: prelude,
             jit_epilogue_block: epilogue_block,
             global_context: Box::pin(X86GlobalContext::default()),
+            extra_emitter_info: Default::default(),
         }
+    }
+}
+
+impl BlockEndingOpDecider for X86MogiJit {
+    fn is_block_ending_custom_op(
+        &self,
+        custom_op_id: CustomOpId,
+    ) -> bool {
+        self.extra_emitter_info
+            .block_ending_custom_ops
+            .contains(custom_op_id)
     }
 }
 
@@ -215,6 +237,14 @@ impl MogiJit for X86MogiJit {
         CB: CustomOpImpl<Self::RuntimeContext>,
     {
         self.global_context.custom_op_impls[op_id] = Some(CustomOpCallback::new(callback));
+        Ok(())
+    }
+
+    fn mark_custom_op_as_externally_implemented(
+        &mut self,
+        op_id: CustomOpId,
+    ) -> JITResult {
+        self.extra_emitter_info.block_ending_custom_ops.add(op_id);
         Ok(())
     }
 
@@ -332,8 +362,14 @@ impl MogiJit for X86MogiJit {
         let allocations = regalloc.run()?;
 
         // And finally we emit the instructions, using the allocations we just calculated.
-        let emitter =
-            alloc_requirements.make_emitter(&allocations, &self.global_context, &spec, compiled_block, target_block);
+        let emitter = alloc_requirements.make_emitter(
+            &allocations,
+            &self.global_context,
+            &spec,
+            compiled_block,
+            target_block,
+            &self.extra_emitter_info,
+        );
         emitter.emit_block()?;
         self.code_buffer.write_block(target_block.start())?;
         Ok(())

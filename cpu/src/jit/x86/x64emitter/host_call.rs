@@ -5,6 +5,8 @@ use crate::jit::api::{
     JITTaskRuntimeContext,
     RuntimeError,
 };
+use crate::jit::host::register::RegClass;
+use crate::jit::x86::task_context::X86TaskContext;
 use crate::jit::x86::x64emitter::X64Emitter;
 use crate::jit::x86::{
     X86GlobalContext,
@@ -26,6 +28,18 @@ impl X64Emitter<'_> {
         input_b: Option<JIRValue>,
         extra_args: &[JIRValue],
     ) -> JITResult {
+        if self
+            .extra_emitter_info
+            .block_ending_custom_ops
+            .contains(op_id)
+        {
+            let scratch = self.allocations.scratch_register(RegClass::Int);
+            assemble!(self.block.assembler();
+                ; mov Rq(scratch.hw_enc()), QWORD u64::from(RuntimeError::CustomOp(op_id)) as _
+                ; gs mov QWORD [X86TaskContext::runtime_error_offset() as _], Rq(scratch.hw_enc())
+            );
+            return Ok(());
+        }
         // Make sure all slices are flushed, such that they cannot be clobbered and are available to the impl callback.
         // TODO: Use a different function to flush for callbacks.
         //       We don't really need to flush rbx, rsp, rbp, r12, r13, r14, and r15

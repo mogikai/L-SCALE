@@ -7,6 +7,7 @@ use super::varnode::{
 };
 use crate::compiler::InternalCompilerResult;
 use crate::jinst;
+use crate::lifter::BlockEndingOpDecider;
 use crate::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
 use crate::spec::jir::basic_block::instruction::TargetInstructionBuilder;
 use crate::spec::jir::jcode::{
@@ -118,9 +119,10 @@ impl MOIRConstructor {
     /// The [JIRResolver] is usually populated by the matcher during matching.
     /// The resulting JCode is written to the provided [TargetBasicBlockBuilder].
     /// Any temporaries are currently allocated block-wide.
-    pub fn generate_jcode(
+    pub fn generate_jcode<D: BlockEndingOpDecider>(
         &self,
         spec: &ProcessorSpecification,
+        block_end_decider: &D,
         mut resolver: JIRResolver,
         block_builder: &mut TargetBasicBlockBuilder,
     ) -> ProcessorSpecResult<ContinueLifting> {
@@ -144,6 +146,16 @@ impl MOIRConstructor {
                         target_inst.start_labeled_block(label)?;
                     }
                     self.generate_instruction(spec, &mut resolver, &mut target_inst, inst)?;
+                    // Check if we have a custom op that terminates the block (e.g., syscall).
+                    if let MOIROperation::CustomOp { op_id, .. } = inst.operation
+                        && block_end_decider.is_block_ending_custom_op(op_id)
+                    {
+                        if iter.peek().is_none() {
+                            break target_inst.finish_block_ending_custom_op();
+                        } else {
+                            todo!("Block terminating custom ops must be the last instruction in a target instruction")
+                        }
+                    };
                     if matches!(inst.operation.op_category(), MOIROpCategory::Branch(_)) {
                         if iter.peek().is_none() {
                             // If the instructions ends with a goto, we first have to end the instruction, and

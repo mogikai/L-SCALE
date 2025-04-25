@@ -45,7 +45,8 @@ use crate::jit::api::{
 use crate::jit::code_buffer::CompiledBasicBlock;
 use crate::jit::host::register::{
     HostRegMap,
-    HostRegSet, RegClass,
+    HostRegSet,
+    RegClass,
 };
 use crate::jit::regalloc::RegisterAllocator;
 use crate::jit::regalloc::requirements::{
@@ -61,6 +62,7 @@ use crate::jit::regalloc::result::{
 use crate::jit::trace_jit;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::{
+    X86ExtraEmitterInfo,
     X86GlobalContext,
     assemble,
 };
@@ -92,6 +94,8 @@ pub struct X64Emitter<'a> {
 
     /// The block the emitter should emit instructions for.
     target_block: &'a TargetBasicBlock,
+
+    extra_emitter_info: &'a X86ExtraEmitterInfo,
 }
 
 /// This struct contains the data that is needed by the allocator.
@@ -241,16 +245,36 @@ impl X64AllocRequirements {
                 Self::bitwise_negate_requirements(&mut requirement, args.output, args.input)
             }
             JIRInstruction::IntNegate(args) => Self::negate_requirements(&mut requirement, args.output, args.input),
-            JIRInstruction::FloatDiv(args) => Self::fdiv_requirements(&mut requirement, args.output, args.input_a, args.input_b),
-            JIRInstruction::FloatMul(args) => Self::fmul_requirements(&mut requirement, args.output, args.input_a, args.input_b),
-            JIRInstruction::FloatAdd(args) => Self::fadd_requirements(&mut requirement, args.output, args.input_a, args.input_b),
-            JIRInstruction::FloatSubtract(args) => Self::fsub_requirements(&mut requirement, args.output, args.input_a, args.input_b),
-            JIRInstruction::FloatLess(args) => Self::fless_requirements(&mut requirement, args.output, args.input_a, args.input_b),
-            JIRInstruction::FloatGreater(args) => Self::fgreater_requirements(&mut requirement, args.output, args.input_a, args.input_b),
-            JIRInstruction::FloatLessEqual(args) => Self::flesseq_requirements(&mut requirement, args.output, args.input_a, args.input_b),
-            JIRInstruction::FloatGreaterEqual(args) => Self::fgreatereq_requirements(&mut requirement, args.output, args.input_a, args.input_b),
-            JIRInstruction::FloatEquals(args) => Self::feq_requirements(&mut requirement, args.output, args.input_a, args.input_b),
-            JIRInstruction::FloatNotEquals(args) => Self::fneq_requirements(&mut requirement, args.output, args.input_a, args.input_b),
+            JIRInstruction::FloatDiv(args) => {
+                Self::fdiv_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::FloatMul(args) => {
+                Self::fmul_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::FloatAdd(args) => {
+                Self::fadd_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::FloatSubtract(args) => {
+                Self::fsub_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::FloatLess(args) => {
+                Self::fless_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::FloatGreater(args) => {
+                Self::fgreater_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::FloatLessEqual(args) => {
+                Self::flesseq_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::FloatGreaterEqual(args) => {
+                Self::fgreatereq_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::FloatEquals(args) => {
+                Self::feq_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
+            JIRInstruction::FloatNotEquals(args) => {
+                Self::fneq_requirements(&mut requirement, args.output, args.input_a, args.input_b)
+            }
             JIRInstruction::FloatNegate(args) => Self::fneg_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::BoolOr(args) => {
                 Self::boolean_requirements(&mut requirement, args.output, args.input_a, args.input_b)
@@ -334,8 +358,9 @@ impl X64AllocRequirements {
         processor_spec: &'e ProcessorSpecification,
         block: &'e mut CompiledBasicBlock<X64Relocation>,
         target_block: &'e TargetBasicBlock,
+        extra_emitter_info: &'e X86ExtraEmitterInfo,
     ) -> X64Emitter<'e> {
-        X64Emitter::<'e>::new(allocations, global_context, processor_spec, block, target_block)
+        X64Emitter::<'e>::new(allocations, global_context, processor_spec, block, target_block, extra_emitter_info)
     }
 }
 
@@ -373,6 +398,7 @@ impl X64Emitter<'_> {
         processor_spec: &'a ProcessorSpecification,
         block: &'a mut CompiledBasicBlock<X64Relocation>,
         target_block: &'a TargetBasicBlock,
+        extra_emitter_info: &'a X86ExtraEmitterInfo,
     ) -> X64Emitter<'a> {
         X64Emitter {
             allocations,
@@ -381,6 +407,7 @@ impl X64Emitter<'_> {
             processor_spec,
             block,
             target_block,
+            extra_emitter_info,
         }
     }
 
@@ -503,9 +530,15 @@ impl X64Emitter<'_> {
             JIRInstruction::FloatAdd(args) => self.emit_fadd(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::FloatSubtract(args) => self.emit_fsub(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::FloatLess(args) => self.emit_fless(inst_id, args.output, args.input_a, args.input_b)?,
-            JIRInstruction::FloatGreater(args) => self.emit_fgreater(inst_id, args.output, args.input_a, args.input_b)?,
-            JIRInstruction::FloatLessEqual(args) => self.emit_flesseq(inst_id, args.output, args.input_a, args.input_b)?,
-            JIRInstruction::FloatGreaterEqual(args) => self.emit_fgreatereq(inst_id, args.output, args.input_a, args.input_b)?,
+            JIRInstruction::FloatGreater(args) => {
+                self.emit_fgreater(inst_id, args.output, args.input_a, args.input_b)?
+            }
+            JIRInstruction::FloatLessEqual(args) => {
+                self.emit_flesseq(inst_id, args.output, args.input_a, args.input_b)?
+            }
+            JIRInstruction::FloatGreaterEqual(args) => {
+                self.emit_fgreatereq(inst_id, args.output, args.input_a, args.input_b)?
+            }
             JIRInstruction::FloatEquals(args) => self.emit_feq(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::FloatNotEquals(args) => self.emit_fneq(inst_id, args.output, args.input_a, args.input_b)?,
             JIRInstruction::FloatNegate(args) => self.emit_fneg(inst_id, args.output, args.input)?,

@@ -39,7 +39,7 @@ impl<'a> TargetInstructionBuilder<'a> {
         self.block_builder.start_block()
     }
 
-    pub fn finish_block(&mut self) -> ProcessorSpecResult<JIRBlockId> {
+    pub fn finish_block(&mut self) -> ProcessorSpecResult {
         self.block_builder.finish_block()
     }
 
@@ -166,13 +166,17 @@ impl<'a> TargetInstructionBuilder<'a> {
     /// The instruction ends with a goto instruction. This necessitates that the instruction is finalized,
     /// and afterward a new block is created.
     pub fn finish_goto(self) -> ProcessorSpecResult<ContinueLifting> {
-        let cont = self
-            .branch_targets
-            .as_ref()
-            .map_or(ContinueLifting::Continue(self.fallthrough), |_| ContinueLifting::Stop);
         Self::_finish(self.block_builder, self.start, self.fallthrough, self.branch_targets)?;
         self.block_builder.finish_block()?;
-        self.block_builder.start_block()?;
-        Ok(cont)
+        Ok(ContinueLifting::Stop)
+    }
+
+    /// The instruction ends with a custom op that terminates the block.
+    /// This requires that the instruction is finalized,
+    /// and afterward a new block is created.
+    pub fn finish_block_ending_custom_op(self) -> ProcessorSpecResult<ContinueLifting> {
+        Self::_finish(self.block_builder, self.start, self.fallthrough, self.branch_targets)?;
+        self.block_builder.finish_block()?;
+        Ok(ContinueLifting::Stop)
     }
 }

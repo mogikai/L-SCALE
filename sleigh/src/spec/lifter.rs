@@ -1,8 +1,9 @@
 use crate::lifter::context_provider::ContextProvider;
 use crate::lifter::source::TargetInstructionSource;
 use crate::lifter::{
+    BlockEndingOpDecider,
     Lifter,
-    LifterDiagnostics,
+    LifterConfig,
     LifterError,
     LifterResult,
 };
@@ -23,29 +24,28 @@ use super::jir::common::JIRSize;
 use super::jir::jumplist::MatchContext;
 
 impl Lifter for ProcessorSpecification {
-    fn lift_block<S, C>(
+    fn lift_block<S, C, D>(
         &self,
         source: &S,
         context_provider: &mut C,
+        config: &LifterConfig<D>,
         mut addr: EVAddr,
-        max_instructions: Option<NonZeroUsize>,
-        stop_addr: Option<EVAddr>,
     ) -> LifterResult<TargetBasicBlock>
     where
         S: TargetInstructionSource,
         C: ContextProvider,
+        D: BlockEndingOpDecider,
     {
         // TODO: Allocate buffer size depending on the target instruction set's maximum instruction size.
         let mut buffer = [0u8; 16];
 
         let now = Instant::now();
         let mut block_builder = TargetBasicBlockBuilder::new(addr, self.temp_space);
-        let mut block_size = 0;
         // Start with a block. Any intermediate blocks will end this block and create a new one.
         block_builder.start_block().unwrap();
         let mut instruction_count = 0usize;
         loop {
-            if let Some(stop_addr) = stop_addr {
+            if let Some(stop_addr) = config.stop_addr {
                 if stop_addr == addr {
                     break;
                 }
@@ -77,16 +77,15 @@ impl Lifter for ProcessorSpecification {
 
                     trace_jir!("{}", resolver.mcode_debug_string(&self).unwrap());
                     match resolver
-                        .build(self, &mut block_builder)
+                        .build(self, &mut block_builder, config)
                         .map_err(|e| -> LifterError { todo!("{e:?}") })?
                     {
                         ContinueLifting::Continue(next_addr) => addr = next_addr,
                         ContinueLifting::Stop => break,
                     }
 
-                    block_size += bytes_consumed;
                     instruction_count += 1;
-                    if let Some(max_instructions) = max_instructions
+                    if let Some(max_instructions) = config.max_instructions
                         && instruction_count >= max_instructions.into()
                     {
                         break;
@@ -95,7 +94,7 @@ impl Lifter for ProcessorSpecification {
             }
         }
 
-        // Close the last open block.
+        // Make sure the block is finalized. If there is no open block, then this does nothing.
         block_builder.finish_block().unwrap();
 
         Ok(block_builder

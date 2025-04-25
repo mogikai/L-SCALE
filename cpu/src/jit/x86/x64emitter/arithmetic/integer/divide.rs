@@ -115,35 +115,51 @@ impl X64AllocRequirements {
             }
             (JIRValue::Const(dividend), JIRValue::Slice(divisor)) => {
                 let (divisor_lower, divisor_upper) = divisor.split(8);
-                requirement
-                    .add_request(OperandRequest::int_read_fixed_reg_reload(GPRegister::DX.into_host_reg(), divisor_lower));
-                requirement
-                    .add_request(OperandRequest::int_read_fixed_reg_reload(GPRegister::CX.into_host_reg(), divisor_upper));
+                requirement.add_request(OperandRequest::int_read_fixed_reg_reload(
+                    GPRegister::DX.into_host_reg(),
+                    divisor_lower,
+                ));
+                requirement.add_request(OperandRequest::int_read_fixed_reg_reload(
+                    GPRegister::CX.into_host_reg(),
+                    divisor_upper,
+                ));
                 *requirement.clobbers_mut() = clobbers
                     .with(GPRegister::DI.into_host_reg())
                     .with(GPRegister::SI.into_host_reg());
             }
             (JIRValue::Slice(dividend), JIRValue::Const(divisor)) => {
                 let (dividend_lower, dividend_upper) = dividend.split(8);
-                requirement
-                    .add_request(OperandRequest::int_read_fixed_reg_reload(GPRegister::DI.into_host_reg(), dividend_lower));
-                requirement
-                    .add_request(OperandRequest::int_read_fixed_reg_reload(GPRegister::SI.into_host_reg(), dividend_upper));
+                requirement.add_request(OperandRequest::int_read_fixed_reg_reload(
+                    GPRegister::DI.into_host_reg(),
+                    dividend_lower,
+                ));
+                requirement.add_request(OperandRequest::int_read_fixed_reg_reload(
+                    GPRegister::SI.into_host_reg(),
+                    dividend_upper,
+                ));
                 *requirement.clobbers_mut() = clobbers
                     .with(GPRegister::DX.into_host_reg())
                     .with(GPRegister::CX.into_host_reg());
             }
             (JIRValue::Slice(dividend), JIRValue::Slice(divisor)) => {
                 let (dividend_lower, dividend_upper) = dividend.split(8);
-                requirement
-                    .add_request(OperandRequest::int_read_fixed_reg_reload(GPRegister::DI.into_host_reg(), dividend_lower));
-                requirement
-                    .add_request(OperandRequest::int_read_fixed_reg_reload(GPRegister::SI.into_host_reg(), dividend_upper));
+                requirement.add_request(OperandRequest::int_read_fixed_reg_reload(
+                    GPRegister::DI.into_host_reg(),
+                    dividend_lower,
+                ));
+                requirement.add_request(OperandRequest::int_read_fixed_reg_reload(
+                    GPRegister::SI.into_host_reg(),
+                    dividend_upper,
+                ));
                 let (divisor_lower, divisor_upper) = divisor.split(8);
-                requirement
-                    .add_request(OperandRequest::int_read_fixed_reg_reload(GPRegister::DX.into_host_reg(), divisor_lower));
-                requirement
-                    .add_request(OperandRequest::int_read_fixed_reg_reload(GPRegister::CX.into_host_reg(), divisor_upper));
+                requirement.add_request(OperandRequest::int_read_fixed_reg_reload(
+                    GPRegister::DX.into_host_reg(),
+                    divisor_lower,
+                ));
+                requirement.add_request(OperandRequest::int_read_fixed_reg_reload(
+                    GPRegister::CX.into_host_reg(),
+                    divisor_upper,
+                ));
             }
         }
     }
@@ -398,8 +414,8 @@ impl X64Emitter<'_> {
             ; call rax
             // Restore the stack pointer
             ; mov rsp, rbx
-            ; gs cmp [X86TaskContext::runtime_error_offset() as _], 0
-            ; je >failure
+            ; gs test [X86TaskContext::runtime_error_offset() as _], 0
+            ; jnz >failure
             ; jmp >success
             ; failure:
         );
