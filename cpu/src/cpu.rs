@@ -2,6 +2,7 @@
 //! The `CPUContext` contains all the runtime information needed during emulation.
 //! This includes for example the registers and a pointer to the currently active `TLB`.
 
+use crate::arch::x86::general::swap_bytes;
 use crate::jit::api::{
     JITPathChoice,
     JITTaskRuntimeContext,
@@ -11,9 +12,9 @@ use crate::jit::api::{
 };
 use crate::jit::trace_jit;
 use crate::new_cpu_trait::{
-    CPU,
     CPUResult,
     RunLimit,
+    CPU,
 };
 use fnv::FnvHashMap;
 use mogi_sleigh::disassembler::Disassembler;
@@ -25,10 +26,10 @@ use mogi_sleigh::lifter::{
     LifterConfig,
     LifterError,
 };
-use mogi_sleigh::spec::ProcessorSpecification;
-use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
 use mogi_sleigh::spec::jir::basic_block::optimizer::OptimizerOptions;
+use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
 use mogi_sleigh::spec::jir::jcode::NextBlockTarget;
+use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_utilities::addresses::EVAddr;
 use std::cell::{
     Ref,
@@ -37,6 +38,7 @@ use std::cell::{
 };
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::mem::swap;
 use std::num::NonZeroUsize;
 use std::ops::{
     Deref,
@@ -142,6 +144,11 @@ where
         //                                (3) custom op that is implemented via a custom emitter.
         let syscall_id = spec.custom_op_id_by_string("syscall").unwrap();
         jit.mark_custom_op_as_externally_implemented(syscall_id)
+            .unwrap();
+
+        let swap_bytes_id = spec.custom_op_id_by_string("swap_bytes").unwrap();
+
+        jit.register_unary_custom_op_fast_impl_64(swap_bytes_id, swap_bytes)
             .unwrap();
     }
 }

@@ -25,6 +25,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 extern crate core;
 
+mod arch;
 pub mod cpu;
 pub mod jit;
 pub mod new_cpu_trait;

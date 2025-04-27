@@ -1,8 +1,8 @@
 use mogi_cpu::cpu::StopReason;
 use mogi_cpu::jit::api::RuntimeError;
 use mogi_cpu::new_cpu_trait::{
-    CPU,
     RunLimit,
+    CPU,
 };
 use mogi_system::components::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
@@ -11,8 +11,8 @@ use tracing::level_filters::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{
-    EnvFilter,
     fmt,
+    EnvFilter,
 };
 use zerocopy::IntoBytes;
 
@@ -68,14 +68,14 @@ fn test_mov_mem_imm() {
 #[test]
 fn test_mov_mem_reg() {
     // MOV [RBP + 4*RSI + 8], RAX
-    let instr = b"\x48\xC7\x44\xB5\x08\x34\x12\x00\x00";
+    let instr = b"\x48\x89\x44\xB5\x08";
     let (mut cpu, mmu) = common::setup_with_bytes(instr);
 
     // RAX = 0x1234
     // RBP = 8
     // RSI = 12
     // => [8 + 4*12 + 8] = [64]
-    *cpu.register_mut("RAX").unwrap() = 0x1234u64;
+    *cpu.register_mut("RAX").unwrap() = 0x1337u64;
     *cpu.register_mut("RBP").unwrap() = 8u64;
     *cpu.register_mut("RSI").unwrap() = 12u64;
     cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(1).unwrap()))
@@ -83,7 +83,7 @@ fn test_mov_mem_reg() {
 
     let rax: u64 = *cpu.register("RAX").unwrap();
     // TODO assert memory content [64] = 0x1234
-    assert_eq!(rax, 0x1234);
+    assert_eq!(rax, 0x1337);
 }
 
 #[test]
@@ -102,6 +102,35 @@ fn test_mov_reg_mem() {
 
     let rax: u64 = *cpu.register("RAX").unwrap();
     assert_eq!(rax, 0x12345678);
+}
+
+#[test]
+fn test_movbe_mem_reg() {
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::TRACE.into())
+                .with_env_var("MOGI_LOG")
+                .from_env_lossy(),
+        )
+        .init();
+    // MOVBE [RSP], RAX
+    let instr = b"\x48\x0F\x38\xF1\x04\x24";
+    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+
+    let rsp: u64 = *cpu.register("RSP").unwrap();
+    *cpu.register_mut("RAX").unwrap() = 0x1337u64;
+    cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(1).unwrap()))
+        .unwrap();
+
+    let rax: u64 = *cpu.register("RAX").unwrap();
+    assert_eq!(rax, 0x1337);
+    let mut result = 0u64;
+    mmu.borrow_mut()
+        .read(EVAddr::from(rsp), result.as_mut_bytes())
+        .unwrap();
+    assert_eq!(result, 0x1337u64.swap_bytes());
 }
 
 #[test]

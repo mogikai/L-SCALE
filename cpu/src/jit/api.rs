@@ -7,8 +7,8 @@ use crate::tlb::{
 use dynasmrt::DynasmError;
 use mogi_mem::physical::page::PageData;
 use mogi_sleigh::lifter::context_provider::ContextProvider;
+use mogi_sleigh::lifter::BlockEndingOpDecider;
 use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
-use mogi_sleigh::spec::jir::jcode::JIRInstruction;
 use mogi_sleigh::spec::jir::values::{
     JIRSlice,
     JIRValue,
@@ -115,7 +115,7 @@ impl From<u64> for RuntimeError {
 
 pub type JITResult<T = ()> = Result<T, JitError>;
 
-pub trait MogiJit {
+pub trait MogiJit: BlockEndingOpDecider {
     type RuntimeContext: JITTaskRuntimeContext + ContextProvider + Sized;
     type GlobalContext: JITGlobalRuntimeContext + Sized;
 
@@ -125,6 +125,33 @@ pub trait MogiJit {
     /// The context is owned by the [CPU] and passed to the jit runtime
     /// via the context pointer, which can then access its internals.
     fn new_runtime_context(&mut self) -> Self::RuntimeContext;
+
+    /// A custom operation can also be implemented via the fast impl mechanism.
+    /// The jit will load all the necessary slices into the arguments and write the output
+    /// back into the slice specified in the instruction.
+    ///
+    /// Slices smaller than 64 bits will be loaded into 64 bit registers regardless.
+    /// The upper bits of the input are guaranteed to be zero, and the upper bits
+    /// of the output will always be discarded.
+    fn register_binary_custom_op_fast_impl_64(
+        &mut self,
+        op_id: CustomOpId,
+        fn_impl: extern "sysv64" fn(u64, u64) -> u64,
+    ) -> JITResult;
+
+    fn register_unary_custom_op_fast_impl_64(
+        &mut self,
+        op_id: CustomOpId,
+        fn_impl: extern "sysv64" fn(u64) -> u64,
+    ) -> JITResult;
+
+    /// For fast impls that operate on larger slices this function allows implementing
+    /// operations with one output and up to two inputs that directly use the byte slices.
+    fn register_custom_op_fast_impl_slice(
+        &mut self,
+        op_id: CustomOpId,
+        fn_impl: extern "sysv64" fn(&mut [u8], &[u8], &[u8]),
+    ) -> JITResult;
 
     /// Register a function as implementation of the custom operation identified by `name`
     fn register_custom_op_impl<CB>(

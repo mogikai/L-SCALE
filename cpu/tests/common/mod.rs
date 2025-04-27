@@ -5,16 +5,16 @@ use mogi_cpu::jit::api::{
 };
 use mogi_cpu::jit::x86::X86MogiJit;
 use mogi_cpu::new_cpu_trait::CPU;
-use mogi_mem::PAGE_SIZE;
 use mogi_mem::mmu::MogiMMU;
-use mogi_sleigh::SleighPreprocessorFactory;
-use mogi_sleigh::compiler::SleighCompilerResult;
+use mogi_mem::PAGE_SIZE;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
+use mogi_sleigh::compiler::SleighCompilerResult;
 use mogi_sleigh::spec::ProcessorSpecification;
+use mogi_sleigh::SleighPreprocessorFactory;
 use mogi_system::components::mmu::{
-    MMU,
     MemoryAction,
     Permission,
+    MMU,
 };
 use std::cell::RefCell;
 use std::path::{
@@ -44,7 +44,7 @@ fn build(spec_path: &Path) -> SleighCompilerResult<ProcessorSpecification> {
 
 pub(crate) fn setup_with_bytes(bytes: &[u8]) -> (MogiCPU<X86MogiJit, MogiMMU>, Rc<RefCell<MogiMMU>>) {
     let spec = Rc::new(RefCell::new(SPEC.read().unwrap().clone()));
-    let stack_page_count = 1;
+    let stack_page_count = 2;
     let page_count = (bytes.len() + PAGE_SIZE - 1) / PAGE_SIZE;
     let stack_addr = 0xffff_ffff_ffff_0000u64;
 
@@ -80,7 +80,7 @@ pub(crate) fn setup_with_bytes(bytes: &[u8]) -> (MogiCPU<X86MogiJit, MogiMMU>, R
 
     // Set up the just in time compiler. TODO: Maybe we can refactor this such that the jit doesn't need the spec.
     let mut jit =
-        X86MogiJit::new(spec.clone(), mmu.clone(), std::env::var("MOGI_DEBUG_JIT").map_or(false, |val| val == "true"));
+        X86MogiJit::new(spec.clone(), mmu.clone(), std::env::var("MOGI_DEBUG_JIT").map_or(true, |val| val == "true"));
 
     let mmu_tlb = mmu.clone();
     jit.register_tlb_read_miss_callback(move |ctx, addr, size, space| {

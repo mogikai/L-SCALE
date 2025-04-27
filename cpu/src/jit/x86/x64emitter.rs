@@ -17,8 +17,8 @@ mod test;
 use dynasmrt::x64::X64Relocation;
 use either::Either;
 pub use mmu::TlbMissCallback;
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Range;
 use tracing::trace;
@@ -48,7 +48,6 @@ use crate::jit::host::register::{
     HostRegSet,
     RegClass,
 };
-use crate::jit::regalloc::RegisterAllocator;
 use crate::jit::regalloc::requirements::{
     EmitterAllocRequirements,
     OperandRequest,
@@ -59,15 +58,16 @@ use crate::jit::regalloc::result::{
     AllocatorResult,
     LoadSpillDirective,
 };
+use crate::jit::regalloc::RegisterAllocator;
 use crate::jit::trace_jit;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::{
+    assemble,
+    CustomOpImplKind,
     X86ExtraEmitterInfo,
     X86GlobalContext,
-    assemble,
 };
 pub use host_call::CustomOpCallback;
-use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_sleigh::spec::jir::basic_block::{
     InstId,
     TargetBasicBlock,
@@ -79,7 +79,12 @@ use mogi_sleigh::spec::jir::values::{
     JIRValue,
     JIRVarNodeId,
 };
+use mogi_sleigh::spec::{
+    CustomOpId,
+    ProcessorSpecification,
+};
 use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::index_map::SecondaryMap;
 
 pub struct X64Emitter<'a> {
     allocations: &'a AllocatorResult,
@@ -94,8 +99,6 @@ pub struct X64Emitter<'a> {
 
     /// The block the emitter should emit instructions for.
     target_block: &'a TargetBasicBlock,
-
-    extra_emitter_info: &'a X86ExtraEmitterInfo,
 }
 
 /// This struct contains the data that is needed by the allocator.
@@ -120,6 +123,7 @@ pub struct X64AllocRequirements {
 impl X64AllocRequirements {
     pub fn new(
         spec: &ProcessorSpecification,
+        custom_op_impls: &SecondaryMap<CustomOpId, CustomOpImplKind>,
         target_block: &TargetBasicBlock,
     ) -> Self {
         let mut slf = Self {
@@ -130,7 +134,7 @@ impl X64AllocRequirements {
             clobbers: vec![HostRegSet::empty(); target_block.instructions().len()],
             required_temps: vec![TempRequest::new(); target_block.instructions().len()],
         };
-        slf.calculate_inst_requirements(spec, target_block);
+        slf.calculate_inst_requirements(spec, custom_op_impls, target_block);
         slf
     }
 
@@ -138,12 +142,13 @@ impl X64AllocRequirements {
     fn calculate_inst_requirements(
         &mut self,
         spec: &ProcessorSpecification,
+        custom_op_impls: &SecondaryMap<CustomOpId, CustomOpImplKind>,
         target_block: &TargetBasicBlock,
     ) {
         // TODO: Potentially, this step could be put into the IR generation step, so that we can directly add
         //       the requirements when the instruction is inserted, avoiding one iteration.
         for (inst_id, inst) in target_block.instructions_with_ids() {
-            self.fetch_inst_operands(inst_id, spec, inst);
+            self.fetch_inst_operands(inst_id, spec, custom_op_impls, inst);
         }
     }
 
@@ -151,6 +156,7 @@ impl X64AllocRequirements {
         &mut self,
         inst_id: InstId,
         spec: &ProcessorSpecification,
+        custom_op_impls: &SecondaryMap<CustomOpId, CustomOpImplKind>,
         inst: &JIRInstruction,
     ) {
         let mut requirement = AllocRequirement::new(
@@ -347,7 +353,20 @@ impl X64AllocRequirements {
             JIRInstruction::Ceil(args) => Self::round_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::Floor(args) => Self::round_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::Round(args) => Self::round_requirements(&mut requirement, args.output, args.input),
-            JIRInstruction::CustomOp { .. } => {}
+            JIRInstruction::CustomOp {
+                output,
+                input_a,
+                input_b,
+                op_id,
+                extra_args,
+            } => Self::custom_op_call_requirements(
+                &mut requirement,
+                custom_op_impls[*op_id],
+                *output,
+                *input_a,
+                *input_b,
+                extra_args,
+            ),
         }
     }
 
@@ -358,9 +377,8 @@ impl X64AllocRequirements {
         processor_spec: &'e ProcessorSpecification,
         block: &'e mut CompiledBasicBlock<X64Relocation>,
         target_block: &'e TargetBasicBlock,
-        extra_emitter_info: &'e X86ExtraEmitterInfo,
     ) -> X64Emitter<'e> {
-        X64Emitter::<'e>::new(allocations, global_context, processor_spec, block, target_block, extra_emitter_info)
+        X64Emitter::<'e>::new(allocations, global_context, processor_spec, block, target_block)
     }
 }
 
@@ -398,7 +416,6 @@ impl X64Emitter<'_> {
         processor_spec: &'a ProcessorSpecification,
         block: &'a mut CompiledBasicBlock<X64Relocation>,
         target_block: &'a TargetBasicBlock,
-        extra_emitter_info: &'a X86ExtraEmitterInfo,
     ) -> X64Emitter<'a> {
         X64Emitter {
             allocations,
@@ -407,7 +424,6 @@ impl X64Emitter<'_> {
             processor_spec,
             block,
             target_block,
-            extra_emitter_info,
         }
     }
 

@@ -350,25 +350,25 @@ where
         trace_jit!("Available registers after fixed reg and clobber constraints:\n{}", self.available_registers);
 
         for (op_id, operand) in operands.write_fixed() {
-            let allocation = self.alloc_operand(operand)?;
+            let allocation = self.alloc_operand(inst, operand)?;
             trace_jit!("Allocated fixed reg operand {op_id}|{operand:?} for instruction {inst} as {allocation:?}");
             self.allocations.set_allocation(inst, op_id, allocation);
         }
 
         for (op_id, operand) in operands.write_non_fixed() {
-            let allocation = self.alloc_operand(operand)?;
+            let allocation = self.alloc_operand(inst, operand)?;
             trace_jit!("Allocated operand {op_id}|{operand:?} for instruction {inst} as {allocation:?}");
             self.allocations.set_allocation(inst, op_id, allocation);
         }
 
         for (op_id, operand) in operands.read_fixed() {
-            let allocation = self.alloc_operand(operand)?;
+            let allocation = self.alloc_operand(inst, operand)?;
             trace_jit!("Allocated fixed reg operand {op_id}|{operand:?} for instruction {inst} as {allocation:?}");
             self.allocations.set_allocation(inst, op_id, allocation);
         }
 
         for (op_id, operand) in operands.read_non_fixed() {
-            let allocation = self.alloc_operand(operand)?;
+            let allocation = self.alloc_operand(inst, operand)?;
             trace_jit!("Allocated operand {op_id}|{operand:?} for instruction {inst} as {allocation:?}");
             self.allocations.set_allocation(inst, op_id, allocation);
         }
@@ -507,6 +507,7 @@ where
     /// If the register is written to, it is spilled if this is the first write for the currently loaded slice.
     fn mark_and_spill(
         &mut self,
+        inst: InstId,
         reg: HostReg,
         operand: &OperandRequest,
     ) {
@@ -520,8 +521,14 @@ where
                 self.read_regs.remove(reg);
                 self.loaded_slices.remove(reg);
             }
-            OperandKind::Read | OperandKind::ReadReload => {
+            OperandKind::Read => {
                 self.read_regs.add(reg);
+            }
+            OperandKind::ReadReload => {
+                self.read_regs.add(reg);
+                // We need to mark the register as clobbered, since, although it is used as input, the value may
+                // be overwritten with some garbage value.
+                self.allocations.clobbers[inst].add(reg)
             }
         }
         self.lrus[reg.class()].poke(reg);
@@ -617,6 +624,7 @@ where
 
     fn alloc_operand(
         &mut self,
+        inst: InstId,
         operand: &OperandRequest,
     ) -> JITResult<Allocation> {
         trace_jit!("Written regs: {}", self.written_regs);
@@ -632,7 +640,7 @@ where
             self.alloc_unloaded_operand(operand)?
         };
         if let Allocation::Register(reg) = allocation {
-            self.mark_and_spill(reg, operand);
+            self.mark_and_spill(inst, reg, operand);
         }
         trace_jit!("Written regs: {}", self.written_regs);
         Ok(allocation)

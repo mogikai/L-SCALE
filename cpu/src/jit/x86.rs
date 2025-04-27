@@ -12,7 +12,6 @@ use crate::jit::api::{
     TlbMissHelper,
 };
 use dynasmrt::x64::X64Relocation;
-use memmap2::MmapOptions;
 use mogi_sleigh::spec::jir::values::{
     JIRSlice,
     JIRVarNode,
@@ -40,7 +39,6 @@ use crate::jit::x86::scaffolding::{
 use crate::jit::x86::x64emitter::{
     TlbMissCallback,
     X64AllocRequirements,
-    X64Emitter,
 };
 use mogi_utilities::index_map::{
     MapKey,
@@ -82,13 +80,23 @@ use crate::jit::regalloc::{
     RegAllocHostConstraints,
     RegisterAllocator,
 };
-use crate::jit::trace_jit;
 use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::registers::xmm::XMMRegister;
 use assemble;
 use mogi_mem::mmu::MogiMMU;
 use mogi_sleigh::lifter::BlockEndingOpDecider;
 use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
+
+#[derive(Default, Clone, Copy)]
+pub enum CustomOpImplKind {
+    #[default]
+    Unimpl,
+    BlockEnding,
+    BinaryFastImpl64(extern "sysv64" fn(u64, u64) -> u64),
+    UnaryFastImpl64(extern "sysv64" fn(u64) -> u64),
+    FastImplSlice(extern "sysv64" fn(&mut [u8], &[u8], &[u8])),
+    Callback(CustomOpCallback<X86TaskContext>),
+}
 
 pub struct X86MogiJit {
     code_buffer: CodeBuffer<X64Relocation>,
@@ -110,19 +118,16 @@ pub struct X86MogiJit {
     /// Since the pointer is unmovable as lang as the jit exists, and the block cache is deleted
     /// along with the jit, this is safe to access.
     global_context: Pin<Box<X86GlobalContext>>,
-
-    extra_emitter_info: X86ExtraEmitterInfo,
 }
 
 #[derive(Debug, Default)]
 struct X86ExtraEmitterInfo {
-    /// A set of custom op ids that end a block.
     block_ending_custom_ops: SecondarySet<CustomOpId>,
 }
 
 /// The global jit context. Each task context contains a pointer to this context.
 pub struct X86GlobalContext {
-    custom_op_impls: SecondaryMap<CustomOpId, Option<CustomOpCallback<X86TaskContext>>>,
+    custom_op_impls: SecondaryMap<CustomOpId, CustomOpImplKind>,
     tlb_miss_read_callback: Option<TlbMissCallback<X86TaskContext>>,
     tlb_miss_write_callback: Option<TlbMissCallback<X86TaskContext>>,
 }
@@ -133,11 +138,11 @@ pub struct X86GlobalContext {
 /// TODO: We might need to compact the spaces in the spec, since they contain a lot of
 ///       unused areas. We could then possibly reduce the size to one or two pages.
 #[derive(Debug)]
-pub struct Space([u8; 0x3000]);
+pub struct Space([u8; 0x2000]);
 
 impl Space {
     fn new() -> Self {
-        Self([0x41; 0x3000])
+        Self([0x41; 0x2000])
     }
 
     /// Get a reference to the data referred to by the provided slice.
@@ -202,7 +207,6 @@ impl X86MogiJit {
             jit_prelude: prelude,
             jit_epilogue_block: epilogue_block,
             global_context: Box::pin(X86GlobalContext::default()),
-            extra_emitter_info: Default::default(),
         }
     }
 }
@@ -212,9 +216,11 @@ impl BlockEndingOpDecider for X86MogiJit {
         &self,
         custom_op_id: CustomOpId,
     ) -> bool {
-        self.extra_emitter_info
-            .block_ending_custom_ops
-            .contains(custom_op_id)
+        self.global_context
+            .custom_op_impls
+            .get(&custom_op_id)
+            .map(|impl_kind| matches!(impl_kind, CustomOpImplKind::BlockEnding))
+            .unwrap_or(false)
     }
 }
 
@@ -228,6 +234,32 @@ impl MogiJit for X86MogiJit {
         )
     }
 
+    fn register_binary_custom_op_fast_impl_64(
+        &mut self,
+        op_id: CustomOpId,
+        fn_impl: extern "sysv64" fn(u64, u64) -> u64,
+    ) -> JITResult {
+        self.global_context.custom_op_impls[op_id] = CustomOpImplKind::BinaryFastImpl64(fn_impl);
+        Ok(())
+    }
+
+    fn register_unary_custom_op_fast_impl_64(
+        &mut self,
+        op_id: CustomOpId,
+        fn_impl: extern "sysv64" fn(u64) -> u64,
+    ) -> JITResult {
+        self.global_context.custom_op_impls[op_id] = CustomOpImplKind::UnaryFastImpl64(fn_impl);
+        Ok(())
+    }
+
+    fn register_custom_op_fast_impl_slice(
+        &mut self,
+        op_id: CustomOpId,
+        fn_impl: extern "sysv64" fn(&mut [u8], &[u8], &[u8]),
+    ) -> JITResult {
+        todo!()
+    }
+
     fn register_custom_op_impl<CB>(
         &mut self,
         op_id: CustomOpId,
@@ -236,7 +268,7 @@ impl MogiJit for X86MogiJit {
     where
         CB: CustomOpImpl<Self::RuntimeContext>,
     {
-        self.global_context.custom_op_impls[op_id] = Some(CustomOpCallback::new(callback));
+        self.global_context.custom_op_impls[op_id] = CustomOpImplKind::Callback(CustomOpCallback::new(callback));
         Ok(())
     }
 
@@ -244,7 +276,7 @@ impl MogiJit for X86MogiJit {
         &mut self,
         op_id: CustomOpId,
     ) -> JITResult {
-        self.extra_emitter_info.block_ending_custom_ops.add(op_id);
+        self.global_context.custom_op_impls[op_id] = CustomOpImplKind::BlockEnding;
         Ok(())
     }
 
@@ -311,7 +343,7 @@ impl MogiJit for X86MogiJit {
         // into the provided `compiled_block` for each instruction in the provided `target_block`.
         let spec = self.processor_specification.borrow();
         // TODO: Maybe it would make sense to reuse the alloc requirements buffers to avoid allocations?
-        let alloc_requirements = X64AllocRequirements::new(&spec, target_block);
+        let alloc_requirements = X64AllocRequirements::new(&spec, &self.global_context.custom_op_impls, target_block);
 
         let preferred_registers = HostRegSet::empty()
             .with(GPRegister::AX.into_host_reg())
@@ -362,14 +394,8 @@ impl MogiJit for X86MogiJit {
         let allocations = regalloc.run()?;
 
         // And finally we emit the instructions, using the allocations we just calculated.
-        let emitter = alloc_requirements.make_emitter(
-            &allocations,
-            &self.global_context,
-            &spec,
-            compiled_block,
-            target_block,
-            &self.extra_emitter_info,
-        );
+        let emitter =
+            alloc_requirements.make_emitter(&allocations, &self.global_context, &spec, compiled_block, target_block);
         emitter.emit_block()?;
         self.code_buffer.write_block(target_block.start())?;
         Ok(())
