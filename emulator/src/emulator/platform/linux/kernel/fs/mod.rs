@@ -337,8 +337,8 @@ where
         size: u64,
     ) -> SyscallResult {
         let mut memory = sys_component_mut!(self, memory);
-        let mut cpu = sys_component_mut!(self, cpu);
-        let mut memory = memory.accessor(&mut cpu, self.task_id);
+        let mut mmu = sys_component_mut!(self, mmu);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
         let buf_content = read_osstring!(memory, buf)?;
         let cwd_fd = sys_component_mut!(self, fd_map).get_cwd(&self.task_id)?;
         let cwd_path = cwd_fd.data.file.unwrap().path.unwrap();
@@ -350,7 +350,6 @@ where
         }
     }
 
-<<<<<<< HEAD
     pub fn lseek(
         &self,
         fd: FD,
@@ -382,9 +381,9 @@ where
         path: EVAddr,
     ) -> SyscallResult {
         let mut memory = sys_component_mut!(self, memory);
-        let mut cpu = sys_component_mut!(self, cpu);
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut filesystem = sys_component_mut!(self, filesystem);
-        let memory = memory.accessor(&mut cpu, self.task_id);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
         let mut fd_map = sys_component_mut!(self, fd_map);
 
         let pathname = read_osstring!(memory, path)?;

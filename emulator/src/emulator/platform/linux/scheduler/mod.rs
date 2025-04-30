@@ -75,7 +75,7 @@ where
         binary_args: &[&str],
         binary_env: &[&str],
         binary_cwd: PathBuf,
-    ) -> Result<LinuxX86Scheduler<'a, CpuT, TcpT, Endianness>, SchedulerError> {
+    ) -> Result<LinuxX86Scheduler<'a, CpuT, MmuT, TcpT, Endianness>, SchedulerError> {
         let mut sched = LinuxX86Scheduler {
             system,
             phantom: Default::default(),
