@@ -1,4 +1,5 @@
-use std::cell::RefCell;
+use std::any::Any;
+use std::cell::{RefCell, RefMut};
 use std::fmt::{
     Debug,
     Formatter,
@@ -107,6 +108,8 @@ pub(super) use {
     sys_component,
     sys_component_mut,
 };
+use crate::emulator::system::hardware::unicorn::UCWrapper;
+use crate::emulator::system::memory::Memory;
 
 /// The kernel task object does not contain any state.
 /// Any state must be stored in the system struct that
@@ -335,9 +338,9 @@ where
         binary_args: &[&str],
         binary_env: &[&str],
     ) -> Result<(), LinuxKernelError> {
-        let mut cpu = sys_component_mut!(self, cpu);
-        // TODO: This does not work with unicorn, since for unicorn cpu == mmu
-        let mut mmu = sys_component_mut!(self, mmu);
+        // TODO: Replace this with a safe version using refcells
+        let mut cpu = unsafe { self.system.cpu.as_ptr().as_mut_unchecked() };
+        let mut mmu = unsafe { self.system.mmu.as_ptr().as_mut_unchecked() };
         let mut memory = sys_component_mut!(self, memory);
         let mut argv_strings = vec![binary_path.to_str().unwrap()];
         argv_strings.extend_from_slice(binary_args);
@@ -472,9 +475,9 @@ where
         code: u64,
         addr: EVAddr,
     ) -> SyscallResult {
-        let mut cpu = sys_component_mut!(self, cpu);
-        // TODO: This does not work with unicorn, since in unicorn cpu == mmu
-        let mut mmu = sys_component_mut!(self, mmu);
+        // TODO: Replace this with a safe version using refcells
+        let mut cpu = unsafe { self.system.cpu.as_ptr().as_mut_unchecked() };
+        let mut mmu = unsafe { self.system.mmu.as_ptr().as_mut_unchecked() };
         let mut memory = sys_component_mut!(self, memory);
         let mut memory = memory.accessor(&mut mmu, self.task_id);
 

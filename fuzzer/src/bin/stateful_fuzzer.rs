@@ -34,6 +34,7 @@ use tracing_subscriber::{
     EnvFilter,
     fmt,
 };
+use mogi_emulator::emulator::system::hardware::unicorn::UCWrapper;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -61,8 +62,7 @@ fn main() {
         .with(EnvFilter::from_env("FUZE_LOG"))
         .init();
     let fuzzer_args = Args::parse();
-    // let cpu = UCWrapper::new();
-    let mmu = Rc::new(RefCell::new(MogiMMU::new()));
+    /*let mmu = Rc::new(RefCell::new(MogiMMU::new()));
     let cpu = Rc::new(RefCell::new(
         CpuBuilder::new(mmu.clone())
             .optimize_block(false)
@@ -75,7 +75,9 @@ fn main() {
             )
             .build()
             .unwrap(),
-    ));
+    ));*/
+    let cpu = UCWrapper::new();
+    let mmu = cpu.clone();
     let task_manager = TaskManager::new();
     let filesystem = Filesystem::from_disk(1_073_741_824, Path::new(&fuzzer_args.system_root)).unwrap();
     let memory = Memory::<LittleEndian>::new();
@@ -85,8 +87,8 @@ fn main() {
     let tcp = Rc::new(RefCell::new(TCP::new()));
     let stdio = Rc::new(RefCell::new(Stdio::new(true)));
     let system = System::new(
-        cpu.clone(),
-        mmu.clone(),
+        cpu,
+        mmu,
         memory,
         filesystem,
         clock,

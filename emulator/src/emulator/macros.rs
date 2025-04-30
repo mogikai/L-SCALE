@@ -1,5 +1,5 @@
 macro_rules! push_stack {
-    ($accessor:expr, $cpu:ident, $data:expr, $reg:expr) => {{
+    ($accessor:expr, $cpu:expr, $data:expr, $reg:expr) => {{
         use crate::emulator::system::memory::rw_interface::DirectMemoryWrite;
         $cpu.reg_read($reg)
             .map_err(|e| GenericError::from(e))

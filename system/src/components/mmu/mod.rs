@@ -8,15 +8,14 @@ use mogi_utilities::addresses::{
 };
 use mogi_utilities::error::memory::MemoryError;
 use std::ops::BitAnd;
-
 use bitflags::bitflags;
-
+use crate::components::mmu::tlb_entry::TLBEntry;
 // TODO: Extract memory error from utilities into system crate?
 
 pub type MmuResult<T> = Result<T, MemoryError>;
 
 // can this be simplified?
-pub type PageFaultCallback = Box<dyn FnMut(EVAddr, MemoryAction) -> Option<(EVAddr, EPAddr, Permission)>>;
+pub type PageFaultCallback = Box<dyn FnMut(EVAddr, MemoryAction) -> Option<TLBEntry>>;
 
 /// This trait represents a barebones abstraction of physical as well as virtual memory mapping
 /// and read/write accessing. Through it, memory can be read using `EVAddr` as well as `EPAddr` and

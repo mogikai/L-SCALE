@@ -44,6 +44,7 @@ where
             }),
         );
 
+        drop(cpu);
         let mut mmu = self.system.mmu.borrow_mut();
         let vtlb_memory = self.system.memory.clone();
         let vtlb_task_manager = self.system.task_manager.clone();
@@ -57,10 +58,7 @@ where
                 .borrow_mut()
                 .translate_vaddr(current_task.task_id(), addr)
                 .ok()
-                .and_then(|mapping| {
-                    // TODO COW (find out if mapping did exist and match permissions)
-                    Some((addr, mapping.physical_address, mapping.permissions))
-                })
+                // TODO COW (find out if mapping did exist and match permissions)
         }))
         .map_err(|_| SchedulerError::CPUError(CPUError::Unknown))?;
 

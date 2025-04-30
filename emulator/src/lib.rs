@@ -9,6 +9,7 @@
 #![feature(min_specialization)]
 #![feature(error_generic_member_access)]
 #![feature(try_trait_v2)]
+#![feature(ptr_as_ref_unchecked)]
 #![allow(dead_code)]
 #![allow(unused)]
 #![allow(unused_variables)]

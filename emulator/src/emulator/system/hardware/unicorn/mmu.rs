@@ -1,10 +1,15 @@
+use crate::emulator::system::hardware::unicorn::cpu::cpu_error_from_uc_error;
+use crate::emulator::system::hardware::unicorn::hooks::mem_type_to_memory_action;
+use crate::emulator::system::hardware::unicorn::UCWrapper;
+use mogi_system::components::cpu::hooks::Hooks;
+use mogi_system::components::mmu::tlb_entry::TLBEntry;
 use mogi_system::components::mmu::{
-    MMU,
     MemoryAction,
     MmuResult,
     PageFaultCallback,
     PageMetaInfo,
     Permission,
+    MMU,
     TLB,
 };
 use mogi_utilities::addresses::{
@@ -13,14 +18,18 @@ use mogi_utilities::addresses::{
     HVAddr,
 };
 use mogi_utilities::error::memory::MemoryError;
+use std::cell::RefCell;
+use std::rc::Rc;
 use tracing::trace;
-use unicorn_engine::unicorn_const as uc_const;
 use unicorn_engine::unicorn_const::{
-    MemType,
     uc_error,
+    MemType,
 };
-
-use crate::emulator::system::hardware::unicorn::UCWrapper;
+use unicorn_engine::{
+    unicorn_const as uc_const,
+    HookType,
+    Unicorn,
+};
 
 #[derive(Debug)]
 pub struct DummyData;
@@ -62,7 +71,9 @@ impl MMU for UCWrapper<'_> {
     }
 
     fn flush_all(&mut self) -> MmuResult<()> {
-        todo!()
+        self.uc_mut()
+            .ctl_flush_tlb()
+            .map_err(|_| MemoryError::Unknown)
     }
 
     fn set_page_table_entry(
@@ -86,7 +97,9 @@ impl MMU for UCWrapper<'_> {
         addr: EPAddr,
         buffer: &mut [u8],
     ) -> MmuResult<()> {
-        todo!()
+        self.uc_mut()
+            .mem_read(addr.into(), buffer)
+            .map_err(|_| MemoryError::Unknown)
     }
 
     fn write_physical(
@@ -94,7 +107,9 @@ impl MMU for UCWrapper<'_> {
         addr: EPAddr,
         data: &[u8],
     ) -> MmuResult<()> {
-        todo!()
+        self.uc_mut()
+            .mem_write(addr.into(), data)
+            .map_err(|_| MemoryError::Unknown)
     }
 
     fn fetch_physical(
@@ -134,7 +149,10 @@ impl MMU for UCWrapper<'_> {
         addr: EPAddr,
         size: usize,
     ) -> MmuResult<()> {
-        todo!()
+        Ok(self
+            .uc_mut()
+            .mem_map(addr.into(), size, unicorn_engine::Permission::all())
+            .map_err(|_| MemoryError::Unknown)?)
     }
 
     fn free_physical(
@@ -147,9 +165,11 @@ impl MMU for UCWrapper<'_> {
 
     fn set_page_fault_callback(
         &mut self,
-        callback: PageFaultCallback, // TODO
+        mut callback: PageFaultCallback, // TODO
     ) -> MmuResult<()> {
-        todo!()
+        let trampoline = move |uc: &mut UCWrapper<'_>, addr, action| callback(addr, action);
+        self.add_vtlb_hook(Box::new(trampoline));
+        Ok(())
     }
 
     unsafe fn populate_tlb<T>(

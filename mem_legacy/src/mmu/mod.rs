@@ -34,6 +34,7 @@ use std::fmt::{
 };
 use std::rc::Rc;
 use tracing::debug;
+use crate::tlb::entry::TLBEntry;
 
 pub type MemResult<T> = Result<T, MemoryError>;
 
@@ -123,8 +124,8 @@ impl MogiMMU {
         self.memory_context.page_table.translate(addr).or_else(|_| {
             let callback = self.page_fault_callback.clone();
             let mut callback = callback.borrow_mut();
-            if let Some((addr, paddr, perms)) = callback(addr, action) {
-                self.set_page_table_entry(addr, paddr, perms)?;
+            if let Some(tlb_entry) = callback(addr, action) {
+                self.set_page_table_entry(addr, tlb_entry.physical_address, tlb_entry.permissions)?;
             }
             self.memory_context.page_table.translate(addr)
         })
@@ -143,8 +144,8 @@ impl MogiMMU {
             .or_else(|_| {
                 let callback = self.page_fault_callback.clone();
                 let mut callback = callback.borrow_mut();
-                if let Some((addr, paddr, perms)) = callback(addr, action) {
-                    self.set_page_table_entry(addr, paddr, perms)?;
+                if let Some(tlb_entry) = callback(addr, action) {
+                    self.set_page_table_entry(addr, tlb_entry.physical_address, tlb_entry.permissions)?;
                 }
                 self.memory_context.page_table.translate(addr)
             })?;

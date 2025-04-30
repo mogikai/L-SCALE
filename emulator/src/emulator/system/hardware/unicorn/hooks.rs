@@ -109,7 +109,7 @@ fn transform_tlb_entry_to_uc_tlb_entry(value: TLBEntry) -> TlbEntry {
     }
 }
 
-fn mem_type_to_memory_action(memtype: MemType) -> MemoryAction {
+pub fn mem_type_to_memory_action(memtype: MemType) -> MemoryAction {
     match memtype {
         MemType::READ => MemoryAction::READ,
         MemType::WRITE => MemoryAction::WRITE,
