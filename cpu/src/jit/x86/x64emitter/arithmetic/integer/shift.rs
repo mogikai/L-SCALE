@@ -40,6 +40,7 @@ impl X64AllocRequirements {
         shift: JIRValue,
     ) {
         debug_assert_eq!(output.size(), input.size());
+
         match (input, shift) {
             (JIRValue::Const(_), JIRValue::Const(_)) => {
                 // TODO: delegate to copy?
@@ -93,11 +94,11 @@ impl X64Emitter<'_> {
                     // Shift the lower part. Shift amount is masked, such that shifts are mod 64 bits
                     // i.e. shifting 65 bits is equivalent to shifting 1 bit.
                     ; shl Rq(out_reg_lower.hw_enc()), cl
+                    ; xor Rq(scratch.hw_enc()), Rq(scratch.hw_enc())
                     // Check if shift > 64. This is the case when bit 6 is set.
                     ; test cl, 0b1_000_000
                     // If bit 6 is set and thus shift > 64 we want to copy lower into upper.
                     ; cmovnz Rq(out_reg_upper.hw_enc()), Rq(out_reg_lower.hw_enc())
-                    ; xor Rq(scratch.hw_enc()), Rq(scratch.hw_enc())
                     // And then also zero lower.
                     ; cmovnz Rq(out_reg_lower.hw_enc()), Rq(scratch.hw_enc())
                 ),
@@ -133,7 +134,7 @@ impl X64Emitter<'_> {
         shift: JIRValue,
     ) -> JITResult {
         assert_eq!(output.size(), input.size());
-        if output.size() > 8 {
+        if output.size() > 16 {
             todo!("Sizes greater than 8 are currently unsupported for shift operations.")
         }
         trace_jit!("Emitting shr {output:?} = {input:?} >> {shift:?}");
@@ -151,6 +152,20 @@ impl X64Emitter<'_> {
                 ..=8 => assemble!(asm;
                     ; shr Rq(out_reg_lower.hw_enc()), cl
                 ),
+                16 => assemble!(asm;
+                    // Shift the lower part stealing from upper
+                    ; shrd Rq(out_reg_lower.hw_enc()), Rq(out_reg_upper.hw_enc()), cl
+                    // Shift the upper part. Shift amount is masked, such that shifts are mod 64 bits
+                    // i.e. shifting 65 bits is equivalent to shifting 1 bit.
+                    ; shr Rq(out_reg_upper.hw_enc()), cl
+                    ; xor Rq(scratch.hw_enc()), Rq(scratch.hw_enc())
+                    // Check if shift > 64. This is the case when bit 6 is set.
+                    ; test cl, 0b1_000_000
+                    // If bit 6 is set and thus shift > 64 we want to copy upper into lower
+                    ; cmovnz Rq(out_reg_lower.hw_enc()), Rq(out_reg_upper.hw_enc())
+                    // And then also zero upper.
+                    ; cmovnz Rq(out_reg_upper.hw_enc()), Rq(scratch.hw_enc())
+                ),
                 _ => todo!(),
             },
             |asm, scratch, out_reg_lower, out_reg_upper, size, imm| match size {
@@ -160,6 +175,15 @@ impl X64Emitter<'_> {
                 ),
                 ..=8 => assemble!(asm;
                     ; shr Rq(out_reg_lower.hw_enc()), imm
+                ),
+                16 if imm < 64 => assemble!(asm;
+                    ; shrd Rq(out_reg_lower.hw_enc()), Rq(out_reg_upper.hw_enc()), imm
+                    ; shr Rq(out_reg_upper.hw_enc()), imm
+                ),
+                16 if imm >= 64 => assemble!(asm;
+                    ; mov Rq(out_reg_lower.hw_enc()), Rq(out_reg_upper.hw_enc())
+                    ; shr Rq(out_reg_lower.hw_enc()), imm % 64 // Shift modulo 64 because we already performed 64 bit shift by moving lower into upper
+                    ; xor Rq(out_reg_upper.hw_enc()), Rq(out_reg_upper.hw_enc())
                 ),
                 _ => todo!(),
             },

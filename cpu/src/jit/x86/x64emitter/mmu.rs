@@ -54,7 +54,8 @@ impl X64AllocRequirements {
         _space_id: SpaceId,
     ) {
         // We always need the output
-        requirement.add_request(OperandRequest::int_write_any(output));
+        Self::require_large_int_write_any(requirement, output);
+
         // The address might be in a slice, so request it if it is not const.
         match addr {
             JIRValue::Slice(addr) => {
@@ -100,7 +101,12 @@ impl X64Emitter<'_> {
             return self.load_const(output_reg, addr);
         }
         // Address is the second operand
-        let addr_index = 1;
+        let addr_index = match output.size() {
+            ..=8 => 1,
+            16 => 2,
+            size => todo!("Unsupported size {size}"),
+        };
+
         let addr_reg = self.emit_tlb_lookup(inst, addr_index, addr, space_id, output.size(), AccessType::Load)?;
         self.emit_host_load(inst, addr_reg, output)
     }
@@ -287,10 +293,9 @@ impl X64Emitter<'_> {
         output: JIRSlice,
     ) -> JITResult {
         // TODO: Make sure the load does not cross page boundaries.
-        let Allocation::Register(out_reg) = self.allocations.get_allocation(inst, 0) else {
-            todo!()
-        };
+        let out_reg = reg!(self.allocations, inst, 0);
         let out_reg = out_reg.hw_enc();
+
         match output.size() {
             1 => {
                 assemble!(self.block.assembler();
@@ -312,9 +317,16 @@ impl X64Emitter<'_> {
                     ; mov Rq(out_reg), QWORD [Rq(addr_reg.hw_enc())]
                 );
             }
-            _ => {
-                todo!()
+            16 => {
+                let out_reg_upper = reg!(self.allocations, inst, 1);
+                let out_reg_upper = out_reg_upper.hw_enc();
+
+                assemble!(self.block.assembler();
+                ; mov Rq(out_reg), QWORD [Rq(addr_reg.hw_enc())]
+                ; mov Rq(out_reg_upper), QWORD [Rq(addr_reg.hw_enc()) + 0x8]
+                );
             }
+            size => todo!("Unsupported load size {size}"),
         }
         Ok(())
     }

@@ -31,9 +31,10 @@ impl X64AllocRequirements {
         target: JIRSlice,
         source: impl Into<JIRValue>,
     ) {
-        requirement.add_request(OperandRequest::int_write_any(target));
+        Self::require_large_int_write_any(requirement, target);
+
         if let JIRValue::Slice(source) = source.into() {
-            requirement.add_request(OperandRequest::int_read_any(source));
+            Self::require_large_int_read_any(requirement, source);
         }
     }
 }
@@ -51,13 +52,35 @@ impl X64Emitter<'_> {
         let size = target.size();
         debug_assert_eq!(size, source.size());
 
-        let target_reg = reg!(self.allocations, inst, 0);
-        match source {
-            JIRValue::Slice(source) => {
-                let source = reg!(self.allocations, inst, 1);
-                self.copy_reg(target_reg, source, size, CopyExtendMode::None)
+        match size {
+            ..=8 => {
+                let target_reg = reg!(self.allocations, inst, 0);
+                match source {
+                    JIRValue::Slice(source) => {
+                        let source = reg!(self.allocations, inst, 1);
+                        self.copy_reg(target_reg, source, size, CopyExtendMode::None)
+                    }
+                    JIRValue::Const(source) => self.load_const(target_reg, source),
+                }
             }
-            JIRValue::Const(source) => self.load_const(target_reg, source),
+            16 => {
+                let target_reg_lower = reg!(self.allocations, inst, 0);
+                let target_reg_upper = reg!(self.allocations, inst, 1);
+                match source {
+                    JIRValue::Slice(source) => {
+                        let source_lower = reg!(self.allocations, inst, 2);
+                        let source_upper = reg!(self.allocations, inst, 3);
+                        self.copy_reg(target_reg_lower, source_lower, 8, CopyExtendMode::None)?;
+                        self.copy_reg(target_reg_upper, source_upper, 8, CopyExtendMode::None)
+                    }
+                    JIRValue::Const(source) => {
+                        let (source_lower, source_upper) = source.split(8);
+                        self.load_const(target_reg_lower, source_lower)?;
+                        self.load_const(target_reg_upper, source_upper)
+                    }
+                }
+            }
+            size => todo!("Unsupported size {size}"),
         }
     }
 

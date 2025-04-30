@@ -29,8 +29,8 @@ impl X64AllocRequirements {
     ) {
         match input {
             JIRValue::Slice(input) => {
-                requirement.add_request(OperandRequest::int_write_any(output));
-                requirement.add_request(OperandRequest::int_read_any(input));
+                Self::require_large_int_write_any(requirement, output);
+                Self::require_large_int_read_any(requirement, input);
             }
             JIRValue::Const(input) => {
                 Self::copy_requirements(requirement, output, input);
@@ -49,24 +49,55 @@ impl X64Emitter<'_> {
         output: JIRSlice,
         input: JIRValue,
     ) -> JITResult {
-        match input {
-            JIRValue::Const(value) => self.emit_copy(
-                inst,
-                output,
-                JIRConst::new((value.value() as i128).wrapping_neg() as u128, value.size()),
-            )?,
-            JIRValue::Slice(slice) => {
-                // Copy into output, since neg uses the same register for input and output.
-                // If output==input this is a no-op.
-                let output_reg = reg!(self.allocations, inst, 0);
-                let input_reg = reg!(self.allocations, inst, 1);
+        let size = output.size();
 
-                self.copy_reg(output_reg, input_reg, output.size(), CopyExtendMode::None)?;
-                assemble!(self.block.assembler();
-                    ; neg Rq(output_reg.hw_enc())
-                );
+        match input {
+            JIRValue::Const(value) => {
+                self.emit_copy(inst, output, JIRConst::new((value.value() as i128).wrapping_neg() as u128, size))?;
+            }
+            JIRValue::Slice(input) => {
+                match size {
+                    ..=8 => {
+                        // Copy into output, since neg uses the same register for input and output.
+                        // If output==input this is a no-op.
+                        let output_reg = reg!(self.allocations, inst, 0);
+                        let input_reg = reg!(self.allocations, inst, 1);
+                        self.copy_reg(output_reg, input_reg, output.size(), CopyExtendMode::None)?;
+                        assemble!(self.block.assembler();
+                            ; neg Rq(output_reg.hw_enc())
+                        );
+                    }
+                    16 => {
+                        self.emit_negate_slice_128(inst, output, input)?;
+                    }
+                    size => todo!("Unsupported size {size}"),
+                }
             }
         }
+
+        Ok(())
+    }
+
+    fn emit_negate_slice_128(
+        &mut self,
+        inst: InstId,
+        output: JIRSlice,
+        input: JIRSlice,
+    ) -> JITResult {
+        let output_reg_lower = reg!(self.allocations, inst, 0);
+        let output_reg_upper = reg!(self.allocations, inst, 1);
+
+        let input_reg_lower = reg!(self.allocations, inst, 2);
+        let input_reg_upper = reg!(self.allocations, inst, 3);
+
+        self.copy_reg(output_reg_lower, input_reg_lower, 8, CopyExtendMode::None)?;
+        self.copy_reg(output_reg_upper, input_reg_upper, 8, CopyExtendMode::None)?;
+
+        assemble!(self.block.assembler();
+            ; neg Rq(output_reg_lower.hw_enc())
+            ; neg Rq(output_reg_upper.hw_enc())
+        );
+
         Ok(())
     }
 }

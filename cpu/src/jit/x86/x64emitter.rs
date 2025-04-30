@@ -101,6 +101,18 @@ pub struct X64Emitter<'a> {
     target_block: &'a TargetBasicBlock,
 }
 
+#[derive(Default)]
+pub(super) struct X64InstructionAllocRequirement {
+    /// Stores the range of consecutive operand requests in `operand_requests`.
+    pub(super) operand_range: Range<usize>,
+    /// The clobber registers.
+    pub(super) clobbers: HostRegSet,
+    /// Contains the number of required temp.
+    pub(super) required_temps: TempRequest,
+    /// Tracks whether this instruction clears temporary allocations.
+    pub(super) clear_temporary_allocations: bool,
+}
+
 /// This struct contains the data that is needed by the allocator.
 /// It is calculated ahead of time to avoid having the individual requests
 /// all over the place.
@@ -110,14 +122,7 @@ pub struct X64AllocRequirements {
     /// Each instruction has a consecutive slice of operands in this vec.
     /// The range is stored in `instruction_operand_ranges`
     operand_requests: Vec<OperandRequest>,
-
-    /// Stores the range of consecutive operand requests in `operand_requests` for each instruction.
-    instruction_operand_ranges: Vec<Range<usize>>,
-
-    /// The clobber registers for each instruction.
-    clobbers: Vec<HostRegSet>,
-    /// contains the number of temps each instruction requires.
-    required_temps: Vec<TempRequest>,
+    alloc_requirements: Vec<X64InstructionAllocRequirement>,
 }
 
 impl X64AllocRequirements {
@@ -129,10 +134,8 @@ impl X64AllocRequirements {
         let mut slf = Self {
             // Let's pessimistically allocate at least inst_count times two space.
             // This may need adjustment based on further testing.
-            operand_requests: Vec::with_capacity(target_block.instructions().len() * 2),
-            instruction_operand_ranges: Vec::with_capacity(target_block.instructions().len()),
-            clobbers: vec![HostRegSet::empty(); target_block.instructions().len()],
-            required_temps: vec![TempRequest::new(); target_block.instructions().len()],
+            operand_requests: Vec::with_capacity(target_block.instructions().len() * 3),
+            alloc_requirements: Vec::with_capacity(target_block.instructions().len()),
         };
         slf.calculate_inst_requirements(spec, custom_op_impls, target_block);
         slf
@@ -159,18 +162,12 @@ impl X64AllocRequirements {
         custom_op_impls: &SecondaryMap<CustomOpId, CustomOpImplKind>,
         inst: &JIRInstruction,
     ) {
-        let mut requirement = AllocRequirement::new(
-            inst_id,
-            &mut self.operand_requests,
-            &mut self.instruction_operand_ranges,
-            &mut self.clobbers,
-            &mut self.required_temps,
-        );
+        let mut requirement = AllocRequirement::new(inst_id, &mut self.operand_requests, &mut self.alloc_requirements);
         match inst {
             JIRInstruction::BlockStart(_) => {}
             JIRInstruction::BlockEnd(_) => {}
             JIRInstruction::InstructionStart(_) => {}
-            JIRInstruction::InstructionEnd(_) => {}
+            JIRInstruction::InstructionEnd(_) => requirement.set_clear_temps(),
             JIRInstruction::Copy(args) => Self::copy_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::Load { target, address, space } => {
                 Self::load_requirements(&mut requirement, *target, *address, *space)
@@ -387,21 +384,21 @@ impl EmitterAllocRequirements for X64AllocRequirements {
         &self,
         inst_id: InstId,
     ) -> HostRegSet {
-        self.clobbers[inst_id]
+        self.alloc_requirements[inst_id].clobbers
     }
 
     fn operands(
         &self,
         inst_id: InstId,
     ) -> OperandRequirements {
-        OperandRequirements::new(&self.operand_requests[self.instruction_operand_ranges[inst_id].clone()])
+        OperandRequirements::new(&self.operand_requests[self.alloc_requirements[inst_id].operand_range.clone()])
     }
 
     fn required_temps(
         &self,
         inst_id: InstId,
     ) -> TempRequest {
-        self.required_temps[inst_id]
+        self.alloc_requirements[inst_id].required_temps
     }
 
     fn total_opereands(&self) -> usize {

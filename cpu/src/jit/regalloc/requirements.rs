@@ -154,7 +154,7 @@ impl OperandRequest {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone)]
 pub struct TempRequest {
     requests: [u8; 3],
 }

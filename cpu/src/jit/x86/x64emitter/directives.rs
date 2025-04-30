@@ -334,7 +334,7 @@ where
     match (old_slice.size(), new_slice.size()) {
         (old_size, new_size) if old_size < new_size => {
             if new_size > 8 {
-                todo!("Unsupported size")
+                todo!("Unsupported size {new_size}")
             }
             // The already loaded slice is smaller, we can just load the additional contents.
             let to_load = new_size - old_size;
