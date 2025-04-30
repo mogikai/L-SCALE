@@ -1,8 +1,8 @@
 use crate::jit::x86::test::{
-    setup,
-    test_multiple_binary_instruction_generic,
+    get_reg_slice, setup, test_multiple_binary_instruction_generic
 };
 use mogi_sleigh::jinst;
+use mogi_sleigh::spec::jir::values::{JIRConst, JIRValue};
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;

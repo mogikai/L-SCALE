@@ -54,9 +54,9 @@ impl X64AllocRequirements {
         input_a: JIRValue,
     ) {
         match input_a {
-            JIRValue::Slice(jirslice) => {
-                requirement.add_request(OperandRequest::int_write_any(output));
-                requirement.add_request(OperandRequest::int_read_any(jirslice));
+            JIRValue::Slice(input) => {
+                Self::require_large_int_write_any(requirement, output);
+                Self::require_large_int_read_any(requirement, input);
             }
             JIRValue::Const(jirconst) => {
                 Self::copy_requirements(requirement, output, input_a);
@@ -333,25 +333,39 @@ impl X64Emitter<'_> {
         //       out = out OP b, where out does not have to be loaded first and we can just use the mem reference directly.
 
         match input_a {
-            JIRValue::Const(input_a) => {
+            JIRValue::Const(value) => {
                 // In the const case we can simply calculate the value ahead of time and move it into the output.
-                self.emit_copy(inst, output, JIRConst::new(!input_a.value(), input_a.size()))?;
+                self.emit_copy(inst, output, JIRConst::new(!value.value(), value.size()))?;
             }
-            JIRValue::Slice(input_a) => {
-                let Allocation::Register(output_reg) = self.allocations.get_allocation(inst, 0) else {
-                    todo!()
-                };
+            JIRValue::Slice(input) => match output.size() {
+                ..=8 => {
+                    let output_reg = reg!(self.allocations, inst, 0);
+                    let input_reg = reg!(self.allocations, inst, 1);
 
-                let Allocation::Register(input_a_reg) = self.allocations.get_allocation(inst, 1) else {
-                    todo!()
-                };
-
-                self.copy_reg(output_reg, input_a_reg, output.size(), CopyExtendMode::None)?;
-                assemble!(self.block.assembler();
+                    // Copy into output, since neg uses the same register for input and output
+                    self.copy_reg(output_reg, input_reg, output.size(), CopyExtendMode::None);
+                    assemble!(self.block.assembler();
                     ; not Rq(output_reg.hw_enc())
-                );
-            }
+                    );
+                }
+                16 => {
+                    let output_reg_lower = reg!(self.allocations, inst, 0);
+                    let output_reg_upper = reg!(self.allocations, inst, 1);
+                    let input_reg_lower = reg!(self.allocations, inst, 2);
+                    let input_reg_upper = reg!(self.allocations, inst, 3);
+
+                    // Copy into output, since neg uses the same register for input and output
+                    self.copy_reg(output_reg_lower, input_reg_lower, 8, CopyExtendMode::None);
+                    self.copy_reg(output_reg_upper, input_reg_upper, 8, CopyExtendMode::None);
+                    assemble!(self.block.assembler();
+                    ; not Rq(output_reg_lower.hw_enc())
+                    ; not Rq(output_reg_upper.hw_enc())
+                    );
+                }
+                size => todo!("Unsupported size {size}"),
+            },
         }
+
         Ok(())
     }
 }

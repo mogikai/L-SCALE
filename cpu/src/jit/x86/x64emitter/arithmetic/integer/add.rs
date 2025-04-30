@@ -112,13 +112,13 @@ impl X64Emitter<'_> {
         a: JIRSlice,
         b: u128,
     ) -> JITResult {
-        self.emit_add_sub_reg_const(inst, output, a, b, AddSub::Add)
+        self.emit_add_sub_slice_const(inst, output, a, b, AddSub::Add)
     }
 
     /// Emit instructions to add or subtract the provided constant value to the register `a`.
     /// Subtraction is done by adding the inverse element of the constant.
     #[inline]
-    pub(super) fn emit_add_sub_reg_const(
+    pub(super) fn emit_add_sub_slice_const(
         &mut self,
         inst: InstId,
         output: JIRSlice,

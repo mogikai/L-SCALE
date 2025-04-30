@@ -74,6 +74,7 @@ use std::ops::{
     Index,
     IndexMut,
 };
+use std::process::exit;
 use strum::EnumCount;
 
 #[derive(Debug)]
@@ -716,6 +717,11 @@ where
         new_slice: JIRSlice,
     ) {
         trace_jit!("Adjusting allocation of register {reg} from {old_slice} to {new_slice}");
+
+        if old_slice.size == 16 && new_slice.size == 16 {
+            exit(1);
+        }
+
         // After the instruction is finished, adjust the slice to the one that was previously expected.
         // (that is expected next when viewing in forward direction)
         self.allocations

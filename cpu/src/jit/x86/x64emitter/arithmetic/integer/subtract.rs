@@ -37,16 +37,13 @@ impl X64AllocRequirements {
             (JIRValue::Const(input_a), JIRValue::Const(input_b)) => {
                 Self::copy_requirements(requirement, output, sub_const(input_a, input_b));
             }
-            (JIRValue::Slice(input_a), JIRValue::Const(input_b)) => {
-                Self::add_slice_const_requirements(requirement, output, input_a, input_b)
-            }
-            (JIRValue::Const(input_a), JIRValue::Slice(input_b)) if output == input_b => {
-                requirement.add_request(OperandRequest::int_write_any(output));
-                requirement.add_request(OperandRequest::int_read_any(input_b));
-            }
-            (JIRValue::Const(input_a), JIRValue::Slice(input_b)) => {
-                requirement.add_request(OperandRequest::int_write_any(output));
-                requirement.add_request(OperandRequest::int_read_any(input_b));
+            (JIRValue::Slice(input_slice), JIRValue::Const(input_const))
+            | (JIRValue::Const(input_const), JIRValue::Slice(input_slice)) => {
+                Self::require_large_int_write_any(requirement, output);
+                Self::require_large_int_read_any(requirement, input_slice);
+
+                // const can be encoded as an immediate for sizes <= 4,
+                // so if size > 4 we use the scratch register, but nothing else
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) if input_a == input_b => {
                 // a - a = 0
@@ -78,15 +75,117 @@ impl X64Emitter<'_> {
                 self.emit_sub_const_const(inst, output, input_a, input_b)?;
             }
             (JIRValue::Slice(input_a), JIRValue::Const(input_b)) => {
-                self.emit_add_sub_reg_const(inst, output, input_a, input_b.value(), AddSub::Sub)?;
+                self.emit_sub_slice_const(inst, output, input_a, input_b)?;
             }
             (JIRValue::Const(input_a), JIRValue::Slice(input_b)) => {
-                self.emit_sub_const_reg(inst, output, input_a, input_b)?;
+                self.emit_sub_const_slice(inst, output, input_a, input_b)?;
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
                 self.emit_sub_slice_slice(inst, output, input_a, input_b)?;
             }
         }
+        Ok(())
+    }
+
+    #[inline]
+    fn emit_sub_slice_const(
+        &mut self,
+        inst: InstId,
+        output: JIRSlice,
+        input_a: JIRSlice,
+        input_b: JIRConst,
+    ) -> JITResult {
+        let size = output.size();
+        match size {
+            ..=8 => {
+                self.emit_sub_slice_const_64(inst, output, input_a, input_b, size)?;
+            }
+            16 => self.emit_sub_slice_const_128(inst, output, input_a, input_b)?,
+            size => todo!("Unsupported size {size}"),
+        }
+
+        Ok(())
+    }
+
+    #[inline]
+    fn emit_sub_slice_const_64(
+        &mut self,
+        inst: InstId,
+        output: JIRSlice,
+        input_a: JIRSlice,
+        input_b: JIRConst,
+        size: JIRSize,
+    ) -> JITResult {
+        let output_reg = reg!(self.allocations, inst, 0);
+        let input_a_reg = reg!(self.allocations, inst, 1);
+
+        match size {
+            1 => {
+                // input_b fits as byte displacement into LEA
+                let input_b_disp: i8 = -(input_b.value() as i8);
+
+                assemble!(self.block.assembler();
+                ; lea Rq(output_reg.hw_enc()), [BYTE Rq(input_a_reg.hw_enc()) + input_b_disp]
+                );
+            }
+            2..=4 => {
+                // input_b fits as regular displacement into LEA
+                let input_b_disp: i32 = -(input_b.value() as i32);
+
+                assemble!(self.block.assembler();
+                ; lea Rq(output_reg.hw_enc()), [Rq(input_a_reg.hw_enc()) + input_b_disp]
+                );
+            }
+            5..=8 => {
+                // input_b needs to be stored in a scratch register
+                let scratch_reg = self.allocations.scratch_register(RegClass::Int);
+                self.load_const(scratch_reg, input_b)?;
+
+                // store input_a into output and emit sub
+                self.copy_reg(output_reg, input_a_reg, size, CopyExtendMode::None);
+                assemble!(self.block.assembler();
+                ; sub Rq(output_reg.hw_enc()), Rq(scratch_reg.hw_enc())
+                );
+            }
+            size => unreachable!("We checked for this previously"),
+        }
+
+        Ok(())
+    }
+
+    fn emit_sub_slice_const_128(
+        &mut self,
+        inst: InstId,
+        output: JIRSlice,
+        input_a: JIRSlice,
+        input_b: JIRConst
+    ) -> JITResult {
+        let output_reg_lower = reg!(self.allocations, inst, 0);
+        let output_reg_upper = reg!(self.allocations, inst, 1);
+
+        let input_a_reg_lower = reg!(self.allocations, inst, 2);
+        let input_a_reg_upper = reg!(self.allocations, inst, 3);
+
+        // scratch reg will be used to hold the upper and lower parts of input_b
+        let scratch_reg = self.allocations.scratch_register(RegClass::Int);
+
+        self.copy_reg(output_reg_upper, input_a_reg_upper, 8, CopyExtendMode::None)?;
+        self.copy_reg(output_reg_lower, input_a_reg_lower, 8, CopyExtendMode::None)?;
+
+        let (input_b_lower, input_b_upper) = input_b.split(8);
+
+        // load const upper into scratch reg and subtract upper halves
+        self.load_const(scratch_reg, input_b_upper);
+        assemble!(self.block.assembler();
+            ; sub Rq(output_reg_upper.hw_enc()), Rq(scratch_reg.hw_enc())
+        );
+
+        // load const lower into scratch reg and subtract with borrow
+        self.load_const(scratch_reg, input_b_lower);
+        assemble!(self.block.assembler();
+            ; sbb Rq(output_reg_lower.hw_enc()), Rq(scratch_reg.hw_enc())
+        );
+
         Ok(())
     }
 
@@ -115,41 +214,54 @@ impl X64Emitter<'_> {
 
         match size {
             ..=8 => {
-                if input_a == input_b {
-                    // A-A = 0, so we can just zero out the output.
-                    return self.emit_copy(inst, output, JIRConst::new(0, size));
-                }
-                let output_reg = reg!(self.allocations, inst, 0);
-                let input_a_reg = reg!(self.allocations, inst, 1);
-                let input_b_reg = reg!(self.allocations, inst, 2);
-
-                if output_reg == input_b_reg {
-                    let scratch_reg = self.allocations.scratch_register(RegClass::Int);
-
-                    // Move output=input_b to a temporary register.
-                    self.copy_reg(scratch_reg, output_reg, output.size(), CopyExtendMode::None)?;
-                    // Move input_a to output
-                    self.copy_reg(output_reg, input_a_reg, input_a.size(), CopyExtendMode::None)?;
-                    // Get the output gp register.
-                    // Subtract input_b=output ,which is stored in the temporary register, from the output (output=input_a).
-                    assemble!(self.block.assembler();
-                        ; sub Rq(output_reg.hw_enc()), Rq(scratch_reg.hw_enc())
-                    );
-                } else {
-                    // Copy input_a into output. If output == input_a we can just load output.
-                    if output_reg != input_a_reg {
-                        self.copy_reg(output_reg, input_a_reg, input_a.size(), CopyExtendMode::None)?;
-                    };
-                    // We can just subtract from output
-                    assemble!(self.block.assembler();
-                        ; sub Rq(output_reg.hw_enc()), Rq(input_b_reg.hw_enc())
-                    );
-                }
+                self.emit_sub_slice_slice_64(inst, output, input_a, input_b, size)?;
             }
             16 => {
-                self.emit_sub_slice_slice_128(inst, output, input_a, input_b)?;
+                self.emit_sub_slice_slice_128(inst, output, input_a, input_b, size)?;
             }
             size => todo!("Unsupported size {size}"),
+        }
+
+        Ok(())
+    }
+
+    fn emit_sub_slice_slice_64(
+        &mut self,
+        inst: InstId,
+        output: JIRSlice,
+        input_a: JIRSlice,
+        input_b: JIRSlice,
+        size: JIRSize,
+    ) -> JITResult {
+        if input_a == input_b {
+            // A-A = 0, so we can just zero out the output.
+            return self.emit_copy(inst, output, JIRConst::new(0, size));
+        }
+        let output_reg = reg!(self.allocations, inst, 0);
+        let input_a_reg = reg!(self.allocations, inst, 1);
+        let input_b_reg = reg!(self.allocations, inst, 2);
+
+        if output_reg == input_b_reg {
+            let scratch_reg = self.allocations.scratch_register(RegClass::Int);
+
+            // Move output=input_b to a temporary register.
+            self.copy_reg(scratch_reg, output_reg, output.size(), CopyExtendMode::None)?;
+            // Move input_a to output
+            self.copy_reg(output_reg, input_a_reg, input_a.size(), CopyExtendMode::None)?;
+            // Get the output gp register.
+            // Subtract input_b=output ,which is stored in the temporary register, from the output (output=input_a).
+            assemble!(self.block.assembler();
+                ; sub Rq(output_reg.hw_enc()), Rq(scratch_reg.hw_enc())
+            );
+        } else {
+            // Copy input_a into output. If output == input_a we can just load output.
+            if output_reg != input_a_reg {
+                self.copy_reg(output_reg, input_a_reg, input_a.size(), CopyExtendMode::None)?;
+            };
+            // We can just subtract from output
+            assemble!(self.block.assembler();
+                ; sub Rq(output_reg.hw_enc()), Rq(input_b_reg.hw_enc())
+            );
         }
 
         Ok(())
@@ -161,7 +273,13 @@ impl X64Emitter<'_> {
         output: JIRSlice,
         input_a: JIRSlice,
         input_b: JIRSlice,
+        size: JIRSize,
     ) -> JITResult {
+        if input_a == input_b {
+            // A-A = 0, so we can just zero out the output.
+            return self.emit_copy(inst, output, JIRConst::new(0, size));
+        }
+
         let scratch_reg = self.allocations.scratch_register(RegClass::Int);
 
         let output_reg_lower = reg!(self.allocations, inst, 0);
@@ -207,7 +325,7 @@ impl X64Emitter<'_> {
     /// Emit instructions to subtract the provided [JIRSlice] `input_b` from the provided [JIRConst] `input_a`.
     /// The result is stored in the [JIRSlice] `output`.
     #[inline]
-    fn emit_sub_const_reg(
+    fn emit_sub_const_slice(
         &mut self,
         inst: InstId,
         output: JIRSlice,
@@ -216,6 +334,7 @@ impl X64Emitter<'_> {
     ) -> JITResult {
         let output_reg = reg!(self.allocations, inst, 0);
         let input_b_reg = reg!(self.allocations, inst, 1);
+
         if output_reg != input_b_reg {
             // If the output register does not appear on the rhs, we can use it to load the constant
             self.load_const(output_reg, input_a)?;
