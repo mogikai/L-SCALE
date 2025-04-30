@@ -429,7 +429,9 @@ where
         let mut jit = self.jit.borrow_mut();
         let mmu = self.mmu.borrow();
 
-        let mut target_addresses = vec![jit.instruction_pointer(&self.runtime_context)?];
+        let mut target_addresses = vec![];
+        add_target_address(&mut target_addresses, jit.instruction_pointer(&self.runtime_context)?, translation_limit);
+
         // TODO this should reside somewhere outside to prevent duplicate lifting
         // for multiple calls of translate
         let mut translated_block_count = 0usize;

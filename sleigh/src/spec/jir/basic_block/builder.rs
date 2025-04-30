@@ -28,6 +28,7 @@ use crate::spec::{
     SpaceId,
 };
 use mogi_utilities::addresses::EVAddr;
+use std::num::NonZeroU16;
 use std::rc::Rc;
 
 
@@ -99,7 +100,7 @@ impl TargetBasicBlockBuilder {
         &mut self,
         size: JIRSize,
     ) -> ProcessorSpecResult<JIRSlice> {
-        if self.target_block.temporaries.len() >= 255 {
+        if self.target_block.temporaries.len() >= (u16::MAX - 1).into() {
             todo!("No more temporaries available")
         }
         // TODO: Maybe it makes sense padding the varnodes to a specific byte boundary?
@@ -113,12 +114,12 @@ impl TargetBasicBlockBuilder {
             .unwrap_or(0)
             .try_into()
             .map_err(|_| ProcessorSpecificationError::OutOfTempSpace)?;
-        self.target_block.temporaries.insert(JIRVarNode {
+        self.target_block.temporaries.push(JIRVarNode {
             space_id: self.temp_space,
             offset: offset.into(),
             size,
         });
-        Ok(JIRSlice::new_temp(self.temp_space, temp_group as u8, offset, size))
+        Ok(JIRSlice::new_temp(self.temp_space, NonZeroU16::try_from(u16::try_from(temp_group + 1).expect("This can't overflow")).expect("This can't be zero"), offset, size))
     }
 
     /// Allocate a temporary of size `size` and load the contents at `address` in `space` to it.
@@ -177,6 +178,7 @@ impl TargetBasicBlockBuilder {
         self.target_block.fallthrough = fallthrough;
         self.target_block.branch_targets = branch_targets;
         self.target_block.target_inst_count += 1;
+        self.target_block.temporaries.clear();
         Ok(())
     }
 

@@ -332,6 +332,8 @@ impl MOIRConstructor {
             MOIROperation::Store(space) => jinst!(*[{*space}]{ input_a? } = { input_b? }),
             MOIROperation::GotoDirect(ty) => match ty {
                 MOIRGotoType::Call => {
+                    // TODO is this right? do we need to pass inst_next? control flow is kinda
+                    // wonky
                     jinst!(call {input_a?}, {resolver.inst_next().expect("There must be an instruction after the call")})
                 }
                 MOIRGotoType::Return => jinst!(return { input_a? }),

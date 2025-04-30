@@ -141,7 +141,7 @@ pub struct TargetBasicBlockInner {
     /// The temporaries are allocated such that they are sequential in the
     /// address space. This means allocating a new temporary should occur
     /// after the offset+length of the last temporary.
-    temporaries: PrimaryMap<JIRTempId, JIRVarNode>,
+    temporaries: Vec<JIRVarNode>,
     /// A list of predecessor blocks that refer to this basic block.
     // predecessors: Vec<EVAddr>,
     start: EVAddr,

@@ -24,6 +24,7 @@ use std::fs::{
     File,
     OpenOptions,
 };
+use std::num::NonZeroUsize;
 use std::path::{
     Path,
     PathBuf,
@@ -57,7 +58,8 @@ fn main() {
     // println!("{:?}", specification.list_global_varnode_strings());
 
     // MOV RAX, 0x1234
-    let testelf_content = std::fs::read(&PathBuf::from("./a.out")).unwrap();
+    // let testelf_content = std::fs::read(&PathBuf::from("./a.out")).unwrap();
+    let testelf_content = b"\x48\x0F\x44\xC3";
 
     let specification = Rc::new(RefCell::new(specification));
 
@@ -128,11 +130,13 @@ fn main() {
     // Set the instruction pointer to the address we want to start executing at.
     for i in 2..20 {
         *cpu.register_mut("RSP").unwrap() = stack_addr;
-        *cpu.register_mut("RIP").unwrap() = 0x1170u64;
+        // *cpu.register_mut("RIP").unwrap() = 0x1170u64;
+        *cpu.register_mut("RIP").unwrap() = 0x0u64;
         *cpu.register_mut("RDI").unwrap() = i as u64;
 
         // Now lets roll! (forever :>)
-        cpu.run(RunLimit::Address(0x11BCu64.into())).unwrap();
+        // cpu.run(RunLimit::Address(0x11BCu64.into())).unwrap();
+        cpu.run(RunLimit::InstructionCount(NonZeroUsize::try_from(1).unwrap())).unwrap();
         let eax: i32 = *cpu.register("EAX").unwrap();
         eprintln!("i = {}, eax = {:#?}", i, eax);
     }

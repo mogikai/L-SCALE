@@ -257,7 +257,7 @@ impl SleighCompiler {
             }
             SASTPCodeBranchTarget::Indirect(expr) => {
                 let target = self.atomize_expression(scope, instructions, None, expr)?;
-                instructions.push(moir_instruction!(if (cond) goto [target]))
+                instructions.push(moir_instruction!(if (cond) goto target))
             }
             SASTPCodeBranchTarget::Direct(expr) => {
                 let target = self.atomize_expression(scope, instructions, None, expr)?;
@@ -290,9 +290,9 @@ impl SleighCompiler {
             SASTPCodeBranchTarget::Indirect(expr) => {
                 let target = self.atomize_expression(scope, instructions, None, expr)?;
                 match branch_type {
-                    MOIRGotoType::Call => instructions.push(moir_instruction!(call[target])),
-                    MOIRGotoType::Return => instructions.push(moir_instruction!(return [target])),
-                    MOIRGotoType::Regular => instructions.push(moir_instruction!(goto[target])),
+                    MOIRGotoType::Call => instructions.push(moir_instruction!(call target)),
+                    MOIRGotoType::Return => instructions.push(moir_instruction!(return target)),
+                    MOIRGotoType::Regular => instructions.push(moir_instruction!(goto target)),
                 }
             }
             SASTPCodeBranchTarget::Direct(expr) => {
