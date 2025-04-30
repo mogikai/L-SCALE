@@ -115,8 +115,8 @@ impl MogiMMU {
             let callback = self.page_fault_callback.clone();
             // TODO: What to do about the callback. We cannot pass a mutable reference here.
             let mut callback = callback.borrow_mut();
-            if let Some((addr, paddr, perms)) = callback(addr, action) {
-                self._set_page_table_entry(addr, paddr, perms)?;
+            if let Some(tlb_entry) = callback(addr, action) {
+                self._set_page_table_entry(addr, tlb_entry.physical_address, tlb_entry.permissions)?;
             }
             self.memory_context.borrow().page_table.translate(addr)
         })
@@ -445,8 +445,7 @@ mod test {
     use crate::mmu::MogiMMU;
     use addr_align::Align;
     use mogi_system::components::mmu::{
-        MMU,
-        Permission,
+        tlb_entry::TLBEntry, Permission, MMU
     };
     use mogi_utilities::addresses::EPAddr;
 
@@ -457,7 +456,7 @@ mod test {
             .unwrap();
         // 1 to 1 mapping
         mmu.set_page_fault_callback(Box::new(|addr, action| {
-            Some((addr, EPAddr::from(u64::from(addr)), Permission::ALL))
+            Some(TLBEntry::new(addr, EPAddr::from(u64::from(addr)), Permission::ALL, PAGE_SIZE))
         }))
         .unwrap();
         mmu.write(0x8ff0u64.into(), &[b'A'; 8000]).unwrap();

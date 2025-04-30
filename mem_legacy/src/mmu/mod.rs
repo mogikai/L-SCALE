@@ -454,8 +454,7 @@ mod test {
     use crate::mmu::MogiMMU;
     use addr_align::Align;
     use mogi_system::components::mmu::{
-        MMU,
-        Permission,
+        tlb_entry::TLBEntry, Permission, MMU, TLB
     };
     use mogi_utilities::addresses::EPAddr;
 
@@ -466,7 +465,7 @@ mod test {
             .unwrap();
         // 1 to 1 mapping
         mmu.set_page_fault_callback(Box::new(|addr, action| {
-            Some((addr, EPAddr::from(u64::from(addr)), Permission::ALL))
+            Some(TLBEntry::new(addr, EPAddr::from(u64::from(addr)), Permission::ALL, PAGE_SIZE))
         }))
         .unwrap();
         mmu.write(0x8ff0u64.into(), &[b'A'; 8000]).unwrap();
