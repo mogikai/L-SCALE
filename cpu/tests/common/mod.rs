@@ -74,6 +74,11 @@ pub(crate) fn setup_with_bytes(bytes: &[u8]) -> (MogiCPU<X86MogiJit, MogiMMU>, R
             )
             .unwrap();
         }
+
+        // Map dead address
+        // TODO Permission currently sets physical page permission which is wrong
+        mmu.set_page_table_entry(0xFFFF_FFFF_D34D_0000u64.into(), 0x0u64.into(), Permission::ALL).unwrap();
+
         // And then write the instruction to the allocated memory.
         mmu.write(0x0u64.into(), &bytes[..]).unwrap();
     }

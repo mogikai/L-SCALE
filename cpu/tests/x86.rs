@@ -5,9 +5,17 @@ use mogi_cpu::new_cpu_trait::{
     CPU,
     RunLimit,
 };
-use mogi_system::components::mmu::MMU;
+use mogi_mem::PAGE_SIZE;
+use mogi_system::components::mmu::{
+    MMU,
+    Permission,
+};
 use mogi_utilities::addresses::EVAddr;
 use std::num::NonZeroUsize;
+use std::path::PathBuf;
+use tracing::level_filters::LevelFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use zerocopy::IntoBytes;
 
 mod common;
@@ -534,4 +542,293 @@ extern "C" fn stuff(
         sum = sum.wrapping_add(i);
     }
     sum
+}
+
+// tests from resources/test/executables/misc.c
+
+fn is_prime(i: u64) -> bool {
+    for j in 2..i {
+        if i % j == 0 {
+            return false;
+        }
+    }
+
+    true
+}
+
+#[test]
+fn test_misc_is_prime_o0() {
+    let mut misc_o0_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    misc_o0_path.push("resources/test/executables/misc_o0.o");
+
+    let instr = &std::fs::read(&misc_o0_path).unwrap()[0x40..0x92];
+    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+    let stack_addr = 0xffff_ffff_ffff_0ff0u64;
+
+    // write fake return value for translation limit
+    let stack_addr = stack_addr - 0x8;
+    mmu.borrow_mut()
+        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .unwrap();
+
+    for i in 2..100 {
+        let rax_expected = is_prime(i) as u64;
+
+        *cpu.register_mut("RIP").unwrap() = 0x0u64;
+        *cpu.register_mut("RSP").unwrap() = stack_addr;
+        *cpu.register_mut("RDI").unwrap() = i as u64;
+        cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
+            .unwrap();
+
+        let rax: u64 = *cpu.register("RAX").unwrap();
+        assert_eq!(rax, rax_expected);
+    }
+}
+
+#[test]
+fn test_misc_is_prime_o3() {
+    let mut misc_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    misc_o3_path.push("resources/test/executables/misc_o3.o");
+
+    let instr = &std::fs::read(&misc_o3_path).unwrap()[0x40..0x92];
+    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+    let stack_addr = 0xffff_ffff_ffff_0ff0u64;
+
+    // write fake return value for translation limit
+    let stack_addr = stack_addr - 0x8;
+    mmu.borrow_mut()
+        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .unwrap();
+
+    for i in 2..100 {
+        let rax_expected = is_prime(i) as u64;
+
+        *cpu.register_mut("RIP").unwrap() = 0x0u64;
+        *cpu.register_mut("RSP").unwrap() = stack_addr;
+        *cpu.register_mut("RDI").unwrap() = i as u64;
+        cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
+            .unwrap();
+
+        let rax: u64 = *cpu.register("RAX").unwrap();
+        assert_eq!(rax, rax_expected);
+    }
+}
+
+fn nth_fibonacci(n: u64) -> u64 {
+    if n < 2 {
+        return 1;
+    }
+
+    let mut a = 1;
+    let mut b = 1;
+    for _ in 0..n {
+        let sum = a + b;
+        a = b;
+        b = sum;
+    }
+
+    b
+}
+
+#[test]
+fn test_misc_nth_fibonacci_o0() {
+    let mut misc_o0_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    misc_o0_path.push("resources/test/executables/misc_o0.o");
+
+    let instr = &std::fs::read(&misc_o0_path).unwrap()[0xA0..0x10F];
+    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+    let stack_addr = 0xffff_ffff_ffff_0ff0u64;
+
+    // write fake return value for translation limit
+    let stack_addr = stack_addr - 0x8;
+    mmu.borrow_mut()
+        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .unwrap();
+
+    for i in 0..20 {
+        let rax_expected = nth_fibonacci(i);
+
+        *cpu.register_mut("RIP").unwrap() = 0x0u64;
+        *cpu.register_mut("RSP").unwrap() = stack_addr;
+        *cpu.register_mut("RDI").unwrap() = i as u64;
+        cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
+            .unwrap();
+
+        let rax: u64 = *cpu.register("RAX").unwrap();
+        assert_eq!(rax, rax_expected);
+    }
+}
+
+#[test]
+fn test_misc_nth_fibonacci_o3() {
+    let mut misc_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    misc_o3_path.push("resources/test/executables/misc_o3.o");
+
+    let instr = &std::fs::read(&misc_o3_path).unwrap()[0x90..0x102];
+    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+    let stack_addr = 0xffff_ffff_ffff_0ff0u64;
+
+    // write fake return value for translation limit
+    let stack_addr = stack_addr - 0x8;
+    mmu.borrow_mut()
+        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .unwrap();
+
+    for i in 0..20 {
+        let rax_expected = nth_fibonacci(i);
+
+        *cpu.register_mut("RIP").unwrap() = 0x0u64;
+        *cpu.register_mut("RSP").unwrap() = stack_addr;
+        *cpu.register_mut("RDI").unwrap() = i as u64;
+        cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
+            .unwrap();
+
+        let rax: u64 = *cpu.register("RAX").unwrap();
+        assert_eq!(rax, rax_expected);
+    }
+}
+
+#[test]
+fn test_misc_max_byte_o0() {
+    let mut misc_o0_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    misc_o0_path.push("resources/test/executables/misc_o0.o");
+
+    let instr = &std::fs::read(&misc_o0_path).unwrap()[0x110..0x16A];
+    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+    let stack_addr = 0xffff_ffff_ffff_0ff0u64;
+
+    // write fake return value for translation limit
+    let stack_addr = stack_addr - 0x8;
+    mmu.borrow_mut()
+        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .unwrap();
+
+    // write input to memory
+    let bytes_addr = 0xFFFF_FFFF_FF00_0000u64;
+    let bytes = [
+        0x7f, 0x40, 0x3e, 0x48, 0x38, 0x3a, 0x7c, 0x3e, 0xa5, 0x1d, 0x30, 0x76, 0xd, 0xc8, 0xc7, 0x2c, 0xe0, 0xd6,
+        0x27, 0x31,
+    ];
+
+    mmu.borrow_mut()
+        .alloc_physical(bytes_addr.into(), 1 * PAGE_SIZE)
+        .unwrap();
+    mmu.borrow_mut()
+        .set_page_table_entry(bytes_addr.into(), bytes_addr.into(), Permission::ALL)
+        .unwrap();
+    mmu.borrow_mut().write(bytes_addr.into(), &bytes).unwrap();
+
+    let rax_expected = *bytes.iter().max().unwrap() as u64;
+
+    *cpu.register_mut("RIP").unwrap() = 0x0u64;
+    *cpu.register_mut("RSP").unwrap() = stack_addr;
+    *cpu.register_mut("RDI").unwrap() = bytes_addr;
+    *cpu.register_mut("RSI").unwrap() = bytes.len() as u64;
+    cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
+        .unwrap();
+
+    let rax: u64 = *cpu.register("RAX").unwrap();
+    assert_eq!(rax, rax_expected);
+}
+
+#[test]
+fn test_misc_max_byte_o3() {
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::TRACE.into())
+                .with_env_var("MOGI_LOG")
+                .from_env_lossy(),
+        )
+        .init();
+
+    let mut misc_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    misc_o3_path.push("resources/test/executables/misc_o3.o");
+
+    let instr = &std::fs::read(&misc_o3_path).unwrap()[0x110..0x228];
+    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+    let stack_addr = 0xffff_ffff_ffff_0ff0u64;
+
+    // write fake return value for translation limit
+    let stack_addr = stack_addr - 0x8;
+    mmu.borrow_mut()
+        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .unwrap();
+
+    // write input to memory
+    let bytes_addr = 0xFFFF_FFFF_FF00_0000u64;
+    let bytes = [
+        0x7f, 0x40, 0x3e, 0x48, 0x38, 0x3a, 0x7c, 0x3e, 0xa5, 0x1d, 0x30, 0x76, 0xd, 0xc8, 0xc7, 0x2c, 0xe0, 0xd6,
+        0x27, 0x31,
+    ];
+
+    mmu.borrow_mut()
+        .alloc_physical(bytes_addr.into(), 1 * PAGE_SIZE)
+        .unwrap();
+    mmu.borrow_mut()
+        .set_page_table_entry(bytes_addr.into(), bytes_addr.into(), Permission::ALL)
+        .unwrap();
+    mmu.borrow_mut().write(bytes_addr.into(), &bytes).unwrap();
+
+    let rax_expected = *bytes.iter().max().unwrap() as u64;
+
+    *cpu.register_mut("RIP").unwrap() = 0x0u64;
+    *cpu.register_mut("RSP").unwrap() = stack_addr;
+    *cpu.register_mut("RDI").unwrap() = bytes_addr;
+    *cpu.register_mut("RSI").unwrap() = bytes.len() as u64;
+    cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
+        .unwrap();
+
+    let rax: u64 = *cpu.register("RAX").unwrap();
+    assert_eq!(rax, rax_expected);
+}
+
+#[test]
+fn test_misc_quicksort_o0() {
+    let mut misc_o0_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    misc_o0_path.push("resources/test/executables/misc_o0.o");
+
+    let instr = &std::fs::read(&misc_o0_path).unwrap()[0x1D0..0x316];
+    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+    let stack_addr = 0xffff_ffff_ffff_0ff0u64;
+
+    // write fake return value for translation limit
+    let stack_addr = stack_addr - 0x8;
+    mmu.borrow_mut()
+        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .unwrap();
+
+    // write input to memory
+    let bytes_addr = 0xFFFF_FFFF_FF00_0000u64;
+    let bytes = [
+        0x7f, 0x40, 0x3e, 0x48, 0x38, 0x3a, 0x7c, 0x3e, 0xa5, 0x1d, 0x30, 0x76, 0xd, 0xc8, 0xc7, 0x2c, 0xe0, 0xd6,
+        0x27, 0x31,
+    ];
+
+    mmu.borrow_mut()
+        .alloc_physical(bytes_addr.into(), 1 * PAGE_SIZE)
+        .unwrap();
+    mmu.borrow_mut()
+        .set_page_table_entry(bytes_addr.into(), bytes_addr.into(), Permission::ALL)
+        .unwrap();
+    mmu.borrow_mut().write(bytes_addr.into(), &bytes).unwrap();
+
+    let mut bytes_sorted = bytes.clone();
+    bytes_sorted.sort();
+
+    *cpu.register_mut("RIP").unwrap() = 0x2C0u64 - 0x1D0u64;
+    *cpu.register_mut("RSP").unwrap() = stack_addr;
+    *cpu.register_mut("RDI").unwrap() = bytes_addr;
+    *cpu.register_mut("RSI").unwrap() = 0u64;
+    *cpu.register_mut("RDX").unwrap() = bytes.len() as u64 - 1;
+    cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
+        .unwrap();
+
+    let mut output = vec![0; bytes.len()];
+    mmu.borrow_mut()
+        .read(bytes_addr.into(), &mut output)
+        .unwrap();
+
+    assert_eq!(output, bytes_sorted);
 }
