@@ -62,6 +62,7 @@ mock! {
         id: SocketId,
         how: ShutdownMethod,
     ) -> Result<(), NetworkError>;
+        fn getsockname(&self, id: SocketId) -> Result<SocketAddress, NetworkError>;
     }
     impl Restorable for TCPSystem {
         fn take_snapshot(&mut self) -> Result<(), GenericError>;
