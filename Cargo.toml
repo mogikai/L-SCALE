@@ -16,6 +16,7 @@ members = [
     "cpu",
     "sleigh",
     "sleigh_parser",
+    "statelearner",
 ]
 
 exclude = [
