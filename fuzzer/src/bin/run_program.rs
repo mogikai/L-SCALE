@@ -64,8 +64,9 @@ fn main() {
     let initial_task = LinuxKernelTask::new(system.clone(), 1337, 1);
     let args = [];
     let env = ["SHELL=/bin/sh", "LD_DEBUG=none", "LD_BIND_NOW=true"];
+    let binary_path = PathBuf::from(&fuzzer_args.binary);
     let scheduler =
-        LinuxX86Scheduler::new(system.clone(), initial_task, PathBuf::from(&fuzzer_args.binary), &args, &env).unwrap();
+        LinuxX86Scheduler::new(system.clone(), initial_task, binary_path.to_owned(), &args, &env, binary_path.parent().unwrap().to_path_buf()).unwrap();
     let mut emulator = GenericEmulator::new(scheduler, system);
     if fuzzer_args.decode {
         emulator.enable_trace().unwrap();
