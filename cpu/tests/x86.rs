@@ -7,13 +7,8 @@ use mogi_cpu::new_cpu_trait::{
 use mogi_system::components::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
 use std::num::NonZeroUsize;
-use tracing::level_filters::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{
-    fmt,
-    EnvFilter,
-};
 use zerocopy::IntoBytes;
 
 mod common;
@@ -106,15 +101,6 @@ fn test_mov_reg_mem() {
 
 #[test]
 fn test_movbe_mem_reg() {
-    tracing_subscriber::registry()
-        .with(fmt::layer())
-        .with(
-            EnvFilter::builder()
-                .with_default_directive(LevelFilter::TRACE.into())
-                .with_env_var("MOGI_LOG")
-                .from_env_lossy(),
-        )
-        .init();
     // MOVBE [RSP], RAX
     let instr = b"\x48\x0F\x38\xF1\x04\x24";
     let (mut cpu, mmu) = common::setup_with_bytes(instr);

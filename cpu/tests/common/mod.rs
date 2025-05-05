@@ -80,7 +80,7 @@ pub(crate) fn setup_with_bytes(bytes: &[u8]) -> (MogiCPU<X86MogiJit, MogiMMU>, R
 
     // Set up the just in time compiler. TODO: Maybe we can refactor this such that the jit doesn't need the spec.
     let mut jit =
-        X86MogiJit::new(spec.clone(), mmu.clone(), std::env::var("MOGI_DEBUG_JIT").map_or(true, |val| val == "true"));
+        X86MogiJit::new(spec.clone(), mmu.clone(), std::env::var("MOGI_DEBUG_JIT").map_or(false, |val| val == "true"));
 
     let mmu_tlb = mmu.clone();
     jit.register_tlb_read_miss_callback(move |ctx, addr, size, space| {
