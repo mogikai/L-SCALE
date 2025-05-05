@@ -52,3 +52,5 @@ rand_pcg = "0.3.1"
 serde = ["dep:serde"]
 do_not_compile_unfinished = ["mogi_derive/do_not_compile_unfinished"]
 panic_on_unfinished = ["mogi_derive/panic_on_unfinished"]
+unicorn = []
+

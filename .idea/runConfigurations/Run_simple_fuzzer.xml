@@ -1,9 +1,9 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Run simple_fuzzer" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
-    <option name="command" value="run --package mogi_fuzzer --bin simple_fuzzer" />
+    <option name="command" value="run --package mogi_fuzzer --bin simple_fuzzer --features unicorn" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <envs>
-      <env name="FUZE_LOG" value="mogi_cpu=trace" />
+      <env name="MOGI_LOG" value="trace" />
       <env name="GHIDRA_SRC" value="$PROJECT_DIR$/cpu/Ghidra" />
     </envs>
     <option name="emulateTerminal" value="true" />

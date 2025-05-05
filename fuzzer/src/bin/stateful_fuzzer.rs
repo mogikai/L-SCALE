@@ -62,7 +62,9 @@ fn main() {
         .with(EnvFilter::from_env("FUZE_LOG"))
         .init();
     let fuzzer_args = Args::parse();
-    /*let mmu = Rc::new(RefCell::new(MogiMMU::new()));
+    #[cfg(not(feature = "unicorn"))]
+    let mmu = Rc::new(RefCell::new(MogiMMU::new()));
+    #[cfg(not(feature = "unicorn"))]
     let cpu = Rc::new(RefCell::new(
         CpuBuilder::new(mmu.clone())
             .optimize_block(false)
@@ -75,8 +77,10 @@ fn main() {
             )
             .build()
             .unwrap(),
-    ));*/
+    ));
+    #[cfg(feature = "unicorn")]
     let cpu = UCWrapper::new();
+    #[cfg(feature = "unicorn")]
     let mmu = cpu.clone();
     let task_manager = TaskManager::new();
     let filesystem = Filesystem::from_disk(1_073_741_824, Path::new(&fuzzer_args.system_root)).unwrap();

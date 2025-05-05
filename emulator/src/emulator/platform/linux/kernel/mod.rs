@@ -338,9 +338,14 @@ where
         binary_args: &[&str],
         binary_env: &[&str],
     ) -> Result<(), LinuxKernelError> {
-        // TODO: Replace this with a safe version using refcells
+        #[cfg(feature = "unicorn")]
         let mut cpu = unsafe { self.system.cpu.as_ptr().as_mut_unchecked() };
+        #[cfg(not(feature = "unicorn"))]
+        let mut cpu = sys_component_mut!(self, cpu);
+        #[cfg(feature = "unicorn")]
         let mut mmu = unsafe { self.system.mmu.as_ptr().as_mut_unchecked() };
+        #[cfg(not(feature = "unicorn"))]
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
         let mut argv_strings = vec![binary_path.to_str().unwrap()];
         argv_strings.extend_from_slice(binary_args);
@@ -475,9 +480,14 @@ where
         code: u64,
         addr: EVAddr,
     ) -> SyscallResult {
-        // TODO: Replace this with a safe version using refcells
+        #[cfg(feature = "unicorn")]
         let mut cpu = unsafe { self.system.cpu.as_ptr().as_mut_unchecked() };
+        #[cfg(not(feature = "unicorn"))]
+        let mut cpu = sys_component_mut!(self, cpu);
+        #[cfg(feature = "unicorn")]
         let mut mmu = unsafe { self.system.mmu.as_ptr().as_mut_unchecked() };
+        #[cfg(not(feature = "unicorn"))]
+        let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
         let mut memory = memory.accessor(&mut mmu, self.task_id);
 
