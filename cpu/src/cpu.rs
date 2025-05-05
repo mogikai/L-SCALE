@@ -59,8 +59,10 @@ use std::cell::{
     RefMut,
 };
 use std::collections::HashMap;
-use std::fmt::Debug;
-use std::mem::swap;
+use std::fmt::{
+    Debug,
+    Formatter,
+};
 use std::num::NonZeroUsize;
 use std::ops::{
     Deref,

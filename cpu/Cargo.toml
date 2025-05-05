@@ -24,6 +24,7 @@ ansi_term = "0.12.1"
 either = "1.15.0"
 strum = { version = "0.27.1", features = ["derive"] }
 itertools = "0.14.0"
+addr_align = "0.1.0"
 
 [features]
 default = ["trace_jit"]

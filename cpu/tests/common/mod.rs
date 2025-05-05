@@ -42,9 +42,30 @@ fn build(spec_path: &Path) -> SleighCompilerResult<ProcessorSpecification> {
     compiler.compile(spec_path)
 }
 
+pub(crate) fn dump_registers(cpu: &MogiCPU<X86MogiJit, MogiMMU>) {
+    let register_names = [
+        "RIP",
+        "RAX",
+        "RBX",
+        "RCX",
+        "RDX",
+        "RDI",
+        "RSI",
+        "RBP",
+        "RSP",
+        "R8",
+        "R9",
+    ];
+
+    for register_name in register_names.iter() {
+        let register_value: u64 = *cpu.register(register_name).unwrap();
+        eprintln!("{:#3} = {:#018X}", register_name, register_value);
+    }
+}
+
 pub(crate) fn setup_with_bytes(bytes: &[u8]) -> (MogiCPU<X86MogiJit, MogiMMU>, Rc<RefCell<MogiMMU>>) {
     let spec = Rc::new(RefCell::new(SPEC.read().unwrap().clone()));
-    let stack_page_count = 1;
+    let stack_page_count = 8;
     let page_count = (bytes.len() + PAGE_SIZE - 1) / PAGE_SIZE;
     let stack_addr = 0xffff_ffff_ffff_0000u64;
 

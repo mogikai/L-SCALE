@@ -1,18 +1,19 @@
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 uint64_t is_prime(uint64_t a)
 {
-	int is_prime = 1;
+        int is_prime = 1;
 
-	for (uint64_t i = 2; i < a; i++) {
-		if (a % i == 0) {
-			is_prime = 0;
-			break;
-		}
-	}
+        for (uint64_t i = 2; i < a; i++) {
+                if (a % i == 0) {
+                        is_prime = 0;
+                        break;
+                }
+        }
 
-	return is_prime;
+        return is_prime;
 }
 
 uint64_t nth_fibonacci(size_t n)
@@ -54,27 +55,27 @@ int leading_zeroes(uint64_t a) {
 }
 
 void swap(int* a, int* b) {
-    int temp = *a;
-    *a = *b;
-    *b = temp;
+        int temp = *a;
+        *a = *b;
+        *b = temp;
 }
 
-int partition(int arr[], int low, int high) {
-    int pivot = arr[high];  // Choosing the last element as pivot
-    int i = low - 1;
+int partition(int *arr, int low, int high) {
+        int pivot = arr[high];  // Choosing the last element as pivot
+        int i = low - 1;
 
-    for (int j = low; j < high; j++) {
-        if (arr[j] <= pivot) {
-            i++;
-            swap(&arr[i], &arr[j]);
+        for (int j = low; j < high; j++) {
+                if (arr[j] <= pivot) {
+                        i++;
+                        swap(&arr[i], &arr[j]);
+                }
         }
-    }
 
-    swap(&arr[i + 1], &arr[high]);
-    return i + 1;
+        swap(&arr[i + 1], &arr[high]);
+        return i + 1;
 }
 
-void quicksort(int arr[], int low, int high)
+void quicksort(int *arr, int low, int high)
 {
         if (low < high) {
                 int pi = partition(arr, low, high);
@@ -82,4 +83,9 @@ void quicksort(int arr[], int low, int high)
                 quicksort(arr, low, pi - 1);
                 quicksort(arr, pi + 1, high);
         }
+}
+
+int main(int argc, char **argv)
+{
+        return 0;
 }
