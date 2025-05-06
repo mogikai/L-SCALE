@@ -225,6 +225,7 @@ where
         RSEQ => do_syscall!(4, system, kernel::rseq, debug_str),
         CHDIR => do_syscall!(1, system, kernel::chdir, debug_str),
         FCHDIR => do_syscall!(1, system, kernel::fchdir, debug_str),
+        GETUID => do_syscall!(0, system, kernel::getuid, debug_str),
         _ => Err(SyscallError::NotImplemented),
     }
 }
