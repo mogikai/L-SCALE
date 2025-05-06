@@ -48,9 +48,12 @@ use mogi_sleigh::lifter::{
     LifterConfig,
     LifterError,
 };
+use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_sleigh::spec::jir::basic_block::optimizer::OptimizerOptions;
-use mogi_sleigh::spec::jir::basic_block::{TargetBasicBlock, TargetBasicBlockInner};
-use mogi_sleigh::spec::jir::basic_block::optimizer::OptimizerOptions;
+use mogi_sleigh::spec::jir::basic_block::{
+    TargetBasicBlock,
+    TargetBasicBlockInner,
+};
 use mogi_sleigh::spec::jir::jcode::NextBlockTarget;
 use mogi_utilities::addresses::EVAddr;
 use std::cell::{
@@ -477,7 +480,9 @@ where
             trace_jit!("unoptimized: {}", block);
 
             let options = OptimizerOptions::default().with_enable_dse(true);
-            Rc::<TargetBasicBlockInner>::get_mut(&mut block.0).unwrap().run_optimization_passes(options);
+            Rc::<TargetBasicBlockInner>::get_mut(&mut block.0)
+                .unwrap()
+                .run_optimization_passes(options);
 
             // TODO: Most likely, if the runtime context was modified, we will first need to emulate before translating
             //       more blocks?

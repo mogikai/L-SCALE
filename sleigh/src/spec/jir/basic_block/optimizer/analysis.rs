@@ -5,8 +5,14 @@ use fnv::{
     FnvHashSet,
 };
 use itertools::Itertools;
-use mogi_utilities::index_map::PrimaryMap;
-use mogi_utilities::new_map_key;
+use mogi_utilities::index_map::{
+    PrimaryMap,
+    SecondaryMap,
+};
+use mogi_utilities::{
+    new_map_key,
+    overlap,
+};
 
 use crate::spec::ProcessorSpecResult;
 use crate::spec::jir::basic_block::TargetBasicBlockInner;
@@ -33,7 +39,7 @@ impl ReferencedSlices {
 
 impl TargetBasicBlockInner {
     /// Store a unique id for each slice and annotate instructions with their
-    /// input and output slices..
+    /// input and output slices.
     pub(super) fn collect_slice_references(&mut self) -> ProcessorSpecResult {
         for inst in &self.jir_instructions {
             get_referenced_slices(
@@ -43,6 +49,61 @@ impl TargetBasicBlockInner {
             );
         }
 
+        Ok(())
+    }
+
+    /// Store a list of overlapping slices for each slice.
+    pub(super) fn collect_slice_overlaps(&mut self) -> ProcessorSpecResult {
+        for (slice_id, slice) in self.optimizer_ancillary.slice_ids.items() {
+            let mut overlap_group = FnvHashSet::default();
+            overlap_group.insert(slice_id);
+
+            for (neighbor_candidate_id, neighbor_candidate) in self.optimizer_ancillary.slice_ids.items() {
+                if neighbor_candidate_id == slice_id {
+                    // own id is also in there => skip
+                    continue;
+                }
+
+                // if they don't belong to the same group they can't overlap
+                if slice.same_group(neighbor_candidate) && slice.overlaps(neighbor_candidate) {
+                    // overlap
+
+                    // add neighbor to own overlap group group
+                    overlap_group.insert(neighbor_candidate_id);
+                }
+            }
+
+            // check if overlap groups of slice and any of the neighbors is the same and if so,
+            // reuse
+            let mut group_id = None;
+            for neighbor_id in overlap_group.iter() {
+                if *neighbor_id == slice_id {
+                    // own id is also in there => skip
+                    continue;
+                }
+
+                let Some(neighbor_group_id) = self.optimizer_ancillary.group_ids[*neighbor_id] else {
+                    // neighbor might not have been processed yet
+                    continue;
+                };
+
+                if self.optimizer_ancillary.overlap_groups[neighbor_group_id] == overlap_group {
+                    // equal groups => reuse id
+                    group_id = Some(neighbor_group_id);
+                    break;
+                }
+            }
+
+            let new_group_id = match group_id {
+                Some(group_id) => group_id,
+                None => self
+                    .optimizer_ancillary
+                    .overlap_groups
+                    .insert(overlap_group),
+            };
+
+            self.optimizer_ancillary.group_ids[slice_id] = Some(new_group_id);
+        }
         Ok(())
     }
 
@@ -80,32 +141,37 @@ impl TargetBasicBlockInner {
                     &mut self.optimizer_ancillary.slice_ids,
                 );
 
-                self.optimizer_ancillary.inst_slice_references.insert(inst_id, rs.clone());
+                self.optimizer_ancillary
+                    .inst_slice_references
+                    .insert(inst_id, rs.clone());
 
                 // process written slices (check for spills and if current inst is dead store)
                 for write in &rs.writes {
-                    if !read_slices.contains(write) && written_slices.contains(write) {
-                        // written slice hasn't been read before and is not last write (i.e.
+                    if !read_slices.contains(&write) && written_slices.contains(&write) {
+                        // written group hasn't been read before and is not last write (i.e.
                         // was already spilled) => it's a dead store
                         dead_stores.push(inst_id);
 
                         // also remove all reads from this instruction since we eliminate it
                         for dead_store_read in rs.reads.iter() {
-                            read_slices.remove(dead_store_read);
+                            read_slices.remove(&dead_store_read);
                         }
                     } else {
                         // written slice has been read before or is spilled => no dead store, but remove from
                         // read set
-                        read_slices.remove(write);
+                        read_slices.remove(&write);
                     }
 
-                    written_slices.insert(*write);
+                    // mark all slices from group as written
+                    let write_group = self.optimizer_ancillary.group_ids[*write].unwrap();
+                    written_slices.extend(self.optimizer_ancillary.overlap_groups[write_group].iter());
                     self.optimizer_ancillary.block_writes[block_id].insert(*write);
                 }
 
-                // process read slices (add to set)
+                // process read groups (add to set)
                 for read in &rs.reads {
-                    read_slices.insert(*read);
+                    let read_group = self.optimizer_ancillary.group_ids[*read].unwrap();
+                    read_slices.extend(self.optimizer_ancillary.overlap_groups[read_group].iter());
                 }
             }
 
@@ -121,6 +187,8 @@ impl TargetBasicBlockInner {
     }
 }
 
+/// Extract the read and write slice operands from the given `inst` while interning
+/// any newly encountered slices in `slice_to_id` and `slice_ids`.
 fn get_referenced_slices(
     inst: &JIRInstruction,
     slice_to_id: &mut FnvHashMap<JIRSlice, LocalSliceId>,
@@ -231,7 +299,7 @@ fn get_referenced_slices(
             space: _,
         } => {
             // TODO is this correct?
-            let mut writes = vec![];
+            let writes = vec![];
             let mut reads = vec![];
 
             if let JIRValue::Slice(jirslice) = address {
@@ -309,8 +377,6 @@ fn get_referenced_slices(
                 reads.push(jirslice.clone());
             }
 
-            // TODO extra args?
-
             (writes, reads)
         }
     };
@@ -332,6 +398,7 @@ fn get_referenced_slices(
         .map(|read| match slice_to_id.entry(read) {
             Entry::Occupied(occupied_entry) => *occupied_entry.get(),
             Entry::Vacant(vacant_entry) => {
+                // assign id and process overlap
                 let slice_id = slice_ids.insert(read);
                 vacant_entry.insert(slice_id);
                 slice_id
@@ -343,3 +410,4 @@ fn get_referenced_slices(
 }
 
 new_map_key! { pub struct LocalSliceId; "LSID"; }
+new_map_key! { pub struct OverlapGroupId; "OSID"; }

@@ -445,6 +445,8 @@ impl JIRSlice {
         self.space_id == other.space_id && overlaps_generic(self, other)
     }
 
+    /// Checks whether `self.group_id` and `other.group_id` as well as `self.temp_group_id` and
+    /// `other.temp_group_id` are equal.
     pub fn same_group(
         &self,
         other: &JIRSlice,
