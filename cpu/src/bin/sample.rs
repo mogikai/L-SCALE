@@ -39,6 +39,100 @@ use tracing_subscriber::{
     EnvFilter,
     fmt,
 };
+use zerocopy::IntoBytes;
+
+fn setup_with_bytes(
+    bytes: &[u8],
+    rip: u64,
+) -> (MogiCPU<X86MogiJit, MogiMMU>, Rc<RefCell<MogiMMU>>, Rc<RefCell<ProcessorSpecification>>) {
+    let spec_path = Path::new("./deps/Ghidra/Ghidra/Processors/x86/data/languages/x86-64.slaspec");
+    let spec = load_specification(spec_path);
+    let stack_page_count = 8;
+    let page_count = (bytes.len() + PAGE_SIZE - 1) / PAGE_SIZE;
+    let stack_addr = 0xFFFF_FFFF_FFFF_0000u64;
+
+    // Set up the mmu.
+    let mmu = Rc::new(RefCell::new(MogiMMU::new()));
+    {
+        let mut mmu = mmu.borrow_mut();
+
+        // Allocate instructions
+        mmu.alloc_physical(0x0u64.into(), page_count * PAGE_SIZE)
+            .unwrap();
+
+        // Map instructions
+        for page_id in 0..page_count {
+            mmu.set_page_table_entry(
+                (page_id as u64 * 4096u64).into(),
+                (page_id as u64 * 4096u64).into(),
+                Permission::ALL,
+            )
+            .unwrap();
+        }
+
+        // Allocate stack
+        mmu.alloc_physical((stack_addr - (stack_page_count - 1) * PAGE_SIZE as u64).into(), stack_page_count as usize * PAGE_SIZE)
+            .unwrap();
+
+        // Map stack pages downwards.
+        for page_id in 0..stack_page_count {
+            mmu.set_page_table_entry(
+                (stack_addr - (page_id as u64 * 4096u64)).into(),
+                (stack_addr - (page_id as u64 * 4096u64)).into(),
+                Permission::ALL,
+            )
+            .unwrap();
+        }
+
+        // Map dead address
+        mmu.set_page_table_entry(0xFFFF_FFFF_D34D_0000u64.into(), 0x0u64.into(), Permission::ALL)
+            .unwrap();
+
+        // And then write the instructions to the allocated instruction memory.
+        mmu.write(0x0u64.into(), &bytes[..]).unwrap();
+
+        // write fake return value for translation limit
+        let stack_addr = stack_addr - 0x8;
+        mmu.write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+            .unwrap();
+    }
+
+    // Set up the just in time compiler. TODO: Maybe we can refactor this such that the jit doesn't need the spec.
+    let spec = Rc::new(RefCell::new(spec));
+    let mut jit =
+        X86MogiJit::new(spec.clone(), mmu.clone(), std::env::var("MOGI_DEBUG_JIT").map_or(false, |val| val == "true"));
+
+    let mmu_tlb = mmu.clone();
+    jit.register_tlb_read_miss_callback(move |ctx, addr, size, space| {
+        let mmu = mmu_tlb.borrow();
+        let tlb = ctx.tlb_mut();
+        unsafe {
+            mmu.populate_tlb(tlb, addr, MemoryAction::READ)
+                .map_err(|e| todo!())
+        }
+    })
+    .unwrap();
+
+    let mmu_tlb = mmu.clone();
+    jit.register_tlb_write_miss_callback(move |ctx, addr, size, space| {
+        let mmu = mmu_tlb.borrow();
+        let tlb = ctx.tlb_mut();
+        unsafe {
+            mmu.populate_tlb(tlb, addr, MemoryAction::WRITE)
+                .map_err(|e| todo!())
+        }
+    })
+    .unwrap();
+
+    // Set up the cpu emulator
+    let mut cpu = MogiCPU::new(jit, spec.clone(), mmu.clone());
+
+    // Set the instruction pointer to the address we want to start executing at.
+    *cpu.register_mut("RIP").unwrap() = rip;
+    *cpu.register_mut("RSP").unwrap() = stack_addr - 0x8;
+
+    (cpu, mmu, spec)
+}
 
 fn main() {
     tracing_subscriber::registry()
@@ -50,96 +144,43 @@ fn main() {
                 .from_env_lossy(),
         )
         .init();
-    // let test_exe = include_bytes!("./../../../emulator/systems/ubuntu2304/home/user/main");
-    let spec_path = Path::new("./deps/Ghidra/Ghidra/Processors/x86/data/languages/x86-64.slaspec");
-    // let spec_path = Path::new("./cpu/Ghidra/Ghidra/Processors/x86/data/languages/x86.slaspec");
-    // let spec_path = Path::new("./sleigh/ia.sinc");
-    let specification = load_specification(spec_path);
-    // println!("{:?}", specification.list_global_varnode_strings());
 
-    // MOV RAX, 0x1234
-    // let testelf_content = std::fs::read(&PathBuf::from("./a.out")).unwrap();
-    let testelf_content = b"\x48\x0F\x44\xC3";
+    let mut misc_o0_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    misc_o0_path.push("resources/test/executables/misc_o0.o");
+    let testelf_content = std::fs::read(&misc_o0_path).unwrap();
 
-    let specification = Rc::new(RefCell::new(specification));
+    let (mut cpu, mmu, spec) = setup_with_bytes(&testelf_content, 0x1400u64);
 
-    let stack_page_count = 1;
-    let page_count = (testelf_content.len() + PAGE_SIZE - 1) / PAGE_SIZE;
-    let stack_addr = 0xffff_ffff_ffff_0000u64;
+    // write numbers to memory
+    let numbers_addr = 0xFFFF_FFFF_FF00_0000u64;
+    let numbers = [
+        -13935, 17471, -23649, 20073, 18135, 11677, 28681, 7075, -31766, 27292, 32352, -13904, 8405, -1462, -10314,
+        -19981, 692, 22985, -7727, -28196, -11245, -30707, 31868, 20361, -1579, 28034, -22596, 23481, 20717, -6840,
+        15357, 7076,
+    ];
 
-    // Set up the mmu.
-    let mmu = Rc::new(RefCell::new(MogiMMU::new()));
-    {
-        let mut mmu = mmu.borrow_mut();
-        // We allocate enough memory
-        mmu.alloc_physical(0x0u64.into(), (page_count + stack_page_count) * PAGE_SIZE)
-            .unwrap();
+    mmu.borrow_mut()
+        .alloc_physical(numbers_addr.into(), 1 * PAGE_SIZE)
+        .unwrap();
+    mmu.borrow_mut()
+        .set_page_table_entry(numbers_addr.into(), numbers_addr.into(), Permission::ALL)
+        .unwrap();
+    mmu.borrow_mut()
+        .write(numbers_addr.into(), numbers.as_bytes())
+        .unwrap();
 
-        // And identity-map the virtual addresses
-        for page_id in 0..page_count {
-            mmu.set_page_table_entry(
-                (page_id as u64 * 4096u64).into(),
-                (page_id as u64 * 4096u64).into(),
-                Permission::ALL,
-            )
-            .unwrap();
-        }
-        // Map stack pages downwards.
-        for page_id in 0..stack_page_count {
-            mmu.set_page_table_entry(
-                (stack_addr - (page_id as u64 * 4096u64)).into(),
-                ((page_id + page_count) as u64 * 4096u64).into(),
-                Permission::ALL,
-            )
-            .unwrap();
-        }
-        // And then write the instruction to the allocated memory.
-        mmu.write(0x0u64.into(), &testelf_content[..]).unwrap();
-    }
+    *cpu.register_mut("RDI").unwrap() = numbers_addr;
+    *cpu.register_mut("RSI").unwrap() = 0u64;
+    *cpu.register_mut("RDX").unwrap() = numbers.len() as u64 - 1;
+    cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
+        .unwrap();
 
-    // Set up the just in time compiler. TODO: Maybe we can refactor this such that the jit doesn't need the spec.
-    let mut jit = X86MogiJit::new(specification.clone(), mmu.clone(), false);
+    let mut output = vec![0; numbers.len()];
+    mmu.borrow_mut()
+        .read(numbers_addr.into(), output.as_mut_bytes())
+        .unwrap();
 
-    let mmu_tlb = mmu.clone();
-    jit.register_tlb_read_miss_callback(|ctx, addr, size, space| {
-        let mmu = mmu_tlb.borrow();
-        let tlb = ctx.tlb_mut();
-        unsafe {
-            mmu.populate_tlb(tlb, addr, MemoryAction::READ)
-                .map_err(|e| todo!())
-        }
-    })
-    .unwrap();
-
-    let mmu_tlb = mmu.clone();
-    jit.register_tlb_write_miss_callback(|ctx, addr, size, space| {
-        let mmu = mmu_tlb.borrow();
-        let tlb = ctx.tlb_mut();
-        unsafe {
-            mmu.populate_tlb(tlb, addr, MemoryAction::WRITE)
-                .map_err(|e| todo!())
-        }
-    })
-    .unwrap();
-
-    // Set up the cpu emulator
-    let mut cpu = MogiCPU::new(jit, specification, mmu);
-
-    let stack_addr = stack_addr + 0x1000;
-
-    // Set the instruction pointer to the address we want to start executing at.
-    for i in 2..20 {
-        *cpu.register_mut("RSP").unwrap() = stack_addr;
-        // *cpu.register_mut("RIP").unwrap() = 0x1170u64;
-        *cpu.register_mut("RIP").unwrap() = 0x0u64;
-        *cpu.register_mut("RDI").unwrap() = i as u64;
-
-        // Now lets roll! (forever :>)
-        // cpu.run(RunLimit::Address(0x11BCu64.into())).unwrap();
-        cpu.run(RunLimit::InstructionCount(NonZeroUsize::try_from(1).unwrap())).unwrap();
-        let eax: i32 = *cpu.register("EAX").unwrap();
-        eprintln!("i = {}, eax = {:#?}", i, eax);
-    }
+    eprintln!("output = {:#?}", output);
 }
 
 fn load_specification(spec_path: &Path) -> ProcessorSpecification {

@@ -23,4 +23,16 @@ macro_rules! trace_jir {
     ($($arg:tt)*) => {};
 }
 
+#[cfg(feature = "trace_match")]
+macro_rules! trace_match {
+    ($($arg:tt)*) => {
+        tracing::trace!($($arg)*)
+    };
+}
+#[cfg(not(feature = "trace_match"))]
+macro_rules! trace_match {
+    ($($arg:tt)*) => {};
+}
+
 pub(crate) use trace_jir;
+pub(crate) use trace_match;

@@ -29,6 +29,8 @@ trace_build = []
 trace_pp = ["mogi_sleigh_parser/trace_pp"]
 trace_jir = []
 trace_resolve = []
+trace_match = []
+trace_opt = []
 
 [dev-dependencies]
 mogi_sleigh = { path = ".", features = ["trace_build"] }

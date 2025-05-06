@@ -9,7 +9,9 @@ use super::local_resolver::JIRResolver;
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
 use crate::spec::FieldId;
-use crate::spec::jir::trace_jir;
+use crate::spec::jir::common::JIRSize;
+use crate::spec::jir::trace_match;
+use crate::spec::jir::values::JIRConst;
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::{
     ConstructorId,
@@ -350,15 +352,15 @@ impl<'a> MatchContext<'a> {
                 todo!("Generate error report for missing constructor");
             })?;
 
-        trace_jir!(
+        trace_match!(
             "Got constructor {} with {} actions, consumed {} bytes",
             constructor.display_string,
             constructor.actions.len(),
             consumed_so_far,
         );
 
-        trace_jir!("Sublists: {:#?}", constructor_entry.sublists);
-        trace_jir!("Field extractors: {:#?}", constructor_entry.field_extractors);
+        trace_match!("Sublists: {:#?}", sublists);
+        trace_match!("Field extractors: {:#?}", field_extractors);
 
         // the resolver with all local values is needed for the actions so we
         // instantiate it here
@@ -370,7 +372,7 @@ impl<'a> MatchContext<'a> {
                 for field_extractor in field_extractors {
                     let extracted_value = field_extractor.extract_value(&bytes[*offset..])?;
 
-                    trace_jir!(
+                    trace_match!(
                         "Extracted field {} with entry extractor {:#?}: {}",
                         field_extractor.field_id(),
                         field_extractor,
@@ -385,7 +387,7 @@ impl<'a> MatchContext<'a> {
         // extract token and context fields with fixed offset into map
         for field_extractor in &constructor_entry.field_extractors {
             let extracted_value = field_extractor.extract_value(bytes)?;
-            trace_jir!(
+            trace_match!(
                 "Field extractor is defining context field {} := {:#?}",
                 field_extractor.field_id(),
                 extracted_value
@@ -393,7 +395,7 @@ impl<'a> MatchContext<'a> {
             resolver.define_field(field_extractor.field_id(), extracted_value);
         }
 
-        trace_jir!("Context fields: {:#?}", constructor_entry.context_fields);
+        trace_match!("Context fields: {:#?}", context_fields);
 
         for (subtable, subresolver) in &state.subresolvers {
             resolver.define_subtable_resolver(*subtable, subresolver.clone())?;
@@ -401,7 +403,7 @@ impl<'a> MatchContext<'a> {
 
         for context_field_id in constructor_entry.context_fields.iter() {
             let value = context_stack.field_value(*context_field_id)?;
-            trace_jir!("Defining context field value {context_field_id:?} := {value:?}");
+            trace_match!("Defining context field value {context_field_id:?} := {value:?}");
             resolver.define_field(*context_field_id, value);
         }
 
@@ -428,7 +430,7 @@ impl<'a> MatchContext<'a> {
                 .jumplist_cache
                 .get(offsetted_sublist.jumplist)
                 .ok_or_else(|| -> InternalError { todo!("Generate error report for missing jumplist") })?;
-            trace_jir!(
+            trace_match!(
                 "Descending into offsetted sublist {:#?} with bytes={:#x?} (from {})",
                 offsetted_sublist,
                 sublist_bytes,
@@ -448,8 +450,8 @@ impl<'a> MatchContext<'a> {
                     bytes_consumed: bytes_consumed_sublist,
                 } => {
                     // sublist matches => add resolver
-                    trace_jir!("Sublist consumed {} additional bytes", bytes_consumed_sublist);
-                    trace_jir!("Adding subtable resolver {table_id:?}");
+                    trace_match!("Sublist consumed {} additional bytes", bytes_consumed_sublist);
+                    trace_match!("Adding subtable resolver {table_id:?}");
                     consumed_so_far_max = consumed_so_far_max.max(offsetted_sublist.offset + bytes_consumed_sublist);
                     resolver.define_subtable_resolver(table_id, sublist_resolver)?;
                 }
@@ -458,7 +460,7 @@ impl<'a> MatchContext<'a> {
             }
         }
         // everything matched
-        trace_jir!("Got a complete match");
+        trace_match!("Got a complete match");
 
         // TODO this should be set before descending into jumplists
         resolver.set_inst_addresses(self.addr, self.addr + addr_offset + consumed_so_far_max, None);
@@ -499,7 +501,7 @@ impl<'a> MatchContext<'a> {
 
                 // immediately descend into any variable-offset sublists and add resolver if match
                 for sublist_id in &entry.sublists {
-                    trace_jir!("Descending into entry sublist {} with bytes_consumed={}", sublist_id, consumed_so_far);
+                    trace_match!("Descending into entry sublist {} with bytes_consumed={}", sublist_id, consumed_so_far);
 
                     let sublist = self
                         .jumplist_cache
@@ -528,8 +530,14 @@ impl<'a> MatchContext<'a> {
                     .push((consumed_so_far, &entry.field_extractors));
 
                 let result = match &entry.next_entry {
-                    NextJumplistEntry::Constructor(constructor_entry) => {
-                        trace_jir!("Reached leaf; cid={:?}, tid={:?}", constructor_entry.cid, constructor_entry.tid);
+                    NextJumplistEntry::Constructor {
+                        cid,
+                        tid,
+                        sublists,
+                        field_extractors,
+                        context_fields,
+                    } => {
+                        trace_match!("Reached leaf; cid={cid:?}, tid={tid:?}");
 
                         self.process_local_matching(
                             bytes,

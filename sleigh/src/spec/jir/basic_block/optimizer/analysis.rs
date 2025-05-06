@@ -18,8 +18,8 @@ use crate::spec::jir::values::{
 
 #[derive(Clone, Debug)]
 pub(super) struct ReferencedSlices {
-    writes: Vec<LocalSliceId>,
-    reads: Vec<LocalSliceId>,
+    pub(super) writes: Vec<LocalSliceId>,
+    pub(super) reads: Vec<LocalSliceId>,
 }
 
 impl ReferencedSlices {

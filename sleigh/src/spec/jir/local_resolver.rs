@@ -415,7 +415,7 @@ impl<'a> JIRResolver<'a> {
         local: MOIRLocalId,
     ) -> ProcessorSpecResult<JIRResolvedValue> {
         let value = self.constructor.local_scope.resolve_local(local);
-        trace_jir!("Local {local} is {value:?}");
+        trace_resolve!("Local {local} is {value:?}");
         let start = value.start;
         // let end = value.end;
         let size = JIRSize::try_from(

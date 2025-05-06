@@ -467,15 +467,23 @@ where
                 .maybe_stop_addr(stop_addr)
                 .build();
 
-            let block = self.processor_specification.borrow().lift_block(
+            let mut block = self.processor_specification.borrow().lift_block(
                 &*mmu,
                 self.runtime_context.as_mut(),
                 &config,
                 current_addr,
             )?;
 
-            compile(&mut *jit, &block)?;
+            let options = OptimizerOptions::default().with_enable_dse(true);
+            Rc::get_mut(&mut block.0).unwrap().run_optimization_passes(options).unwrap();
 
+            // TODO: Most likely, if the runtime context was modified, we will first need to emulate before translating
+            //       more blocks?
+            trace_jit!("{}", block);
+            trace_jit!("Fallthrough: {:?}", block.fallthrough());
+            trace_jit!("Branch targets: {:?}", block.branch_targets());
+
+            compile(&mut *jit, &block)?;
             process_branch_targets(&mut target_addresses, &block, translation_limit);
             process_block_fallthrough(&mut target_addresses, &block, translation_limit);
 
