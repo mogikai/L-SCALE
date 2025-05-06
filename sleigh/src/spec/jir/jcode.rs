@@ -1086,20 +1086,20 @@ impl JIRInstruction {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct BinaryArgs {
     pub output: JIRSlice,
     pub input_a: JIRValue,
     pub input_b: JIRValue,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct UnaryArgs {
     pub output: JIRSlice,
     pub input: JIRValue,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum JIRInstruction {
     // ------------------------ JIR STRUCTURE HELPERS -------------------------
     BlockStart(JIRBlockId),

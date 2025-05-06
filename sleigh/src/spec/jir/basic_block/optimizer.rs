@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::ops::Range;
 
@@ -16,6 +17,18 @@ use super::{
     InstId,
     TargetBasicBlockInner,
 };
+
+
+#[cfg(feature = "trace_opt")]
+macro_rules! trace_opt {
+    ($($arg:tt)*) => {
+        tracing::trace!($($arg)*)
+    };
+}
+#[cfg(not(feature = "trace_opt"))]
+macro_rules! trace_opt {
+    ($($arg:tt)*) => {};
+}
 
 mod dead_store_elimination;
 mod analysis;
@@ -40,7 +53,7 @@ impl OptimizerOptions {
 pub(super) struct OptimizerAncillary {
     slice_to_id: FnvHashMap<JIRSlice, LocalSliceId>,
     slice_ids: PrimaryMap<LocalSliceId, JIRSlice>,
-    inst_slice_references: FnvHashMap<InstId, ReferencedSlices>,
+    inst_slice_references: BTreeMap<InstId, ReferencedSlices>,
 
     live_ranges: SecondaryMap<LocalSliceId, Range<InstId>>,
     block_reads: SecondaryMap<JIRBlockId, FnvHashSet<LocalSliceId>>,
@@ -64,7 +77,7 @@ impl Display for OptimizerAncillary {
         }
 
         for (block_id, block_reads) in self.block_reads.items() {
-            writeln!(f, "block[{block_id}] writes: {:?}", block_reads)?;
+            writeln!(f, "block[{block_id}] reads: {:?}", block_reads)?;
         }
 
         for (block_id, dead_stores) in self.dead_stores.items() {
@@ -87,7 +100,7 @@ impl TargetBasicBlockInner {
         self.collect_slice_references()?;
         self.calculate_block_reads_and_writes()?;
 
-        trace_jir!("{}", self.optimizer_ancillary);
+        trace_opt!("{}", self.optimizer_ancillary);
 
         Ok(())
     }
@@ -98,10 +111,214 @@ impl TargetBasicBlockInner {
     ) -> ProcessorSpecResult {
         self.populate_ancillary()?;
 
-        // if options.enable_dse {
-        //     self.eliminate_dead_stores()?;
-        // }
+        if options.enable_dse {
+            self.eliminate_dead_stores()?;
+        }
 
         Ok(())
+    }
+}
+
+mod test {
+    use std::rc::Rc;
+    use mogi_utilities::index_map::MapKey;
+use crate::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
+    use crate::spec::jir::jcode::BinaryArgs;
+    use crate::spec::jir::values::VarnodeGroupId;
+    use crate::spec::SpaceId;
+    use super::*;
+
+    #[test]
+    fn test_remove_dead_store_nospill() {
+        let space_id = SpaceId::try_from_index(1).unwrap();
+        let group_id = VarnodeGroupId::try_from_index(1).unwrap();
+
+        let slice_0 = JIRSlice::new(space_id, group_id, 0, 1);
+        let slice_1 = JIRSlice::new(space_id, group_id, 1, 1);
+        let slice_2 = JIRSlice::new(space_id, group_id, 2, 1);
+        let slice_3 = JIRSlice::new(space_id, group_id, 3, 1);
+        let slice_4 = JIRSlice::new(space_id, group_id, 4, 1);
+
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), space_id);
+        block_builder.start_block().unwrap();
+
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_0, input_a: slice_3.into(), input_b: slice_3.into() })).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_2, input_a: slice_0.into(), input_b: slice_1.into() })).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_0, input_a: slice_1.into(), input_b: slice_2.into() })).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_0, input_a: slice_3.into(), input_b: slice_4.into() })).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_1, input_a: slice_0.into(), input_b: slice_2.into() })).unwrap();
+        
+        let block_id = block_builder.finish_block().unwrap();
+        let mut block = block_builder.finish().unwrap();
+        Rc::get_mut(&mut block.0).unwrap().run_optimization_passes(OptimizerOptions::new(true)).unwrap();
+
+        let instructions = block.instructions().collect::<Vec<_>>();
+
+        assert_eq!(instructions.len(), 4);
+        assert_eq!(instructions[0], &JIRInstruction::IntAdd(BinaryArgs { output: slice_0, input_a: slice_3.into(), input_b: slice_3.into() }));
+        assert_eq!(instructions[1], &JIRInstruction::IntAdd(BinaryArgs { output: slice_2, input_a: slice_0.into(), input_b: slice_1.into() }));
+        assert_eq!(instructions[2], &JIRInstruction::IntAdd(BinaryArgs { output: slice_0, input_a: slice_3.into(), input_b: slice_4.into() }));
+        assert_eq!(instructions[3], &JIRInstruction::IntAdd(BinaryArgs { output: slice_1, input_a: slice_0.into(), input_b: slice_2.into() }));
+    }
+
+    #[test]
+    fn test_remove_dead_store_spill() {
+        let space_id = SpaceId::try_from_index(1).unwrap();
+        let group_id = VarnodeGroupId::try_from_index(1).unwrap();
+
+        let slice_0 = JIRSlice::new(space_id, group_id, 0, 1);
+        let slice_1 = JIRSlice::new(space_id, group_id, 1, 1);
+        let slice_2 = JIRSlice::new(space_id, group_id, 2, 1);
+        let slice_3 = JIRSlice::new(space_id, group_id, 3, 1);
+        let slice_4 = JIRSlice::new(space_id, group_id, 4, 1);
+
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), space_id);
+        block_builder.start_block().unwrap();
+
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_0, input_a: slice_3.into(), input_b: slice_3.into() })).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_2, input_a: slice_0.into(), input_b: slice_1.into() })).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_0, input_a: slice_1.into(), input_b: slice_2.into() })).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_0, input_a: slice_3.into(), input_b: slice_4.into() })).unwrap();
+
+        let block_id = block_builder.finish_block().unwrap();
+        let mut block = block_builder.finish().unwrap();
+        Rc::get_mut(&mut block.0).unwrap().run_optimization_passes(OptimizerOptions::new(true)).unwrap();
+
+        let instructions = block.instructions().collect::<Vec<_>>();
+
+        // instructions[2] has been eliminated
+        assert_eq!(instructions.len(), 3);
+        assert_eq!(instructions[0], &JIRInstruction::IntAdd(BinaryArgs { output: slice_0, input_a: slice_3.into(), input_b: slice_3.into() }));
+        assert_eq!(instructions[1], &JIRInstruction::IntAdd(BinaryArgs { output: slice_2, input_a: slice_0.into(), input_b: slice_1.into() }));
+        assert_eq!(instructions[2], &JIRInstruction::IntAdd(BinaryArgs { output: slice_0, input_a: slice_3.into(), input_b: slice_4.into() }));
+    }
+    
+    #[test]
+    fn test_keep_live_stores() {
+        let space_id = SpaceId::try_from_index(1).unwrap();
+        let group_id = VarnodeGroupId::try_from_index(1).unwrap();
+
+        let slice_0 = JIRSlice::new(space_id, group_id, 0, 1);
+        let slice_1 = JIRSlice::new(space_id, group_id, 1, 1);
+        let slice_2 = JIRSlice::new(space_id, group_id, 2, 1);
+        let slice_3 = JIRSlice::new(space_id, group_id, 3, 1);
+
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), space_id);
+        block_builder.start_block().unwrap();
+
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_3, input_a: slice_3.into(), input_b: slice_3.into() })).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_0, input_a: slice_3.into(), input_b: slice_3.into() })).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_1, input_a: slice_0.into(), input_b: slice_2.into() })).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_1, input_a: slice_1.into(), input_b: slice_2.into() })).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_2, input_a: slice_1.into(), input_b: slice_0.into() })).unwrap();
+
+        let block_id = block_builder.finish_block().unwrap();
+        let mut block = block_builder.finish().unwrap();
+        Rc::get_mut(&mut block.0).unwrap().run_optimization_passes(OptimizerOptions::new(true)).unwrap();
+
+        let instructions = block.instructions().collect::<Vec<_>>();
+
+        assert_eq!(instructions.len(), 5);
+        assert_eq!(instructions[0], &JIRInstruction::IntAdd(BinaryArgs { output: slice_3, input_a: slice_3.into(), input_b: slice_3.into() }));
+        assert_eq!(instructions[1], &JIRInstruction::IntAdd(BinaryArgs { output: slice_0, input_a: slice_3.into(), input_b: slice_3.into() }));
+        assert_eq!(instructions[2], &JIRInstruction::IntAdd(BinaryArgs { output: slice_1, input_a: slice_0.into(), input_b: slice_2.into() }));
+        assert_eq!(instructions[3], &JIRInstruction::IntAdd(BinaryArgs { output: slice_1, input_a: slice_1.into(), input_b: slice_2.into() }));
+        assert_eq!(instructions[4], &JIRInstruction::IntAdd(BinaryArgs { output: slice_2, input_a: slice_1.into(), input_b: slice_0.into() }));
+    }
+    
+    #[test]
+    fn test_keep_load() {
+        let space_id = SpaceId::try_from_index(1).unwrap();
+        let group_id = VarnodeGroupId::try_from_index(1).unwrap();
+
+        let slice_0 = JIRSlice::new(space_id, group_id, 0, 1);
+        let slice_1 = JIRSlice::new(space_id, group_id, 1, 1);
+        let slice_2 = JIRSlice::new(space_id, group_id, 2, 1);
+        let slice_3 = JIRSlice::new(space_id, group_id, 3, 1);
+
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), space_id);
+        block_builder.start_block().unwrap();
+
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_0, input_a: slice_0.into(), input_b: slice_0.into() })).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_1, input_a: slice_1.into(), input_b: slice_1.into() })).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::Load { target: slice_2, address: JIRValue::Slice(slice_0), space: space_id}).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::Load { target: slice_3, address: JIRValue::Slice(slice_1), space: space_id}).unwrap();
+
+        let block_id = block_builder.finish_block().unwrap();
+        let mut block = block_builder.finish().unwrap();
+        Rc::get_mut(&mut block.0).unwrap().run_optimization_passes(OptimizerOptions::new(true)).unwrap();
+
+        let instructions = block.instructions().collect::<Vec<_>>();
+
+        assert_eq!(instructions.len(), 4);
+        assert_eq!(instructions[0], &JIRInstruction::IntAdd(BinaryArgs { output: slice_0, input_a: slice_0.into(), input_b: slice_0.into() }));
+        assert_eq!(instructions[1], &JIRInstruction::IntAdd(BinaryArgs { output: slice_1, input_a: slice_1.into(), input_b: slice_1.into() }));
+        assert_eq!(instructions[2], &JIRInstruction::Load { target: slice_2, address: JIRValue::Slice(slice_0), space: space_id });
+        assert_eq!(instructions[3], &JIRInstruction::Load { target: slice_3, address: JIRValue::Slice(slice_1), space: space_id });
+    }
+
+    #[test]
+    fn test_keep_store() {
+        let space_id = SpaceId::try_from_index(1).unwrap();
+        let group_id = VarnodeGroupId::try_from_index(1).unwrap();
+
+        let slice_0 = JIRSlice::new(space_id, group_id, 0, 1);
+        let slice_1 = JIRSlice::new(space_id, group_id, 1, 1);
+        let slice_2 = JIRSlice::new(space_id, group_id, 2, 1);
+        let slice_3 = JIRSlice::new(space_id, group_id, 3, 1);
+
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), space_id);
+        block_builder.start_block().unwrap();
+
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_0, input_a: slice_0.into(), input_b: slice_0.into() })).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_1, input_a: slice_1.into(), input_b: slice_1.into() })).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_2, input_a: slice_2.into(), input_b: slice_2.into() })).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_3, input_a: slice_3.into(), input_b: slice_3.into() })).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::Store { address: JIRValue::Slice(slice_0), value: slice_2.into(), space: space_id}).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::Store { address: JIRValue::Slice(slice_1), value: slice_3.into(), space: space_id}).unwrap();
+
+        let block_id = block_builder.finish_block().unwrap();
+        let mut block = block_builder.finish().unwrap();
+        Rc::get_mut(&mut block.0).unwrap().run_optimization_passes(OptimizerOptions::new(true)).unwrap();
+
+        let instructions = block.instructions().collect::<Vec<_>>();
+
+        assert_eq!(instructions.len(), 6);
+        assert_eq!(instructions[0], &JIRInstruction::IntAdd(BinaryArgs { output: slice_0, input_a: slice_0.into(), input_b: slice_0.into() }));
+        assert_eq!(instructions[1], &JIRInstruction::IntAdd(BinaryArgs { output: slice_1, input_a: slice_1.into(), input_b: slice_1.into() }));
+        assert_eq!(instructions[2], &JIRInstruction::IntAdd(BinaryArgs { output: slice_2, input_a: slice_2.into(), input_b: slice_2.into() }));
+        assert_eq!(instructions[3], &JIRInstruction::IntAdd(BinaryArgs { output: slice_3, input_a: slice_3.into(), input_b: slice_3.into() }));
+        assert_eq!(instructions[4], &JIRInstruction::Store { address: JIRValue::Slice(slice_0), value: slice_2.into(), space: space_id });
+        assert_eq!(instructions[5], &JIRInstruction::Store { address: JIRValue::Slice(slice_1), value: slice_3.into(), space: space_id });
+    }
+
+    #[test]
+    fn test_eliminate_load() {
+        let space_id = SpaceId::try_from_index(1).unwrap();
+        let group_id = VarnodeGroupId::try_from_index(1).unwrap();
+
+        let slice_0 = JIRSlice::new(space_id, group_id, 0, 1);
+        let slice_1 = JIRSlice::new(space_id, group_id, 1, 1);
+        let slice_2 = JIRSlice::new(space_id, group_id, 2, 1);
+        let slice_3 = JIRSlice::new(space_id, group_id, 3, 1);
+
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), space_id);
+        block_builder.start_block().unwrap();
+
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_0, input_a: slice_0.into(), input_b: slice_0.into() })).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::IntAdd(BinaryArgs { output: slice_1, input_a: slice_1.into(), input_b: slice_1.into() })).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::Load { target: slice_2, address: JIRValue::Slice(slice_0), space: space_id}).unwrap();
+        block_builder.push_jir_instruction(JIRInstruction::Load { target: slice_2, address: JIRValue::Slice(slice_1), space: space_id}).unwrap();
+
+        let block_id = block_builder.finish_block().unwrap();
+        let mut block = block_builder.finish().unwrap();
+        Rc::get_mut(&mut block.0).unwrap().run_optimization_passes(OptimizerOptions::new(true)).unwrap();
+
+        let instructions = block.instructions().collect::<Vec<_>>();
+
+        assert_eq!(instructions.len(), 3);
+        assert_eq!(instructions[0], &JIRInstruction::IntAdd(BinaryArgs { output: slice_0, input_a: slice_0.into(), input_b: slice_0.into() }));
+        assert_eq!(instructions[1], &JIRInstruction::IntAdd(BinaryArgs { output: slice_1, input_a: slice_1.into(), input_b: slice_1.into() }));
+        assert_eq!(instructions[2], &JIRInstruction::Load { target: slice_2, address: JIRValue::Slice(slice_1), space: space_id });
     }
 }

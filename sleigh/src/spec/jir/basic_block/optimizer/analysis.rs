@@ -71,6 +71,8 @@ impl TargetBasicBlockInner {
             for (inst_id, inst) in self.jir_instructions[block.range.clone()]
                 .iter()
                 .enumerate()
+                .map(|(id, inst)| (id + block.range.start, inst))
+                .rev()
             {
                 let rs = get_referenced_slices(
                     inst,
@@ -78,18 +80,27 @@ impl TargetBasicBlockInner {
                     &mut self.optimizer_ancillary.slice_ids,
                 );
 
+                self.optimizer_ancillary.inst_slice_references.insert(inst_id, rs.clone());
+
                 // process written slices (check for spills and if current inst is dead store)
                 for write in &rs.writes {
-                    written_slices.insert(*write);
-
-                    if !read_slices.contains(write) {
-                        // written slice hasn't been read before previously => it's a dead store
+                    if !read_slices.contains(write) && written_slices.contains(write) {
+                        // written slice hasn't been read before and is not last write (i.e.
+                        // was already spilled) => it's a dead store
                         dead_stores.push(inst_id);
+
+                        // also remove all reads from this instruction since we eliminate it
+                        for dead_store_read in rs.reads.iter() {
+                            read_slices.remove(dead_store_read);
+                        }
                     } else {
-                        // written slice has been read before => no dead store, but remove from
+                        // written slice has been read before or is spilled => no dead store, but remove from
                         // read set
                         read_slices.remove(write);
                     }
+
+                    written_slices.insert(*write);
+                    self.optimizer_ancillary.block_writes[block_id].insert(*write);
                 }
 
                 // process read slices (add to set)
@@ -98,6 +109,9 @@ impl TargetBasicBlockInner {
                 }
             }
 
+            // the remaining read slices have no corresponding write before them so
+            // they must be read from the previous block
+            self.optimizer_ancillary.block_reads[block_id].extend(read_slices.into_iter());
             self.optimizer_ancillary.dead_stores[block_id] = dead_stores;
         }
 
@@ -201,6 +215,7 @@ fn get_referenced_slices(
             address,
             space: _,
         } => {
+            // TODO is this correct?
             let writes = vec![target.clone()];
             let mut reads = vec![];
 
@@ -215,15 +230,16 @@ fn get_referenced_slices(
             value,
             space: _,
         } => {
+            // TODO is this correct?
             let mut writes = vec![];
             let mut reads = vec![];
 
-            if let JIRValue::Slice(jirslice) = value {
+            if let JIRValue::Slice(jirslice) = address {
                 reads.push(jirslice.clone());
             }
 
-            if let JIRValue::Slice(jirslice) = address {
-                writes.push(jirslice.clone());
+            if let JIRValue::Slice(jirslice) = value {
+                reads.push(jirslice.clone());
             }
 
             (writes, reads)

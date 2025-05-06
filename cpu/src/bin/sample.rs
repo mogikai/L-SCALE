@@ -71,8 +71,11 @@ fn setup_with_bytes(
         }
 
         // Allocate stack
-        mmu.alloc_physical((stack_addr - (stack_page_count - 1) * PAGE_SIZE as u64).into(), stack_page_count as usize * PAGE_SIZE)
-            .unwrap();
+        mmu.alloc_physical(
+            (stack_addr - (stack_page_count - 1) * PAGE_SIZE as u64).into(),
+            stack_page_count as usize * PAGE_SIZE,
+        )
+        .unwrap();
 
         // Map stack pages downwards.
         for page_id in 0..stack_page_count {
@@ -149,7 +152,15 @@ fn main() {
     misc_o0_path.push("resources/test/executables/misc_o0.o");
     let testelf_content = std::fs::read(&misc_o0_path).unwrap();
 
+    // ADD RAX, RBX
+    // ADD RAX, RBX
+    // ADD RAX, RBX
+    // ADD RAX, RBX
+    // let testelf_content =
+    //     b"\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\xc3";
+
     let (mut cpu, mmu, spec) = setup_with_bytes(&testelf_content, 0x1400u64);
+    // let (mut cpu, mmu, spec) = setup_with_bytes(testelf_content, 0x0u64);
 
     // write numbers to memory
     let numbers_addr = 0xFFFF_FFFF_FF00_0000u64;

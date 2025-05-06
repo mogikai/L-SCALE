@@ -184,7 +184,7 @@ impl Display for JIRVarNodeId {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum JIRValue {
     Slice(JIRSlice),
     Const(JIRConst),
@@ -264,7 +264,7 @@ impl JIRValue {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct JIRConst {
     value: u128,
     size: JIRSize,
