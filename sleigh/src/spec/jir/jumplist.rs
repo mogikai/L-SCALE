@@ -501,7 +501,11 @@ impl<'a> MatchContext<'a> {
 
                 // immediately descend into any variable-offset sublists and add resolver if match
                 for sublist_id in &entry.sublists {
-                    trace_match!("Descending into entry sublist {} with bytes_consumed={}", sublist_id, consumed_so_far);
+                    trace_match!(
+                        "Descending into entry sublist {} with bytes_consumed={}",
+                        sublist_id,
+                        consumed_so_far
+                    );
 
                     let sublist = self
                         .jumplist_cache
@@ -530,13 +534,7 @@ impl<'a> MatchContext<'a> {
                     .push((consumed_so_far, &entry.field_extractors));
 
                 let result = match &entry.next_entry {
-                    NextJumplistEntry::Constructor {
-                        cid,
-                        tid,
-                        sublists,
-                        field_extractors,
-                        context_fields,
-                    } => {
+                    NextJumplistEntry::Constructor(constructor_entry) => {
                         trace_match!("Reached leaf; cid={cid:?}, tid={tid:?}");
 
                         self.process_local_matching(

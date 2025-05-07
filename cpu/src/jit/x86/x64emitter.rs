@@ -59,7 +59,7 @@ use crate::jit::regalloc::result::{
     AllocatorResult,
     LoadSpillDirective,
 };
-use crate::jit::trace_jit;
+use crate::jit::regalloc::RegisterAllocator;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::{
     CustomOpImplKind,
@@ -85,6 +85,20 @@ use mogi_sleigh::spec::{
 };
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::SecondaryMap;
+
+#[macro_use]
+#[cfg(feature = "trace_emit")]
+macro_rules! trace_emit {
+    ($($arg:tt)*) => {
+        tracing::trace!($($arg)*)
+    };
+}
+#[cfg(not(feature = "trace_emit"))]
+macro_rules! trace_emit {
+    ($($arg:tt)*) => {};
+}
+
+pub(crate) use trace_emit;
 
 pub struct X64Emitter<'a> {
     allocations: &'a AllocatorResult,
@@ -460,10 +474,10 @@ impl X64Emitter<'_> {
         inst_id: InstId,
         jinst: &JIRInstruction,
     ) -> JITResult {
-        trace_jit!("Emitting {jinst}");
+        trace_emit!("Emitting {jinst}");
         // Remove any clobbers from the loaded slices.
         let clobbers = self.allocations.get_clobbers(inst_id);
-        trace_jit!("Removing clobbers from loaded slices: {clobbers}");
+        trace_emit!("Removing clobbers from loaded slices: {clobbers}");
         self.loaded_slices.remove_set(clobbers);
         self.emit_directives(
             self.allocations

@@ -482,7 +482,7 @@ where
             let options = OptimizerOptions::default().with_enable_dse(true);
             Rc::<TargetBasicBlockInner>::get_mut(&mut block.0)
                 .unwrap()
-                .run_optimization_passes(options);
+                .run_optimization_passes(options).unwrap();
 
             // TODO: Most likely, if the runtime context was modified, we will first need to emulate before translating
             //       more blocks?

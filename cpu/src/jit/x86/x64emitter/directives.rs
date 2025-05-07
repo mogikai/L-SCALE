@@ -5,11 +5,10 @@ use crate::jit::host::register::{
     RegClass,
 };
 use crate::jit::regalloc::result::LoadSpillDirective;
-use crate::jit::trace_jit;
 use crate::jit::x86::assemble;
 use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::task_context::X86TaskContext;
-use crate::jit::x86::x64emitter::X64Emitter;
+use crate::jit::x86::x64emitter::{trace_emit, X64Emitter};
 use crate::jit::x86::x64emitter::copy::CopyExtendMode;
 use dynasmrt::relocations::Relocation;
 use dynasmrt::x64::X64Relocation;
@@ -23,7 +22,7 @@ impl X64Emitter<'_> {
         directives: impl Iterator<Item = &'a LoadSpillDirective>,
     ) -> JITResult {
         for directive in directives {
-            trace_jit!("Emitting directive: {directive:?}");
+            trace_emit!("Emitting directive: {directive:?}");
             match directive {
                 LoadSpillDirective::Load(reg, slice) => {
                     self.loaded_slices.insert(*reg, *slice);
@@ -63,7 +62,7 @@ impl X64Emitter<'_> {
     /// In almost all cases, this will only make sense
     /// if the slices were saved beforehand.
     pub fn reload_loaded_slices(&mut self) -> JITResult {
-        trace_jit!("Emitting code to reload loaded slices: {:?}", self.loaded_slices);
+        trace_emit!("Emitting code to reload loaded slices: {:?}", self.loaded_slices);
         for (reg, slice) in self.loaded_slices.iter() {
             emit_load_directive(self.block.assembler(), reg, *slice)?;
         }
@@ -72,7 +71,7 @@ impl X64Emitter<'_> {
 
     /// Preserves all loaded slices in the cpu context.
     pub fn save_loaded_slices(&mut self) -> JITResult {
-        trace_jit!("Emitting code to save loaded slices: {:?}", self.loaded_slices);
+        trace_emit!("Emitting code to save loaded slices: {:?}", self.loaded_slices);
         for (reg, slice) in self.loaded_slices.iter() {
             emit_spill_directive(self.block.assembler(), reg, *slice)?;
         }

@@ -61,7 +61,6 @@ use crate::jit::regalloc::requirements::{
     TempRequest,
 };
 use crate::jit::regalloc::result::Allocation;
-use crate::jit::trace_jit;
 use mogi_sleigh::spec::jir::basic_block::{
     InstId,
     TargetBasicBlock,
@@ -76,6 +75,20 @@ use std::ops::{
 };
 use std::process::exit;
 use strum::EnumCount;
+
+#[macro_use]
+#[cfg(feature = "trace_regalloc")]
+macro_rules! trace_regalloc {
+    ($($arg:tt)*) => {
+        tracing::trace!($($arg)*)
+    };
+}
+#[cfg(not(feature = "trace_regalloc"))]
+macro_rules! trace_regalloc {
+    ($($arg:tt)*) => {};
+}
+
+pub(crate) use trace_regalloc;
 
 #[derive(Debug)]
 pub struct RegAllocHostConstraints {
@@ -265,7 +278,7 @@ where
     }
 
     pub fn run(mut self) -> JITResult<AllocatorResult> {
-        trace_jit!("Running register allocator");
+        trace_regalloc!("Running register allocator");
         // Iterate in reverse over all blocks.
         for block in self.target_block.jir_block_ids().rev() {
             self.alloc_block(block)?;
@@ -276,7 +289,7 @@ where
     /// Makes sure that block inputs, i.e. every slice that is live at the start of a block,
     /// are loaded.
     fn load_block_inputs(&mut self) -> JITResult {
-        trace_jit!("Loading block inputs");
+        trace_regalloc!("Loading block inputs");
         for (reg, slice) in self.loaded_slices.drain() {
             // We are at the start of a block. Make sure that the slice is loaded in the
             // register as specified.
@@ -332,12 +345,12 @@ where
         let operands = self.emitter_requirements.operands(inst);
         let required_temps = self.emitter_requirements.required_temps(inst);
         if clobbers.is_empty() && operands.all().len() == 0 {
-            trace_jit!("No operands or clobbers for {inst}, skipping allocation");
+            trace_regalloc!("No operands or clobbers for {inst}, skipping allocation");
             return Ok(());
         }
-        trace_jit!("");
-        trace_jit!("Allocating registers for {inst}. It is clobbering {clobbers} and requesting {operands:?}");
-        trace_jit!("Available registers at the start:\n{}", self.available_registers,);
+        trace_regalloc!("");
+        trace_regalloc!("Allocating registers for {inst}. It is clobbering {clobbers} and requesting {operands:?}");
+        trace_regalloc!("Available registers at the start:\n{}", self.available_registers,);
 
         for (_, operand) in operands.fixed() {
             self.reserve_reg_for_fixed_operand(operand)?;
@@ -348,29 +361,29 @@ where
         }
         self.allocations.clobbers[inst].union_from(clobbers);
 
-        trace_jit!("Available registers after fixed reg and clobber constraints:\n{}", self.available_registers);
+        trace_regalloc!("Available registers after fixed reg and clobber constraints:\n{}", self.available_registers);
 
         for (op_id, operand) in operands.write_fixed() {
             let allocation = self.alloc_operand(inst, operand)?;
-            trace_jit!("Allocated fixed reg operand {op_id}|{operand:?} for instruction {inst} as {allocation:?}");
+            trace_regalloc!("Allocated fixed reg operand {op_id}|{operand:?} for instruction {inst} as {allocation:?}");
             self.allocations.set_allocation(inst, op_id, allocation);
         }
 
         for (op_id, operand) in operands.write_non_fixed() {
             let allocation = self.alloc_operand(inst, operand)?;
-            trace_jit!("Allocated operand {op_id}|{operand:?} for instruction {inst} as {allocation:?}");
+            trace_regalloc!("Allocated operand {op_id}|{operand:?} for instruction {inst} as {allocation:?}");
             self.allocations.set_allocation(inst, op_id, allocation);
         }
 
         for (op_id, operand) in operands.read_fixed() {
             let allocation = self.alloc_operand(inst, operand)?;
-            trace_jit!("Allocated fixed reg operand {op_id}|{operand:?} for instruction {inst} as {allocation:?}");
+            trace_regalloc!("Allocated fixed reg operand {op_id}|{operand:?} for instruction {inst} as {allocation:?}");
             self.allocations.set_allocation(inst, op_id, allocation);
         }
 
         for (op_id, operand) in operands.read_non_fixed() {
             let allocation = self.alloc_operand(inst, operand)?;
-            trace_jit!("Allocated operand {op_id}|{operand:?} for instruction {inst} as {allocation:?}");
+            trace_regalloc!("Allocated operand {op_id}|{operand:?} for instruction {inst} as {allocation:?}");
             self.allocations.set_allocation(inst, op_id, allocation);
         }
 
@@ -398,7 +411,7 @@ where
         // if inst.is_branch()
         //     spill all for diverging branches
         //     keep everything loaded for main path (either fallthrough or unconditional jmp)
-        trace_jit!("Available registers after allocation:\n{}", self.available_registers);
+        trace_regalloc!("Available registers after allocation:\n{}", self.available_registers);
         Ok(())
     }
 
@@ -439,7 +452,7 @@ where
         &mut self,
         request: TempRequest,
     ) -> JITResult<HostRegSet> {
-        trace_jit!("Allocating temps: {request:?}");
+        trace_regalloc!("Allocating temps: {request:?}");
         let mut temp_regs = HostRegSet::empty();
 
         for reg in self
@@ -447,7 +460,7 @@ where
             .iter_class(RegClass::Int)
             .take(request.requested_int() as usize)
         {
-            trace_jit!("Allocating temp int register {reg}");
+            trace_regalloc!("Allocating temp int register {reg}");
             self.available_registers.remove(reg);
             self.unload_reg(reg);
             temp_regs.add(reg);
@@ -458,7 +471,7 @@ where
             .iter_class(RegClass::Float)
             .take(request.requested_float() as usize)
         {
-            trace_jit!("Allocating temp float register {reg}");
+            trace_regalloc!("Allocating temp float register {reg}");
             self.available_registers.remove(reg);
             self.unload_reg(reg);
             temp_regs.add(reg);
@@ -469,7 +482,7 @@ where
             .iter_class(RegClass::Vector)
             .take(request.requested_vector() as usize)
         {
-            trace_jit!("Allocating temp vector register {reg}");
+            trace_regalloc!("Allocating temp vector register {reg}");
             self.available_registers.remove(reg);
             self.unload_reg(reg);
             temp_regs.add(reg);
@@ -542,7 +555,7 @@ where
         existing_slice: JIRSlice,
         operand: &OperandRequest,
     ) -> JITResult<HostReg> {
-        trace_jit!(
+        trace_regalloc!(
             "Slice group is already loaded in register {reg} with slice {existing_slice:?}. Trying to also fit {:?}",
             operand.slice
         );
@@ -626,7 +639,7 @@ where
         inst: InstId,
         operand: &OperandRequest,
     ) -> JITResult<Allocation> {
-        trace_jit!("Written regs: {}", self.written_regs);
+        trace_regalloc!("Written regs: {}", self.written_regs);
         let allocation = if let Some((reg, existing_slice)) = self.get_loaded_slice_group(operand) {
             if let OperandConstraint::Mem = operand.constraint {
                 // Unload if it was previously allocated to a register and then allocate to memory.
@@ -647,7 +660,7 @@ where
         if let Allocation::Register(reg) = allocation {
             self.mark_and_spill(inst, reg, operand);
         }
-        trace_jit!("Written regs: {}", self.written_regs);
+        trace_regalloc!("Written regs: {}", self.written_regs);
         Ok(allocation)
     }
 
@@ -658,7 +671,7 @@ where
         let OperandConstraint::FixedReg(target_reg) = operand.constraint else {
             unreachable!()
         };
-        trace_jit!("Reserving register {target_reg} for fixed operand");
+        trace_regalloc!("Reserving register {target_reg} for fixed operand");
 
         // Check if the register is free, and remove it from the available set.
         if !self.available_registers.contains(target_reg) && !self.fixed_regs.contains(target_reg) {
@@ -674,7 +687,7 @@ where
         &mut self,
         clobber: HostReg,
     ) {
-        trace_jit!("Clearing clobber {clobber}");
+        trace_regalloc!("Clearing clobber {clobber}");
         if !self.available_registers.contains(clobber) {
             todo!(
                 "Error: Clobbering already removed register.
@@ -695,7 +708,7 @@ where
         current_reg: HostReg,
         slice: JIRSlice,
     ) {
-        trace_jit!("Allocation is wanted in {current_reg}, but is already in {previous_reg}. Moving allocation");
+        trace_regalloc!("Allocation is wanted in {current_reg}, but is already in {previous_reg}. Moving allocation");
         // We add a move such that the allocation will be in `previous_reg` after the instruction.
         // This is necessary, since any following instructions (in forward order)
         // are already allocated to the register `previous_reg`.
@@ -716,7 +729,7 @@ where
         old_slice: JIRSlice,
         new_slice: JIRSlice,
     ) {
-        trace_jit!("Adjusting allocation of register {reg} from {old_slice} to {new_slice}");
+        trace_regalloc!("Adjusting allocation of register {reg} from {old_slice} to {new_slice}");
 
         // After the instruction is finished, adjust the slice to the one that was previously expected.
         // (that is expected next when viewing in forward direction)
@@ -735,7 +748,7 @@ where
         reg: HostReg,
     ) {
         if let Some(slice) = self.loaded_slices.take(reg) {
-            trace_jit!("Loading register {reg} from slice {slice}");
+            trace_regalloc!("Loading register {reg} from slice {slice}");
             self.allocations
                 .load_spill_directives
                 .add_load_after(reg, slice);

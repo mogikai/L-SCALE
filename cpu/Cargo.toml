@@ -30,5 +30,6 @@ addr_align = "0.1.0"
 default = ["trace_jit"]
 trace_jit = []
 trace_tlb = []
+trace_opt = ["mogi_sleigh/trace_opt"]
 trace_jir = ["mogi_sleigh/trace_jir"]
 trace_build = ["mogi_sleigh/trace_build"]

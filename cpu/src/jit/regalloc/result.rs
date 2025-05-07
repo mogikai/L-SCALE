@@ -5,7 +5,7 @@ use crate::jit::host::register::{
     RegClass,
 };
 use crate::jit::regalloc::requirements::EmitterAllocRequirements;
-use crate::jit::trace_jit;
+use crate::jit::regalloc::trace_regalloc;
 use mogi_sleigh::spec::jir::basic_block::{
     InstId,
     TargetBasicBlock,
@@ -217,7 +217,7 @@ impl LoadSpillDirectives {
         inst_to_directives.before.end = self.before_directives.len();
         inst_to_directives.after.end = self.after_directives.len();
         if !inst_to_directives.before.is_empty() || !inst_to_directives.after.is_empty() {
-            trace_jit!(
+            trace_regalloc!(
                 "Added {} before and {} after directives for inst {}:{:?}{:?}",
                 inst_to_directives.before.len(),
                 inst_to_directives.after.len(),
@@ -248,7 +248,7 @@ impl LoadSpillDirectives {
         reg: HostReg,
         slice: JIRSlice,
     ) {
-        trace_jit!("Adding load before inst {}: Loading {:?} into {:?}", self.current_inst, slice, reg);
+        trace_regalloc!("Adding load before inst {}: Loading {:?} into {:?}", self.current_inst, slice, reg);
         self.before_directives
             .push(LoadSpillDirective::Load(reg, slice));
     }
@@ -258,7 +258,7 @@ impl LoadSpillDirectives {
         reg: HostReg,
         slice: JIRSlice,
     ) {
-        trace_jit!("Adding load after inst {}: Loading {:?} into {:?}", self.current_inst, slice, reg);
+        trace_regalloc!("Adding load after inst {}: Loading {:?} into {:?}", self.current_inst, slice, reg);
         self.after_directives
             .push(LoadSpillDirective::Load(reg, slice));
     }
@@ -268,7 +268,7 @@ impl LoadSpillDirectives {
         reg: HostReg,
         slice: JIRSlice,
     ) {
-        trace_jit!("Adding spill before inst {}: Spilling {:?} into {:?}", self.current_inst, reg, slice);
+        trace_regalloc!("Adding spill before inst {}: Spilling {:?} into {:?}", self.current_inst, reg, slice);
         self.before_directives
             .push(LoadSpillDirective::Spill(reg, slice));
     }
@@ -278,7 +278,7 @@ impl LoadSpillDirectives {
         reg: HostReg,
         slice: JIRSlice,
     ) {
-        trace_jit!("Adding spill after inst {}: Spilling {:?} into {:?}", self.current_inst, reg, slice);
+        trace_regalloc!("Adding spill after inst {}: Spilling {:?} into {:?}", self.current_inst, reg, slice);
         self.after_directives
             .push(LoadSpillDirective::Spill(reg, slice));
     }

@@ -10,14 +10,12 @@ use crate::jit::host::register::{
 };
 use crate::jit::regalloc::requirements::OperandRequest;
 use crate::jit::regalloc::result::Allocation;
-use crate::jit::trace_jit;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::x64emitter::copy::CopyExtendMode;
 use crate::jit::x86::x64emitter::helpers::reg;
 use crate::jit::x86::x64emitter::{
-    X64AllocRequirements,
-    X64Emitter,
+    trace_emit, X64AllocRequirements, X64Emitter
 };
 use crate::jit::x86::{
     X86MogiJit,
@@ -73,7 +71,7 @@ impl X64Emitter<'_> {
         shift: JIRValue,
     ) -> JITResult {
         assert_eq!(output.size(), input.size());
-        trace_jit!("Emitting shl {output:?} = {input:?} << {shift:?}");
+        trace_emit!("Emitting shl {output:?} = {input:?} << {shift:?}");
 
         self.shift(
             inst,
@@ -137,7 +135,7 @@ impl X64Emitter<'_> {
         if output.size() > 16 {
             todo!("Sizes greater than 8 are currently unsupported for shift operations.")
         }
-        trace_jit!("Emitting shr {output:?} = {input:?} >> {shift:?}");
+        trace_emit!("Emitting shr {output:?} = {input:?} >> {shift:?}");
 
         self.shift(
             inst,
@@ -201,7 +199,7 @@ impl X64Emitter<'_> {
         if output.size() > 8 {
             todo!("Sizes greater than 8 are currently unsupported for shift operations.")
         }
-        trace_jit!("Emitting shr {output:?} = {input:?} s>> {shift:?}");
+        trace_emit!("Emitting shr {output:?} = {input:?} s>> {shift:?}");
 
         self.shift(
             inst,

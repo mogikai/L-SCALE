@@ -8,14 +8,12 @@ use crate::jit::host::register::{
 };
 use crate::jit::regalloc::requirements::OperandRequest;
 use crate::jit::regalloc::result::Allocation;
-use crate::jit::trace_jit;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::assemble;
 use crate::jit::x86::task_context::X86TaskContext;
 use crate::jit::x86::x64emitter::helpers::reg;
 use crate::jit::x86::x64emitter::{
-    X64AllocRequirements,
-    X64Emitter,
+    trace_emit, X64AllocRequirements, X64Emitter
 };
 use mogi_sleigh::spec::jir::basic_block::InstId;
 use mogi_sleigh::spec::jir::common::JIRSize;
@@ -111,25 +109,25 @@ impl X64Emitter<'_> {
     ) -> JITResult {
         match extend_mode {
             CopyExtendMode::ZeroExtend(new_size) => {
-                trace_jit!("Zero extending from {source:?}:{size} to {target:?}:{new_size}");
+                trace_emit!("Zero extending from {source:?}:{size} to {target:?}:{new_size}");
                 if target == source && size == new_size {
-                    trace_jit!("Zero extend with equal sizes: no-op");
+                    trace_emit!("Zero extend with equal sizes: no-op");
                     return Ok(());
                 }
                 self.copy_reg_zext(target, source, size, new_size)?;
                 Ok(())
             }
             CopyExtendMode::SignExtend(new_size) => {
-                trace_jit!("Sign extending from {source:?}:{size} to {target:?}:{new_size}");
+                trace_emit!("Sign extending from {source:?}:{size} to {target:?}:{new_size}");
                 if target == source && size == new_size {
-                    trace_jit!("Sign extend with equal sizes: no-op");
+                    trace_emit!("Sign extend with equal sizes: no-op");
                     return Ok(());
                 }
                 self.copy_reg_sext(target, source, size, new_size)?;
                 Ok(())
             }
             CopyExtendMode::None => {
-                trace_jit!("Copying {source:?} to {target:?} ({size})");
+                trace_emit!("Copying {source:?} to {target:?} ({size})");
                 // Only emit a copy instruction, if target and source are different.
                 if target == source {
                     return Ok(());
@@ -394,7 +392,8 @@ impl X64Emitter<'_> {
     ) -> JITResult {
         let target = target.into();
         let value = value.into();
-        trace_jit!("Loading {value:?} into {target:?}");
+        trace_emit!("Loading {value:?} into {target:?}");
+
         match target.class() {
             RegClass::Int => self.load_const_int(target, value)?,
             RegClass::Vector => self.load_const_vec(target, value)?,
