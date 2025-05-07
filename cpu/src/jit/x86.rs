@@ -1,6 +1,9 @@
 #![allow(unused_variables)]
 //! The x86 JIT implementation can make use of all registers, except RBP, since RBP stores the cpu context.
 use crate::jit::api::{
+    CustomOpFastImpl,
+    CustomOpFastImplBinary,
+    CustomOpFastImplUnary,
     CustomOpImpl,
     JITGlobalRuntimeContext,
     JITPathChoice,
@@ -92,9 +95,7 @@ pub enum CustomOpImplKind {
     #[default]
     Unimpl,
     BlockEnding,
-    BinaryFastImpl64(extern "sysv64" fn(u64, u64) -> u64),
-    UnaryFastImpl64(extern "sysv64" fn(u64) -> u64),
-    FastImplSlice(extern "sysv64" fn(&mut [u8], &[u8], &[u8])),
+    FastImpl(CustomOpFastImpl),
     Callback(CustomOpCallback<X86TaskContext>),
 }
 
@@ -237,18 +238,18 @@ impl MogiJit for X86MogiJit {
     fn register_binary_custom_op_fast_impl_64(
         &mut self,
         op_id: CustomOpId,
-        fn_impl: extern "sysv64" fn(u64, u64) -> u64,
+        fn_impl: CustomOpFastImplBinary,
     ) -> JITResult {
-        self.global_context.custom_op_impls[op_id] = CustomOpImplKind::BinaryFastImpl64(fn_impl);
+        self.global_context.custom_op_impls[op_id] = CustomOpImplKind::FastImpl(CustomOpFastImpl::Binary(fn_impl));
         Ok(())
     }
 
     fn register_unary_custom_op_fast_impl_64(
         &mut self,
         op_id: CustomOpId,
-        fn_impl: extern "sysv64" fn(u64) -> u64,
+        fn_impl: CustomOpFastImplUnary,
     ) -> JITResult {
-        self.global_context.custom_op_impls[op_id] = CustomOpImplKind::UnaryFastImpl64(fn_impl);
+        self.global_context.custom_op_impls[op_id] = CustomOpImplKind::FastImpl(CustomOpFastImpl::Unary(fn_impl));
         Ok(())
     }
 

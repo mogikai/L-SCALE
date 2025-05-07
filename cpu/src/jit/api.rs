@@ -6,8 +6,8 @@ use crate::tlb::{
 };
 use dynasmrt::DynasmError;
 use mogi_mem::physical::page::PageData;
-use mogi_sleigh::lifter::context_provider::ContextProvider;
 use mogi_sleigh::lifter::BlockEndingOpDecider;
+use mogi_sleigh::lifter::context_provider::ContextProvider;
 use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
 use mogi_sleigh::spec::jir::values::{
     JIRSlice,
@@ -136,13 +136,13 @@ pub trait MogiJit: BlockEndingOpDecider {
     fn register_binary_custom_op_fast_impl_64(
         &mut self,
         op_id: CustomOpId,
-        fn_impl: extern "sysv64" fn(u64, u64) -> u64,
+        fn_impl: CustomOpFastImplBinary,
     ) -> JITResult;
 
     fn register_unary_custom_op_fast_impl_64(
         &mut self,
         op_id: CustomOpId,
-        fn_impl: extern "sysv64" fn(u64) -> u64,
+        fn_impl: CustomOpFastImplUnary,
     ) -> JITResult;
 
     /// For fast impls that operate on larger slices this function allows implementing
@@ -312,6 +312,33 @@ where
     T: Fn(&mut RuntimeContextT, &CustomOpArgs) -> Result<(), RuntimeError>,
     RuntimeContextT: JITTaskRuntimeContext,
 {
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct CustomOpFastImplBinary {
+    pub impl_8: Option<extern "sysv64" fn(u8, u8) -> u8>,
+    pub impl_16: Option<extern "sysv64" fn(u16, u16) -> u16>,
+    pub impl_32: Option<extern "sysv64" fn(u32, u32) -> u32>,
+    pub impl_64: Option<extern "sysv64" fn(u64, u64) -> u64>,
+    pub impl_128: Option<extern "sysv64" fn(u128, u128) -> u128>,
+    pub impl_slice: extern "sysv64" fn(*mut u8, usize, *mut u8, usize, *mut u8, usize),
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct CustomOpFastImplUnary {
+    pub impl_8: Option<extern "sysv64" fn(u8) -> u8>,
+    pub impl_16: Option<extern "sysv64" fn(u16) -> u16>,
+    pub impl_32: Option<extern "sysv64" fn(u32) -> u32>,
+    pub impl_64: Option<extern "sysv64" fn(u64) -> u64>,
+    pub impl_128: Option<extern "sysv64" fn(u128) -> u128>,
+    pub impl_slice: extern "sysv64" fn(*mut u8, usize, *const u8, usize),
+}
+
+/// Fast custom op implementations.
+#[derive(Debug, Copy, Clone)]
+pub enum CustomOpFastImpl {
+    Binary(CustomOpFastImplBinary),
+    Unary(CustomOpFastImplUnary),
 }
 
 /// The tlb miss helpers must have a signature that corresponds to this trait.

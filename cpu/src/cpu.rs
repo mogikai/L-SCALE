@@ -4,6 +4,7 @@
 
 use crate::arch::x86::general::swap_bytes;
 use crate::jit::api::{
+    CustomOpFastImplUnary,
     JITPathChoice,
     JITTaskRuntimeContext,
     JitError,
@@ -12,9 +13,9 @@ use crate::jit::api::{
 };
 use crate::jit::trace_jit;
 use crate::new_cpu_trait::{
+    CPU,
     CPUResult,
     RunLimit,
-    CPU,
 };
 use fnv::FnvHashMap;
 use mogi_sleigh::disassembler::Disassembler;
@@ -26,10 +27,10 @@ use mogi_sleigh::lifter::{
     LifterConfig,
     LifterError,
 };
-use mogi_sleigh::spec::jir::basic_block::optimizer::OptimizerOptions;
-use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
-use mogi_sleigh::spec::jir::jcode::NextBlockTarget;
 use mogi_sleigh::spec::ProcessorSpecification;
+use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
+use mogi_sleigh::spec::jir::basic_block::optimizer::OptimizerOptions;
+use mogi_sleigh::spec::jir::jcode::NextBlockTarget;
 use mogi_utilities::addresses::EVAddr;
 use std::cell::{
     Ref,
@@ -148,7 +149,22 @@ where
 
         let swap_bytes_id = spec.custom_op_id_by_string("swap_bytes").unwrap();
 
-        jit.register_unary_custom_op_fast_impl_64(swap_bytes_id, swap_bytes)
+        extern "sysv64" fn dummy(
+            _: *mut u8,
+            _: usize,
+            _: *const u8,
+            _: usize,
+        ) {
+        }
+        let ops = CustomOpFastImplUnary {
+            impl_8: None,
+            impl_16: None,
+            impl_32: None,
+            impl_64: Some(swap_bytes),
+            impl_128: None,
+            impl_slice: dummy,
+        };
+        jit.register_unary_custom_op_fast_impl_64(swap_bytes_id, ops)
             .unwrap();
     }
 }
