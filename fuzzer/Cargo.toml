@@ -32,4 +32,5 @@ hilbert_curve = "0.2.0"
 bmp = "0.5.0"
 
 [features]
+default = ["unicorn"]
 unicorn = []
