@@ -61,13 +61,15 @@ pub(crate) fn dump_registers(cpu: &MogiCPU<X86MogiJit, MogiMMU>) {
         let register_value: u64 = *cpu.register(register_name).unwrap();
         eprintln!("{:#3} = {:#018X}", register_name, register_value);
     }
+
+    eprintln!("");
 }
 
 pub(crate) fn setup_with_bytes(bytes: &[u8]) -> (MogiCPU<X86MogiJit, MogiMMU>, Rc<RefCell<MogiMMU>>) {
     let spec = Rc::new(RefCell::new(SPEC.read().unwrap().clone()));
     let stack_page_count = 8;
     let page_count = (bytes.len() + PAGE_SIZE - 1) / PAGE_SIZE;
-    let stack_addr = 0xffff_ffff_ffff_0000u64;
+    let stack_addr = 0xFFFF_FFFF_FFFF_0000u64;
 
     // Set up the mmu.
     let mmu = Rc::new(RefCell::new(MogiMMU::new()));

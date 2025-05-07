@@ -18,6 +18,10 @@ use std::path::PathBuf;
 use tracing::level_filters::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{
+    EnvFilter,
+    fmt,
+};
 use zerocopy::IntoBytes;
 
 mod common;
@@ -939,7 +943,9 @@ fn test_misc_partition_o0() {
     mmu.borrow_mut()
         .set_page_table_entry(numbers_addr.into(), numbers_addr.into(), Permission::ALL)
         .unwrap();
-    mmu.borrow_mut().write(numbers_addr.into(), numbers.as_bytes()).unwrap();
+    mmu.borrow_mut()
+        .write(numbers_addr.into(), numbers.as_bytes())
+        .unwrap();
 
     let mut numbers_sorted = numbers.clone();
     numbers_sorted.sort();
@@ -1003,7 +1009,9 @@ fn test_misc_partition_o3() {
     mmu.borrow_mut()
         .set_page_table_entry(numbers_addr.into(), numbers_addr.into(), Permission::ALL)
         .unwrap();
-    mmu.borrow_mut().write(numbers_addr.into(), numbers.as_bytes()).unwrap();
+    mmu.borrow_mut()
+        .write(numbers_addr.into(), numbers.as_bytes())
+        .unwrap();
 
     let mut numbers_sorted = numbers.clone();
     numbers_sorted.sort();
@@ -1067,7 +1075,9 @@ fn test_misc_quicksort_o0() {
     mmu.borrow_mut()
         .set_page_table_entry(numbers_addr.into(), numbers_addr.into(), Permission::ALL)
         .unwrap();
-    mmu.borrow_mut().write(numbers_addr.into(), numbers.as_bytes()).unwrap();
+    mmu.borrow_mut()
+        .write(numbers_addr.into(), numbers.as_bytes())
+        .unwrap();
 
     let mut bytes_sorted = numbers.clone();
     bytes_sorted.sort();
@@ -1117,7 +1127,9 @@ fn test_misc_quicksort_o3() {
     mmu.borrow_mut()
         .set_page_table_entry(numbers_addr.into(), numbers_addr.into(), Permission::ALL)
         .unwrap();
-    mmu.borrow_mut().write(numbers_addr.into(), numbers.as_bytes()).unwrap();
+    mmu.borrow_mut()
+        .write(numbers_addr.into(), numbers.as_bytes())
+        .unwrap();
 
     let mut numbers_sorted = numbers.clone();
     numbers_sorted.sort();
@@ -1139,3 +1151,242 @@ fn test_misc_quicksort_o3() {
 }
 
 // -------- tests from resources/test/executables/misc.c --------
+
+// ++++++++ tests from resources/test/executables/misc.c ++++++++
+#[test]
+fn test_math_prime_factors_o0() {
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::INFO.into())
+                .with_env_var("MOGI_LOG")
+                .from_env_lossy(),
+        )
+        .init();
+
+    let mut math_o0_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    math_o0_path.push("resources/test/executables/math_o0.o");
+
+    let instr = std::fs::read(&math_o0_path).unwrap();
+    let (mut cpu, mmu) = common::setup_with_bytes(&instr);
+    let stack_addr = 0xFFFF_FFFF_FFFF_0000u64;
+
+    // write fake return value for translation limit
+    mmu.borrow_mut()
+        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .unwrap();
+
+    // allocate memory for factors and n_factors
+    let factors_addr = 0xFFFF_FFFF_FF00_0000u64;
+    let n_factors_addr = 0xFFFF_FFFF_FF00_1000u64;
+
+    mmu.borrow_mut()
+        .alloc_physical(factors_addr.into(), 1 * PAGE_SIZE)
+        .unwrap();
+    mmu.borrow_mut()
+        .alloc_physical(n_factors_addr.into(), 1 * PAGE_SIZE)
+        .unwrap();
+    mmu.borrow_mut()
+        .set_page_table_entry(factors_addr.into(), factors_addr.into(), Permission::ALL)
+        .unwrap();
+    mmu.borrow_mut()
+        .set_page_table_entry(n_factors_addr.into(), n_factors_addr.into(), Permission::ALL)
+        .unwrap();
+
+    *cpu.register_mut("RIP").unwrap() = 0x1920u64;
+
+    // int input
+    let input: u64 = 2 * 2 * 3 * 3 * 3 * 5 * 5 * 7 * 11 * 13;
+    *cpu.register_mut("RDI").unwrap() = input;
+    // int *factors
+    *cpu.register_mut("RSI").unwrap() = factors_addr;
+    // size_t n_factors
+    *cpu.register_mut("RDX").unwrap() = n_factors_addr;
+    cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
+        .unwrap();
+
+    let mut n_factors = 0usize;
+
+    mmu.borrow_mut()
+        .read(n_factors_addr.into(), n_factors.as_mut_bytes())
+        .unwrap();
+
+    let mut factors = vec![0i32; n_factors];
+
+    mmu.borrow_mut()
+        .read(factors_addr.into(), factors[..n_factors].as_mut_bytes())
+        .unwrap();
+
+    assert_eq!(n_factors, 10);
+    assert_eq!(factors, vec![2, 2, 3, 3, 3, 5, 5, 7, 11, 13]);
+}
+
+#[test]
+fn test_math_prime_factors_o3() {
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::INFO.into())
+                .with_env_var("MOGI_LOG")
+                .from_env_lossy(),
+        )
+        .init();
+
+    let mut math_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    math_o3_path.push("resources/test/executables/math_o3.o");
+
+    let instr = std::fs::read(&math_o3_path).unwrap();
+    let (mut cpu, mmu) = common::setup_with_bytes(&instr);
+    let stack_addr = 0xFFFF_FFFF_FFFF_0000u64;
+
+    // write fake return value for translation limit
+    mmu.borrow_mut()
+        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .unwrap();
+
+    // allocate memory for factors and n_factors
+    let factors_addr = 0xFFFF_FFFF_FF00_0000u64;
+    let n_factors_addr = 0xFFFF_FFFF_FF00_1000u64;
+
+    mmu.borrow_mut()
+        .alloc_physical(factors_addr.into(), 1 * PAGE_SIZE)
+        .unwrap();
+    mmu.borrow_mut()
+        .alloc_physical(n_factors_addr.into(), 1 * PAGE_SIZE)
+        .unwrap();
+    mmu.borrow_mut()
+        .set_page_table_entry(factors_addr.into(), factors_addr.into(), Permission::ALL)
+        .unwrap();
+    mmu.borrow_mut()
+        .set_page_table_entry(n_factors_addr.into(), n_factors_addr.into(), Permission::ALL)
+        .unwrap();
+
+    *cpu.register_mut("RIP").unwrap() = 0x1A50u64;
+
+    // int input
+    let input: u64 = 2 * 2 * 3 * 3 * 3 * 5 * 5 * 7 * 11 * 13;
+    *cpu.register_mut("RDI").unwrap() = input;
+    // int *factors
+    *cpu.register_mut("RSI").unwrap() = factors_addr;
+    // size_t n_factors
+    *cpu.register_mut("RDX").unwrap() = n_factors_addr;
+    cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
+        .unwrap();
+
+    let mut n_factors = 0usize;
+
+    mmu.borrow_mut()
+        .read(n_factors_addr.into(), n_factors.as_mut_bytes())
+        .unwrap();
+
+    let mut factors = vec![0i32; n_factors];
+
+    mmu.borrow_mut()
+        .read(factors_addr.into(), factors[..n_factors].as_mut_bytes())
+        .unwrap();
+
+    assert_eq!(n_factors, 10);
+    assert_eq!(factors, vec![2, 2, 3, 3, 3, 5, 5, 7, 11, 13]);
+}
+
+#[test]
+fn test_math_median_o0() {
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::INFO.into())
+                .with_env_var("MOGI_LOG")
+                .from_env_lossy(),
+        )
+        .init();
+
+    let mut math_o0_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    math_o0_path.push("resources/test/executables/math_o0.o");
+
+    let instr = std::fs::read(&math_o0_path).unwrap();
+    let (mut cpu, mmu) = common::setup_with_bytes(&instr);
+    let stack_addr = 0xFFFF_FFFF_FFFF_0000u64;
+
+    // write fake return value for translation limit
+    mmu.borrow_mut()
+        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .unwrap();
+
+    // write numbers to memory
+    let numbers_addr = 0xFFFF_FFFF_FF00_0000u64;
+    let numbers = [-9, -5, 3, -2, -7, -3, -8, -6, -2, -9, 8, 3, 8, 10, 6, -4, 5, 6, -2, 5];
+
+    mmu.borrow_mut()
+        .alloc_physical(numbers_addr.into(), 1 * PAGE_SIZE)
+        .unwrap();
+    mmu.borrow_mut()
+        .set_page_table_entry(numbers_addr.into(), numbers_addr.into(), Permission::ALL)
+        .unwrap();
+    mmu.borrow_mut()
+        .write(numbers_addr.into(), numbers.as_bytes())
+        .unwrap();
+
+    *cpu.register_mut("RIP").unwrap() = 0x1620u64;
+    // int *numbers
+    *cpu.register_mut("RDI").unwrap() = numbers_addr;
+    // size_t n
+    *cpu.register_mut("RSI").unwrap() = numbers.len() as u64;
+    cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
+        .unwrap();
+
+    let median: u32 = *cpu.register("EAX").unwrap();
+    assert_eq!(median as i32, -2);
+}
+
+#[test]
+fn test_math_median_o3() {
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::INFO.into())
+                .with_env_var("MOGI_LOG")
+                .from_env_lossy(),
+        )
+        .init();
+
+    let mut math_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    math_o3_path.push("resources/test/executables/math_o3.o");
+
+    let instr = std::fs::read(&math_o3_path).unwrap();
+    let (mut cpu, mmu) = common::setup_with_bytes(&instr);
+    let stack_addr = 0xFFFF_FFFF_FFFF_0000u64;
+
+    // write fake return value for translation limit
+    mmu.borrow_mut()
+        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .unwrap();
+
+    // write numbers to memory
+    let numbers_addr = 0xFFFF_FFFF_FF00_0000u64;
+    let numbers = [-9, -5, 3, -2, -7, -3, -8, -6, -2, -9, 8, 3, 8, 10, 6, -4, 5, 6, -2, 5];
+
+    mmu.borrow_mut()
+        .alloc_physical(numbers_addr.into(), 1 * PAGE_SIZE)
+        .unwrap();
+    mmu.borrow_mut()
+        .set_page_table_entry(numbers_addr.into(), numbers_addr.into(), Permission::ALL)
+        .unwrap();
+    mmu.borrow_mut()
+        .write(numbers_addr.into(), numbers.as_bytes())
+        .unwrap();
+
+    *cpu.register_mut("RIP").unwrap() = 0x1750u64;
+    // int *numbers
+    *cpu.register_mut("RDI").unwrap() = numbers_addr;
+    // size_t n
+    *cpu.register_mut("RSI").unwrap() = numbers.len() as u64;
+    cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
+        .unwrap();
+
+    let median: u32 = *cpu.register("EAX").unwrap();
+    assert_eq!(median as i32, -2);
+}

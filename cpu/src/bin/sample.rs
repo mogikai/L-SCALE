@@ -148,9 +148,9 @@ fn main() {
         )
         .init();
 
-    let mut misc_o0_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    misc_o0_path.push("resources/test/executables/misc_o0.o");
-    let testelf_content = std::fs::read(&misc_o0_path).unwrap();
+    let mut math_o0_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    math_o0_path.push("resources/test/executables/misc_o0.o");
+    let testelf_content = std::fs::read(&math_o0_path).unwrap();
 
     // ADD RAX, RBX
     // ADD RAX, RBX
