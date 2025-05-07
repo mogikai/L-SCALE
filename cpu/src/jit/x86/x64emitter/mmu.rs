@@ -74,12 +74,36 @@ impl X64AllocRequirements {
         _space_id: SpaceId,
         value: JIRValue,
     ) {
-        *requirement.required_temps_mut() = TempRequest::new().int(2);
-        addr.is_slice_then(|addr| {
-            *requirement.required_temps_mut() = TempRequest::new().int(1);
-            requirement.add_request(OperandRequest::int_read_fixed_reg(GPRegister::DX.into_host_reg(), *addr))
-        });
-        value.is_slice_then(|value| requirement.add_request(OperandRequest::int_read_any(*value)));
+        let mut required_temp_count = 0;
+
+        // Both address and value need to be stored in slices, so we allocate enough
+        // temporaries (either 1 or 2) if one of them is a const.
+        match addr {
+            JIRValue::Slice(addr) => {
+                // addr slice => read from DX
+                requirement.add_request(OperandRequest::int_read_fixed_reg(GPRegister::DX.into_host_reg(), addr));
+            }
+            JIRValue::Const(addr) => {
+                // addr const => add temp reg
+                required_temp_count += 1;
+            }
+        }
+
+        match value {
+            JIRValue::Slice(value) => {
+                // value slice => read from registers
+                Self::require_large_int_read_any(requirement, value);
+            }
+            JIRValue::Const(value) => {
+                // value const => add temp reg
+                required_temp_count += 1;
+            }
+        }
+
+        // allocate enough temporary registers
+        // always at least 1 temp reg for tlb_lookup, but this can be reused
+        required_temp_count = required_temp_count.max(1);
+        *requirement.required_temps_mut() = TempRequest::new().int(required_temp_count);
     }
 }
 
@@ -147,10 +171,7 @@ impl X64Emitter<'_> {
         let addr_reg = match addr {
             JIRValue::Slice(_) => {
                 // Address is the second operand.
-                let Allocation::Register(reg) = self.allocations.get_allocation(inst, addr_index) else {
-                    unreachable!("We requested a register allocation")
-                };
-                reg
+                reg!(self.allocations, inst, addr_index)
             }
             JIRValue::Const(addr) => {
                 let addr_temp = temps
@@ -338,16 +359,35 @@ impl X64Emitter<'_> {
         addr_reg: HostReg,
         value: JIRValue,
     ) -> JITResult {
+        let size = value.size();
+        match size {
+            ..=8 => {
+                self.emit_host_store_64(inst, value_index, addr_reg, value)?;
+            }
+            16 => {
+                self.emit_host_store_128(inst, value_index, addr_reg, value)?;
+            }
+            size => todo!("Unsupported size {size}"),
+        }
+
+        Ok(())
+    }
+
+    // Emit host store instructions for values with size at most 64 bits.
+    fn emit_host_store_64(
+        &mut self,
+        inst: InstId,
+        value_index: usize,
+        addr_reg: HostReg,
+        value: JIRValue,
+    ) -> JITResult {
         let temp_allocations = self.allocations.get_temp_allocations(inst);
         // TODO: Make sure the store does not cross page boundaries.
         // TODO: This can be optimized to directly move into the memory location.
         //       For JIRConsts this can be done with immediate values.
         let value_reg = match value {
             JIRValue::Slice(_) => {
-                let Allocation::Register(value_reg) = self.allocations.get_allocation(inst, value_index) else {
-                    todo!()
-                };
-                value_reg
+                reg!(self.allocations, inst, value_index)
             }
             JIRValue::Const(value) => {
                 let value_reg = temp_allocations
@@ -379,10 +419,49 @@ impl X64Emitter<'_> {
                     ; mov QWORD [Rq(addr_reg.hw_enc())], Rq(value_reg)
                 );
             }
-            _ => {
-                todo!()
-            }
+            size => todo!("Unsupported load size {size}"),
         }
+
+        Ok(())
+    }
+
+    /// Emit host store instructions for values with size of 128 bit.
+    fn emit_host_store_128(
+        &mut self,
+        inst: InstId,
+        value_index: usize,
+        addr_reg: HostReg,
+        value: JIRValue,
+    ) -> JITResult {
+        let temp_allocations = self.allocations.get_temp_allocations(inst);
+        // TODO: Make sure the store does not cross page boundaries.
+        // TODO: This can be optimized to directly move into the memory location.
+        //       For JIRConsts this can be done with immediate values.
+        let (value_reg_lower, value_reg_upper) = match value {
+            JIRValue::Slice(_) => {
+                (reg!(self.allocations, inst, value_index + 0), reg!(self.allocations, inst, value_index + 1))
+            }
+            JIRValue::Const(value) => {
+                let (value_lower, value_upper) = value.split(8);
+
+                let value_reg_lower = temp_allocations
+                    .get_nth_from_class(0, RegClass::Int)
+                    .expect("We requested this");
+                let value_reg_upper = temp_allocations
+                    .get_nth_from_class(1, RegClass::Int)
+                    .expect("We requested this");
+
+                self.load_const(value_reg_lower, value_lower)?;
+                self.load_const(value_reg_upper, value_upper)?;
+                (value_reg_lower, value_reg_upper)
+            }
+        };
+
+        assemble!(self.block.assembler();
+        ; mov QWORD [Rq(addr_reg.hw_enc()) + 0x0], Rq(value_reg_lower.hw_enc())
+        ; mov QWORD [Rq(addr_reg.hw_enc()) + 0x8], Rq(value_reg_upper.hw_enc())
+        );
+
         Ok(())
     }
 }
