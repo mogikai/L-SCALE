@@ -42,3 +42,9 @@ impl From<GPRegister> for usize {
         usize::from(u8::from(value))
     }
 }
+
+impl From<GPRegister> for HostReg {
+    fn from(value: GPRegister) -> Self {
+        value.into_host_reg()
+    }
+}

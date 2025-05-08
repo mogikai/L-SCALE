@@ -173,7 +173,7 @@ impl X64Emitter<'_> {
 
                 // load sign-flip pattern into scratch register
                 let scratch_vec = self.allocations.scratch_register(RegClass::Vector);
-                self.load_const(scratch_vec, JIRConst::new(xor_signflip.into(), size).into())?;
+                self.load_const(scratch_vec, JIRConst::new(xor_signflip.into(), size))?;
 
                 match size {
                     4 => {
@@ -232,7 +232,7 @@ impl X64Emitter<'_> {
 
                 // load notsign-mask pattern into scratch register
                 let scratch_vec = self.allocations.scratch_register(RegClass::Vector);
-                self.load_const(scratch_vec, JIRConst::new(notsign_mask.into(), size).into())?;
+                self.load_const(scratch_vec, JIRConst::new(notsign_mask.into(), size))?;
 
                 match size {
                     4 => {

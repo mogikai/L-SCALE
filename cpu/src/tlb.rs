@@ -103,7 +103,7 @@ impl<T> PageTag for EVAddr<T> {
 }
 
 #[derive(Clone, Copy)]
-#[repr(C)]
+#[repr(C, align(4096))]
 pub struct TLB {
     // TODO: Remove pub
     read_entries: [TLBEntry; TLB_SIZE],

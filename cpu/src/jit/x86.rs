@@ -235,7 +235,7 @@ impl MogiJit for X86MogiJit {
         )
     }
 
-    fn register_binary_custom_op_fast_impl_64(
+    fn register_binary_custom_op_fast_impl(
         &mut self,
         op_id: CustomOpId,
         fn_impl: CustomOpFastImplBinary,
@@ -244,7 +244,7 @@ impl MogiJit for X86MogiJit {
         Ok(())
     }
 
-    fn register_unary_custom_op_fast_impl_64(
+    fn register_unary_custom_op_fast_impl(
         &mut self,
         op_id: CustomOpId,
         fn_impl: CustomOpFastImplUnary,

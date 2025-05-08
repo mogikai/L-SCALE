@@ -2,8 +2,13 @@
 //! The `CPUContext` contains all the runtime information needed during emulation.
 //! This includes for example the registers and a pointer to the currently active `TLB`.
 
-use crate::arch::x86::general::swap_bytes;
+use crate::arch::x86::general::{
+    swap_bytes,
+    swap_bytes_slice,
+};
+use crate::arch::x86::vector::paddsw_slice;
 use crate::jit::api::{
+    CustomOpFastImplBinary,
     CustomOpFastImplUnary,
     JITPathChoice,
     JITTaskRuntimeContext,
@@ -148,23 +153,27 @@ where
             .unwrap();
 
         let swap_bytes_id = spec.custom_op_id_by_string("swap_bytes").unwrap();
+        let swap_bytes_ops = CustomOpFastImplUnary {
+            impl_8: Some(swap_bytes),
+            impl_16: Some(swap_bytes),
+            impl_32: Some(swap_bytes),
+            impl_64: Some(swap_bytes),
+            impl_128: Some(swap_bytes),
+            impl_slice: swap_bytes_slice,
+        };
+        jit.register_unary_custom_op_fast_impl(swap_bytes_id, swap_bytes_ops)
+            .unwrap();
 
-        extern "sysv64" fn dummy(
-            _: *mut u8,
-            _: usize,
-            _: *const u8,
-            _: usize,
-        ) {
-        }
-        let ops = CustomOpFastImplUnary {
+        let paddsw_id = spec.custom_op_id_by_string("paddsw").unwrap();
+        let paddsw_ops = CustomOpFastImplBinary {
             impl_8: None,
             impl_16: None,
             impl_32: None,
-            impl_64: Some(swap_bytes),
+            impl_64: None,
             impl_128: None,
-            impl_slice: dummy,
+            impl_slice: paddsw_slice,
         };
-        jit.register_unary_custom_op_fast_impl_64(swap_bytes_id, ops)
+        jit.register_binary_custom_op_fast_impl(paddsw_id, paddsw_ops)
             .unwrap();
     }
 }

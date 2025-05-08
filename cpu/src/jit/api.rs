@@ -129,17 +129,13 @@ pub trait MogiJit: BlockEndingOpDecider {
     /// A custom operation can also be implemented via the fast impl mechanism.
     /// The jit will load all the necessary slices into the arguments and write the output
     /// back into the slice specified in the instruction.
-    ///
-    /// Slices smaller than 64 bits will be loaded into 64 bit registers regardless.
-    /// The upper bits of the input are guaranteed to be zero, and the upper bits
-    /// of the output will always be discarded.
-    fn register_binary_custom_op_fast_impl_64(
+    fn register_binary_custom_op_fast_impl(
         &mut self,
         op_id: CustomOpId,
         fn_impl: CustomOpFastImplBinary,
     ) -> JITResult;
 
-    fn register_unary_custom_op_fast_impl_64(
+    fn register_unary_custom_op_fast_impl(
         &mut self,
         op_id: CustomOpId,
         fn_impl: CustomOpFastImplUnary,
@@ -314,6 +310,8 @@ where
 {
 }
 
+// TODO: Maybe we could also use the vectorcall abi for large inputs if we perform simd on them?
+//       This depends on https://github.com/rust-lang/rust/issues/124485
 #[derive(Debug, Copy, Clone)]
 pub struct CustomOpFastImplBinary {
     pub impl_8: Option<extern "sysv64" fn(u8, u8) -> u8>,
@@ -321,7 +319,7 @@ pub struct CustomOpFastImplBinary {
     pub impl_32: Option<extern "sysv64" fn(u32, u32) -> u32>,
     pub impl_64: Option<extern "sysv64" fn(u64, u64) -> u64>,
     pub impl_128: Option<extern "sysv64" fn(u128, u128) -> u128>,
-    pub impl_slice: extern "sysv64" fn(*mut u8, usize, *mut u8, usize, *mut u8, usize),
+    pub impl_slice: unsafe extern "sysv64" fn(*mut u8, usize, *const u8, usize, *const u8, usize),
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -331,7 +329,7 @@ pub struct CustomOpFastImplUnary {
     pub impl_32: Option<extern "sysv64" fn(u32) -> u32>,
     pub impl_64: Option<extern "sysv64" fn(u64) -> u64>,
     pub impl_128: Option<extern "sysv64" fn(u128) -> u128>,
-    pub impl_slice: extern "sysv64" fn(*mut u8, usize, *const u8, usize),
+    pub impl_slice: unsafe extern "sysv64" fn(*mut u8, usize, *const u8, usize),
 }
 
 /// Fast custom op implementations.

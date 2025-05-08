@@ -25,7 +25,6 @@ use crate::jit::x86::x64emitter::{
     X64Emitter,
 };
 
-
 impl X64AllocRequirements {
     pub fn nan_requirements(
         requirement: &mut AllocRequirement,
@@ -82,25 +81,35 @@ impl X64Emitter<'_> {
                             ; setp Rb(output_reg.hw_enc())
                         );
                     }
-                    size => todo!("Unsupported size {size}")
+                    size => todo!("Unsupported size {size}"),
                 }
             }
             JIRValue::Const(input) => {
                 let result = match size {
                     4 => {
                         // single-precision const NaN check
-                        let input = f32::from_bits(input.value().try_into().expect("Input must be a valid float"));
+                        let input = f32::from_bits(
+                            input
+                                .value()
+                                .try_into()
+                                .expect("Input must be a valid float"),
+                        );
                         input.is_nan() as u8
                     }
                     8 => {
                         // double-precision const NaN check
-                        let input = f64::from_bits(input.value().try_into().expect("Input must be a valid float"));
+                        let input = f64::from_bits(
+                            input
+                                .value()
+                                .try_into()
+                                .expect("Input must be a valid float"),
+                        );
                         input.is_nan() as u8
                     }
-                    size => todo!("Unsupported size {size}")
+                    size => todo!("Unsupported size {size}"),
                 };
 
-                self.load_const(output_reg, JIRConst::new(result.into(), 1).into())?;
+                self.load_const(output_reg, JIRConst::new(result.into(), 1))?;
             }
         }
 

@@ -1,8 +1,8 @@
 use mogi_cpu::cpu::StopReason;
 use mogi_cpu::jit::api::RuntimeError;
 use mogi_cpu::new_cpu_trait::{
-    RunLimit,
     CPU,
+    RunLimit,
 };
 use mogi_system::components::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
@@ -100,7 +100,7 @@ fn test_mov_reg_mem() {
 }
 
 #[test]
-fn test_movbe_mem_reg() {
+fn test_movbe_mem_reg_64() {
     // MOVBE [RSP], RAX
     let instr = b"\x48\x0F\x38\xF1\x04\x24";
     let (mut cpu, mmu) = common::setup_with_bytes(instr);
@@ -117,6 +117,26 @@ fn test_movbe_mem_reg() {
         .read(EVAddr::from(rsp), result.as_mut_bytes())
         .unwrap();
     assert_eq!(result, 0x1337u64.swap_bytes());
+}
+
+#[test]
+fn test_movbe_mem_reg_32() {
+    // MOVBE [RSP], EAX
+    let instr = b"\x0F\x38\xF1\x04\x24";
+    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+
+    let rsp: u64 = *cpu.register("RSP").unwrap();
+    *cpu.register_mut("EAX").unwrap() = 0x1337u32;
+    cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(1).unwrap()))
+        .unwrap();
+
+    let rax: u32 = *cpu.register("EAX").unwrap();
+    assert_eq!(rax, 0x1337);
+    let mut result = 0u32;
+    mmu.borrow_mut()
+        .read(EVAddr::from(rsp), result.as_mut_bytes())
+        .unwrap();
+    assert_eq!(result, 0x1337u32.swap_bytes());
 }
 
 #[test]
@@ -330,6 +350,22 @@ fn test_idiv_32() {
     let rdx: i64 = *cpu.register("RDX").unwrap();
     assert_eq!(rax, 0x1234i64 / 0x1234i64);
     assert_eq!(rdx, 0x0i64);
+}
+
+#[test]
+fn test_paddsw_xmm() {
+    // PADDSW XMM1, XMM2
+    let instr = b"\x66\x0F\xED\xCA";
+    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+
+    let values = [-5i16, 6, -10, 45, 1003, -453, -5455, -7];
+    *cpu.register_mut("XMM1").unwrap() = values;
+    *cpu.register_mut("XMM2").unwrap() = values;
+    cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(1).unwrap()))
+        .unwrap();
+
+    let xmm1: [i16; 8] = *cpu.register("XMM1").unwrap();
+    assert_eq!(xmm1, values.iter().map(|x| x + x).collect::<Vec<_>>().as_slice());
 }
 
 #[test]

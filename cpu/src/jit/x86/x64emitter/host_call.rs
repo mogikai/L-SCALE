@@ -9,10 +9,15 @@ use crate::jit::api::{
     RuntimeError,
 };
 use crate::jit::host::register::{
+    HostReg,
     HostRegSet,
     RegClass,
 };
-use crate::jit::regalloc::requirements::OperandRequest;
+use crate::jit::regalloc::requirements::{
+    OperandConstraint,
+    OperandKind,
+    OperandRequest,
+};
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::task_context::X86TaskContext;
@@ -24,6 +29,7 @@ use crate::jit::x86::{
     CustomOpImplKind,
     assemble,
 };
+use dynasmrt::DynasmApi;
 use mogi_sleigh::spec::CustomOpId;
 use mogi_sleigh::spec::jir::values::{
     JIRSlice,
@@ -31,6 +37,7 @@ use mogi_sleigh::spec::jir::values::{
 };
 use std::ffi::c_void;
 use std::marker::PhantomData;
+use zerocopy::IntoBytes;
 
 // rax, rdi, rsi, rdx, rcx, r8, r9, r10, r11 are clobbered by function calls.
 const SYSV_CLOBBERS: HostRegSet = HostRegSet::empty()
@@ -68,7 +75,7 @@ impl X64AllocRequirements {
                     Self::binary_fast_impl_requirements(requirement, binary, output, input_a, input_b, extra_args)
                 }
                 CustomOpFastImpl::Unary(unary) => {
-                    Self::unary_fast_impl_requirements(requirement, unary, output, input_a, input_b, extra_args)
+                    Self::unary_fast_impl_requirements(requirement, unary, output, input_a, extra_args)
                 }
             },
             CustomOpImplKind::Callback(_) => {}
@@ -89,22 +96,80 @@ impl X64AllocRequirements {
         let Some(input_a) = input_a else {
             todo!("Emit error: fast impl for unary custom op requires an output slice. Error in sleigh specification?")
         };
-        // Reserve AX as output, since sysv64 returns in RAX
-        requirement.add_request(OperandRequest::int_write_fixed(GPRegister::AX.into_host_reg(), output));
-        // Either load DI with the slice or mark DI as clobber, since we need to load the const to DI.
-        match input_a {
-            JIRValue::Slice(input_a) => {
-                requirement
-                    .add_request(OperandRequest::int_read_fixed_reg_reload(GPRegister::DI.into_host_reg(), input_a));
-                // Remove ax and di from clobbers since ax is the output and di is the input
-                *requirement.clobbers_mut() = SYSV_CLOBBERS
-                    .without(GPRegister::AX.into_host_reg())
-                    .without(GPRegister::DI.into_host_reg());
+        let Some(input_b) = input_b else {
+            todo!("Emit error: fast impl for unary custom op requires an output slice. Error in sleigh specification?")
+        };
+        // Check if we need to load the args into registers or if we need to require that they are flushed to memory.
+        let needs_reg_args = match output.size() {
+            1 => fast_impl.impl_8.is_some(),
+            2 => fast_impl.impl_16.is_some(),
+            4 => fast_impl.impl_32.is_some(),
+            8 => fast_impl.impl_64.is_some(),
+            16 => fast_impl.impl_128.is_some(),
+            _ => false,
+        };
+        if needs_reg_args {
+            // Reserve (AX, DX) as output, since sysv64 returns in RAX or RAX, RDX if 128 bit.
+            Self::require_large_int_write_fixed(
+                requirement,
+                output,
+                GPRegister::AX.into_host_reg(),
+                GPRegister::DX.into_host_reg(),
+            );
+            // Either load DI with the slice or mark DI as clobber, since we need to load the const to DI.
+            match input_a {
+                JIRValue::Slice(input_a) => {
+                    Self::request_fast_impl_large_parameter(
+                        requirement,
+                        GPRegister::DI,
+                        GPRegister::SI,
+                        OperandKind::ReadReload,
+                        input_a,
+                    );
+                }
+                JIRValue::Const(_) => {
+                    // Remove ax from clobbers since it is the output
+                    *requirement.clobbers_mut() = SYSV_CLOBBERS.without(GPRegister::AX.into_host_reg());
+                    if output.size() == 16 {
+                        // Also remove DX if we are dealing with 128 bit values.
+                        requirement
+                            .clobbers_mut()
+                            .remove(GPRegister::DX.into_host_reg());
+                    }
+                }
             }
-            JIRValue::Const(input_a) => {
-                // Remove ax from clobbers since it is the output
-                *requirement.clobbers_mut() = SYSV_CLOBBERS.without(GPRegister::AX.into_host_reg());
+            match input_b {
+                JIRValue::Slice(input_b) => {
+                    Self::request_fast_impl_large_parameter(
+                        requirement,
+                        if input_a.size() <= 8 {
+                            GPRegister::SI
+                        } else {
+                            GPRegister::DX
+                        },
+                        GPRegister::CX,
+                        OperandKind::ReadReload,
+                        input_b,
+                    );
+                }
+                JIRValue::Const(_) => {
+                    // Remove ax from clobbers since it is the output
+                    *requirement.clobbers_mut() = SYSV_CLOBBERS.without(GPRegister::AX.into_host_reg());
+                    if output.size() == 16 {
+                        // Also remove DX if we are dealing with 128 bit values.
+                        requirement
+                            .clobbers_mut()
+                            .remove(GPRegister::DX.into_host_reg());
+                    }
+                }
             }
+        } else {
+            // Request output and input as memory arguments, ensuring they are written/read from memory.
+            requirement.add_request(OperandRequest::int_write_mem(output));
+            input_a.is_slice_then(|input| requirement.add_request(OperandRequest::int_read_mem(*input)));
+            input_b.is_slice_then(|input| requirement.add_request(OperandRequest::int_read_mem(*input)));
+            // Clobber everything.
+            *requirement.clobbers_mut() = SYSV_CLOBBERS;
         }
     }
 
@@ -112,32 +177,105 @@ impl X64AllocRequirements {
         requirement: &mut AllocRequirement,
         fast_impl: CustomOpFastImplUnary,
         output: Option<JIRSlice>,
-        input_a: Option<JIRValue>,
-        input_b: Option<JIRValue>,
+        input: Option<JIRValue>,
         extra_args: &[JIRValue],
     ) {
         let Some(output) = output else {
             todo!("Emit error: fast impl for custom op requires an output slice. Error in sleigh specification?")
         };
-        let Some(input_a) = input_a else {
+        let Some(input) = input else {
             todo!("Emit error: fast impl for unary custom op requires an output slice. Error in sleigh specification?")
         };
-        // Reserve AX as output, since sysv64 returns in RAX
-        requirement.add_request(OperandRequest::int_write_fixed(GPRegister::AX.into_host_reg(), output));
-        // Either load DI with the slice or mark DI as clobber, since we need to load the const to DI.
-        match input_a {
-            JIRValue::Slice(input_a) => {
-                requirement
-                    .add_request(OperandRequest::int_read_fixed_reg_reload(GPRegister::DI.into_host_reg(), input_a));
-                // Remove ax and di from clobbers since ax is the output and di is the input
+        // Check if we need to load the args into registers or if we need to require that they are flushed to memory.
+        let needs_reg_args = match input.size() {
+            1 => fast_impl.impl_8.is_some(),
+            2 => fast_impl.impl_16.is_some(),
+            4 => fast_impl.impl_32.is_some(),
+            8 => fast_impl.impl_64.is_some(),
+            16 => fast_impl.impl_128.is_some(),
+            _ => false,
+        };
+        if needs_reg_args {
+            // Reserve (AX, DX) as output, since sysv64 returns in RAX or RAX, RDX if 128 bit.
+            Self::require_large_int_write_fixed(
+                requirement,
+                output,
+                GPRegister::AX.into_host_reg(),
+                GPRegister::DX.into_host_reg(),
+            );
+            // Either load DI with the slice or mark DI as clobber, since we need to load the const to DI.
+            match input {
+                JIRValue::Slice(input_a) => {
+                    Self::request_fast_impl_large_parameter(
+                        requirement,
+                        GPRegister::DI,
+                        GPRegister::SI,
+                        OperandKind::ReadReload,
+                        input_a,
+                    );
+                }
+                JIRValue::Const(input_a) => {
+                    // Remove ax from clobbers since it is the output
+                    *requirement.clobbers_mut() = SYSV_CLOBBERS.without(GPRegister::AX.into_host_reg());
+                    if output.size() == 16 {
+                        // Also remove DX if we are dealing with 128 bit values.
+                        requirement
+                            .clobbers_mut()
+                            .remove(GPRegister::DX.into_host_reg());
+                    }
+                }
+            }
+        } else {
+            // Request output and input as memory arguments, ensuring they are written/read from memory.
+            requirement.add_request(OperandRequest::int_write_mem(output));
+            input.is_slice_then(|input| requirement.add_request(OperandRequest::int_read_mem(*input)));
+            // Clobber everything.
+            *requirement.clobbers_mut() = SYSV_CLOBBERS;
+        }
+    }
+
+    fn request_fast_impl_large_parameter(
+        requirement: &mut AllocRequirement,
+        lower_reg: GPRegister,
+        upper_reg: GPRegister,
+        kind: OperandKind,
+        input: JIRSlice,
+    ) {
+        match input.size() {
+            size if size <= 8 => {
+                requirement.add_request(OperandRequest {
+                    slice: input,
+                    constraint: OperandConstraint::FixedReg(lower_reg.into_host_reg()),
+                    kind,
+                    class: RegClass::Int,
+                });
+                // Remove ax and lower from clobbers since ax is the output and lower is the input
                 *requirement.clobbers_mut() = SYSV_CLOBBERS
                     .without(GPRegister::AX.into_host_reg())
-                    .without(GPRegister::DI.into_host_reg());
+                    .without(lower_reg.into_host_reg());
             }
-            JIRValue::Const(input_a) => {
-                // Remove ax from clobbers since it is the output
-                *requirement.clobbers_mut() = SYSV_CLOBBERS.without(GPRegister::AX.into_host_reg());
+            size if size == 16 => {
+                let (lower, upper) = input.split(8);
+                requirement.add_request(OperandRequest {
+                    slice: lower,
+                    constraint: OperandConstraint::FixedReg(lower_reg.into_host_reg()),
+                    kind,
+                    class: RegClass::Int,
+                });
+                requirement.add_request(OperandRequest {
+                    slice: upper,
+                    constraint: OperandConstraint::FixedReg(upper_reg.into_host_reg()),
+                    kind,
+                    class: RegClass::Int,
+                });
+                // Remove ax, dx, lower, and upper from clobbers since (ax, dx) is the output and (lower, upper) is the input
+                *requirement.clobbers_mut() = SYSV_CLOBBERS
+                    .without(GPRegister::AX.into_host_reg())
+                    .without(GPRegister::DX.into_host_reg())
+                    .without(lower_reg.into_host_reg())
+                    .without(upper_reg.into_host_reg());
             }
+            _ => panic!("Unsupported slice size"),
         }
     }
 }
@@ -164,7 +302,12 @@ impl X64Emitter<'_> {
                 todo!("Unimplemented custom operation")
             }
             CustomOpImplKind::FastImpl(fast_impl) => match fast_impl {
-                CustomOpFastImpl::Binary(binary) => self.emit_binary_fast_impl(binary),
+                CustomOpFastImpl::Binary(binary) => self.emit_binary_fast_impl(
+                    binary,
+                    output.expect("This is guaranteed by the regalloc phase"),
+                    input_a.expect("This is guaranteed by the regalloc phase"),
+                    input_b.expect("This is guaranteed by the regalloc phase"),
+                ),
                 CustomOpFastImpl::Unary(unary) => self.emit_unary_fast_impl(
                     unary,
                     output.expect("This is guaranteed by the regalloc phase"),
@@ -228,8 +371,70 @@ impl X64Emitter<'_> {
     fn emit_binary_fast_impl(
         &mut self,
         binary: CustomOpFastImplBinary,
+        output: JIRSlice,
+        input_a: JIRValue,
+        input_b: JIRValue,
     ) -> JITResult {
-        todo!()
+        let fn_impl = match output.size() {
+            1 => binary.impl_8.map(|f| f as *const c_void),
+            2 => binary.impl_16.map(|f| f as *const c_void),
+            4 => binary.impl_32.map(|f| f as *const c_void),
+            8 => binary.impl_64.map(|f| f as *const c_void),
+            16 => binary.impl_128.map(|f| f as *const c_void),
+            _ => None,
+        };
+        assemble!(self.block.assembler();
+            // Save the current stack pointer. RBX is preserved by the caller.
+            ; mov rbx, rsp
+        );
+        let fn_impl = if let Some(fn_impl) = fn_impl {
+            assert_eq!(input_a.size(), input_b.size());
+            // The register allocator made sure that RDI is already loaded with
+            // the correct value if we are dealing with a slice.
+            // If we are dealing with a const, we need to load it into RDI (, RSI).
+            if let JIRValue::Const(input_a) = input_a {
+                if input_a.size() == 16 {
+                    let (lower, upper) = input_a.split(8);
+                    self.load_const(GPRegister::DI.into_host_reg(), lower)?;
+                    self.load_const(GPRegister::SI.into_host_reg(), upper)?;
+                } else {
+                    self.load_const(GPRegister::DI.into_host_reg(), input_a)?;
+                }
+            }
+            if let JIRValue::Const(input_b) = input_b {
+                if input_b.size() == 16 {
+                    let (lower, upper) = input_b.split(8);
+                    self.load_const(GPRegister::DX.into_host_reg(), lower)?;
+                    self.load_const(GPRegister::CX.into_host_reg(), upper)?;
+                } else {
+                    self.load_const(GPRegister::SI.into_host_reg(), input_b)?;
+                }
+            }
+            fn_impl
+        } else {
+            // No specialized function available -> use generic slice variant.
+            // output pointer is in RDI
+            self.load_slice_pointer(GPRegister::DI, output);
+            // output length is in RSI
+            self.load_const(GPRegister::SI, output.size())?;
+            self.load_input(GPRegister::DX, GPRegister::CX, input_a)?;
+            self.load_input(GPRegister::R8, GPRegister::R9, input_a)?;
+            binary.impl_slice as *const c_void
+        };
+
+        // TODO: Either check how we can maybe inline these function calls, or maybe avoid loading into rax
+        //       if the target is located somewhere that can be described as a 32 bit offset?
+        assemble!(self.block.assembler();
+            // Important: Make sure the stack is aligned to 16 bytes according to System V ABI before calling
+            ; and rsp, DWORD -16
+            // Load the callback address into RAX
+            ; mov rax, QWORD fn_impl as _
+            // Perform the call
+            ; call rax
+            // restore the stack pointer
+            ; mov rsp, rbx
+        );
+        Ok(())
     }
 
     fn emit_unary_fast_impl(
@@ -246,23 +451,42 @@ impl X64Emitter<'_> {
             16 => unary.impl_128.map(|f| f as *const c_void),
             _ => None,
         };
-        let Some(fn_impl) = fn_impl else {
-            todo!("Implement slice variant for fast impl")
-        };
-        // The register allocator made sure that RDI is already loaded with
-        // the correct value if we are dealing with a slice.
-        // If we are dealing with a const, we need to load it into RDI.
-        if let JIRValue::Const(input_a) = input {
-            self.load_const(GPRegister::DI.into_host_reg(), input_a)?;
-        }
         assemble!(self.block.assembler();
-            // Load the callback address into RAX
-            ; mov rax, QWORD fn_impl as _
             // Save the current stack pointer. RBX is preserved by the caller.
             ; mov rbx, rsp
+        );
+        let fn_impl = if let Some(fn_impl) = fn_impl {
+            // The register allocator made sure that RDI is already loaded with
+            // the correct value if we are dealing with a slice.
+            // If we are dealing with a const, we need to load it into RDI (, RSI).
+            if let JIRValue::Const(input_a) = input {
+                if input_a.size() == 16 {
+                    let (lower, upper) = input_a.split(8);
+                    self.load_const(GPRegister::DI.into_host_reg(), lower)?;
+                    self.load_const(GPRegister::SI.into_host_reg(), upper)?;
+                } else {
+                    self.load_const(GPRegister::DI.into_host_reg(), input_a)?;
+                }
+            }
+            fn_impl
+        } else {
+            // No specialized function available -> use generic slice variant.
+            // output pointer is in RDI
+            self.load_slice_pointer(GPRegister::DI, output);
+            // output length is in RSI
+            self.load_const(GPRegister::SI, output.size())?;
+            self.load_input(GPRegister::DX, GPRegister::CX, input)?;
+            unary.impl_slice as *const c_void
+        };
+
+        // TODO: Either check how we can maybe inline these function calls, or maybe avoid loading into rax
+        //       if the target is located somewhere that can be described as a 32 bit offset?
+        assemble!(self.block.assembler();
             // Important: Make sure the stack is aligned to 16 bytes according to System V ABI before calling
             ; and rsp, DWORD -16
-            // Call the trampoline
+            // Load the callback address into RAX
+            ; mov rax, QWORD fn_impl as _
+            // Perform the call
             ; call rax
             // restore the stack pointer
             ; mov rsp, rbx
@@ -270,30 +494,48 @@ impl X64Emitter<'_> {
         Ok(())
     }
 
-    fn emit_unary_fast_impl_64(
+    fn load_slice_pointer(
         &mut self,
-        fn_impl: extern "sysv64" fn(u64) -> u64,
-        output: JIRSlice,
-        input_a: JIRValue,
-    ) -> JITResult {
-        // The register allocator made sure that RDI is already loaded with
-        // the correct value if we are dealing with a slice.
-        // If we are dealing with a const, we need to load it into RDI.
-        if let JIRValue::Const(input_a) = input_a {
-            self.load_const(GPRegister::DI.into_host_reg(), input_a)?;
-        }
+        reg: impl Into<HostReg>,
+        slice: JIRSlice,
+    ) {
+        let reg = reg.into();
         assemble!(self.block.assembler();
-            // Load the callback address into RAX
-            ; mov rax, QWORD fn_impl as _
-            // Save the current stack pointer. RBX is preserved by the caller.
-            ; mov rbx, rsp
-            // Important: Make sure the stack is aligned to 16 bytes according to System V ABI before calling
-            ; and rsp, DWORD -16
-            // Call the trampoline
-            ; call rax
-            // restore the stack pointer
-            ; mov rsp, rbx
+            ; rdgsbase Rq(reg.hw_enc())
+            ; lea Rq(reg.hw_enc()), [Rq(reg.hw_enc()) + i32::try_from(X86TaskContext::slice_offset(slice)).expect("Slice offset must fit into i32")]
         );
+    }
+
+    fn load_input(
+        &mut self,
+        ptr_reg: impl Into<HostReg>,
+        len_reg: impl Into<HostReg>,
+        input: JIRValue,
+    ) -> JITResult {
+        let ptr_reg = ptr_reg.into();
+        let len_reg = len_reg.into();
+        match input {
+            JIRValue::Slice(input) => {
+                self.load_slice_pointer(ptr_reg, input);
+                self.load_const(len_reg, input.size())?;
+            }
+            JIRValue::Const(input) => {
+                let (lower, upper) = input.split(8);
+                assemble!(self.block.assembler();
+                    // Allocate enough space on stack for input. Consts are at most 16 bytes large
+                    ; sub rsp, 16
+                    // Load the lower part. Need to use register as intermediate since we can only move 64 bits to reg.
+                    ; mov Rq(ptr_reg.hw_enc()), QWORD lower.value() as _
+                    ; mov QWORD [rsp], Rq(ptr_reg.hw_enc())
+                    // Load the upper part. Need to use register as intermediate since we can only move 64 bits to reg.
+                    ; mov Rq(ptr_reg.hw_enc()), QWORD upper.value() as _
+                    ; mov QWORD [rsp + 8], Rq(ptr_reg.hw_enc())
+                    // Move the pointer into the register.
+                    ; mov Rq(ptr_reg.hw_enc()), rsp
+                );
+                self.load_const(len_reg, input.size())?;
+            }
+        }
         Ok(())
     }
 }

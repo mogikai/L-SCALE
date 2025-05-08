@@ -27,7 +27,8 @@ use std::ptr::NonNull;
 /// This should be kept small, only containing absolutely necessary information like the address spaces
 /// or tlb pointer.
 #[derive(Debug)]
-#[repr(C)]
+#[repr(C, align(4096))]
+
 pub struct X86TaskContext {
     /// Each task has its own TLB, hence this is in the task context.
     /// The TLB facilitates fast [EVAddr] to [HVAddr](mogi_utilities::addresses::HVAddr) translation.

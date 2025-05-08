@@ -1,4 +1,12 @@
-use crate::jit::regalloc::requirements::OperandRequest;
+use crate::jit::host::register::{
+    HostReg,
+    RegClass,
+};
+use crate::jit::regalloc::requirements::{
+    OperandConstraint,
+    OperandKind,
+    OperandRequest,
+};
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::x64emitter::X64AllocRequirements;
 use mogi_sleigh::spec::jir::values::JIRSlice;
@@ -72,5 +80,4 @@ macro_rules! reg {
         }
     };
 }
-use crate::jit::host::register::HostReg;
 pub(crate) use reg;

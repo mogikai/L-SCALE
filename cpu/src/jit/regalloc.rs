@@ -483,13 +483,11 @@ where
         &mut self,
         operand: &OperandRequest,
     ) -> JITResult<Allocation> {
-        // TODO: Pick a register where it "hurts" the least to spill it.
-        //       Most likely this will be done with an LRU register or operand list.
-
         // TODO: Potentially return a memory allocation if the operand is used infrequently.
         let reg = match operand.constraint {
             OperandConstraint::Any | OperandConstraint::Reg => self.find_suitable_reg(operand.class)?,
             OperandConstraint::FixedReg(reg) => reg,
+            OperandConstraint::Mem => return Ok(Allocation::Slice(operand.slice)),
         };
 
         self.available_registers.remove(reg);
@@ -629,11 +627,17 @@ where
     ) -> JITResult<Allocation> {
         trace_jit!("Written regs: {}", self.written_regs);
         let allocation = if let Some((reg, existing_slice)) = self.get_loaded_slice_group(operand) {
-            if let OperandKind::ReadReload = operand.kind {
+            if let OperandConstraint::Mem = operand.constraint {
+                // Unload if it was previously allocated to a register and then allocate to memory.
                 self.unload_reg(reg);
                 self.alloc_unloaded_operand(operand)?
             } else {
-                Allocation::Register(self.ensure_valid_reg_allocation(reg, existing_slice, operand)?)
+                if let OperandKind::ReadReload = operand.kind {
+                    self.unload_reg(reg);
+                    self.alloc_unloaded_operand(operand)?
+                } else {
+                    Allocation::Register(self.ensure_valid_reg_allocation(reg, existing_slice, operand)?)
+                }
             }
         } else {
             // Slice group is not in any register. We can allocate one from the free regs.

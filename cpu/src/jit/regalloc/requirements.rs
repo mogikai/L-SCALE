@@ -20,6 +20,8 @@ pub enum OperandConstraint {
     Reg,
     /// The operand must be put into the provided register.
     FixedReg(HostReg),
+    /// The operand must be in memory. This means that any unflushed slices need to be flushed.
+    Mem,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -61,6 +63,15 @@ impl OperandRequest {
         }
     }
 
+    pub fn int_write_mem(slice: JIRSlice) -> Self {
+        OperandRequest {
+            slice,
+            constraint: OperandConstraint::Mem,
+            kind: OperandKind::Write,
+            class: RegClass::Int,
+        }
+    }
+
     pub fn int_write_fixed(
         reg: HostReg,
         slice: JIRSlice,
@@ -77,6 +88,15 @@ impl OperandRequest {
         OperandRequest {
             slice,
             constraint: OperandConstraint::Any,
+            kind: OperandKind::Read,
+            class: RegClass::Int,
+        }
+    }
+
+    pub fn int_read_mem(slice: JIRSlice) -> Self {
+        OperandRequest {
+            slice,
+            constraint: OperandConstraint::Mem,
             kind: OperandKind::Read,
             class: RegClass::Int,
         }
@@ -215,13 +235,15 @@ impl<'a> OperandRequirements<'a> {
 
     pub fn read_non_fixed(&self) -> impl Iterator<Item = (usize, &OperandRequest)> {
         self.all().filter(|(_, req)| {
-            matches!(req.kind, OperandKind::Read | OperandKind::ReadReload) && !matches!(req.constraint, OperandConstraint::FixedReg(_))
+            matches!(req.kind, OperandKind::Read | OperandKind::ReadReload)
+                && !matches!(req.constraint, OperandConstraint::FixedReg(_))
         })
     }
 
     pub fn read_fixed(&self) -> impl Iterator<Item = (usize, &OperandRequest)> {
         self.all().filter(|(_, req)| {
-            matches!(req.kind, OperandKind::Read | OperandKind::ReadReload) && matches!(req.constraint, OperandConstraint::FixedReg(_))
+            matches!(req.kind, OperandKind::Read | OperandKind::ReadReload)
+                && matches!(req.constraint, OperandConstraint::FixedReg(_))
         })
     }
 

@@ -366,9 +366,11 @@ impl X64Emitter<'_> {
     #[inline]
     pub(super) fn load_const(
         &mut self,
-        target: HostReg,
-        value: JIRConst,
+        target: impl Into<HostReg>,
+        value: impl Into<JIRConst>,
     ) -> JITResult {
+        let target = target.into();
+        let value = value.into();
         trace_jit!("Loading {value:?} into {target:?}");
         match target.class() {
             RegClass::Int => self.load_const_int(target, value)?,
