@@ -237,6 +237,17 @@ impl JIRValue {
         }
     }
 
+    pub fn map_slice_or_default<T, F: FnMut(JIRSlice) -> T>(
+        self,
+        default: T,
+        mut f: F,
+    ) -> T {
+        match self {
+            JIRValue::Slice(s) => f(s),
+            JIRValue::Const(_) => default,
+        }
+    }
+
     pub fn slice<T>(
         self,
         start: T,

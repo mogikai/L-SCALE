@@ -4,9 +4,13 @@
 
 use crate::arch::x86::general::{
     swap_bytes,
-    swap_bytes_slice,
+    swap_bytes_non_overlapping,
+    swap_bytes_slice_in_out,
 };
-use crate::arch::x86::vector::paddsw_slice;
+use crate::arch::x86::vector::{
+    paddsw_slice,
+    paddsw_slice_in_out,
+};
 use crate::jit::api::{
     CustomOpFastImplBinary,
     CustomOpFastImplUnary,
@@ -159,7 +163,8 @@ where
             impl_32: Some(swap_bytes),
             impl_64: Some(swap_bytes),
             impl_128: Some(swap_bytes),
-            impl_slice: swap_bytes_slice,
+            impl_slice_non_overlapping: swap_bytes_non_overlapping,
+            impl_slice_in_out: swap_bytes_slice_in_out,
         };
         jit.register_unary_custom_op_fast_impl(swap_bytes_id, swap_bytes_ops)
             .unwrap();
@@ -171,7 +176,8 @@ where
             impl_32: None,
             impl_64: None,
             impl_128: None,
-            impl_slice: paddsw_slice,
+            impl_slice_non_overlapping: paddsw_slice,
+            impl_slice_in_out: paddsw_slice_in_out,
         };
         jit.register_binary_custom_op_fast_impl(paddsw_id, paddsw_ops)
             .unwrap();

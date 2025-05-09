@@ -30,3 +30,16 @@ pub unsafe extern "sysv64" fn paddsw_slice(
         *out = out.saturating_add(*in_);
     }
 }
+
+pub unsafe extern "sysv64" fn paddsw_slice_in_out(
+    out: *mut u8,
+    out_len: usize,
+    input: *const u8,
+    input_len: usize,
+) {
+    let out = unsafe { slice::from_raw_parts_mut(out as *mut i16, out_len / size_of::<i16>()) };
+    let input = unsafe { slice::from_raw_parts(input as *const i16, input_len / size_of::<i16>()) };
+    for (out, in_) in out.iter_mut().zip(input.iter()) {
+        *out = out.saturating_add(*in_);
+    }
+}

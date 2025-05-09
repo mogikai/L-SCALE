@@ -37,6 +37,7 @@ use mogi_sleigh::spec::jir::values::{
 };
 use std::ffi::c_void;
 use std::marker::PhantomData;
+use std::slice;
 use zerocopy::IntoBytes;
 
 // rax, rdi, rsi, rdx, rcx, r8, r9, r10, r11 are clobbered by function calls.
@@ -413,13 +414,27 @@ impl X64Emitter<'_> {
             fn_impl
         } else {
             // No specialized function available -> use generic slice variant.
-            // output pointer is in RDI
-            self.load_slice_pointer(GPRegister::DI, output);
-            // output length is in RSI
-            self.load_const(GPRegister::SI, output.size())?;
-            self.load_input(GPRegister::DX, GPRegister::CX, input_a)?;
-            self.load_input(GPRegister::R8, GPRegister::R9, input_a)?;
-            binary.impl_slice as *const c_void
+            if output == input_a || output == input_b {
+                // output pointer is in RDI
+                self.load_slice_pointer(GPRegister::DI, output);
+                // output length is in RSI
+                self.load_const(GPRegister::SI, output.size())?;
+                self.load_input(GPRegister::DX, GPRegister::CX, if output == input_a { input_a } else { input_b })?;
+                binary.impl_slice_in_out as *const c_void
+            } else if input_a.map_slice_or_default(true, |s| !s.overlaps(&output))
+                && input_b.map_slice_or_default(true, |s| !s.overlaps(&output))
+            {
+                // neither input overlaps with the output
+                // output pointer is in RDI
+                self.load_slice_pointer(GPRegister::DI, output);
+                // output length is in RSI
+                self.load_const(GPRegister::SI, output.size())?;
+                self.load_input(GPRegister::DX, GPRegister::CX, input_a)?;
+                self.load_input(GPRegister::R8, GPRegister::R9, input_a)?;
+                binary.impl_slice_non_overlapping as *const c_void
+            } else {
+                todo!()
+            }
         };
 
         // TODO: Either check how we can maybe inline these function calls, or maybe avoid loading into rax
@@ -471,12 +486,24 @@ impl X64Emitter<'_> {
             fn_impl
         } else {
             // No specialized function available -> use generic slice variant.
-            // output pointer is in RDI
-            self.load_slice_pointer(GPRegister::DI, output);
-            // output length is in RSI
-            self.load_const(GPRegister::SI, output.size())?;
-            self.load_input(GPRegister::DX, GPRegister::CX, input)?;
-            unary.impl_slice as *const c_void
+            if output == input {
+                self.load_slice_pointer(GPRegister::DI, output);
+                self.load_const(GPRegister::SI, output.size())?;
+                unary.impl_slice_in_out as *const c_void
+            } else if input.map_slice_or_default(true, |s| !s.overlaps(&output)) {
+                self.load_slice_pointer(GPRegister::DI, output);
+                self.load_const(GPRegister::SI, output.size())?;
+                self.load_input(GPRegister::DX, GPRegister::CX, input)?;
+                unary.impl_slice_non_overlapping as *const c_void
+            } else {
+                // // output pointer is in RDI
+                // self.load_slice_pointer(GPRegister::DI, output);
+                // // output length is in RSI
+                // self.load_const(GPRegister::SI, output.size())?;
+                // self.load_input(GPRegister::DX, GPRegister::CX, input)?;
+                // unary.impl_slice_non_overlapping as *const c_void;
+                todo!("Implement overlapping unary fast impl")
+            }
         };
 
         // TODO: Either check how we can maybe inline these function calls, or maybe avoid loading into rax

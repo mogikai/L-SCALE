@@ -319,7 +319,8 @@ pub struct CustomOpFastImplBinary {
     pub impl_32: Option<extern "sysv64" fn(u32, u32) -> u32>,
     pub impl_64: Option<extern "sysv64" fn(u64, u64) -> u64>,
     pub impl_128: Option<extern "sysv64" fn(u128, u128) -> u128>,
-    pub impl_slice: unsafe extern "sysv64" fn(*mut u8, usize, *const u8, usize, *const u8, usize),
+    pub impl_slice_non_overlapping: unsafe extern "sysv64" fn(*mut u8, usize, *const u8, usize, *const u8, usize),
+    pub impl_slice_in_out: unsafe extern "sysv64" fn(*mut u8, usize, *const u8, usize),
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -329,7 +330,8 @@ pub struct CustomOpFastImplUnary {
     pub impl_32: Option<extern "sysv64" fn(u32) -> u32>,
     pub impl_64: Option<extern "sysv64" fn(u64) -> u64>,
     pub impl_128: Option<extern "sysv64" fn(u128) -> u128>,
-    pub impl_slice: unsafe extern "sysv64" fn(*mut u8, usize, *const u8, usize),
+    pub impl_slice_non_overlapping: unsafe extern "sysv64" fn(*mut u8, usize, *const u8, usize),
+    pub impl_slice_in_out: unsafe extern "sysv64" fn(*mut u8, usize),
 }
 
 /// Fast custom op implementations.
