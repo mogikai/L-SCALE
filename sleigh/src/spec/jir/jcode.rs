@@ -1093,13 +1093,11 @@ impl JIRInstruction {
     }
 
     pub fn operands(&self) -> impl Iterator<Item = &JIRValue> {
-        // OperandIterator::new(self)
-        empty()
+        OperandIterator::new(self)
     }
 
     pub fn operands_mut(&mut self) -> impl Iterator<Item = &mut JIRValue> {
-        // OperandIteratorMut::new(self)
-        empty()
+        OperandIteratorMut::new(self)
     }
 
     pub fn get_output(&self) -> Option<&JIRSlice> {

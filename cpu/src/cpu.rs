@@ -562,19 +562,17 @@ fn compile<JitT: MogiJit>(
 ) -> Result<(), StopReason> {
     // TODO: Most likely, if the runtime context was modified, we will first need to emulate before translating
     //       more blocks?
-    trace_jit!("unoptimized: {}", block);
-    trace_jit!("Fallthrough: {:?}", block.fallthrough());
-    trace_jit!("Branch targets: {:?}", block.branch_targets());
+    println!("unoptimized: {}", block);
 
     let optimizer_options = OptimizerOptions::default()
-        .with_enable_dse(true)
+        .with_enable_dse(false)
         .with_enable_copy_coalescing(true);
-    Rc::get_mut(&mut block.0)
-        .unwrap()
+    Rc::make_mut(&mut block.0)
         .run_optimization_passes(optimizer_options)
         .unwrap();
 
-    trace_jit!("optimized: {}", block);
+    println!("optimized: {}", block);
+    panic!("oh no");
     jit.compile_target_block(&block)?;
     Ok(())
 }

@@ -109,11 +109,6 @@ pub(super) struct OptimizerAncillary {
 
     // a list of dead-store instructions that can be eliminated
     dead_stores: SecondaryMap<JIRBlockId, Vec<InstId>>,
-
-    // a single copy coalescion consists of eliminating a superfluous
-    // copy instruction while rewriting the output of a previous instruction to
-    // the input of the store target
-    copy_coalescions: SecondaryMap<JIRBlockId, Vec<CopyCoalescion>>,
 }
 
 impl Display for OptimizerAncillary {
@@ -187,12 +182,8 @@ impl TargetBasicBlockInner {
         }
 
         if options.enable_copy_coalescing {
-            self.calculate_copy_coalescions()?;
-            for (block_id, copy_coalescions) in self.optimizer_ancillary.copy_coalescions.items() {
-                trace_opt!("block[{block_id}] copy coalescions: {:#?}", copy_coalescions);
-            }
-            // let elim_count = self.coalesce_copies()?;
-            trace_opt!("Copy coalescion eliminated {} instructions", elim_count);
+            trace_opt!("Copy coalescion eliminated TODO instructions");
+            self.copy_coalescion()?;
         }
 
         // other passes don't delete instructions but rather replace them by NOP

@@ -8,6 +8,7 @@
 use mogi_utilities::index_map::SecondaryMap;
 
 use crate::spec::ProcessorSpecResult;
+use crate::spec::jir::basic_block::optimizer::analysis::{get_referenced_slices, LocalSliceId};
 use crate::spec::jir::basic_block::{
     InstId,
     TargetBasicBlockInner,
@@ -39,12 +40,6 @@ pub(super) struct CopyCoalescion {
     pub(super) inst_id: InstId,
     // what value is the input being rewritten to? (either const or another slice)
     pub(super) value: JIRValue,
-
-    // the instructions that make use of the copy result that need to be rewritten
-    pub(super) rewrites: Vec<Rewrite>,
-    // if `delete_copy_inst` is true, the copy instruction this coalescion derives from
-    // can be safely deleted
-    pub(super) delete_copy_inst: bool,
 }
 
 impl CopyCoalescion {
@@ -52,41 +47,68 @@ impl CopyCoalescion {
         inst_id: InstId,
         value: JIRValue,
     ) -> Self {
-        Self {
-            inst_id,
-            value,
-            rewrites: Default::default(),
-            delete_copy_inst: true,
-        }
+        Self { inst_id, value }
     }
 }
 
 impl TargetBasicBlockInner {
-    pub(super) fn coalesce_copies(&mut self) -> ProcessorSpecResult<u64> {
-        // rewrite instruction operands and replace superfluous copies by NOPs
-        let mut elim_count = 0;
+    /// Apply copy coalescion by iterating from start to end and eliminating
+    /// all non-spilling slice copies.
+    pub(super) fn copy_coalescion(&mut self) -> ProcessorSpecResult {
+        for (block_id, block) in self.jir_blocks.items() {
+            let Some(block) = block else {
+                panic!("This must be Some");
+            };
 
-        for (block_id, copy_coalescions) in self.optimizer_ancillary.copy_coalescions.items() {
-            for copy_coalescion in copy_coalescions.iter() {
-                // apply rewrites
-                for rewrite in copy_coalescion.rewrites.iter() {
-                    let operand = self.jir_instructions[rewrite.target]
-                        .operands_mut()
-                        .skip(rewrite.input_idx)
-                        .next()
-                        .expect("This must exist");
-                    *operand = copy_coalescion.value;
+            // TODO handle slice overlaps (just ignore overlapping copies? special handling?
+            // partial copies are kinda ugly)
+
+            // copy_values can be constants if they are propagated or slices
+            // if they originate from operations or previous block writes
+            let mut coalescions = SecondaryMap::<LocalSliceId, Option<CopyCoalescion>>::default();
+
+            for inst_id in block.range.clone() {
+                // any other instruction can trigger a rewrite if one of its reads has been
+                // encountered before in a copy
+                let rs = get_referenced_slices(
+                    &self.jir_instructions[inst_id],
+                    &mut self.optimizer_ancillary.slice_to_id,
+                    &mut self.optimizer_ancillary.slice_ids,
+                );
+
+                for (readi, read) in rs.reads.into_iter().enumerate() {
+                    if let Some(coalescion) = &mut coalescions[read] {
+                        // rewrite input
+                        *self.jir_instructions[inst_id]
+                            .operands_mut()
+                            .skip(readi)
+                            .next()
+                            .expect("This must exist") = coalescion.value;
+                    }
                 }
 
-                // delete
-                if copy_coalescion.delete_copy_inst {
-                    elim_count += 1;
-                    self.jir_instructions[copy_coalescion.inst_id] = JIRInstruction::nop();
+                if let Some(write) = rs.write {
+                    if let Some(prev_coalescion) = &coalescions[write] {
+                        self.jir_instructions[prev_coalescion.inst_id] = JIRInstruction::nop();
+                    }
+                    coalescions[write] = None;
+                }
+
+                if let JIRInstruction::Copy(args) = &self.jir_instructions[inst_id] {
+                    // a copy is stored for later optimization
+                    let copy_output_id = self
+                        .optimizer_ancillary
+                        .slice_to_id
+                        .get(&args.output)
+                        .expect("We stored this before");
+
+                    let new_coalescion = CopyCoalescion::new(inst_id, args.input.clone());
+                    coalescions[*copy_output_id] = Some(new_coalescion);
                 }
             }
         }
 
-        Ok(elim_count)
+        Ok(())
     }
 }
 

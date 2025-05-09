@@ -437,6 +437,10 @@ where
         self.data.get(index.to_index())
     }
 
+    pub fn values(&self) -> impl ExactSizeIterator<Item = &V> + DoubleEndedIterator {
+        self.data.iter()
+    }
+
     pub fn values_mut(&mut self) -> impl ExactSizeIterator<Item = &mut V> + DoubleEndedIterator {
         self.data.iter_mut()
     }
