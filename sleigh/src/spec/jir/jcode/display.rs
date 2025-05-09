@@ -130,6 +130,7 @@ impl Display for JIRInstruction {
             | JIRInstruction::BoolXor(args) => {
                 write!(f, "{} = {} {} {}", args.output, args.input_a, self.op_display(), args.input_b)
             }
+            JIRInstruction::Nop => write!(f, "nop")
         }
     }
 }
@@ -201,6 +202,7 @@ impl JIRInstruction {
             JIRInstruction::BitNegate(_) => "~",
             JIRInstruction::IntNegate(_) => "-",
             JIRInstruction::FloatNegate(_) => "f-",
+            JIRInstruction::Nop => "nop",
             JIRInstruction::CallDirect(..) | JIRInstruction::CallIndirect(..) => "call",
             JIRInstruction::ReturnDirect(_) | JIRInstruction::ReturnIndirect(_) => "return",
             JIRInstruction::GotoDirect(_)

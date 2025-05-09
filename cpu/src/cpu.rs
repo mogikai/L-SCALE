@@ -477,22 +477,16 @@ where
                 current_addr,
             )?;
 
-            trace_jit!("unoptimized: {}", block);
+            disassemble(
+                &self.processor_specification.borrow(),
+                &*mmu,
+                &mut *self.runtime_context,
+                block.addr_range().unwrap(),
+            );
 
-            let options = OptimizerOptions::default().with_enable_dse(true);
-            Rc::<TargetBasicBlockInner>::get_mut(&mut block.0)
-                .unwrap()
-                .run_optimization_passes(options).unwrap();
-
-            // TODO: Most likely, if the runtime context was modified, we will first need to emulate before translating
-            //       more blocks?
-            trace_jit!("optimized: {}", block);
-            trace_jit!("Fallthrough: {:?}", block.fallthrough());
-            trace_jit!("Branch targets: {:?}", block.branch_targets());
-
-            compile(&mut *jit, &block)?;
             process_branch_targets(&mut target_addresses, &block, translation_limit);
             process_block_fallthrough(&mut target_addresses, &block, translation_limit);
+            compile(&mut *jit, &mut block)?;
 
             translated_block_count += 1;
             translated_instr_count += block.target_instruction_count();
@@ -508,7 +502,10 @@ where
             .values()
             .map(|block| block.target_instruction_count())
             .sum();
-        trace_jit!("Translated {}/{} blocks/instructions in total", self.block_cache.len(), total_instr_count);
+
+        if translated_instr_count > 0 {
+            trace_jit!("Translated {}/{} blocks/instructions in total", translated_block_count, translated_instr_count);
+        }
 
         Ok(())
     }
@@ -555,28 +552,29 @@ fn process_block_fallthrough(
         Some(fallthrough_addr) => {
             add_target_address(&mut target_addresses, fallthrough_addr, translation_limit);
         }
-        None => {
-            trace_jit!("Block has no fallthrough, skipping disassembling");
-        }
+        None => {}
     }
 }
 
 fn compile<JitT: MogiJit>(
     jit: &mut JitT,
-    block: &TargetBasicBlock,
+    block: &mut TargetBasicBlock,
 ) -> Result<(), StopReason> {
     // TODO: Most likely, if the runtime context was modified, we will first need to emulate before translating
     //       more blocks?
-    trace_jit!("{}", block);
+    trace_jit!("unoptimized: {}", block);
     trace_jit!("Fallthrough: {:?}", block.fallthrough());
     trace_jit!("Branch targets: {:?}", block.branch_targets());
 
-    let mut optimized_block = (*block.0).clone();
-    let optimizer_options = OptimizerOptions::default().with_enable_dse(true);
-    optimized_block
+    let optimizer_options = OptimizerOptions::default()
+        .with_enable_dse(true)
+        .with_enable_copy_coalescing(true);
+    Rc::get_mut(&mut block.0)
+        .unwrap()
         .run_optimization_passes(optimizer_options)
         .unwrap();
-    trace_jit!("{}", block);
+
+    trace_jit!("optimized: {}", block);
     jit.compile_target_block(&block)?;
     Ok(())
 }

@@ -29,6 +29,7 @@ use crate::spec::{
 };
 use mogi_utilities::addresses::EVAddr;
 use std::num::NonZeroU16;
+use std::ops::Range;
 use std::rc::Rc;
 
 
@@ -73,6 +74,7 @@ impl TargetBasicBlockBuilder {
                 fallthrough: None,
                 branch_targets: None,
                 target_inst_count: 0,
+                addr_range: None,
                 optimizer_ancillary: Default::default(),
             },
             current_block_id: None,
@@ -273,12 +275,14 @@ impl TargetBasicBlockBuilder {
         Ok(())
     }
 
-    pub fn finish(mut self) -> ProcessorSpecResult<TargetBasicBlock> {
+    pub fn finish(mut self, addr_range: Option<Range<EVAddr>>) -> ProcessorSpecResult<TargetBasicBlock> {
         if self.target_block.branch_targets.is_none() && self.target_block.fallthrough.is_none() {
             // In case only non-branching instructions were added, we want to set the fallthrough
             // to the next instruction in line.
             self.target_block.fallthrough = self.next_instruction
         }
+
+        self.target_block.addr_range = addr_range;
 
         Ok(TargetBasicBlock(Rc::new(self.target_block)))
     }

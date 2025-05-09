@@ -59,7 +59,6 @@ use crate::jit::regalloc::result::{
     AllocatorResult,
     LoadSpillDirective,
 };
-use crate::jit::regalloc::RegisterAllocator;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::{
     CustomOpImplKind,
@@ -364,6 +363,7 @@ impl X64AllocRequirements {
             JIRInstruction::Ceil(args) => Self::round_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::Floor(args) => Self::round_requirements(&mut requirement, args.output, args.input),
             JIRInstruction::Round(args) => Self::round_requirements(&mut requirement, args.output, args.input),
+            JIRInstruction::Nop => {}
             JIRInstruction::CustomOp {
                 output,
                 input_a,
@@ -606,6 +606,7 @@ impl X64Emitter<'_> {
             JIRInstruction::Ceil(args) => self.emit_ceil(inst_id, args.output, args.input)?,
             JIRInstruction::Floor(args) => self.emit_floor(inst_id, args.output, args.input)?,
             JIRInstruction::Round(args) => self.emit_round(inst_id, args.output, args.input)?,
+            JIRInstruction::Nop => {}
             JIRInstruction::CustomOp {
                 output,
                 input_a,

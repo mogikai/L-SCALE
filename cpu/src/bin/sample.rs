@@ -148,9 +148,9 @@ fn main() {
         )
         .init();
 
-    let mut math_o0_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    math_o0_path.push("resources/test/executables/misc_o0.o");
-    let testelf_content = std::fs::read(&math_o0_path).unwrap();
+    let mut math_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    math_o3_path.push("resources/test/executables/math_o3.o");
+    let testelf_content = std::fs::read(&math_o3_path).unwrap();
 
     // ADD RAX, RBX
     // ADD RAX, RBX
@@ -159,16 +159,12 @@ fn main() {
     // let testelf_content =
     //     b"\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\xc3";
 
-    let (mut cpu, mmu, spec) = setup_with_bytes(&testelf_content, 0x1400u64);
+    let (mut cpu, mmu, spec) = setup_with_bytes(&testelf_content, 0x1750u64);
     // let (mut cpu, mmu, spec) = setup_with_bytes(testelf_content, 0x0u64);
 
     // write numbers to memory
     let numbers_addr = 0xFFFF_FFFF_FF00_0000u64;
-    let numbers = [
-        -13935, 17471, -23649, 20073, 18135, 11677, 28681, 7075, -31766, 27292, 32352, -13904, 8405, -1462, -10314,
-        -19981, 692, 22985, -7727, -28196, -11245, -30707, 31868, 20361, -1579, 28034, -22596, 23481, 20717, -6840,
-        15357, 7076,
-    ];
+    let numbers = [-9, -5, 3, -2, -7, -3, -8, -6, -2, -9, 8, 3, 8, 10, 6, -4, 5, 6, -2, 5];
 
     mmu.borrow_mut()
         .alloc_physical(numbers_addr.into(), 1 * PAGE_SIZE)
@@ -180,18 +176,15 @@ fn main() {
         .write(numbers_addr.into(), numbers.as_bytes())
         .unwrap();
 
+    // int *numbers
     *cpu.register_mut("RDI").unwrap() = numbers_addr;
-    *cpu.register_mut("RSI").unwrap() = 0u64;
-    *cpu.register_mut("RDX").unwrap() = numbers.len() as u64 - 1;
+    // size_t n
+    *cpu.register_mut("RSI").unwrap() = numbers.len() as u64;
     cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
         .unwrap();
 
-    let mut output = vec![0; numbers.len()];
-    mmu.borrow_mut()
-        .read(numbers_addr.into(), output.as_mut_bytes())
-        .unwrap();
-
-    eprintln!("output = {:#?}", output);
+    let median: u32 = *cpu.register("EAX").unwrap();
+    eprintln!("median = {:#?}", median as i32);
 }
 
 fn load_specification(spec_path: &Path) -> ProcessorSpecification {

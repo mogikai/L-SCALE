@@ -227,14 +227,14 @@ impl<K: MapKey, V> PrimaryMap<K, V> {
             .map(|(k, v)| (MapKey::try_from_index(k).expect("Enumarating must produce a valid index"), v))
     }
 
-    pub fn items_mut(&mut self) -> impl Iterator<Item = (K, &mut V)> {
+    pub fn items_mut(&mut self) -> impl DoubleEndedIterator<Item = (K, &mut V)> {
         self.data
             .iter_mut()
             .enumerate()
             .map(|(k, v)| (MapKey::try_from_index(k).expect("Enumarating must produce a valid index"), v))
     }
 
-    pub fn into_items(self) -> impl Iterator<Item = (K, V)> {
+    pub fn into_items(self) -> impl DoubleEndedIterator<Item = (K, V)> {
         self.data
             .into_iter()
             .enumerate()
@@ -437,9 +437,20 @@ where
         self.data.get(index.to_index())
     }
 
+    pub fn values_mut(&mut self) -> impl ExactSizeIterator<Item = &mut V> + DoubleEndedIterator {
+        self.data.iter_mut()
+    }
+
     pub fn items(&self) -> impl Iterator<Item = (K, &V)> {
         self.data
             .iter()
+            .enumerate()
+            .map(|(k, v)| (MapKey::try_from_index(k).expect("Enumarating must produce a valid index"), v))
+    }
+
+    pub fn into_items(self) -> impl Iterator<Item = (K, V)> {
+        self.data
+            .into_iter()
             .enumerate()
             .map(|(k, v)| (MapKey::try_from_index(k).expect("Enumarating must produce a valid index"), v))
     }

@@ -22,18 +22,21 @@ use crate::spec::jir::values::{
     JIRValue,
 };
 
+use super::CopyCoalescion;
+use super::copy_coalescing::Rewrite;
+
 #[derive(Clone, Debug)]
 pub(super) struct ReferencedSlices {
-    pub(super) writes: Vec<LocalSliceId>,
+    pub(super) write: Option<LocalSliceId>,
     pub(super) reads: Vec<LocalSliceId>,
 }
 
 impl ReferencedSlices {
     fn new(
-        writes: Vec<LocalSliceId>,
+        write: Option<LocalSliceId>,
         reads: Vec<LocalSliceId>,
     ) -> Self {
-        Self { writes, reads }
+        Self { write, reads }
     }
 }
 
@@ -107,7 +110,7 @@ impl TargetBasicBlockInner {
         Ok(())
     }
 
-    /// Populate `block_reads` and `block_writes` and mark dead-store instructions.
+    /// Populate `block_reads` and `block_writes` and  mark dead-store instructions.
     pub(super) fn calculate_block_reads_and_writes(&mut self) -> ProcessorSpecResult {
         // this is a two-phase algorithm:
         // 1. calculate reads and writes for each block locally
@@ -119,15 +122,17 @@ impl TargetBasicBlockInner {
                 panic!("This must be Some");
             };
 
-            let mut dead_stores = vec![];
+            let mut dead_stores = Vec::new();
 
             // iterate over the instructions in reverse, storing
 
-            // in a local setting, we must assume all written slices are spilled
-            let mut written_slices = FnvHashSet::<LocalSliceId>::default();
+            // In a local setting, we must assume all written slices are spilled.
+            // We also store which instruction spilled them.
+            let mut spilled_slices = SecondaryMap::<LocalSliceId, Option<InstId>>::default();
 
-            // if a slice is written and has no read entry, we know it's a dead store.
-            let mut read_slices = FnvHashSet::<LocalSliceId>::default();
+            // If a slice is written and has no read entry, we know it's a dead store.
+            // We also store which instruction read it.
+            let mut read_slices = SecondaryMap::<LocalSliceId, Option<InstId>>::default();
 
             for (inst_id, inst) in self.jir_instructions[block.range.clone()]
                 .iter()
@@ -145,39 +150,45 @@ impl TargetBasicBlockInner {
                     .inst_slice_references
                     .insert(inst_id, rs.clone());
 
-                // process written slices (check for spills and if current inst is dead store)
-                for write in &rs.writes {
-                    if !read_slices.contains(&write) && written_slices.contains(&write) {
-                        // written group hasn't been read before and is not last write (i.e.
-                        // was already spilled) => it's a dead store
-                        dead_stores.push(inst_id);
+                // process written slices (mark spills and check if current inst is dead store)
+                if let Some(write) = rs.write {
+                    if spilled_slices[write].is_some() {
+                        // has been spilled before => check for dead store
+                        if read_slices[write].is_none() {
+                            // has not been read before => it's a dead store
+                            dead_stores.push(inst_id);
 
-                        // also remove all reads from this instruction since we eliminate it
-                        for dead_store_read in rs.reads.iter() {
-                            read_slices.remove(&dead_store_read);
+                            // also remove all reads from this instruction since we eliminate it
+                            for dead_store_read in rs.reads.iter() {
+                                read_slices[*dead_store_read] = None;
+                            }
+                        } else {
+                            // has been read before => no dead store, but remove from read set
+                            read_slices[write] = None;
                         }
                     } else {
-                        // written slice has been read before or is spilled => no dead store, but remove from
-                        // read set
-                        read_slices.remove(&write);
+                        // has not been spilled before => mark slice as spill
+                        spilled_slices[write] = Some(inst_id);
                     }
-
-                    // mark all slices from group as written
-                    let write_group = self.optimizer_ancillary.group_ids[*write].unwrap();
-                    written_slices.extend(self.optimizer_ancillary.overlap_groups[write_group].iter());
-                    self.optimizer_ancillary.block_writes[block_id].insert(*write);
                 }
 
                 // process read groups (add to set)
                 for read in &rs.reads {
-                    let read_group = self.optimizer_ancillary.group_ids[*read].unwrap();
-                    read_slices.extend(self.optimizer_ancillary.overlap_groups[read_group].iter());
+                    // it's okay to override existing reads since we only care about the
+                    // earliest (i.e. latest when iterating from back to front)
+                    let read_group_id = self.optimizer_ancillary.group_ids[*read].unwrap();
+                    for read_id in self.optimizer_ancillary.overlap_groups[read_group_id].iter() {
+                        read_slices[*read_id] = Some(inst_id);
+                    }
                 }
             }
 
+            // block writes are the spills we stored before
+            self.optimizer_ancillary.block_writes[block_id] = spilled_slices;
+
             // the remaining read slices have no corresponding write before them so
             // they must be read from the previous block
-            self.optimizer_ancillary.block_reads[block_id].extend(read_slices.into_iter());
+            self.optimizer_ancillary.block_reads[block_id] = read_slices;
             self.optimizer_ancillary.dead_stores[block_id] = dead_stores;
         }
 
@@ -185,228 +196,215 @@ impl TargetBasicBlockInner {
 
         Ok(())
     }
+
+    /// Calculate copy coalescions by iterating from start to end and eliminating
+    /// all non-spilling slice copies.
+    pub(super) fn calculate_copy_coalescions(&mut self) -> ProcessorSpecResult {
+        for (block_id, block) in self.jir_blocks.items() {
+            let Some(block) = block else {
+                panic!("This must be Some");
+            };
+
+            // TODO handle slice overlaps (just ignore overlapping copies? special handling?
+            // partial copies are kinda ugly)
+
+            // copy_values can be constants if they are propagated or slices
+            // if they originate from operations or previous block writes
+            let mut coalescions = SecondaryMap::<LocalSliceId, Option<CopyCoalescion>>::default();
+
+            // coalescions are finalized once they are overwritten
+            let mut finalized_coalescions = Vec::new();
+
+            for (inst_id, inst) in self.jir_instructions[block.range.clone()]
+                .iter()
+                .enumerate()
+                .map(|(id, inst)| (id + block.range.start, inst))
+            {
+                match inst {
+                    JIRInstruction::Copy(args) => {
+                        // a copy is stored for later optimization
+                        let copy_output_id = self
+                            .optimizer_ancillary
+                            .slice_to_id
+                            .get(&args.output)
+                            .expect("We stored this before");
+
+                        // remove any copy coalescions for which the target value
+                        // is equal to the write output
+                        for coalescion in coalescions.values_mut() {
+                            if let Some(coalescion_some) = coalescion
+                                && let JIRValue::Slice(slice) = coalescion_some.value
+                            {
+                                let id = self
+                                    .optimizer_ancillary
+                                    .slice_to_id
+                                    .get(&slice)
+                                    .expect("We did this before");
+
+                                if *id == *copy_output_id {
+                                    *coalescion = None;
+                                }
+                            }
+                        }
+
+                        // finalize any coalescions that are overwritten by this instruction
+                        let prev_coalescion = std::mem::take(&mut coalescions[*copy_output_id]);
+
+                        if let Some(prev_coalescion) = prev_coalescion {
+                            if prev_coalescion.rewrites.is_empty() {
+                                // we don't care about empty coalescions
+                                continue;
+                            }
+
+                            finalized_coalescions.push(prev_coalescion);
+                        }
+
+                        match args.input {
+                            JIRValue::Slice(input_slice) => {
+                                // an input slice might refer to another slice that
+                                // was previously stored so we check for that first
+                                let input_slice_id = self
+                                    .optimizer_ancillary
+                                    .slice_to_id
+                                    .get(&input_slice)
+                                    .expect("We stored this before");
+
+                                let value = match &coalescions[*input_slice_id] {
+                                    Some(prev_coalescion) => {
+                                        // previously stored => use it
+                                        prev_coalescion.value
+                                    }
+                                    None => {
+                                        // not previously stored => new value (the slice)
+                                        input_slice.into()
+                                    }
+                                };
+
+                                let new_coalescion = CopyCoalescion::new(inst_id, value);
+                                coalescions[*copy_output_id] = Some(new_coalescion);
+                            }
+                            JIRValue::Const(input_const) => {
+                                // an input const can be stored as a copy_value as-is
+                                let new_coalescion = CopyCoalescion::new(inst_id, input_const.into());
+                                coalescions[*copy_output_id] = Some(new_coalescion);
+                            }
+                        }
+                    }
+                    inst => {
+                        // any other instruction can trigger a rewrite if one of its reads has been
+                        // encountered before in a copy
+                        let rs = get_referenced_slices(
+                            inst,
+                            &mut self.optimizer_ancillary.slice_to_id,
+                            &mut self.optimizer_ancillary.slice_ids,
+                        );
+                        for (readi, read) in rs.reads.into_iter().enumerate() {
+                            if let Some(coalescion) = &mut coalescions[read] {
+                                // if read was stored before as a coalescion, add
+                                // it to the list of rewrites
+                                coalescion.rewrites.push(Rewrite::new(inst_id, readi));
+                            }
+                        }
+
+                        // S0 = S1
+                        // S2 = S1
+                        // S1 = 3 + S4
+
+                        if let Some(write) = rs.write {
+                            // remove any copy coalescions for which the target value
+                            // is equal to the write output
+                            for coalescion in coalescions.values_mut() {
+                                if let Some(coalescion_some) = coalescion
+                                    && let JIRValue::Slice(slice) = coalescion_some.value
+                                {
+                                    let id = self
+                                        .optimizer_ancillary
+                                        .slice_to_id
+                                        .get(&slice)
+                                        .expect("We did this before");
+
+                                    if *id == write {
+                                        *coalescion = None;
+                                    }
+                                }
+                            }
+
+                            // finalize any coalescions that are overwritten by this instruction
+                            let prev_coalescion = std::mem::take(&mut coalescions[write]);
+
+                            if let Some(prev_coalescion) = prev_coalescion {
+                                if prev_coalescion.rewrites.is_empty() {
+                                    // we don't care about empty coalescions
+                                    continue;
+                                }
+
+                                finalized_coalescions.push(prev_coalescion);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // all remaining elements in coalescions have no overwrite which means
+            // they are spilled => we finalize them, but don't eliminate the copy
+            // instruction
+            for (_, remaining_coalescion) in coalescions.into_items() {
+                if let Some(mut remaining_coalescion) = remaining_coalescion {
+                    if remaining_coalescion.rewrites.is_empty() {
+                        // we don't care about empty coalescions
+                        continue;
+                    }
+
+                    remaining_coalescion.delete_copy_inst = false;
+                    finalized_coalescions.push(remaining_coalescion);
+                }
+            }
+
+            self.optimizer_ancillary.copy_coalescions[block_id] = finalized_coalescions;
+        }
+
+        Ok(())
+    }
 }
 
 /// Extract the read and write slice operands from the given `inst` while interning
-/// any newly encountered slices in `slice_to_id` and `slice_ids`.
+/// any newly encountered slices in `slice_to_id` and `slice_ids`. The order of
+/// reads and writes in [ReferencedSlices] must be stable.
 fn get_referenced_slices(
     inst: &JIRInstruction,
     slice_to_id: &mut FnvHashMap<JIRSlice, LocalSliceId>,
     slice_ids: &mut PrimaryMap<LocalSliceId, JIRSlice>,
 ) -> ReferencedSlices {
-    let (slice_writes, slice_reads) = match inst {
-        JIRInstruction::IntMul(binary_args)
-        | JIRInstruction::IntDiv(binary_args)
-        | JIRInstruction::IntSDiv(binary_args)
-        | JIRInstruction::IntAdd(binary_args)
-        | JIRInstruction::IntSubtract(binary_args)
-        | JIRInstruction::IntRemainder(binary_args)
-        | JIRInstruction::IntSRemainder(binary_args)
-        | JIRInstruction::IntLeft(binary_args)
-        | JIRInstruction::IntRight(binary_args)
-        | JIRInstruction::IntSRight(binary_args)
-        | JIRInstruction::IntOr(binary_args)
-        | JIRInstruction::IntAnd(binary_args)
-        | JIRInstruction::IntXor(binary_args)
-        | JIRInstruction::IntSLess(binary_args)
-        | JIRInstruction::IntSGreater(binary_args)
-        | JIRInstruction::IntSLessEqual(binary_args)
-        | JIRInstruction::IntSGreaterEqual(binary_args)
-        | JIRInstruction::IntLess(binary_args)
-        | JIRInstruction::IntGreater(binary_args)
-        | JIRInstruction::IntLessEqual(binary_args)
-        | JIRInstruction::IntGreaterEqual(binary_args)
-        | JIRInstruction::IntEquals(binary_args)
-        | JIRInstruction::IntNotEquals(binary_args)
-        | JIRInstruction::FloatDiv(binary_args)
-        | JIRInstruction::FloatMul(binary_args)
-        | JIRInstruction::FloatAdd(binary_args)
-        | JIRInstruction::FloatSubtract(binary_args)
-        | JIRInstruction::FloatLess(binary_args)
-        | JIRInstruction::FloatGreater(binary_args)
-        | JIRInstruction::FloatLessEqual(binary_args)
-        | JIRInstruction::FloatGreaterEqual(binary_args)
-        | JIRInstruction::FloatEquals(binary_args)
-        | JIRInstruction::FloatNotEquals(binary_args)
-        | JIRInstruction::BoolOr(binary_args)
-        | JIRInstruction::BoolAnd(binary_args)
-        | JIRInstruction::BoolXor(binary_args)
-        | JIRInstruction::Carry(binary_args)
-        | JIRInstruction::SignCarry(binary_args)
-        | JIRInstruction::SignBorrow(binary_args) => {
-            let writes = vec![binary_args.output];
-            let mut reads = vec![];
-
-            if let JIRValue::Slice(jirslice) = binary_args.input_a {
-                reads.push(jirslice);
-            }
-
-            if let JIRValue::Slice(jirslice) = binary_args.input_b {
-                reads.push(jirslice);
-            }
-
-            (writes, reads)
-        }
-        JIRInstruction::BlockStart(_)
-        | JIRInstruction::BlockEnd(_)
-        | JIRInstruction::InstructionStart(_)
-        | JIRInstruction::InstructionEnd(_) => (vec![], vec![]),
-        JIRInstruction::Copy(unary_args)
-        | JIRInstruction::BitNegate(unary_args)
-        | JIRInstruction::IntNegate(unary_args)
-        | JIRInstruction::FloatNegate(unary_args)
-        | JIRInstruction::BoolNegate(unary_args)
-        | JIRInstruction::PopCount(unary_args)
-        | JIRInstruction::LZCount(unary_args)
-        | JIRInstruction::ZeroExtend(unary_args)
-        | JIRInstruction::SignExtend(unary_args)
-        | JIRInstruction::Nan(unary_args)
-        | JIRInstruction::Abs(unary_args)
-        | JIRInstruction::Sqrt(unary_args)
-        | JIRInstruction::IntToFloat(unary_args)
-        | JIRInstruction::FloatToFloat(unary_args)
-        | JIRInstruction::Trunc(unary_args)
-        | JIRInstruction::Ceil(unary_args)
-        | JIRInstruction::Floor(unary_args)
-        | JIRInstruction::Round(unary_args) => {
-            let writes = vec![unary_args.output];
-            let mut reads = vec![];
-
-            if let JIRValue::Slice(jirslice) = unary_args.input {
-                reads.push(jirslice);
-            }
-
-            (writes, reads)
-        }
-        JIRInstruction::Load {
-            target,
-            address,
-            space: _,
-        } => {
-            // TODO is this correct?
-            let writes = vec![target.clone()];
-            let mut reads = vec![];
-
-            if let JIRValue::Slice(jirslice) = address {
-                reads.push(jirslice.clone());
-            }
-
-            (writes, reads)
-        }
-        JIRInstruction::Store {
-            address,
-            value,
-            space: _,
-        } => {
-            // TODO is this correct?
-            let writes = vec![];
-            let mut reads = vec![];
-
-            if let JIRValue::Slice(jirslice) = address {
-                reads.push(jirslice.clone());
-            }
-
-            if let JIRValue::Slice(jirslice) = value {
-                reads.push(jirslice.clone());
-            }
-
-            (writes, reads)
-        }
-        JIRInstruction::CallDirect(jirvalue, _)
-        | JIRInstruction::CallIndirect(jirvalue, _)
-        | JIRInstruction::ReturnDirect(jirvalue)
-        | JIRInstruction::ReturnIndirect(jirvalue)
-        | JIRInstruction::GotoDirect(jirvalue)
-        | JIRInstruction::GotoIndirect(jirvalue) => {
-            let writes = vec![];
-            let mut reads = vec![];
-
-            if let JIRValue::Slice(jirslice) = jirvalue {
-                reads.push(jirslice.clone());
-            }
-
-            (writes, reads)
-        }
-        JIRInstruction::GotoDirectIf { condition, target } | JIRInstruction::GotoIndirectIf { condition, target } => {
-            let writes = vec![];
-            let mut reads = vec![];
-
-            if let JIRValue::Slice(jirslice) = condition {
-                reads.push(jirslice.clone());
-            }
-
-            if let JIRValue::Slice(jirslice) = target {
-                reads.push(jirslice.clone());
-            }
-
-            (writes, reads)
-        }
-        JIRInstruction::JCodeGoto(_) => (vec![], vec![]),
-        JIRInstruction::JCodeGotoIf {
-            condition,
-            target_block: _,
-        } => {
-            let writes = vec![];
-            let mut reads = vec![];
-
-            if let JIRValue::Slice(jirslice) = condition {
-                reads.push(jirslice.clone());
-            }
-
-            (writes, reads)
-        }
-        JIRInstruction::CustomOp {
-            output,
-            input_a,
-            input_b,
-            op_id: _,
-            extra_args: _,
-        } => {
-            let mut writes = vec![];
-            let mut reads = vec![];
-
-            if let Some(output) = output {
-                writes.push(output.clone());
-            }
-
-            if let Some(JIRValue::Slice(jirslice)) = input_a {
-                reads.push(jirslice.clone());
-            }
-
-            if let Some(JIRValue::Slice(jirslice)) = input_b {
-                reads.push(jirslice.clone());
-            }
-
-            (writes, reads)
-        }
-    };
-
-    let slice_writes = slice_writes
-        .into_iter()
-        .map(|write| match slice_to_id.entry(write) {
+    let slice_write = inst
+        .get_output()
+        .map(|write| match slice_to_id.entry(*write) {
             Entry::Occupied(occupied_entry) => *occupied_entry.get(),
             Entry::Vacant(vacant_entry) => {
-                let slice_id = slice_ids.insert(write);
+                let slice_id = slice_ids.insert(*write);
                 vacant_entry.insert(slice_id);
                 slice_id
             }
-        })
-        .collect_vec();
+        });
 
-    let slice_reads = slice_reads
-        .into_iter()
-        .map(|read| match slice_to_id.entry(read) {
-            Entry::Occupied(occupied_entry) => *occupied_entry.get(),
-            Entry::Vacant(vacant_entry) => {
-                // assign id and process overlap
-                let slice_id = slice_ids.insert(read);
-                vacant_entry.insert(slice_id);
-                slice_id
+    let slice_reads = inst
+        .operands()
+        .filter_map(|value| match value {
+            JIRValue::Slice(read) => {
+                match slice_to_id.entry(*read) {
+                    Entry::Occupied(occupied_entry) => Some(*occupied_entry.get()),
+                    Entry::Vacant(vacant_entry) => {
+                        // assign id and process overlap
+                        let slice_id = slice_ids.insert(*read);
+                        vacant_entry.insert(slice_id);
+                        Some(slice_id)
+                    }
+                }
             }
+            JIRValue::Const(_) => None,
         })
         .collect_vec();
 
-    ReferencedSlices::new(slice_writes, slice_reads)
+    ReferencedSlices::new(slice_write, slice_reads)
 }
 
 new_map_key! { pub struct LocalSliceId; "LSID"; }

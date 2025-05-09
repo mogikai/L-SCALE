@@ -205,7 +205,7 @@ pub(super) fn make_basic_block_from_instructions(
         builder.push_jir_instruction(instruction).unwrap();
     }
     builder.finish_block().unwrap();
-    builder.finish().unwrap()
+    builder.finish(None).unwrap()
 }
 
 pub(super) fn exec_instructions<T: MogiJit>(

@@ -25,7 +25,7 @@ impl Lifter for ProcessorSpecification {
         source: &S,
         context_provider: &mut C,
         config: &LifterConfig<D>,
-        mut addr: EVAddr,
+        start_addr: EVAddr,
     ) -> LifterResult<TargetBasicBlock>
     where
         S: TargetInstructionSource,
@@ -34,6 +34,7 @@ impl Lifter for ProcessorSpecification {
     {
         // TODO: Allocate buffer size depending on the target instruction set's maximum instruction size.
         let mut buffer = [0u8; 16];
+        let mut addr = start_addr;
 
         let now = Instant::now();
         let mut block_builder = TargetBasicBlockBuilder::new(addr, self.temp_space);
@@ -93,8 +94,9 @@ impl Lifter for ProcessorSpecification {
         // Make sure the block is finalized. If there is no open block, then this does nothing.
         block_builder.finish_block().unwrap();
 
+        let range = start_addr..addr;
         Ok(block_builder
-            .finish()
+            .finish(Some(range))
             .map_err(|_| -> LifterError { todo!() })?)
     }
 }

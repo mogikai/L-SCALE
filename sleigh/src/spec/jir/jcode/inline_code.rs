@@ -249,5 +249,8 @@ macro_rules! jinst {
     ((*$op_id:tt)(*$args:tt)) => {
         $crate::spec::jir::jcode::JIRInstruction::new_custom_call(Option::<JIRSlice>::None, $op_id, $args)
     };
+    (nop) => {
+        $crate::spec::jir::jcode::JIRInstruction::nop()
+    };
 }
 pub use jinst;

@@ -19,7 +19,7 @@ use mogi_utilities::index_map::{
     SecondaryMap,
 };
 use optimizer::OptimizerAncillary;
-use std::ops::Deref;
+use std::ops::{Deref, Range};
 use std::rc::Rc;
 
 pub type InstId = usize;
@@ -60,6 +60,10 @@ impl TargetBasicBlock {
 
     pub fn target_instruction_count(&self) -> usize {
         self.0.target_inst_count
+    }
+
+    pub fn addr_range(&self) -> Option<Range<EVAddr>> {
+        self.0.addr_range.clone()
     }
 
     /// Get an iterator over all instructions in the target basic block. This includes all instructions from
@@ -152,6 +156,8 @@ pub struct TargetBasicBlockInner {
     branch_targets: Option<Vec<NextBlockTarget>>,
     /// The number of target instructions contained in this block.
     target_inst_count: usize,
+    /// The address range this block was lifted from.
+    addr_range: Option<Range<EVAddr>>,
 
     /// Ancillary information calculated by the optimizer can be stored here
     optimizer_ancillary: OptimizerAncillary,

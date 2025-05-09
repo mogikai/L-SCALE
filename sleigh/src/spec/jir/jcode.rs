@@ -1,6 +1,7 @@
 pub mod display;
 mod inline_code;
 
+use std::iter::empty;
 use crate::spec::jir::jir_block::JIRBlockId;
 use crate::spec::jir::values::{
     JIRSlice,
@@ -10,6 +11,8 @@ use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::custom_op::CustomOpId;
 pub use inline_code::*;
 use mogi_utilities::addresses::EVAddr;
+use std::marker::PhantomData;
+use std::ptr::NonNull;
 use std::rc::Rc;
 
 /// This enum is used to specify the instructions that may follow the current instruction.
@@ -1041,6 +1044,10 @@ impl JIRInstruction {
         }
     }
 
+    pub fn nop() -> Self {
+        JIRInstruction::Nop
+    }
+
     pub fn is_branch(&self) -> bool {
         use JIRInstruction::*;
         matches!(
@@ -1083,6 +1090,81 @@ impl JIRInstruction {
     pub fn is_conditional_branch(&self) -> bool {
         use JIRInstruction::*;
         matches!(self, GotoDirectIf { .. } | GotoIndirectIf { .. } | JCodeGotoIf { .. })
+    }
+
+    pub fn operands(&self) -> impl Iterator<Item = &JIRValue> {
+        // OperandIterator::new(self)
+        empty()
+    }
+
+    pub fn operands_mut(&mut self) -> impl Iterator<Item = &mut JIRValue> {
+        // OperandIteratorMut::new(self)
+        empty()
+    }
+
+    pub fn get_output(&self) -> Option<&JIRSlice> {
+        match self {
+            JIRInstruction::Copy(UnaryArgs { output, .. })
+            | JIRInstruction::BitNegate(UnaryArgs { output, .. })
+            | JIRInstruction::IntNegate(UnaryArgs { output, .. })
+            | JIRInstruction::FloatNegate(UnaryArgs { output, .. })
+            | JIRInstruction::BoolNegate(UnaryArgs { output, .. })
+            | JIRInstruction::PopCount(UnaryArgs { output, .. })
+            | JIRInstruction::LZCount(UnaryArgs { output, .. })
+            | JIRInstruction::ZeroExtend(UnaryArgs { output, .. })
+            | JIRInstruction::SignExtend(UnaryArgs { output, .. })
+            | JIRInstruction::Nan(UnaryArgs { output, .. })
+            | JIRInstruction::Abs(UnaryArgs { output, .. })
+            | JIRInstruction::Sqrt(UnaryArgs { output, .. })
+            | JIRInstruction::IntToFloat(UnaryArgs { output, .. })
+            | JIRInstruction::FloatToFloat(UnaryArgs { output, .. })
+            | JIRInstruction::Trunc(UnaryArgs { output, .. })
+            | JIRInstruction::Ceil(UnaryArgs { output, .. })
+            | JIRInstruction::Floor(UnaryArgs { output, .. })
+            | JIRInstruction::Round(UnaryArgs { output, .. }) => Some(output),
+            JIRInstruction::Load { target, .. } => Some(target),
+            JIRInstruction::IntAdd(BinaryArgs { output, .. })
+            | JIRInstruction::IntSubtract(BinaryArgs { output, .. })
+            | JIRInstruction::IntMul(BinaryArgs { output, .. })
+            | JIRInstruction::IntDiv(BinaryArgs { output, .. })
+            | JIRInstruction::IntSDiv(BinaryArgs { output, .. })
+            | JIRInstruction::IntRemainder(BinaryArgs { output, .. })
+            | JIRInstruction::IntSRemainder(BinaryArgs { output, .. })
+            | JIRInstruction::IntLeft(BinaryArgs { output, .. })
+            | JIRInstruction::IntRight(BinaryArgs { output, .. })
+            | JIRInstruction::IntSRight(BinaryArgs { output, .. })
+            | JIRInstruction::IntOr(BinaryArgs { output, .. })
+            | JIRInstruction::IntAnd(BinaryArgs { output, .. })
+            | JIRInstruction::IntXor(BinaryArgs { output, .. })
+            | JIRInstruction::IntSLess(BinaryArgs { output, .. })
+            | JIRInstruction::IntSGreater(BinaryArgs { output, .. })
+            | JIRInstruction::IntSLessEqual(BinaryArgs { output, .. })
+            | JIRInstruction::IntSGreaterEqual(BinaryArgs { output, .. })
+            | JIRInstruction::IntLess(BinaryArgs { output, .. })
+            | JIRInstruction::IntGreater(BinaryArgs { output, .. })
+            | JIRInstruction::IntLessEqual(BinaryArgs { output, .. })
+            | JIRInstruction::IntGreaterEqual(BinaryArgs { output, .. })
+            | JIRInstruction::IntEquals(BinaryArgs { output, .. })
+            | JIRInstruction::IntNotEquals(BinaryArgs { output, .. })
+            | JIRInstruction::FloatDiv(BinaryArgs { output, .. })
+            | JIRInstruction::FloatMul(BinaryArgs { output, .. })
+            | JIRInstruction::FloatAdd(BinaryArgs { output, .. })
+            | JIRInstruction::FloatSubtract(BinaryArgs { output, .. })
+            | JIRInstruction::FloatLess(BinaryArgs { output, .. })
+            | JIRInstruction::FloatGreater(BinaryArgs { output, .. })
+            | JIRInstruction::FloatLessEqual(BinaryArgs { output, .. })
+            | JIRInstruction::FloatGreaterEqual(BinaryArgs { output, .. })
+            | JIRInstruction::FloatEquals(BinaryArgs { output, .. })
+            | JIRInstruction::FloatNotEquals(BinaryArgs { output, .. })
+            | JIRInstruction::BoolOr(BinaryArgs { output, .. })
+            | JIRInstruction::BoolAnd(BinaryArgs { output, .. })
+            | JIRInstruction::BoolXor(BinaryArgs { output, .. })
+            | JIRInstruction::Carry(BinaryArgs { output, .. })
+            | JIRInstruction::SignCarry(BinaryArgs { output, .. })
+            | JIRInstruction::SignBorrow(BinaryArgs { output, .. }) => Some(output),
+            JIRInstruction::CustomOp { output, .. } => output.as_ref(),
+            _ => None,
+        }
     }
 }
 
@@ -1232,4 +1314,277 @@ pub enum JIRInstruction {
         op_id: CustomOpId,
         extra_args: Rc<Vec<JIRValue>>,
     },
+    Nop,
+}
+
+struct OperandIterator<'a> {
+    instruction: &'a JIRInstruction,
+    next_index: usize,
+}
+
+impl<'a> OperandIterator<'a> {
+    fn new(
+        instruction: &'a JIRInstruction,
+    ) -> Self {
+        Self {
+            instruction,
+            next_index: 0,
+        }
+    }
+}
+
+struct OperandIteratorMut<'a> {
+    instruction: &'a mut JIRInstruction,
+    next_index: usize,
+}
+
+impl<'a> OperandIteratorMut<'a> {
+    fn new(
+        instruction: &'a mut JIRInstruction,
+    ) -> Self {
+        Self {
+            instruction,
+            next_index: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for OperandIterator<'a> {
+    type Item = &'a JIRValue;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let result = match self.instruction {
+            JIRInstruction::Copy(UnaryArgs { input, .. })
+            | JIRInstruction::BitNegate(UnaryArgs { input, .. })
+            | JIRInstruction::IntNegate(UnaryArgs { input, .. })
+            | JIRInstruction::FloatNegate(UnaryArgs { input, .. })
+            | JIRInstruction::BoolNegate(UnaryArgs { input, .. })
+            | JIRInstruction::PopCount(UnaryArgs { input, .. })
+            | JIRInstruction::LZCount(UnaryArgs { input, .. })
+            | JIRInstruction::ZeroExtend(UnaryArgs { input, .. })
+            | JIRInstruction::SignExtend(UnaryArgs { input, .. })
+            | JIRInstruction::Nan(UnaryArgs { input, .. })
+            | JIRInstruction::Abs(UnaryArgs { input, .. })
+            | JIRInstruction::Sqrt(UnaryArgs { input, .. })
+            | JIRInstruction::IntToFloat(UnaryArgs { input, .. })
+            | JIRInstruction::FloatToFloat(UnaryArgs { input, .. })
+            | JIRInstruction::Trunc(UnaryArgs { input, .. })
+            | JIRInstruction::Ceil(UnaryArgs { input, .. })
+            | JIRInstruction::Floor(UnaryArgs { input, .. })
+            | JIRInstruction::Round(UnaryArgs { input, .. })
+                if self.next_index == 0 =>
+            {
+                Some(input)
+            }
+            JIRInstruction::Load { address, .. } if self.next_index == 0 => Some(address),
+            JIRInstruction::Store { address, value, .. } => match self.next_index {
+                0 => Some(address),
+                1 => Some(value),
+                _ => None,
+            },
+            JIRInstruction::IntAdd(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntSubtract(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntMul(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntDiv(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntSDiv(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntRemainder(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntSRemainder(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntLeft(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntRight(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntSRight(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntOr(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntAnd(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntXor(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntSLess(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntSGreater(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntSLessEqual(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntSGreaterEqual(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntLess(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntGreater(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntLessEqual(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntGreaterEqual(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntEquals(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntNotEquals(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatDiv(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatMul(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatAdd(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatSubtract(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatLess(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatGreater(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatLessEqual(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatGreaterEqual(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatEquals(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatNotEquals(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::BoolOr(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::BoolAnd(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::BoolXor(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::Carry(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::SignCarry(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::SignBorrow(BinaryArgs { input_a, input_b, .. }) => match self.next_index {
+                0 => Some(input_a),
+                1 => Some(input_b),
+                _ => None,
+            },
+            JIRInstruction::GotoDirect(target)
+            | JIRInstruction::GotoIndirect(target)
+            | JIRInstruction::ReturnDirect(target)
+            | JIRInstruction::ReturnIndirect(target)
+                if self.next_index == 0 =>
+            {
+                Some(target)
+            }
+            JIRInstruction::CallDirect(target, _) | JIRInstruction::CallIndirect(target, _) if self.next_index == 0 => {
+                Some(target)
+            }
+            JIRInstruction::GotoDirectIf { condition, target }
+            | JIRInstruction::GotoIndirectIf { condition, target } => match self.next_index {
+                0 => Some(condition),
+                1 => Some(target),
+                _ => None,
+            },
+            JIRInstruction::JCodeGotoIf { condition, .. } if self.next_index == 0 => Some(condition),
+            JIRInstruction::CustomOp {
+                input_a,
+                input_b,
+                extra_args,
+                ..
+            } => {
+                if self.next_index == 0 {
+                    input_a.as_ref()
+                } else if self.next_index == 1 {
+                    input_b.as_ref()
+                } else if (self.next_index as usize) < extra_args.len() + 2 {
+                    Some(&extra_args[(self.next_index - 2) as usize])
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        self.next_index += 1;
+        result
+    }
+}
+
+impl<'a> Iterator for OperandIteratorMut<'a> {
+    type Item = &'a mut JIRValue;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let result = match self.instruction {
+            JIRInstruction::Copy(UnaryArgs { input, .. })
+            | JIRInstruction::BitNegate(UnaryArgs { input, .. })
+            | JIRInstruction::IntNegate(UnaryArgs { input, .. })
+            | JIRInstruction::FloatNegate(UnaryArgs { input, .. })
+            | JIRInstruction::BoolNegate(UnaryArgs { input, .. })
+            | JIRInstruction::PopCount(UnaryArgs { input, .. })
+            | JIRInstruction::LZCount(UnaryArgs { input, .. })
+            | JIRInstruction::ZeroExtend(UnaryArgs { input, .. })
+            | JIRInstruction::SignExtend(UnaryArgs { input, .. })
+            | JIRInstruction::Nan(UnaryArgs { input, .. })
+            | JIRInstruction::Abs(UnaryArgs { input, .. })
+            | JIRInstruction::Sqrt(UnaryArgs { input, .. })
+            | JIRInstruction::IntToFloat(UnaryArgs { input, .. })
+            | JIRInstruction::FloatToFloat(UnaryArgs { input, .. })
+            | JIRInstruction::Trunc(UnaryArgs { input, .. })
+            | JIRInstruction::Ceil(UnaryArgs { input, .. })
+            | JIRInstruction::Floor(UnaryArgs { input, .. })
+            | JIRInstruction::Round(UnaryArgs { input, .. })
+                if self.next_index == 0 =>
+            {
+                Some(input)
+            }
+            JIRInstruction::Load { address, .. } if self.next_index == 0 => Some(address),
+            JIRInstruction::Store { address, value, .. } => match self.next_index {
+                0 => Some(address),
+                1 => Some(value),
+                _ => None,
+            },
+            JIRInstruction::IntAdd(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntSubtract(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntMul(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntDiv(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntSDiv(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntRemainder(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntSRemainder(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntLeft(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntRight(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntSRight(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntOr(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntAnd(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntXor(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntSLess(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntSGreater(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntSLessEqual(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntSGreaterEqual(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntLess(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntGreater(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntLessEqual(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntGreaterEqual(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntEquals(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::IntNotEquals(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatDiv(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatMul(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatAdd(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatSubtract(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatLess(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatGreater(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatLessEqual(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatGreaterEqual(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatEquals(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::FloatNotEquals(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::BoolOr(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::BoolAnd(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::BoolXor(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::Carry(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::SignCarry(BinaryArgs { input_a, input_b, .. })
+            | JIRInstruction::SignBorrow(BinaryArgs { input_a, input_b, .. }) => match self.next_index {
+                0 => Some(input_a),
+                1 => Some(input_b),
+                _ => None,
+            },
+            JIRInstruction::GotoDirect(target)
+            | JIRInstruction::GotoIndirect(target)
+            | JIRInstruction::ReturnDirect(target)
+            | JIRInstruction::ReturnIndirect(target)
+                if self.next_index == 0 =>
+            {
+                Some(target)
+            }
+            JIRInstruction::CallDirect(target, _) | JIRInstruction::CallIndirect(target, _) if self.next_index == 0 => {
+                Some(target)
+            }
+            JIRInstruction::GotoDirectIf { condition, target }
+            | JIRInstruction::GotoIndirectIf { condition, target } => match self.next_index {
+                0 => Some(condition),
+                1 => Some(target),
+                _ => None,
+            },
+            JIRInstruction::JCodeGotoIf { condition, .. } if self.next_index == 0 => Some(condition),
+            JIRInstruction::CustomOp {
+                input_a,
+                input_b,
+                extra_args,
+                ..
+            } => {
+                if self.next_index == 0 {
+                    input_a.as_mut()
+                } else if self.next_index == 1 {
+                    input_b.as_mut()
+                } else if (self.next_index as usize) < extra_args.len() + 2 {
+                    Some(&mut Rc::make_mut(extra_args)[(self.next_index - 2) as usize])
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+        self.next_index += 1;
+
+        let ptr: Option<*mut JIRValue> = result.map(|res| res as _);
+
+        // SAFETY:
+        // - since `self.next_index` is always advanced, no mutable reference to
+        // the same location is ever returned more than once
+        unsafe { ptr.map(|p| p.as_mut().expect("Pointer is guaranteed to not be null")) }
+    }
 }
