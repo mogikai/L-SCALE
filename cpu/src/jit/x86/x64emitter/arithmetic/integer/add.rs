@@ -1,11 +1,16 @@
 use crate::jit::api::JITResult;
 use crate::jit::code_buffer::CompiledBasicBlock;
-use crate::jit::host::register::HostRegSet;
+use crate::jit::host::register::{
+    HostRegSet,
+    RegClass,
+};
 use crate::jit::regalloc::requirements::OperandRequest;
 use crate::jit::regalloc::result::Allocation;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::registers::general_purpose::GPRegister;
 use crate::jit::x86::x64emitter::arithmetic::integer::AddSub;
+use crate::jit::x86::x64emitter::copy::CopyExtendMode;
+use crate::jit::x86::x64emitter::helpers::reg;
 use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
     X64Emitter,
@@ -18,6 +23,7 @@ use crate::jit::x86::{
 use dynasmrt::x64::X64Relocation;
 use either::Either;
 use mogi_sleigh::spec::jir::basic_block::InstId;
+use mogi_sleigh::spec::jir::common::JIRSize;
 use mogi_sleigh::spec::jir::values::{
     JIRConst,
     JIRSlice,
@@ -34,32 +40,24 @@ impl X64AllocRequirements {
         input_b: JIRValue,
     ) {
         match (input_a, input_b) {
-            (JIRValue::Slice(a), JIRValue::Slice(b)) => {
-                requirement.add_request(OperandRequest::int_write_any(output));
-                requirement.add_request(OperandRequest::int_read_any(a));
-                requirement.add_request(OperandRequest::int_read_any(b));
+            (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) => {
+                Self::require_large_int_write_any(requirement, output);
+                Self::require_large_int_read_any(requirement, input_a);
+                Self::require_large_int_read_any(requirement, input_b);
             }
-            (JIRValue::Slice(a), JIRValue::Const(b)) | (JIRValue::Const(b), JIRValue::Slice(a)) => {
-                Self::add_slice_const_requirements(requirement, output, a, b);
+            (JIRValue::Slice(input_a), JIRValue::Const(input_b))
+            | (JIRValue::Const(input_b), JIRValue::Slice(input_a)) => {
+                Self::require_large_int_write_any(requirement, output);
+                Self::require_large_int_read_any(requirement, input_a);
+
+                // const can be encoded as an immediate for sizes <= 4,
+                // so if size > 4 we use the scratch register, but nothing else
             }
-            (JIRValue::Const(a), JIRValue::Const(b)) => {
+            (JIRValue::Const(input_a), JIRValue::Const(input_b)) => {
                 // Delegate to copy
-                Self::copy_requirements(requirement, output, add_constants(a, b))
+                Self::copy_requirements(requirement, output, add_constants(input_a, input_b))
             }
         }
-    }
-
-    pub fn add_slice_const_requirements(
-        requirement: &mut AllocRequirement,
-        output: JIRSlice,
-        input_a: JIRSlice,
-        input_b: JIRConst,
-    ) {
-        // If one of the operands is const, we only need one register.
-        // The other value will be used as immediate.
-        requirement.add_request(OperandRequest::int_write_any(output));
-        requirement.add_request(OperandRequest::int_read_any(input_a));
-        *requirement.clobbers_mut() = HostRegSet::empty().with(GPRegister::AX.into_host_reg())
     }
 }
 
@@ -83,95 +81,130 @@ impl X64Emitter<'_> {
                 self.emit_copy(inst, output, add_constants(a, b))?;
             }
             // Addition is commutative, so we can simply swap a and b if one is const and the other is a varnode.
-            (JIRValue::Const(b), JIRValue::Slice(a)) | (JIRValue::Slice(a), JIRValue::Const(b)) => {
-                self.emit_add_reg_const(inst, output, a, b.value())?;
+            (JIRValue::Const(input_b), JIRValue::Slice(input_a))
+            | (JIRValue::Slice(input_a), JIRValue::Const(input_b)) => {
+                self.emit_add_slice_const(inst, output, input_a, input_b)?;
             }
             (JIRValue::Slice(a), JIRValue::Slice(b)) => {
-                let Allocation::Register(output) = self.allocations.get_allocation(inst, 0) else {
-                    todo!()
-                };
-                let Allocation::Register(a) = self.allocations.get_allocation(inst, 1) else {
-                    todo!()
-                };
-                let Allocation::Register(b) = self.allocations.get_allocation(inst, 2) else {
-                    todo!()
-                };
+                let output = reg!(self.allocations, inst, 0);
+                let input_a = reg!(self.allocations, inst, 1);
+                let input_b = reg!(self.allocations, inst, 2);
+
                 assemble!(self.block.assembler();
-                    ; lea Rq(output.hw_enc()), [Rq(a.hw_enc()) + Rq(b.hw_enc())]
+                    ; lea Rq(output.hw_enc()), [Rq(input_a.hw_enc()) + Rq(input_b.hw_enc())]
                 );
             }
         }
         Ok(())
     }
 
-    #[inline]
-    fn emit_add_reg_const(
-        &mut self,
-        inst: InstId,
-        output: JIRSlice,
-        a: JIRSlice,
-        b: u128,
-    ) -> JITResult {
-        self.emit_add_sub_slice_const(inst, output, a, b, AddSub::Add)
-    }
-
-    /// Emit instructions to add or subtract the provided constant value to the register `a`.
+    /// Emit instructions to add the provided constant value to the register `a`.
     /// Subtraction is done by adding the inverse element of the constant.
     #[inline]
-    pub(super) fn emit_add_sub_slice_const(
+    pub(super) fn emit_add_slice_const(
         &mut self,
         inst: InstId,
         output: JIRSlice,
-        a: JIRSlice,
-        b: u128,
-        add_sub: AddSub,
+        input_a: JIRSlice,
+        input_b: JIRConst,
     ) -> JITResult {
+        debug_assert_eq!(output.size(), input_a.size());
+        debug_assert_eq!(output.size(), input_b.size());
+
         let size = output.size();
-        let Allocation::Register(output) = self.allocations.get_allocation(inst, 0) else {
-            todo!()
-        };
-        let Allocation::Register(a) = self.allocations.get_allocation(inst, 1) else {
-            todo!()
-        };
-        let output = output.hw_enc();
-        let a = a.hw_enc();
-
-        if b < i8::MAX as u128 {
-            // Use byte sized displacement for operands that fit into one byte.
-            let mut b = b as i8;
-            if let AddSub::Sub = add_sub {
-                b = -b;
+        match size {
+            ..=8 => {
+                self.emit_add_slice_const_64(inst, output, input_a, input_b, size)?;
             }
-            assemble!(self.block.assembler();
-                ; lea Rq(output), [BYTE Rq(a) + b]
-            );
-        } else if b < i32::MAX as u128 {
-            // Use the normal 32 bit displacement for anything that fits into an i32
-            let mut b = b as i32;
-            if let AddSub::Sub = add_sub {
-                b = -b;
+            16 => {
+                self.emit_add_slice_const_128(inst, output, input_a, input_b)?;
             }
-            assemble!(self.block.assembler();
-                ; lea Rq(output), [Rq(a) + b]
-            );
-        } else if b < u64::MAX as u128 && size <= 8 {
-            // If b is > i32::MAX, it is not possible to encode the operand as displacement for
-            // a lea instruction, since the displacement can be at most 32 bits.
-
-            // Use mov to load the 64 bit immediate into a temp register, since it is
-            // the only instruction that supports a 64 bit immediate value.
-            let mut b = b as i128;
-            if let AddSub::Sub = add_sub {
-                b = -b;
-            }
-            assemble!(self.block.assembler();
-                ;; mov64!(self.block.assembler(); output, a)
-                ; mov rax, QWORD b as _
-                ; add Rq(output), rax
-            );
-        } else {
-            todo!("Immediates > u64::MAX currently unsupported")
+            size => todo!("Unsupported size {size}"),
         }
+
+        Ok(())
+    }
+
+    fn emit_add_slice_const_64(
+        &mut self,
+        inst: InstId,
+        output: JIRSlice,
+        input_a: JIRSlice,
+        input_b: JIRConst,
+        size: JIRSize,
+    ) -> JITResult {
+        let output_reg = reg!(self.allocations, inst, 0);
+        let input_a_reg = reg!(self.allocations, inst, 1);
+
+        const MAX_DISP_SIZE_1: u128 = i8::MAX as u128;
+        const MAX_DISP_SIZE_4: u128 = i32::MAX as u128;
+
+        match input_b.value() {
+            ..MAX_DISP_SIZE_1 => {
+                // input_b fits as unsigned byte displacement into LEA
+                let input_b_disp: i8 = input_b.value() as i8;
+
+                assemble!(self.block.assembler();
+                ; lea Rq(output_reg.hw_enc()), [BYTE Rq(input_a_reg.hw_enc()) + input_b_disp]
+                );
+            }
+            MAX_DISP_SIZE_1..MAX_DISP_SIZE_4 => {
+                // input_b fits as regular displacement into LEA
+                let input_b_disp: i32 = input_b.value() as i32;
+
+                assemble!(self.block.assembler();
+                ; lea Rq(output_reg.hw_enc()), [Rq(input_a_reg.hw_enc()) + input_b_disp]
+                );
+            }
+            MAX_DISP_SIZE_4.. => {
+                // input_b needs to be stored in a scratch register
+                let scratch_reg = self.allocations.scratch_register(RegClass::Int);
+                self.load_const(scratch_reg, input_b)?;
+
+                // store input_a into output and emit add
+                self.copy_reg(output_reg, input_a_reg, size, CopyExtendMode::None)?;
+                assemble!(self.block.assembler();
+                ; add Rq(output_reg.hw_enc()), Rq(scratch_reg.hw_enc())
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    fn emit_add_slice_const_128(
+        &mut self,
+        inst: InstId,
+        output: JIRSlice,
+        input_a: JIRSlice,
+        input_b: JIRConst,
+    ) -> JITResult {
+        let output_reg_lower = reg!(self.allocations, inst, 0);
+        let output_reg_upper = reg!(self.allocations, inst, 1);
+
+        let input_a_reg_lower = reg!(self.allocations, inst, 2);
+        let input_a_reg_upper = reg!(self.allocations, inst, 3);
+
+        // scratch reg will be used to hold the upper and lower parts of input_b
+        let scratch_reg = self.allocations.scratch_register(RegClass::Int);
+
+        self.copy_reg(output_reg_upper, input_a_reg_upper, 8, CopyExtendMode::None)?;
+        self.copy_reg(output_reg_lower, input_a_reg_lower, 8, CopyExtendMode::None)?;
+
+        let (input_b_lower, input_b_upper) = input_b.split(8);
+
+        // load const lower into scratch reg and add lower halves
+        self.load_const(scratch_reg, input_b_lower)?;
+        assemble!(self.block.assembler();
+            ; add Rq(output_reg_lower.hw_enc()), Rq(scratch_reg.hw_enc())
+        );
+
+        // load const upper into scratch reg and add with carry
+        self.load_const(scratch_reg, input_b_upper)?;
+        assemble!(self.block.assembler();
+            ; adc Rq(output_reg_upper.hw_enc()), Rq(scratch_reg.hw_enc())
+        );
+
         Ok(())
     }
 }

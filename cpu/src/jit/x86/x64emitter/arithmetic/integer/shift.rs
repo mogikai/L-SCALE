@@ -42,7 +42,7 @@ impl X64AllocRequirements {
         match (input, shift) {
             (JIRValue::Const(_), JIRValue::Const(_)) => {
                 // TODO: delegate to copy?
-                requirement.add_request(OperandRequest::int_write_any(output));
+                Self::require_large_int_write_any(requirement, output);
             }
             (JIRValue::Const(_), JIRValue::Slice(shift)) => {
                 // Shift is always loaded in cx on x86

@@ -143,7 +143,7 @@ impl X64Emitter<'_> {
                             ; mov Rq(target.hw_enc()), Rq(source.hw_enc())
                         );
                     }
-                    _ => unimplemented!("Unsupported size for gpr copy"),
+                    size => unimplemented!("Unsupported size {size}"),
                 }
                 Ok(())
             }
@@ -376,8 +376,8 @@ impl X64Emitter<'_> {
                     ; gs mov QWORD [slice_offset as _], Rq(reg)
                 );
             }
-            _ => {
-                todo!("Unsupported store size")
+            size => {
+                todo!("Unsupported store size {size}")
             }
         }
         Ok(())

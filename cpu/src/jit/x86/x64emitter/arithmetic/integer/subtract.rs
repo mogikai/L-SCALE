@@ -142,7 +142,7 @@ impl X64Emitter<'_> {
                 self.load_const(scratch_reg, input_b)?;
 
                 // store input_a into output and emit sub
-                self.copy_reg(output_reg, input_a_reg, size, CopyExtendMode::None);
+                self.copy_reg(output_reg, input_a_reg, size, CopyExtendMode::None)?;
                 assemble!(self.block.assembler();
                 ; sub Rq(output_reg.hw_enc()), Rq(scratch_reg.hw_enc())
                 );
@@ -175,13 +175,13 @@ impl X64Emitter<'_> {
         let (input_b_lower, input_b_upper) = input_b.split(8);
 
         // load const upper into scratch reg and subtract upper halves
-        self.load_const(scratch_reg, input_b_upper);
+        self.load_const(scratch_reg, input_b_upper)?;
         assemble!(self.block.assembler();
             ; sub Rq(output_reg_upper.hw_enc()), Rq(scratch_reg.hw_enc())
         );
 
         // load const lower into scratch reg and subtract with borrow
-        self.load_const(scratch_reg, input_b_lower);
+        self.load_const(scratch_reg, input_b_lower)?;
         assemble!(self.block.assembler();
             ; sbb Rq(output_reg_lower.hw_enc()), Rq(scratch_reg.hw_enc())
         );

@@ -48,14 +48,21 @@ use mogi_sleigh::lifter::{
     LifterConfig,
     LifterError,
 };
-use mogi_sleigh::spec::ProcessorSpecification;
-use mogi_sleigh::spec::jir::basic_block::optimizer::OptimizerOptions;
+use mogi_sleigh::spec::jir::basic_block::optimizer::{
+    OptimizerContext,
+    OptimizerOptions,
+};
 use mogi_sleigh::spec::jir::basic_block::{
     TargetBasicBlock,
     TargetBasicBlockInner,
 };
 use mogi_sleigh::spec::jir::jcode::NextBlockTarget;
+use mogi_sleigh::spec::{
+    ProcessorSpecification,
+    SpaceId,
+};
 use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::index_map::MapKey;
 use std::cell::{
     Ref,
     RefCell,
@@ -566,13 +573,17 @@ fn compile<JitT: MogiJit>(
 
     let optimizer_options = OptimizerOptions::default()
         .with_enable_dse(false)
-        .with_enable_copy_coalescing(true);
+        .with_enable_copy_coalescing(true)
+        .with_enable_constant_folding(true)
+        .with_enable_nop_elimination(true);
     Rc::make_mut(&mut block.0)
-        .run_optimization_passes(optimizer_options)
+        .run_optimization_passes(
+            &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(1).unwrap()),
+            &optimizer_options,
+        )
         .unwrap();
 
     println!("optimized: {}", block);
-    panic!("oh no");
     jit.compile_target_block(&block)?;
     Ok(())
 }

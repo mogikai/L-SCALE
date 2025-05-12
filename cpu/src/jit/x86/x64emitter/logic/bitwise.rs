@@ -240,19 +240,35 @@ impl X64Emitter<'_> {
                 let immediate = input_const.value();
                 let immediate_size = input_const.size();
 
-                let output_reg = reg!(self.allocations, inst, 0);
-                let input_slice_reg = reg!(self.allocations, inst, 1);
-                // Copy the input into the output, since x86 uses the first operand as output.
-                self.copy_reg(output_reg, input_slice_reg, input_slice.size(), CopyExtendMode::None)?;
+                match immediate_size {
+                    ..=8 => {
+                        let output_reg = reg!(self.allocations, inst, 0);
+                        let input_slice_reg = reg!(self.allocations, inst, 1);
+                        // Copy the input into the output, since x86 uses the first operand as output.
+                        self.copy_reg(output_reg, input_slice_reg, input_slice.size(), CopyExtendMode::None)?;
 
-                if immediate_size <= 4 {
-                    op_reg_imm(self, output_reg, immediate, immediate_size)?;
-                } else if immediate_size <= 8 {
-                    let scratch = self.allocations.scratch_register(RegClass::Int);
-                    self.load_const(scratch, input_const)?;
-                    op_reg_reg(self, output_reg, scratch, output.size())?;
-                } else {
-                    todo!("Unsupported operation size")
+                        if immediate_size <= 4 {
+                            op_reg_imm(self, output_reg, immediate, immediate_size)?;
+                        } else if immediate_size <= 8 {
+                            let scratch = self.allocations.scratch_register(RegClass::Int);
+                            self.load_const(scratch, input_const)?;
+                            op_reg_reg(self, output_reg, scratch, output.size())?;
+                        }
+                    }
+                    16 => {
+                        let output_reg_lower = reg!(self.allocations, inst, 0);
+                        let output_reg_upper = reg!(self.allocations, inst, 1);
+                        let input_slice_reg_lower = reg!(self.allocations, inst, 2);
+                        let input_slice_reg_upper = reg!(self.allocations, inst, 3);
+                        let (input_const_lower, input_const_upper) = input_const.split(8);
+
+                        let scratch = self.allocations.scratch_register(RegClass::Int);
+                        self.load_const(scratch, input_const_lower)?;
+                        op_reg_reg(self, output_reg_lower, scratch, 8)?;
+                        self.load_const(scratch, input_const_upper)?;
+                        op_reg_reg(self, output_reg_upper, scratch, 8)?;
+                    }
+                    size => todo!("Unsupported size {size}")
                 }
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) if input_a.size() <= 8 => {

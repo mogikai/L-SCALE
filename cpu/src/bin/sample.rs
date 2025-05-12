@@ -107,6 +107,8 @@ fn setup_with_bytes(
 
     let mmu_tlb = mmu.clone();
     jit.register_tlb_read_miss_callback(move |ctx, addr, size, space| {
+        eprintln!("tlb_read_miss: addr={addr:?}, size={size}, space={space}");
+
         let mmu = mmu_tlb.borrow();
         let tlb = ctx.tlb_mut();
         unsafe {
@@ -118,6 +120,7 @@ fn setup_with_bytes(
 
     let mmu_tlb = mmu.clone();
     jit.register_tlb_write_miss_callback(move |ctx, addr, size, space| {
+        eprintln!("tlb_write_miss: addr={addr:?}, size={size}, space={space}");
         let mmu = mmu_tlb.borrow();
         let tlb = ctx.tlb_mut();
         unsafe {
@@ -149,7 +152,7 @@ fn main() {
         .init();
 
     let mut math_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    math_o3_path.push("resources/test/executables/math_o3.o");
+    math_o3_path.push("resources/test/executables/math_o0.o");
     let testelf_content = std::fs::read(&math_o3_path).unwrap();
 
     // ADD RAX, RBX
@@ -159,7 +162,8 @@ fn main() {
     // let testelf_content =
     //     b"\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\xc3";
 
-    let (mut cpu, mmu, spec) = setup_with_bytes(&testelf_content, 0x1750u64);
+    // let (mut cpu, mmu, spec) = setup_with_bytes(&testelf_content, 0x1750u64);
+    let (mut cpu, mmu, spec) = setup_with_bytes(&testelf_content, 0x1620u64);
     // let (mut cpu, mmu, spec) = setup_with_bytes(testelf_content, 0x0u64);
 
     // write numbers to memory
