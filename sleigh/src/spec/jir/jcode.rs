@@ -1,4 +1,5 @@
 pub mod display;
+pub mod eval;
 mod inline_code;
 
 use std::iter::empty;

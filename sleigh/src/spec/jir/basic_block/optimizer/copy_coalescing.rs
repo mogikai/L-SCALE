@@ -5,28 +5,42 @@
 //! by the value those slices are initialized with, i.e. either constants or other slices.
 //! Non-copies or const loads (i.e. memory loads or operation results) cannot be optimized.
 
-use mogi_utilities::index_map::SecondaryMap;
+use mogi_utilities::index_map::{
+    MapKey,
+    SecondaryMap,
+};
 
-use crate::spec::ProcessorSpecResult;
-use crate::spec::jir::basic_block::optimizer::analysis::{get_referenced_slices, LocalSliceId};
+use crate::jinst;
+use crate::spec::jir::basic_block::optimizer::analysis::LocalSliceId;
 use crate::spec::jir::basic_block::{
     InstId,
     TargetBasicBlockInner,
 };
-use crate::spec::jir::jcode::JIRInstruction;
-use crate::spec::jir::jir_block::JIRBlockId;
-use crate::spec::jir::values::JIRValue;
+use crate::spec::jir::jcode::{
+    JIRInstruction,
+    UnaryArgs,
+};
+use crate::spec::jir::values::{JIRConst, JIRValue};
+use crate::spec::{
+    ProcessorSpecResult,
+    SpaceId,
+};
+
+use super::{
+    OptimizerContext,
+    ReferencedSlices,
+};
 
 #[derive(Debug, Clone)]
-pub(super) struct Rewrite {
+struct Rewrite {
     // which instruction is being rewritten
-    pub(super) target: InstId,
+    target: InstId,
     // which input is being rewritten
-    pub(super) input_idx: usize,
+    input_idx: usize,
 }
 
 impl Rewrite {
-    pub(super) fn new(
+    fn new(
         target: InstId,
         input_idx: usize,
     ) -> Self {
@@ -35,15 +49,15 @@ impl Rewrite {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct CopyCoalescion {
+struct CopyCoalescion {
     // the copy instruction the coalescion originates from
-    pub(super) inst_id: InstId,
+    inst_id: InstId,
     // what value is the input being rewritten to? (either const or another slice)
-    pub(super) value: JIRValue,
+    value: JIRValue,
 }
 
 impl CopyCoalescion {
-    pub(super) fn new(
+    fn new(
         inst_id: InstId,
         value: JIRValue,
     ) -> Self {
@@ -53,31 +67,53 @@ impl CopyCoalescion {
 
 impl TargetBasicBlockInner {
     /// Apply copy coalescion by iterating from start to end and eliminating
-    /// all non-spilling slice copies.
-    pub(super) fn copy_coalescion(&mut self) -> ProcessorSpecResult {
+    /// all non-spilling slice copies. If `fold_constants` is set to true, instructions
+    /// with constant operands will be evaluated and replaced by their value.
+    /// Returns the number of instructions eliminated.
+    pub(super) fn copy_coalescion(
+        &mut self,
+        context: &OptimizerContext,
+        fold_constants: bool,
+    ) -> ProcessorSpecResult<(u64, u64)> {
+        let (mut elim_count, mut const_fold_count) = (0, 0);
+
         for (block_id, block) in self.jir_blocks.items() {
-            let Some(block) = block else {
-                panic!("This must be Some");
-            };
+            let block = block.as_ref().expect("This must be some");
 
-            // TODO handle slice overlaps (just ignore overlapping copies? special handling?
-            // partial copies are kinda ugly)
-
-            // copy_values can be constants if they are propagated or slices
-            // if they originate from operations or previous block writes
             let mut coalescions = SecondaryMap::<LocalSliceId, Option<CopyCoalescion>>::default();
 
             for inst_id in block.range.clone() {
+                if let JIRInstruction::InstructionEnd(_) = self.jir_instructions[inst_id] {
+                    // temp varnodes must not be propagated across instructions,
+                    // so we remove them from coalescions whenever the instruction ends
+                    for (slice_id, coalescion) in coalescions.items_mut() {
+                        if let Some(some_coalescion) = coalescion.as_mut() {
+                            if let JIRValue::Slice(s) = some_coalescion.value
+                                && s.temp_group_id.is_some()
+                            {
+                                // temp slice is on right-hand side => just remove
+                                // coalescion, but not copy instruction, since the left-hand side might spill
+                                *coalescion = None;
+                                continue;
+                            } else if self.optimizer_ancillary.slice_ids[slice_id].temp_group_id.is_some() {
+                                // temp slice is on left-hand side => remove and also
+                                // eliminate copy instruction since it can't spill its result
+                                self.jir_instructions[some_coalescion.inst_id] = JIRInstruction::nop();
+                                *coalescion = None;
+                                continue;
+                            }
+                        }
+                    }
+                }
+
                 // any other instruction can trigger a rewrite if one of its reads has been
                 // encountered before in a copy
-                let rs = get_referenced_slices(
-                    &self.jir_instructions[inst_id],
-                    &mut self.optimizer_ancillary.slice_to_id,
-                    &mut self.optimizer_ancillary.slice_ids,
-                );
-
-                for (readi, read) in rs.reads.into_iter().enumerate() {
-                    if let Some(coalescion) = &mut coalescions[read] {
+                for (readi, read) in self.optimizer_ancillary.inst_slice_references[inst_id]
+                    .reads
+                    .iter()
+                    .enumerate()
+                {
+                    if let Some(coalescion) = &mut coalescions[*read] {
                         // rewrite input
                         *self.jir_instructions[inst_id]
                             .operands_mut()
@@ -87,11 +123,66 @@ impl TargetBasicBlockInner {
                     }
                 }
 
-                if let Some(write) = rs.write {
-                    if let Some(prev_coalescion) = &coalescions[write] {
-                        self.jir_instructions[prev_coalescion.inst_id] = JIRInstruction::nop();
+                if fold_constants {
+                    // if all input operands are known or we load from the constant
+                    // space, we can evaluate the instruction and replace it
+                    // by a simple copy which will then be propagated by the
+                    // steps below
+                    match &self.jir_instructions[inst_id] {
+                        JIRInstruction::Load { target, address, space } if *space == context.const_space_id => {
+                            let JIRValue::Const(address_const) = address else {
+                                panic!("Const-space addresses must be const");
+                            };
+
+                            // load from const space
+                            trace_opt!("Folding const load of [{inst_id}]...");
+
+                            let mask = if address.size() == 16 {
+                                u128::MAX
+                            } else {
+                                (1u128 << (address.size() * 8)) - 1
+                            };
+
+                            // TODO apply mask in a previous step?
+                            let value: JIRValue = JIRConst::new(address_const.value() & mask, address.size()).into();
+                            let target = target.clone();
+                            self.jir_instructions[inst_id] = jinst!(target = value);
+                            self.optimizer_ancillary.inst_slice_references[inst_id]
+                                .reads
+                                .clear();
+                            const_fold_count += 1;
+                        }
+                        inst => {
+                            // const evaluation
+                            if let Some(output) = inst.get_output()
+                                && let Some(const_eval) = inst.evaluate()
+                            {
+                                // instruction has an output and was successfully const-folded => replace by copy
+                                trace_opt!("Folding consteval of [{inst_id}] to {:?}...", const_eval);
+
+                                let output = *output;
+                                self.jir_instructions[inst_id] = jinst!(output = const_eval);
+                                self.optimizer_ancillary.inst_slice_references[inst_id]
+                                    .reads
+                                    .clear();
+                                const_fold_count += 1;
+                            }
+                        }
                     }
-                    coalescions[write] = None;
+                }
+
+                if let Some(write) = self.optimizer_ancillary.inst_slice_references[inst_id].write {
+                    // if an output is overwritten we invalidate all coalescions which
+                    // are affected by it and also delete the original copy
+                    if let Some(coalescion) = &coalescions[write] {
+                        elim_count += 1;
+                        self.jir_instructions[coalescion.inst_id] = JIRInstruction::nop();
+                    }
+
+                    let write_group_id = self.optimizer_ancillary.group_ids[write].expect("We set this before");
+                    for write in self.optimizer_ancillary.overlap_groups[write_group_id].iter() {
+                        coalescions[*write] = None;
+                    }
                 }
 
                 if let JIRInstruction::Copy(args) = &self.jir_instructions[inst_id] {
@@ -102,13 +193,23 @@ impl TargetBasicBlockInner {
                         .get(&args.output)
                         .expect("We stored this before");
 
+                    // TODO we don't handle overlap for non-temp-slices right now
+                    if args.output.temp_group_id.is_none() {
+                        let overlap_group_id =
+                            self.optimizer_ancillary.group_ids[*copy_output_id].expect("We set this before");
+                        if self.optimizer_ancillary.overlap_groups[overlap_group_id].len() > 1 {
+                            // just skip if there is any overlap (i.e. group.len() > 1, excluding self)
+                            continue;
+                        }
+                    }
+
                     let new_coalescion = CopyCoalescion::new(inst_id, args.input.clone());
                     coalescions[*copy_output_id] = Some(new_coalescion);
                 }
             }
         }
 
-        Ok(())
+        Ok((elim_count, const_fold_count))
     }
 }
 
@@ -116,7 +217,10 @@ mod test {
     use crate::jinst;
     use crate::spec::SpaceId;
     use crate::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
-    use crate::spec::jir::basic_block::optimizer::OptimizerOptions;
+    use crate::spec::jir::basic_block::optimizer::{
+        OptimizerContext,
+        OptimizerOptions,
+    };
     use crate::spec::jir::common::JIRSize;
     use crate::spec::jir::jcode::{
         BinaryArgs,
@@ -156,7 +260,10 @@ mod test {
         let mut block = block_builder.finish(None).unwrap();
         Rc::get_mut(&mut block.0)
             .unwrap()
-            .run_optimization_passes(OptimizerOptions::default().with_enable_copy_coalescing(true))
+            .run_optimization_passes(
+                &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
+                &OptimizerOptions::default().with_enable_copy_coalescing(true),
+            )
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();
@@ -193,7 +300,10 @@ mod test {
         let mut block = block_builder.finish(None).unwrap();
         Rc::get_mut(&mut block.0)
             .unwrap()
-            .run_optimization_passes(OptimizerOptions::default().with_enable_copy_coalescing(true))
+            .run_optimization_passes(
+                &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
+                &OptimizerOptions::default().with_enable_copy_coalescing(true),
+            )
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();
@@ -226,7 +336,10 @@ mod test {
         let mut block = block_builder.finish(None).unwrap();
         Rc::get_mut(&mut block.0)
             .unwrap()
-            .run_optimization_passes(OptimizerOptions::default().with_enable_copy_coalescing(true))
+            .run_optimization_passes(
+                &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
+                &OptimizerOptions::default().with_enable_copy_coalescing(true),
+            )
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();
@@ -263,7 +376,10 @@ mod test {
         let mut block = block_builder.finish(None).unwrap();
         Rc::get_mut(&mut block.0)
             .unwrap()
-            .run_optimization_passes(OptimizerOptions::default().with_enable_copy_coalescing(true))
+            .run_optimization_passes(
+                &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
+                &OptimizerOptions::default().with_enable_copy_coalescing(true),
+            )
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();

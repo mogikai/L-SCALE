@@ -22,10 +22,7 @@ use crate::spec::jir::values::{
     JIRValue,
 };
 
-use super::CopyCoalescion;
-use super::copy_coalescing::Rewrite;
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub(super) struct ReferencedSlices {
     pub(super) write: Option<LocalSliceId>,
     pub(super) reads: Vec<LocalSliceId>,
@@ -45,11 +42,13 @@ impl TargetBasicBlockInner {
     /// input and output slices.
     pub(super) fn collect_slice_references(&mut self) -> ProcessorSpecResult {
         for inst in &self.jir_instructions {
-            get_referenced_slices(
+            let rs = get_referenced_slices(
                 inst,
                 &mut self.optimizer_ancillary.slice_to_id,
                 &mut self.optimizer_ancillary.slice_ids,
             );
+
+            self.optimizer_ancillary.inst_slice_references.push(rs);
         }
 
         Ok(())
@@ -134,21 +133,9 @@ impl TargetBasicBlockInner {
             // We also store which instruction read it.
             let mut read_slices = SecondaryMap::<LocalSliceId, Option<InstId>>::default();
 
-            for (inst_id, inst) in self.jir_instructions[block.range.clone()]
-                .iter()
-                .enumerate()
-                .map(|(id, inst)| (id + block.range.start, inst))
-                .rev()
-            {
-                let rs = get_referenced_slices(
-                    inst,
-                    &mut self.optimizer_ancillary.slice_to_id,
-                    &mut self.optimizer_ancillary.slice_ids,
-                );
-
-                self.optimizer_ancillary
-                    .inst_slice_references
-                    .insert(inst_id, rs.clone());
+            for inst_id in block.range.clone().rev() {
+                let inst = &self.jir_instructions[inst_id];
+                let rs = &self.optimizer_ancillary.inst_slice_references[inst_id];
 
                 // process written slices (mark spills and check if current inst is dead store)
                 if let Some(write) = rs.write {

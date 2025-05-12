@@ -38,8 +38,7 @@ use serde_derive::{
 };
 use std::collections::hash_map::Entry;
 use std::collections::{
-    HashMap,
-    HashSet,
+    BTreeSet, HashMap
 };
 use std::fmt::{
     Debug,
@@ -77,7 +76,7 @@ pub struct MOIRScope {
     /// A helper set to keep track of which local variable is actually used.
     /// Unused variables can be removed from this set.
     /// The set is used to determine how many actual temporary varnodes need to be allocated later on.
-    used_locals: HashSet<MOIRLocalId>,
+    used_locals: BTreeSet<MOIRLocalId>,
     /// This map keeps track of where the subtable build instruction is
     /// By default, subtables are built implicitly at the beginning of the
     /// instruction list. If an explicit build instruction occurs later,

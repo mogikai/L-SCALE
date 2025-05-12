@@ -121,7 +121,7 @@ impl TargetBasicBlockBuilder {
             offset: offset.into(),
             size,
         });
-        Ok(JIRSlice::new_temp(self.temp_space, NonZeroU16::try_from(u16::try_from(temp_group + 1).expect("This can't overflow")).expect("This can't be zero"), offset, size))
+        Ok(JIRSlice::new_temp(self.temp_space, temp_group as u8, offset, size))
     }
 
     /// Allocate a temporary of size `size` and load the contents at `address` in `space` to it.

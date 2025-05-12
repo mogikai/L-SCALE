@@ -20,7 +20,7 @@ use std::fmt::{
     Display,
     Formatter,
 };
-use std::num::NonZeroU16;
+use std::num::{NonZeroU8};
 use std::ops::Range;
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
@@ -120,7 +120,7 @@ pub struct JIRSlice {
     pub group_id: Option<VarnodeGroupId>,
     /// A `group id` for temps. Any temps that derive from a temp by slicing
     /// have the same identifier.
-    temp_group_id: Option<NonZeroU16>,
+    pub temp_group_id: Option<u8>,
     /// The offset in the space where this slice is located.
     pub offset: JIROffset,
     /// The size of the slice in bytes.
@@ -349,7 +349,7 @@ impl JIRSlice {
 
     pub fn new_temp(
         space_id: SpaceId,
-        temp_group_id: NonZeroU16,
+        temp_group_id: u8,
         offset: JIROffset,
         size: JIRSize,
     ) -> Self {

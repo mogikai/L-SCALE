@@ -8,6 +8,8 @@ use crate::spec::ProcessorSpecResult;
 use crate::spec::jir::basic_block::TargetBasicBlockInner;
 use crate::spec::jir::jcode::JIRInstruction;
 
+use super::ReferencedSlices;
+
 impl TargetBasicBlockInner {
     pub(super) fn eliminate_dead_stores(&mut self) -> ProcessorSpecResult<u64> {
         let mut count = 0;
@@ -15,6 +17,7 @@ impl TargetBasicBlockInner {
             for dead_store in dead_stores.iter() {
                 count += 1;
                 self.jir_instructions[*dead_store] = JIRInstruction::nop();
+                self.optimizer_ancillary.inst_slice_references[*dead_store] = ReferencedSlices::default();
             }
         }
 
@@ -30,7 +33,10 @@ mod test {
 
     use crate::spec::SpaceId;
     use crate::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
-    use crate::spec::jir::basic_block::optimizer::OptimizerOptions;
+    use crate::spec::jir::basic_block::optimizer::{
+        OptimizerContext,
+        OptimizerOptions,
+    };
     use crate::spec::jir::jcode::JIRInstruction;
     use crate::spec::jir::values::{
         JIRSlice,
@@ -91,7 +97,10 @@ mod test {
         let mut block = block_builder.finish(None).unwrap();
         Rc::get_mut(&mut block.0)
             .unwrap()
-            .run_optimization_passes(OptimizerOptions::default().with_enable_dse(true))
+            .run_optimization_passes(
+                &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
+                &OptimizerOptions::default().with_enable_dse(true),
+            )
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();
@@ -178,7 +187,10 @@ mod test {
         let mut block = block_builder.finish(None).unwrap();
         Rc::get_mut(&mut block.0)
             .unwrap()
-            .run_optimization_passes(OptimizerOptions::default().with_enable_dse(true))
+            .run_optimization_passes(
+                &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
+                &OptimizerOptions::default().with_enable_dse(true),
+            )
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();
@@ -264,7 +276,10 @@ mod test {
         let mut block = block_builder.finish(None).unwrap();
         Rc::get_mut(&mut block.0)
             .unwrap()
-            .run_optimization_passes(OptimizerOptions::default().with_enable_dse(true))
+            .run_optimization_passes(
+                &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
+                &OptimizerOptions::default().with_enable_dse(true),
+            )
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();
@@ -351,7 +366,10 @@ mod test {
         let mut block = block_builder.finish(None).unwrap();
         Rc::get_mut(&mut block.0)
             .unwrap()
-            .run_optimization_passes(OptimizerOptions::default().with_enable_dse(true))
+            .run_optimization_passes(
+                &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
+                &OptimizerOptions::default().with_enable_dse(true),
+            )
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();
@@ -429,7 +447,10 @@ mod test {
         let mut block = block_builder.finish(None).unwrap();
         Rc::get_mut(&mut block.0)
             .unwrap()
-            .run_optimization_passes(OptimizerOptions::default().with_enable_dse(true))
+            .run_optimization_passes(
+                &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
+                &OptimizerOptions::default().with_enable_dse(true),
+            )
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();
@@ -529,7 +550,10 @@ mod test {
         let mut block = block_builder.finish(None).unwrap();
         Rc::get_mut(&mut block.0)
             .unwrap()
-            .run_optimization_passes(OptimizerOptions::default().with_enable_dse(true))
+            .run_optimization_passes(
+                &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
+                &OptimizerOptions::default().with_enable_dse(true),
+            )
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();
@@ -631,7 +655,10 @@ mod test {
         let mut block = block_builder.finish(None).unwrap();
         Rc::get_mut(&mut block.0)
             .unwrap()
-            .run_optimization_passes(OptimizerOptions::default().with_enable_dse(true))
+            .run_optimization_passes(
+                &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
+                &OptimizerOptions::default().with_enable_dse(true),
+            )
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();
@@ -663,3 +690,4 @@ mod test {
         );
     }
 }
+
