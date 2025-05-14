@@ -7,6 +7,7 @@ use mogi_cpu::new_cpu_trait::{
 use mogi_system::components::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
 use std::num::NonZeroUsize;
+use itertools::Itertools;
 use zerocopy::IntoBytes;
 
 mod common;
@@ -380,6 +381,81 @@ fn test_psubsw_xmm() {
 
     let xmm1: [i16; 8] = *cpu.register("XMM1").unwrap();
     assert_eq!(xmm1, values.iter().map(|x| x - x).collect::<Vec<_>>().as_slice());
+}
+
+
+#[test]
+fn test_paddusw_xmm() {
+    // PADDUSW XMM1, XMM2
+    let instr = b"\x66\x0F\xDD\xCA";
+    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+
+    let values = [5u16, 6, 10, 45, 1003, 453, 5455, 7];
+    *cpu.register_mut("XMM1").unwrap() = values;
+    *cpu.register_mut("XMM2").unwrap() = values;
+    cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(1).unwrap()))
+        .unwrap();
+
+    let xmm1: [u16; 8] = *cpu.register("XMM1").unwrap();
+    assert_eq!(xmm1, values.iter().map(|x| x + x).collect::<Vec<_>>().as_slice());
+}
+
+#[test]
+fn test_psubusw_xmm() {
+    // PSUBUSW XMM1, XMM2
+    let instr = b"\x66\x0F\xD9\xCA";
+    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+
+    let values = [5u16, 6, 10, 45, 1003, 453, 5455, 7];
+    *cpu.register_mut("XMM1").unwrap() = values;
+    *cpu.register_mut("XMM2").unwrap() = values;
+    cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(1).unwrap()))
+        .unwrap();
+
+    let xmm1: [u16; 8] = *cpu.register("XMM1").unwrap();
+    assert_eq!(xmm1, values.iter().map(|x| x - x).collect::<Vec<_>>().as_slice());
+}
+
+/* Test not working, because shift operations for sizes greater than 8 are not yet implemented
+#[test]
+fn test_pavgw_xmm() {
+    // PAVGW XMM1, XMM2
+    let instr = b"\x66\x0F\xE3\xCA";
+    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+
+    let values = [5u16, 6, 10, 45, 1003, 453, 5455, 7];
+    *cpu.register_mut("XMM1").unwrap() = values;
+    *cpu.register_mut("XMM2").unwrap() = values;
+    cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(1).unwrap()))
+        .unwrap();
+
+    let avg = |a: u16, b: u16| {
+        let sum = a.saturating_add(b.saturating_add(1));
+        sum >> 1
+    };
+    let xmm1: [u16; 8] = *cpu.register("XMM1").unwrap();
+    assert_eq!(xmm1, values.iter().map(|x| avg(x,x)).collect::<Vec<_>>().as_slice());
+}
+*/
+
+#[test]
+fn test_phaddw_xmm() {
+    // PHADDW XMM1, XMM2
+    let instr = b"\x66\x0F\x38\x01\xCA";
+    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+
+    let values = [-5i16, 6, -10, 45, 1003, -453, -5455, -7];
+    *cpu.register_mut("XMM1").unwrap() = values;
+    *cpu.register_mut("XMM2").unwrap() = values;
+    cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(1).unwrap()))
+        .unwrap();
+
+    let xmm1: [i16; 8] = *cpu.register("XMM1").unwrap();
+    assert_eq!(xmm1, values.iter()
+        .chain(values.iter())
+        .tuples()
+        .map(|(a, b)| a + b)
+        .collect::<Vec<_>>().as_slice());
 }
 
 #[test]

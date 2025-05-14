@@ -7,7 +7,7 @@ use crate::arch::x86::general::{
     swap_bytes_non_overlapping,
     swap_bytes_slice_in_out,
 };
-use crate::arch::x86::vector::{paddsw_slice, paddsw_slice_in_out, psubsw_slice, psubsw_slice_in_out};
+use crate::arch::x86::vector::{paddsw_slice, paddsw_slice_in_out, paddusw_slice, paddusw_slice_in_out, pavgw_slice, pavgw_slice_in_out, phaddw_slice, phaddw_slice_in_out, psubsw_slice, psubsw_slice_in_out, psubusw_slice, psubusw_slice_in_out};
 use crate::jit::api::{
     CustomOpFastImplBinary,
     CustomOpFastImplUnary,
@@ -193,6 +193,47 @@ where
             impl_slice_non_overlapping: psubsw_slice,
             impl_slice_in_out: psubsw_slice_in_out,
         });
+
+        register_binary_custom_ops!(spec, jit, "paddusw", CustomOpFastImplBinary {
+            impl_8: None,
+            impl_16: None,
+            impl_32: None,
+            impl_64: None,
+            impl_128: None,
+            impl_slice_non_overlapping: paddusw_slice,
+            impl_slice_in_out: paddusw_slice_in_out,
+        });
+
+        register_binary_custom_ops!(spec, jit, "psubusw", CustomOpFastImplBinary {
+            impl_8: None,
+            impl_16: None,
+            impl_32: None,
+            impl_64: None,
+            impl_128: None,
+            impl_slice_non_overlapping: psubusw_slice,
+            impl_slice_in_out: psubusw_slice_in_out,
+        });
+
+        register_binary_custom_ops!(spec, jit, "pavgw", CustomOpFastImplBinary {
+            impl_8: None,
+            impl_16: None,
+            impl_32: None,
+            impl_64: None,
+            impl_128: None,
+            impl_slice_non_overlapping: pavgw_slice,
+            impl_slice_in_out: pavgw_slice_in_out,
+        });
+
+        register_binary_custom_ops!(spec, jit, "phaddw", CustomOpFastImplBinary {
+            impl_8: None,
+            impl_16: None,
+            impl_32: None,
+            impl_64: None,
+            impl_128: None,
+            impl_slice_non_overlapping: phaddw_slice,
+            impl_slice_in_out: phaddw_slice_in_out,
+        });
+
     }
 }
 
