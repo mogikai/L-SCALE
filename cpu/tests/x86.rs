@@ -458,6 +458,23 @@ fn test_phaddw_xmm() {
         .collect::<Vec<_>>().as_slice());
 }
 
+
+#[test]
+fn test_paddsb_xmm() {
+    // PADDSB XMM1, XMM2
+    let instr = b"\x66\x0F\xEC\xCA";
+    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+
+    let values = [-5i8, 6, -10, 45, 103, -43, -55, -7];
+    *cpu.register_mut("XMM1").unwrap() = values;
+    *cpu.register_mut("XMM2").unwrap() = values;
+    cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(1).unwrap()))
+        .unwrap();
+
+    let xmm1: [i8; 8] = *cpu.register("XMM1").unwrap();
+    assert_eq!(xmm1, values.iter().map(|x| x + x).collect::<Vec<_>>().as_slice());
+}
+
 #[test]
 fn test_simple_arithmetic() {
     // xor rax, rax

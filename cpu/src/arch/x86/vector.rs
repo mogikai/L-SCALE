@@ -67,6 +67,36 @@ macro_rules! horizontal_slice_in_out_op {
     }};
 }
 
+
+pub unsafe extern "sysv64" fn paddsb_slice(
+    out: *mut u8,
+    out_len: usize,
+    in_a: *const u8,
+    in_a_len: usize,
+    in_b: *const u8,
+    in_b_len: usize,
+) {
+    slice_op!(
+        out,
+        out_len,
+        in_a,
+        in_a_len,
+        in_b,
+        in_b_len,
+        i8,
+        i8::saturating_add
+    );
+}
+
+pub unsafe extern "sysv64" fn paddsb_slice_in_out(
+    out: *mut u8,
+    out_len: usize,
+    input: *const u8,
+    input_len: usize,
+) {
+    slice_in_out_op!(out, out_len, input, input_len, i8, i8::saturating_add);
+}
+
 pub unsafe extern "sysv64" fn paddsw_slice(
     out: *mut u8,
     out_len: usize,

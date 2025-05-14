@@ -7,7 +7,7 @@ use crate::arch::x86::general::{
     swap_bytes_non_overlapping,
     swap_bytes_slice_in_out,
 };
-use crate::arch::x86::vector::{paddsw_slice, paddsw_slice_in_out, paddusw_slice, paddusw_slice_in_out, pavgw_slice, pavgw_slice_in_out, phaddw_slice, phaddw_slice_in_out, psubsw_slice, psubsw_slice_in_out, psubusw_slice, psubusw_slice_in_out};
+use crate::arch::x86::vector::{paddsb_slice, paddsb_slice_in_out, paddsw_slice, paddsw_slice_in_out, paddusw_slice, paddusw_slice_in_out, pavgw_slice, pavgw_slice_in_out, phaddw_slice, phaddw_slice_in_out, psubsw_slice, psubsw_slice_in_out, psubusw_slice, psubusw_slice_in_out};
 use crate::jit::api::{
     CustomOpFastImplBinary,
     CustomOpFastImplUnary,
@@ -173,6 +173,16 @@ where
         };
         jit.register_unary_custom_op_fast_impl(swap_bytes_id, swap_bytes_ops)
             .unwrap();
+
+        register_binary_custom_ops!(spec, jit, "paddsb", CustomOpFastImplBinary {
+            impl_8: None,
+            impl_16: None,
+            impl_32: None,
+            impl_64: None,
+            impl_128: None,
+            impl_slice_non_overlapping: paddsb_slice,
+            impl_slice_in_out: paddsb_slice_in_out,
+        });
 
         register_binary_custom_ops!(spec, jit, "paddsw", CustomOpFastImplBinary {
             impl_8: None,
