@@ -7,10 +7,7 @@ use crate::arch::x86::general::{
     swap_bytes_non_overlapping,
     swap_bytes_slice_in_out,
 };
-use crate::arch::x86::vector::{
-    paddsw_slice,
-    paddsw_slice_in_out,
-};
+use crate::arch::x86::vector::{paddsw_slice, paddsw_slice_in_out, psubsw_slice, psubsw_slice_in_out};
 use crate::jit::api::{
     CustomOpFastImplBinary,
     CustomOpFastImplUnary,
@@ -68,6 +65,14 @@ use zerocopy::{
     IntoBytes,
     KnownLayout,
 };
+
+macro_rules! register_binary_custom_ops {
+    ($spec:expr, $jit:expr, $name:literal, $ops:expr) => {
+        let op_id = $spec.custom_op_id_by_string($name).unwrap();
+        $jit.register_binary_custom_op_fast_impl(op_id, $ops)
+            .unwrap();
+    };
+}
 
 #[derive(Error, Debug)]
 pub enum StopReason {
@@ -169,8 +174,7 @@ where
         jit.register_unary_custom_op_fast_impl(swap_bytes_id, swap_bytes_ops)
             .unwrap();
 
-        let paddsw_id = spec.custom_op_id_by_string("paddsw").unwrap();
-        let paddsw_ops = CustomOpFastImplBinary {
+        register_binary_custom_ops!(spec, jit, "paddsw", CustomOpFastImplBinary {
             impl_8: None,
             impl_16: None,
             impl_32: None,
@@ -178,9 +182,17 @@ where
             impl_128: None,
             impl_slice_non_overlapping: paddsw_slice,
             impl_slice_in_out: paddsw_slice_in_out,
-        };
-        jit.register_binary_custom_op_fast_impl(paddsw_id, paddsw_ops)
-            .unwrap();
+        });
+        
+        register_binary_custom_ops!(spec, jit, "psubsw", CustomOpFastImplBinary {
+            impl_8: None,
+            impl_16: None,
+            impl_32: None,
+            impl_64: None,
+            impl_128: None,
+            impl_slice_non_overlapping: psubsw_slice,
+            impl_slice_in_out: psubsw_slice_in_out,
+        });
     }
 }
 
