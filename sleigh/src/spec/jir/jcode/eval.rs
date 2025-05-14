@@ -3,11 +3,12 @@ use crate::spec::jir::values::{
     JIRConst,
     JIRValue,
 };
+use crate::spec::SpaceId;
 
 use super::JIRInstruction;
 
 impl JIRInstruction {
-    pub fn evaluate(&self) -> Option<JIRConst> {
+    pub fn evaluate(&self, const_space_id: SpaceId) -> Option<JIRConst> {
         // Closure to safely apply size-based masking
         let apply_mask = |value: u128, size: JIRSize| {
             let mask = if size as u32 >= 16 {
@@ -685,6 +686,17 @@ impl JIRInstruction {
                     None
                 }
             }
+            Self::Load { target: _, address, space } => {
+                if *space == const_space_id {
+                    let JIRValue::Const(const_addr) = address else {
+                        panic!("Const space addresses must be const");
+                    };
+
+                    Some(*const_addr)
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }
@@ -733,7 +745,7 @@ mod tests {
         };
 
         let inst = op_fn(args);
-        let evaluated = inst.evaluate();
+        let evaluated = inst.evaluate(SpaceId::try_from_index(1).unwrap());
 
         match expected {
             Some(expected_val) => {
@@ -774,7 +786,7 @@ mod tests {
         };
 
         let inst = op_fn(args);
-        let evaluated = inst.evaluate();
+        let evaluated = inst.evaluate(SpaceId::try_from_index(1).unwrap());
 
         match expected {
             Some(expected_val) => {

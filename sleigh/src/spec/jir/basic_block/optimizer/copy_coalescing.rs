@@ -20,7 +20,10 @@ use crate::spec::jir::jcode::{
     JIRInstruction,
     UnaryArgs,
 };
-use crate::spec::jir::values::{JIRConst, JIRValue};
+use crate::spec::jir::values::{
+    JIRConst,
+    JIRValue,
+};
 use crate::spec::{
     ProcessorSpecResult,
     SpaceId,
@@ -83,29 +86,6 @@ impl TargetBasicBlockInner {
             let mut coalescions = SecondaryMap::<LocalSliceId, Option<CopyCoalescion>>::default();
 
             for inst_id in block.range.clone() {
-                if let JIRInstruction::InstructionEnd(_) = self.jir_instructions[inst_id] {
-                    // temp varnodes must not be propagated across instructions,
-                    // so we remove them from coalescions whenever the instruction ends
-                    for (slice_id, coalescion) in coalescions.items_mut() {
-                        if let Some(some_coalescion) = coalescion.as_mut() {
-                            if let JIRValue::Slice(s) = some_coalescion.value
-                                && s.temp_group_id.is_some()
-                            {
-                                // temp slice is on right-hand side => just remove
-                                // coalescion, but not copy instruction, since the left-hand side might spill
-                                *coalescion = None;
-                                continue;
-                            } else if self.optimizer_ancillary.slice_ids[slice_id].temp_group_id.is_some() {
-                                // temp slice is on left-hand side => remove and also
-                                // eliminate copy instruction since it can't spill its result
-                                self.jir_instructions[some_coalescion.inst_id] = JIRInstruction::nop();
-                                *coalescion = None;
-                                continue;
-                            }
-                        }
-                    }
-                }
-
                 // any other instruction can trigger a rewrite if one of its reads has been
                 // encountered before in a copy
                 for (readi, read) in self.optimizer_ancillary.inst_slice_references[inst_id]
@@ -113,7 +93,7 @@ impl TargetBasicBlockInner {
                     .iter()
                     .enumerate()
                 {
-                    if let Some(coalescion) = &mut coalescions[*read] {
+                    if let Some(coalescion) = &coalescions[*read] {
                         // rewrite input
                         *self.jir_instructions[inst_id]
                             .operands_mut()
@@ -128,83 +108,78 @@ impl TargetBasicBlockInner {
                     // space, we can evaluate the instruction and replace it
                     // by a simple copy which will then be propagated by the
                     // steps below
-                    match &self.jir_instructions[inst_id] {
-                        JIRInstruction::Load { target, address, space } if *space == context.const_space_id => {
-                            let JIRValue::Const(address_const) = address else {
-                                panic!("Const-space addresses must be const");
-                            };
+                    // const evaluation
+                    if let Some(output) = self.jir_instructions[inst_id].get_output()
+                        && let Some(const_eval) = self.jir_instructions[inst_id].evaluate(context.const_space_id)
+                    {
+                        // instruction has an output and was successfully const-folded => replace by copy
+                        trace_opt!("Folding consteval of [{inst_id}] to {:?}...", const_eval);
 
-                            // load from const space
-                            trace_opt!("Folding const load of [{inst_id}]...");
+                        let output = *output;
+                        self.jir_instructions[inst_id] = jinst!(output = const_eval);
+                        // output slice id stays the same, reads are cleared
+                        self.optimizer_ancillary.inst_slice_references[inst_id]
+                            .reads
+                            .clear();
+                        const_fold_count += 1;
+                    }
+                }
 
-                            let mask = if address.size() == 16 {
-                                u128::MAX
-                            } else {
-                                (1u128 << (address.size() * 8)) - 1
-                            };
+                if let Some(write) = self.optimizer_ancillary.inst_slice_references[inst_id].write {
+                    // if an output is overwritten, we invalidate all coalescions of
+                    // the output group
+                    for overlap_id in self.optimizer_ancillary.overlapping_slices(write).iter() {
+                        coalescions[*overlap_id] = None;
+                    }
 
-                            // TODO apply mask in a previous step?
-                            let value: JIRValue = JIRConst::new(address_const.value() & mask, address.size()).into();
-                            let target = target.clone();
-                            self.jir_instructions[inst_id] = jinst!(target = value);
-                            self.optimizer_ancillary.inst_slice_references[inst_id]
-                                .reads
-                                .clear();
-                            const_fold_count += 1;
-                        }
-                        inst => {
-                            // const evaluation
-                            if let Some(output) = inst.get_output()
-                                && let Some(const_eval) = inst.evaluate()
-                            {
-                                // instruction has an output and was successfully const-folded => replace by copy
-                                trace_opt!("Folding consteval of [{inst_id}] to {:?}...", const_eval);
+                    if let Some(coalescion) = &coalescions[write] {
+                        // eliminate previous instruction that caused the coalescion
+                        elim_count += 1;
+                        self.jir_instructions[coalescion.inst_id] = JIRInstruction::nop();
+                        self.optimizer_ancillary.inst_slice_references[coalescion.inst_id] =
+                            ReferencedSlices::default();
 
-                                let output = *output;
-                                self.jir_instructions[inst_id] = jinst!(output = const_eval);
-                                self.optimizer_ancillary.inst_slice_references[inst_id]
-                                    .reads
-                                    .clear();
-                                const_fold_count += 1;
+                    }
+
+                    // additionally, remove all coalescions where write occurs on the right-hand
+                    // side (i.e. its slice id is part of the overlap group) since it's also
+                    // invalidated if it's a slice
+                    // TODO add second map instead of iterating every time? this is kinda bad rn
+                    for slice_id in self.optimizer_ancillary.slice_ids.keys() {
+                        let Some(some_coalescion) = &coalescions[slice_id] else {
+                            continue;
+                        };
+
+                        if let JIRValue::Slice(value_slice) = &some_coalescion.value {
+                            let value_slice_id = self.optimizer_ancillary.slice_id(*value_slice);
+                            if self.optimizer_ancillary.overlaps(write, value_slice_id) {
+                                coalescions[slice_id] = None;
                             }
                         }
                     }
                 }
 
-                if let Some(write) = self.optimizer_ancillary.inst_slice_references[inst_id].write {
-                    // if an output is overwritten we invalidate all coalescions which
-                    // are affected by it and also delete the original copy
-                    if let Some(coalescion) = &coalescions[write] {
-                        elim_count += 1;
-                        self.jir_instructions[coalescion.inst_id] = JIRInstruction::nop();
-                    }
-
-                    let write_group_id = self.optimizer_ancillary.group_ids[write].expect("We set this before");
-                    for write in self.optimizer_ancillary.overlap_groups[write_group_id].iter() {
-                        coalescions[*write] = None;
-                    }
-                }
-
                 if let JIRInstruction::Copy(args) = &self.jir_instructions[inst_id] {
                     // a copy is stored for later optimization
-                    let copy_output_id = self
-                        .optimizer_ancillary
-                        .slice_to_id
-                        .get(&args.output)
-                        .expect("We stored this before");
-
-                    // TODO we don't handle overlap for non-temp-slices right now
-                    if args.output.temp_group_id.is_none() {
-                        let overlap_group_id =
-                            self.optimizer_ancillary.group_ids[*copy_output_id].expect("We set this before");
-                        if self.optimizer_ancillary.overlap_groups[overlap_group_id].len() > 1 {
-                            // just skip if there is any overlap (i.e. group.len() > 1, excluding self)
-                            continue;
-                        }
-                    }
-
+                    let copy_output_id = self.optimizer_ancillary.slice_id(args.output);
                     let new_coalescion = CopyCoalescion::new(inst_id, args.input.clone());
-                    coalescions[*copy_output_id] = Some(new_coalescion);
+                    coalescions[copy_output_id] = Some(new_coalescion);
+                }
+            }
+
+            // temporary instructions are never spilled so we can apply the remaining
+            // eliminations for them
+            for (slice_id, coalescion) in coalescions.into_items() {
+                let Some(coalescion) = coalescion else {
+                    continue;
+                };
+
+                let slice = self.optimizer_ancillary.slice_ids[slice_id];
+
+                if slice.space_id == context.temp_space_id {
+                    self.jir_instructions[coalescion.inst_id] = JIRInstruction::nop();
+                    self.optimizer_ancillary.inst_slice_references[coalescion.inst_id] = ReferencedSlices::default();
+                    elim_count += 1;
                 }
             }
         }

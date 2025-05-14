@@ -92,7 +92,9 @@ impl OptimizerOptions {
         enable_constant_folding: bool,
     ) -> Self {
         self.enable_constant_folding = enable_constant_folding;
-        self.enable_copy_coalescing = true; // this is implied
+        if enable_constant_folding {
+            self.enable_copy_coalescing = true; // this is implied
+        }
         self
     }
 
@@ -141,6 +143,21 @@ pub(super) struct OptimizerAncillary {
 
     // a list of dead-store instructions that can be eliminated
     dead_stores: SecondaryMap<JIRBlockId, Vec<InstId>>,
+}
+
+impl OptimizerAncillary {
+    fn overlapping_slices(&self, slice: LocalSliceId) -> &FnvHashSet<LocalSliceId> {
+        let group_id = self.group_ids[slice].expect("We collected all overlap groups before");
+        &self.overlap_groups[group_id]
+    }
+
+    fn overlaps(&self, slice_a: LocalSliceId, slice_b: LocalSliceId) -> bool {
+        self.overlapping_slices(slice_a).contains(&slice_b)
+    }
+
+    fn slice_id(&self, slice: JIRSlice) -> LocalSliceId {
+        *self.slice_to_id.get(&slice).expect("We inserted all occuring slices before")
+    }
 }
 
 impl Display for OptimizerAncillary {
