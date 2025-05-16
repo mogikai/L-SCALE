@@ -41,8 +41,12 @@ impl Page {
     }
 
     pub fn tlb_entry_ptr(&self) -> HVAddr<PageData> {
-        // We know this is safe, because self.data must point to something
-        unsafe { HVAddr::new_unchecked(Rc::as_ptr(&self.data) as *mut PageData) }
+        HVAddr::from(&*self.data)
+    }
+
+    pub fn tlb_entry_ptr_mut(&mut self) -> HVAddr<PageData> {
+        // Use make_mut here to make sure we give out a unique copy of the page data for the entry.
+        HVAddr::from(Rc::make_mut(&mut self.data))
     }
 
     pub fn data(&self) -> &[u8; PAGE_SIZE] {

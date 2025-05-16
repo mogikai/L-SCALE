@@ -26,6 +26,7 @@
       <sourceFolder url="file://$MODULE_DIR$/mem_legacy/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/jit_macros/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/cpu/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/sleigh/benches" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/sleigh_parser/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/sleigh_parser/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/deps/LibAFL/fuzzers/baby_fuzzer/target" />

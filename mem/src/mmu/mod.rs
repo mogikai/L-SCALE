@@ -394,7 +394,7 @@ impl MMU for MogiMMU {
         let page = physical.page_by_id_mut(page_id)?;
         match action {
             MemoryAction::READ => tlb.insert_read(addr, page.tlb_entry_ptr()),
-            MemoryAction::WRITE => tlb.insert_write(addr, page.tlb_entry_ptr()),
+            MemoryAction::WRITE => tlb.insert_write(addr, page.tlb_entry_ptr_mut()),
             MemoryAction::FETCH => todo!(),
             _ => todo!(),
         }

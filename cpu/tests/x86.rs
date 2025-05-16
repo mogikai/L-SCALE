@@ -1188,8 +1188,8 @@ fn test_math_prime_factors_o0() {
         .unwrap();
 
     // allocate memory for factors and n_factors
-    let factors_addr = 0xFFFF_FFFF_FF00_0000u64;
-    let n_factors_addr = 0xFFFF_FFFF_FF00_1000u64;
+    let factors_addr = 0x5000_FFFF_FF00_0000u64;
+    let n_factors_addr = 0x5000_FFFF_FF00_1000u64;
 
     mmu.borrow_mut()
         .alloc_physical(factors_addr.into(), 1 * PAGE_SIZE)
@@ -1206,8 +1206,10 @@ fn test_math_prime_factors_o0() {
 
     *cpu.register_mut("RIP").unwrap() = 0x1920u64;
 
+    let factors = vec![2, 2, 3, 3, 3, 5, 5, 7, 11, 13];
+
     // int input
-    let input: u64 = 2 * 2 * 3 * 3 * 3 * 5 * 5 * 7 * 11 * 13;
+    let input: u64 = factors.iter().copied().reduce(|acc, v| acc * v).unwrap() as u64;
     *cpu.register_mut("RDI").unwrap() = input;
     // int *factors
     *cpu.register_mut("RSI").unwrap() = factors_addr;
@@ -1222,14 +1224,14 @@ fn test_math_prime_factors_o0() {
         .read(n_factors_addr.into(), n_factors.as_mut_bytes())
         .unwrap();
 
-    let mut factors = vec![0i32; n_factors];
+    let mut calculated_factors = vec![0i32; n_factors];
 
     mmu.borrow_mut()
-        .read(factors_addr.into(), factors[..n_factors].as_mut_bytes())
+        .read(factors_addr.into(), calculated_factors[..].as_mut_bytes())
         .unwrap();
 
-    assert_eq!(n_factors, 10);
-    assert_eq!(factors, vec![2, 2, 3, 3, 3, 5, 5, 7, 11, 13]);
+    assert_eq!(calculated_factors, factors);
+    assert_eq!(n_factors, factors.len());
 }
 
 #[test]
