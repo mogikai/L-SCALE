@@ -69,9 +69,7 @@ fn test_goto_indirect() {
     set_slice(&mut *context, slice_target, u64::from(stack_addr));
 
     let jump_target = 0x1234u64;
-    mmu.borrow_mut()
-        .write(stack_addr, jump_target.as_bytes())
-        .unwrap();
+    mmu.borrow_mut().write(stack_addr, &jump_target).unwrap();
 
     let instructions = vec![
         //
@@ -123,9 +121,7 @@ fn test_goto_indirect_if_false() {
     set_slice(&mut *context, slice_target, u64::from(stack_addr));
 
     let jump_target = 0x1234u64;
-    mmu.borrow_mut()
-        .write(stack_addr, jump_target.as_bytes())
-        .unwrap();
+    mmu.borrow_mut().write(stack_addr, &jump_target).unwrap();
 
     let instructions = vec![
         //
@@ -179,9 +175,7 @@ fn test_goto_indirect_if_true() {
     set_slice(&mut *context, slice_target, u64::from(stack_addr));
 
     let jump_target = 0x8000200u64;
-    mmu.borrow_mut()
-        .write(stack_addr, jump_target.as_bytes())
-        .unwrap();
+    mmu.borrow_mut().write(stack_addr, &jump_target).unwrap();
 
     let end_block_addr = setup_blocks(&mut jit, &mut context, slice_cond, slice_target, slice_result, true, false);
 

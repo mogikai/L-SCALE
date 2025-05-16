@@ -44,17 +44,7 @@ fn build(spec_path: &Path) -> SleighCompilerResult<ProcessorSpecification> {
 
 pub(crate) fn dump_registers(cpu: &MogiCPU<X86MogiJit, MogiMMU>) {
     let register_names = [
-        "RIP",
-        "RAX",
-        "RBX",
-        "RCX",
-        "RDX",
-        "RDI",
-        "RSI",
-        "RBP",
-        "RSP",
-        "R8",
-        "R9",
+        "RIP", "RAX", "RBX", "RCX", "RDX", "RDI", "RSI", "RBP", "RSP", "R8", "R9",
     ];
 
     for register_name in register_names.iter() {
@@ -100,10 +90,11 @@ pub(crate) fn setup_with_bytes(bytes: &[u8]) -> (MogiCPU<X86MogiJit, MogiMMU>, R
 
         // Map dead address
         // TODO Permission currently sets physical page permission which is wrong
-        mmu.set_page_table_entry(0xFFFF_FFFF_D34D_0000u64.into(), 0x0u64.into(), Permission::ALL).unwrap();
+        mmu.set_page_table_entry(0xFFFF_FFFF_D34D_0000u64.into(), 0x0u64.into(), Permission::ALL)
+            .unwrap();
 
         // And then write the instruction to the allocated memory.
-        mmu.write(0x0u64.into(), &bytes[..]).unwrap();
+        mmu.write_bytes(0x0u64.into(), &bytes[..]).unwrap();
     }
 
     // Set up the just in time compiler. TODO: Maybe we can refactor this such that the jit doesn't need the spec.

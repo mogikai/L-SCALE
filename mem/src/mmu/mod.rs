@@ -34,6 +34,13 @@ use std::fmt::{
     Formatter,
 };
 use std::rc::Rc;
+use tracing::debug;
+use zerocopy::{
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
+};
 
 pub type MemResult<T> = Result<T, MemoryError>;
 
@@ -310,15 +317,15 @@ impl MMU for MogiMMU {
         self.read_internal_physical(addr, buffer, MemoryAction::FETCH)
     }
 
-    fn read(
+    fn read_bytes(
         &mut self,
         addr: EVAddr,
         buffer: &mut [u8],
-    ) -> MmuResult<()> {
+    ) -> MmuResult {
         self.read_internal(addr, buffer, MemoryAction::READ)
     }
 
-    fn write(
+    fn write_bytes(
         &mut self,
         addr: EVAddr,
         data: &[u8],

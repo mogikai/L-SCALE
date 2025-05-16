@@ -268,6 +268,14 @@ impl ProcessorSpecification {
         Some(*varnode_id)
     }
 
+    pub fn custom_op_name(
+        &self,
+        id: CustomOpId,
+    ) -> Option<&str> {
+        let id = self.symbol_strings.get(&JIRSymbolId::CustomOp(id))?.value();
+        self.interner.string(*id)
+    }
+
     pub fn custom_op_id_by_string(
         &self,
         name: impl AsRef<str>,

@@ -15,13 +15,6 @@ use mogi_system::components::mmu::{
 use mogi_utilities::addresses::EVAddr;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use tracing::level_filters::LevelFilter;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{
-    EnvFilter,
-    fmt,
-};
 use zerocopy::IntoBytes;
 
 mod common;
@@ -78,7 +71,7 @@ fn test_mov_mem_imm() {
 
     let mut result = 0u64;
     mmu.borrow_mut()
-        .read(EVAddr::from(addr), result.as_mut_bytes())
+        .read(EVAddr::from(addr), &mut result)
         .unwrap();
 
     assert_eq!(result, 0x1234);
@@ -90,30 +83,23 @@ fn test_mov_mem_reg() {
     let instr = b"\x48\x89\x44\xB5\x08";
     let (mut cpu, mmu) = common::setup_with_bytes(instr);
 
-    let rbp: u64 = 0xFFFF_FFFF_FF00_0000u64;
+    let rbp: u64 = 0xFFFF_FFFF_FFFF_0000u64;
     let rsi: u64 = 0x8u64;
     let addr: u64 = rbp + 4 * rsi + 8;
-    let addr_aligned: u64 = addr.align_down(PAGE_SIZE as u64);
-    mmu.borrow_mut()
-        .alloc_physical(addr_aligned.into(), 1 * PAGE_SIZE)
-        .unwrap();
-    mmu.borrow_mut()
-        .set_page_table_entry(addr_aligned.into(), addr_aligned.into(), Permission::ALL)
-        .unwrap();
 
     *cpu.register_mut("RBP").unwrap() = rbp;
     *cpu.register_mut("RSI").unwrap() = rsi;
     *cpu.register_mut("RIP").unwrap() = 0x0u64;
-    *cpu.register_mut("RAX").unwrap() = 0x1324u64;
+    *cpu.register_mut("RAX").unwrap() = 0x1234u64;
     cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(1).unwrap()))
         .unwrap();
 
     let mut result = 0u64;
     mmu.borrow_mut()
-        .read(EVAddr::from(addr), result.as_mut_bytes())
+        .read(EVAddr::from(addr), &mut result)
         .unwrap();
 
-    assert_eq!(result, 0x1234);
+    assert_eq!(result, 0x1234u64, "Actual: {:#x} Expected: {:#x}", result, 0x1234u64);
 }
 
 #[test]
@@ -121,19 +107,9 @@ fn test_mov_reg_mem() {
     // MOV EAX, [RBP + 0x4]
     let instr = b"\x8B\x45\x04";
     let (mut cpu, mmu) = common::setup_with_bytes(instr);
-
-    let rbp: u64 = 0xFFFF_FFFF_FF00_0000u64;
+    let rbp: u64 = 0xFFFF_FFFF_FFFF_0000u64;
     let addr: u64 = rbp + 4;
-    let addr_aligned: u64 = addr.align_down(PAGE_SIZE as u64);
-    mmu.borrow_mut()
-        .alloc_physical(addr_aligned.into(), 1 * PAGE_SIZE)
-        .unwrap();
-    mmu.borrow_mut()
-        .set_page_table_entry(addr_aligned.into(), addr_aligned.into(), Permission::ALL)
-        .unwrap();
-    mmu.borrow_mut()
-        .write(addr.into(), 0x1234.as_bytes())
-        .unwrap();
+    mmu.borrow_mut().write(addr.into(), &0x1234).unwrap();
 
     *cpu.register_mut("RBP").unwrap() = rbp;
     *cpu.register_mut("RIP").unwrap() = 0x0u64;
@@ -159,7 +135,7 @@ fn test_movbe_mem_reg_64() {
     assert_eq!(rax, 0x1337);
     let mut result = 0u64;
     mmu.borrow_mut()
-        .read(EVAddr::from(rsp), result.as_mut_bytes())
+        .read(EVAddr::from(rsp), &mut result)
         .unwrap();
     assert_eq!(result, 0x1337u64.swap_bytes());
 }
@@ -590,12 +566,8 @@ fn test_swap() {
     mmu.borrow_mut()
         .set_page_table_entry(page.into(), page.into(), Permission::ALL)
         .unwrap();
-    mmu.borrow_mut()
-        .write(rdi_ptr.into(), rdi_val.as_bytes())
-        .unwrap();
-    mmu.borrow_mut()
-        .write(rsi_ptr.into(), rsi_val.as_bytes())
-        .unwrap();
+    mmu.borrow_mut().write(rdi_ptr.into(), &rdi_val).unwrap();
+    mmu.borrow_mut().write(rsi_ptr.into(), &rsi_val).unwrap();
 
     *cpu.register_mut("RDI").unwrap() = rdi_ptr;
     *cpu.register_mut("RSI").unwrap() = rsi_ptr;
@@ -605,10 +577,10 @@ fn test_swap() {
     let mut rdi_result: u64 = 0;
     let mut rsi_result: u64 = 0;
     mmu.borrow_mut()
-        .read(rdi_ptr.into(), rdi_result.as_mut_bytes())
+        .read(rdi_ptr.into(), &mut rdi_result)
         .unwrap();
     mmu.borrow_mut()
-        .read(rsi_ptr.into(), rsi_result.as_mut_bytes())
+        .read(rsi_ptr.into(), &mut rsi_result)
         .unwrap();
     assert_eq!(rdi_result, rsi_val);
     assert_eq!(rsi_result, rdi_val);
@@ -646,12 +618,8 @@ fn test_swap_long() {
     mmu.borrow_mut()
         .set_page_table_entry(page.into(), page.into(), Permission::ALL)
         .unwrap();
-    mmu.borrow_mut()
-        .write(rdi_ptr.into(), rdi_val.as_bytes())
-        .unwrap();
-    mmu.borrow_mut()
-        .write(rsi_ptr.into(), rsi_val.as_bytes())
-        .unwrap();
+    mmu.borrow_mut().write(rdi_ptr.into(), &rdi_val).unwrap();
+    mmu.borrow_mut().write(rsi_ptr.into(), &rsi_val).unwrap();
 
     *cpu.register_mut("RDI").unwrap() = rdi_ptr;
     *cpu.register_mut("RSI").unwrap() = rsi_ptr;
@@ -661,10 +629,10 @@ fn test_swap_long() {
     let mut rdi_result: u64 = 0;
     let mut rsi_result: u64 = 0;
     mmu.borrow_mut()
-        .read(rdi_ptr.into(), rdi_result.as_mut_bytes())
+        .read(rdi_ptr.into(), &mut rdi_result)
         .unwrap();
     mmu.borrow_mut()
-        .read(rsi_ptr.into(), rsi_result.as_mut_bytes())
+        .read(rsi_ptr.into(), &mut rsi_result)
         .unwrap();
     assert_eq!(rdi_result, rsi_val);
     assert_eq!(rsi_result, rdi_val);
@@ -706,7 +674,7 @@ fn test_misc_is_prime_o0() {
     // write fake return value for translation limit
     let stack_addr = stack_addr - 0x8;
     mmu.borrow_mut()
-        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .write(stack_addr.into(), &0xFFFF_FFFF_D34D_0000u64)
         .unwrap();
 
     for i in 2..100 {
@@ -735,7 +703,7 @@ fn test_misc_is_prime_o3() {
     // write fake return value for translation limit
     let stack_addr = stack_addr - 0x8;
     mmu.borrow_mut()
-        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .write(stack_addr.into(), &0xFFFF_FFFF_D34D_0000u64)
         .unwrap();
 
     for i in 2..100 {
@@ -780,7 +748,7 @@ fn test_misc_nth_fibonacci_o0() {
     // write fake return value for translation limit
     let stack_addr = stack_addr - 0x8;
     mmu.borrow_mut()
-        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .write(stack_addr.into(), &0xFFFF_FFFF_D34D_0000u64)
         .unwrap();
 
     for i in 0..20 {
@@ -809,7 +777,7 @@ fn test_misc_nth_fibonacci_o3() {
     // write fake return value for translation limit
     let stack_addr = stack_addr - 0x8;
     mmu.borrow_mut()
-        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .write(stack_addr.into(), &0xFFFF_FFFF_D34D_0000u64)
         .unwrap();
 
     for i in 0..20 {
@@ -833,18 +801,18 @@ fn test_misc_max_byte_o0() {
 
     let instr = &std::fs::read(&misc_o0_path).unwrap();
     let (mut cpu, mmu) = common::setup_with_bytes(instr);
-    let stack_addr = 0xffff_ffff_ffff_0ff0u64;
+    let stack_addr = 0xffff_ffff_ffff_1000u64;
 
     // write fake return value for translation limit
     let stack_addr = stack_addr - 0x8;
     mmu.borrow_mut()
-        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .write(stack_addr.into(), &0xFFFF_FFFF_D34D_0000u64)
         .unwrap();
 
     // write input to memory
     let bytes_addr = 0xFFFF_FFFF_FF00_0000u64;
     let bytes = [
-        0x7f, 0x40, 0x3e, 0x48, 0x38, 0x3a, 0x7c, 0x3e, 0xa5, 0x1d, 0x30, 0x76, 0xd, 0xc8, 0xc7, 0x2c, 0xe0, 0xd6,
+        0x7fu8, 0x40, 0x3e, 0x48, 0x38, 0x3a, 0x7c, 0x3e, 0xa5, 0x1d, 0x30, 0x76, 0xd, 0xc8, 0xc7, 0x2c, 0xe0, 0xd6,
         0x27, 0x31,
     ];
 
@@ -883,13 +851,13 @@ fn test_misc_max_byte_o3() {
     // write fake return value for translation limit
     let stack_addr = stack_addr - 0x8;
     mmu.borrow_mut()
-        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .write(stack_addr.into(), &0xFFFF_FFFF_D34D_0000u64)
         .unwrap();
 
     // write input to memory
     let bytes_addr = 0xFFFF_FFFF_FF00_0000u64;
     let bytes = [
-        0x7f, 0x40, 0x3e, 0x48, 0x38, 0x3a, 0x7c, 0x3e, 0xa5, 0x1d, 0x30, 0x76, 0xd, 0xc8, 0xc7, 0x2c, 0xe0, 0xd6,
+        0x7fu8, 0x40, 0x3e, 0x48, 0x38, 0x3a, 0x7c, 0x3e, 0xa5, 0x1d, 0x30, 0x76, 0xd, 0xc8, 0xc7, 0x2c, 0xe0, 0xd6,
         0x27, 0x31,
     ];
 
@@ -926,12 +894,12 @@ fn test_misc_partition_o0() {
     // write fake return value for translation limit
     let stack_addr = stack_addr - 0x8;
     mmu.borrow_mut()
-        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .write(stack_addr.into(), &0xFFFF_FFFF_D34D_0000u64)
         .unwrap();
 
     // write input to memory
     let numbers_addr = 0xFFFF_FFFF_FF00_0000u64;
-    let numbers = [
+    const numbers: [i32; 32] = [
         -13935, 17471, -23649, 20073, 18135, 11677, 28681, 7075, -31766, 27292, 32352, -13904, 8405, -1462, -10314,
         -19981, 692, 22985, -7727, -28196, -11245, -30707, 31868, 20361, -1579, 28034, -22596, 23481, 20717, -6840,
         15357, 7076,
@@ -944,7 +912,7 @@ fn test_misc_partition_o0() {
         .set_page_table_entry(numbers_addr.into(), numbers_addr.into(), Permission::ALL)
         .unwrap();
     mmu.borrow_mut()
-        .write(numbers_addr.into(), numbers.as_bytes())
+        .write(numbers_addr.into(), &numbers)
         .unwrap();
 
     let mut numbers_sorted = numbers.clone();
@@ -963,9 +931,9 @@ fn test_misc_partition_o0() {
     let pivot = *numbers.last().unwrap();
 
     // assert correct output
-    let mut output = vec![0; numbers.len()];
+    let mut output = [0i32; numbers.len()];
     mmu.borrow_mut()
-        .read(numbers_addr.into(), output.as_mut_bytes())
+        .read(numbers_addr.into(), &mut output)
         .unwrap();
     let rax: u64 = *cpu.register("RAX").unwrap();
 
@@ -982,16 +950,6 @@ fn test_misc_partition_o0() {
 
 #[test]
 fn test_misc_partition_o3() {
-    tracing_subscriber::registry()
-        .with(fmt::layer())
-        .with(
-            EnvFilter::builder()
-                .with_default_directive(LevelFilter::INFO.into())
-                .with_env_var("MOGI_LOG")
-                .from_env_lossy(),
-        )
-        .init();
-
     let mut misc_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     misc_o3_path.push("resources/test/executables/misc_o3.o");
 
@@ -1002,12 +960,12 @@ fn test_misc_partition_o3() {
     // write fake return value for translation limit
     let stack_addr = stack_addr - 0x8;
     mmu.borrow_mut()
-        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .write(stack_addr.into(), &0xFFFF_FFFF_D34D_0000u64)
         .unwrap();
 
     // write input to memory
     let numbers_addr = 0xFFFF_FFFF_FF00_0000u64;
-    let numbers = [
+    const numbers: [i32; 32] = [
         -13935, 17471, -23649, 20073, 18135, 11677, 28681, 7075, -31766, 27292, 32352, -13904, 8405, -1462, -10314,
         -19981, 692, 22985, -7727, -28196, -11245, -30707, 31868, 20361, -1579, 28034, -22596, 23481, 20717, -6840,
         15357, 7076,
@@ -1020,7 +978,7 @@ fn test_misc_partition_o3() {
         .set_page_table_entry(numbers_addr.into(), numbers_addr.into(), Permission::ALL)
         .unwrap();
     mmu.borrow_mut()
-        .write(numbers_addr.into(), numbers.as_bytes())
+        .write(numbers_addr.into(), &numbers)
         .unwrap();
 
     let mut numbers_sorted = numbers.clone();
@@ -1039,9 +997,9 @@ fn test_misc_partition_o3() {
     let pivot = *numbers.last().unwrap();
 
     // assert correct output
-    let mut output = vec![0; numbers.len()];
+    let mut output = [0; numbers.len()];
     mmu.borrow_mut()
-        .read(numbers_addr.into(), output.as_mut_bytes())
+        .read(numbers_addr.into(), &mut output)
         .unwrap();
     let rax: u64 = *cpu.register("RAX").unwrap();
 
@@ -1068,12 +1026,12 @@ fn test_misc_quicksort_o0() {
     // write fake return value for translation limit
     let stack_addr = stack_addr - 0x8;
     mmu.borrow_mut()
-        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .write(stack_addr.into(), &0xFFFF_FFFF_D34D_0000u64)
         .unwrap();
 
     // write input to memory
     let numbers_addr = 0xFFFF_FFFF_FF00_0000u64;
-    let numbers = [
+    const numbers: [i32; 32] = [
         -13935, 17471, -23649, 20073, 18135, 11677, 28681, 7075, -31766, 27292, 32352, -13904, 8405, -1462, -10314,
         -19981, 692, 22985, -7727, -28196, -11245, -30707, 31868, 20361, -1579, 28034, -22596, 23481, 20717, -6840,
         15357, 7076,
@@ -1086,7 +1044,7 @@ fn test_misc_quicksort_o0() {
         .set_page_table_entry(numbers_addr.into(), numbers_addr.into(), Permission::ALL)
         .unwrap();
     mmu.borrow_mut()
-        .write(numbers_addr.into(), numbers.as_bytes())
+        .write(numbers_addr.into(), &numbers)
         .unwrap();
 
     let mut bytes_sorted = numbers.clone();
@@ -1100,9 +1058,9 @@ fn test_misc_quicksort_o0() {
     cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
         .unwrap();
 
-    let mut output = vec![0; numbers.len()];
+    let mut output = vec![0i32; numbers.len()];
     mmu.borrow_mut()
-        .read(numbers_addr.into(), output.as_mut_bytes())
+        .read_bytes(numbers_addr.into(), output.as_mut_bytes())
         .unwrap();
 
     assert_eq!(output, bytes_sorted);
@@ -1120,13 +1078,13 @@ fn test_misc_quicksort_o3() {
     // write fake return value for translation limit
     let stack_addr = stack_addr - 0x8;
     mmu.borrow_mut()
-        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .write(stack_addr.into(), &0xFFFF_FFFF_D34D_0000u64)
         .unwrap();
 
     // write input to memory
     let numbers_addr = 0xFFFF_FFFF_FF00_0000u64;
     let numbers = [
-        -13935, 17471, -23649, 20073, 18135, 11677, 28681, 7075, -31766, 27292, 32352, -13904, 8405, -1462, -10314,
+        -13935i32, 17471, -23649, 20073, 18135, 11677, 28681, 7075, -31766, 27292, 32352, -13904, 8405, -1462, -10314,
         -19981, 692, 22985, -7727, -28196, -11245, -30707, 31868, 20361, -1579, 28034, -22596, 23481, 20717, -6840,
         15357, 7076,
     ];
@@ -1138,7 +1096,7 @@ fn test_misc_quicksort_o3() {
         .set_page_table_entry(numbers_addr.into(), numbers_addr.into(), Permission::ALL)
         .unwrap();
     mmu.borrow_mut()
-        .write(numbers_addr.into(), numbers.as_bytes())
+        .write(numbers_addr.into(), &numbers)
         .unwrap();
 
     let mut numbers_sorted = numbers.clone();
@@ -1154,7 +1112,7 @@ fn test_misc_quicksort_o3() {
 
     let mut output = vec![0; numbers.len()];
     mmu.borrow_mut()
-        .read(numbers_addr.into(), output.as_mut_bytes())
+        .read_bytes(numbers_addr.into(), output.as_mut_bytes())
         .unwrap();
 
     assert_eq!(output, numbers_sorted);
@@ -1165,16 +1123,6 @@ fn test_misc_quicksort_o3() {
 // ++++++++ tests from resources/test/executables/misc.c ++++++++
 #[test]
 fn test_math_prime_factors_o0() {
-    tracing_subscriber::registry()
-        .with(fmt::layer())
-        .with(
-            EnvFilter::builder()
-                .with_default_directive(LevelFilter::INFO.into())
-                .with_env_var("MOGI_LOG")
-                .from_env_lossy(),
-        )
-        .init();
-
     let mut math_o0_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     math_o0_path.push("resources/test/executables/math_o0.o");
 
@@ -1184,7 +1132,7 @@ fn test_math_prime_factors_o0() {
 
     // write fake return value for translation limit
     mmu.borrow_mut()
-        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .write(stack_addr.into(), &0xFFFF_FFFF_D34D_0000u64)
         .unwrap();
 
     // allocate memory for factors and n_factors
@@ -1221,13 +1169,13 @@ fn test_math_prime_factors_o0() {
     let mut n_factors = 0usize;
 
     mmu.borrow_mut()
-        .read(n_factors_addr.into(), n_factors.as_mut_bytes())
+        .read(n_factors_addr.into(), &mut n_factors)
         .unwrap();
 
     let mut calculated_factors = vec![0i32; n_factors];
 
     mmu.borrow_mut()
-        .read(factors_addr.into(), calculated_factors[..].as_mut_bytes())
+        .read_bytes(factors_addr.into(), calculated_factors[..].as_mut_bytes())
         .unwrap();
 
     assert_eq!(calculated_factors, factors);
@@ -1236,16 +1184,6 @@ fn test_math_prime_factors_o0() {
 
 #[test]
 fn test_math_prime_factors_o3() {
-    tracing_subscriber::registry()
-        .with(fmt::layer())
-        .with(
-            EnvFilter::builder()
-                .with_default_directive(LevelFilter::INFO.into())
-                .with_env_var("MOGI_LOG")
-                .from_env_lossy(),
-        )
-        .init();
-
     let mut math_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     math_o3_path.push("resources/test/executables/math_o3.o");
 
@@ -1255,7 +1193,7 @@ fn test_math_prime_factors_o3() {
 
     // write fake return value for translation limit
     mmu.borrow_mut()
-        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .write(stack_addr.into(), &0xFFFF_FFFF_D34D_0000u64)
         .unwrap();
 
     // allocate memory for factors and n_factors
@@ -1290,13 +1228,13 @@ fn test_math_prime_factors_o3() {
     let mut n_factors = 0usize;
 
     mmu.borrow_mut()
-        .read(n_factors_addr.into(), n_factors.as_mut_bytes())
+        .read(n_factors_addr.into(), &mut n_factors)
         .unwrap();
 
     let mut factors = vec![0i32; n_factors];
 
     mmu.borrow_mut()
-        .read(factors_addr.into(), factors[..n_factors].as_mut_bytes())
+        .read_bytes(factors_addr.into(), factors[..n_factors].as_mut_bytes())
         .unwrap();
 
     assert_eq!(n_factors, 10);
@@ -1305,16 +1243,6 @@ fn test_math_prime_factors_o3() {
 
 #[test]
 fn test_math_median_o0() {
-    tracing_subscriber::registry()
-        .with(fmt::layer())
-        .with(
-            EnvFilter::builder()
-                .with_default_directive(LevelFilter::INFO.into())
-                .with_env_var("MOGI_LOG")
-                .from_env_lossy(),
-        )
-        .init();
-
     let mut math_o0_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     math_o0_path.push("resources/test/executables/math_o0.o");
 
@@ -1324,7 +1252,7 @@ fn test_math_median_o0() {
 
     // write fake return value for translation limit
     mmu.borrow_mut()
-        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .write(stack_addr.into(), &0xFFFF_FFFF_D34D_0000u64)
         .unwrap();
 
     // write numbers to memory
@@ -1338,7 +1266,7 @@ fn test_math_median_o0() {
         .set_page_table_entry(numbers_addr.into(), numbers_addr.into(), Permission::ALL)
         .unwrap();
     mmu.borrow_mut()
-        .write(numbers_addr.into(), numbers.as_bytes())
+        .write(numbers_addr.into(), &numbers)
         .unwrap();
 
     *cpu.register_mut("RIP").unwrap() = 0x1620u64;
@@ -1355,16 +1283,6 @@ fn test_math_median_o0() {
 
 #[test]
 fn test_math_median_o3() {
-    tracing_subscriber::registry()
-        .with(fmt::layer())
-        .with(
-            EnvFilter::builder()
-                .with_default_directive(LevelFilter::INFO.into())
-                .with_env_var("MOGI_LOG")
-                .from_env_lossy(),
-        )
-        .init();
-
     let mut math_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     math_o3_path.push("resources/test/executables/math_o3.o");
 
@@ -1374,7 +1292,7 @@ fn test_math_median_o3() {
 
     // write fake return value for translation limit
     mmu.borrow_mut()
-        .write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        .write(stack_addr.into(), &0xFFFF_FFFF_D34D_0000u64)
         .unwrap();
 
     // write numbers to memory
@@ -1388,7 +1306,7 @@ fn test_math_median_o3() {
         .set_page_table_entry(numbers_addr.into(), numbers_addr.into(), Permission::ALL)
         .unwrap();
     mmu.borrow_mut()
-        .write(numbers_addr.into(), numbers.as_bytes())
+        .write(numbers_addr.into(), &numbers)
         .unwrap();
 
     *cpu.register_mut("RIP").unwrap() = 0x1750u64;

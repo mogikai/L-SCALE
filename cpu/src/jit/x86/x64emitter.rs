@@ -97,6 +97,7 @@ macro_rules! trace_emit {
     ($($arg:tt)*) => {};
 }
 
+use crate::jit::trace_jit;
 pub(crate) use trace_emit;
 
 pub struct X64Emitter<'a> {
@@ -370,14 +371,21 @@ impl X64AllocRequirements {
                 input_b,
                 op_id,
                 extra_args,
-            } => Self::custom_op_call_requirements(
-                &mut requirement,
-                custom_op_impls[*op_id],
-                *output,
-                *input_a,
-                *input_b,
-                extra_args,
-            ),
+            } => {
+                if Self::custom_op_call_requirements(
+                    &mut requirement,
+                    custom_op_impls[*op_id],
+                    *output,
+                    *input_a,
+                    *input_b,
+                    extra_args,
+                )
+                .is_err()
+                {
+                    let name = spec.custom_op_name(*op_id).unwrap();
+                    todo!("Correct error handling for unimplemented custom op {name}")
+                }
+            }
         }
     }
 

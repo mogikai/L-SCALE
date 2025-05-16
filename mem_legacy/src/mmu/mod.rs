@@ -8,6 +8,7 @@ use crate::physical::{
     PageId,
     PhysicalMemory,
 };
+use crate::tlb::entry::TLBEntry;
 use crate::tlb::tlb::TLB;
 use crate::{
     PAGE_SIZE,
@@ -338,7 +339,7 @@ impl MMU for MogiMMU {
         self.read_internal_physical(addr, buffer, MemoryAction::FETCH)
     }
 
-    fn read(
+    fn read_bytes(
         &mut self,
         addr: EVAddr,
         buffer: &mut [u8],
@@ -346,7 +347,7 @@ impl MMU for MogiMMU {
         self.read_internal(addr, buffer, MemoryAction::READ)
     }
 
-    fn write(
+    fn write_bytes(
         &mut self,
         addr: EVAddr,
         data: &[u8],

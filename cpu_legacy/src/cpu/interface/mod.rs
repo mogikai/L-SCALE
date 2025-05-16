@@ -126,20 +126,20 @@ impl MMU for Cpu {
         self.core.mem.borrow_mut().fetch_physical(addr, buffer)
     }
 
-    fn read(
+    fn read_bytes(
         &mut self,
         addr: EVAddr,
         buffer: &mut [u8],
     ) -> MmuResult<()> {
-        self.core.mem.borrow_mut().read(addr, buffer)
+        self.core.mem.borrow_mut().read_bytes(addr, buffer)
     }
 
-    fn write(
+    fn write_bytes(
         &mut self,
         addr: EVAddr,
         data: &[u8],
     ) -> MmuResult<()> {
-        self.core.mem.borrow_mut().write(addr, data)
+        self.core.mem.borrow_mut().write_bytes(addr, data)
     }
 
     fn fetch(

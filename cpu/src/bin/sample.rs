@@ -92,11 +92,11 @@ fn setup_with_bytes(
             .unwrap();
 
         // And then write the instructions to the allocated instruction memory.
-        mmu.write(0x0u64.into(), &bytes[..]).unwrap();
+        mmu.write_bytes(0x0u64.into(), &bytes[..]).unwrap();
 
         // write fake return value for translation limit
         let stack_addr = stack_addr - 0x8;
-        mmu.write(stack_addr.into(), 0xFFFF_FFFF_D34D_0000u64.as_bytes())
+        mmu.write(stack_addr.into(), &0xFFFF_FFFF_D34D_0000u64)
             .unwrap();
     }
 
@@ -177,7 +177,7 @@ fn main() {
         .set_page_table_entry(numbers_addr.into(), numbers_addr.into(), Permission::ALL)
         .unwrap();
     mmu.borrow_mut()
-        .write(numbers_addr.into(), numbers.as_bytes())
+        .write(numbers_addr.into(), &numbers)
         .unwrap();
 
     // int *numbers

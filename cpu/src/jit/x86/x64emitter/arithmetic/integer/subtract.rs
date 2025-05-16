@@ -17,6 +17,7 @@ use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
     X64Emitter,
 };
+use bitvec::macros::internal::funty::Integral;
 use mogi_sleigh::spec::jir::basic_block::InstId;
 use mogi_sleigh::spec::jir::common::JIRSize;
 use mogi_sleigh::spec::jir::values::{
@@ -122,7 +123,7 @@ impl X64Emitter<'_> {
         match size {
             1 => {
                 // input_b fits as byte displacement into LEA
-                let input_b_disp: i8 = -(input_b.value() as i8);
+                let input_b_disp: i8 = (input_b.value() as i8).wrapping_neg();
 
                 assemble!(self.block.assembler();
                 ; lea Rq(output_reg.hw_enc()), [BYTE Rq(input_a_reg.hw_enc()) + input_b_disp]
@@ -130,7 +131,7 @@ impl X64Emitter<'_> {
             }
             2..=4 => {
                 // input_b fits as regular displacement into LEA
-                let input_b_disp: i32 = -(input_b.value() as i32);
+                let input_b_disp: i32 = (input_b.value() as i32).wrapping_neg();
 
                 assemble!(self.block.assembler();
                 ; lea Rq(output_reg.hw_enc()), [Rq(input_a_reg.hw_enc()) + input_b_disp]
@@ -158,7 +159,7 @@ impl X64Emitter<'_> {
         inst: InstId,
         output: JIRSlice,
         input_a: JIRSlice,
-        input_b: JIRConst
+        input_b: JIRConst,
     ) -> JITResult {
         let output_reg_lower = reg!(self.allocations, inst, 0);
         let output_reg_upper = reg!(self.allocations, inst, 1);

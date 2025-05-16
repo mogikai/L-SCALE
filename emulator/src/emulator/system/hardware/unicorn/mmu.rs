@@ -120,7 +120,7 @@ impl MMU for UCWrapper<'_> {
         todo!()
     }
 
-    fn read(
+    fn read_bytes(
         &mut self,
         addr: mogi_utilities::addresses::EVAddr,
         buffer: &mut [u8],
@@ -128,7 +128,7 @@ impl MMU for UCWrapper<'_> {
         todo!()
     }
 
-    fn write(
+    fn write_bytes(
         &mut self,
         addr: mogi_utilities::addresses::EVAddr,
         data: &[u8],

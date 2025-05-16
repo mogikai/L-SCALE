@@ -19,7 +19,7 @@ num-traits = "0.2.19"
 memmap2 = "0.9.5"
 libc = "0.2.159"
 fnv = "1.0.7"
-zerocopy = "0.9.0-alpha.0"
+zerocopy = { version = "0.9.0-alpha.0", features = ["std"] }
 ansi_term = "0.12.1"
 either = "1.15.0"
 strum = { version = "0.27.1", features = ["derive"] }

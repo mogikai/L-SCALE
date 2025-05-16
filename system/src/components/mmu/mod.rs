@@ -10,9 +10,15 @@ use mogi_utilities::addresses::{
 };
 use mogi_utilities::error::memory::MemoryError;
 use std::ops::BitAnd;
+use zerocopy::{
+    FromBytes,
+    Immutable,
+    IntoBytes,
+    KnownLayout,
+};
 // TODO: Extract memory error from utilities into system crate?
 
-pub type MmuResult<T> = Result<T, MemoryError>;
+pub type MmuResult<T = ()> = Result<T, MemoryError>;
 
 // can this be simplified?
 pub type PageFaultCallback = Box<dyn FnMut(EVAddr, MemoryAction) -> Option<TLBEntry>>;
@@ -86,20 +92,46 @@ pub trait MMU {
         buffer: &mut [u8],
     ) -> Result<(), MemoryError>;
 
-    /// Read bytes from the virtual location specified by `addr` into `buffer`.
-    /// Will fail if no memory is mapped
-    fn read(
+    /// Read the value from the virtual location specified by `addr` into `buffer`.
+    /// Will fail if no memory is mapped.
+    fn read<T>(
+        &mut self,
+        addr: EVAddr,
+        buffer: &mut T,
+    ) -> MmuResult
+    where
+        T: FromBytes + KnownLayout + Immutable + IntoBytes,
+    {
+        self.read_bytes(addr, buffer.as_mut_bytes())
+    }
+
+    /// Read bytes from the virtual location specified by `addr` into the buffer `buffer`.
+    /// Will fail if no memory is mapped.
+    fn read_bytes(
         &mut self,
         addr: EVAddr,
         buffer: &mut [u8],
-    ) -> MmuResult<()>;
+    ) -> MmuResult;
+
     /// Write `len` bytes from the virtual location specified by `addr`.
     /// Will fail if no memory is mapped or memory is readonly.
-    fn write(
+    fn write<T>(
+        &mut self,
+        addr: EVAddr,
+        data: &T,
+    ) -> MmuResult
+    where
+        T: FromBytes + KnownLayout + Immutable + IntoBytes,
+    {
+        self.write_bytes(addr, data.as_bytes())
+    }
+
+    fn write_bytes(
         &mut self,
         addr: EVAddr,
         data: &[u8],
-    ) -> MmuResult<()>;
+    ) -> MmuResult;
+
     // Fetch bytes for execution from the virtual location specified by `addr` into `buffer`.
     fn fetch(
         &mut self,

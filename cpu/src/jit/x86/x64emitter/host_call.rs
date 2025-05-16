@@ -62,11 +62,9 @@ impl X64AllocRequirements {
         input_a: Option<JIRValue>,
         input_b: Option<JIRValue>,
         extra_args: &[JIRValue],
-    ) {
+    ) -> Result<(), String> {
         match op_kind {
-            CustomOpImplKind::Unimpl => {
-                todo!("Emit error? Unimplemented custom op")
-            }
+            CustomOpImplKind::Unimpl => Err("Unimplemented custom operation".to_string())?,
             CustomOpImplKind::BlockEnding => {
                 // Block ending custom ops do not have any allocator requirements since they end the block
                 // and thus flush everything to memory.
@@ -81,6 +79,7 @@ impl X64AllocRequirements {
             },
             CustomOpImplKind::Callback(_) => {}
         }
+        Ok(())
     }
 
     fn binary_fast_impl_requirements(

@@ -14,3 +14,4 @@ mogi_system = { path = "../system", version = "0.1.0" }
 mogi_utilities = { path = "../utilities", version = "0.1.0" }
 mogi_sleigh = { path = "../sleigh", version = "0.1.0" }
 tracing = { version = "0.1.37", default-features = false }
+zerocopy = "0.9.0-alpha.0"
