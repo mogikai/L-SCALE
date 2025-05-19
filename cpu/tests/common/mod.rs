@@ -16,6 +16,9 @@ use mogi_system::components::mmu::{
     MemoryAction,
     Permission,
 };
+use mogi_utilities::addresses::EVAddr;
+use tracing::trace;
+use zerocopy::IntoBytes;
 use std::cell::RefCell;
 use std::path::{
     Path,
@@ -50,6 +53,39 @@ pub(crate) fn dump_registers(cpu: &MogiCPU<X86MogiJit, MogiMMU>) {
     for register_name in register_names.iter() {
         let register_value: u64 = *cpu.register(register_name).unwrap();
         eprintln!("{:#3} = {:#018X}", register_name, register_value);
+    }
+
+    // also dump flags
+    let flag_names = ["ZF", "SF", "CF", "OF", "PF"];
+    for flag_name in flag_names.iter() {
+        let flag_value: u8 = *cpu.register(flag_name).unwrap();
+        eprintln!("{:#2} = {}", flag_name, flag_value);
+    }
+
+    eprintln!("");
+}
+
+pub(crate) fn dump_memory(
+    cpu: &MogiCPU<X86MogiJit, MogiMMU>,
+    mmu: &Rc<RefCell<MogiMMU>>,
+    addr: EVAddr,
+    n_bytes: usize,
+) {
+    for offset in (0..n_bytes).step_by(4) {
+        let addr = EVAddr::try_from(addr + offset).unwrap();
+
+        if offset % 16 == 0 {
+            if offset > 0 {
+                eprintln!("");
+            }
+
+            eprint!("{:#018X}: ", addr);
+        }
+
+        let mut word = 0u32;
+        mmu.borrow_mut().read(addr, &mut word).unwrap();
+
+        eprint!("{:#010X} ", word);
     }
 
     eprintln!("");

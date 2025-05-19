@@ -58,16 +58,10 @@ impl TargetBasicBlockInner {
     pub(super) fn collect_slice_overlaps(&mut self) -> ProcessorSpecResult {
         for (slice_id, slice) in self.optimizer_ancillary.slice_ids.items() {
             let mut overlap_group = FnvHashSet::default();
-            overlap_group.insert(slice_id);
 
             for (neighbor_candidate_id, neighbor_candidate) in self.optimizer_ancillary.slice_ids.items() {
-                if neighbor_candidate_id == slice_id {
-                    // own id is also in there => skip
-                    continue;
-                }
-
                 // if they don't belong to the same group they can't overlap
-                if slice.same_group(neighbor_candidate) && slice.overlaps(neighbor_candidate) {
+                if slice.overlaps(neighbor_candidate) {
                     // overlap
 
                     // add neighbor to own overlap group group
@@ -79,11 +73,6 @@ impl TargetBasicBlockInner {
             // reuse
             let mut group_id = None;
             for neighbor_id in overlap_group.iter() {
-                if *neighbor_id == slice_id {
-                    // own id is also in there => skip
-                    continue;
-                }
-
                 let Some(neighbor_group_id) = self.optimizer_ancillary.group_ids[*neighbor_id] else {
                     // neighbor might not have been processed yet
                     continue;

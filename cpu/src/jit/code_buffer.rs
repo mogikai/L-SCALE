@@ -313,4 +313,20 @@ impl<R: Relocation + Clone> CodeBuffer<R> {
     ) -> &mut CompiledBasicBlock<R> {
         &mut self.anonymous_blocks[id.0]
     }
+
+    pub fn flush(&mut self) {
+        self.blocks.clear();
+        self.occupied = unsafe {
+            self.anonymous_blocks
+                .iter()
+                .map(|block| {
+                    block
+                        .code
+                        .map_or(self.buf, |code| code.ptr().offset(code.size() as isize))
+                })
+                .max()
+                .unwrap_or(self.buf)
+                .byte_offset_from_unsigned(self.buf)
+        };
+    }
 }

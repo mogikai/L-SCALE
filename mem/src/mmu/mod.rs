@@ -34,7 +34,7 @@ use std::fmt::{
     Formatter,
 };
 use std::rc::Rc;
-use tracing::debug;
+use tracing::{debug, trace};
 use zerocopy::{
     FromBytes,
     Immutable,
@@ -396,16 +396,25 @@ impl MMU for MogiMMU {
     where
         T: TLB<PageData = Self::PageData>,
     {
+        trace!("Populating TLB for {:?}", addr);
         let page_id = self.resolve_to_page_id(addr, action)?;
         let mut physical = self.physical_memory.borrow_mut();
         let page = physical.page_by_id_mut(page_id)?;
         match action {
-            MemoryAction::READ => tlb.insert_read(addr, page.tlb_entry_ptr()),
-            MemoryAction::WRITE => tlb.insert_write(addr, page.tlb_entry_ptr_mut()),
+            MemoryAction::READ => {
+                let entry_ptr = page.tlb_entry_ptr();
+                tlb.insert_read(addr, entry_ptr);
+                Ok(entry_ptr)
+            },
+            MemoryAction::WRITE => {
+                let entry_ptr = page.tlb_entry_ptr_mut();
+                tlb.insert_write(addr, entry_ptr);
+                tlb.insert_read(addr, entry_ptr);
+                Ok(entry_ptr)
+            },
             MemoryAction::FETCH => todo!(),
             _ => todo!(),
         }
-        Ok(page.tlb_entry_ptr())
     }
 }
 

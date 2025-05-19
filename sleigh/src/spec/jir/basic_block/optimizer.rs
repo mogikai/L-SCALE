@@ -42,7 +42,7 @@ macro_rules! trace_opt {
 }
 
 mod analysis;
-mod copy_coalescing;
+mod forward_pass;
 mod dead_store_elimination;
 mod nop_elimination;
 
@@ -92,9 +92,6 @@ impl OptimizerOptions {
         enable_constant_folding: bool,
     ) -> Self {
         self.enable_constant_folding = enable_constant_folding;
-        if enable_constant_folding {
-            self.enable_copy_coalescing = true; // this is implied
-        }
         self
     }
 
@@ -236,7 +233,7 @@ impl TargetBasicBlockInner {
         }
 
         if options.enable_copy_coalescing {
-            let (elim_count, const_fold_count) = self.copy_coalescion(context, options.enable_constant_folding)?;
+            let (elim_count, const_fold_count) = self.forward_pass(context, options)?;
             trace_opt!("Copy coalescion eliminated {} instructions, folded {} constants", elim_count, const_fold_count);
         }
 

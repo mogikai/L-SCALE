@@ -412,6 +412,12 @@ where
             .unwrap();
         Ok(T::mut_from_bytes(data).unwrap())
     }
+
+    fn flush(&mut self) {
+        self.runtime_context.tlb_mut().flush();
+        self.jit.borrow_mut().flush_code();
+        self.block_cache.clear();
+    }
 }
 
 impl<JitT, MmuT> MogiCPU<JitT, MmuT>
@@ -569,13 +575,13 @@ fn compile<JitT: MogiJit>(
 ) -> Result<(), StopReason> {
     // TODO: Most likely, if the runtime context was modified, we will first need to emulate before translating
     //       more blocks?
-    println!("unoptimized: {}", block);
+    trace_jit!("unoptimized: {}", block);
 
     let optimizer_options = OptimizerOptions::default()
-        .with_enable_dse(false)
-        .with_enable_copy_coalescing(false)
-        .with_enable_constant_folding(false)
-        .with_enable_nop_elimination(false);
+        .with_enable_dse(true)
+        .with_enable_copy_coalescing(true)
+        .with_enable_constant_folding(true)
+        .with_enable_nop_elimination(true);
     Rc::make_mut(&mut block.0)
         .run_optimization_passes(
             &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(1).unwrap()),
@@ -583,7 +589,7 @@ fn compile<JitT: MogiJit>(
         )
         .unwrap();
 
-    println!("optimized: {}", block);
+    trace_jit!("optimized: {}", block);
     jit.compile_target_block(&block)?;
     Ok(())
 }

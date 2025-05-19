@@ -686,13 +686,13 @@ impl JIRInstruction {
                     None
                 }
             }
-            Self::Load { target: _, address, space } => {
+            Self::Load { target, address, space } => {
                 if *space == const_space_id {
                     let JIRValue::Const(const_addr) = address else {
                         panic!("Const space addresses must be const");
                     };
 
-                    Some(*const_addr)
+                    Some(JIRConst::new(const_addr.value(), target.size()))
                 } else {
                     None
                 }

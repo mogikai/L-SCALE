@@ -44,4 +44,6 @@ pub trait CPU {
     ) -> CPUResult<&mut T>
     where
         T: FromBytes + KnownLayout + Immutable + IntoBytes;
+
+    fn flush(&mut self);
 }

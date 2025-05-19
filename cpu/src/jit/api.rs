@@ -219,6 +219,9 @@ pub trait MogiJit: BlockEndingOpDecider {
         block: EVAddr,
     ) -> bool;
 
+    /// Flush the translation buffer.
+    fn flush_code(&mut self);
+
     /// Read the architecture specific instruction pointer value from the runtime context.
     /// This looks up the correct varnode according to the specification and returns the current value.
     /// The value can also be accessed by providing the varnode id of the instruction pointer to

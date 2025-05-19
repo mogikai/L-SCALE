@@ -460,6 +460,10 @@ impl MogiJit for X86MogiJit {
         self.code_buffer.block(block).is_some()
     }
 
+    fn flush_code(&mut self) {
+        self.code_buffer.flush();
+    }
+
     fn instruction_pointer(
         &self,
         context: &Self::RuntimeContext,

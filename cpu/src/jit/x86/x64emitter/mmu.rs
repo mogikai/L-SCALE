@@ -74,7 +74,8 @@ impl X64AllocRequirements {
         _space_id: SpaceId,
         value: JIRValue,
     ) {
-        let mut required_temp_count = 0;
+        // always at least 1 temp reg for tlb_lookup
+        let mut required_temp_count = 1;
 
         // Both address and value need to be stored in slices, so we allocate enough
         // temporaries (either 1 or 2) if one of them is a const.
@@ -85,7 +86,7 @@ impl X64AllocRequirements {
             }
             JIRValue::Const(addr) => {
                 // addr const => add temp reg
-                required_temp_count += 1;
+                required_temp_count = 2;
             }
         }
 
@@ -95,14 +96,13 @@ impl X64AllocRequirements {
                 Self::require_large_int_read_any(requirement, value);
             }
             JIRValue::Const(value) => {
-                // value const => add temp reg
-                required_temp_count += 1;
+                if value.size() > 8 {
+                    // value const with size > 8 => add temp reg
+                    required_temp_count = 2;
+                }
             }
         }
 
-        // allocate enough temporary registers
-        // always at least 1 temp reg for tlb_lookup, but this can be reused
-        required_temp_count = required_temp_count.max(1);
         *requirement.required_temps_mut() = TempRequest::new().int(required_temp_count);
     }
 }
@@ -222,6 +222,7 @@ impl X64Emitter<'_> {
             ; mov Rq(tag_reg.hw_enc()), Rq(tmp_addr_reg)
             ; and Rd(tmp_addr_reg), DWORD EVAddr::<u8>::index_mask() as _
             ; shr Rq(tag_reg.hw_enc()), BYTE EVAddr::<u8>::tag_shift_from_index() as _
+            // TODO can this be removed?
             ; and Rq(tag_reg.hw_enc()), EVAddr::<u8>::tag_mask::<PageData>() as _
             // temp_addr_reg now contains the index.
             // look at tlb_offset + index * entry_size
@@ -381,7 +382,6 @@ impl X64Emitter<'_> {
         addr_reg: HostReg,
         value: JIRValue,
     ) -> JITResult {
-        let temp_allocations = self.allocations.get_temp_allocations(inst);
         // TODO: Make sure the store does not cross page boundaries.
         // TODO: This can be optimized to directly move into the memory location.
         //       For JIRConsts this can be done with immediate values.
@@ -390,9 +390,7 @@ impl X64Emitter<'_> {
                 reg!(self.allocations, inst, value_index)
             }
             JIRValue::Const(value) => {
-                let value_reg = temp_allocations
-                    .get_nth_from_class(0, RegClass::Int)
-                    .expect("We requested this");
+                let value_reg = self.allocations.scratch_register(RegClass::Int);
                 self.load_const(value_reg, value)?;
                 value_reg
             }
@@ -445,14 +443,13 @@ impl X64Emitter<'_> {
                 let (value_lower, value_upper) = value.split(8);
 
                 let value_reg_lower = temp_allocations
-                    .get_nth_from_class(0, RegClass::Int)
-                    .expect("We requested this");
-                let value_reg_upper = temp_allocations
                     .get_nth_from_class(1, RegClass::Int)
                     .expect("We requested this");
-
                 self.load_const(value_reg_lower, value_lower)?;
+                
+                let value_reg_upper = self.allocations.scratch_register(RegClass::Int);
                 self.load_const(value_reg_upper, value_upper)?;
+                
                 (value_reg_lower, value_reg_upper)
             }
         };

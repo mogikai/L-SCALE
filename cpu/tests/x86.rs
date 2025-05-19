@@ -1,6 +1,9 @@
 use itertools::Itertools;
 use addr_align::Align;
-use common::dump_registers;
+use common::{
+    dump_memory,
+    dump_registers,
+};
 use mogi_cpu::cpu::StopReason;
 use mogi_cpu::jit::api::RuntimeError;
 use mogi_cpu::new_cpu_trait::{
@@ -13,8 +16,16 @@ use mogi_system::components::mmu::{
     Permission,
 };
 use mogi_utilities::addresses::EVAddr;
+use std::arch::breakpoint;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
+use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{
+    EnvFilter,
+    fmt,
+};
 use zerocopy::IntoBytes;
 
 mod common;
@@ -155,7 +166,7 @@ fn test_movbe_mem_reg_32() {
     assert_eq!(rax, 0x1337);
     let mut result = 0u32;
     mmu.borrow_mut()
-        .read(EVAddr::from(rsp), result.as_mut_bytes())
+        .read(EVAddr::from(rsp), &mut result)
         .unwrap();
     assert_eq!(result, 0x1337u32.swap_bytes());
 }
@@ -1163,6 +1174,7 @@ fn test_math_prime_factors_o0() {
     *cpu.register_mut("RSI").unwrap() = factors_addr;
     // size_t n_factors
     *cpu.register_mut("RDX").unwrap() = n_factors_addr;
+
     cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
         .unwrap();
 
@@ -1274,6 +1286,7 @@ fn test_math_median_o0() {
     *cpu.register_mut("RDI").unwrap() = numbers_addr;
     // size_t n
     *cpu.register_mut("RSI").unwrap() = numbers.len() as u64;
+
     cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
         .unwrap();
 
