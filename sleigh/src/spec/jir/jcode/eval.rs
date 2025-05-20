@@ -712,10 +712,7 @@ mod tests {
         UnaryArgs,
     };
     use crate::spec::jir::values::{
-        JIRConst,
-        JIRSlice,
-        JIRValue,
-        VarnodeGroupId,
+        GroupId, JIRConst, JIRSlice, JIRValue, VarnodeGroupId
     };
     use mogi_utilities::index_map::MapKey;
     use std::{
@@ -738,7 +735,7 @@ mod tests {
             input_b: JIRValue::Const(JIRConst::new(b, size)),
             output: JIRSlice::new(
                 SpaceId::try_from_index(1).unwrap(),
-                VarnodeGroupId::try_from_index(1).unwrap(),
+                GroupId::try_from_index(1).unwrap(),
                 JIROffset::try_from(0u64).unwrap(),
                 result_size,
             ),
@@ -771,14 +768,14 @@ mod tests {
             output: if let Some(output_size) = output_size {
                 JIRSlice::new(
                     SpaceId::try_from_index(1).unwrap(),
-                    VarnodeGroupId::try_from_index(1).unwrap(),
+                    GroupId::try_from_index(1).unwrap(),
                     JIROffset::try_from(0u64).unwrap(),
                     output_size,
                 )
             } else {
                 JIRSlice::new(
                     SpaceId::try_from_index(1).unwrap(),
-                    VarnodeGroupId::try_from_index(1).unwrap(),
+                    GroupId::try_from_index(1).unwrap(),
                     JIROffset::try_from(0u64).unwrap(),
                     JIRSize::try_from(0u64).unwrap(),
                 )

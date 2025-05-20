@@ -36,8 +36,7 @@ impl Lifter for ProcessorSpecification {
         let mut buffer = [0u8; 16];
         let mut addr = start_addr;
 
-        let now = Instant::now();
-        let mut block_builder = TargetBasicBlockBuilder::new(addr, self.temp_space);
+        let mut block_builder = TargetBasicBlockBuilder::new(addr);
         // Start with a block. Any intermediate blocks will end this block and create a new one.
         block_builder.start_block().unwrap();
         let mut instruction_count = 0usize;

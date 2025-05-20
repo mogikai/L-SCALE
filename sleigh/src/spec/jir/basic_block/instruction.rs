@@ -12,8 +12,7 @@ use crate::spec::jir::values::{
 };
 use crate::spec::moir::scope::LabelId;
 use crate::spec::{
-    ProcessorSpecResult,
-    SpaceId,
+    self, ProcessorSpecResult, ProcessorSpecification, SpaceId
 };
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::SecondaryMap;
@@ -97,18 +96,20 @@ impl<'a> TargetInstructionBuilder<'a> {
 
     pub fn alloc_temporary(
         &mut self,
+        spec: &ProcessorSpecification,
         size: JIRSize,
     ) -> ProcessorSpecResult<JIRSlice> {
-        self.block_builder.alloc_temporary(size)
+        self.block_builder.alloc_temporary(spec, size)
     }
 
     pub fn load_temp(
         &mut self,
+        spec: &ProcessorSpecification,
         address: JIRValue,
         space: SpaceId,
         size: JIRSize,
     ) -> ProcessorSpecResult<JIRSlice> {
-        self.block_builder.load_temp(address, space, size)
+        self.block_builder.load_temp(spec, address, space, size)
     }
 
     pub fn start_labeled_block(

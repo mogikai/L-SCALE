@@ -198,7 +198,7 @@ pub(super) fn make_basic_block_from_instructions(
     fallthrough: EVAddr,
     instructions: impl IntoIterator<Item = JIRInstruction>,
 ) -> TargetBasicBlock {
-    let mut builder = TargetBasicBlockBuilder::new(address, SpaceId::try_from_index(0x41).unwrap());
+    let mut builder = TargetBasicBlockBuilder::new(address);
     builder.set_fallthrough(fallthrough);
     builder.start_block().unwrap();
     for instruction in instructions.into_iter() {

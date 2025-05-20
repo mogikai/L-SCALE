@@ -31,6 +31,7 @@ pub trait MapKey: Copy + PartialEq + Eq + PartialOrd + Ord + Hash {
     /// in an error.
     fn try_from_index(index: usize) -> Result<Self, IndexMapError>;
     fn to_index(&self) -> usize;
+    fn next(&self) -> Option<Self>;
 }
 
 #[macro_export(local_inner_macros)]
@@ -150,6 +151,12 @@ macro_rules! map_key_trait {
             fn to_index(&self) -> usize {
                 // This is safe, since self.0 is never zero
                 unsafe { self.0.get().unchecked_sub(1).into() }
+            }
+            fn next(&self) -> Option<Self> {
+                self.0
+                    .get()
+                    .checked_add(1)
+                    .map(|key| Self(std::num::NonZero::try_from(key).expect("This can't be 0")))
             }
         }
     };
@@ -464,6 +471,10 @@ where
             .into_iter()
             .enumerate()
             .map(|(k, v)| (MapKey::try_from_index(k).expect("Enumarating must produce a valid index"), v))
+    }
+
+    pub fn clear(&mut self) {
+        self.data.clear();
     }
 }
 

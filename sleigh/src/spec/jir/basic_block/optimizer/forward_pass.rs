@@ -205,6 +205,7 @@ impl TargetBasicBlockInner {
     }
 }
 
+#[cfg(test)]
 mod test {
     use crate::jinst;
     use crate::spec::SpaceId;
@@ -220,10 +221,7 @@ mod test {
         UnaryArgs,
     };
     use crate::spec::jir::values::{
-        JIRConst,
-        JIRSlice,
-        JIRValue,
-        VarnodeGroupId,
+        GroupId, JIRConst, JIRSlice, JIRValue, VarnodeGroupId
     };
     use mogi_utilities::index_map::MapKey;
     use std::rc::Rc;
@@ -231,14 +229,14 @@ mod test {
     #[test]
     fn test_propagate_const_noelim() {
         let space_id = SpaceId::try_from_index(1).unwrap();
-        let group_id = VarnodeGroupId::try_from_index(1).unwrap();
+        let group_id = GroupId::try_from_index(1).unwrap();
 
         let slice_0 = JIRSlice::new(space_id, group_id, 0, 1);
         let slice_1 = JIRSlice::new(space_id, group_id, 1, 1);
         let slice_2 = JIRSlice::new(space_id, group_id, 2, 1);
         let const_0: JIRValue = JIRConst::new(123u128, JIRSize::try_from(1).unwrap()).into();
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), space_id);
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into());
         block_builder.start_block().unwrap();
 
         block_builder
@@ -270,7 +268,7 @@ mod test {
     #[test]
     fn test_propagate_const_elim() {
         let space_id = SpaceId::try_from_index(1).unwrap();
-        let group_id = VarnodeGroupId::try_from_index(1).unwrap();
+        let group_id = GroupId::try_from_index(1).unwrap();
 
         let slice_0 = JIRSlice::new(space_id, group_id, 0, 1);
         let slice_1 = JIRSlice::new(space_id, group_id, 1, 1);
@@ -278,7 +276,7 @@ mod test {
         let const_0: JIRValue = JIRConst::new(123u128, JIRSize::try_from(1).unwrap()).into();
         let const_1: JIRValue = JIRConst::new(456u128, JIRSize::try_from(1).unwrap()).into();
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), space_id);
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into());
         block_builder.start_block().unwrap();
 
         block_builder
@@ -313,14 +311,14 @@ mod test {
     #[test]
     fn test_propagate_slice_noelim() {
         let space_id = SpaceId::try_from_index(1).unwrap();
-        let group_id = VarnodeGroupId::try_from_index(1).unwrap();
+        let group_id = GroupId::try_from_index(1).unwrap();
 
         let slice_0 = JIRSlice::new(space_id, group_id, 0, 1);
         let slice_1 = JIRSlice::new(space_id, group_id, 1, 1);
         let slice_2 = JIRSlice::new(space_id, group_id, 2, 1);
         let slice_3 = JIRSlice::new(space_id, group_id, 3, 1);
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), space_id);
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into());
         block_builder.start_block().unwrap();
 
         block_builder
@@ -352,7 +350,7 @@ mod test {
     #[test]
     fn test_propagate_slice_elim() {
         let space_id = SpaceId::try_from_index(1).unwrap();
-        let group_id = VarnodeGroupId::try_from_index(1).unwrap();
+        let group_id = GroupId::try_from_index(1).unwrap();
 
         let slice_0 = JIRSlice::new(space_id, group_id, 0, 1);
         let slice_1 = JIRSlice::new(space_id, group_id, 1, 1);
@@ -360,7 +358,7 @@ mod test {
         let slice_3 = JIRSlice::new(space_id, group_id, 3, 1);
         let slice_4 = JIRSlice::new(space_id, group_id, 4, 1);
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), space_id);
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into());
         block_builder.start_block().unwrap();
 
         block_builder

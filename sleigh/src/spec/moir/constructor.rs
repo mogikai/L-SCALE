@@ -131,7 +131,7 @@ impl MOIRConstructor {
                 .inst_next()
                 .expect("There must be an inst_next set"),
         )?;
-        resolver.realize_temporaries(&mut target_inst)?;
+        resolver.realize_temporaries(spec, &mut target_inst)?;
         let mut iter = self.instructions.iter().peekable();
         loop {
             match iter.next() {
@@ -232,7 +232,7 @@ impl MOIRConstructor {
         inst_builder: &mut TargetInstructionBuilder,
     ) -> ProcessorSpecResult {
         trace_jir!("Generating subtable instructions");
-        resolver.realize_temporaries(inst_builder)?;
+        resolver.realize_temporaries(spec, inst_builder)?;
         for (i, block) in self
             .instructions
             .chunk_by(|inst, next_inst| {
@@ -440,7 +440,7 @@ impl MOIRConstructor {
                             JIRResolvedValue::Reference { address, space, size } => {
                                 // In case of references we need to load the value into a temporary varnode
                                 instruction_builder
-                                    .load_temp(address, space, size)
+                                    .load_temp(spec, address, space, size)
                                     .map(JIRValue::from)
                             }
                         })
@@ -471,7 +471,7 @@ impl MOIRConstructor {
                             JIRValue::Const(_) => todo!("Generate error for const not allowed in output position"),
                         },
                         JIRResolvedValue::Reference { address, space, size } => {
-                            let tmp = instruction_builder.alloc_temporary(size)?;
+                            let tmp = instruction_builder.alloc_temporary(spec, size)?;
                             Ok((tmp, Some(jinst!(*[space]address = tmp))))
                         }
                     })
@@ -534,7 +534,7 @@ impl MOIRConstructor {
                                 JIRValue::Const(a) => JIRConst::new(a.value(), 0x8).into(),
                             };
                             instruction_builder
-                                .load_temp(address, space, size)
+                                .load_temp(spec, address, space, size)
                                 .map(JIRValue::from)
                         }
                     })

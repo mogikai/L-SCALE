@@ -63,25 +63,31 @@ macro_rules! trace_resolve {
 }
 
 impl JIRResolvedValue {
-    /// The size of a resolved value can be further constrained by subpieces.
+    /// The size of a resolved value can be further constrained (e.g. by subpieces).
     /// We therefore set its size manually if necessary.
-    fn shrink_size(
+    fn adjust_size(
         &mut self,
-        shrink_to: JIRSize,
+        target_size: JIRSize,
     ) -> ProcessorSpecResult {
         match self {
             JIRResolvedValue::Value(value) => {
-                *value = value.slice(0, shrink_to);
-                trace_resolve!("Shrinking value to {shrink_to}");
+                trace_resolve!("Adjusting size from {} to {target_size}", value.size());
+                if value.size() < target_size {
+                    // expand
+                    *value.size_mut() = target_size;
+                } else if value.size() > target_size {
+                    // slice
+                    *value = value.slice(0, target_size);
+                }
             }
             JIRResolvedValue::Reference { size, .. } => {
-                if *size < shrink_to {
+                if *size < target_size {
                     // we can only make slices smaller
                     todo!("Generate error report for shrink_size with larger size");
                 }
 
-                trace_resolve!("Shrinking reference of size {size} to {shrink_to}");
-                *size = shrink_to;
+                trace_resolve!("Adjusting reference of size {size} to {target_size}");
+                *size = target_size;
             }
         }
 
@@ -210,6 +216,7 @@ impl<'a> JIRResolver<'a> {
     /// in the scope.
     pub fn realize_temporaries(
         &mut self,
+        spec: &ProcessorSpecification,
         instruction_builder: &mut TargetInstructionBuilder,
     ) -> ProcessorSpecResult {
         for (temp_id, temp) in self.constructor.local_scope.iter_used_temps() {
@@ -217,7 +224,7 @@ impl<'a> JIRResolver<'a> {
                 todo!("Generate error for undetermined temporary size")
             };
             let tmp_slice =
-                instruction_builder.alloc_temporary(size.try_into().expect("The size must fit into JIRSize"))?;
+                instruction_builder.alloc_temporary(spec, size.try_into().expect("The size must fit into JIRSize"))?;
             self.temporaries[temp_id] = Some(tmp_slice.into());
         }
         Ok(())
@@ -420,9 +427,7 @@ impl<'a> JIRResolver<'a> {
         // let end = value.end;
         let size = JIRSize::try_from(
             // TODO size probably doesn't have to be determined at this point
-            value
-                .size()
-                .determined_or(0)
+            value.size().determined_or(0),
         )
         .expect("The size must fit into JIRSize");
         Ok(match value.reference {
@@ -501,7 +506,7 @@ impl<'a> JIRResolver<'a> {
                     .ok_or_else(|| todo!("Generate error: 'Failed to match subtable'"))?;
                 // Check the subtable resolver for the symbol that is exported and resolve it to a JIRValue.
                 let mut resolved_value = subtable_resolver.resolve_export(spec, instruction_builder)?;
-                resolved_value.shrink_size(size)?;
+                resolved_value.adjust_size(size)?;
                 resolved_value
             }
         })
@@ -544,7 +549,7 @@ impl<'a> JIRResolver<'a> {
                             // we need to insert a load instruction to resolve the first indirection to *addr
                             // The final load or store operation needs to be inserted by the instruction resolver,
                             // since only it knows whether we need a load or store instruction.
-                            let tmp = instruction_builder.alloc_temporary(size)?;
+                            let tmp = instruction_builder.alloc_temporary(spec, size)?;
                             instruction_builder.push_jir_instruction(jinst!(tmp = *[space]address))?;
                             // Create an rvalue
                             trace_resolve!("Returning tmp slice {tmp}");

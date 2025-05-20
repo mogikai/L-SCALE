@@ -3,7 +3,6 @@ mod display;
 pub(crate) mod instruction;
 pub mod optimizer;
 
-use crate::spec::jir::basic_block::instruction::JIRTempId;
 use crate::spec::jir::jcode::{
     JIRInstruction,
     NextBlockTarget,
@@ -13,6 +12,7 @@ use crate::spec::jir::jir_block::{
     JIRBlockId,
 };
 use crate::spec::jir::values::JIRVarNode;
+use itertools::Either;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::{
     PrimaryMap,
@@ -21,6 +21,8 @@ use mogi_utilities::index_map::{
 use optimizer::OptimizerAncillary;
 use std::ops::{Deref, Range};
 use std::rc::Rc;
+
+use super::values::{GroupId, JIRGroup, VarnodeGroupId};
 
 pub type InstId = usize;
 
@@ -145,7 +147,6 @@ pub struct TargetBasicBlockInner {
     /// The temporaries are allocated such that they are sequential in the
     /// address space. This means allocating a new temporary should occur
     /// after the offset+length of the last temporary.
-    temporaries: Vec<JIRVarNode>,
     /// A list of predecessor blocks that refer to this basic block.
     // predecessors: Vec<EVAddr>,
     start: EVAddr,

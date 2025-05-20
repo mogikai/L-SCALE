@@ -18,16 +18,25 @@ use crate::spec::jir::jir_block::{
     JIRBlockId,
 };
 use crate::spec::jir::values::{
+    JIRGroup,
     JIRSlice,
     JIRValue,
     JIRVarNode,
+    TempGroupId,
 };
 use crate::spec::{
     ProcessorSpecResult,
+    ProcessorSpecification,
     ProcessorSpecificationError,
     SpaceId,
 };
+use addr_align::Align;
+use itertools::Either;
 use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::index_map::{
+    MapKey,
+    PrimaryMap,
+};
 use std::num::NonZeroU16;
 use std::ops::Range;
 use std::rc::Rc;
@@ -54,14 +63,12 @@ pub struct TargetBasicBlockBuilder {
     /// a branch occurs, this instruction is set as the fallthrough.
     next_instruction: Option<EVAddr>,
 
-    /// The address space used for allocating temporary variables within the basic block.
-    temp_space: SpaceId,
+    next_free_temp: TempGroupId,
 }
 
 impl TargetBasicBlockBuilder {
     pub fn new(
         start: EVAddr,
-        temp_space: SpaceId,
     ) -> Self {
         Self {
             target_block: TargetBasicBlockInner {
@@ -69,7 +76,6 @@ impl TargetBasicBlockBuilder {
                 jir_blocks: Default::default(),
                 jir_block_predecessors: Default::default(),
                 jir_block_successors: Default::default(),
-                temporaries: Default::default(),
                 start,
                 fallthrough: None,
                 branch_targets: None,
@@ -80,7 +86,7 @@ impl TargetBasicBlockBuilder {
             current_block_id: None,
             previous_block_id: None,
             next_instruction: None,
-            temp_space,
+            next_free_temp: TempGroupId::try_from_index(0).unwrap(),
         }
     }
 
@@ -100,39 +106,45 @@ impl TargetBasicBlockBuilder {
 
     pub fn alloc_temporary(
         &mut self,
+        spec: &ProcessorSpecification,
         size: JIRSize,
     ) -> ProcessorSpecResult<JIRSlice> {
-        if self.target_block.temporaries.len() >= (u16::MAX - 1).into() {
-            todo!("No more temporaries available")
-        }
         // TODO: Maybe it makes sense padding the varnodes to a specific byte boundary?
         // The offset of the new temporary is either the end of the last, or zero, if no other temps were allocated yet.
-        let temp_group = self.target_block.temporaries.len();
-        let offset: JIROffset = self
-            .target_block
-            .temporaries
-            .last()
-            .map(|v| v.end())
-            .unwrap_or(0)
-            .try_into()
-            .map_err(|_| ProcessorSpecificationError::OutOfTempSpace)?;
-        self.target_block.temporaries.push(JIRVarNode {
-            space_id: self.temp_space,
-            offset: offset.into(),
+        let temp_group_id = self.next_free_temp;
+        let Some(next_free_temp) = self.next_free_temp.next() else {
+            todo!("no more temps available");
+        };
+        self.next_free_temp = next_free_temp;
+
+        let temp_group = spec.temp_varnodes[temp_group_id];
+        if temp_group.size < size {
+            todo!("temporary cannot be larger than 128 bits");
+        }
+
+        let temp_slice = JIRSlice::new(
+            temp_group.space_id,
+            spec.temp_to_group[temp_group_id].expect("This must be set at this point"),
+            temp_group
+                .offset
+                .try_into()
+                .expect("The address space needs to have been compressed at this point"),
             size,
-        });
-        Ok(JIRSlice::new_temp(self.temp_space, temp_group as u8, offset, size))
+        );
+
+        Ok(temp_slice)
     }
 
     /// Allocate a temporary of size `size` and load the contents at `address` in `space` to it.
     /// Returns the temporary Slice
     pub fn load_temp(
         &mut self,
+        spec: &ProcessorSpecification,
         address: JIRValue,
         space: SpaceId,
         size: JIRSize,
     ) -> ProcessorSpecResult<JIRSlice> {
-        self.alloc_temporary(size).and_then(|tmp| {
+        self.alloc_temporary(spec, size).and_then(|tmp| {
             self.push_jir_instruction(jinst!(tmp = *[space]address))
                 .and(Ok(tmp))
         })
@@ -180,7 +192,7 @@ impl TargetBasicBlockBuilder {
         self.target_block.fallthrough = fallthrough;
         self.target_block.branch_targets = branch_targets;
         self.target_block.target_inst_count += 1;
-        self.target_block.temporaries.clear();
+        self.next_free_temp = TempGroupId::try_from_index(0).unwrap();
         Ok(())
     }
 
@@ -275,7 +287,10 @@ impl TargetBasicBlockBuilder {
         Ok(())
     }
 
-    pub fn finish(mut self, addr_range: Option<Range<EVAddr>>) -> ProcessorSpecResult<TargetBasicBlock> {
+    pub fn finish(
+        mut self,
+        addr_range: Option<Range<EVAddr>>,
+    ) -> ProcessorSpecResult<TargetBasicBlock> {
         if self.target_block.branch_targets.is_none() && self.target_block.fallthrough.is_none() {
             // In case only non-branching instructions were added, we want to set the fallthrough
             // to the next instruction in line.

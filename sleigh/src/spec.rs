@@ -28,10 +28,10 @@ use crate::spec::moir::token::TokenId;
 use crate::spec::moir::varnode::VarNodeId;
 use brotli::Decompressor;
 use fnv::FnvHashMap;
+use itertools::Either;
 use jir::jumplist::MatchContext;
 use jir::values::{
-    VarnodeGroup,
-    VarnodeGroupId,
+    GroupId, JIRGroup, TempGroupId, VarnodeGroup, VarnodeGroupId
 };
 use mogi_sleigh_parser::{
     ParserContext,
@@ -147,7 +147,10 @@ pub struct ProcessorSpecification {
     /// Overlapping varnodes need special treatments in multiple locations, which
     /// is why we keep track of different disjoint groups.
     pub(crate) varnode_groups: PrimaryMap<VarnodeGroupId, VarnodeGroup>,
-    pub(crate) varnode_to_group: SecondaryMap<VarNodeId, Option<VarnodeGroupId>>,
+    pub(crate) varnode_to_group: SecondaryMap<VarNodeId, Option<GroupId>>,
+    pub(crate) temp_to_group: SecondaryMap<TempGroupId, Option<GroupId>>,
+    pub(crate) temp_varnodes: PrimaryMap<TempGroupId, JIRVarNode>,
+    pub(crate) jir_groups: PrimaryMap<GroupId, JIRGroup>,
 
     /// The first jumplist is the root from which matching begins.
     pub(crate) jumplist_cache: PrimaryMap<JumplistId, Jumplist>,

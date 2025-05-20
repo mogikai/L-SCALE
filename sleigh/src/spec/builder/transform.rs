@@ -17,6 +17,8 @@ use crate::spec::jir::space::{
     JIRSpaceType,
 };
 use crate::spec::jir::values::{
+    GroupId,
+    JIRGroup,
     JIRVarNode,
     VarnodeGroup,
     VarnodeGroupId,
@@ -74,7 +76,8 @@ pub struct JIRData {
     pub symbol_tables: JIRSymbolTables,
     pub jumplist_cache: PrimaryMap<JumplistId, Jumplist>,
     pub varnode_groups: PrimaryMap<VarnodeGroupId, VarnodeGroup>,
-    pub varnode_to_group: SecondaryMap<VarNodeId, Option<VarnodeGroupId>>,
+    pub varnode_to_group: SecondaryMap<VarNodeId, Option<GroupId>>,
+    pub jir_groups: PrimaryMap<GroupId, JIRGroup>,
 }
 
 #[derive(Debug)]
@@ -112,6 +115,7 @@ impl<'a> MOIRToJIRTransformer<'a> {
                 jumplist_cache: Default::default(),
                 varnode_groups: Default::default(),
                 varnode_to_group: Default::default(),
+                jir_groups: Default::default(),
             },
         }
     }
@@ -149,9 +153,11 @@ impl<'a> MOIRToJIRTransformer<'a> {
 
         self.jir.jumplist_cache = jumplist_cache;
         // TODO: Make alignment configurable such that it can be adjusted depending on the cache line size.
-        let (varnodes, varnode_groups, varnode_to_group) = transform_varnodes(self.moir.symbol_tables.varnodes, 64)?;
-        self.jir.varnode_groups = varnode_groups;
-        self.jir.varnode_to_group = varnode_to_group;
+        let (varnodes, group_maps) = transform_varnodes(self.moir.symbol_tables.varnodes, 64)?;
+        self.jir.varnode_groups = group_maps.varnode_groups;
+        self.jir.varnode_to_group = group_maps.varnode_to_group;
+        self.jir.jir_groups = group_maps.jir_groups;
+
         self.jir.symbol_tables = JIRSymbolTables {
             spaces: transform_spaces(self.moir.symbol_tables.spaces)?,
             constructors: self.moir.symbol_tables.constructors,
@@ -235,9 +241,7 @@ fn transform_spaces(spaces: PrimaryMap<SpaceId, MOIRSpace>) -> InternalCompilerR
 /// # Notes
 /// The groups are sorted by their offset values.
 
-fn build_varnode_groups(
-    varnodes: &PrimaryMap<VarNodeId, MOIRVarNode>
-) -> (PrimaryMap<VarnodeGroupId, VarnodeGroup>, SecondaryMap<VarNodeId, Option<VarnodeGroupId>>) {
+fn build_varnode_groups(varnodes: &PrimaryMap<VarNodeId, MOIRVarNode>) -> GroupMaps {
     let mut groups = create_unsorted_groups(varnodes);
 
     // We want to sort the groups by offset
@@ -250,18 +254,31 @@ fn build_varnode_groups(
     build_maps(groups)
 }
 
-fn build_maps(
-    groups: Vec<Option<VarnodeGroup>>
-) -> (PrimaryMap<VarnodeGroupId, VarnodeGroup>, SecondaryMap<VarNodeId, Option<VarnodeGroupId>>) {
-    let mut groups_map = PrimaryMap::<VarnodeGroupId, VarnodeGroup>::default();
-    let mut varnode_to_group = SecondaryMap::<VarNodeId, Option<VarnodeGroupId>>::default();
-    for group in groups.into_iter().flatten() {
-        let group_id = groups_map.insert(group);
-        for varnode_id in &groups_map[group_id].varnodes {
+struct GroupMaps {
+    varnode_groups: PrimaryMap<VarnodeGroupId, VarnodeGroup>,
+    varnode_to_group: SecondaryMap<VarNodeId, Option<GroupId>>,
+    jir_groups: PrimaryMap<GroupId, JIRGroup>,
+}
+
+fn build_maps(groups: Vec<Option<VarnodeGroup>>) -> GroupMaps {
+    let mut varnode_groups = PrimaryMap::<VarnodeGroupId, VarnodeGroup>::default();
+    let mut varnode_to_group = SecondaryMap::<VarNodeId, Option<GroupId>>::default();
+    let mut jir_groups = PrimaryMap::<GroupId, JIRGroup>::default();
+
+    for varnode_group in groups.into_iter().flatten() {
+        let varnode_group_id = varnode_groups.insert(varnode_group);
+        let group_id = jir_groups.insert(JIRGroup::VarnodeGroup(varnode_group_id));
+
+        for varnode_id in &varnode_groups[varnode_group_id].varnodes {
             varnode_to_group[*varnode_id] = Some(group_id);
         }
     }
-    (groups_map, varnode_to_group)
+
+    GroupMaps {
+        varnode_groups,
+        varnode_to_group,
+        jir_groups,
+    }
 }
 
 /// Groups overlapping varnodes from a collection into sets (called VarnodeGroups).
@@ -349,28 +366,23 @@ fn merge_remaining_overlaps(
 fn transform_varnodes(
     mut varnodes: PrimaryMap<VarNodeId, MOIRVarNode>,
     cache_line_size: MOIRSize,
-) -> InternalCompilerResult<(
-    PrimaryMap<VarNodeId, JIRVarNode>,
-    PrimaryMap<VarnodeGroupId, VarnodeGroup>,
-    SecondaryMap<VarNodeId, Option<VarnodeGroupId>>,
-)> {
+) -> InternalCompilerResult<(PrimaryMap<VarNodeId, JIRVarNode>, GroupMaps)> {
     assert_ne!(cache_line_size, 0);
     let cache_alignment = u64::from(cache_line_size);
 
     let prev_end = varnodes.values().map(MOIRVarNode::end).max().unwrap_or(0);
     debug!("Compacting varnodes. Cache line size is {}. Varnodes occupy {} bytes.", cache_line_size, prev_end);
 
-    let (mut groups, varnode_to_group) = build_varnode_groups(&varnodes);
+    let mut group_maps = build_varnode_groups(&varnodes);
 
-    compact_varnode_groups(&mut varnodes, cache_alignment, &mut groups);
+    compact_varnode_groups(&mut varnodes, cache_alignment, &mut group_maps.varnode_groups);
 
     Ok((
         varnodes
             .into_iter()
             .map(|(ident, varnode)| (ident, varnode.into()))
             .collect(),
-        groups,
-        varnode_to_group,
+        group_maps,
     ))
 }
 

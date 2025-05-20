@@ -578,10 +578,10 @@ fn compile<JitT: MogiJit>(
     trace_jit!("unoptimized: {}", block);
 
     let optimizer_options = OptimizerOptions::default()
-        .with_enable_dse(true)
-        .with_enable_copy_coalescing(true)
-        .with_enable_constant_folding(true)
-        .with_enable_nop_elimination(true);
+        .with_enable_dse(false)
+        .with_enable_copy_coalescing(false)
+        .with_enable_constant_folding(false)
+        .with_enable_nop_elimination(false);
     Rc::make_mut(&mut block.0)
         .run_optimization_passes(
             &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(1).unwrap()),
