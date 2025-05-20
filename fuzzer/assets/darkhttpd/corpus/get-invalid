@@ -1,2 +1,6 @@
-GET /invalid.html HTTP/1.1\r\nHost: 0.0.0.0\r\nUser-Agent: curl/8.12.1\r\nAccept: */*\r\nConnection: keep-alive\r\n
+GET /invalid.html HTTP/1.1
+Host: 0.0.0.0
+User-Agent: curl/8.12.1
+Accept: */*
+Connection: keep-alive
 
