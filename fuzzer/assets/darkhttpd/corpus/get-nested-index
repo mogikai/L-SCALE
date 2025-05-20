@@ -1,0 +1,6 @@
+GET /foo/bar/index.html HTTP/1.1
+Host: 0.0.0.0
+User-Agent: curl/8.12.1
+Accept: */*
+Connection: keep-alive
+
