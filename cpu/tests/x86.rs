@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use mogi_cpu::cpu::StopReason;
 use mogi_cpu::jit::api::RuntimeError;
 use mogi_cpu::new_cpu_trait::{
@@ -7,7 +8,6 @@ use mogi_cpu::new_cpu_trait::{
 use mogi_system::components::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
 use std::num::NonZeroUsize;
-use itertools::Itertools;
 use zerocopy::IntoBytes;
 
 mod common;
@@ -383,7 +383,6 @@ fn test_psubsw_xmm() {
     assert_eq!(xmm1, values.iter().map(|x| x - x).collect::<Vec<_>>().as_slice());
 }
 
-
 #[test]
 fn test_paddusw_xmm() {
     // PADDUSW XMM1, XMM2
@@ -450,14 +449,27 @@ fn test_phaddw_xmm() {
     cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(1).unwrap()))
         .unwrap();
 
-    let xmm1: [i16; 8] = *cpu.register("XMM1").unwrap();
-    assert_eq!(xmm1, values.iter()
-        .chain(values.iter())
+    let values_iter = values
+        .iter()
+        .copied()
+        .chain(values.iter().copied())
         .tuples()
-        .map(|(a, b)| a + b)
-        .collect::<Vec<_>>().as_slice());
-}
+        .map(|(a, b)| a.saturating_add(b));
+    let chunks = values_iter.clone().chunks(values.len() / 4);
+    let chunks2 = values_iter.clone().chunks(values.len() / 4);
+    let first_iter = chunks.into_iter().step_by(2);
+    let second_iter = chunks2.into_iter().skip(1).step_by(2);
 
+    let xmm1: [i16; 8] = *cpu.register("XMM1").unwrap();
+    assert_eq!(
+        xmm1,
+        first_iter
+            .chain(second_iter)
+            .flatten()
+            .collect::<Vec<_>>()
+            .as_slice()
+    );
+}
 
 #[test]
 fn test_paddsb_xmm() {
@@ -472,7 +484,14 @@ fn test_paddsb_xmm() {
         .unwrap();
 
     let xmm1: [i8; 16] = *cpu.register("XMM1").unwrap();
-    assert_eq!(xmm1, values.iter().map(|x| x.saturating_add(*x)).collect::<Vec<_>>().as_slice());
+    assert_eq!(
+        xmm1,
+        values
+            .iter()
+            .map(|x| x.saturating_add(*x))
+            .collect::<Vec<_>>()
+            .as_slice()
+    );
 }
 
 #[test]
