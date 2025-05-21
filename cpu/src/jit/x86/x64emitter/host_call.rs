@@ -419,7 +419,7 @@ impl X64Emitter<'_> {
                 self.load_slice_pointer(GPRegister::DI, output);
                 // output length is in RSI
                 self.load_const(GPRegister::SI, output.size())?;
-                self.load_input(GPRegister::DX, GPRegister::CX, if output == input_a { input_a } else { input_b })?;
+                self.load_input(GPRegister::DX, GPRegister::CX, if output == input_a { input_b } else { input_a })?;
                 binary.impl_slice_in_out as *const c_void
             } else if input_a.map_slice_or_default(true, |s| !s.overlaps(&output))
                 && input_b.map_slice_or_default(true, |s| !s.overlaps(&output))
