@@ -18,7 +18,6 @@ use crate::sleigh::runtime::{
     DEBUG,
     ROOT_TABLE_ID,
 };
-use mogi_utilities::addresses::EVAddr;
 
 /// The decoder context for the current instruction.
 pub struct Decoder {

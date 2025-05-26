@@ -1,4 +1,3 @@
-use std::arch::x86_64::_mm256_undefined_si256;
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::path::{

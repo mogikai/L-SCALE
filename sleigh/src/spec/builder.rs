@@ -73,9 +73,7 @@ use mogi_sleigh_parser::{
 use mogi_utilities::index_map::{
     MapKey,
     PrimaryMap,
-    SecondaryMap,
 };
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::fs::OpenOptions;
@@ -83,11 +81,7 @@ use std::io::{
     BufWriter,
     Write,
 };
-use std::path::{
-    Path,
-    PathBuf,
-};
-use std::sync::RwLock;
+use std::path::Path;
 use strum_macros::Display;
 use tracing::debug;
 

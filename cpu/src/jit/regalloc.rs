@@ -426,7 +426,7 @@ where
         class: RegClass,
     ) -> JITResult<HostReg> {
         // TODO: Use lru cache to pick least recently used register to allocate to
-        let mut available_regs = self.available_registers;
+        let available_regs = self.available_registers;
         available_regs
             .into_iter()
             .filter(|r| r.class() == class)

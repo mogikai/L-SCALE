@@ -1,7 +1,3 @@
-use crate::core::Arch;
-use crate::pcode;
-use crate::sleigh::runtime::SleighData;
-use mogi_utilities::addresses::EVAddr;
 
 #[derive(Copy, Clone)]
 pub struct XorShiftRng {

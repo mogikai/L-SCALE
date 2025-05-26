@@ -1,10 +1,7 @@
 use std::collections::HashMap;
 
 use crate::spec::moir::field::FieldId;
-use crate::spec::{
-    CustomOpId,
-    ProcessorSpecification,
-};
+use crate::spec::ProcessorSpecification;
 
 pub trait ContextProvider {
     /// Set the provided context register field `name` to `value`.

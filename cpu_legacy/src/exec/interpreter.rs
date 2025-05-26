@@ -705,7 +705,7 @@ fn load<E: PcodeExecutor>(
                 }
             } else {
                 for i in 0..size {
-                    load!(dst.slice(i, 1), (addr + i), u8);
+                    load!(dst.slice(i, 1), addr + i, u8);
                 }
             }
         }

@@ -34,7 +34,6 @@ use std::fmt::{
     Formatter,
 };
 use std::rc::Rc;
-use tracing::debug;
 
 pub type MemResult<T> = Result<T, MemoryError>;
 

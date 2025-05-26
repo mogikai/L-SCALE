@@ -7,7 +7,6 @@ use crate::observers::bb_based::edge::EdgeHitCountObserver;
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::rc::Rc;
-use tracing::debug;
 
 /// This reducer keeps track of the edges that have been observed until now.
 /// If it finds a new edge that was not observed previously, the reducer will

@@ -54,7 +54,6 @@ use std::io::{
     Write,
 };
 use std::ops::Range;
-use std::sync::RwLock;
 use strum_macros::Display;
 use thiserror::Error;
 use tracing::debug;

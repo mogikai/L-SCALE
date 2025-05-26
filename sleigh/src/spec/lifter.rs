@@ -15,12 +15,8 @@ use crate::spec::jir::jcode::ContinueLifting;
 use crate::spec::jir::jumplist::MatcherResult;
 use crate::spec::jir::trace_jir;
 use mogi_utilities::addresses::EVAddr;
-use std::cell::Ref;
-use std::num::NonZeroUsize;
-use std::ptr::NonNull;
 use std::time::Instant;
 
-use super::jir::common::JIRSize;
 use super::jir::jumplist::MatchContext;
 
 impl Lifter for ProcessorSpecification {

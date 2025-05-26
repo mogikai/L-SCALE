@@ -128,7 +128,7 @@ impl CpuBuilder {
         self
     }
 
-    pub fn build(mut self) -> Result<Cpu, BuildError> {
+    pub fn build(self) -> Result<Cpu, BuildError> {
         let mut spec_config =
             get_spec_config(self.target_triple.architecture).ok_or(BuildError::UnsupportedArchitecture)?;
         let sleigh = build_sleigh(&mut spec_config)?;

@@ -9,10 +9,7 @@ use mogi_utilities::index_map::PrimaryMap;
 use mogi_utilities::new_map_key;
 
 use crate::spec::ProcessorSpecResult;
-use crate::spec::jir::basic_block::{
-    InstId,
-    TargetBasicBlockInner,
-};
+use crate::spec::jir::basic_block::TargetBasicBlockInner;
 use crate::spec::jir::jcode::JIRInstruction;
 use crate::spec::jir::values::{
     JIRSlice,

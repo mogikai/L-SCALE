@@ -1,9 +1,6 @@
 use crate::core::regs::ValueSource;
 use crate::core::CpuCore;
-use mogi_system::components::mmu::{
-    Permission,
-    MMU,
-};
+use mogi_system::components::mmu::MMU;
 use mogi_utilities::addresses::EVAddr;
 
 use crate::cpu::Cpu;

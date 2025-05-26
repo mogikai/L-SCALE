@@ -11,7 +11,6 @@ pub use crate::spec::moir::varnode::VarNodeId;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::new_map_key_8;
 use mogi_utilities::overlap::overlaps_generic;
-use serde::de::Error;
 use serde_derive::{
     Deserialize,
     Serialize,

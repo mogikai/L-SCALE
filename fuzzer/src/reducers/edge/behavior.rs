@@ -2,12 +2,8 @@ use crate::api::error::FuzzerError;
 use crate::api::observer::HasObservation;
 use crate::api::reducer::Reducer;
 use crate::core::fuzzer::SuffixBehavior;
-use crate::observers::bb_based::edge::{
-    EdgeHitCountObserver,
-    EdgeHitObserver,
-};
+use crate::observers::bb_based::edge::EdgeHitObserver;
 use std::cell::RefCell;
-use std::cmp::min;
 use std::fmt::Debug;
 use std::hash::{
     DefaultHasher,
@@ -15,10 +11,6 @@ use std::hash::{
     Hasher,
 };
 use std::rc::Rc;
-use tracing::{
-    debug,
-    trace,
-};
 
 /// This reducer reduces an edge observation to a testcase behavior. In the future it might be necessary
 /// to split this up into a `TestCaseEdgeBehavior` that is then consumed by a `TestCaseBehaviorReducer`

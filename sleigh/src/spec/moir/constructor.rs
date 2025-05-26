@@ -23,7 +23,6 @@ use crate::spec::jir::values::{
     JIRConst,
     JIRSlice,
     JIRValue,
-    VarnodeGroupId,
 };
 use crate::spec::moir::code::{
     MOIRGotoType,
@@ -50,7 +49,6 @@ use mogi_sleigh_parser::{
     ParserContext,
     SleighInterner,
 };
-use mogi_utilities::index_map::MapKey;
 use mogi_utilities::new_map_key;
 use serde_derive::{
     Deserialize,
@@ -58,7 +56,6 @@ use serde_derive::{
 };
 use std::fmt::Write;
 use std::iter::once;
-use std::process::exit;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MOIRConstructor {
@@ -525,7 +522,7 @@ impl MOIRConstructor {
                     .and_then(|resolved| match resolved {
                         JIRResolvedValue::Value(value) => Ok(value),
                         JIRResolvedValue::Reference {
-                            mut address,
+                            address,
                             space,
                             size,
                         } => {

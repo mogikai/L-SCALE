@@ -3,23 +3,13 @@
 //! Match patterns are broken down into simple mask-value checks which we can arrange
 //! hierarchically to avoid having to linearly scan through all cases.
 
-/// We need to do two passes for every constructor:
-/// * get the constructor id and execute disassembly actions
-/// * continue matching subtables
-///
-/// To avoid traversing the hierarchy twice, we store necessary information here like
-/// the remaining sublists.
-use std::cell::Cell;
 
 use super::context_stack::ContextStack;
 use super::local_resolver::JIRResolver;
-use super::values::JIRValue;
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
 use crate::spec::FieldId;
-use crate::spec::jir::common::JIRSize;
 use crate::spec::jir::trace_jir;
-use crate::spec::jir::values::JIRConst;
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::{
     ConstructorId,
@@ -27,14 +17,12 @@ use crate::spec::moir::constructor::{
 };
 use crate::spec::moir::context::ContextId;
 use crate::spec::moir::field_extractor::FieldExtractor;
-use crate::spec::moir::scope::MOIRLocalId;
 use crate::spec::moir::table::TableId;
 use fnv::FnvHashMap;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::{
     MapKey,
     PrimaryMap,
-    SecondaryMap,
 };
 use mogi_utilities::new_map_key;
 use serde_derive::{

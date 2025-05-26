@@ -4,11 +4,7 @@ use crate::spec::CustomOpId;
 use crate::spec::jir::basic_block::TargetBasicBlock;
 use bon::Builder;
 use mogi_utilities::addresses::EVAddr;
-use mogi_utilities::index_map::SecondaryMap;
-use std::cell::Ref;
 use std::num::NonZeroUsize;
-use std::ptr::NonNull;
-use std::time::Duration;
 use thiserror::Error;
 
 pub mod cache;

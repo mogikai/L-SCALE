@@ -1,9 +1,4 @@
-use std::collections::{
-    BTreeMap,
-    HashSet,
-};
-use std::mem;
-use std::rc::Rc;
+use std::collections::HashSet;
 
 use blocktable::{
     BlockInfoRef,

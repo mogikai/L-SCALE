@@ -6,14 +6,8 @@ use serde_derive::{
 use crate::compiler::InternalCompilerResult;
 use crate::spec::FieldId;
 use crate::spec::jir::trace_jir;
-use crate::spec::jir::values::{
-    JIRConst,
-    JIRValue,
-};
 
-use super::common::MOIRSize;
 use super::field::MOIRBitRange;
-use super::scope::MOIRLocalId;
 
 /// In most situations, fields can be extracted from the byte stream, but this doesn't hold for
 /// fields that come after an unconstrained or partially constrained subtable. In this case field

@@ -3,10 +3,6 @@
 //! any collected blocks.
 //!
 use std::cell::RefCell;
-use std::ops::{
-    Range,
-    RangeBounds,
-};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{
@@ -23,21 +19,14 @@ use crossbeam::channel::{
 use parking_lot::{
     Condvar,
     Mutex,
-    RwLock,
 };
-use tracing::{
-    debug,
-    trace,
-};
+use tracing::trace;
 
 use mogi_emulator::emulator::interface::meter::Meter;
 use mogi_system::components::cpu::hooks::Hooks;
 use mogi_utilities::addresses::EVAddr;
 
-use crate::api::observer::{
-    DebuggableObserve,
-    DebuggableObserver,
-};
+use crate::api::observer::DebuggableObserve;
 
 #[derive(Debug)]
 pub struct BasicBlockCollector {

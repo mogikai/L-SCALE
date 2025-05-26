@@ -12,15 +12,10 @@ use mogi_utilities::index_map::{
     PrimaryMap,
     SecondaryMap,
 };
-use mogi_utilities::new_map_key;
 
 use crate::spec::ProcessorSpecResult;
-use crate::spec::jir::jcode::JIRInstruction;
 use crate::spec::jir::jir_block::JIRBlockId;
-use crate::spec::jir::values::{
-    JIRSlice,
-    JIRValue,
-};
+use crate::spec::jir::values::JIRSlice;
 
 use super::{
     InstId,

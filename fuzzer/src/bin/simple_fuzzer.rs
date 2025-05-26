@@ -43,22 +43,17 @@ use mogi_emulator::emulator::system::clock::Clock;
 use mogi_emulator::emulator::system::fd_map::FileDescriptorMap;
 use mogi_emulator::emulator::system::filesystem::Filesystem;
 use mogi_emulator::emulator::system::hardware::unicorn::UCWrapper;
-use mogi_emulator::emulator::system::memory::{
-    MappingType,
-    Memory,
-};
+use mogi_emulator::emulator::system::memory::Memory;
 use mogi_emulator::emulator::system::prng::SeedablePrngMap;
 use mogi_emulator::emulator::system::stdio::Stdio;
 use mogi_emulator::emulator::system::task_manager::TaskManager;
 use mogi_fuzzer::io::tcp::TCP;
 use mogi_mem_legacy::mmu::MogiMMU;
 use mogi_system::components::cpu::CPU;
-use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::components::restore::Restorable;
 use mogi_system::errors::generic::GenericError;
 use mogi_utilities::error::memory::MemoryError;
 use rand::prelude::IndexedRandom;
-use rand::seq::SliceRandom;
 use tracing::debug;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -88,10 +83,10 @@ fn main() -> Result<(), GenericError> {
         .with(fmt::layer())
         .with(EnvFilter::from_env("FUZE_LOG"))
         .init();
-    let mut blocks = HashMap::<(u64, u64, u64), u64>::new();
-    let mut prev_block: u64 = 0;
-    let mut prev_block2: u64 = 0;
-    let mut total_blocks = Rc::new(RefCell::new(0));
+    let blocks = HashMap::<(u64, u64, u64), u64>::new();
+    let prev_block: u64 = 0;
+    let prev_block2: u64 = 0;
+    let total_blocks = Rc::new(RefCell::new(0));
     let pargs = Args::parse();
 
     let duration = {

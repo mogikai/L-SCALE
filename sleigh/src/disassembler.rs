@@ -4,10 +4,7 @@ use std::ops::Range;
 use mogi_utilities::addresses::EVAddr;
 use thiserror::Error;
 
-use crate::lifter::context_provider::{
-    self,
-    ContextProvider,
-};
+use crate::lifter::context_provider::ContextProvider;
 use crate::lifter::source::TargetInstructionSource;
 use crate::spec::ProcessorSpecificationError;
 

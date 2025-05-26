@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::cmp::min;
 use std::collections::{
     BTreeMap,
     HashSet,
@@ -21,11 +20,6 @@ use std::hash::{
 use std::io::{
     Read,
     Write,
-    stdin,
-};
-use std::iter::{
-    empty,
-    once,
 };
 use std::mem::take;
 use std::ops::Not;
@@ -33,7 +27,6 @@ use std::path::{
     Path,
     PathBuf,
 };
-use std::process::exit;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{
@@ -43,19 +36,10 @@ use std::sync::atomic::{
 use std::thread::sleep;
 use std::time::Duration;
 
-use bmp::{
-    Image,
-    Pixel,
-    px,
-};
-use graphviz_rust::attributes::dimen;
+use bmp::Image;
 use hilbert_curve::convert_1d_to_2d;
 use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
-use mogi_emulator::emulator::abstractions::filesystem::{
-    FSEntry,
-    FileId,
-    Mountpoint,
-};
+use mogi_emulator::emulator::abstractions::filesystem::Mountpoint;
 use mogi_emulator::emulator::abstractions::network::{
     IPAddress,
     SocketAddress,
@@ -71,7 +55,6 @@ use mogi_emulator::emulator::interface::network::tcp::{
     TCPSystemControl,
 };
 use mogi_emulator::emulator::platform::linux::kernel::task_id::TaskId;
-use mogi_emulator::emulator::system::memory::MappingType;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::error::memory::MemoryError;
 use petgraph::dot::{
@@ -106,14 +89,10 @@ use crate::api::observer::{
 };
 use crate::api::reducer::Reducer;
 use crate::observers::bb_based::bb::BlockHitObserver;
-use crate::observers::bb_based::edge::{
-    EdgeHitCountObserver,
-    EdgeHitObserver,
-};
+use crate::observers::bb_based::edge::EdgeHitCountObserver;
 use crate::observers::emulator::basic_block::BasicBlockCollector;
 use crate::reducers::bb::behavior::BasicBlockBehaviorReducer;
 use crate::reducers::edge::InterestingEdgesReducer;
-use crate::reducers::edge::behavior::EdgeBehaviorReducer;
 
 /// Testcases have an associated input and some metadata.
 /// The input data may be shared across testcases.
@@ -858,7 +837,7 @@ impl StateBuilder {
         &self,
         fuzzer_state: &FuzzerState,
     ) {
-        let mut state_file = PathBuf::from(".output/fuzzer_state.fst");
+        let state_file = PathBuf::from(".output/fuzzer_state.fst");
         create_dir_all(state_file.parent().unwrap()).unwrap();
         let mut state_file = File::options()
             .create(true)

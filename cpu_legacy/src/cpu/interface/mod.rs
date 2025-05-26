@@ -1,5 +1,4 @@
 use crate::core::Exception;
-use crate::cpu::api::CpuError;
 use crate::cpu::exception::ExceptionCode;
 use crate::cpu::exit::CpuExitStatus;
 use crate::cpu::{

@@ -8,10 +8,7 @@ use serde::{
     Serialize,
     Serializer,
 };
-use std::path::{
-    Path,
-    PathBuf,
-};
+use std::path::Path;
 
 #[derive(Debug, Serialize, Deserialize, Copy, Clone)]
 pub struct EAX1 {

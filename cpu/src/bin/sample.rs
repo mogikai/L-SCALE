@@ -10,18 +10,14 @@ use mogi_cpu::new_cpu_trait::{
 };
 use mogi_mem::PAGE_SIZE;
 use mogi_mem::mmu::MogiMMU;
-use mogi_mem::physical::page::PageData;
 use mogi_sleigh::SleighPreprocessorFactory;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
 use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_system::components::mmu::{
     MMU,
     MemoryAction,
-    PageMetaInfo,
     Permission,
-    TLB,
 };
-use mogi_utilities::addresses::HVAddr;
 use std::cell::RefCell;
 use std::env::current_dir;
 use std::fs::{

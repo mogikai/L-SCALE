@@ -8,7 +8,6 @@ use crate::physical::{
     PageId,
     PhysicalMemory,
 };
-use crate::tlb::entry::TLBEntry;
 use crate::tlb::tlb::TLB;
 use crate::{
     PAGE_SIZE,

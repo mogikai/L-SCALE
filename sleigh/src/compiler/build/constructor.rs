@@ -13,12 +13,10 @@ use crate::spec::builder::{
     CustomInterner,
     MOIRSymbolId,
 };
-use crate::spec::jir::values::ContextId;
 use crate::spec::moir::actions::{
     MOIRAction,
     MOIRPatternExpression,
 };
-use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::MOIRConstructor;
 use crate::spec::moir::display::{
     MOIRDisplay,
@@ -43,10 +41,7 @@ use crate::spec::moir::varnode::{
     MOIRReference,
     MOIRSlice,
 };
-use itertools::{
-    FoldWhile,
-    Itertools,
-};
+use itertools::Itertools;
 use matcher::{
     MatcherConjunction,
     MatcherToken,
@@ -69,15 +64,8 @@ use mogi_sleigh_parser::{
 };
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::MapKey;
-use std::collections::{
-    BTreeSet,
-    HashSet,
-};
-use std::ops::Deref;
-use tracing::{
-    debug,
-    trace,
-};
+use std::collections::HashSet;
+use tracing::debug;
 
 pub(crate) mod matcher;
 pub(crate) mod matcher_builder;

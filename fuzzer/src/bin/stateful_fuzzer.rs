@@ -9,9 +9,6 @@ use std::time::Duration;
 
 use clap::Parser;
 use core_affinity::CoreId;
-use mogi_cpu_legacy::Triple;
-use mogi_cpu_legacy::cpu::builder::CpuBuilder;
-use mogi_cpu_legacy::cpu::cpuid::CpuId;
 use mogi_emulator::LittleEndian;
 use mogi_emulator::emulator::GenericEmulator;
 use mogi_emulator::emulator::interface::emulator::Emulator;
@@ -28,7 +25,6 @@ use mogi_emulator::emulator::system::stdio::Stdio;
 use mogi_emulator::emulator::system::task_manager::TaskManager;
 use mogi_fuzzer::core::fuzzer::Fuzzer;
 use mogi_fuzzer::io::tcp::TCP;
-use mogi_mem_legacy::mmu::MogiMMU;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{

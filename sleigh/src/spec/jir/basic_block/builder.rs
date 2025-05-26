@@ -30,7 +30,6 @@ use crate::spec::{
 use mogi_utilities::addresses::EVAddr;
 use std::rc::Rc;
 
-use super::optimizer::OptimizerOptions;
 
 /// A builder for constructing `TargetBasicBlock` structures.
 ///
