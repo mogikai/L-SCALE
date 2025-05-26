@@ -2,6 +2,7 @@ use self::context_provider::ContextProvider;
 use crate::lifter::source::TargetInstructionSource;
 use crate::spec::CustomOpId;
 use crate::spec::jir::basic_block::TargetBasicBlock;
+use bon::Builder;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::SecondaryMap;
 use std::cell::Ref;
@@ -34,24 +35,11 @@ pub enum LifterError {
     NoMatch(Vec<u8>),
 }
 
+#[derive(Builder)]
 pub struct LifterConfig<'a, D: BlockEndingOpDecider> {
     custom_op_decider: &'a D,
     pub max_instructions: Option<NonZeroUsize>,
     pub stop_addr: Option<EVAddr>,
-}
-
-impl<'a, D: BlockEndingOpDecider> LifterConfig<'a, D> {
-    pub fn new(
-        custom_op_decider: &'a D,
-        max_instructions: Option<NonZeroUsize>,
-        stop_addr: Option<EVAddr>,
-    ) -> Self {
-        Self {
-            custom_op_decider,
-            max_instructions,
-            stop_addr,
-        }
-    }
 }
 
 impl<T: BlockEndingOpDecider> BlockEndingOpDecider for LifterConfig<'_, T> {

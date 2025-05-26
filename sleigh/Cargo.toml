@@ -21,6 +21,7 @@ brotli = "7.0.0"
 mogi_sleigh_parser = { path = "../sleigh_parser", version = "*" }
 itertools = "0.14.0"
 addr_align = "0.1.0"
+bon = "3.6.3"
 
 [features]
 trace_build = []

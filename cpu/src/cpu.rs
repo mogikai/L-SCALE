@@ -342,14 +342,14 @@ where
                 continue;
             }
 
-            let config = LifterConfig::new(
-                &*jit,
-                instr_limit.map(|limit| {
+            let config = LifterConfig::builder()
+                .custom_op_decider(&*jit)
+                .maybe_max_instructions(instr_limit.map(|limit| {
                     NonZeroUsize::new(limit.get().saturating_sub(translated_instr_count))
                         .expect("We should have aborted before this happens")
-                }),
-                stop_addr,
-            );
+                }))
+                .maybe_stop_addr(stop_addr)
+                .build();
 
             let block = self.processor_specification.borrow().lift_block(
                 &*mmu,
