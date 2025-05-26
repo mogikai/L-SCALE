@@ -5,16 +5,16 @@ use mogi_cpu::jit::api::{
 };
 use mogi_cpu::jit::x86::X86MogiJit;
 use mogi_cpu::new_cpu_trait::CPU;
-use mogi_mem::mmu::MogiMMU;
 use mogi_mem::PAGE_SIZE;
-use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
-use mogi_sleigh::compiler::SleighCompilerResult;
-use mogi_sleigh::spec::ProcessorSpecification;
+use mogi_mem::mmu::MogiMMU;
 use mogi_sleigh::SleighPreprocessorFactory;
+use mogi_sleigh::compiler::SleighCompilerResult;
+use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
+use mogi_sleigh::spec::ProcessorSpecification;
 use mogi_system::components::mmu::{
+    MMU,
     MemoryAction,
     Permission,
-    MMU,
 };
 use std::cell::RefCell;
 use std::path::{

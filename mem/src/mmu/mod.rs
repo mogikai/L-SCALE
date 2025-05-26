@@ -444,8 +444,10 @@ mod test {
     use crate::PAGE_SIZE;
     use crate::mmu::MogiMMU;
     use addr_align::Align;
+    use mogi_system::components::mmu::tlb_entry::TLBEntry;
     use mogi_system::components::mmu::{
-        tlb_entry::TLBEntry, Permission, MMU
+        MMU,
+        Permission,
     };
     use mogi_utilities::addresses::EPAddr;
 

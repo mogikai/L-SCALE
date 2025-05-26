@@ -1,16 +1,22 @@
 use std::ops::Range;
 
-use dfa::{LocalSliceId, ReferencedSlices};
-use fnv::{FnvHashMap, FnvHashSet};
+use dfa::{
+    LocalSliceId,
+    ReferencedSlices,
+};
+use fnv::{
+    FnvHashMap,
+    FnvHashSet,
+};
 use mogi_utilities::index_map::{
     PrimaryMap,
     SecondaryMap,
 };
 use mogi_utilities::new_map_key;
 
-use crate::spec::jir::jir_block::JIRBlockId;
 use crate::spec::ProcessorSpecResult;
 use crate::spec::jir::jcode::JIRInstruction;
+use crate::spec::jir::jir_block::JIRBlockId;
 use crate::spec::jir::values::{
     JIRSlice,
     JIRValue,
@@ -31,7 +37,10 @@ pub struct OptimizerOptions {
 }
 
 impl OptimizerOptions {
-    pub fn with_enable_dse(mut self, enable_dse: bool) -> Self {
+    pub fn with_enable_dse(
+        mut self,
+        enable_dse: bool,
+    ) -> Self {
         self.enable_dse = enable_dse;
         self
     }

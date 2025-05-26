@@ -48,6 +48,7 @@ use mogi_emulator::emulator::system::memory::{
     Memory,
 };
 use mogi_emulator::emulator::system::prng::SeedablePrngMap;
+use mogi_emulator::emulator::system::stdio::Stdio;
 use mogi_emulator::emulator::system::task_manager::TaskManager;
 use mogi_fuzzer::io::tcp::TCP;
 use mogi_mem_legacy::mmu::MogiMMU;
@@ -65,7 +66,6 @@ use tracing_subscriber::{
     EnvFilter,
     fmt,
 };
-use mogi_emulator::emulator::system::stdio::Stdio;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

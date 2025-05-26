@@ -13,6 +13,11 @@ use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
 use crate::emulator::platform::linux::kernel::socket::Optval;
 use crate::emulator::system::fd_map::FileDescriptor;
 use crate::emulator::system::filesystem::Stat;
+use mogi_system::components::restore::Restorable;
+use mogi_system::errors::generic::{
+    GenericError,
+    GenericErrorKind,
+};
 use std::cell::{
     Ref,
     RefCell,
@@ -24,8 +29,6 @@ use tracing::{
     info,
     trace,
 };
-use mogi_system::components::restore::Restorable;
-use mogi_system::errors::generic::{GenericError, GenericErrorKind};
 
 #[derive(Debug, Default, Clone)]
 pub struct StdioSnapshot {

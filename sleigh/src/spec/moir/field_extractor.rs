@@ -4,12 +4,12 @@ use serde_derive::{
 };
 
 use crate::compiler::InternalCompilerResult;
+use crate::spec::FieldId;
 use crate::spec::jir::trace_jir;
 use crate::spec::jir::values::{
     JIRConst,
     JIRValue,
 };
-use crate::spec::FieldId;
 
 use super::common::MOIRSize;
 use super::field::MOIRBitRange;

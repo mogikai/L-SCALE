@@ -1,6 +1,8 @@
 use mogi_sleigh::spec::jir::basic_block::InstId;
 use mogi_sleigh::spec::jir::values::{
-    JIRConst, JIRSlice, JIRValue
+    JIRConst,
+    JIRSlice,
+    JIRValue,
 };
 
 use crate::jit::api::JITResult;

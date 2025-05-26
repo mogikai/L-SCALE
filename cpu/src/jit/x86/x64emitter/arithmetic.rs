@@ -1,2 +1,2 @@
-mod integer;
 mod float;
+mod integer;

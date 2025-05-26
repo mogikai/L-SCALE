@@ -9,6 +9,7 @@ use crate::emulator::system::fd_map::{
 use crate::emulator::system::filesystem::Filesystem;
 use crate::emulator::system::memory::Memory;
 use crate::emulator::system::prng::SeedablePrngMap;
+use crate::emulator::system::stdio::Stdio;
 use crate::emulator::system::task_manager::TaskManager;
 use byteorder::ByteOrder;
 use mogi_system::components::cpu::CPU;
@@ -22,7 +23,6 @@ use rand::{
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::rc::Rc;
-use crate::emulator::system::stdio::Stdio;
 
 pub trait SystemControl: Clone {
     type TaskIdT: Ord + Copy + Clone + Default + 'static;

@@ -37,9 +37,7 @@ fn test_fless_f32_const_const() {
         let input_a_jirval: JIRValue = JIRConst::new(input_a.to_bits().into(), 4).into();
         let input_b_jirval: JIRValue = JIRConst::new(input_b.to_bits().into(), 4).into();
 
-        let instructions = vec![
-            jinst!(al = input_a_jirval f< input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = input_a_jirval f< input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -72,9 +70,7 @@ fn test_fless_f64_const_const() {
         let input_a_jirval: JIRValue = JIRConst::new(input_a.to_bits().into(), 8).into();
         let input_b_jirval: JIRValue = JIRConst::new(input_b.to_bits().into(), 8).into();
 
-        let instructions = vec![
-            jinst!(al = input_a_jirval f< input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = input_a_jirval f< input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -107,9 +103,7 @@ fn test_flesseq_f32_const_const() {
         let input_a_jirval: JIRValue = JIRConst::new(input_a.to_bits().into(), 4).into();
         let input_b_jirval: JIRValue = JIRConst::new(input_b.to_bits().into(), 4).into();
 
-        let instructions = vec![
-            jinst!(al = input_a_jirval f<= input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = input_a_jirval f<= input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -142,9 +136,7 @@ fn test_flesseq_f64_const_const() {
         let input_a_jirval: JIRValue = JIRConst::new(input_a.to_bits().into(), 8).into();
         let input_b_jirval: JIRValue = JIRConst::new(input_b.to_bits().into(), 8).into();
 
-        let instructions = vec![
-            jinst!(al = input_a_jirval f<= input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = input_a_jirval f<= input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -177,9 +169,7 @@ fn test_fgreater_f32_const_const() {
         let input_a_jirval: JIRValue = JIRConst::new(input_a.to_bits().into(), 4).into();
         let input_b_jirval: JIRValue = JIRConst::new(input_b.to_bits().into(), 4).into();
 
-        let instructions = vec![
-            jinst!(al = input_a_jirval f> input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = input_a_jirval f> input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -212,9 +202,7 @@ fn test_fgreater_f64_const_const() {
         let input_a_jirval: JIRValue = JIRConst::new(input_a.to_bits().into(), 8).into();
         let input_b_jirval: JIRValue = JIRConst::new(input_b.to_bits().into(), 8).into();
 
-        let instructions = vec![
-            jinst!(al = input_a_jirval f> input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = input_a_jirval f> input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -247,9 +235,7 @@ fn test_fgreatereq_f32_const_const() {
         let input_a_jirval: JIRValue = JIRConst::new(input_a.to_bits().into(), 4).into();
         let input_b_jirval: JIRValue = JIRConst::new(input_b.to_bits().into(), 4).into();
 
-        let instructions = vec![
-            jinst!(al = input_a_jirval f>= input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = input_a_jirval f>= input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -282,9 +268,7 @@ fn test_fgreatereq_f64_const_const() {
         let input_a_jirval: JIRValue = JIRConst::new(input_a.to_bits().into(), 8).into();
         let input_b_jirval: JIRValue = JIRConst::new(input_b.to_bits().into(), 8).into();
 
-        let instructions = vec![
-            jinst!(al = input_a_jirval f>= input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = input_a_jirval f>= input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -317,9 +301,7 @@ fn test_feq_f32_const_const() {
         let input_a_jirval: JIRValue = JIRConst::new(input_a.to_bits().into(), 4).into();
         let input_b_jirval: JIRValue = JIRConst::new(input_b.to_bits().into(), 4).into();
 
-        let instructions = vec![
-            jinst!(al = input_a_jirval f!= input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = input_a_jirval f!= input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -352,9 +334,7 @@ fn test_feq_f64_const_const() {
         let input_a_jirval: JIRValue = JIRConst::new(input_a.to_bits().into(), 8).into();
         let input_b_jirval: JIRValue = JIRConst::new(input_b.to_bits().into(), 8).into();
 
-        let instructions = vec![
-            jinst!(al = input_a_jirval f== input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = input_a_jirval f== input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -387,9 +367,7 @@ fn test_fneq_f32_const_const() {
         let input_a_jirval: JIRValue = JIRConst::new(input_a.to_bits().into(), 4).into();
         let input_b_jirval: JIRValue = JIRConst::new(input_b.to_bits().into(), 4).into();
 
-        let instructions = vec![
-            jinst!(al = input_a_jirval f!= input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = input_a_jirval f!= input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -422,9 +400,7 @@ fn test_fneq_f64_const_const() {
         let input_a_jirval: JIRValue = JIRConst::new(input_a.to_bits().into(), 8).into();
         let input_b_jirval: JIRValue = JIRConst::new(input_b.to_bits().into(), 8).into();
 
-        let instructions = vec![
-            jinst!(al = input_a_jirval f!= input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = input_a_jirval f!= input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -459,9 +435,7 @@ fn test_fless_f32_reg_reg() {
         set_slice(&mut *context, xmm0_da, input_a.to_bits());
         set_slice(&mut *context, xmm1_da, input_b.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_da f< xmm1_da)
-        ];
+        let instructions = vec![jinst!(al = xmm0_da f< xmm1_da)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -500,9 +474,7 @@ fn test_fless_f64_reg_reg() {
         set_slice(&mut *context, xmm0_qa, input_a.to_bits());
         set_slice(&mut *context, xmm1_qa, input_b.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_qa f< xmm1_qa)
-        ];
+        let instructions = vec![jinst!(al = xmm0_qa f< xmm1_qa)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -541,9 +513,7 @@ fn test_flesseq_f32_reg_reg() {
         set_slice(&mut *context, xmm0_da, input_a.to_bits());
         set_slice(&mut *context, xmm1_da, input_b.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_da f<= xmm1_da)
-        ];
+        let instructions = vec![jinst!(al = xmm0_da f<= xmm1_da)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -582,9 +552,7 @@ fn test_flesseq_f64_reg_reg() {
         set_slice(&mut *context, xmm0_qa, input_a.to_bits());
         set_slice(&mut *context, xmm1_qa, input_b.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_qa f<= xmm1_qa)
-        ];
+        let instructions = vec![jinst!(al = xmm0_qa f<= xmm1_qa)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -623,9 +591,7 @@ fn test_fgreater_f32_reg_reg() {
         set_slice(&mut *context, xmm0_da, input_a.to_bits());
         set_slice(&mut *context, xmm1_da, input_b.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_da f> xmm1_da)
-        ];
+        let instructions = vec![jinst!(al = xmm0_da f> xmm1_da)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -664,9 +630,7 @@ fn test_fgreater_f64_reg_reg() {
         set_slice(&mut *context, xmm0_qa, input_a.to_bits());
         set_slice(&mut *context, xmm1_qa, input_b.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_qa f> xmm1_qa)
-        ];
+        let instructions = vec![jinst!(al = xmm0_qa f> xmm1_qa)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -705,9 +669,7 @@ fn test_fgreatereq_f32_reg_reg() {
         set_slice(&mut *context, xmm0_da, input_a.to_bits());
         set_slice(&mut *context, xmm1_da, input_b.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_da f>= xmm1_da)
-        ];
+        let instructions = vec![jinst!(al = xmm0_da f>= xmm1_da)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -746,9 +708,7 @@ fn test_fgreatereq_f64_reg_reg() {
         set_slice(&mut *context, xmm0_qa, input_a.to_bits());
         set_slice(&mut *context, xmm1_qa, input_b.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_qa f>= xmm1_qa)
-        ];
+        let instructions = vec![jinst!(al = xmm0_qa f>= xmm1_qa)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -787,9 +747,7 @@ fn test_feq_f32_reg_reg() {
         set_slice(&mut *context, xmm0_da, input_a.to_bits());
         set_slice(&mut *context, xmm1_da, input_b.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_da f== xmm1_da)
-        ];
+        let instructions = vec![jinst!(al = xmm0_da f== xmm1_da)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -828,9 +786,7 @@ fn test_feq_f64_reg_reg() {
         set_slice(&mut *context, xmm0_qa, input_a.to_bits());
         set_slice(&mut *context, xmm1_qa, input_b.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_qa f== xmm1_qa)
-        ];
+        let instructions = vec![jinst!(al = xmm0_qa f== xmm1_qa)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -869,9 +825,7 @@ fn test_fneq_f32_reg_reg() {
         set_slice(&mut *context, xmm0_da, input_a.to_bits());
         set_slice(&mut *context, xmm1_da, input_b.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_da f>= xmm1_da)
-        ];
+        let instructions = vec![jinst!(al = xmm0_da f>= xmm1_da)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -910,9 +864,7 @@ fn test_fneq_f64_reg_reg() {
         set_slice(&mut *context, xmm0_qa, input_a.to_bits());
         set_slice(&mut *context, xmm1_qa, input_b.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_qa f!= xmm1_qa)
-        ];
+        let instructions = vec![jinst!(al = xmm0_qa f!= xmm1_qa)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -951,9 +903,7 @@ fn test_fless_f32_reg_const() {
 
         set_slice(&mut *context, xmm0_da, input_a.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_da f< input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = xmm0_da f< input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -990,9 +940,7 @@ fn test_fless_f64_reg_const() {
 
         set_slice(&mut *context, xmm0_qa, input_a.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_qa f< input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = xmm0_qa f< input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -1029,9 +977,7 @@ fn test_flesseq_f32_reg_const() {
 
         set_slice(&mut *context, xmm0_da, input_a.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_da f<= input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = xmm0_da f<= input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -1068,9 +1014,7 @@ fn test_flesseq_f64_reg_const() {
 
         set_slice(&mut *context, xmm0_qa, input_a.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_qa f<= input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = xmm0_qa f<= input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -1107,9 +1051,7 @@ fn test_fgreater_f32_reg_const() {
 
         set_slice(&mut *context, xmm0_da, input_a.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_da f> input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = xmm0_da f> input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -1146,9 +1088,7 @@ fn test_fgreater_f64_reg_const() {
 
         set_slice(&mut *context, xmm0_qa, input_a.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_qa f> input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = xmm0_qa f> input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -1185,9 +1125,7 @@ fn test_fgreatereq_f32_reg_const() {
 
         set_slice(&mut *context, xmm0_da, input_a.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_da f>= input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = xmm0_da f>= input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -1224,9 +1162,7 @@ fn test_fgreatereq_f64_reg_const() {
 
         set_slice(&mut *context, xmm0_qa, input_a.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_qa f>= input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = xmm0_qa f>= input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -1263,9 +1199,7 @@ fn test_feq_f32_reg_const() {
 
         set_slice(&mut *context, xmm0_da, input_a.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_da f== input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = xmm0_da f== input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -1302,9 +1236,7 @@ fn test_feq_f64_reg_const() {
 
         set_slice(&mut *context, xmm0_qa, input_a.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_qa f== input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = xmm0_qa f== input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -1341,9 +1273,7 @@ fn test_fneq_f32_reg_const() {
 
         set_slice(&mut *context, xmm0_da, input_a.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_da f!= input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = xmm0_da f!= input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 
@@ -1380,9 +1310,7 @@ fn test_fneq_f64_reg_const() {
 
         set_slice(&mut *context, xmm0_qa, input_a.to_bits());
 
-        let instructions = vec![
-            jinst!(al = xmm0_qa f!= input_b_jirval)
-        ];
+        let instructions = vec![jinst!(al = xmm0_qa f!= input_b_jirval)];
 
         exec_instructions(&mut jit, &mut context, instructions);
 

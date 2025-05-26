@@ -129,7 +129,10 @@ impl X64Emitter<'_> {
 }
 
 impl RoundingMode {
-    fn round(&self, input: JIRConst) -> JIRConst {
+    fn round(
+        &self,
+        input: JIRConst,
+    ) -> JIRConst {
         let size = input.size();
 
         match size {
@@ -151,7 +154,7 @@ impl RoundingMode {
                     RoundingMode::Round => JIRConst::new(value.round().to_bits().into(), 8),
                 }
             }
-            size => todo!("Unsupported size {size}")
+            size => todo!("Unsupported size {size}"),
         }
     }
 }

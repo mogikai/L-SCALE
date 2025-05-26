@@ -21,6 +21,7 @@ use mogi_emulator::emulator::system::System;
 use mogi_emulator::emulator::system::clock::Clock;
 use mogi_emulator::emulator::system::fd_map::FileDescriptorMap;
 use mogi_emulator::emulator::system::filesystem::Filesystem;
+use mogi_emulator::emulator::system::hardware::unicorn::UCWrapper;
 use mogi_emulator::emulator::system::memory::Memory;
 use mogi_emulator::emulator::system::prng::SeedablePrngMap;
 use mogi_emulator::emulator::system::stdio::Stdio;
@@ -34,7 +35,6 @@ use tracing_subscriber::{
     EnvFilter,
     fmt,
 };
-use mogi_emulator::emulator::system::hardware::unicorn::UCWrapper;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

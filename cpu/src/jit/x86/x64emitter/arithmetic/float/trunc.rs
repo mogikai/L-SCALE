@@ -1,6 +1,8 @@
 use mogi_sleigh::spec::jir::basic_block::InstId;
 use mogi_sleigh::spec::jir::values::{
-    JIRConst, JIRSlice, JIRValue
+    JIRConst,
+    JIRSlice,
+    JIRValue,
 };
 
 use crate::jit::api::JITResult;
@@ -57,17 +59,28 @@ impl X64Emitter<'_> {
                 let result_const = match in_size {
                     4 => {
                         // single-precision truncate
-                        JIRConst::new(f32::from_bits(input.value().try_into().expect("This must fit")).trunc().to_bits().into(), out_size)
+                        JIRConst::new(
+                            f32::from_bits(input.value().try_into().expect("This must fit"))
+                                .trunc()
+                                .to_bits()
+                                .into(),
+                            out_size,
+                        )
                     }
                     8 => {
                         // double-precision truncate
-                        JIRConst::new(f64::from_bits(input.value().try_into().expect("This must fit")).trunc().to_bits().into(), out_size)
+                        JIRConst::new(
+                            f64::from_bits(input.value().try_into().expect("This must fit"))
+                                .trunc()
+                                .to_bits()
+                                .into(),
+                            out_size,
+                        )
                     }
-                    size => todo!("Unsupported input size {in_size}")
+                    size => todo!("Unsupported input size {in_size}"),
                 };
 
                 self.load_const(output_reg, result_const)?;
-
             }
             JIRValue::Slice(input) => {
                 let Allocation::Register(input_reg) = self.allocations.get_allocation(inst, 1) else {

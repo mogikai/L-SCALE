@@ -90,8 +90,18 @@ fn main() {
     let file_descriptor_map = FileDescriptorMap::new();
     let tcp = Rc::new(RefCell::new(TCP::new()));
     let stdio = Rc::new(RefCell::new(Stdio::new(true)));
-    let system =
-        System::new(cpu.clone(), mmu, memory, filesystem, clock, prng_map, file_descriptor_map, task_manager, tcp.clone(), stdio);
+    let system = System::new(
+        cpu.clone(),
+        mmu,
+        memory,
+        filesystem,
+        clock,
+        prng_map,
+        file_descriptor_map,
+        task_manager,
+        tcp.clone(),
+        stdio,
+    );
 
     let initial_task = LinuxKernelTask::new(system.clone(), 1337, 1);
 

@@ -1,9 +1,15 @@
-use std::{fmt::Display, ops::Range};
+use std::fmt::Display;
+use std::ops::Range;
 
 use mogi_utilities::addresses::EVAddr;
 use thiserror::Error;
 
-use crate::{lifter::{context_provider::{self, ContextProvider}, source::TargetInstructionSource}, spec::ProcessorSpecificationError};
+use crate::lifter::context_provider::{
+    self,
+    ContextProvider,
+};
+use crate::lifter::source::TargetInstructionSource;
+use crate::spec::ProcessorSpecificationError;
 
 pub type DisassemblerResult<T = ()> = Result<T, DisassemblerError>;
 
@@ -12,7 +18,7 @@ pub enum DisassemblerError {
     #[error("An unknown error occurred")]
     Unknown,
     #[error("The processor spec encountered an error")]
-    ProcessorSpecError(#[from] ProcessorSpecificationError)
+    ProcessorSpecError(#[from] ProcessorSpecificationError),
 }
 
 #[derive(Debug)]
@@ -23,13 +29,20 @@ pub struct DisassembledInstruction {
 }
 
 impl DisassembledInstruction {
-    pub fn new(addr: EVAddr, size: usize, display: String) -> Self {
+    pub fn new(
+        addr: EVAddr,
+        size: usize,
+        display: String,
+    ) -> Self {
         Self { addr, size, display }
     }
 }
 
 impl Display for DisassembledInstruction {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
         write!(f, "0x{:08X}  {:02}   {}", self.addr, self.size, self.display)
     }
 }
@@ -60,6 +73,6 @@ pub trait Disassembler {
         &self,
         source: &S,
         context_provider: &mut C,
-        addr_range: Range<EVAddr>
+        addr_range: Range<EVAddr>,
     ) -> DisassemblerResult<Vec<DisassembledInstruction>>;
 }

@@ -17,8 +17,8 @@ mod test;
 use dynasmrt::x64::X64Relocation;
 use either::Either;
 pub use mmu::TlbMissCallback;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::marker::PhantomData;
 use std::ops::Range;
 use tracing::trace;
@@ -48,6 +48,7 @@ use crate::jit::host::register::{
     HostRegSet,
     RegClass,
 };
+use crate::jit::regalloc::RegisterAllocator;
 use crate::jit::regalloc::requirements::{
     EmitterAllocRequirements,
     OperandRequest,
@@ -58,14 +59,13 @@ use crate::jit::regalloc::result::{
     AllocatorResult,
     LoadSpillDirective,
 };
-use crate::jit::regalloc::RegisterAllocator;
 use crate::jit::trace_jit;
 use crate::jit::x86::alloc_requirement::AllocRequirement;
 use crate::jit::x86::{
-    assemble,
     CustomOpImplKind,
     X86ExtraEmitterInfo,
     X86GlobalContext,
+    assemble,
 };
 pub use host_call::CustomOpCallback;
 use mogi_sleigh::spec::jir::basic_block::{

@@ -8,6 +8,7 @@ use crate::physical::{
     PageId,
     PhysicalMemory,
 };
+use crate::tlb::entry::TLBEntry;
 use crate::tlb::tlb::TLB;
 use crate::{
     PAGE_SIZE,
@@ -34,7 +35,6 @@ use std::fmt::{
 };
 use std::rc::Rc;
 use tracing::debug;
-use crate::tlb::entry::TLBEntry;
 
 pub type MemResult<T> = Result<T, MemoryError>;
 
@@ -453,8 +453,11 @@ mod test {
     use crate::PAGE_SIZE;
     use crate::mmu::MogiMMU;
     use addr_align::Align;
+    use mogi_system::components::mmu::tlb_entry::TLBEntry;
     use mogi_system::components::mmu::{
-        tlb_entry::TLBEntry, Permission, MMU, TLB
+        MMU,
+        Permission,
+        TLB,
     };
     use mogi_utilities::addresses::EPAddr;
 

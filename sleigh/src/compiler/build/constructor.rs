@@ -409,7 +409,8 @@ impl SleighCompiler {
                         match bytes_consumed {
                             Some(bytes_consumed) => {
                                 // field used and fixed offset
-                                let fe = FieldExtractor::new(*field_id, bytes_consumed.into(), field.bits, field.signed);
+                                let fe =
+                                    FieldExtractor::new(*field_id, bytes_consumed.into(), field.bits, field.signed);
                                 matcher.static_field_extractors.push(fe);
                             }
                             None => {

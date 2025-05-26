@@ -1,13 +1,13 @@
-use mogi_system::components::mmu::{
-    MMU,
-    MemoryAction,
-};
-use mogi_system::errors::cpu::CPUError;
 use crate::emulator::abstractions::kernel_task::KernelTask;
 use crate::emulator::platform::linux::fd::FileDescriptorData;
 use crate::emulator::platform::linux::kernel::fs::FileData;
 use crate::emulator::platform::linux::kernel::sys_component_mut;
 use crate::emulator::system::fd_map::FileDescriptor;
+use mogi_system::components::mmu::{
+    MMU,
+    MemoryAction,
+};
+use mogi_system::errors::cpu::CPUError;
 use mogi_utilities::addresses::EVAddr;
 use tracing::{
     debug,
@@ -63,7 +63,7 @@ where
                 .borrow_mut()
                 .translate_vaddr(current_task.task_id(), addr)
                 .ok()
-                // TODO COW (find out if mapping did exist and match permissions)
+            // TODO COW (find out if mapping did exist and match permissions)
         }))
         .map_err(|_| SchedulerError::CPUError(CPUError::Unknown))?;
 

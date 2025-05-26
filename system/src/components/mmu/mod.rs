@@ -1,6 +1,8 @@
 pub mod tlb;
 pub mod tlb_entry;
 
+use crate::components::mmu::tlb_entry::TLBEntry;
+use bitflags::bitflags;
 use mogi_utilities::addresses::{
     EPAddr,
     EVAddr,
@@ -8,8 +10,6 @@ use mogi_utilities::addresses::{
 };
 use mogi_utilities::error::memory::MemoryError;
 use std::ops::BitAnd;
-use bitflags::bitflags;
-use crate::components::mmu::tlb_entry::TLBEntry;
 // TODO: Extract memory error from utilities into system crate?
 
 pub type MmuResult<T> = Result<T, MemoryError>;

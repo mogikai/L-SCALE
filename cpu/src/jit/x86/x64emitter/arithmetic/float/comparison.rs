@@ -382,7 +382,7 @@ impl FloatComp {
                     FloatComp::GreaterEq => input_a >= input_b,
                 }
             }
-            size => todo!("Unsupported size {size}")
+            size => todo!("Unsupported size {size}"),
         };
 
         match result {

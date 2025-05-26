@@ -108,7 +108,9 @@ impl<'a> ContextStack<'a> {
         &self,
         field_id: FieldId,
     ) -> ProcessorSpecResult<u128> {
-        let field = self.context_fields[field_id].as_ref().expect("This must be set");
+        let field = self.context_fields[field_id]
+            .as_ref()
+            .expect("This must be set");
         let cid = match field.parent {
             MOIRFieldParent::Token(_) => panic!("We only store context fields"),
             MOIRFieldParent::Context(cid) => cid,

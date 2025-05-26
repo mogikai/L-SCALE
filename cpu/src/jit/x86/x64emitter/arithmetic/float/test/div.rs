@@ -5,7 +5,12 @@ use mogi_sleigh::spec::jir::values::{
 };
 
 use crate::jit::x86::test::{
-    exec_instructions, get_reg_slice, get_slice_value, get_slice_value_by_name, set_slice, setup
+    exec_instructions,
+    get_reg_slice,
+    get_slice_value,
+    get_slice_value_by_name,
+    set_slice,
+    setup,
 };
 
 #[test]

@@ -1,15 +1,15 @@
+use crate::emulator::system::hardware::unicorn::UCWrapper;
 use crate::emulator::system::hardware::unicorn::cpu::cpu_error_from_uc_error;
 use crate::emulator::system::hardware::unicorn::hooks::mem_type_to_memory_action;
-use crate::emulator::system::hardware::unicorn::UCWrapper;
 use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::components::mmu::tlb_entry::TLBEntry;
 use mogi_system::components::mmu::{
+    MMU,
     MemoryAction,
     MmuResult,
     PageFaultCallback,
     PageMetaInfo,
     Permission,
-    MMU,
     TLB,
 };
 use mogi_utilities::addresses::{
@@ -22,13 +22,13 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use tracing::trace;
 use unicorn_engine::unicorn_const::{
-    uc_error,
     MemType,
+    uc_error,
 };
 use unicorn_engine::{
-    unicorn_const as uc_const,
     HookType,
     Unicorn,
+    unicorn_const as uc_const,
 };
 
 #[derive(Debug)]

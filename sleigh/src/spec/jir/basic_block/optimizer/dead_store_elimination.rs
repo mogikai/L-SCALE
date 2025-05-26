@@ -4,8 +4,8 @@
 //! Varnodes that have not been read before the end of the block must always be
 //! kept, since we don't know if they will be accessed later on.
 
-use crate::spec::{jir::basic_block::TargetBasicBlockInner, ProcessorSpecResult};
-
+use crate::spec::ProcessorSpecResult;
+use crate::spec::jir::basic_block::TargetBasicBlockInner;
 
 impl TargetBasicBlockInner {
     pub(super) fn eliminate_dead_stores(&mut self) -> ProcessorSpecResult {

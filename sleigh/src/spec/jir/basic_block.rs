@@ -1,7 +1,7 @@
 pub mod builder;
 mod display;
-pub mod optimizer;
 pub(crate) mod instruction;
+pub mod optimizer;
 
 use crate::spec::jir::basic_block::instruction::JIRTempId;
 use crate::spec::jir::jcode::{
@@ -31,7 +31,10 @@ pub type InstId = usize;
 pub struct TargetBasicBlock(pub Rc<TargetBasicBlockInner>);
 
 impl TargetBasicBlock {
-    pub fn clone_with_instructions(&self, jir_instructions: Vec<JIRInstruction>) -> TargetBasicBlock {
+    pub fn clone_with_instructions(
+        &self,
+        jir_instructions: Vec<JIRInstruction>,
+    ) -> TargetBasicBlock {
         let mut slf = self.0.deref().clone();
         slf.jir_instructions = jir_instructions;
         Self(Rc::new(slf))

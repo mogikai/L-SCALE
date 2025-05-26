@@ -1,5 +1,8 @@
 use std::any::Any;
-use std::cell::{RefCell, RefMut};
+use std::cell::{
+    RefCell,
+    RefMut,
+};
 use std::fmt::{
     Debug,
     Formatter,
@@ -89,6 +92,8 @@ macro_rules! sys_component_mut {
 }
 
 use crate::emulator::platform::linux::kernel::fs::fd_ops::FileOps;
+use crate::emulator::system::hardware::unicorn::UCWrapper;
+use crate::emulator::system::memory::Memory;
 use crate::emulator::system::stdio::{
     StdInputOps,
     StdOutputOps,
@@ -108,8 +113,6 @@ pub(super) use {
     sys_component,
     sys_component_mut,
 };
-use crate::emulator::system::hardware::unicorn::UCWrapper;
-use crate::emulator::system::memory::Memory;
 
 /// The kernel task object does not contain any state.
 /// Any state must be stored in the system struct that
