@@ -45,3 +45,16 @@ impl Debug for TLB {
         write!(f, "\n}}")
     }
 }
+
+impl Debug for TLBEntry {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        if self.tag == u64::MAX {
+            write!(f, "E")
+        } else {
+            write!(f, "{:X}->{:?}", self.tag, self.target.unwrap())
+        }
+    }
+}

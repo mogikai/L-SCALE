@@ -1,4 +1,5 @@
 mod debug;
+pub mod display;
 pub mod entry;
 
 use crate::tlb::entry::TLBEntry;
@@ -114,22 +115,6 @@ pub struct TLB {
 pub enum AccessType {
     Load,
     Store,
-}
-
-impl Display for AccessType {
-    fn fmt(
-        &self,
-        f: &mut Formatter<'_>,
-    ) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                AccessType::Load => "load",
-                AccessType::Store => "store",
-            }
-        )
-    }
 }
 
 impl mogi_system::components::mmu::TLB for TLB {
