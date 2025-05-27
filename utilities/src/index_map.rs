@@ -165,7 +165,7 @@ macro_rules! map_key_trait {
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PrimaryMap<K: MapKey, V> {
-    data: Vec<V>,
+   data: Vec<V>,
     phantom_data: PhantomData<K>,
 }
 

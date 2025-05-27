@@ -18,6 +18,7 @@ use crate::spec::jir::jir_block::{
     JIRBlockId,
 };
 use crate::spec::jir::values::{
+    GroupId,
     JIRGroup,
     JIRSlice,
     JIRValue,
@@ -36,6 +37,7 @@ use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::{
     MapKey,
     PrimaryMap,
+    SecondaryMap,
 };
 use std::num::NonZeroU16;
 use std::ops::Range;
@@ -62,13 +64,12 @@ pub struct TargetBasicBlockBuilder {
     /// Keeps track of the next instruction to be added. If the block is finalized before
     /// a branch occurs, this instruction is set as the fallthrough.
     next_instruction: Option<EVAddr>,
-
-    next_free_temp: TempGroupId,
 }
 
 impl TargetBasicBlockBuilder {
     pub fn new(
         start: EVAddr,
+        jir_groups: PrimaryMap<GroupId, JIRGroup>,
     ) -> Self {
         Self {
             target_block: TargetBasicBlockInner {
@@ -81,12 +82,14 @@ impl TargetBasicBlockBuilder {
                 branch_targets: None,
                 target_inst_count: 0,
                 addr_range: None,
+                temp_varnodes: Default::default(),
+                temp_to_group: Default::default(),
+                jir_groups,
                 optimizer_ancillary: Default::default(),
             },
             current_block_id: None,
             previous_block_id: None,
             next_instruction: None,
-            next_free_temp: TempGroupId::try_from_index(0).unwrap(),
         }
     }
 
@@ -109,28 +112,33 @@ impl TargetBasicBlockBuilder {
         spec: &ProcessorSpecification,
         size: JIRSize,
     ) -> ProcessorSpecResult<JIRSlice> {
+        debug_assert!(size <= 16, "A temporary can have a maximum size of 16 bytes");
+
         // TODO: Maybe it makes sense padding the varnodes to a specific byte boundary?
         // The offset of the new temporary is either the end of the last, or zero, if no other temps were allocated yet.
-        let temp_group_id = self.next_free_temp;
-        let Some(next_free_temp) = self.next_free_temp.next() else {
-            todo!("no more temps available");
-        };
-        self.next_free_temp = next_free_temp;
+        let new_temp_start = JIROffset::try_from(
+            self.target_block
+                .temp_varnodes
+                .last()
+                .map(|a| a.offset + u64::from(a.size))
+                .unwrap_or(0),
+        )
+        .expect("Out of temporary space");
 
-        let temp_group = spec.temp_varnodes[temp_group_id];
-        if temp_group.size < size {
-            todo!("temporary cannot be larger than 128 bits");
-        }
-
-        let temp_slice = JIRSlice::new(
-            temp_group.space_id,
-            spec.temp_to_group[temp_group_id].expect("This must be set at this point"),
-            temp_group
-                .offset
-                .try_into()
-                .expect("The address space needs to have been compressed at this point"),
+        let new_temp_varnode = JIRVarNode {
+            space_id: spec.temp_space,
+            offset: new_temp_start.into(),
             size,
-        );
+        };
+
+        let new_temp_varnode_id = self.target_block.temp_varnodes.insert(new_temp_varnode);
+        let new_temp_group_id = self
+            .target_block
+            .jir_groups
+            .insert(JIRGroup::TempGroup(new_temp_varnode_id));
+        self.target_block.temp_to_group[new_temp_varnode_id] = Some(new_temp_group_id);
+
+        let temp_slice = JIRSlice::new(spec.temp_space, new_temp_group_id, new_temp_start, size);
 
         Ok(temp_slice)
     }
@@ -192,7 +200,6 @@ impl TargetBasicBlockBuilder {
         self.target_block.fallthrough = fallthrough;
         self.target_block.branch_targets = branch_targets;
         self.target_block.target_inst_count += 1;
-        self.next_free_temp = TempGroupId::try_from_index(0).unwrap();
         Ok(())
     }
 

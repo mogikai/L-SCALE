@@ -736,19 +736,6 @@ impl ProcessorSpecificationBuilder {
         let jir = context.transform()?;
         let mut jir_groups = jir.jir_groups;
 
-        let mut temp_varnodes = PrimaryMap::<TempGroupId, JIRVarNode>::default();
-        let mut temp_to_group = SecondaryMap::<TempGroupId, Option<GroupId>>::default();
-        for i in 0..(u64::from(u8::MAX) - 1) {
-            let temp_id = temp_varnodes.insert(JIRVarNode {
-                space_id: self.temp_space,
-                offset: i * 16,
-                size: 16,
-            });
-
-            let group_id = jir_groups.insert(JIRGroup::TempGroup(temp_id));
-            temp_to_group[temp_id] = Some(group_id);
-        }
-
         // TODO: Generate more helpful error reports during final build step
         let spec = ProcessorSpecification {
             // The endianness must be defined, so we return an error if it is undefined at this point.
@@ -763,8 +750,6 @@ impl ProcessorSpecificationBuilder {
                 .collect(),
             varnode_groups: jir.varnode_groups,
             varnode_to_group: jir.varnode_to_group,
-            temp_to_group,
-            temp_varnodes,
             jir_groups,
             jumplist_cache: jir.jumplist_cache,
             root_table,

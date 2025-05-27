@@ -873,8 +873,7 @@ mod test {
 
         let bytes = b"\x01\x01";
         let mut context_stack = ContextStack::new(&spec, &context_provider).unwrap();
-        let match_context = spec.new_match_context(0x0u64.into()).u
-        nwrap();
+        let match_context = spec.new_match_context(0x0u64.into()).unwrap();
         let MatcherResult::Some {
             table,
             resolver,

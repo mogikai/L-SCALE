@@ -18,11 +18,12 @@ use mogi_utilities::index_map::{
     PrimaryMap,
     SecondaryMap,
 };
+use mogi_utilities::new_map_key;
 use optimizer::OptimizerAncillary;
 use std::ops::{Deref, Range};
 use std::rc::Rc;
 
-use super::values::{GroupId, JIRGroup, VarnodeGroupId};
+use super::values::{GroupId, JIRGroup, TempGroupId, VarnodeGroupId};
 
 pub type InstId = usize;
 
@@ -159,6 +160,13 @@ pub struct TargetBasicBlockInner {
     target_inst_count: usize,
     /// The address range this block was lifted from.
     addr_range: Option<Range<EVAddr>>,
+
+    /// [ProcessorSpecification] holds the "first half" of the `jir_groups` map.
+    /// For now, we clone it and extend it using the temporaries from this block,
+    /// but this is slow. TODO: use something like a split map or two separate maps?
+    temp_varnodes: PrimaryMap<TempGroupId, JIRVarNode>,
+    temp_to_group: SecondaryMap<TempGroupId, Option<GroupId>>,
+    jir_groups: PrimaryMap<GroupId, JIRGroup>,
 
     /// Ancillary information calculated by the optimizer can be stored here
     optimizer_ancillary: OptimizerAncillary,

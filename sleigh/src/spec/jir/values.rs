@@ -114,8 +114,8 @@ impl VarnodeGroup {
     }
 }
 
-new_map_key_8! { pub struct TempGroupId; "TG"; }
-new_map_key_8! { pub struct VarnodeGroupId; "VG"; }
+new_map_key_16! { pub struct TempGroupId; "TG"; }
+new_map_key_16! { pub struct VarnodeGroupId; "VG"; }
 new_map_key_16! { pub struct GroupId; "GID"; }
 
 #[derive(Debug, Clone)]

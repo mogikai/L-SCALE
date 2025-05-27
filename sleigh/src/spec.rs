@@ -148,8 +148,6 @@ pub struct ProcessorSpecification {
     /// is why we keep track of different disjoint groups.
     pub(crate) varnode_groups: PrimaryMap<VarnodeGroupId, VarnodeGroup>,
     pub(crate) varnode_to_group: SecondaryMap<VarNodeId, Option<GroupId>>,
-    pub(crate) temp_to_group: SecondaryMap<TempGroupId, Option<GroupId>>,
-    pub(crate) temp_varnodes: PrimaryMap<TempGroupId, JIRVarNode>,
     pub(crate) jir_groups: PrimaryMap<GroupId, JIRGroup>,
 
     /// The first jumplist is the root from which matching begins.

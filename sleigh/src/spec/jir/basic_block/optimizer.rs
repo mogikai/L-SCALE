@@ -1,28 +1,21 @@
-use std::collections::BTreeMap;
 use std::fmt::Display;
 use std::ops::Range;
 
-use analysis::{
-    LocalSliceId,
-    OverlapGroupId,
-    ReferencedSlices,
-};
-use fnv::{
-    FnvHashMap,
-    FnvHashSet,
-};
-use mogi_utilities::index_map::{
-    PrimaryMap,
-    SecondaryMap,
-};
+use fnv::{FnvHashMap, FnvHashSet};
+use mogi_utilities::index_map::{PrimaryMap, SecondaryMap};
+use mogi_utilities::new_map_key;
 
-use crate::spec::{ProcessorSpecResult, SpaceId};
-use crate::spec::jir::jcode::JIRInstruction;
-use crate::spec::jir::jir_block::{JIRBlock, JIRBlockId};
+use crate::spec::jir::jir_block::{
+    JIRBlockId,
+};
 use crate::spec::jir::trace_jir;
 use crate::spec::jir::values::{
-    JIRSlice,
-    JIRValue,
+    GroupId, JIRSlice, JIRValue, TempGroupId, VarnodeGroupId
+};
+use crate::spec::{
+    ProcessorSpecResult,
+    ProcessorSpecification,
+    SpaceId,
 };
 
 use super::{
@@ -42,8 +35,8 @@ macro_rules! trace_opt {
 }
 
 mod analysis;
-mod forward_pass;
 mod dead_store_elimination;
+mod forward_pass;
 mod nop_elimination;
 
 #[derive(Debug)]
@@ -53,8 +46,14 @@ pub struct OptimizerContext {
 }
 
 impl OptimizerContext {
-    pub fn new(temp_space_id: SpaceId, const_space_id: SpaceId) -> Self {
-        Self { temp_space_id, const_space_id }
+    pub fn new(
+        temp_space_id: SpaceId,
+        const_space_id: SpaceId,
+    ) -> Self {
+        Self {
+            temp_space_id,
+            const_space_id,
+        }
     }
 }
 
@@ -109,26 +108,14 @@ struct OverlapSlice {
     slice: JIRSlice,
 }
 
+new_map_key! { pub struct LocalSliceId; "LSID"; }
+
 #[derive(Clone, Debug, Default)]
 pub(super) struct OptimizerAncillary {
     slice_to_id: FnvHashMap<JIRSlice, LocalSliceId>,
     slice_ids: PrimaryMap<LocalSliceId, JIRSlice>,
 
-    // Slice overlap must be accounted for to correctly track reads and writes. This
-    // is done by keeping track of overlap groups which are the set of neighboring
-    // nodes for every slice. Consider for example:
-    // [0-8] - [6-10]
-    //   |  \   |
-    // [0-4] [4-8]
-    // In this case, the overlap groups for each node would be:
-    // - [0-4]:  ([0-8]),                overlap_id=0
-    // - [0-8]:  ([0-4], [6-10], [4-8]), overlap_id=1
-    // - [6-10]: ([0-8], [4-8]),         overlap_id=2
-    // - [4-8]:  ([0-8], [6-10]),        overlap_id=2
-    overlap_groups: PrimaryMap<OverlapGroupId, FnvHashSet<LocalSliceId>>,
-    group_ids: SecondaryMap<LocalSliceId, Option<OverlapGroupId>>,
-
-    inst_slice_references: Vec<ReferencedSlices>,
+    group_slices: SecondaryMap<GroupId, FnvHashSet<LocalSliceId>>,
 
     // a list of ranges
     live_ranges: SecondaryMap<LocalSliceId, Vec<Range<InstId>>>,
@@ -142,21 +129,6 @@ pub(super) struct OptimizerAncillary {
     dead_stores: SecondaryMap<JIRBlockId, Vec<InstId>>,
 }
 
-impl OptimizerAncillary {
-    fn overlapping_slices(&self, slice: LocalSliceId) -> &FnvHashSet<LocalSliceId> {
-        let group_id = self.group_ids[slice].expect("We collected all overlap groups before");
-        &self.overlap_groups[group_id]
-    }
-
-    fn overlaps(&self, slice_a: LocalSliceId, slice_b: LocalSliceId) -> bool {
-        self.overlapping_slices(slice_a).contains(&slice_b)
-    }
-
-    fn slice_id(&self, slice: JIRSlice) -> LocalSliceId {
-        *self.slice_to_id.get(&slice).expect("We inserted all occuring slices before")
-    }
-}
-
 impl Display for OptimizerAncillary {
     fn fmt(
         &self,
@@ -167,12 +139,8 @@ impl Display for OptimizerAncillary {
             writeln!(f, "slice[{:6}] = {slice}", slice_id)?;
         }
 
-        for (inst_id, slice_references) in self.inst_slice_references.iter().enumerate() {
-            writeln!(f, "inst[{inst_id}] write: {:?}, reads: {:?}", slice_references.write, slice_references.reads)?;
-        }
-
-        for (overlap_group_id, overlap_slices) in self.overlap_groups.items() {
-            writeln!(f, "overlap[{overlap_group_id}] slices: {:?}", overlap_slices)?;
+        for (group_id, group_slices) in self.group_slices.items() {
+            writeln!(f, "group[{group_id}] slices: {:?}", group_slices)?;
         }
 
         for (block_id, block_writes) in self.block_writes.items() {
@@ -209,10 +177,12 @@ impl OptimizerOptions {
 
 impl TargetBasicBlockInner {
     /// Calculate common ancillary information required by all passes.
-    fn populate_ancillary(&mut self) -> ProcessorSpecResult {
-        self.collect_slice_references()?;
-        self.collect_slice_overlaps()?;
-        self.calculate_block_reads_and_writes()?;
+    fn populate_ancillary(
+        &mut self,
+        spec: &ProcessorSpecification,
+    ) -> ProcessorSpecResult {
+        self.collect_slices(spec)?;
+        self.calculate_block_reads_and_writes(spec)?;
 
         trace_opt!("{}", self.optimizer_ancillary);
 
@@ -221,10 +191,11 @@ impl TargetBasicBlockInner {
 
     pub fn run_optimization_passes(
         &mut self,
+        spec: &ProcessorSpecification,
         context: &OptimizerContext,
         options: &OptimizerOptions,
     ) -> ProcessorSpecResult {
-        self.populate_ancillary()?;
+        self.populate_ancillary(spec)?;
         let prev_count = self.jir_instructions.len();
 
         if options.enable_dse {
@@ -233,7 +204,7 @@ impl TargetBasicBlockInner {
         }
 
         if options.enable_copy_coalescing {
-            let (elim_count, const_fold_count) = self.forward_pass(context, options)?;
+            let (elim_count, const_fold_count) = self.forward_pass(spec, context, options)?;
             trace_opt!("Copy coalescion eliminated {} instructions, folded {} constants", elim_count, const_fold_count);
         }
 

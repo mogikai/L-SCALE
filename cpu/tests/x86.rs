@@ -851,6 +851,15 @@ fn test_misc_max_byte_o0() {
 #[test]
 fn test_misc_max_byte_o3() {
     // TODO this fails because some custom pcode-ops are not yet implemented
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::INFO.into())
+                .with_env_var("MOGI_LOG")
+                .from_env_lossy(),
+        )
+        .init();
 
     let mut misc_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     misc_o3_path.push("resources/test/executables/misc_o3.o");

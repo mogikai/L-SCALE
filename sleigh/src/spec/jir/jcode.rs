@@ -1101,8 +1101,8 @@ impl JIRInstruction {
         OperandIteratorMut::new(self)
     }
 
-    pub fn get_output(&self) -> Option<&JIRSlice> {
-        match self {
+    pub fn get_output(&self) -> Option<JIRSlice> {
+        (match self {
             JIRInstruction::Copy(UnaryArgs { output, .. })
             | JIRInstruction::BitNegate(UnaryArgs { output, .. })
             | JIRInstruction::IntNegate(UnaryArgs { output, .. })
@@ -1163,7 +1163,7 @@ impl JIRInstruction {
             | JIRInstruction::SignBorrow(BinaryArgs { output, .. }) => Some(output),
             JIRInstruction::CustomOp { output, .. } => output.as_ref(),
             _ => None,
-        }
+        }).copied()
     }
 }
 

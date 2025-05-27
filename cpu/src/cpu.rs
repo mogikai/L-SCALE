@@ -499,7 +499,7 @@ where
 
             process_branch_targets(&mut target_addresses, &block, translation_limit);
             process_block_fallthrough(&mut target_addresses, &block, translation_limit);
-            compile(&mut *jit, &mut block)?;
+            compile(&self.processor_specification.borrow(), &mut *jit, &mut block)?;
 
             translated_block_count += 1;
             translated_instr_count += block.target_instruction_count();
@@ -570,6 +570,7 @@ fn process_block_fallthrough(
 }
 
 fn compile<JitT: MogiJit>(
+    spec: &ProcessorSpecification,
     jit: &mut JitT,
     block: &mut TargetBasicBlock,
 ) -> Result<(), StopReason> {
@@ -578,12 +579,13 @@ fn compile<JitT: MogiJit>(
     trace_jit!("unoptimized: {}", block);
 
     let optimizer_options = OptimizerOptions::default()
-        .with_enable_dse(false)
-        .with_enable_copy_coalescing(false)
-        .with_enable_constant_folding(false)
-        .with_enable_nop_elimination(false);
+        .with_enable_dse(true)
+        .with_enable_copy_coalescing(true)
+        .with_enable_constant_folding(true)
+        .with_enable_nop_elimination(true);
     Rc::make_mut(&mut block.0)
         .run_optimization_passes(
+            spec,
             &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(1).unwrap()),
             &optimizer_options,
         )

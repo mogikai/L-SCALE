@@ -11,7 +11,6 @@ use mogi_utilities::index_map::{
 };
 
 use crate::jinst;
-use crate::spec::jir::basic_block::optimizer::analysis::LocalSliceId;
 use crate::spec::jir::basic_block::{
     InstId,
     TargetBasicBlockInner,
@@ -22,17 +21,20 @@ use crate::spec::jir::jcode::{
 };
 use crate::spec::jir::values::{
     JIRConst,
+    JIRGroup,
     JIRValue,
 };
 use crate::spec::{
     ProcessorSpecResult,
+    ProcessorSpecification,
     SpaceId,
 };
 
 use super::{
+    LocalSliceId,
+    OptimizerAncillary,
     OptimizerContext,
     OptimizerOptions,
-    ReferencedSlices,
 };
 
 #[derive(Debug, Clone)]
@@ -77,6 +79,7 @@ impl TargetBasicBlockInner {
     /// constant input, replacing them by a single copy
     pub(super) fn forward_pass(
         &mut self,
+        spec: &ProcessorSpecification,
         context: &OptimizerContext,
         options: &OptimizerOptions,
     ) -> ProcessorSpecResult<(u64, u64)> {
@@ -89,41 +92,31 @@ impl TargetBasicBlockInner {
 
             for inst_id in block.range.clone() {
                 // apply rewrites
-                let mut read_i = 0;
-                self.optimizer_ancillary.inst_slice_references[inst_id].reads.retain(|read| {
-                    let retain = if let Some(coalescion) = &coalescions[*read] {
-                        // rewrite input
-                        *self.jir_instructions[inst_id]
-                            .operands_mut()
-                            .skip(read_i)
-                            .next()
-                            .expect("This must exist") = coalescion.value;
-
-                        // don't retain
-                        false
-                    } else {
-                        // no rewrites => retain
-                        true
+                for operand in self.jir_instructions[inst_id].operands_mut() {
+                    let JIRValue::Slice(operand_slice) = operand else {
+                        continue;
                     };
 
-                    read_i += 1;
-                    retain
-                });
+                    let operand_slice_id = self.optimizer_ancillary.slice_to_id[&*operand_slice];
+                    if let Some(coalescion) = &coalescions[operand_slice_id] {
+                        *operand = coalescion.value;
+                    }
+                }
 
                 // invalidation of previous rewrites must be done unconditionally
-                if let Some(write) = self.optimizer_ancillary.inst_slice_references[inst_id].write {
-                    if let Some(coalescion) = &coalescions[write] {
+                if let Some(write) = self.jir_instructions[inst_id].get_output() {
+                    let write_id = self.optimizer_ancillary.slice_to_id[&write];
+
+                    if let Some(coalescion) = &coalescions[write_id] {
                         // eliminate previous instruction that caused the coalescion
                         elim_count += 1;
                         self.jir_instructions[coalescion.inst_id] = JIRInstruction::nop();
-                        self.optimizer_ancillary.inst_slice_references[coalescion.inst_id] =
-                            ReferencedSlices::default();
                     }
 
                     // if an output is overwritten, we invalidate all coalescions of
                     // the output group
-                    for overlap_id in self.optimizer_ancillary.overlapping_slices(write).iter() {
-                        coalescions[*overlap_id] = None;
+                    for overlap_candidate in &self.optimizer_ancillary.group_slices[write.group_id] {
+                        coalescions[*overlap_candidate] = None;
                     }
 
                     // additionally, remove all coalescions where write occurs on the right-hand
@@ -136,13 +129,15 @@ impl TargetBasicBlockInner {
                         };
 
                         if let JIRValue::Slice(value_slice) = &some_coalescion.value {
-                            let value_slice_id = self.optimizer_ancillary.slice_id(*value_slice);
-                            if self.optimizer_ancillary.overlaps(write, value_slice_id) {
+                            // TODO use exact overlap?
+                            if value_slice.group_id == write.group_id {
                                 coalescions[slice_id] = None;
                             }
                         }
                     }
                 }
+
+                // add new rewrites (constant fold, copy coalescion)
 
                 if options.enable_constant_folding {
                     // if all input operands are known or we load from the constant
@@ -159,13 +154,8 @@ impl TargetBasicBlockInner {
                             const_eval
                         );
 
-                        let output = *output;
-
                         self.jir_instructions[inst_id] = jinst!(output = const_eval);
-                        // output slice id stays the same, reads are cleared
-                        self.optimizer_ancillary.inst_slice_references[inst_id]
-                            .reads
-                            .clear();
+                        const_fold_count += 1;
                     }
                 }
 
@@ -173,10 +163,8 @@ impl TargetBasicBlockInner {
                     if let JIRInstruction::Copy(args) = &self.jir_instructions[inst_id] {
                         // a copy is stored for later optimization
 
-                        let copy_output_id = self.optimizer_ancillary.slice_id(args.output);
+                        let copy_output_id = self.optimizer_ancillary.slice_to_id[&args.output];
                         if coalescions[copy_output_id].is_none() {
-                            // make sure no previous step already added a coalescion
-
                             let new_coalescion = CopyCoalescion::new(inst_id, args.input.clone());
                             coalescions[copy_output_id] = Some(new_coalescion);
                         }
@@ -192,10 +180,8 @@ impl TargetBasicBlockInner {
                 };
 
                 let slice = self.optimizer_ancillary.slice_ids[slice_id];
-
-                if slice.space_id == context.temp_space_id {
+                if matches!(self.jir_groups[slice.group_id], JIRGroup::TempGroup(_)) {
                     self.jir_instructions[coalescion.inst_id] = JIRInstruction::nop();
-                    self.optimizer_ancillary.inst_slice_references[coalescion.inst_id] = ReferencedSlices::default();
                     elim_count += 1;
                 }
             }
@@ -207,8 +193,10 @@ impl TargetBasicBlockInner {
 
 #[cfg(test)]
 mod test {
+    use crate::compiler::builder::SleighCompilerBuilder;
+    use crate::compiler::SleighCompilerResult;
     use crate::jinst;
-    use crate::spec::SpaceId;
+    use crate::spec::{ProcessorSpecification, SpaceId};
     use crate::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
     use crate::spec::jir::basic_block::optimizer::{
         OptimizerContext,
@@ -221,10 +209,33 @@ mod test {
         UnaryArgs,
     };
     use crate::spec::jir::values::{
-        GroupId, JIRConst, JIRSlice, JIRValue, VarnodeGroupId
+        GroupId,
+        JIRConst,
+        JIRSlice,
+        JIRValue,
+        VarnodeGroupId,
     };
+    use mogi_sleigh_parser::preprocessor::SleighPreprocessorFactory;
     use mogi_utilities::index_map::MapKey;
+    use std::cell::RefCell;
+    use std::path::{Path, PathBuf};
     use std::rc::Rc;
+    use std::sync::{LazyLock, RwLock};
+
+    static SPEC: LazyLock<RwLock<ProcessorSpecification>> = LazyLock::new(|| {
+        let mut spec_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        spec_path.push("resources/test/x86/x86-64.slaspec");
+        RwLock::new(build(&spec_path).unwrap())
+    });
+
+    fn build(spec_path: &Path) -> SleighCompilerResult<ProcessorSpecification> {
+        let spec_dir = spec_path.parent().unwrap();
+        let factory = SleighPreprocessorFactory::new().working_dir(spec_dir.to_path_buf());
+        let compiler = SleighCompilerBuilder::new()
+            .preprocessor_factory(factory)
+            .build();
+        compiler.compile(spec_path)
+    }
 
     #[test]
     fn test_propagate_const_noelim() {
@@ -236,7 +247,7 @@ mod test {
         let slice_2 = JIRSlice::new(space_id, group_id, 2, 1);
         let const_0: JIRValue = JIRConst::new(123u128, JIRSize::try_from(1).unwrap()).into();
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into());
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), Default::default());
         block_builder.start_block().unwrap();
 
         block_builder
@@ -248,9 +259,12 @@ mod test {
 
         let block_id = block_builder.finish_block().unwrap();
         let mut block = block_builder.finish(None).unwrap();
+        let spec = Rc::new(RefCell::new(SPEC.read().unwrap().clone()));
+
         Rc::get_mut(&mut block.0)
             .unwrap()
             .run_optimization_passes(
+                &spec.borrow(),
                 &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
                 &OptimizerOptions::default()
                     .with_enable_copy_coalescing(true)
@@ -276,7 +290,7 @@ mod test {
         let const_0: JIRValue = JIRConst::new(123u128, JIRSize::try_from(1).unwrap()).into();
         let const_1: JIRValue = JIRConst::new(456u128, JIRSize::try_from(1).unwrap()).into();
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into());
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), Default::default());
         block_builder.start_block().unwrap();
 
         block_builder
@@ -291,9 +305,12 @@ mod test {
 
         let block_id = block_builder.finish_block().unwrap();
         let mut block = block_builder.finish(None).unwrap();
+        let spec = Rc::new(RefCell::new(SPEC.read().unwrap().clone()));
+
         Rc::get_mut(&mut block.0)
             .unwrap()
             .run_optimization_passes(
+                &spec.borrow(),
                 &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
                 &OptimizerOptions::default()
                     .with_enable_copy_coalescing(true)
@@ -318,7 +335,7 @@ mod test {
         let slice_2 = JIRSlice::new(space_id, group_id, 2, 1);
         let slice_3 = JIRSlice::new(space_id, group_id, 3, 1);
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into());
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), Default::default());
         block_builder.start_block().unwrap();
 
         block_builder
@@ -330,9 +347,12 @@ mod test {
 
         let block_id = block_builder.finish_block().unwrap();
         let mut block = block_builder.finish(None).unwrap();
+        let spec = Rc::new(RefCell::new(SPEC.read().unwrap().clone()));
+
         Rc::get_mut(&mut block.0)
             .unwrap()
             .run_optimization_passes(
+                &spec.borrow(),
                 &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
                 &OptimizerOptions::default()
                     .with_enable_copy_coalescing(true)
@@ -358,7 +378,7 @@ mod test {
         let slice_3 = JIRSlice::new(space_id, group_id, 3, 1);
         let slice_4 = JIRSlice::new(space_id, group_id, 4, 1);
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into());
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), Default::default());
         block_builder.start_block().unwrap();
 
         block_builder
@@ -373,9 +393,12 @@ mod test {
 
         let block_id = block_builder.finish_block().unwrap();
         let mut block = block_builder.finish(None).unwrap();
+        let spec = Rc::new(RefCell::new(SPEC.read().unwrap().clone()));
+
         Rc::get_mut(&mut block.0)
             .unwrap()
             .run_optimization_passes(
+                &spec.borrow(),
                 &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
                 &OptimizerOptions::default()
                     .with_enable_copy_coalescing(true)
