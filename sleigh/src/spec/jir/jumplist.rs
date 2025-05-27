@@ -862,4 +862,29 @@ mod test {
         let res_endbr64 = resolver.subtables().get(&tid_instr).unwrap();
         assert_eq!(res_endbr64.constructor_id(), cid_endbr64);
     }
+
+    #[test]
+    fn backtrack_with_offset() {
+        // https://github.com/icicle-emu/icicle-emu/pull/8#issuecomment-1527557130
+        let path = ASSETS_PATH.to_string() + "backtrack.sinc";
+        let spec = build(path).unwrap();
+
+        let mut context_provider = SimpleContextProvider::default();
+
+        let bytes = b"\x01\x01";
+        let mut context_stack = ContextStack::new(&spec, &context_provider).unwrap();
+        let match_context = spec.new_match_context(0x0u64.into()).u
+        nwrap();
+        let MatcherResult::Some {
+            table,
+            resolver,
+            bytes_consumed,
+        } = match_context.r#match(bytes, &mut context_stack).unwrap()
+        else {
+            panic!("No match");
+        };
+
+        assert_eq!(resolver.constructor().display_string, "instr b tf1 ");
+        assert_eq!(resolver.constructor_id(), ConstructorId::try_from_index(3).unwrap());
+    }
 }

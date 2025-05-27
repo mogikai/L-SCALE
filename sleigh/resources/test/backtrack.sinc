@@ -1,0 +1,9 @@
+define endian=big;
+define alignment=1;
+define space ram type=ram_space size=4 default;
+define space register type=register_space size=4;
+define token t1 (8) tf1=(0,7);
+sub_table: "sub_table a" is tf1=0 {}
+sub_table: "sub_table b" is tf1=2 {}
+:instr "a and" sub_table is (tf1=1; sub_table) {}
+:instr "b" tf1 is tf1=1; tf1 {}
