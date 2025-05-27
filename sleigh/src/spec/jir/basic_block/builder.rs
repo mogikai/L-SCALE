@@ -125,6 +125,12 @@ impl TargetBasicBlockBuilder {
         )
         .expect("Out of temporary space");
 
+        // TODO since we don't reset temp varnodes, they'll consume more space than
+        // necessary. we can't simply reset them though since overlapping temp
+        // varnodes (even across instructions) need the same temp group id for overlap
+        // checks. this can be done by rounding up allocations to the max size to
+        // force them to exactly overlap, but is this worth it? probably
+
         let new_temp_varnode = JIRVarNode {
             space_id: spec.temp_space,
             offset: new_temp_start.into(),

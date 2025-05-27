@@ -260,6 +260,9 @@ impl X64Emitter<'_> {
                         let output_reg_upper = reg!(self.allocations, inst, 1);
                         let input_slice_reg_lower = reg!(self.allocations, inst, 2);
                         let input_slice_reg_upper = reg!(self.allocations, inst, 3);
+                        self.copy_reg(output_reg_lower, input_slice_reg_lower, 8, CopyExtendMode::None)?;
+                        self.copy_reg(output_reg_upper, input_slice_reg_upper, 8, CopyExtendMode::None)?;
+
                         let (input_const_lower, input_const_upper) = input_const.split(8);
 
                         let scratch = self.allocations.scratch_register(RegClass::Int);

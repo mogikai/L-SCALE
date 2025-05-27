@@ -164,27 +164,25 @@ impl TargetBasicBlockInner {
                         // a copy is stored for later optimization
 
                         let copy_output_id = self.optimizer_ancillary.slice_to_id[&args.output];
-                        if coalescions[copy_output_id].is_none() {
-                            let new_coalescion = CopyCoalescion::new(inst_id, args.input.clone());
-                            coalescions[copy_output_id] = Some(new_coalescion);
-                        }
+                        let new_coalescion = CopyCoalescion::new(inst_id, args.input.clone());
+                        coalescions[copy_output_id] = Some(new_coalescion);
                     }
                 }
             }
 
             // temporary instructions are never spilled so we can apply the remaining
             // eliminations for them
-            for (slice_id, coalescion) in coalescions.into_items() {
-                let Some(coalescion) = coalescion else {
-                    continue;
-                };
+            // for (slice_id, coalescion) in coalescions.into_items() {
+            //     let Some(coalescion) = coalescion else {
+            //         continue;
+            //     };
 
-                let slice = self.optimizer_ancillary.slice_ids[slice_id];
-                if matches!(self.jir_groups[slice.group_id], JIRGroup::TempGroup(_)) {
-                    self.jir_instructions[coalescion.inst_id] = JIRInstruction::nop();
-                    elim_count += 1;
-                }
-            }
+            //     let slice = self.optimizer_ancillary.slice_ids[slice_id];
+            //     if matches!(self.jir_groups[slice.group_id], JIRGroup::TempGroup(_)) {
+            //         self.jir_instructions[coalescion.inst_id] = JIRInstruction::nop();
+            //         elim_count += 1;
+            //     }
+            // }
         }
 
         Ok((elim_count, const_fold_count))
@@ -193,10 +191,9 @@ impl TargetBasicBlockInner {
 
 #[cfg(test)]
 mod test {
-    use crate::compiler::builder::SleighCompilerBuilder;
     use crate::compiler::SleighCompilerResult;
+    use crate::compiler::builder::SleighCompilerBuilder;
     use crate::jinst;
-    use crate::spec::{ProcessorSpecification, SpaceId};
     use crate::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
     use crate::spec::jir::basic_block::optimizer::{
         OptimizerContext,
@@ -215,12 +212,22 @@ mod test {
         JIRValue,
         VarnodeGroupId,
     };
+    use crate::spec::{
+        ProcessorSpecification,
+        SpaceId,
+    };
     use mogi_sleigh_parser::preprocessor::SleighPreprocessorFactory;
     use mogi_utilities::index_map::MapKey;
     use std::cell::RefCell;
-    use std::path::{Path, PathBuf};
+    use std::path::{
+        Path,
+        PathBuf,
+    };
     use std::rc::Rc;
-    use std::sync::{LazyLock, RwLock};
+    use std::sync::{
+        LazyLock,
+        RwLock,
+    };
 
     static SPEC: LazyLock<RwLock<ProcessorSpecification>> = LazyLock::new(|| {
         let mut spec_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

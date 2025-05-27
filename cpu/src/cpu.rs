@@ -121,8 +121,8 @@ enum MustInterpret {
 #[derive(Debug, Copy, Clone)]
 pub enum TranslationLimit {
     Unlimited,
-    BlockCount(NonZeroUsize),
     InstructionCount(NonZeroUsize),
+    BlockCount(NonZeroUsize),
     Address(EVAddr),
 }
 
@@ -320,10 +320,12 @@ where
         let translation_limit = match limit {
             RunLimit::Unlimited => TranslationLimit::Unlimited,
             RunLimit::InstructionCount(count) => TranslationLimit::InstructionCount(count),
+            RunLimit::BlockCount(count) => TranslationLimit::BlockCount(count),
             RunLimit::Address(addr) => TranslationLimit::Address(addr),
         };
 
         let mut executed_instructions = 0usize;
+        let mut executed_blocks = 0usize;
 
         loop {
             trace_jit!("Next block");
@@ -343,6 +345,7 @@ where
                         .get(&ip)
                         .unwrap()
                         .target_instruction_count();
+                    executed_blocks += 1;
                     if let Some(error) = self.runtime_context.runtime_error() {
                         Err(error)?
                     }
@@ -355,7 +358,12 @@ where
             match translation_limit {
                 TranslationLimit::Unlimited => {}
                 // we only translate as much as necessary so we can break here
-                TranslationLimit::BlockCount(_) => break,
+                TranslationLimit::BlockCount(block_limit) => {
+                    eprintln!("executed_blocks = {:#?}", executed_blocks);
+                    if executed_blocks >= block_limit.into() {
+                        break;
+                    }
+                }
                 TranslationLimit::InstructionCount(inst_limit) => {
                     if executed_instructions >= inst_limit.into() {
                         break;
@@ -461,6 +469,11 @@ where
             _ => None,
         };
 
+        let block_limit = match translation_limit {
+            TranslationLimit::BlockCount(block_count) => Some(block_count),
+            _ => None,
+        };
+
         let stop_addr = match translation_limit {
             TranslationLimit::Address(stop_addr) => Some(stop_addr),
             _ => None,
@@ -478,6 +491,10 @@ where
                 .custom_op_decider(&*jit)
                 .maybe_max_instructions(instr_limit.map(|limit| {
                     NonZeroUsize::new(limit.get().saturating_sub(translated_instr_count))
+                        .expect("We should have aborted before this happens")
+                }))
+                .maybe_max_blocks(block_limit.map(|limit| {
+                    NonZeroUsize::new(limit.get().saturating_sub(translated_block_count))
                         .expect("We should have aborted before this happens")
                 }))
                 .maybe_stop_addr(stop_addr)
@@ -582,7 +599,7 @@ fn compile<JitT: MogiJit>(
         .with_enable_dse(true)
         .with_enable_copy_coalescing(true)
         .with_enable_constant_folding(true)
-        .with_enable_nop_elimination(true);
+        .with_enable_nop_elimination(false);
     Rc::make_mut(&mut block.0)
         .run_optimization_passes(
             spec,

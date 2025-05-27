@@ -17,8 +17,6 @@ use mogi_system::components::mmu::{
     Permission,
 };
 use mogi_utilities::addresses::EVAddr;
-use tracing::trace;
-use zerocopy::IntoBytes;
 use std::cell::RefCell;
 use std::path::{
     Path,
@@ -29,6 +27,8 @@ use std::sync::{
     LazyLock,
     RwLock,
 };
+use tracing::trace;
+use zerocopy::IntoBytes;
 
 static SPEC: LazyLock<RwLock<ProcessorSpecification>> = LazyLock::new(|| {
     let mut spec_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -47,12 +47,22 @@ fn build(spec_path: &Path) -> SleighCompilerResult<ProcessorSpecification> {
 
 pub(crate) fn dump_registers(cpu: &MogiCPU<X86MogiJit, MogiMMU>) {
     let register_names = [
-        "RIP", "RAX", "RBX", "RCX", "RDX", "RDI", "RSI", "RBP", "RSP", "R8", "R9",
+        "RIP", "RAX", "RBX", "RCX", "RDX", "RDI", "RSI", "RBP", "RSP", "R8", "R9", "R10", "R11", "R12", "R13", "R14",
+        "R15",
     ];
 
     for register_name in register_names.iter() {
         let register_value: u64 = *cpu.register(register_name).unwrap();
         eprintln!("{:#3} = {:#018X}", register_name, register_value);
+    }
+
+    let register_names = [
+        "XMM0", "XMM1", "XMM2", "XMM3",
+    ];
+
+    for register_name in register_names.iter() {
+        let register_value: u128 = *cpu.register(register_name).unwrap();
+        eprintln!("{:#3} = {:#034X}", register_name, register_value);
     }
 
     // also dump flags

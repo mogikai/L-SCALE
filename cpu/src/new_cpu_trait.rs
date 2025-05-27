@@ -18,6 +18,7 @@ pub type CPUResult<T> = Result<T, CPUError>;
 pub enum RunLimit {
     Unlimited,
     InstructionCount(NonZeroUsize),
+    BlockCount(NonZeroUsize),
     Address(EVAddr),
 }
 
