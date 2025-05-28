@@ -99,6 +99,7 @@ impl TargetBasicBlockInner {
 
             for inst_id in block.range.clone().rev() {
                 // process written slices (mark spills and check if current inst is dead store)
+                let a = 3;
                 self.mark_spills_and_dead_stores(inst_id, &mut spilled_slices, &mut read_slices, &mut dead_stores);
 
                 // process read groups (add to set)
@@ -111,6 +112,7 @@ impl TargetBasicBlockInner {
                     // earliest (i.e. latest when iterating from back to front)
 
                     // mark all varnodes from group as read (TODO exact overlap?)
+                    read_slices[self.optimizer_ancillary.slice_to_id[read_slice]] = Some(inst_id);
                     for overlap_candidate in &self.optimizer_ancillary.group_slices[read_slice.group_id] {
                         read_slices[*overlap_candidate] = Some(inst_id);
                     }
@@ -159,14 +161,14 @@ impl TargetBasicBlockInner {
                         // TODO is it worth removing those kinds of reads?
                         read_slices[ds_read_slice_id] = None;
                     }
-                } else {
-                    // has been read before => no dead store, but remove from read set
-                    read_slices[write_id] = None;
                 }
             } else {
                 // has not been spilled before => mark slice as spill
                 spilled_slices[write_id] = Some(inst_id);
             }
+
+            // invalidate previous read
+            read_slices[write_id] = None;
         }
     }
 }

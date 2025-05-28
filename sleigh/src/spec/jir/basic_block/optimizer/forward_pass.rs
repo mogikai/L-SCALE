@@ -172,17 +172,17 @@ impl TargetBasicBlockInner {
 
             // temporary instructions are never spilled so we can apply the remaining
             // eliminations for them
-            // for (slice_id, coalescion) in coalescions.into_items() {
-            //     let Some(coalescion) = coalescion else {
-            //         continue;
-            //     };
+            for (slice_id, coalescion) in coalescions.into_items() {
+                let Some(coalescion) = coalescion else {
+                    continue;
+                };
 
-            //     let slice = self.optimizer_ancillary.slice_ids[slice_id];
-            //     if matches!(self.jir_groups[slice.group_id], JIRGroup::TempGroup(_)) {
-            //         self.jir_instructions[coalescion.inst_id] = JIRInstruction::nop();
-            //         elim_count += 1;
-            //     }
-            // }
+                let slice = self.optimizer_ancillary.slice_ids[slice_id];
+                if matches!(self.jir_groups[slice.group_id], JIRGroup::TempGroup(_)) {
+                    self.jir_instructions[coalescion.inst_id] = JIRInstruction::nop();
+                    elim_count += 1;
+                }
+            }
         }
 
         Ok((elim_count, const_fold_count))
@@ -205,19 +205,16 @@ mod test {
         JIRInstruction,
         UnaryArgs,
     };
+    use crate::spec::jir::jir_block::JIRBlockId;
     use crate::spec::jir::values::{
-        GroupId,
-        JIRConst,
-        JIRSlice,
-        JIRValue,
-        VarnodeGroupId,
+        GroupId, JIRConst, JIRGroup, JIRSlice, JIRValue, TempGroupId, VarnodeGroupId
     };
     use crate::spec::{
         ProcessorSpecification,
         SpaceId,
     };
     use mogi_sleigh_parser::preprocessor::SleighPreprocessorFactory;
-    use mogi_utilities::index_map::MapKey;
+    use mogi_utilities::index_map::{MapKey, PrimaryMap};
     use std::cell::RefCell;
     use std::path::{
         Path,
@@ -249,19 +246,30 @@ mod test {
         let space_id = SpaceId::try_from_index(1).unwrap();
         let group_id = GroupId::try_from_index(1).unwrap();
 
-        let slice_0 = JIRSlice::new(space_id, group_id, 0, 1);
-        let slice_1 = JIRSlice::new(space_id, group_id, 1, 1);
-        let slice_2 = JIRSlice::new(space_id, group_id, 2, 1);
+        let mut jir_groups: PrimaryMap<GroupId, JIRGroup> = Default::default();
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(0).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(1).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(2).unwrap()));
+
+        let slice_0 = JIRSlice::new(space_id, GroupId::try_from_index(0).unwrap(), 0, 1);
+        let slice_1 = JIRSlice::new(space_id, GroupId::try_from_index(1).unwrap(), 1, 1);
+        let slice_2 = JIRSlice::new(space_id, GroupId::try_from_index(2).unwrap(), 2, 1);
         let const_0: JIRValue = JIRConst::new(123u128, JIRSize::try_from(1).unwrap()).into();
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), Default::default());
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups);
         block_builder.start_block().unwrap();
 
+        block_builder
+            .push_jir_instruction(JIRInstruction::InstructionStart(0u64.into()))
+            .unwrap();
         block_builder
             .push_jir_instruction(jinst! { slice_0 = const_0})
             .unwrap();
         block_builder
             .push_jir_instruction(jinst! { slice_1 = slice_0 + slice_2})
+            .unwrap();
+        block_builder
+            .push_jir_instruction(JIRInstruction::InstructionEnd(0u64.into()))
             .unwrap();
 
         let block_id = block_builder.finish_block().unwrap();
@@ -281,9 +289,25 @@ mod test {
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();
-        assert_eq!(instructions.len(), 4);
-        assert_eq!(instructions[1], &jinst! { slice_0 = const_0 });
-        assert_eq!(instructions[2], &jinst! { slice_1 = const_0 + slice_2 });
+        assert_eq!(instructions.len(), 6);
+        assert_eq!(
+            instructions[0],
+            &JIRInstruction::BlockStart(JIRBlockId::try_from_index(0).unwrap())
+        );
+        assert_eq!(
+            instructions[1],
+            &JIRInstruction::InstructionStart(0u64.into())
+        );
+        assert_eq!(instructions[2], &jinst! { slice_0 = const_0 });
+        assert_eq!(instructions[3], &jinst! { slice_1 = const_0 + slice_2 });
+        assert_eq!(
+            instructions[4],
+            &JIRInstruction::InstructionEnd(0u64.into())
+        );
+        assert_eq!(
+            instructions[5],
+            &JIRInstruction::BlockEnd(JIRBlockId::try_from_index(0).unwrap())
+        );
     }
 
     #[test]
@@ -291,15 +315,23 @@ mod test {
         let space_id = SpaceId::try_from_index(1).unwrap();
         let group_id = GroupId::try_from_index(1).unwrap();
 
-        let slice_0 = JIRSlice::new(space_id, group_id, 0, 1);
-        let slice_1 = JIRSlice::new(space_id, group_id, 1, 1);
-        let slice_2 = JIRSlice::new(space_id, group_id, 2, 1);
+        let mut jir_groups: PrimaryMap<GroupId, JIRGroup> = Default::default();
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(0).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(1).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(2).unwrap()));
+
+        let slice_0 = JIRSlice::new(space_id, GroupId::try_from_index(0).unwrap(), 0, 1);
+        let slice_1 = JIRSlice::new(space_id, GroupId::try_from_index(1).unwrap(), 1, 1);
+        let slice_2 = JIRSlice::new(space_id, GroupId::try_from_index(2).unwrap(), 2, 1);
         let const_0: JIRValue = JIRConst::new(123u128, JIRSize::try_from(1).unwrap()).into();
         let const_1: JIRValue = JIRConst::new(456u128, JIRSize::try_from(1).unwrap()).into();
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), Default::default());
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups);
         block_builder.start_block().unwrap();
 
+        block_builder
+            .push_jir_instruction(JIRInstruction::InstructionStart(0u64.into()))
+            .unwrap();
         block_builder
             .push_jir_instruction(jinst! { slice_0 = const_0})
             .unwrap();
@@ -309,6 +341,9 @@ mod test {
         block_builder
             .push_jir_instruction(jinst! { slice_0 = const_1})
             .unwrap();
+        block_builder
+            .push_jir_instruction(JIRInstruction::InstructionEnd(0u64.into()))
+            .unwrap();
 
         let block_id = block_builder.finish_block().unwrap();
         let mut block = block_builder.finish(None).unwrap();
@@ -327,9 +362,25 @@ mod test {
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();
-        assert_eq!(instructions.len(), 4);
-        assert_eq!(instructions[1], &jinst! { slice_1 = const_0 + slice_2 });
-        assert_eq!(instructions[2], &jinst! { slice_0 = const_1 });
+        assert_eq!(instructions.len(), 6);
+        assert_eq!(
+            instructions[0],
+            &JIRInstruction::BlockStart(JIRBlockId::try_from_index(0).unwrap())
+        );
+        assert_eq!(
+            instructions[1],
+            &JIRInstruction::InstructionStart(0u64.into())
+        );
+        assert_eq!(instructions[2], &jinst! { slice_1 = const_0 + slice_2 });
+        assert_eq!(instructions[3], &jinst! { slice_0 = const_1 });
+        assert_eq!(
+            instructions[4],
+            &JIRInstruction::InstructionEnd(0u64.into())
+        );
+        assert_eq!(
+            instructions[5],
+            &JIRInstruction::BlockEnd(JIRBlockId::try_from_index(0).unwrap())
+        );
     }
 
     #[test]
@@ -337,19 +388,31 @@ mod test {
         let space_id = SpaceId::try_from_index(1).unwrap();
         let group_id = GroupId::try_from_index(1).unwrap();
 
-        let slice_0 = JIRSlice::new(space_id, group_id, 0, 1);
-        let slice_1 = JIRSlice::new(space_id, group_id, 1, 1);
-        let slice_2 = JIRSlice::new(space_id, group_id, 2, 1);
-        let slice_3 = JIRSlice::new(space_id, group_id, 3, 1);
+        let mut jir_groups: PrimaryMap<GroupId, JIRGroup> = Default::default();
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(0).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(1).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(2).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(3).unwrap()));
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), Default::default());
+        let slice_0 = JIRSlice::new(space_id, GroupId::try_from_index(0).unwrap(), 0, 1);
+        let slice_1 = JIRSlice::new(space_id, GroupId::try_from_index(1).unwrap(), 1, 1);
+        let slice_2 = JIRSlice::new(space_id, GroupId::try_from_index(2).unwrap(), 2, 1);
+        let slice_3 = JIRSlice::new(space_id, GroupId::try_from_index(3).unwrap(), 3, 1);
+
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups);
         block_builder.start_block().unwrap();
 
+        block_builder
+            .push_jir_instruction(JIRInstruction::InstructionStart(0u64.into()))
+            .unwrap();
         block_builder
             .push_jir_instruction(jinst! { slice_0 = slice_3})
             .unwrap();
         block_builder
             .push_jir_instruction(jinst! { slice_1 = slice_0 + slice_2})
+            .unwrap();
+        block_builder
+            .push_jir_instruction(JIRInstruction::InstructionEnd(0u64.into()))
             .unwrap();
 
         let block_id = block_builder.finish_block().unwrap();
@@ -369,9 +432,25 @@ mod test {
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();
-        assert_eq!(instructions.len(), 4);
-        assert_eq!(instructions[1], &jinst! { slice_0 = slice_3 });
-        assert_eq!(instructions[2], &jinst! { slice_1 = slice_3 + slice_2 });
+        assert_eq!(instructions.len(), 6);
+        assert_eq!(
+            instructions[0],
+            &JIRInstruction::BlockStart(JIRBlockId::try_from_index(0).unwrap())
+        );
+        assert_eq!(
+            instructions[1],
+            &JIRInstruction::InstructionStart(0u64.into())
+        );
+        assert_eq!(instructions[2], &jinst! { slice_0 = slice_3 });
+        assert_eq!(instructions[3], &jinst! { slice_1 = slice_3 + slice_2 });
+        assert_eq!(
+            instructions[4],
+            &JIRInstruction::InstructionEnd(0u64.into())
+        );
+        assert_eq!(
+            instructions[5],
+            &JIRInstruction::BlockEnd(JIRBlockId::try_from_index(0).unwrap())
+        );
     }
 
     #[test]
@@ -379,15 +458,25 @@ mod test {
         let space_id = SpaceId::try_from_index(1).unwrap();
         let group_id = GroupId::try_from_index(1).unwrap();
 
-        let slice_0 = JIRSlice::new(space_id, group_id, 0, 1);
-        let slice_1 = JIRSlice::new(space_id, group_id, 1, 1);
-        let slice_2 = JIRSlice::new(space_id, group_id, 2, 1);
-        let slice_3 = JIRSlice::new(space_id, group_id, 3, 1);
-        let slice_4 = JIRSlice::new(space_id, group_id, 4, 1);
+        let mut jir_groups: PrimaryMap<GroupId, JIRGroup> = Default::default();
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(0).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(1).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(2).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(3).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(4).unwrap()));
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), Default::default());
+        let slice_0 = JIRSlice::new(space_id, GroupId::try_from_index(0).unwrap(), 0, 1);
+        let slice_1 = JIRSlice::new(space_id, GroupId::try_from_index(1).unwrap(), 1, 1);
+        let slice_2 = JIRSlice::new(space_id, GroupId::try_from_index(2).unwrap(), 2, 1);
+        let slice_3 = JIRSlice::new(space_id, GroupId::try_from_index(3).unwrap(), 3, 1);
+        let slice_4 = JIRSlice::new(space_id, GroupId::try_from_index(4).unwrap(), 4, 1);
+
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups);
         block_builder.start_block().unwrap();
 
+        block_builder
+            .push_jir_instruction(JIRInstruction::InstructionStart(0u64.into()))
+            .unwrap();
         block_builder
             .push_jir_instruction(jinst! { slice_0 = slice_3})
             .unwrap();
@@ -397,6 +486,9 @@ mod test {
         block_builder
             .push_jir_instruction(jinst! { slice_0 = slice_4})
             .unwrap();
+        block_builder
+            .push_jir_instruction(JIRInstruction::InstructionEnd(0u64.into()))
+            .unwrap();
 
         let block_id = block_builder.finish_block().unwrap();
         let mut block = block_builder.finish(None).unwrap();
@@ -415,8 +507,25 @@ mod test {
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();
-        assert_eq!(instructions.len(), 4);
-        assert_eq!(instructions[1], &jinst! { slice_1 = slice_3 + slice_2 });
-        assert_eq!(instructions[2], &jinst! { slice_0 = slice_4 });
+
+        assert_eq!(instructions.len(), 6);
+        assert_eq!(
+            instructions[0],
+            &JIRInstruction::BlockStart(JIRBlockId::try_from_index(0).unwrap())
+        );
+        assert_eq!(
+            instructions[1],
+            &JIRInstruction::InstructionStart(0u64.into())
+        );
+        assert_eq!(instructions[2], &jinst! { slice_1 = slice_3 + slice_2 });
+        assert_eq!(instructions[3], &jinst! { slice_0 = slice_4 });
+        assert_eq!(
+            instructions[4],
+            &JIRInstruction::InstructionEnd(0u64.into())
+        );
+        assert_eq!(
+            instructions[5],
+            &JIRInstruction::BlockEnd(JIRBlockId::try_from_index(0).unwrap())
+        );
     }
 }

@@ -1,7 +1,7 @@
 #![feature(get_mut_unchecked)]
 
 use std::num::NonZeroUsize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use criterion::{
@@ -129,7 +129,7 @@ pub fn matching_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let resolver = resolver.clone();
 
-            let mut block_builder = TargetBasicBlockBuilder::new(0x0u64.into());
+            let mut block_builder = TargetBasicBlockBuilder::new(0x0u64.into(), Default::default());
             block_builder.start_block().unwrap();
 
             resolver
@@ -172,7 +172,7 @@ pub fn matching_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let resolver = resolver.clone();
 
-            let mut block_builder = TargetBasicBlockBuilder::new(0x0u64.into());
+            let mut block_builder = TargetBasicBlockBuilder::new(0x0u64.into(), Default::default());
             block_builder.start_block().unwrap();
 
             resolver
@@ -215,7 +215,7 @@ pub fn matching_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let resolver = resolver.clone();
 
-            let mut block_builder = TargetBasicBlockBuilder::new(0x0u64.into());
+            let mut block_builder = TargetBasicBlockBuilder::new(0x0u64.into(), Default::default());
             block_builder.start_block().unwrap();
 
             resolver
@@ -283,7 +283,7 @@ pub fn lifting_benchmark(c: &mut Criterion) {
     ];
 
     let source = MockInstructionSource::new(block.to_vec());
-    let config = LifterConfig::new(&NonEndingDecider {}, None, None);
+    let config = LifterConfig::new(&NonEndingDecider {}, None, None, None);
 
     c.bench_function("lift block", |b| {
         b.iter(|| {
@@ -359,7 +359,7 @@ pub fn optimization_benchmark(c: &mut Criterion) {
 
     let source = MockInstructionSource::new(block.to_vec());
     // let config = LifterConfig::new(&NonEndingDecider {}, Some(NonZeroUsize::new(1).unwrap()), None);
-    let config = LifterConfig::new(&NonEndingDecider {}, None, None);
+    let config = LifterConfig::new(&NonEndingDecider {}, None, None, None);
 
     let optimizer_options = OptimizerOptions::default()
         .with_enable_dse(true)
@@ -381,6 +381,49 @@ pub fn optimization_benchmark(c: &mut Criterion) {
             |mut block| {
                 Rc::make_mut(&mut block)
                     .run_optimization_passes(
+                        &spec,
+                        &OptimizerContext::new(
+                            SpaceId::try_from_index(0).unwrap(),
+                            SpaceId::try_from_index(1).unwrap(),
+                        ),
+                        &optimizer_options,
+                    )
+                    .unwrap();
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+
+    let mut thousand_and_one_additions_path = PathBuf::from(ASSETS_PATH);
+    thousand_and_one_additions_path.push("x86/thousand_and_one_additions.out");
+    let mut block = std::fs::read(&thousand_and_one_additions_path).unwrap();
+    block.push(0xC3);
+
+    let source = MockInstructionSource::new(block[0x0040..].to_vec());
+    // let config = LifterConfig::new(&NonEndingDecider {}, Some(NonZeroUsize::new(1).unwrap()), None);
+    let config = LifterConfig::new(&NonEndingDecider {}, None, None, None);
+
+    let optimizer_options = OptimizerOptions::default()
+        .with_enable_dse(true)
+        .with_enable_copy_coalescing(true)
+        .with_enable_constant_folding(true)
+        .with_enable_nop_elimination(true);
+
+    let lifted_block = spec
+        .lift_block(&source, &mut context_provider, &config, 0x0u64.into())
+        .unwrap();
+
+    c.bench_function("optimize thousand and one additions", |b| {
+        b.iter_batched(
+            || {
+                let mut block = lifted_block.0.clone();
+                black_box(Rc::make_mut(&mut block));
+                block
+            },
+            |mut block| {
+                Rc::make_mut(&mut block)
+                    .run_optimization_passes(
+                        &spec,
                         &OptimizerContext::new(
                             SpaceId::try_from_index(0).unwrap(),
                             SpaceId::try_from_index(1).unwrap(),

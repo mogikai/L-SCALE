@@ -29,10 +29,10 @@ mod test {
     use crate::jinst;
     use crate::spec::jir::jcode::BinaryArgs;
     use crate::spec::jir::jir_block::JIRBlockId;
-    use crate::spec::jir::values::JIRValue;
+    use crate::spec::jir::values::{JIRGroup, JIRValue, TempGroupId, VarnodeGroupId};
     use mogi_sleigh_parser::preprocessor::SleighPreprocessorFactory;
     use mogi_utilities::addresses::EVAddr;
-    use mogi_utilities::index_map::MapKey;
+    use mogi_utilities::index_map::{MapKey, PrimaryMap, SecondaryMap};
     use std::cell::RefCell;
     use std::path::{
         Path,
@@ -77,15 +77,21 @@ mod test {
     #[test]
     fn test_remove_dead_store_nospill() {
         let space_id = SpaceId::try_from_index(1).unwrap();
-        let group_id = GroupId::try_from_index(1).unwrap();
 
-        let slice_0 = JIRSlice::new(space_id, group_id, 0, 1);
-        let slice_1 = JIRSlice::new(space_id, group_id, 1, 1);
-        let slice_2 = JIRSlice::new(space_id, group_id, 2, 1);
-        let slice_3 = JIRSlice::new(space_id, group_id, 3, 1);
-        let slice_4 = JIRSlice::new(space_id, group_id, 4, 1);
+        let mut jir_groups: PrimaryMap<GroupId, JIRGroup> = Default::default();
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(0).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(1).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(2).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(3).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(4).unwrap()));
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), Default::default());
+        let slice_0 = JIRSlice::new(space_id, GroupId::try_from_index(0).unwrap(), 0, 1);
+        let slice_1 = JIRSlice::new(space_id, GroupId::try_from_index(1).unwrap(), 1, 1);
+        let slice_2 = JIRSlice::new(space_id, GroupId::try_from_index(2).unwrap(), 2, 1);
+        let slice_3 = JIRSlice::new(space_id, GroupId::try_from_index(3).unwrap(), 3, 1);
+        let slice_4 = JIRSlice::new(space_id, GroupId::try_from_index(4).unwrap(), 4, 1);
+
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups);
         block_builder.start_block().unwrap();
 
         block_builder
@@ -165,13 +171,20 @@ mod test {
         let space_id = SpaceId::try_from_index(1).unwrap();
         let group_id = GroupId::try_from_index(1).unwrap();
 
-        let slice_0 = JIRSlice::new(space_id, group_id, 0, 1);
-        let slice_1 = JIRSlice::new(space_id, group_id, 1, 1);
-        let slice_2 = JIRSlice::new(space_id, group_id, 2, 1);
-        let slice_3 = JIRSlice::new(space_id, group_id, 3, 1);
-        let slice_4 = JIRSlice::new(space_id, group_id, 4, 1);
+        let mut jir_groups: PrimaryMap<GroupId, JIRGroup> = Default::default();
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(0).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(1).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(2).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(3).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(4).unwrap()));
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), Default::default());
+        let slice_0 = JIRSlice::new(space_id, GroupId::try_from_index(0).unwrap(), 0, 1);
+        let slice_1 = JIRSlice::new(space_id, GroupId::try_from_index(1).unwrap(), 1, 1);
+        let slice_2 = JIRSlice::new(space_id, GroupId::try_from_index(2).unwrap(), 2, 1);
+        let slice_3 = JIRSlice::new(space_id, GroupId::try_from_index(3).unwrap(), 3, 1);
+        let slice_4 = JIRSlice::new(space_id, GroupId::try_from_index(4).unwrap(), 4, 1);
+
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups);
         block_builder.start_block().unwrap();
 
         block_builder
@@ -245,12 +258,18 @@ mod test {
         let space_id = SpaceId::try_from_index(1).unwrap();
         let group_id = GroupId::try_from_index(1).unwrap();
 
-        let slice_0 = JIRSlice::new(space_id, group_id, 0, 1);
-        let slice_1 = JIRSlice::new(space_id, group_id, 1, 1);
-        let slice_2 = JIRSlice::new(space_id, group_id, 2, 1);
-        let slice_3 = JIRSlice::new(space_id, group_id, 3, 1);
+        let mut jir_groups: PrimaryMap<GroupId, JIRGroup> = Default::default();
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(0).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(1).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(2).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(3).unwrap()));
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), Default::default());
+        let slice_0 = JIRSlice::new(space_id, GroupId::try_from_index(0).unwrap(), 0, 1);
+        let slice_1 = JIRSlice::new(space_id, GroupId::try_from_index(1).unwrap(), 1, 1);
+        let slice_2 = JIRSlice::new(space_id, GroupId::try_from_index(2).unwrap(), 2, 1);
+        let slice_3 = JIRSlice::new(space_id, GroupId::try_from_index(3).unwrap(), 3, 1);
+
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups);
         block_builder.start_block().unwrap();
 
         block_builder
@@ -334,12 +353,18 @@ mod test {
         let space_id = SpaceId::try_from_index(1).unwrap();
         let group_id = GroupId::try_from_index(1).unwrap();
 
-        let slice_0 = JIRSlice::new(space_id, group_id, 0, 4);
-        let slice_1 = JIRSlice::new(space_id, group_id, 0, 8);
-        let slice_2 = JIRSlice::new(space_id, group_id, 4, 4);
-        let slice_3 = JIRSlice::new(space_id, group_id, 4, 8);
+        let mut jir_groups: PrimaryMap<GroupId, JIRGroup> = Default::default();
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(0).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(1).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(2).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(3).unwrap()));
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), Default::default());
+        let slice_0 = JIRSlice::new(space_id, GroupId::try_from_index(0).unwrap(), 0, 4);
+        let slice_1 = JIRSlice::new(space_id, GroupId::try_from_index(0).unwrap(), 0, 8);
+        let slice_2 = JIRSlice::new(space_id, GroupId::try_from_index(0).unwrap(), 4, 4);
+        let slice_3 = JIRSlice::new(space_id, GroupId::try_from_index(0).unwrap(), 4, 8);
+
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups);
         block_builder.start_block().unwrap();
 
         block_builder
@@ -409,12 +434,18 @@ mod test {
         let space_id = SpaceId::try_from_index(1).unwrap();
         let group_id = GroupId::try_from_index(1).unwrap();
 
-        let slice_0 = JIRSlice::new(space_id, group_id, 0, 1);
-        let slice_1 = JIRSlice::new(space_id, group_id, 1, 1);
-        let slice_2 = JIRSlice::new(space_id, group_id, 2, 1);
-        let slice_3 = JIRSlice::new(space_id, group_id, 3, 1);
+        let mut jir_groups: PrimaryMap<GroupId, JIRGroup> = Default::default();
+        jir_groups.insert(JIRGroup::TempGroup(TempGroupId::try_from_index(0).unwrap()));
+        jir_groups.insert(JIRGroup::TempGroup(TempGroupId::try_from_index(1).unwrap()));
+        jir_groups.insert(JIRGroup::TempGroup(TempGroupId::try_from_index(2).unwrap()));
+        jir_groups.insert(JIRGroup::TempGroup(TempGroupId::try_from_index(3).unwrap()));
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), Default::default());
+        let slice_0 = JIRSlice::new(space_id, GroupId::try_from_index(0).unwrap(), 0, 1);
+        let slice_1 = JIRSlice::new(space_id, GroupId::try_from_index(1).unwrap(), 1, 1);
+        let slice_2 = JIRSlice::new(space_id, GroupId::try_from_index(2).unwrap(), 2, 1);
+        let slice_3 = JIRSlice::new(space_id, GroupId::try_from_index(3).unwrap(), 3, 1);
+
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups);
         block_builder.start_block().unwrap();
 
         block_builder
@@ -491,12 +522,18 @@ mod test {
         let space_id = SpaceId::try_from_index(1).unwrap();
         let group_id = GroupId::try_from_index(1).unwrap();
 
-        let slice_0 = JIRSlice::new(space_id, group_id, 0, 1);
-        let slice_1 = JIRSlice::new(space_id, group_id, 1, 1);
-        let slice_2 = JIRSlice::new(space_id, group_id, 2, 1);
-        let slice_3 = JIRSlice::new(space_id, group_id, 3, 1);
+        let mut jir_groups: PrimaryMap<GroupId, JIRGroup> = Default::default();
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(0).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(1).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(2).unwrap()));
+        jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(3).unwrap()));
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), Default::default());
+        let slice_0 = JIRSlice::new(space_id, GroupId::try_from_index(0).unwrap(), 0, 1);
+        let slice_1 = JIRSlice::new(space_id, GroupId::try_from_index(1).unwrap(), 1, 1);
+        let slice_2 = JIRSlice::new(space_id, GroupId::try_from_index(2).unwrap(), 2, 1);
+        let slice_3 = JIRSlice::new(space_id, GroupId::try_from_index(3).unwrap(), 3, 1);
+
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups);
         block_builder.start_block().unwrap();
 
         block_builder

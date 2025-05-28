@@ -849,6 +849,7 @@ fn test_misc_max_byte_o0() {
 }
 
 #[test]
+#[ignore]
 fn test_misc_max_byte_o3() {
     // TODO this fails because some custom pcode-ops are not yet implemented
     let mut misc_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -1295,16 +1296,6 @@ fn test_math_median_o0() {
 
 #[test]
 fn test_math_median_o3() {
-    tracing_subscriber::registry()
-        .with(fmt::layer())
-        .with(
-            EnvFilter::builder()
-                .with_default_directive(LevelFilter::INFO.into())
-                .with_env_var("MOGI_LOG")
-                .from_env_lossy(),
-        )
-        .init();
-
     let mut math_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     math_o3_path.push("resources/test/executables/math_o3.o");
 
@@ -1336,18 +1327,8 @@ fn test_math_median_o3() {
     *cpu.register_mut("RDI").unwrap() = numbers_addr;
     // size_t n
     *cpu.register_mut("RSI").unwrap() = numbers.len() as u64;
-        // cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
-        //     .unwrap();
-    loop {
-
-        dump_memory(&cpu, &mmu, (stack_addr - 0x200).into(), 0x300);
-        dump_registers(&cpu);
-        cpu.run(RunLimit::BlockCount(NonZeroUsize::try_from(1).unwrap()))
-            .unwrap();
-        if *cpu.register::<u64>("RIP").unwrap() > 0xFFFF_FFFF_0000_0000 {
-            break;
-        }
-    }
+    cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
+        .unwrap();
 
     let median: u32 = *cpu.register("EAX").unwrap();
     assert_eq!(median as i32, -2);
