@@ -44,8 +44,8 @@ before_script:
     librsvg2-dev
     oci-image-tool
     skopeo
-    clang-13
-    lld-13
+    clang-15
+    lld-15
     zstd
 
 # Use cargo to test the project

@@ -42,14 +42,11 @@ pub fn get_sysdir() -> PathBuf {
 pub fn prepare_binary(bin: &str) -> Result<(), BuildError>{
     let sysdir = get_sysdir();
     let homedir = sysdir.join(Path::new("home/user"));
-    let opwd = env::current_dir()?;
     let pwd = env::current_dir()?;
-    eprintln!("{}", pwd.display());
     let assetdir = pwd.join(Path::new("tests/assets"));
     if !homedir.exists() {
         fs::create_dir_all(&homedir)?;
     }
-    env::set_current_dir(homedir)?;
     let ret = Command::new("make")
         .arg("-f")
         .arg(format!("{}/Makefile", assetdir.display()))
@@ -58,11 +55,11 @@ pub fn prepare_binary(bin: &str) -> Result<(), BuildError>{
         .env("CC", "clang-15")
         .env(
             "CFLAGS",
-            format!("--sysroot {} -B {} -fuse-ld={} -pie", sysdir.display(), "/usr/lib/llvm-14/bin", "lld"),
+            format!("--sysroot {} -B {} -fuse-ld={} -pie", sysdir.display(), "/usr/lib/llvm-15/bin", "lld"),
         )
         .env("LDFLAGS", "-Wl,-allow-shlib-undefined -fPIC")
+        .current_dir(homedir)
         .status()?;
-    env::set_current_dir(&opwd)?;
     if !ret.success() {
         match ret.code() {
             Some(code) => return Err(BuildError::RetCode(code)),
