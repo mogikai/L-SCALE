@@ -16,7 +16,6 @@ use mogi_system::components::mmu::{
     Permission,
 };
 use mogi_utilities::addresses::EVAddr;
-use std::arch::breakpoint;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use tracing_subscriber::filter::LevelFilter;

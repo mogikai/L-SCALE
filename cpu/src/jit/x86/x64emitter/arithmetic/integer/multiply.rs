@@ -45,7 +45,12 @@ impl X64AllocRequirements {
                 if input_b.value() == 0 {
                     Self::copy_requirements(requirement, output, input_b)
                 } else {
-                    Self::require_large_int_write_any(requirement, output);
+                    Self::require_large_int_write_fixed(
+                        requirement,
+                        output,
+                        GPRegister::AX.into_host_reg(),
+                        GPRegister::DX.into_host_reg(),
+                    );
                     Self::require_large_int_read_any(requirement, input_a);
                     if output.size() > 8 {
                         // We need two additional temp for the 16 byte case to load both arguments.
