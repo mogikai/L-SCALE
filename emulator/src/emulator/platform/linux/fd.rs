@@ -1,8 +1,4 @@
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
-use mogi_system::components::restore::Restorable;
-use mogi_system::errors::generic::GenericError;
-use std::ops::Add;
-
 use crate::emulator::platform::linux::kernel::eventpoll::EpollData;
 use crate::emulator::platform::linux::kernel::fs::FileData;
 use crate::emulator::platform::linux::kernel::net::inet6::tcp::TCPData;
@@ -12,6 +8,11 @@ use crate::emulator::platform::linux::kernel::net::unix::UnixSocketData;
 use crate::emulator::platform::linux::signalfd::SignalFD;
 use crate::emulator::system::fd_map::FdId;
 use crate::emulator::system::stdio::StdioData;
+use bitflags::bitflags;
+use mogi_derive::unfinished;
+use mogi_system::components::restore::Restorable;
+use mogi_system::errors::generic::GenericError;
+use std::ops::Add;
 
 // TODO: Move to platform directory and make FileDescriptor generic
 #[derive(Default, Debug, Clone)]
@@ -24,6 +25,7 @@ pub struct FileDescriptorData {
     pub usock: Option<UnixSocketData>,
     pub netlink: Option<NetlinkData>,
     pub stdio: Option<StdioData>,
+    pub flags: FileDescriptorFlags,
 }
 
 #[derive(Hash, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Default)]
@@ -63,5 +65,20 @@ impl From<FD> for usize {
 impl From<FD> for u64 {
     fn from(value: FD) -> Self {
         value.0 as u64
+    }
+}
+
+bitflags! {
+    #[repr(C)]
+    #[derive(Debug, Copy, Clone, Default)]
+    #[unfinished]
+    pub struct FileDescriptorFlags: u64 {
+        const O_RDONLY = 0;
+        const O_WRONLY = 1;
+        const O_RDWR = 2;
+        const O_APPEND = 1024;
+        const O_NONBLOCK = 2048;
+        const O_CREAT = 512;
+        const O_TRUNC = 256;
     }
 }

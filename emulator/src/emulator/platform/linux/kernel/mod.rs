@@ -46,6 +46,7 @@ use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::{
     FD,
     FileDescriptorData,
+    FileDescriptorFlags,
 };
 use crate::emulator::platform::linux::kernel::auxv::AUXVType;
 pub use crate::emulator::platform::linux::kernel::error::LinuxKernelError;
@@ -596,13 +597,24 @@ where
     pub fn fcntl(
         &mut self,
         fd: FD,
-        cmd: u64,
+        cmd: FNCTL_OPS,
         arg: u64,
     ) -> SyscallResult {
         // TODO: Implement correctly
         error!("FCNTL not implemented fully yet");
-        sys_component_mut!(self, fd_map).get(&self.task_id, &fd);
-        Ok(2)
+        let mut fd_map = sys_component_mut!(self, fd_map);
+        let mut fd = fd_map
+            .get_mut(&self.task_id, &fd)
+            .ok_or(SyscallError::KernelError(LinuxKernelError::EINVAL))?;
+        match cmd {
+            FNCTL_OPS::F_GETFL => Ok(fd.data.flags.bits()),
+            FNCTL_OPS::F_SETFL => {
+                fd.data.flags |= FileDescriptorFlags::from_bits(arg).ok_or(LinuxKernelError::EINVAL)?;
+                trace!("Set file descriptor flags {:?}", fd.data.flags);
+                Ok(0)
+            }
+            _ => todo!("fcntl operation {} not yet implemented", stringify!(cmd)),
+        }
     }
 
     pub fn gettimeofday(
@@ -842,11 +854,24 @@ where
         // TODO: Implement rseq https://git.kernel.org/pub/scm/libs/librseq/librseq.git/tree/doc/man/rseq.2
         Err(LinuxKernelError::ENOSYS.into())
     }
-    
+
     pub fn getuid(&mut self) -> SyscallResult {
         // TODO: Implement users and permissions properly
         Ok(0)
     }
+}
+
+#[repr(u64)]
+#[derive(FromPrimitive, Debug)]
+#[allow(clippy::style)]
+pub enum FNCTL_OPS {
+    F_DUPFD = 0, /* Duplicate file descriptor.  */
+    F_GETFD = 1, /* Get file descriptor flags.  */
+    F_SETFD = 2, /* Set file descriptor flags.  */
+    F_GETFL = 3, /* Get file status flags.  */
+    F_SETFL = 4, /* Set file status flags.  */
+    #[default]
+    INVALID,
 }
 
 #[derive(Encode, Decode, RequiredMem, Debug)]

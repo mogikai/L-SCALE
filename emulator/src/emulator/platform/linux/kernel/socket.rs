@@ -24,7 +24,11 @@ use mogi_system::components::cpu::CPU;
 use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
 use crate::emulator::platform::linux::architecture::Architecture;
-use crate::emulator::platform::linux::fd::FD;
+use crate::emulator::platform::linux::fd::{
+    FD,
+    FileDescriptorFlags,
+};
+use crate::emulator::platform::linux::kernel::error::SyscallError::KernelError;
 use crate::emulator::platform::linux::kernel::net::sockopt::Sockopt;
 use crate::emulator::platform::linux::kernel::net::unix::UnixSocketOps;
 use crate::emulator::platform::linux::kernel::net::{
@@ -183,6 +187,9 @@ where
         let fd = &mut *fd;
 
         let (data, sender) = fd.recvfrom(size as usize)?;
+        if data.is_empty() && fd.data.flags.contains(FileDescriptorFlags::O_NONBLOCK) {
+            return Err(KernelError(LinuxKernelError::EAGAIN));
+        }
 
         let (written, _) = memory.write_bounded_slice(ubuf, data.as_slice(), size as usize)?;
 

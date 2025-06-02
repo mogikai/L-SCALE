@@ -17,6 +17,7 @@ use std::ops::{
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use bitflags::bitflags;
 use generational_arena::{
     Arena,
     Index,

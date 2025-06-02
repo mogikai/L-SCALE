@@ -17,6 +17,7 @@ use crate::emulator::macros::*;
 use crate::emulator::platform::linux::fd::{
     FD,
     FileDescriptorData,
+    FileDescriptorFlags,
 };
 use crate::emulator::platform::linux::kernel::error::SyscallError::KernelError;
 use crate::emulator::platform::linux::kernel::fs::fd_ops::FileOps;
@@ -56,6 +57,14 @@ where
         let mut mmu = sys_component_mut!(self, mmu);
         let mut memory = sys_component_mut!(self, memory);
         let mut file_descriptor_map = sys_component_mut!(self, fd_map);
+        trace!(
+            "Process write {:?}",
+            str::from_utf8(
+                &*memory
+                    .accessor(&mut mmu, self.task_id)
+                    .read_bytes(buf, size as usize)?
+            )
+        );
         file_descriptor_map
             .get_mut(&self.task_id, &fd)
             .map_or(Err(LinuxKernelError::EINVAL.into()), |mut fd| {

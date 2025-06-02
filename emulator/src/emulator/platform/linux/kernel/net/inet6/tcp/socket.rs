@@ -1,4 +1,7 @@
-use std::ops::{Deref, Not};
+use std::ops::{
+    Deref,
+    Not,
+};
 
 use bitflags::Flags;
 use tracing::trace;
@@ -13,7 +16,10 @@ use crate::emulator::abstractions::network::{
     ShutdownMethod,
     SocketAddress,
 };
-use crate::emulator::platform::linux::fd::FileDescriptorData;
+use crate::emulator::platform::linux::fd::{
+    FileDescriptorData,
+    FileDescriptorFlags,
+};
 use crate::emulator::platform::linux::kernel::net::Sockaddr;
 use crate::emulator::platform::linux::kernel::net::inet6::tcp::TCPData;
 use crate::emulator::platform::linux::kernel::net::sockopt::{
@@ -163,8 +169,14 @@ impl FileDescriptorOps for TcpSocketOps {
         Ok(tcp.tcp_system.borrow_mut().shutdown(tcp.id, how)?)
     }
 
-    fn getsockname(&self, fd: &mut Self::D) -> Result<SocketAddress, FileDescriptorError> {
+    fn getsockname(
+        &self,
+        fd: &mut Self::D,
+    ) -> Result<SocketAddress, FileDescriptorError> {
         let tcp = fd.tcp.as_mut().ok_or(FileDescriptorError::NotASocket)?;
-        tcp.tcp_system.borrow().getsockname(tcp.id).map_err(|_| FileDescriptorError::FileNotFound)
+        tcp.tcp_system
+            .borrow()
+            .getsockname(tcp.id)
+            .map_err(|_| FileDescriptorError::FileNotFound)
     }
 }
