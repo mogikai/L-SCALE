@@ -1360,7 +1360,7 @@ where
                     //       For now we just pick the first one we find.
                     let listener_id = tcp.sockets().find(|(_, sock)| sock.is_listener());
                     if listener_id.is_some() {
-                        let listener_id = *listener_id.unwrap().0;
+                        let listener_id = *listener_id.unwrap();
                         tcp.new_connection(
                             &listener_id,
                             SocketAddress::IP(IPAddress::V6 {

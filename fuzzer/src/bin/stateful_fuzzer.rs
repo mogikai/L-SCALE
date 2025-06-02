@@ -55,7 +55,7 @@ fn main() {
     core_affinity::set_for_current(CoreId { id: 0 });
     tracing_subscriber::registry()
         .with(fmt::layer())
-        .with(EnvFilter::from_env("FUZE_LOG"))
+        .with(EnvFilter::from_env("MOGI_LOG"))
         .init();
     let fuzzer_args = Args::parse();
     #[cfg(not(feature = "unicorn"))]
