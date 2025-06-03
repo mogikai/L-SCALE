@@ -179,4 +179,13 @@ impl FileDescriptorOps for TcpSocketOps {
             .getsockname(tcp.id)
             .map_err(|_| FileDescriptorError::FileNotFound)
     }
+
+    fn write(
+        &self,
+        fd: &mut Self::D,
+        data: &[u8],
+    ) -> Result<usize, FileDescriptorError> {
+        let tcp = fd.tcp.as_mut().ok_or(FileDescriptorError::NotASocket)?;
+        Ok(tcp.tcp_system.borrow_mut().send(tcp.id, data)?)
+    }
 }

@@ -157,6 +157,36 @@ where
         Ok(memory.write_direct(buf, data.as_slice())? as u64)
     }
 
+    pub fn sendfile(
+        &mut self,
+        out_fd: FD,
+        in_fd: FD,
+        offset: u64,
+        count: u64,
+    ) -> SyscallResult {
+        let mut mmu = sys_component_mut!(self, mmu);
+        let mut memory = sys_component_mut!(self, memory);
+        let mut file_descriptor_map = sys_component_mut!(self, fd_map);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
+        let mut in_file = file_descriptor_map
+            .get_mut(&self.task_id, &in_fd)
+            .ok_or(LinuxKernelError::EINVAL)?;
+        let data = match in_file.read(count)? {
+            None => return Err(SyscallError::Yield),
+            Some(data) => data,
+        };
+        drop(file_descriptor_map);
+        let mut file_descriptor_map = sys_component_mut!(self, fd_map);
+        let mut out_file = file_descriptor_map
+            .get_mut(&self.task_id, &out_fd)
+            .ok_or(LinuxKernelError::EINVAL)?;
+        Ok(out_file
+            .write(data.as_slice())
+            .unwrap_or(!0)
+            .try_into()
+            .unwrap())
+    }
+
     pub fn fstat(
         &mut self,
         fd: FD,
