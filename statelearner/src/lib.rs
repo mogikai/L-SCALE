@@ -1,7 +1,9 @@
+mod graph;
+
 use slotmap::{
-    new_key_type,
     SecondaryMap,
     SlotMap,
+    new_key_type,
 };
 
 pub trait Observable {
