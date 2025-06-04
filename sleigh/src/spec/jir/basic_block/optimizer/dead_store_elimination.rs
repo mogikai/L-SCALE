@@ -91,7 +91,7 @@ mod test {
         let slice_3 = JIRSlice::new(space_id, GroupId::try_from_index(3).unwrap(), 3, 1);
         let slice_4 = JIRSlice::new(space_id, GroupId::try_from_index(4).unwrap(), 4, 1);
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups);
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups.next_key());
         block_builder.start_block().unwrap();
 
         block_builder
@@ -184,7 +184,7 @@ mod test {
         let slice_3 = JIRSlice::new(space_id, GroupId::try_from_index(3).unwrap(), 3, 1);
         let slice_4 = JIRSlice::new(space_id, GroupId::try_from_index(4).unwrap(), 4, 1);
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups);
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups.next_key());
         block_builder.start_block().unwrap();
 
         block_builder
@@ -269,7 +269,7 @@ mod test {
         let slice_2 = JIRSlice::new(space_id, GroupId::try_from_index(2).unwrap(), 2, 1);
         let slice_3 = JIRSlice::new(space_id, GroupId::try_from_index(3).unwrap(), 3, 1);
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups);
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups.next_key());
         block_builder.start_block().unwrap();
 
         block_builder
@@ -364,7 +364,7 @@ mod test {
         let slice_2 = JIRSlice::new(space_id, GroupId::try_from_index(0).unwrap(), 4, 4);
         let slice_3 = JIRSlice::new(space_id, GroupId::try_from_index(0).unwrap(), 4, 8);
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups);
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups.next_key());
         block_builder.start_block().unwrap();
 
         block_builder
@@ -445,7 +445,7 @@ mod test {
         let slice_2 = JIRSlice::new(space_id, GroupId::try_from_index(2).unwrap(), 2, 1);
         let slice_3 = JIRSlice::new(space_id, GroupId::try_from_index(3).unwrap(), 3, 1);
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups);
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups.next_key());
         block_builder.start_block().unwrap();
 
         block_builder
@@ -533,7 +533,7 @@ mod test {
         let slice_2 = JIRSlice::new(space_id, GroupId::try_from_index(2).unwrap(), 2, 1);
         let slice_3 = JIRSlice::new(space_id, GroupId::try_from_index(3).unwrap(), 3, 1);
 
-        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups);
+        let mut block_builder = TargetBasicBlockBuilder::new(0u64.into(), jir_groups.next_key());
         block_builder.start_block().unwrap();
 
         block_builder

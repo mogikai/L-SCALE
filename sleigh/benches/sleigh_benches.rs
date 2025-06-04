@@ -10,6 +10,7 @@ use criterion::{
     criterion_group,
     criterion_main,
 };
+use mogi_sleigh::spec::jir::values::GroupId;
 use mogi_sleigh::SleighPreprocessorFactory;
 use mogi_sleigh::compiler::SleighCompilerResult;
 use mogi_sleigh::compiler::builder::SleighCompilerBuilder;
@@ -129,7 +130,7 @@ pub fn matching_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let resolver = resolver.clone();
 
-            let mut block_builder = TargetBasicBlockBuilder::new(0x0u64.into(), Default::default());
+            let mut block_builder = TargetBasicBlockBuilder::new(0x0u64.into(), GroupId::try_from_index(0).unwrap());
             block_builder.start_block().unwrap();
 
             resolver
@@ -172,7 +173,7 @@ pub fn matching_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let resolver = resolver.clone();
 
-            let mut block_builder = TargetBasicBlockBuilder::new(0x0u64.into(), Default::default());
+            let mut block_builder = TargetBasicBlockBuilder::new(0x0u64.into(), GroupId::try_from_index(0).unwrap());
             block_builder.start_block().unwrap();
 
             resolver
@@ -215,7 +216,7 @@ pub fn matching_benchmark(c: &mut Criterion) {
         b.iter(|| {
             let resolver = resolver.clone();
 
-            let mut block_builder = TargetBasicBlockBuilder::new(0x0u64.into(), Default::default());
+            let mut block_builder = TargetBasicBlockBuilder::new(0x0u64.into(), GroupId::try_from_index(0).unwrap());
             block_builder.start_block().unwrap();
 
             resolver

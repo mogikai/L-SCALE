@@ -13,7 +13,7 @@ use mogi_sleigh::spec::jir::basic_block::TargetBasicBlock;
 use mogi_sleigh::spec::jir::basic_block::builder::TargetBasicBlockBuilder;
 use mogi_sleigh::spec::jir::common::JIRSize;
 use mogi_sleigh::spec::jir::jcode::JIRInstruction;
-use mogi_sleigh::spec::jir::values::JIRSlice;
+use mogi_sleigh::spec::jir::values::{GroupId, JIRSlice};
 use mogi_sleigh::spec::{
     ProcessorSpecification,
     SpaceId,
@@ -198,7 +198,7 @@ pub(super) fn make_basic_block_from_instructions(
     fallthrough: EVAddr,
     instructions: impl IntoIterator<Item = JIRInstruction>,
 ) -> TargetBasicBlock {
-    let mut builder = TargetBasicBlockBuilder::new(address, Default::default());
+    let mut builder = TargetBasicBlockBuilder::new(address, GroupId::try_from_index(0).unwrap());
     builder.set_fallthrough(fallthrough);
     builder.start_block().unwrap();
     for instruction in instructions.into_iter() {

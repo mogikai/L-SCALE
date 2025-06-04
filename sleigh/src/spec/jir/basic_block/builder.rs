@@ -35,9 +35,7 @@ use addr_align::Align;
 use itertools::Either;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::{
-    MapKey,
-    PrimaryMap,
-    SecondaryMap,
+    MapKey, PrimaryMap, PrimaryOffsetMap, SecondaryMap
 };
 use std::num::NonZeroU16;
 use std::ops::Range;
@@ -69,7 +67,7 @@ pub struct TargetBasicBlockBuilder {
 impl TargetBasicBlockBuilder {
     pub fn new(
         start: EVAddr,
-        jir_groups: PrimaryMap<GroupId, JIRGroup>,
+        jir_group_offset: GroupId,
     ) -> Self {
         Self {
             target_block: TargetBasicBlockInner {
@@ -84,7 +82,7 @@ impl TargetBasicBlockBuilder {
                 addr_range: None,
                 temp_varnodes: Default::default(),
                 temp_to_group: Default::default(),
-                jir_groups,
+                jir_groups: PrimaryOffsetMap::new(jir_group_offset),
                 optimizer_ancillary: Default::default(),
             },
             current_block_id: None,

@@ -365,6 +365,206 @@ impl<K: MapKey, V> FromIterator<(K, V)> for PrimaryMap<K, V> {
     }
 }
 
+/// A [PrimaryOffsetMap] is the same as a [PrimaryMap] with the additional
+/// option to start at an offsetted key.
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct PrimaryOffsetMap<K: MapKey, V> {
+    data: Vec<V>,
+    phantom_data: PhantomData<K>,
+    offset: K,
+}
+
+impl<K: MapKey, V> PrimaryOffsetMap<K, V> {
+    pub fn new(offset: K) -> Self {
+        Self {
+            data: Default::default(),
+            phantom_data: Default::default(),
+            offset,
+        }
+    }
+
+    pub fn offset(&self) -> K {
+        self.offset
+    }
+
+    pub fn shrink_to_fit(&mut self) {
+        self.data.shrink_to_fit();
+    }
+
+    /// Gets the next key that will be used when inserting a value.
+    pub fn next_key(&self) -> K {
+        K::try_from_index(self.offset.to_index() + self.data.len()).expect("Index out of range")
+    }
+
+    pub fn insert(
+        &mut self,
+        value: V,
+    ) -> K {
+        let key = self.next_key();
+        self.data.push(value);
+        key
+    }
+
+    /// Return None if `key` is not in the valid range `self.offset..self.offset + self.data.len()`
+    pub fn get(
+        &self,
+        key: K,
+    ) -> Option<&V> {
+        let index = key.to_index().checked_sub(self.offset.to_index());
+        index.and_then(|index| self.data.get(index))
+    }
+
+    /// Return None if `key` is not in the valid range `self.offset..self.offset + self.data.len()`
+    pub fn get_mut(
+        &mut self,
+        key: K,
+    ) -> Option<&mut V> {
+        let index = key.to_index().checked_sub(self.offset.to_index());
+        index.and_then(|index| self.data.get_mut(index))
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn first(&self) -> Option<&V> {
+        self.data.first()
+    }
+
+    pub fn last(&self) -> Option<&V> {
+        self.data.last()
+    }
+
+    pub fn keys(&self) -> impl ExactSizeIterator<Item = K> + DoubleEndedIterator + use<K, V> {
+        (self.offset.to_index()..self.offset.to_index() + self.data.len())
+            .map(MapKey::try_from_index)
+            .map(Result::unwrap)
+    }
+
+    pub fn values(&self) -> impl ExactSizeIterator<Item = &V> + DoubleEndedIterator {
+        self.data.iter()
+    }
+
+    pub fn values_mut(&mut self) -> impl ExactSizeIterator<Item = &mut V> + DoubleEndedIterator {
+        self.data.iter_mut()
+    }
+
+    pub fn items(&self) -> impl ExactSizeIterator<Item = (K, &V)> + DoubleEndedIterator {
+        self.data.iter().enumerate().map(|(k, v)| {
+            (
+                MapKey::try_from_index(k + self.offset.to_index()).expect("Enumarating must produce a valid index"),
+                v,
+            )
+        })
+    }
+
+    pub fn items_mut(&mut self) -> impl DoubleEndedIterator<Item = (K, &mut V)> {
+        self.data.iter_mut().enumerate().map(|(k, v)| {
+            (
+                MapKey::try_from_index(k + self.offset.to_index()).expect("Enumarating must produce a valid index"),
+                v,
+            )
+        })
+    }
+
+    pub fn into_items(self) -> impl DoubleEndedIterator<Item = (K, V)> {
+        let offset_index = self.offset.to_index();
+
+        self.data.into_iter().enumerate().map(move |(k, v)| {
+            (MapKey::try_from_index(k + offset_index).expect("Enumerating must produce a valid index"), v)
+        })
+    }
+}
+
+impl<K, V> IntoIterator for PrimaryOffsetMap<K, V>
+where
+    K: MapKey,
+{
+    type Item = (K, V);
+    type IntoIter = std::iter::Map<std::iter::Enumerate<IntoIter<V>>, fn((usize, V)) -> (K, V)>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.data
+            .into_iter()
+            .enumerate()
+            .map(|(k, v)| (MapKey::try_from_index(k).expect("Enumerating must produce a valid index"), v))
+    }
+}
+
+impl<'a, K, V> IntoIterator for &'a PrimaryOffsetMap<K, V>
+where
+    K: MapKey,
+{
+    type Item = (K, &'a V);
+    // TODO: Replace type with ATIT once https://github.com/rust-lang/rust/issues/63063 is stable
+    type IntoIter = std::iter::Map<std::iter::Enumerate<Iter<'a, V>>, fn((usize, &'a V)) -> (K, &'a V)>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.data
+            .iter()
+            .enumerate()
+            .map(|(k, v)| (MapKey::try_from_index(k).expect("Enumerating must produce a valid index"), v))
+    }
+}
+
+impl<K: MapKey, V: Clone> Clone for PrimaryOffsetMap<K, V> {
+    fn clone(&self) -> Self {
+        Self {
+            data: self.data.clone(),
+            phantom_data: Default::default(),
+            offset: self.offset.clone(),
+        }
+    }
+}
+
+impl<K: MapKey, V> Index<K> for PrimaryOffsetMap<K, V> {
+    type Output = V;
+
+    fn index(
+        &self,
+        key: K,
+    ) -> &Self::Output {
+        // index - 1 is fine, since index is guaranteed to be non-zero
+        &self.data[key.to_index()]
+    }
+}
+
+impl<K: MapKey, V> IndexMut<K> for PrimaryOffsetMap<K, V> {
+    fn index_mut(
+        &mut self,
+        key: K,
+    ) -> &mut Self::Output {
+        &mut self.data[key.to_index()]
+    }
+}
+
+impl<K: MapKey, V> Index<Range<K>> for PrimaryOffsetMap<K, V> {
+    type Output = [V];
+
+    fn index(
+        &self,
+        key: Range<K>,
+    ) -> &Self::Output {
+        // index - 1 is fine, since index is guaranteed to be non-zero
+        let index_start = key.start.to_index();
+        let index_end = key.end.to_index();
+        &self.data[index_start..index_end]
+    }
+}
+
+impl<K: MapKey, V> IndexMut<Range<K>> for PrimaryOffsetMap<K, V> {
+    fn index_mut(
+        &mut self,
+        key: Range<K>,
+    ) -> &mut Self::Output {
+        // index - 1 is fine, since index is guaranteed to be non-zero
+        let index_start = key.start.to_index();
+        let index_end = key.end.to_index();
+        &mut self.data[index_start..index_end]
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SecondaryMap<K: MapKey, V> {
     data: Vec<V>,

@@ -79,7 +79,7 @@ impl Disassembler for ProcessorSpecification {
         let mut disassembly = Vec::new();
 
         // also lift block until end (TODO better way to determine block end)
-        let mut block_builder = TargetBasicBlockBuilder::new(addr, self.jir_groups.clone());
+        let mut block_builder = TargetBasicBlockBuilder::new(addr, self.jir_groups.next_key());
         block_builder.start_block().unwrap();
 
         loop {

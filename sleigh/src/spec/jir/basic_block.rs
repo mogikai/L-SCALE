@@ -15,8 +15,7 @@ use crate::spec::jir::values::JIRVarNode;
 use itertools::Either;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::{
-    PrimaryMap,
-    SecondaryMap,
+    PrimaryMap, PrimaryOffsetMap, SecondaryMap
 };
 use mogi_utilities::new_map_key;
 use optimizer::OptimizerAncillary;
@@ -166,7 +165,7 @@ pub struct TargetBasicBlockInner {
     /// but this is slow. TODO: use something like a split map or two separate maps?
     temp_varnodes: PrimaryMap<TempGroupId, JIRVarNode>,
     temp_to_group: SecondaryMap<TempGroupId, Option<GroupId>>,
-    jir_groups: PrimaryMap<GroupId, JIRGroup>,
+    jir_groups: PrimaryOffsetMap<GroupId, JIRGroup>,
 
     /// Ancillary information calculated by the optimizer can be stored here
     optimizer_ancillary: OptimizerAncillary,
