@@ -125,6 +125,7 @@ impl RegAllocHostConstraints {
         mut self,
         reg: HostReg,
     ) -> Self {
+        self.all_available_registers.remove(reg);
         self.preferred_registers.remove(reg);
         self.non_preferred_registers.remove(reg);
         self.scratch_register[reg.class() as usize] = reg;
@@ -349,7 +350,7 @@ where
             return Ok(());
         }
         trace_regalloc!("");
-        trace_regalloc!("Allocating registers for {inst}. It is clobbering {clobbers} and requesting {operands:?}");
+        trace_regalloc!("Allocating registers for {inst}. It is clobbering {clobbers} and requesting {operands:#?}");
         trace_regalloc!("Available registers at the start:\n{}", self.available_registers,);
 
         for (_, operand) in operands.fixed() {
@@ -566,6 +567,7 @@ where
                 if reg != fixed_reg {
                     // Move the allocation for any following instructions (in forward direction)
                     // into reg.
+                    self.unload_reg(fixed_reg);
                     self.move_reg(reg, fixed_reg, existing_slice);
                 }
                 // The slices match and are already loaded in the correct register. Nothing to do here.
@@ -575,6 +577,7 @@ where
                 if reg != fixed_reg {
                     // Move the allocation for any following instructions (in forward direction)
                     // into reg.
+                    self.unload_reg(fixed_reg);
                     self.move_reg(reg, fixed_reg, existing_slice);
                 }
                 // We can now adjust the slice. The adjust directive will later be executed before the move.

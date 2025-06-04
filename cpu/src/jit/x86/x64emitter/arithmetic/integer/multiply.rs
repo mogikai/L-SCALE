@@ -43,7 +43,7 @@ impl X64AllocRequirements {
             (JIRValue::Slice(input_a), JIRValue::Const(input_b))
             | (JIRValue::Const(input_b), JIRValue::Slice(input_a)) => {
                 if input_b.value() == 0 {
-                    Self::copy_requirements(requirement, output, input_b)
+                    Self::require_large_int_write_any(requirement, output);
                 } else {
                     Self::require_large_int_write_fixed(
                         requirement,
@@ -125,15 +125,26 @@ impl X64Emitter<'_> {
         input_a: JIRSlice,
         input_b: JIRConst,
     ) -> JITResult {
-        if output.size() > 8 {
-            self.emit_multiply_slice_const_large(inst, output, input_a, input_b)?;
+        match output.size() {
+            ..=8 => self.emit_multiply_slice_const_small(inst, output, input_a, input_b),
+            16 => self.emit_multiply_slice_const_large(inst, output, input_a, input_b),
+            size => todo!("Unsupported size {size}"),
         }
+    }
+
+    fn emit_multiply_slice_const_small(
+        &mut self,
+        inst: InstId,
+        output: JIRSlice,
+        input_a: JIRSlice,
+        input_b: JIRConst,
+    ) -> JITResult {
+        let output_reg = reg!(self.allocations, inst, 0);
+
         if input_b.value() == 0 {
-            // We can just zero the target, since multiplying by zero always results in zero.
-            return self.emit_copy(inst, output, input_b);
+            return self.load_zero(output_reg, output.size());
         }
 
-        let output_reg = reg!(self.allocations, inst, 0);
         let input_a_reg = reg!(self.allocations, inst, 1);
         // The size in bytes needed for the immediate
         let imm_size = immediate_size(&input_b);
@@ -176,6 +187,7 @@ impl X64Emitter<'_> {
                 todo!("Currently unsupported size for multiply: {}", input_b.size())
             }
         }
+
         Ok(())
     }
 
@@ -191,6 +203,13 @@ impl X64Emitter<'_> {
         debug_assert_eq!(input_a.size(), input_b.size());
         let output_reg_0 = reg!(self.allocations, inst, 0);
         let output_reg_1 = reg!(self.allocations, inst, 1);
+
+        if input_b.value() == 0 {
+            self.load_zero(output_reg_0, 8)?;
+            self.load_zero(output_reg_1, 8)?;
+            return Ok(());
+        }
+
         let input_a_reg_0 = reg!(self.allocations, inst, 2);
         let input_a_reg_1 = reg!(self.allocations, inst, 3);
 

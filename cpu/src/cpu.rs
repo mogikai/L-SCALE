@@ -599,7 +599,7 @@ fn compile<JitT: MogiJit>(
         .with_enable_dse(true)
         .with_enable_copy_coalescing(true)
         .with_enable_constant_folding(true)
-        .with_enable_nop_elimination(false);
+        .with_enable_nop_elimination(true);
     Rc::make_mut(&mut block.0)
         .run_optimization_passes(
             spec,

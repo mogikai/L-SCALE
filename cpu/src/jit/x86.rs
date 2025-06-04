@@ -389,7 +389,7 @@ impl MogiJit for X86MogiJit {
             &target_block,
             &alloc_requirements,
             RegAllocHostConstraints::new(preferred_registers, non_preferred_registers)
-                .with_scratch(GPRegister::DI.into_host_reg())
+                .with_scratch(GPRegister::R11.into_host_reg())
                 .with_scratch(XMMRegister::XMM7.into_host_reg()),
         );
         let allocations = regalloc.run()?;

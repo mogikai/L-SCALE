@@ -854,12 +854,8 @@ fn test_misc_max_byte_o0() {
 
 #[test]
 fn test_misc_max_byte_o3() {
-    // TODO this fails because some custom pcode-ops are not yet implemented
-    let mut misc_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    misc_o3_path.push("resources/test/executables/misc_o3.o");
-
-    let instr = &std::fs::read(&misc_o3_path).unwrap();
-    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+    let (content, entry) = load_test_object("misc_o3", "max_byte");
+    let (mut cpu, mmu) = common::setup_with_bytes(&content);
     let stack_addr = 0xffff_ffff_ffff_0ff0u64;
 
     // write fake return value for translation limit
@@ -885,7 +881,7 @@ fn test_misc_max_byte_o3() {
 
     let rax_expected = *bytes.iter().max().unwrap() as u64;
 
-    *cpu.register_mut("RIP").unwrap() = 0x1200u64;
+    *cpu.register_mut("RIP").unwrap() = u64::from(entry);
     *cpu.register_mut("RSP").unwrap() = stack_addr;
     *cpu.register_mut("RDI").unwrap() = bytes_addr;
     *cpu.register_mut("RSI").unwrap() = bytes.len() as u64;
