@@ -26,11 +26,13 @@ strum = { version = "0.27.1", features = ["derive"] }
 itertools = "0.14.0"
 addr_align = "0.1.0"
 criterion = "0.6.0"
+goblin = "0.10.0"
 
 [features]
 default = ["trace_jit"]
 trace_jit = []
 trace_tlb = []
+trace_regalloc = []
 trace_opt = ["mogi_sleigh/trace_opt"]
 trace_jir = ["mogi_sleigh/trace_jir"]
 trace_build = ["mogi_sleigh/trace_build"]

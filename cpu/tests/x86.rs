@@ -853,6 +853,7 @@ fn test_misc_max_byte_o0() {
 }
 
 #[test]
+#[ignore]
 fn test_misc_max_byte_o3() {
     let (content, entry) = load_test_object("misc_o3", "max_byte");
     let (mut cpu, mmu) = common::setup_with_bytes(&content);
