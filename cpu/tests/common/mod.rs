@@ -1,3 +1,4 @@
+use goblin::elf::Elf;
 use mogi_cpu::cpu::MogiCPU;
 use mogi_cpu::jit::api::{
     JITTaskRuntimeContext,
@@ -18,6 +19,7 @@ use mogi_system::components::mmu::{
 };
 use mogi_utilities::addresses::EVAddr;
 use std::cell::RefCell;
+use std::error;
 use std::path::{
     Path,
     PathBuf,
@@ -56,9 +58,7 @@ pub(crate) fn dump_registers(cpu: &MogiCPU<X86MogiJit, MogiMMU>) {
         eprintln!("{:#3} = {:#018X}", register_name, register_value);
     }
 
-    let register_names = [
-        "XMM0", "XMM1", "XMM2", "XMM3",
-    ];
+    let register_names = ["XMM0", "XMM1", "XMM2", "XMM3"];
 
     for register_name in register_names.iter() {
         let register_value: u128 = *cpu.register(register_name).unwrap();
@@ -178,3 +178,29 @@ pub(crate) fn setup_with_bytes(bytes: &[u8]) -> (MogiCPU<X86MogiJit, MogiMMU>, R
 
     (cpu, mmu)
 }
+
+// Load file in `cpu/resources/tests/executables/{name}` and return the content
+// as well as the address of function `fn_name`.
+pub(crate) fn load_test_object(
+    name: &str,
+    fn_name: &str,
+) -> (Vec<u8>, EVAddr) {
+    let mut object_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    object_path.push(format!("resources/test/executables/{name}"));
+    let content = std::fs::read(&object_path).unwrap();
+
+    let elf = Elf::parse(&content).unwrap();
+    let fn_addr = elf.syms.iter().find_map(|sym| {
+        if sym.is_function() && sym.st_value != 0 {
+            let sym_name = elf.strtab.get_at(sym.st_name).unwrap_or("<invalid>");
+            if sym_name == fn_name {
+                return Some(sym.st_value);
+            }
+        }
+
+        None
+    }).expect(&format!("Couldn't find function '{fn_name}'"));
+
+    (content, fn_addr.into())
+}
+

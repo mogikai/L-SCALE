@@ -1,9 +1,9 @@
-use itertools::Itertools;
 use addr_align::Align;
 use common::{
     dump_memory,
     dump_registers,
 };
+use itertools::Itertools;
 use mogi_cpu::cpu::StopReason;
 use mogi_cpu::jit::api::RuntimeError;
 use mogi_cpu::new_cpu_trait::{
@@ -26,6 +26,8 @@ use tracing_subscriber::{
     fmt,
 };
 use zerocopy::IntoBytes;
+
+use crate::common::load_test_object;
 
 mod common;
 
@@ -214,6 +216,24 @@ fn test_imul_reg_imm() {
     let rax: i64 = *cpu.register("RAX").unwrap();
     let expected = i64::MIN.wrapping_mul(0x1234);
     assert_eq!(rax, expected);
+}
+
+#[test]
+fn test_imul_reg_reg() {
+    // IMUL RDI, RSI
+    let instr = b"\x48\x0F\xAF\xFE";
+    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+
+    // RDI = 0x12345
+    // SDI = 0x54321
+    *cpu.register_mut("RDI").unwrap() = 0x12345u64;
+    *cpu.register_mut("RSI").unwrap() = 0x54321u64;
+    cpu.run(RunLimit::InstructionCount(NonZeroUsize::new(1).unwrap()))
+        .unwrap();
+
+    let rdi: u64 = *cpu.register("RDI").unwrap();
+    let expected = 0x12345u64 * 0x54321u64;
+    assert_eq!(rdi, expected);
 }
 
 #[test]
@@ -674,11 +694,8 @@ fn is_prime(i: u64) -> bool {
 
 #[test]
 fn test_misc_is_prime_o0() {
-    let mut misc_o0_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    misc_o0_path.push("resources/test/executables/misc_o0.o");
-
-    let instr = &std::fs::read(&misc_o0_path).unwrap();
-    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+    let (content, entry) = load_test_object("misc_o0", "is_prime");
+    let (mut cpu, mmu) = common::setup_with_bytes(&content);
     let stack_addr = 0xffff_ffff_ffff_0ff0u64;
 
     // write fake return value for translation limit
@@ -690,7 +707,7 @@ fn test_misc_is_prime_o0() {
     for i in 2..100 {
         let rax_expected = is_prime(i) as u64;
 
-        *cpu.register_mut("RIP").unwrap() = 0x1130u64;
+        *cpu.register_mut("RIP").unwrap() = u64::from(entry);
         *cpu.register_mut("RSP").unwrap() = stack_addr;
         *cpu.register_mut("RDI").unwrap() = i as u64;
         cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
@@ -703,11 +720,8 @@ fn test_misc_is_prime_o0() {
 
 #[test]
 fn test_misc_is_prime_o3() {
-    let mut misc_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    misc_o3_path.push("resources/test/executables/misc_o3.o");
-
-    let instr = &std::fs::read(&misc_o3_path).unwrap();
-    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+    let (content, entry) = load_test_object("misc_o3", "is_prime");
+    let (mut cpu, mmu) = common::setup_with_bytes(&content);
     let stack_addr = 0xffff_ffff_ffff_0ff0u64;
 
     // write fake return value for translation limit
@@ -719,7 +733,7 @@ fn test_misc_is_prime_o3() {
     for i in 2..100 {
         let rax_expected = is_prime(i) as u64;
 
-        *cpu.register_mut("RIP").unwrap() = 0x1130u64;
+        *cpu.register_mut("RIP").unwrap() = u64::from(entry);
         *cpu.register_mut("RSP").unwrap() = stack_addr;
         *cpu.register_mut("RDI").unwrap() = i as u64;
         cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
@@ -748,11 +762,8 @@ fn nth_fibonacci(n: u64) -> u64 {
 
 #[test]
 fn test_misc_nth_fibonacci_o0() {
-    let mut misc_o0_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    misc_o0_path.push("resources/test/executables/misc_o0.o");
-
-    let instr = &std::fs::read(&misc_o0_path).unwrap();
-    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+    let (content, entry) = load_test_object("misc_o0", "nth_fibonacci");
+    let (mut cpu, mmu) = common::setup_with_bytes(&content);
     let stack_addr = 0xffff_ffff_ffff_0ff0u64;
 
     // write fake return value for translation limit
@@ -764,7 +775,7 @@ fn test_misc_nth_fibonacci_o0() {
     for i in 0..20 {
         let rax_expected = nth_fibonacci(i);
 
-        *cpu.register_mut("RIP").unwrap() = 0x11A0u64;
+        *cpu.register_mut("RIP").unwrap() = u64::from(entry);
         *cpu.register_mut("RSP").unwrap() = stack_addr;
         *cpu.register_mut("RDI").unwrap() = i as u64;
         cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
@@ -777,11 +788,8 @@ fn test_misc_nth_fibonacci_o0() {
 
 #[test]
 fn test_misc_nth_fibonacci_o3() {
-    let mut misc_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    misc_o3_path.push("resources/test/executables/misc_o3.o");
-
-    let instr = &std::fs::read(&misc_o3_path).unwrap();
-    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+    let (content, entry) = load_test_object("misc_o3", "nth_fibonacci");
+    let (mut cpu, mmu) = common::setup_with_bytes(&content);
     let stack_addr = 0xffff_ffff_ffff_0ff0u64;
 
     // write fake return value for translation limit
@@ -793,7 +801,7 @@ fn test_misc_nth_fibonacci_o3() {
     for i in 0..20 {
         let rax_expected = nth_fibonacci(i);
 
-        *cpu.register_mut("RIP").unwrap() = 0x1180u64;
+        *cpu.register_mut("RIP").unwrap() = u64::from(entry);
         *cpu.register_mut("RSP").unwrap() = stack_addr;
         *cpu.register_mut("RDI").unwrap() = i as u64;
         cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
@@ -806,11 +814,8 @@ fn test_misc_nth_fibonacci_o3() {
 
 #[test]
 fn test_misc_max_byte_o0() {
-    let mut misc_o0_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    misc_o0_path.push("resources/test/executables/misc_o0.o");
-
-    let instr = &std::fs::read(&misc_o0_path).unwrap();
-    let (mut cpu, mmu) = common::setup_with_bytes(instr);
+    let (content, entry) = load_test_object("misc_o0", "max_byte");
+    let (mut cpu, mmu) = common::setup_with_bytes(&content);
     let stack_addr = 0xffff_ffff_ffff_1000u64;
 
     // write fake return value for translation limit
@@ -836,7 +841,7 @@ fn test_misc_max_byte_o0() {
 
     let rax_expected = *bytes.iter().max().unwrap() as u64;
 
-    *cpu.register_mut("RIP").unwrap() = 0x1220u64;
+    *cpu.register_mut("RIP").unwrap() = u64::from(entry);
     *cpu.register_mut("RSP").unwrap() = stack_addr;
     *cpu.register_mut("RDI").unwrap() = bytes_addr;
     *cpu.register_mut("RSI").unwrap() = bytes.len() as u64;
@@ -848,7 +853,6 @@ fn test_misc_max_byte_o0() {
 }
 
 #[test]
-#[ignore]
 fn test_misc_max_byte_o3() {
     // TODO this fails because some custom pcode-ops are not yet implemented
     let mut misc_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -894,11 +898,8 @@ fn test_misc_max_byte_o3() {
 
 #[test]
 fn test_misc_partition_o0() {
-    let mut misc_o0_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    misc_o0_path.push("resources/test/executables/misc_o0.o");
-
-    let instr = std::fs::read(&misc_o0_path).unwrap();
-    let (mut cpu, mmu) = common::setup_with_bytes(&instr);
+    let (content, entry) = load_test_object("misc_o0", "partition");
+    let (mut cpu, mmu) = common::setup_with_bytes(&content);
     let stack_addr = 0xFFFF_FFFF_FFFF_1000u64;
 
     // write fake return value for translation limit
@@ -929,7 +930,7 @@ fn test_misc_partition_o0() {
     numbers_sorted.sort();
 
     // set registers and run
-    *cpu.register_mut("RIP").unwrap() = 0x1330u64;
+    *cpu.register_mut("RIP").unwrap() = u64::from(entry);
     *cpu.register_mut("RSP").unwrap() = stack_addr;
     *cpu.register_mut("RDI").unwrap() = numbers_addr;
     *cpu.register_mut("RSI").unwrap() = 0u64;
@@ -960,11 +961,8 @@ fn test_misc_partition_o0() {
 
 #[test]
 fn test_misc_partition_o3() {
-    let mut misc_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    misc_o3_path.push("resources/test/executables/misc_o3.o");
-
-    let instr = std::fs::read(&misc_o3_path).unwrap();
-    let (mut cpu, mmu) = common::setup_with_bytes(&instr);
+    let (content, entry) = load_test_object("misc_o3", "partition");
+    let (mut cpu, mmu) = common::setup_with_bytes(&content);
     let stack_addr = 0xFFFF_FFFF_FFFF_1000u64;
 
     // write fake return value for translation limit
@@ -995,7 +993,7 @@ fn test_misc_partition_o3() {
     numbers_sorted.sort();
 
     // set registers and run
-    *cpu.register_mut("RIP").unwrap() = 0x1390u64;
+    *cpu.register_mut("RIP").unwrap() = u64::from(entry);
     *cpu.register_mut("RSP").unwrap() = stack_addr;
     *cpu.register_mut("RDI").unwrap() = numbers_addr;
     *cpu.register_mut("RSI").unwrap() = 0u64;
@@ -1026,11 +1024,8 @@ fn test_misc_partition_o3() {
 
 #[test]
 fn test_misc_quicksort_o0() {
-    let mut misc_o0_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    misc_o0_path.push("resources/test/executables/misc_o0.o");
-
-    let instr = std::fs::read(&misc_o0_path).unwrap();
-    let (mut cpu, mmu) = common::setup_with_bytes(&instr);
+    let (content, entry) = load_test_object("misc_o0", "quicksort");
+    let (mut cpu, mmu) = common::setup_with_bytes(&content);
     let stack_addr = 0xFFFF_FFFF_FFFF_1000u64;
 
     // write fake return value for translation limit
@@ -1060,7 +1055,7 @@ fn test_misc_quicksort_o0() {
     let mut bytes_sorted = numbers.clone();
     bytes_sorted.sort();
 
-    *cpu.register_mut("RIP").unwrap() = 0x1400u64;
+    *cpu.register_mut("RIP").unwrap() = u64::from(entry);
     *cpu.register_mut("RSP").unwrap() = stack_addr;
     *cpu.register_mut("RDI").unwrap() = numbers_addr;
     *cpu.register_mut("RSI").unwrap() = 0u64;
@@ -1078,11 +1073,8 @@ fn test_misc_quicksort_o0() {
 
 #[test]
 fn test_misc_quicksort_o3() {
-    let mut misc_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    misc_o3_path.push("resources/test/executables/misc_o3.o");
-
-    let instr = std::fs::read(&misc_o3_path).unwrap();
-    let (mut cpu, mmu) = common::setup_with_bytes(&instr);
+    let (content, entry) = load_test_object("misc_o3", "quicksort");
+    let (mut cpu, mmu) = common::setup_with_bytes(&content);
     let stack_addr = 0xFFFF_FFFF_FFFF_0FF0u64;
 
     // write fake return value for translation limit
@@ -1112,7 +1104,7 @@ fn test_misc_quicksort_o3() {
     let mut numbers_sorted = numbers.clone();
     numbers_sorted.sort();
 
-    *cpu.register_mut("RIP").unwrap() = 0x1450u64;
+    *cpu.register_mut("RIP").unwrap() = u64::from(entry);
     *cpu.register_mut("RSP").unwrap() = stack_addr;
     *cpu.register_mut("RDI").unwrap() = numbers_addr;
     *cpu.register_mut("RSI").unwrap() = 0u64;
@@ -1133,11 +1125,8 @@ fn test_misc_quicksort_o3() {
 // ++++++++ tests from resources/test/executables/misc.c ++++++++
 #[test]
 fn test_math_prime_factors_o0() {
-    let mut math_o0_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    math_o0_path.push("resources/test/executables/math_o0.o");
-
-    let instr = std::fs::read(&math_o0_path).unwrap();
-    let (mut cpu, mmu) = common::setup_with_bytes(&instr);
+    let (content, entry) = load_test_object("math_o0", "find_prime_factors");
+    let (mut cpu, mmu) = common::setup_with_bytes(&content);
     let stack_addr = 0xFFFF_FFFF_FFFF_0000u64;
 
     // write fake return value for translation limit
@@ -1162,7 +1151,7 @@ fn test_math_prime_factors_o0() {
         .set_page_table_entry(n_factors_addr.into(), n_factors_addr.into(), Permission::ALL)
         .unwrap();
 
-    *cpu.register_mut("RIP").unwrap() = 0x1920u64;
+    *cpu.register_mut("RIP").unwrap() = u64::from(entry);
 
     let factors = vec![2, 2, 3, 3, 3, 5, 5, 7, 11, 13];
 
@@ -1195,11 +1184,8 @@ fn test_math_prime_factors_o0() {
 
 #[test]
 fn test_math_prime_factors_o3() {
-    let mut math_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    math_o3_path.push("resources/test/executables/math_o3.o");
-
-    let instr = std::fs::read(&math_o3_path).unwrap();
-    let (mut cpu, mmu) = common::setup_with_bytes(&instr);
+    let (content, entry) = load_test_object("math_o3", "find_prime_factors");
+    let (mut cpu, mmu) = common::setup_with_bytes(&content);
     let stack_addr = 0xFFFF_FFFF_FFFF_0000u64;
 
     // write fake return value for translation limit
@@ -1224,7 +1210,7 @@ fn test_math_prime_factors_o3() {
         .set_page_table_entry(n_factors_addr.into(), n_factors_addr.into(), Permission::ALL)
         .unwrap();
 
-    *cpu.register_mut("RIP").unwrap() = 0x1A50u64;
+    *cpu.register_mut("RIP").unwrap() = u64::from(entry);
 
     // int input
     let input: u64 = 2 * 2 * 3 * 3 * 3 * 5 * 5 * 7 * 11 * 13;
@@ -1254,11 +1240,8 @@ fn test_math_prime_factors_o3() {
 
 #[test]
 fn test_math_median_o0() {
-    let mut math_o0_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    math_o0_path.push("resources/test/executables/math_o0.o");
-
-    let instr = std::fs::read(&math_o0_path).unwrap();
-    let (mut cpu, mmu) = common::setup_with_bytes(&instr);
+    let (content, entry) = load_test_object("math_o0", "median");
+    let (mut cpu, mmu) = common::setup_with_bytes(&content);
     let stack_addr = 0xFFFF_FFFF_FFFF_0000u64;
 
     // write fake return value for translation limit
@@ -1280,7 +1263,7 @@ fn test_math_median_o0() {
         .write(numbers_addr.into(), &numbers)
         .unwrap();
 
-    *cpu.register_mut("RIP").unwrap() = 0x1620u64;
+    *cpu.register_mut("RIP").unwrap() = u64::from(entry);
     // int *numbers
     *cpu.register_mut("RDI").unwrap() = numbers_addr;
     // size_t n
@@ -1295,11 +1278,8 @@ fn test_math_median_o0() {
 
 #[test]
 fn test_math_median_o3() {
-    let mut math_o3_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    math_o3_path.push("resources/test/executables/math_o3.o");
-
-    let instr = std::fs::read(&math_o3_path).unwrap();
-    let (mut cpu, mmu) = common::setup_with_bytes(&instr);
+    let (content, entry) = load_test_object("math_o3", "median");
+    let (mut cpu, mmu) = common::setup_with_bytes(&content);
     let stack_addr = 0xFFFF_FFFF_FFFF_0000u64;
 
     // write fake return value for translation limit
@@ -1321,7 +1301,7 @@ fn test_math_median_o3() {
         .write(numbers_addr.into(), &numbers)
         .unwrap();
 
-    *cpu.register_mut("RIP").unwrap() = 0x1750u64;
+    *cpu.register_mut("RIP").unwrap() = u64::from(entry);
     // int *numbers
     *cpu.register_mut("RDI").unwrap() = numbers_addr;
     // size_t n
@@ -1332,3 +1312,57 @@ fn test_math_median_o3() {
     let median: u32 = *cpu.register("EAX").unwrap();
     assert_eq!(median as i32, -2);
 }
+
+#[test]
+fn test_math_multiply_o0() {
+    let (content, entry) = load_test_object("math_o0", "multiply");
+    let (mut cpu, mmu) = common::setup_with_bytes(&content);
+    let stack_addr = 0xFFFF_FFFF_FFFF_0000u64;
+
+    // write fake return value for translation limit
+    mmu.borrow_mut()
+        .write(stack_addr.into(), &0xFFFF_FFFF_D34D_0000u64)
+        .unwrap();
+
+    let factor_0 = 1u64;
+    let factor_1 = 1u64;
+
+    *cpu.register_mut("RIP").unwrap() = u64::from(entry);
+    // int *numbers
+    *cpu.register_mut("RDI").unwrap() = factor_0;
+    // size_t n
+    *cpu.register_mut("RSI").unwrap() = factor_1;
+    cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
+        .unwrap();
+
+    let product: u64 = *cpu.register("RAX").unwrap();
+    assert_eq!(product, factor_0 * factor_1);
+}
+
+#[test]
+fn test_math_multiply_o3() {
+    let (content, entry) = load_test_object("math_o3", "multiply");
+    let (mut cpu, mmu) = common::setup_with_bytes(&content);
+    let stack_addr = 0xFFFF_FFFF_FFFF_0000u64;
+
+    // write fake return value for translation limit
+    mmu.borrow_mut()
+        .write(stack_addr.into(), &0xFFFF_FFFF_D34D_0000u64)
+        .unwrap();
+
+    let factor_0 = 1u64;
+    let factor_1 = 1u64;
+
+    *cpu.register_mut("RIP").unwrap() = u64::from(entry);
+    // int *numbers
+    *cpu.register_mut("RDI").unwrap() = factor_0;
+    // size_t n
+    *cpu.register_mut("RSI").unwrap() = factor_1;
+    cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
+        .unwrap();
+
+    let product: u64 = *cpu.register("RAX").unwrap();
+    assert_eq!(product, factor_0 * factor_1);
+}
+
+
