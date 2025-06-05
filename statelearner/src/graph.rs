@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use petgraph::dot::Dot;
 use petgraph::graph::{
     DiGraph,
@@ -75,9 +76,9 @@ new_key_type! { struct WordId; }
 /// By default, values in columns that have not been filled are defined as [Observation::Missing].
 #[derive(Debug)]
 struct ObservationRow<T> {
-    /// The state that is the predecessor of this row.
-    /// This new row is arrived at by applying the transition word to the predecessor state.
-    predecessor_state: Option<NodeIndex>,
+    /// The observation row that is the predecessor of this row.
+    /// This new row is arrived at by applying the transition word to the predecessor row.
+    predecessor_row: Option<ObservationRowId>,
     /// The word that is applied to the predecessor row to arrive at this row.
     transition_word: WordId,
     /// The observations when applying the corresponding suffix to the
@@ -87,11 +88,11 @@ struct ObservationRow<T> {
 
 impl<T> ObservationRow<T> {
     pub fn new_candidate(
-        predecessor: NodeIndex,
+        predecessor: ObservationRowId,
         word: WordId,
     ) -> Self {
         Self {
-            predecessor_state: Some(predecessor),
+            predecessor_row: Some(predecessor),
             transition_word: word,
             observations: Default::default(),
         }
@@ -144,7 +145,8 @@ where
         f: &mut impl Write,
         suffixes: &SlotMap<SuffixId, Vec<WordId>>,
     ) -> std::fmt::Result {
-        write!(f, "{:<40}", format!("({:?} --[{:?}]-->) ", self.predecessor_state, self.transition_word))?;
+        let pred_str = self.predecessor_row.map(|pred| format!("{:?}", pred)).unwrap_or("n/a".into());
+        write!(f, "{:<45}", format!("({:?} --[{:?}]-->) ", pred_str, self.transition_word))?;
         write!(f, "")?;
         for suffix_id in suffixes.keys() {
             if let Some(observation) = self.observations.get(suffix_id)
@@ -155,7 +157,6 @@ where
                 write!(f, "{:^20} ", "n/a")?;
             }
         }
-        write!(f, "\n")?;
         Ok(())
     }
 }
@@ -166,23 +167,27 @@ struct StateLearner<T> {
     /// The graph that contains the states and the edges between them.
     /// The node 'weights' are the corresponding observation rows (or rather their ids)
     /// and the edge 'weights' are the corresponding words (or rather their ids) that trigger the transition.
-    graph: DiGraph<ObservationRowId, WordId>,
+    graph: DiGraph<Vec<ObservationRowId>, WordId>,
 
     /// A reverse lookup map for states.
-    row_to_state: HashMap<ObservationRowId, NodeIndex>,
+    row_to_state: HashMap<ObservationRowId, Vec<NodeIndex>>,
+
+    state_transitions: HashMap<(ObservationRowId, WordId), ObservationRowId>,
 
     /// A set of candidate states. A candidate state is a state that can be arrived at
     /// by applying a word to an existing state. The number of candidates is thus at most
     /// |V| * |W| where |V| is the number of states and |W| is the number of words.
     /// A candidate state is identified by its corresponding observation row.
-    candidates: HashMap<(NodeIndex, WordId), ObservationRowId>,
+    candidate_transitions: HashMap<(ObservationRowId, WordId), ObservationRowId>,
+
+    words: SecondaryMap<WordId, ()>,
 
     /// All suffixes that we have seen so far. A suffix is a list of words applied in a certain state.
     suffixes: SlotMap<SuffixId, Vec<WordId>>,
     /// Reverse lookup map for suffixes. This is used to check if a suffix was already added to the learner.
     suffix_lookup: HashMap<Vec<WordId>, SuffixId>,
 
-    initial_state: NodeIndex,
+    initial_row: ObservationRowId,
 
     /// The id of the empty word, i.e., a word that consists of zero characters.
     /// This can be considered as simply running the target without applying any input.
@@ -191,26 +196,28 @@ struct StateLearner<T> {
 
 impl<T> StateLearner<T> {
     pub fn new(epsilon: WordId) -> Self {
-        let mut graph = DiGraph::<ObservationRowId, WordId>::default();
+        let mut graph = DiGraph::<Vec<ObservationRowId>, WordId>::default();
         let mut observation_rows = SlotMap::<ObservationRowId, ObservationRow<T>>::default();
-        let initial_observations = observation_rows.insert(ObservationRow {
-            predecessor_state: None,
+        let initial_row = observation_rows.insert(ObservationRow {
+            predecessor_row: None,
             transition_word: epsilon,
             observations: Default::default(),
         });
 
-        let mut row_to_state = HashMap::<ObservationRowId, NodeIndex>::default();
-        let initial_state = graph.add_node(initial_observations);
-        row_to_state.insert(initial_observations, initial_state);
+        let mut row_to_state = HashMap::<ObservationRowId, Vec<NodeIndex>>::default();
+        let initial_state = graph.add_node(vec![initial_row]);
+        row_to_state.insert(initial_row, vec![initial_state]);
 
         let mut slf = Self {
             observation_rows,
             graph,
             row_to_state,
-            candidates: Default::default(),
+            state_transitions: Default::default(),
+            candidate_transitions: Default::default(),
+            words: Default::default(),
             suffixes: Default::default(),
             suffix_lookup: Default::default(),
-            initial_state,
+            initial_row,
             epsilon,
         };
         slf.add_words(once(epsilon));
@@ -218,8 +225,37 @@ impl<T> StateLearner<T> {
         slf
     }
 
-    pub fn initial_state(&self) -> NodeIndex {
-        self.initial_state
+    pub fn initial_row(&self) -> ObservationRowId {
+        self.initial_row
+    }
+
+    pub fn get_state_row_id(
+        &self,
+        prefix: impl Iterator<Item = WordId>,
+    ) -> Option<ObservationRowId> {
+        let mut row_id = self.initial_row;
+        for prefix_word in prefix {
+            match self.state_transitions.get(&(row_id, prefix_word)) {
+                Some(next_row_id) => {
+                    row_id = *next_row_id;
+                }
+                None => {
+                    return None;
+                }
+            }
+        }
+
+        Some(row_id)
+    }
+
+    pub fn get_candidate_row_id(
+        &self,
+        predecessor: ObservationRowId,
+        word: WordId,
+    ) -> Option<ObservationRowId> {
+        self.candidate_transitions
+            .get(&(predecessor, word))
+            .copied()
     }
 
     /// Add the provided words into the state learner.
@@ -242,6 +278,9 @@ impl<T> StateLearner<T> {
             .for_each(|suffix| match self.suffix_lookup.entry(suffix.clone()) {
                 Entry::Occupied(_) => { /* The suffix was already added. */ }
                 Entry::Vacant(entry) => {
+                    for word in suffix.iter() {
+                        self.words.insert(*word, ());
+                    }
                     entry.insert(self.suffixes.insert(suffix));
                 }
             });
@@ -266,11 +305,11 @@ impl<T> StateLearner<T> {
         })
     }
 
-    pub fn state_observation_row(
+    pub fn state_observation_rows(
         &self,
         state: NodeIndex,
-    ) -> ObservationRowId {
-        *self.graph.node_weight(state).unwrap()
+    ) -> &[ObservationRowId] {
+        self.graph.node_weight(state).unwrap()
     }
 
     pub fn rows_with_missing_observations(&self) -> impl Iterator<Item = ObservationRowId> {
@@ -279,64 +318,41 @@ impl<T> StateLearner<T> {
             .filter(|row| self.unobserved_suffixes(*row).next().is_some())
     }
 
-    pub fn states_with_missing_observations(&self) -> impl Iterator<Item = NodeIndex> {
-        self.graph.node_indices().filter(move |state| {
-            self.unobserved_suffixes(self.state_observation_row(*state))
-                .next()
-                .is_some()
+    pub fn states_with_missing_observations(&self) -> impl Iterator<Item = ObservationRowId> {
+        self.rows_with_missing_observations().filter(|row_id| {
+            self.row_to_state.contains_key(&row_id)
         })
     }
 
-    pub fn state_candidates_with_missing_observations(&self) -> impl Iterator<Item = (NodeIndex, WordId)> {
-        self.graph
-            .node_indices()
-            .map(|state| {
-                self.suffixes.values().filter_map(move |suffix| {
-                    if suffix.len() == 1 {
-                        Some((state, suffix[0]))
-                    } else {
-                        None
-                    }
-                })
-            })
-            .flatten()
-            .filter(|(state, word)| {
-                if let Some(mut suffixes) = self
-                    .candidates
-                    .get(&(*state, *word))
-                    .map(|row| self.unobserved_suffixes(*row))
-                {
-                    suffixes.next().is_some()
-                } else {
-                    // The candidate does not exist yet.
-                    true
-                }
-            })
+    pub fn candidates_with_missing_observations(&self) -> impl Iterator<Item = ObservationRowId> {
+        self.rows_with_missing_observations().filter(|row_id| {
+            !self.row_to_state.contains_key(&row_id)
+        })
     }
 
     fn add_missing_candidates(&mut self) {
-        for candidate in self
-            .graph
-            .node_indices()
-            .map(|state| {
-                self.suffixes.values().filter_map(move |suffix| {
-                    if suffix.len() == 1 {
-                        Some((state, suffix[0]))
-                    } else {
-                        None
-                    }
-                })
+        let new_candidates = self
+            .observation_rows
+            .keys()
+            .filter(|row_id| self.row_to_state.contains_key(row_id))
+            .cartesian_product(self.words.keys())
+            .filter_map(|candidate| {
+                if self.candidate_transitions.contains_key(&candidate) {
+                    None
+                } else {
+                    Some(ObservationRow::<T>::new_candidate(candidate.0, candidate.1))
+                }
             })
-            .flatten()
-        {
-            if let Entry::Vacant(entry) = self.candidates.entry(candidate) {
-                // If the candidate does not exist yet, we add a new observation row for it and add
-                // it to the candidates map.
-                let row_id = self
-                    .observation_rows
-                    .insert(ObservationRow::new_candidate(candidate.0, candidate.1));
-                entry.insert(row_id);
-            }
+            .collect::<Vec<_>>();
+
+        for new_candidate in new_candidates.into_iter() {
+            self.observation_rows.insert_with_key(|row_id| {
+                let pred = new_candidate.predecessor_row.unwrap();
+                let word = new_candidate.transition_word;
+                self.candidate_transitions.insert((pred, word), row_id);
+
+                new_candidate
+            });
         }
     }
 
@@ -367,40 +383,15 @@ where
         observation: T,
     ) -> StateLearnerResult {
         let observations = &mut self.observation_rows[observation_row].observations;
-        add_observation(observations, suffix_id, observation)
-    }
-
-    /// Add an observation to the state for the provided suffix
-    pub fn add_state_observation(
-        &mut self,
-        state: NodeIndex,
-        suffix_id: SuffixId,
-        observation: T,
-    ) -> StateLearnerResult {
-        let observation_row_id = *self.graph.node_weight(state).unwrap();
-        self.add_observation(observation_row_id, suffix_id, observation)
-    }
-
-    /// Add an observation to the candidate state identified by the state it branches off from and the corresponding
-    /// word that triggers the transition.
-    pub fn add_state_candidate_observation(
-        &mut self,
-        state: NodeIndex,
-        word: WordId,
-        suffix_id: SuffixId,
-        observation: T,
-    ) -> StateLearnerResult {
-        let row_id = match self.candidates.entry((state, word)) {
-            Entry::Occupied(entry) => *entry.get(),
-            Entry::Vacant(entry) => {
-                let row_id = self
-                    .observation_rows
-                    .insert(ObservationRow::new_candidate(state, word));
-                entry.insert(row_id);
-                row_id
+        if let Some(old_observation) = observations.get(suffix_id) {
+            if let Observation::Observed(old_observation) = old_observation {
+                if old_observation != &observation {
+                    Err(StateLearnerError::ConflictingObservation)?
+                }
             }
-        };
-        self.add_observation(row_id, suffix_id, observation)
+        }
+        observations.insert(suffix_id, Observation::Observed(observation));
+        Ok(())
     }
 
     pub fn make_closed(&mut self) {
@@ -414,20 +405,35 @@ where
         candidate_id: ObservationRowId,
     ) {
         let row = &self.observation_rows[candidate_id];
-        let Some(predecessor) = row.predecessor_state else {
+        let Some(predecessor_row) = row.predecessor_row else {
             panic!("Candidate states must have a predecessor state.")
         };
-        let new_state = self.graph.add_node(candidate_id);
-        self.row_to_state.insert(candidate_id, new_state);
-        self.graph
-            .add_edge(predecessor, new_state, row.transition_word);
-        self.candidates.remove(&(predecessor, row.transition_word));
+
+        // move up ^~^
+        self.state_transitions
+            .insert((predecessor_row, row.transition_word), candidate_id);
+        self.candidate_transitions
+            .remove(&(predecessor_row, row.transition_word));
+
+        let new_state = self.graph.add_node(vec![candidate_id]);
+        self.row_to_state.insert(candidate_id, vec![new_state]);
+
+        let predecessors = self
+            .row_to_state
+            .get(&predecessor_row)
+            .expect("This must have been inserted before");
+
+        for predecessor in predecessors.iter().copied() {
+            self.graph
+                .add_edge(predecessor, new_state, row.transition_word);
+        }
+
         // Add the new candidates that are now possible due to the new state.
         self.add_missing_candidates();
     }
 
     fn find_closed_property_violation(&self) -> Option<ObservationRowId> {
-        for candidate_id in self.candidates.values() {
+        for candidate_id in self.candidate_transitions.values() {
             if self.candidate_violates_closed_property(*candidate_id) {
                 return Some(*candidate_id);
             }
@@ -440,10 +446,13 @@ where
         candidate_id: ObservationRowId,
     ) -> bool {
         let candidate_row = &self.observation_rows[candidate_id];
-        for state_id in self.graph.node_weights() {
-            let state_row = &self.observation_rows[*state_id];
+        for (_, row) in self
+            .observation_rows
+            .iter()
+            .filter(|(row_id, _)| self.row_to_state.contains_key(row_id))
+        {
             if matches!(
-                state_row.compare_observations(candidate_row),
+                row.compare_observations(candidate_row),
                 ObservationComparison::Equal | ObservationComparison::Undetermined
             ) {
                 // The candidate does not violate the closed property, since it is equal (or maybe equal) to
@@ -456,25 +465,6 @@ where
         // Therefore, the candidate violates the closed property, since it is not equal to any state.
         true
     }
-}
-
-fn add_observation<T>(
-    observations: &mut SecondaryMap<SuffixId, Observation<T>>,
-    suffix_id: SuffixId,
-    observation: T,
-) -> StateLearnerResult
-where
-    T: ObservationValue,
-{
-    if let Some(old_observation) = observations.get(suffix_id) {
-        if let Observation::Observed(old_observation) = old_observation {
-            if old_observation != &observation {
-                Err(StateLearnerError::ConflictingObservation)?
-            }
-        }
-    }
-    observations.insert(suffix_id, Observation::Observed(observation));
-    Ok(())
 }
 
 impl<T> Display for StateLearner<T>
@@ -493,16 +483,21 @@ where
         write!(f, "\nRows:\n")?;
         for (row_id, row) in self.observation_rows.iter() {
             let mut row_string = String::new();
-            if let Some(state) = self.row_to_state.get(&row_id) {
-                write!(row_string, "{:<16}", format!("<{state:?}>"))?;
+            if let Some(states) = self.row_to_state.get(&row_id) {
+                if let Some(first_state) = states.first() {
+                    write!(row_string, "{:<16}", format!("<{first_state:?}>"))?;
+                }
             } else {
                 write!(row_string, "{:<16}", "<candidate>")?;
             }
             row.fmt_debug_row(&mut row_string, &self.suffixes)?;
-            if self.row_to_state.get(&row_id).is_some() {
-                write!(f, "{}", ansi_term::Colour::Green.paint(row_string))?;
+            if let Some(states) = self.row_to_state.get(&row_id) {
+                writeln!(f, "{}", ansi_term::Colour::Green.paint(row_string))?;
+                for state in states.iter().skip(1) {
+                    writeln!(f, "{:<16}", format!("<{state:?}>"))?;
+                }
             } else {
-                write!(f, "{}", row_string)?;
+                writeln!(f, "{}", row_string)?;
             }
         }
 
@@ -513,9 +508,11 @@ where
 #[cfg(test)]
 mod test {
     use crate::graph::{
+        ObservationRowId,
         StateLearner,
         WordId,
     };
+    use petgraph::graph::NodeIndex;
     use slotmap::SlotMap;
     use std::path::Path;
 
@@ -529,34 +526,66 @@ mod test {
             .collect::<Vec<_>>();
         let mut learner = StateLearner::<String>::new(epsilon);
 
-        let state = learner.initial_state();
+        let initial_row = learner.initial_row();
 
         learner.add_words(word_ids.iter().copied());
         learner.add_suffixes([vec![word_ids[0], word_ids[1]]]);
 
         println!("{}", learner);
 
-        let unobserved = learner
-            .unobserved_suffixes(learner.state_observation_row(state))
-            .collect::<Vec<_>>();
-        for suffix in unobserved.iter() {
-            learner
-                .add_state_observation(state, *suffix, String::from("test"))
-                .unwrap();
-        }
+        let unobserved = learner.unobserved_suffixes(initial_row).collect::<Vec<_>>();
+
         learner
-            .add_state_candidate_observation(state, word_ids[0], unobserved[2], String::from("test2"))
+            .add_observation(initial_row, unobserved[0], String::from("test"))
+            .unwrap();
+        learner
+            .add_observation(initial_row, unobserved[1], String::from("test2"))
+            .unwrap();
+        learner
+            .add_observation(initial_row, unobserved[2], String::from("test"))
+            .unwrap();
+        learner
+            .add_observation(initial_row, unobserved[3], String::from("test"))
             .unwrap();
 
+        let candidate_row = learner
+            .get_candidate_row_id(initial_row, word_ids[0])
+            .unwrap();
+
+        learner
+            .add_observation(candidate_row, unobserved[0], String::from("test"))
+            .unwrap();
+        learner
+            .add_observation(candidate_row, unobserved[1], String::from("test"))
+            .unwrap();
+        learner
+            .add_observation(candidate_row, unobserved[2], String::from("test2"))
+            .unwrap();
+        learner
+            .add_observation(candidate_row, unobserved[3], String::from("test"))
+            .unwrap();
+
+        println!("{}", learner);
+
         learner.make_closed();
+        println!("{}", learner);
+
+        let row_id = learner
+            .get_candidate_row_id(candidate_row, word_ids[1])
+            .unwrap();
+        learner
+            .add_observation(row_id, unobserved[1], String::from("test3"))
+            .unwrap();
 
         println!("Rows with missing observations: {:?}", learner.rows_with_missing_observations().collect::<Vec<_>>());
 
         println!("{}", learner);
-
-        learner.add_suffixes([vec![word_ids[1], word_ids[0]]]);
-
+        learner.make_closed();
         println!("{}", learner);
+
+        // learner.add_suffixes([vec![word_ids[1], word_ids[0]]]);
+
+        // println!("{}", learner);
 
         learner.export(Path::new("test.dot"));
     }
