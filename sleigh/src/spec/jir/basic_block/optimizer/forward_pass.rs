@@ -169,26 +169,6 @@ impl TargetBasicBlockInner {
                     }
                 }
             }
-
-            // temporary instructions are never spilled so we can apply the remaining
-            // eliminations for them
-            for (slice_id, coalescion) in coalescions.into_items() {
-                let Some(coalescion) = coalescion else {
-                    continue;
-                };
-
-                let slice = self.optimizer_ancillary.slice_ids[slice_id];
-                let jir_group = self
-                    .jir_groups
-                    .get(slice.group_id)
-                    .or_else(|| spec.jir_groups.get(slice.group_id))
-                    .expect("The group must be either in the spec or in self");
-
-                if matches!(jir_group, JIRGroup::TempGroup(_)) {
-                    self.jir_instructions[coalescion.inst_id] = JIRInstruction::nop();
-                    elim_count += 1;
-                }
-            }
         }
 
         Ok((elim_count, const_fold_count))
