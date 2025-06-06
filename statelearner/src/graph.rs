@@ -388,7 +388,6 @@ where
         // TODO: We need to update the graph here if the observation lead to rows now being distinct.
         //       If two rows were equal and are now distinct, this means that we discovered a new
         //       state.
-        for state in &self.row_to_state[&observation_row] {}
         Ok(())
     }
 
