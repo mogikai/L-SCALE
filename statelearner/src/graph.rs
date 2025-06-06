@@ -5,14 +5,21 @@ use petgraph::graph::{
     DiGraph,
     NodeIndex,
 };
-use petgraph::visit::NodeRef;
+use petgraph::visit::{
+    IntoNodeIdentifiers,
+    NodeRef,
+};
 use slotmap::{
+    Key,
     SecondaryMap,
     SlotMap,
     new_key_type,
 };
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::collections::{
+    BTreeSet,
+    HashMap,
+};
 use std::fmt::{
     Debug,
     Display,
@@ -72,6 +79,33 @@ impl ObservationValue for String {}
 new_key_type! { struct ObservationRowId; }
 new_key_type! { struct SuffixId; }
 new_key_type! { struct WordId; }
+
+impl Display for ObservationRowId {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "Row({:?})", self.data())
+    }
+}
+
+impl Display for SuffixId {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "Suffix({:?})", self.data())
+    }
+}
+
+impl Display for WordId {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "Word({:?})", self.data())
+    }
+}
 
 /// A row of observations for a state or candidate state.
 /// By default, values in columns that have not been filled are defined as [Observation::Missing].
@@ -143,14 +177,15 @@ where
 {
     fn fmt_debug_row(
         &self,
+        self_name: &str,
         f: &mut impl Write,
         suffixes: &SlotMap<SuffixId, Vec<WordId>>,
     ) -> std::fmt::Result {
         let pred_str = self
             .predecessor_row
-            .map(|pred| format!("{:?}", pred))
+            .map(|pred| format!("{}", pred))
             .unwrap_or("n/a".into());
-        write!(f, "{:<45}", format!("({} --[{:?}]-->) ", pred_str, self.transition_word))?;
+        write!(f, "{:<40}", format!("({:<10} --[{:^12}]--> {:>10}) ", pred_str, self.transition_word, self_name))?;
         write!(f, "")?;
         for suffix_id in suffixes.keys() {
             if let Some(observation) = self.observations.get(suffix_id)
@@ -171,10 +206,10 @@ struct StateLearner<T> {
     /// The graph that contains the states and the edges between them.
     /// The node 'weights' are the corresponding observation rows (or rather their ids)
     /// and the edge 'weights' are the corresponding words (or rather their ids) that trigger the transition.
-    graph: DiGraph<Vec<ObservationRowId>, WordId>,
+    graph: DiGraph<BTreeSet<ObservationRowId>, WordId>,
 
     /// A reverse lookup map for states.
-    row_to_state: HashMap<ObservationRowId, Vec<NodeIndex>>,
+    row_to_state: HashMap<ObservationRowId, BTreeSet<NodeIndex>>,
 
     state_transitions: HashMap<(ObservationRowId, WordId), ObservationRowId>,
 
@@ -200,7 +235,7 @@ struct StateLearner<T> {
 
 impl<T> StateLearner<T> {
     pub fn new(epsilon: WordId) -> Self {
-        let mut graph = DiGraph::<Vec<ObservationRowId>, WordId>::default();
+        let mut graph = DiGraph::<BTreeSet<ObservationRowId>, WordId>::default();
         let mut observation_rows = SlotMap::<ObservationRowId, ObservationRow<T>>::default();
         let initial_row = observation_rows.insert(ObservationRow {
             predecessor_row: None,
@@ -208,9 +243,9 @@ impl<T> StateLearner<T> {
             observations: Default::default(),
         });
 
-        let mut row_to_state = HashMap::<ObservationRowId, Vec<NodeIndex>>::default();
-        let initial_state = graph.add_node(vec![initial_row]);
-        row_to_state.insert(initial_row, vec![initial_state]);
+        let mut row_to_state = HashMap::<ObservationRowId, BTreeSet<NodeIndex>>::default();
+        let initial_state = graph.add_node(BTreeSet::from([initial_row]));
+        row_to_state.insert(initial_row, BTreeSet::from([initial_state]));
 
         let mut slf = Self {
             observation_rows,
@@ -304,8 +339,13 @@ impl<T> StateLearner<T> {
     pub fn state_observation_rows(
         &self,
         state: NodeIndex,
-    ) -> &[ObservationRowId] {
-        self.graph.node_weight(state).unwrap()
+    ) -> impl Iterator<Item = ObservationRowId> {
+        self.graph
+            .node_weight(state)
+            .into_iter()
+            .map(|set| set.iter())
+            .flatten()
+            .copied()
     }
 
     pub fn rows_with_missing_observations(&self) -> impl Iterator<Item = ObservationRowId> {
@@ -385,6 +425,11 @@ where
             }
         }
         observations.insert(suffix_id, Observation::Observed(observation));
+
+        if self.row_to_state.contains_key(&observation_row) {
+            self.update_graph_for_new_observation(observation_row);
+        }
+
         // TODO: We need to update the graph here if the observation lead to rows now being distinct.
         //       If two rows were equal and are now distinct, this means that we discovered a new
         //       state.
@@ -393,8 +438,65 @@ where
 
     pub fn make_closed(&mut self) {
         while let Some(candidate_id) = self.find_closed_property_violation() {
-            self.transform_candidate_to_state(candidate_id);
+            self.promote_candidate_to_state(candidate_id);
         }
+    }
+
+    /// The consistent property is violated if two equal rows exhibit different behavior under a
+    /// certain (word, suffix)-pair. This can be fixed by including the pair as a new suffix and
+    /// adding more measurements to distinguish the offending rows.
+    pub fn make_consistent(&mut self) {
+        while let Some((offending_word, offending_suffix)) = self.find_consistent_property_violation() {
+            self.fix_consistent_property_violation(offending_word, offending_suffix);
+        }
+    }
+
+    fn find_consistent_property_violation(&self) -> Option<(WordId, SuffixId)> {
+        // offending rows must be in the same graph node
+        for state_id in self.graph.node_indices() {
+            let state_rows = self.graph.node_weight(state_id).unwrap();
+            for (&row_0, &row_1) in state_rows.iter().cartesian_product(state_rows.iter()) {
+                // find mismatching observation in candidate rows
+                for (word, suffix) in self.words.keys().cartesian_product(self.suffixes.keys()) {
+                    // find successors when applying the word and compare suffix observation
+                    let row_0 = &self.observation_rows[self.candidate_transitions[&(row_0, word)]];
+                    let row_1 = &self.observation_rows[self.candidate_transitions[&(row_1, word)]];
+
+                    match row_0.observations[suffix].compare(&row_1.observations[suffix]) {
+                        ObservationComparison::NotEqual => {
+                            // contradiction found
+                            return Some((word, suffix));
+                        }
+                        ObservationComparison::Equal | ObservationComparison::Undetermined => {
+                            // if we don't know for sure whether they are contradicting we
+                            // do nothing
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    fn fix_consistent_property_violation(
+        &mut self,
+        offending_word: WordId,
+        offending_suffix: SuffixId,
+    ) {
+        // we add the offending word to the suffix list
+        let offending_suffix = &self.suffixes[offending_suffix];
+        let mut new_suffix = Vec::with_capacity(offending_suffix.len() + 1);
+        new_suffix[0] = offending_word;
+        new_suffix.extend(offending_suffix.iter());
+        self.add_suffixes(once(new_suffix));
+    }
+
+    fn fix_closed_property_violation(
+        &mut self,
+        candidate_id: ObservationRowId,
+    ) {
+        self.promote_candidate_to_state(candidate_id);
     }
 
     fn find_closed_property_violation(&self) -> Option<ObservationRowId> {
@@ -461,13 +563,13 @@ where
             && remaining_prefix.peek().is_some()
         {
             let candidate = self.candidate_transitions[&(current_row, word)];
-            self.transform_candidate_to_state(candidate);
+            self.promote_candidate_to_state(candidate);
         }
         // We have now added all word that belong to the prefix to the state table.
         // The last word is automatically contained in the candidate table.
     }
 
-    fn transform_candidate_to_state(
+    fn promote_candidate_to_state(
         &mut self,
         candidate_id: ObservationRowId,
     ) {
@@ -484,37 +586,72 @@ where
         self.candidate_transitions
             .remove(&(predecessor_row, row.transition_word));
 
+        self.row_to_state.insert(candidate_id, Default::default());
+        self.update_graph_for_new_observation(candidate_id);
+
+        // Add the new candidates that are now possible due to the new state.
+        self.add_missing_candidates();
+    }
+
+    fn update_graph_for_new_observation(
+        &mut self,
+        modified: ObservationRowId,
+    ) {
         // We want to find all graph nodes that contain a row that is equal to the candidate's row.
         // We can then add the candidate's row to the rows in the node.
         let mut added_to_existing = false;
         for state in self.graph.node_indices() {
-            let row = &self.observation_rows[candidate_id];
-            let rows = self
+            let modified_row = &self.observation_rows[modified];
+            let state_rows = self
                 .graph
-                .node_weight_mut(state)
+                .node_weight(state)
                 .expect("We got the key from the graph");
-            let contains_similar_rows =
-                rows.iter()
-                    .all(|row_id| match self.observation_rows[*row_id].compare_observations(&row) {
-                        ObservationComparison::Equal | ObservationComparison::Undetermined => true,
-                        _ => false,
-                    });
-            if contains_similar_rows {
+            let all_rows_similar = state_rows.iter().all(|row_id| {
+                match self.observation_rows[*row_id].compare_observations(&modified_row) {
+                    ObservationComparison::Equal | ObservationComparison::Undetermined => true,
+                    _ => false,
+                }
+            });
+            if all_rows_similar {
                 added_to_existing = true;
-                rows.push(candidate_id);
+                let state_rows = self
+                    .graph
+                    .node_weight_mut(state)
+                    .expect("We got the key from the graph");
+                state_rows.insert(modified);
                 // Add the state we found to the row_to_state map entry for this row.
-                self.update_graph_for_new_transition(state, (predecessor_row, row.transition_word, candidate_id));
+                if let Some(predecessor_row) = modified_row.predecessor_row {
+                    self.update_graph_for_new_transition(
+                        state,
+                        (predecessor_row, modified_row.transition_word, modified),
+                    );
+                }
+            } else {
+                if let Some(predecessor_row) = modified_row.predecessor_row {
+                    let predecessor_states = &self.row_to_state[&predecessor_row];
+                    for predecessor_state in predecessor_states.iter() {
+                        if let Some(edge) = self.graph.find_edge(*predecessor_state, state) {
+                            self.graph.remove_edge(edge);
+                        }
+                    }
+                }
+
+                let state_rows = self
+                    .graph
+                    .node_weight_mut(state)
+                    .expect("We got the key from the graph");
+                state_rows.remove(&modified);
+                self.row_to_state.get_mut(&modified).unwrap().remove(&state);
             }
         }
 
         if !added_to_existing {
-            let row = &self.observation_rows[candidate_id];
-            let new_state = self.graph.add_node(vec![candidate_id]);
-            self.update_graph_for_new_transition(new_state, (predecessor_row, row.transition_word, candidate_id));
+            let row = &self.observation_rows[modified];
+            let new_state = self.graph.add_node(BTreeSet::from([modified]));
+            if let Some(predecessor_row) = row.predecessor_row {
+                self.update_graph_for_new_transition(new_state, (predecessor_row, row.transition_word, modified));
+            }
         }
-
-        // Add the new candidates that are now possible due to the new state.
-        self.add_missing_candidates();
     }
 
     fn update_graph_for_new_transition(
@@ -524,9 +661,9 @@ where
     ) {
         let (predecessor_row, word, target_row) = transition;
         self.row_to_state
-            .entry(target_row)
-            .or_insert_with(Vec::new)
-            .push(target_state);
+            .get_mut(&target_row)
+            .unwrap()
+            .insert(target_state);
         let predecessors = self
             .row_to_state
             .get(&predecessor_row)
@@ -561,7 +698,7 @@ where
             } else {
                 write!(row_string, "{:<16}", "<candidate>")?;
             }
-            row.fmt_debug_row(&mut row_string, &self.suffixes)?;
+            row.fmt_debug_row(&format!("{}", row_id), &mut row_string, &self.suffixes)?;
             if let Some(states) = self.row_to_state.get(&row_id) {
                 writeln!(f, "{}", ansi_term::Colour::Green.paint(row_string))?;
                 for state in states.iter().skip(1) {
