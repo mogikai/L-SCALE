@@ -150,7 +150,7 @@ where
             .predecessor_row
             .map(|pred| format!("{:?}", pred))
             .unwrap_or("n/a".into());
-        write!(f, "{:<45}", format!("({:?} --[{:?}]-->) ", pred_str, self.transition_word))?;
+        write!(f, "{:<45}", format!("({} --[{:?}]-->) ", pred_str, self.transition_word))?;
         write!(f, "")?;
         for suffix_id in suffixes.keys() {
             if let Some(observation) = self.observations.get(suffix_id)
@@ -437,9 +437,11 @@ where
     ) {
         let mut prefix = prefix.into_iter().peekable();
         let mut current_row = self.initial_row;
+        let mut previous_word = None;
         while let Some(word) = prefix.next() {
             if let Some(nex_row) = self.state_transitions.get(&(current_row, word)) {
                 current_row = *nex_row;
+                previous_word = Some(word);
             } else {
                 break;
             }
@@ -450,8 +452,9 @@ where
         // for the last one. This is added to the candidates.
 
         // Iterate over the remaining words except the last.
-        while let Some(word) = prefix.next()
-            && prefix.peek().is_some()
+        let mut remaining_prefix = previous_word.iter().copied().chain(prefix).peekable();
+        while let Some(word) = remaining_prefix.next()
+            && remaining_prefix.peek().is_some()
         {
             let candidate = self.candidate_transitions[&(current_row, word)];
             self.transform_candidate_to_state(candidate);
@@ -558,7 +561,7 @@ where
             if let Some(states) = self.row_to_state.get(&row_id) {
                 writeln!(f, "{}", ansi_term::Colour::Green.paint(row_string))?;
                 for state in states.iter().skip(1) {
-                    writeln!(f, "{:<16}", format!("<{state:?}>"))?;
+                    writeln!(f, "{:<16}", ansi_term::Colour::Green.paint(format!("<{state:?}>")))?;
                 }
             } else {
                 writeln!(f, "{}", row_string)?;
@@ -586,6 +589,8 @@ mod test {
             .into_iter()
             .map(|word| words.insert(String::from(word)))
             .collect::<Vec<_>>();
+        let a = word_ids[0];
+        let b = word_ids[1];
         let mut learner = StateLearner::<String>::new(epsilon);
 
         let initial_row = learner.initial_row();
@@ -643,6 +648,7 @@ mod test {
 
         println!("{}", learner);
         learner.make_closed();
+        learner.add_prefix([a, a, a]);
         println!("{}", learner);
 
         // learner.add_suffixes([vec![word_ids[1], word_ids[0]]]);
