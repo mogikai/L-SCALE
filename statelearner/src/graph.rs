@@ -235,7 +235,7 @@ impl<T> StateLearner<T> {
 
     pub fn get_state_row_id(
         &self,
-        prefix: impl Iterator<Item = WordId>,
+        prefix: impl IntoIterator<Item = WordId>,
     ) -> Option<ObservationRowId> {
         let mut row_id = self.initial_row;
         for prefix_word in prefix {
@@ -385,6 +385,10 @@ where
             }
         }
         observations.insert(suffix_id, Observation::Observed(observation));
+        // TODO: We need to update the graph here if the observation lead to rows now being distinct.
+        //       If two rows were equal and are now distinct, this means that we discovered a new
+        //       state.
+        for state in &self.row_to_state[&observation_row] {}
         Ok(())
     }
 
@@ -443,6 +447,7 @@ where
                 current_row = *nex_row;
                 previous_word = Some(word);
             } else {
+                previous_word = Some(word);
                 break;
             }
         }
@@ -648,7 +653,14 @@ mod test {
 
         println!("{}", learner);
         learner.make_closed();
-        learner.add_prefix([a, a, a]);
+        learner.add_prefix([a, b, a, b]);
+        println!("{}", learner);
+
+        let row = learner.get_state_row_id([a, b, a]).unwrap();
+        let suffix = learner.unobserved_suffixes(row).skip(1).next().unwrap();
+        learner
+            .add_observation(row, suffix, String::from("test4"))
+            .unwrap();
         println!("{}", learner);
 
         // learner.add_suffixes([vec![word_ids[1], word_ids[0]]]);
