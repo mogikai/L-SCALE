@@ -336,7 +336,6 @@ impl<T> StateLearner<T> {
             let prefix_word = prefix.next().unwrap();
 
             if prefix.peek().is_none() {
-                // case 1
                 break self
                     .candidate_transitions
                     .get(&(row_id, prefix_word))
@@ -671,31 +670,19 @@ where
     ) {
         let mut prefix = prefix.into_iter().peekable();
         let mut current_row = self.initial_row;
-        let mut previous_word = None;
         while let Some(word) = prefix.next() {
             if let Some(nex_row) = self.state_transitions.get(&(current_row, word)) {
                 current_row = *nex_row;
-                previous_word = Some(word);
             } else {
-                previous_word = Some(word);
-                break;
+                if prefix.peek().is_none() {
+                    // If this is the last word in the prefix we don't want to promote the candidate.
+                    break;
+                }
+                // We want to promote all intermediate candidates to states.
+                let candidate = self.candidate_transitions[&(current_row, word)];
+                self.promote_candidate_to_state(candidate);
             }
         }
-
-        // current_row is now the last row that exists for this prefix.
-        // We need to now add all prefix rows to the state_table except
-        // for the last one. This is added to the candidates.
-
-        // Iterate over the remaining words except the last.
-        let mut remaining_prefix = previous_word.iter().copied().chain(prefix).peekable();
-        while let Some(word) = remaining_prefix.next()
-            && remaining_prefix.peek().is_some()
-        {
-            let candidate = self.candidate_transitions[&(current_row, word)];
-            self.promote_candidate_to_state(candidate);
-        }
-        // We have now added all word that belong to the prefix to the state table.
-        // The last word is automatically contained in the candidate table.
     }
 
     fn promote_candidate_to_state(
