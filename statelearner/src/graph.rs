@@ -1,3 +1,4 @@
+use crate::Word;
 use itertools::Itertools;
 use petgraph::dot::Dot;
 use petgraph::graph::{
@@ -145,7 +146,10 @@ where
         f: &mut impl Write,
         suffixes: &SlotMap<SuffixId, Vec<WordId>>,
     ) -> std::fmt::Result {
-        let pred_str = self.predecessor_row.map(|pred| format!("{:?}", pred)).unwrap_or("n/a".into());
+        let pred_str = self
+            .predecessor_row
+            .map(|pred| format!("{:?}", pred))
+            .unwrap_or("n/a".into());
         write!(f, "{:<45}", format!("({:?} --[{:?}]-->) ", pred_str, self.transition_word))?;
         write!(f, "")?;
         for suffix_id in suffixes.keys() {
@@ -220,7 +224,7 @@ impl<T> StateLearner<T> {
             initial_row,
             epsilon,
         };
-        slf.add_words(once(epsilon));
+        slf.add_suffixes(once([epsilon]));
         slf.add_missing_candidates();
         slf
     }
@@ -258,24 +262,15 @@ impl<T> StateLearner<T> {
             .copied()
     }
 
-    /// Add the provided words into the state learner.
-    /// Any existing words will be skipped.
-    pub fn add_words(
-        &mut self,
-        words: impl IntoIterator<Item = WordId>,
-    ) {
-        self.add_suffixes(words.into_iter().map(|word| vec![word]));
-    }
-
     /// Add the provided suffixes into the state learner.
     /// Any existing suffixes will be skipped.
     pub fn add_suffixes(
         &mut self,
-        suffixes: impl IntoIterator<Item = Vec<WordId>>,
+        suffixes: impl IntoIterator<Item = impl IntoIterator<Item = WordId>>,
     ) {
-        suffixes
-            .into_iter()
-            .for_each(|suffix| match self.suffix_lookup.entry(suffix.clone()) {
+        suffixes.into_iter().for_each(|suffix| {
+            let suffix = suffix.into_iter().collect::<Vec<_>>();
+            match self.suffix_lookup.entry(suffix.clone()) {
                 Entry::Occupied(_) => { /* The suffix was already added. */ }
                 Entry::Vacant(entry) => {
                     for word in suffix.iter() {
@@ -283,7 +278,8 @@ impl<T> StateLearner<T> {
                     }
                     entry.insert(self.suffixes.insert(suffix));
                 }
-            });
+            }
+        });
 
         // Add the new candidates that are now possible due to the new suffixes.
         self.add_missing_candidates();
@@ -319,15 +315,13 @@ impl<T> StateLearner<T> {
     }
 
     pub fn states_with_missing_observations(&self) -> impl Iterator<Item = ObservationRowId> {
-        self.rows_with_missing_observations().filter(|row_id| {
-            self.row_to_state.contains_key(&row_id)
-        })
+        self.rows_with_missing_observations()
+            .filter(|row_id| self.row_to_state.contains_key(&row_id))
     }
 
     pub fn candidates_with_missing_observations(&self) -> impl Iterator<Item = ObservationRowId> {
-        self.rows_with_missing_observations().filter(|row_id| {
-            !self.row_to_state.contains_key(&row_id)
-        })
+        self.rows_with_missing_observations()
+            .filter(|row_id| !self.row_to_state.contains_key(&row_id))
     }
 
     fn add_missing_candidates(&mut self) {
@@ -396,40 +390,8 @@ where
 
     pub fn make_closed(&mut self) {
         while let Some(candidate_id) = self.find_closed_property_violation() {
-            self.fix_closed_property_violation(candidate_id);
+            self.transform_candidate_to_state(candidate_id);
         }
-    }
-
-    fn fix_closed_property_violation(
-        &mut self,
-        candidate_id: ObservationRowId,
-    ) {
-        let row = &self.observation_rows[candidate_id];
-        let Some(predecessor_row) = row.predecessor_row else {
-            panic!("Candidate states must have a predecessor state.")
-        };
-
-        // move up ^~^
-        self.state_transitions
-            .insert((predecessor_row, row.transition_word), candidate_id);
-        self.candidate_transitions
-            .remove(&(predecessor_row, row.transition_word));
-
-        let new_state = self.graph.add_node(vec![candidate_id]);
-        self.row_to_state.insert(candidate_id, vec![new_state]);
-
-        let predecessors = self
-            .row_to_state
-            .get(&predecessor_row)
-            .expect("This must have been inserted before");
-
-        for predecessor in predecessors.iter().copied() {
-            self.graph
-                .add_edge(predecessor, new_state, row.transition_word);
-        }
-
-        // Add the new candidates that are now possible due to the new state.
-        self.add_missing_candidates();
     }
 
     fn find_closed_property_violation(&self) -> Option<ObservationRowId> {
@@ -464,6 +426,108 @@ where
         // We found no state that is equal or undetermined when comparing to the candidate.
         // Therefore, the candidate violates the closed property, since it is not equal to any state.
         true
+    }
+
+    /// Insert the given prefix into the state learner.
+    /// This potentially adds multiple new states and
+    /// state candidates to the observation table
+    pub fn add_prefix(
+        &mut self,
+        prefix: impl IntoIterator<Item = WordId>,
+    ) {
+        let mut prefix = prefix.into_iter().peekable();
+        let mut current_row = self.initial_row;
+        while let Some(word) = prefix.next() {
+            if let Some(nex_row) = self.state_transitions.get(&(current_row, word)) {
+                current_row = *nex_row;
+            } else {
+                break;
+            }
+        }
+
+        // current_row is now the last row that exists for this prefix.
+        // We need to now add all prefix rows to the state_table except
+        // for the last one. This is added to the candidates.
+
+        // Iterate over the remaining words except the last.
+        while let Some(word) = prefix.next()
+            && prefix.peek().is_some()
+        {
+            let candidate = self.candidate_transitions[&(current_row, word)];
+            self.transform_candidate_to_state(candidate);
+        }
+        // We have now added all word that belong to the prefix to the state table.
+        // The last word is automatically contained in the candidate table.
+    }
+
+    fn transform_candidate_to_state(
+        &mut self,
+        candidate_id: ObservationRowId,
+    ) {
+        let row = &self.observation_rows[candidate_id];
+        let Some(predecessor_row) = row.predecessor_row else {
+            panic!("Candidate states must have a predecessor state.")
+        };
+
+        // move up ^~^
+        // Move the candidate from the candidate_transitions table into the
+        // state_transitions table
+        self.state_transitions
+            .insert((predecessor_row, row.transition_word), candidate_id);
+        self.candidate_transitions
+            .remove(&(predecessor_row, row.transition_word));
+
+        // We want to find all graph nodes that contain a row that is equal to the candidate's row.
+        // We can then add the candidate's row to the rows in the node.
+        let mut added_to_existing = false;
+        for state in self.graph.node_indices() {
+            let row = &self.observation_rows[candidate_id];
+            let rows = self
+                .graph
+                .node_weight_mut(state)
+                .expect("We got the key from the graph");
+            let contains_similar_rows =
+                rows.iter()
+                    .all(|row_id| match self.observation_rows[*row_id].compare_observations(&row) {
+                        ObservationComparison::Equal | ObservationComparison::Undetermined => true,
+                        _ => false,
+                    });
+            if contains_similar_rows {
+                added_to_existing = true;
+                rows.push(candidate_id);
+                // Add the state we found to the row_to_state map entry for this row.
+                self.update_graph_for_new_transition(state, (predecessor_row, row.transition_word, candidate_id));
+            }
+        }
+
+        if !added_to_existing {
+            let row = &self.observation_rows[candidate_id];
+            let new_state = self.graph.add_node(vec![candidate_id]);
+            self.update_graph_for_new_transition(new_state, (predecessor_row, row.transition_word, candidate_id));
+        }
+
+        // Add the new candidates that are now possible due to the new state.
+        self.add_missing_candidates();
+    }
+
+    fn update_graph_for_new_transition(
+        &mut self,
+        target_state: NodeIndex,
+        transition: (ObservationRowId, WordId, ObservationRowId),
+    ) {
+        let (predecessor_row, word, target_row) = transition;
+        self.row_to_state
+            .entry(target_row)
+            .or_insert_with(Vec::new)
+            .push(target_state);
+        let predecessors = self
+            .row_to_state
+            .get(&predecessor_row)
+            .expect("This must have been inserted before");
+
+        for predecessor in predecessors.iter().copied() {
+            self.graph.add_edge(predecessor, target_state, word);
+        }
     }
 }
 
@@ -508,11 +572,9 @@ where
 #[cfg(test)]
 mod test {
     use crate::graph::{
-        ObservationRowId,
         StateLearner,
         WordId,
     };
-    use petgraph::graph::NodeIndex;
     use slotmap::SlotMap;
     use std::path::Path;
 
@@ -528,7 +590,7 @@ mod test {
 
         let initial_row = learner.initial_row();
 
-        learner.add_words(word_ids.iter().copied());
+        learner.add_suffixes(word_ids.iter().copied().map(|word_id| [word_id]));
         learner.add_suffixes([vec![word_ids[0], word_ids[1]]]);
 
         println!("{}", learner);
