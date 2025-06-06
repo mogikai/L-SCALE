@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
+SRC="$1.dot"
+OUT="$1.pdf"
 
-SRC="test.dot"
-OUT="test.pdf"
-
-while true; do
-  echo "$SRC" |  entr -c dot -Tpdf "$SRC" -o "$OUT"
+while read -r directory events filename; do
+  inotifywait -m -e modify "$SRC" |
+  dot -Tpdf "$SRC" -o "$OUT"
 done
