@@ -1,4 +1,3 @@
-use crate::Word;
 use itertools::Itertools;
 use petgraph::dot::Dot;
 use petgraph::graph::{
@@ -40,9 +39,9 @@ pub enum StateLearnerError {
 
 pub type StateLearnerResult<T = ()> = Result<T, StateLearnerError>;
 
-trait ObservationValue: PartialEq {}
+pub trait ObservationValue: PartialEq + Clone {}
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 enum Observation<T> {
     #[default]
     Missing,
@@ -59,6 +58,15 @@ impl<T> Observation<T>
 where
     T: ObservationValue,
 {
+    fn unwrap(&self) -> &T {
+        match self {
+            Observation::Missing => {
+                panic!("unwrap on missing observation")
+            }
+            Observation::Observed(observation) => observation,
+        }
+    }
+
     fn compare(
         &self,
         other: &Self,
@@ -76,9 +84,9 @@ where
 
 impl ObservationValue for String {}
 
-new_key_type! { struct ObservationRowId; }
-new_key_type! { struct SuffixId; }
-new_key_type! { struct WordId; }
+new_key_type! { pub struct ObservationRowId; }
+new_key_type! { pub struct SuffixId; }
+new_key_type! { pub struct WordId; }
 
 impl Display for ObservationRowId {
     fn fmt(
@@ -131,6 +139,15 @@ impl<T> ObservationRow<T> {
             transition_word: word,
             observations: Default::default(),
         }
+    }
+
+    pub fn get_observation(
+        &self,
+        suffix: SuffixId,
+    ) -> &Observation<T> {
+        self.observations
+            .get(suffix)
+            .unwrap_or(&Observation::Missing)
     }
 }
 
@@ -200,7 +217,28 @@ where
     }
 }
 
-struct StateLearner<T> {
+#[derive(Debug)]
+struct ConsistencyViolation {
+    rows: (ObservationRowId, ObservationRowId),
+    word_id: WordId,
+    suffix_id: SuffixId,
+}
+
+impl ConsistencyViolation {
+    fn new(
+        rows: (ObservationRowId, ObservationRowId),
+        word_id: WordId,
+        suffix_id: SuffixId,
+    ) -> Self {
+        Self {
+            rows,
+            word_id,
+            suffix_id,
+        }
+    }
+}
+
+pub struct StateLearner<T> {
     /// Contains a row of observations for each state or candidate state.
     observation_rows: SlotMap<ObservationRowId, ObservationRow<T>>,
     /// The graph that contains the states and the edges between them.
@@ -268,7 +306,7 @@ impl<T> StateLearner<T> {
         self.initial_row
     }
 
-    pub fn get_state_row_id(
+    pub fn get_state_row_id_from_prefix(
         &self,
         prefix: impl IntoIterator<Item = WordId>,
     ) -> Option<ObservationRowId> {
@@ -287,6 +325,35 @@ impl<T> StateLearner<T> {
         Some(row_id)
     }
 
+    pub fn get_candidate_row_id_from_prefix(
+        &self,
+        prefix: impl IntoIterator<Item = WordId>,
+    ) -> Option<ObservationRowId> {
+        let mut prefix = prefix.into_iter().peekable();
+
+        let mut row_id = self.initial_row;
+        loop {
+            let prefix_word = prefix.next().unwrap();
+
+            if prefix.peek().is_none() {
+                // case 1
+                break self
+                    .candidate_transitions
+                    .get(&(row_id, prefix_word))
+                    .copied();
+            } else {
+                match self.state_transitions.get(&(row_id, prefix_word)) {
+                    Some(next_row_id) => {
+                        row_id = *next_row_id;
+                    }
+                    None => {
+                        break None;
+                    }
+                }
+            }
+        }
+    }
+
     pub fn get_candidate_row_id(
         &self,
         predecessor: ObservationRowId,
@@ -295,6 +362,35 @@ impl<T> StateLearner<T> {
         self.candidate_transitions
             .get(&(predecessor, word))
             .copied()
+    }
+
+    /// Add the provided suffix into the state learner. Return the
+    /// new suffix id or the old suffix id if suffix already exists.
+    pub fn add_suffix(
+        &mut self,
+        suffix: impl IntoIterator<Item = WordId>,
+    ) -> SuffixId {
+        let suffix = suffix.into_iter().collect::<Vec<_>>();
+
+        let new_suffix = match self.suffix_lookup.entry(suffix.clone()) {
+            Entry::Occupied(entry) => {
+                /* The suffix was already added. */
+                *entry.get()
+            }
+            Entry::Vacant(entry) => {
+                for word in suffix.iter() {
+                    self.words.insert(*word, ());
+                }
+                let new_suffix = self.suffixes.insert(suffix);
+                entry.insert(new_suffix);
+                new_suffix
+            }
+        };
+
+        // Add the new candidates that are now possible due to the new suffixes.
+        self.add_missing_candidates();
+
+        new_suffix
     }
 
     /// Add the provided suffixes into the state learner.
@@ -371,7 +467,9 @@ impl<T> StateLearner<T> {
             .filter(|row_id| self.row_to_state.contains_key(row_id))
             .cartesian_product(self.words.keys())
             .filter_map(|candidate| {
-                if self.candidate_transitions.contains_key(&candidate) {
+                if self.candidate_transitions.contains_key(&candidate)
+                    || self.state_transitions.contains_key(&candidate)
+                {
                     None
                 } else {
                     Some(ObservationRow::<T>::new_candidate(candidate.0, candidate.1))
@@ -446,26 +544,42 @@ where
     /// certain (word, suffix)-pair. This can be fixed by including the pair as a new suffix and
     /// adding more measurements to distinguish the offending rows.
     pub fn make_consistent(&mut self) {
-        while let Some((offending_word, offending_suffix)) = self.find_consistent_property_violation() {
-            self.fix_consistent_property_violation(offending_word, offending_suffix);
+        while let Some(violation) = self.find_consistent_property_violation() {
+            self.fix_consistent_property_violation(violation);
         }
     }
 
-    fn find_consistent_property_violation(&self) -> Option<(WordId, SuffixId)> {
+    fn find_consistent_property_violation(&mut self) -> Option<ConsistencyViolation> {
         // offending rows must be in the same graph node
         for state_id in self.graph.node_indices() {
             let state_rows = self.graph.node_weight(state_id).unwrap();
-            for (&row_0, &row_1) in state_rows.iter().cartesian_product(state_rows.iter()) {
+            for rows in state_rows.iter().cartesian_product(state_rows.iter()) {
                 // find mismatching observation in candidate rows
-                for (word, suffix) in self.words.keys().cartesian_product(self.suffixes.keys()) {
+                for (word_id, suffix_id) in self.words.keys().cartesian_product(self.suffixes.keys()) {
                     // find successors when applying the word and compare suffix observation
-                    let row_0 = &self.observation_rows[self.candidate_transitions[&(row_0, word)]];
-                    let row_1 = &self.observation_rows[self.candidate_transitions[&(row_1, word)]];
+                    let target_row_ids = match (
+                        self.candidate_transitions.get(&(*rows.0, word_id)).copied(),
+                        self.candidate_transitions.get(&(*rows.1, word_id)).copied(),
+                    ) {
+                        (Some(id_0), Some(id_1)) => (id_0, id_1),
+                        _ => continue,
+                    };
 
-                    match row_0.observations[suffix].compare(&row_1.observations[suffix]) {
+                    let target_rows =
+                        (&self.observation_rows[target_row_ids.0], &self.observation_rows[target_row_ids.1]);
+
+                    match target_rows
+                        .0
+                        .get_observation(suffix_id)
+                        .compare(&target_rows.1.get_observation(suffix_id))
+                    {
                         ObservationComparison::NotEqual => {
                             // contradiction found
-                            return Some((word, suffix));
+                            return Some(ConsistencyViolation::new(
+                                (target_row_ids.0, target_row_ids.1),
+                                word_id,
+                                suffix_id,
+                            ));
                         }
                         ObservationComparison::Equal | ObservationComparison::Undetermined => {
                             // if we don't know for sure whether they are contradicting we
@@ -481,15 +595,30 @@ where
 
     fn fix_consistent_property_violation(
         &mut self,
-        offending_word: WordId,
-        offending_suffix: SuffixId,
+        violation: ConsistencyViolation,
     ) {
         // we add the offending word to the suffix list
-        let offending_suffix = &self.suffixes[offending_suffix];
+        let offending_suffix = &self.suffixes[violation.suffix_id];
         let mut new_suffix = Vec::with_capacity(offending_suffix.len() + 1);
-        new_suffix[0] = offending_word;
+        new_suffix.push(violation.word_id);
         new_suffix.extend(offending_suffix.iter());
-        self.add_suffixes(once(new_suffix));
+        let new_suffix_id = self.add_suffix(new_suffix);
+
+        for violation_row in [violation.rows.0, violation.rows.1] {
+            let predecessor = self.observation_rows[violation_row]
+                .predecessor_row
+                .unwrap();
+
+            self.add_observation(
+                predecessor,
+                new_suffix_id,
+                self.observation_rows[violation_row]
+                    .get_observation(violation.suffix_id)
+                    .unwrap()
+                    .clone(),
+            )
+            .unwrap();
+        }
     }
 
     fn fix_closed_property_violation(
@@ -792,7 +921,7 @@ mod test {
         learner.add_prefix([a, b, a, b]);
         println!("{}", learner);
 
-        let row = learner.get_state_row_id([a, b, a]).unwrap();
+        let row = learner.get_state_row_id_from_prefix([a, b, a]).unwrap();
         let suffix = learner.unobserved_suffixes(row).skip(1).next().unwrap();
         learner
             .add_observation(row, suffix, String::from("test4"))
