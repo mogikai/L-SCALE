@@ -738,20 +738,6 @@ where
                     );
                 }
             } else {
-                if let Some(predecessor_row) = modified_row.predecessor_row {
-                    let predecessor_states = &self.row_to_state[&predecessor_row];
-                    for predecessor_state in predecessor_states.iter() {
-                        if let Some(edge) = self.graph.find_edge(*predecessor_state, state) {
-                            let edge_set = self.graph.edge_weight_mut(edge).unwrap();
-                            edge_set.remove(&modified_row.transition_word.unwrap());
-                            let is_empty = edge_set.is_empty();
-                            if is_empty {
-                                self.graph.remove_edge(edge);
-                            }
-                        }
-                    }
-                }
-
                 let state_rows = self
                     .graph
                     .node_weight_mut(state)
@@ -760,6 +746,46 @@ where
                 self.row_to_state.get_mut(&modified).unwrap().remove(&state);
             }
         }
+
+        // remove all eliminated transition words
+        for edge_index in self.graph.edge_indices() {
+            let (start, end) = self.graph.edge_endpoints(edge_index).unwrap();
+            let start_rows = self
+                .graph
+                .node_weight(start)
+                .unwrap()
+                .iter()
+                .copied()
+                .collect::<Vec<_>>();
+            let end_rows = self
+                .graph
+                .node_weight(end)
+                .unwrap()
+                .iter()
+                .copied()
+                .collect::<Vec<_>>();
+
+            let edge_words = self.graph.edge_weight_mut(edge_index).unwrap();
+            edge_words.retain(|transition_word| {
+                for start_row in start_rows.iter().copied() {
+                    for transitions in [&self.state_transitions, &self.candidate_transitions] {
+                        if let Some(target) = transitions.get(&(start_row, *transition_word)) {
+                            if end_rows.contains(target) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+
+                false
+            });
+        }
+
+        // remove all edges for which there are no transition words
+        self.graph.retain_edges(|graph, edge_index| {
+            let transition_words = graph.edge_weight(edge_index).unwrap();
+            !transition_words.is_empty()
+        });
 
         if !added_to_existing {
             let row = &self.observation_rows[modified];
