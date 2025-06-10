@@ -1,4 +1,6 @@
+use fnv::{FnvHashMap, FnvHashSet};
 use itertools::Itertools;
+use petgraph::graph::EdgeReference;
 use petgraph::dot::Dot;
 use petgraph::graph::{
     DiGraph,
@@ -11,10 +13,6 @@ use slotmap::{
     new_key_type,
 };
 use std::collections::hash_map::Entry;
-use std::collections::{
-    BTreeSet,
-    HashMap,
-};
 use std::fmt::{
     Debug,
     Display,
@@ -253,25 +251,25 @@ pub struct StateLearner<T> {
     /// The graph that contains the states and the edges between them.
     /// The node 'weights' are the corresponding observation rows (or rather their ids)
     /// and the edge 'weights' are the corresponding words (or rather their ids) that trigger the transition.
-    graph: DiGraph<BTreeSet<ObservationRowId>, BTreeSet<WordId>>,
+    graph: DiGraph<FnvHashSet<ObservationRowId>, FnvHashSet<WordId>>,
 
     /// A reverse lookup map for states.
-    row_to_state: HashMap<ObservationRowId, BTreeSet<NodeIndex>>,
+    row_to_state: FnvHashMap<ObservationRowId, FnvHashSet<NodeIndex>>,
 
-    state_transitions: HashMap<(ObservationRowId, WordId), ObservationRowId>,
+    state_transitions: FnvHashMap<(ObservationRowId, WordId), ObservationRowId>,
 
     /// A set of candidate states. A candidate state is a state that can be arrived at
     /// by applying a word to an existing state. The number of candidates is thus at most
     /// |V| * |W| where |V| is the number of states and |W| is the number of words.
     /// A candidate state is identified by its corresponding observation row.
-    candidate_transitions: HashMap<(ObservationRowId, WordId), ObservationRowId>,
+    candidate_transitions: FnvHashMap<(ObservationRowId, WordId), ObservationRowId>,
 
     words: SecondaryMap<WordId, ()>,
 
     /// All suffixes that we have seen so far. A suffix is a list of words applied in a certain state.
     suffixes: SlotMap<SuffixId, Vec<WordId>>,
     /// Reverse lookup map for suffixes. This is used to check if a suffix was already added to the learner.
-    suffix_lookup: HashMap<Vec<WordId>, SuffixId>,
+    suffix_lookup: FnvHashMap<Vec<WordId>, SuffixId>,
 
     initial_row: ObservationRowId,
 }
@@ -328,6 +326,10 @@ impl<T> StateLearner<T> {
         }
     }
 
+    pub fn get_suffix_words(&self, suffix_id: SuffixId) -> impl Iterator<Item = WordId> {
+        self.suffixes[suffix_id].iter().copied()
+    }
+
     pub fn get_candidate_row_id(
         &self,
         predecessor: ObservationRowId,
@@ -372,11 +374,32 @@ impl<T> StateLearner<T> {
             .filter(|row| self.unobserved_suffixes(*row).next().is_some())
     }
 
-    pub fn export(
+    pub fn next_row_with_missing_observations(&self) -> Option<ObservationRowId> {
+        self.observation_rows
+            .keys()
+            .find(|row| self.unobserved_suffixes(*row).next().is_some())
+    }
+
+    pub fn export<W>(
         &self,
         file: &Path,
-    ) {
-        let dot = Dot::with_config(&self.graph, &[]);
+        words: &SlotMap<WordId, W>,
+    ) where
+        W: Display,
+    {
+        let format_edge = &|_, edge: EdgeReference<FnvHashSet<WordId>, _>| {
+            let mut label = String::new();
+            for word_id in edge.weight().iter().copied() {
+                write!(label, "{}, ", words[word_id]).unwrap();
+            }
+            format!("label = \"{}\"", label)
+        };
+
+        let format_node = &|_, (node_index, node_rows): (NodeIndex, &FnvHashSet<ObservationRowId>)| {
+            format!("label = \"Node {} ({})\"", node_index.index(), node_rows.len())
+        };
+
+        let dot = Dot::with_attr_getters(&self.graph, &[], format_edge, format_node);
         let mut file = File::options()
             .truncate(true)
             .write(true)
@@ -393,7 +416,7 @@ where
     T: ObservationValue,
 {
     pub fn new() -> Self {
-        let mut graph = DiGraph::<BTreeSet<ObservationRowId>, BTreeSet<WordId>>::default();
+        let mut graph = DiGraph::<FnvHashSet<ObservationRowId>, FnvHashSet<WordId>>::default();
         let mut observation_rows = SlotMap::<ObservationRowId, ObservationRow<T>>::default();
         let initial_row = observation_rows.insert(ObservationRow {
             predecessor_row: None,
@@ -402,9 +425,9 @@ where
             is_state: true,
         });
 
-        let mut row_to_state = HashMap::<ObservationRowId, BTreeSet<NodeIndex>>::default();
-        let initial_state = graph.add_node(BTreeSet::from([initial_row]));
-        row_to_state.insert(initial_row, BTreeSet::from([initial_state]));
+        let mut row_to_state = FnvHashMap::<ObservationRowId, FnvHashSet<NodeIndex>>::default();
+        let initial_state = graph.add_node(FnvHashSet::from_iter([initial_row]));
+        row_to_state.insert(initial_row, FnvHashSet::from_iter([initial_state]));
 
         let mut slf = Self {
             observation_rows,
@@ -471,6 +494,16 @@ where
 
         // Add the new candidates that are now possible due to the new suffixes.
         self.add_missing_candidates();
+    }
+
+    pub fn get_row_prefix(&self, mut row_id: ObservationRowId) -> impl Iterator<Item = WordId> {
+        let mut words = Vec::new();
+        while let Some(predecessor) = self.observation_rows[row_id].predecessor_row {
+            words.push(self.observation_rows[row_id].transition_word.unwrap());
+            row_id = predecessor;
+        }
+
+        words.into_iter().rev()
     }
 
     fn add_missing_candidates(&mut self) {
@@ -707,7 +740,7 @@ where
         &mut self,
         modified: ObservationRowId,
     ) {
-        self.row_to_state.entry(modified).or_insert(BTreeSet::new());
+        self.row_to_state.entry(modified).or_insert(FnvHashSet::default());
         // We want to find all graph nodes that contain a row that is equal to the candidate's row.
         // We can then add the candidate's row to the rows in the node.
         let mut added_to_existing = false;
@@ -789,7 +822,7 @@ where
 
         if !added_to_existing {
             let row = &self.observation_rows[modified];
-            let new_state = self.graph.add_node(BTreeSet::from([modified]));
+            let new_state = self.graph.add_node(FnvHashSet::from_iter([modified]));
             if let Some(predecessor_row) = row.predecessor_row {
                 self.update_graph_for_new_transition(
                     new_state,
@@ -820,7 +853,7 @@ where
                 self.graph.edge_weight_mut(edge).unwrap().insert(word);
             } else {
                 self.graph
-                    .add_edge(predecessor, target_state, BTreeSet::from([word]));
+                    .add_edge(predecessor, target_state, FnvHashSet::from_iter([word]));
             }
         }
     }
@@ -844,7 +877,7 @@ where
             let mut row_string = String::new();
             if row.is_state {
                 if let Some(states) = self.row_to_state.get(&row_id)
-                    && let Some(first_state) = states.first()
+                    && let Some(first_state) = states.iter().next()
                 {
                     write!(row_string, "{:<16}", format!("<{first_state:?}>"))?;
                 } else {

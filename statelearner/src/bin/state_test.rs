@@ -1,10 +1,28 @@
-use petgraph::graph::{DiGraph, NodeIndex};
-use slotmap::{new_key_type, SlotMap};
-use std::collections::HashMap;
+use mogi_statelearner::graph::{
+    ObservationValue,
+    StateLearner,
+    WordId,
+};
+use petgraph::dot::{
+    Config,
+    Dot,
+};
+use petgraph::graph::{
+    DiGraph,
+    NodeIndex,
+};
 use petgraph::prelude::EdgeRef;
-use petgraph::dot::{Dot, Config};
+use slotmap::{
+    SlotMap,
+    new_key_type,
+};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
+use std::path::{
+    Path,
+    PathBuf,
+};
 
 new_key_type! { struct StateKey; }
 
@@ -23,13 +41,13 @@ struct Transition {
 #[derive(Debug)]
 struct StateMachine {
     states: DiGraph<State, Transition>,
+    initial_state: NodeIndex,
     current_state: NodeIndex,
     defined_inputs: HashMap<NodeIndex, Vec<String>>,
     error_state: NodeIndex,
 }
 
 impl StateMachine {
-
     fn new() -> Self {
         let mut states = DiGraph::new();
         let initial_state = states.add_node(State {
@@ -38,68 +56,91 @@ impl StateMachine {
         let error_state = states.add_node(State {
             name: "Error".to_string(),
         });
-        
+
         StateMachine {
             states,
+            initial_state,
             current_state: initial_state,
             defined_inputs: HashMap::new(),
             error_state,
         }
     }
 
-    fn add_state(&mut self, name: &str) -> NodeIndex {
-        self.states.add_node(State {
-            name: name.to_string(),
-        })
+    fn add_state(
+        &mut self,
+        name: &str,
+    ) -> NodeIndex {
+        self.states.add_node(State { name: name.to_string() })
     }
 
-    fn add_transition(&mut self, from: NodeIndex, to: NodeIndex, input: &str, observation: i32) {
+    fn add_transition(
+        &mut self,
+        from: NodeIndex,
+        to: NodeIndex,
+        input: &str,
+        observation: i32,
+    ) {
         // Store the input as defined for this state
         self.defined_inputs
             .entry(from)
             .or_insert_with(Vec::new)
             .push(input.to_string());
 
-        self.states.add_edge(from, to, Transition {
-            input: input.to_string(),
-            target: to,
-            observation,
-        });
+        self.states.add_edge(
+            from,
+            to,
+            Transition {
+                input: input.to_string(),
+                target: to,
+                observation,
+            },
+        );
     }
 
     fn add_error_transitions(&mut self) {
         // Define a special "any_other" input that represents unhandled inputs
         let error_input = "any_other";
         let error_observation = -1;
-        
+
         // For each state
         let all_nodes: Vec<NodeIndex> = self.states.node_indices().collect();
-        
+
         for state_idx in all_nodes {
             // Skip adding error transitions from the error state
             if state_idx == self.error_state {
                 continue;
             }
-            
+
             // Add transition to error state for unhandled inputs
-            self.states.add_edge(state_idx, self.error_state, Transition {
+            self.states.add_edge(
+                state_idx,
+                self.error_state,
+                Transition {
+                    input: error_input.to_string(),
+                    target: self.error_state,
+                    observation: error_observation,
+                },
+            );
+        }
+
+        // Add self-loop on error state
+        self.states.add_edge(
+            self.error_state,
+            self.error_state,
+            Transition {
                 input: error_input.to_string(),
                 target: self.error_state,
                 observation: error_observation,
-            });
-        }
-        
-        // Add self-loop on error state
-        self.states.add_edge(self.error_state, self.error_state, Transition {
-            input: error_input.to_string(),
-            target: self.error_state,
-            observation: error_observation,
-        });
+            },
+        );
     }
 
-    fn process_input(&mut self, input: &str) -> Option<i32> {
+    fn process_input(
+        &mut self,
+        input: &str,
+    ) -> Option<i32> {
         let current = self.current_state;
-        
+
         // First try to find a specific transition for this input
         for edge in self.states.edges(current) {
             if edge.weight().input == input {
@@ -107,7 +148,7 @@ impl StateMachine {
                 return Some(edge.weight().observation);
             }
         }
-        
+
         // If no specific transition is found, use the error transition
         for edge in self.states.edges(current) {
             if edge.weight().input == "any_other" {
@@ -115,22 +156,31 @@ impl StateMachine {
                 return Some(edge.weight().observation);
             }
         }
-        
+
         // This should never happen if error transitions are properly set up
         None
     }
-    
+
+    fn reset(&mut self) {
+        self.current_state = self.initial_state;
+    }
+
     fn is_in_error_state(&self) -> bool {
         self.current_state == self.error_state
     }
 }
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct MyI32(i32);
+
+impl ObservationValue for MyI32 {}
 
 fn main() {
     let mut machine = StateMachine::new();
     let error_state = machine.error_state;
 
     // Create 10 states
-    let s0 = machine.current_state;  // Initial state
+    let s0 = machine.current_state; // Initial state
     let s1 = machine.add_state("State1");
     let s2 = machine.add_state("State2");
     let s3 = machine.add_state("State3");
@@ -157,20 +207,56 @@ fn main() {
     machine.add_transition(s5, s3, "back", 35);
     machine.add_transition(s7, s4, "return", 45);
     machine.add_transition(s9, s6, "jump", 65);
-    
+
     // Add error transitions for all states
     machine.add_error_transitions();
 
-    // Example usage
-    println!("Initial observation: {}", 0);
-    if let Some(obs) = machine.process_input("start") {
-        println!("After 'start': {}", obs);
+    let words = [
+        "start", "next", "continue", "proceed", "advance", "forward", "progress", "move", "final", "reset", "back",
+        "return", "jump",
+    ];
+
+    let mut word_map = SlotMap::<WordId, String>::default();
+    for word in words.iter() {
+        word_map.insert(word.to_string());
     }
-    
-    // Try an invalid input to demonstrate error state
-    if let Some(obs) = machine.process_input("invalid_input") {
-        println!("After 'invalid_input': {}", obs);
-        println!("Is in error state: {}", machine.is_in_error_state());
+
+    let word_ids = word_map.keys().collect::<Vec<_>>();
+
+    let mut learner = StateLearner::<MyI32>::new();
+    for word in word_ids.iter().copied() {
+        learner.add_prefix([word]);
+        learner.add_suffix([word]);
+    }
+
+    println!("{}", learner);
+
+    while let Some(row_id) = learner.next_row_with_missing_observations() {
+        let prefix = learner.get_row_prefix(row_id).collect::<Vec<_>>();
+        let unobserved_suffixes = learner.unobserved_suffixes(row_id).collect::<Vec<_>>();
+
+        for suffix_id in unobserved_suffixes.iter().copied() {
+            machine.reset();
+            for prefix_word_id in prefix.iter().copied() {
+                let prefix_word = &word_map[prefix_word_id];
+                machine.process_input(prefix_word);
+            }
+
+            let mut observation = 1;
+            for suffix_word_id in learner.get_suffix_words(suffix_id) {
+                let suffix_word = &word_map[suffix_word_id];
+                observation *= machine.process_input(suffix_word).unwrap();
+            }
+
+            learner
+                .add_observation(row_id, suffix_id, MyI32(observation))
+                .unwrap();
+            learner.make_closed();
+            learner.make_consistent();
+        }
+
+        println!("{}", learner);
+        learner.export(&PathBuf::from("state_test.dot"), &word_map);
     }
 
     let dot = Dot::with_config(&machine.states, &[]);
@@ -181,4 +267,6 @@ fn main() {
         .open("state_machine.dot")
         .unwrap();
     file.write_fmt(format_args!("{:?}", dot)).unwrap();
+    learner.export(&PathBuf::from("state_test.dot"), &word_map);
 }
+
