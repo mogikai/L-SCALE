@@ -127,6 +127,8 @@ struct ObservationRow<T> {
     /// The observations when applying the corresponding suffix to the
     /// target in the state represented by this row.
     observations: SecondaryMap<SuffixId, Observation<T>>,
+    /// Is this a candidate or a state?
+    is_state: bool,
 }
 
 impl<T> ObservationRow<T> {
@@ -138,6 +140,7 @@ impl<T> ObservationRow<T> {
             predecessor_row: Some(predecessor),
             transition_word: word,
             observations: Default::default(),
+            is_state: false,
         }
     }
 
@@ -279,6 +282,7 @@ impl<T> StateLearner<T> {
             predecessor_row: None,
             transition_word: epsilon,
             observations: Default::default(),
+            is_state: true,
         });
 
         let mut row_to_state = HashMap::<ObservationRowId, BTreeSet<NodeIndex>>::default();
@@ -449,29 +453,23 @@ impl<T> StateLearner<T> {
             .filter(|row| self.unobserved_suffixes(*row).next().is_some())
     }
 
-    pub fn states_with_missing_observations(&self) -> impl Iterator<Item = ObservationRowId> {
-        self.rows_with_missing_observations()
-            .filter(|row_id| self.row_to_state.contains_key(&row_id))
-    }
-
-    pub fn candidates_with_missing_observations(&self) -> impl Iterator<Item = ObservationRowId> {
-        self.rows_with_missing_observations()
-            .filter(|row_id| !self.row_to_state.contains_key(&row_id))
-    }
-
     fn add_missing_candidates(&mut self) {
         let new_candidates = self
-            .observation_rows
+            .words
             .keys()
-            .filter(|row_id| self.row_to_state.contains_key(row_id))
-            .cartesian_product(self.words.keys())
-            .filter_map(|candidate| {
-                if self.candidate_transitions.contains_key(&candidate)
-                    || self.state_transitions.contains_key(&candidate)
+            .cartesian_product(
+                self.observation_rows
+                    .iter()
+                    .filter_map(|(row_id, row)| row.is_state.then_some(row_id)),
+            )
+            .filter_map(|(word, row_id)| {
+                if !self.candidate_transitions.contains_key(&(row_id, word))
+                    && !self.state_transitions.contains_key(&(row_id, word))
                 {
-                    None
+                    // If neither table contains a row for (prefix, word) then we need to add a new candidate.
+                    Some(ObservationRow::<T>::new_candidate(row_id, word))
                 } else {
-                    Some(ObservationRow::<T>::new_candidate(candidate.0, candidate.1))
+                    None
                 }
             })
             .collect::<Vec<_>>();
@@ -535,6 +533,7 @@ where
 
     pub fn make_closed(&mut self) {
         while let Some(candidate_id) = self.find_closed_property_violation() {
+            println!("Found closed property violation: {:?}", candidate_id);
             self.promote_candidate_to_state(candidate_id);
         }
     }
@@ -544,6 +543,7 @@ where
     /// adding more measurements to distinguish the offending rows.
     pub fn make_consistent(&mut self) {
         while let Some(violation) = self.find_consistent_property_violation() {
+            println!("Found consistent property violation: {:?}", violation);
             self.fix_consistent_property_violation(violation);
         }
     }
@@ -620,13 +620,6 @@ where
         }
     }
 
-    fn fix_closed_property_violation(
-        &mut self,
-        candidate_id: ObservationRowId,
-    ) {
-        self.promote_candidate_to_state(candidate_id);
-    }
-
     fn find_closed_property_violation(&self) -> Option<ObservationRowId> {
         for candidate_id in self.candidate_transitions.values() {
             if self.candidate_violates_closed_property(*candidate_id) {
@@ -640,12 +633,13 @@ where
         &self,
         candidate_id: ObservationRowId,
     ) -> bool {
+        // Closed property: For a given row in the candidate_transitions table, there must exist a row in
+        // the state_transitions table that is equal to the candidate. This effectively means that when
+        // applying a word to an existing prefix, we cannot "walk out of the state space".
+        // For our case, since there may be missing observations, rows are considered equal if they have
+        // missing observations. They may only be considered unequal if they have at least one differing position.
         let candidate_row = &self.observation_rows[candidate_id];
-        for (_, row) in self
-            .observation_rows
-            .iter()
-            .filter(|(row_id, _)| self.row_to_state.contains_key(row_id))
-        {
+        for row in self.observation_rows.values().filter(|row| row.is_state) {
             if matches!(
                 row.compare_observations(candidate_row),
                 ObservationComparison::Equal | ObservationComparison::Undetermined
@@ -689,7 +683,7 @@ where
         &mut self,
         candidate_id: ObservationRowId,
     ) {
-        let row = &self.observation_rows[candidate_id];
+        let row = &mut self.observation_rows[candidate_id];
         let Some(predecessor_row) = row.predecessor_row else {
             panic!("Candidate states must have a predecessor state.")
         };
@@ -701,6 +695,7 @@ where
             .insert((predecessor_row, row.transition_word), candidate_id);
         self.candidate_transitions
             .remove(&(predecessor_row, row.transition_word));
+        row.is_state = true;
 
         self.row_to_state.insert(candidate_id, Default::default());
         self.update_graph_for_new_observation(candidate_id);
@@ -807,18 +802,24 @@ where
         write!(f, "\nRows:\n")?;
         for (row_id, row) in self.observation_rows.iter() {
             let mut row_string = String::new();
-            if let Some(states) = self.row_to_state.get(&row_id) {
-                if let Some(first_state) = states.first() {
+            if row.is_state {
+                if let Some(states) = self.row_to_state.get(&row_id)
+                    && let Some(first_state) = states.first()
+                {
                     write!(row_string, "{:<16}", format!("<{first_state:?}>"))?;
+                } else {
+                    write!(row_string, "{:<16}", "<state>")?;
                 }
             } else {
                 write!(row_string, "{:<16}", "<candidate>")?;
             }
             row.fmt_debug_row(&format!("{}", row_id), &mut row_string, &self.suffixes)?;
-            if let Some(states) = self.row_to_state.get(&row_id) {
+            if row.is_state {
                 writeln!(f, "{}", ansi_term::Colour::Green.paint(row_string))?;
-                for state in states.iter().skip(1) {
-                    writeln!(f, "{:<16}", ansi_term::Colour::Green.paint(format!("<{state:?}>")))?;
+                if let Some(states) = self.row_to_state.get(&row_id) {
+                    for state in states.iter().skip(1) {
+                        writeln!(f, "{:<16}", ansi_term::Colour::Green.paint(format!("<{state:?}>")))?;
+                    }
                 }
             } else {
                 writeln!(f, "{}", row_string)?;
