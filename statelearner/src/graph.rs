@@ -4,10 +4,6 @@ use petgraph::graph::{
     DiGraph,
     NodeIndex,
 };
-use petgraph::visit::{
-    IntoNodeIdentifiers,
-    NodeRef,
-};
 use slotmap::{
     Key,
     SecondaryMap,
@@ -123,7 +119,7 @@ struct ObservationRow<T> {
     /// This new row is arrived at by applying the transition word to the predecessor row.
     predecessor_row: Option<ObservationRowId>,
     /// The word that is applied to the predecessor row to arrive at this row.
-    transition_word: WordId,
+    transition_word: Option<WordId>,
     /// The observations when applying the corresponding suffix to the
     /// target in the state represented by this row.
     observations: SecondaryMap<SuffixId, Observation<T>>,
@@ -138,7 +134,7 @@ impl<T> ObservationRow<T> {
     ) -> Self {
         Self {
             predecessor_row: Some(predecessor),
-            transition_word: word,
+            transition_word: Some(word),
             observations: Default::default(),
             is_state: false,
         }
@@ -205,7 +201,17 @@ where
             .predecessor_row
             .map(|pred| format!("{}", pred))
             .unwrap_or("n/a".into());
-        write!(f, "{:<40}", format!("({:<10} --[{:^12}]--> {:>10}) ", pred_str, self.transition_word, self_name))?;
+        write!(
+            f,
+            "{:<40}",
+            format!(
+                "({:<10} --[{:^12}]--> {:>10}) ",
+                pred_str,
+                self.transition_word
+                    .map_or("n/a".to_string(), |word| word.to_string()),
+                self_name
+            )
+        )?;
         write!(f, "")?;
         for suffix_id in suffixes.keys() {
             if let Some(observation) = self.observations.get(suffix_id)
@@ -247,7 +253,7 @@ pub struct StateLearner<T> {
     /// The graph that contains the states and the edges between them.
     /// The node 'weights' are the corresponding observation rows (or rather their ids)
     /// and the edge 'weights' are the corresponding words (or rather their ids) that trigger the transition.
-    graph: DiGraph<BTreeSet<ObservationRowId>, WordId>,
+    graph: DiGraph<BTreeSet<ObservationRowId>, BTreeSet<WordId>>,
 
     /// A reverse lookup map for states.
     row_to_state: HashMap<ObservationRowId, BTreeSet<NodeIndex>>,
@@ -268,44 +274,9 @@ pub struct StateLearner<T> {
     suffix_lookup: HashMap<Vec<WordId>, SuffixId>,
 
     initial_row: ObservationRowId,
-
-    /// The id of the empty word, i.e., a word that consists of zero characters.
-    /// This can be considered as simply running the target without applying any input.
-    epsilon: WordId,
 }
 
 impl<T> StateLearner<T> {
-    pub fn new(epsilon: WordId) -> Self {
-        let mut graph = DiGraph::<BTreeSet<ObservationRowId>, WordId>::default();
-        let mut observation_rows = SlotMap::<ObservationRowId, ObservationRow<T>>::default();
-        let initial_row = observation_rows.insert(ObservationRow {
-            predecessor_row: None,
-            transition_word: epsilon,
-            observations: Default::default(),
-            is_state: true,
-        });
-
-        let mut row_to_state = HashMap::<ObservationRowId, BTreeSet<NodeIndex>>::default();
-        let initial_state = graph.add_node(BTreeSet::from([initial_row]));
-        row_to_state.insert(initial_row, BTreeSet::from([initial_state]));
-
-        let mut slf = Self {
-            observation_rows,
-            graph,
-            row_to_state,
-            state_transitions: Default::default(),
-            candidate_transitions: Default::default(),
-            words: Default::default(),
-            suffixes: Default::default(),
-            suffix_lookup: Default::default(),
-            initial_row,
-            epsilon,
-        };
-        slf.add_suffixes(once([epsilon]));
-        slf.add_missing_candidates();
-        slf
-    }
-
     pub fn initial_row(&self) -> ObservationRowId {
         self.initial_row
     }
@@ -367,6 +338,89 @@ impl<T> StateLearner<T> {
             .copied()
     }
 
+    /// Returns an iterator over all suffixes that have missing observations
+    pub fn unobserved_suffixes(
+        &self,
+        observation_row: ObservationRowId,
+    ) -> impl Iterator<Item = SuffixId> {
+        self.suffixes.keys().filter(move |suffix_id| {
+            matches!(
+                self.observation_rows[observation_row]
+                    .observations
+                    .get(*suffix_id)
+                    .unwrap_or(&Observation::Missing),
+                Observation::Missing
+            )
+        })
+    }
+
+    pub fn state_observation_rows(
+        &self,
+        state: NodeIndex,
+    ) -> impl Iterator<Item = ObservationRowId> {
+        self.graph
+            .node_weight(state)
+            .into_iter()
+            .map(|set| set.iter())
+            .flatten()
+            .copied()
+    }
+
+    pub fn rows_with_missing_observations(&self) -> impl Iterator<Item = ObservationRowId> {
+        self.observation_rows
+            .keys()
+            .filter(|row| self.unobserved_suffixes(*row).next().is_some())
+    }
+
+    pub fn export(
+        &self,
+        file: &Path,
+    ) {
+        let dot = Dot::with_config(&self.graph, &[]);
+        let mut file = File::options()
+            .truncate(true)
+            .write(true)
+            .create(true)
+            .open(file)
+            .unwrap();
+        use std::io::Write;
+        file.write_fmt(format_args!("{:?}", dot)).unwrap();
+    }
+}
+
+impl<T> StateLearner<T>
+where
+    T: ObservationValue,
+{
+    pub fn new() -> Self {
+        let mut graph = DiGraph::<BTreeSet<ObservationRowId>, BTreeSet<WordId>>::default();
+        let mut observation_rows = SlotMap::<ObservationRowId, ObservationRow<T>>::default();
+        let initial_row = observation_rows.insert(ObservationRow {
+            predecessor_row: None,
+            transition_word: None,
+            observations: Default::default(),
+            is_state: true,
+        });
+
+        let mut row_to_state = HashMap::<ObservationRowId, BTreeSet<NodeIndex>>::default();
+        let initial_state = graph.add_node(BTreeSet::from([initial_row]));
+        row_to_state.insert(initial_row, BTreeSet::from([initial_state]));
+
+        let mut slf = Self {
+            observation_rows,
+            graph,
+            row_to_state,
+            state_transitions: Default::default(),
+            candidate_transitions: Default::default(),
+            words: Default::default(),
+            suffixes: Default::default(),
+            suffix_lookup: Default::default(),
+            initial_row,
+        };
+        slf.add_missing_candidates();
+        slf
+    }
+
     /// Add the provided suffix into the state learner. Return the
     /// new suffix id or the old suffix id if suffix already exists.
     pub fn add_suffix(
@@ -419,40 +473,6 @@ impl<T> StateLearner<T> {
         self.add_missing_candidates();
     }
 
-    /// Returns an iterator over all suffixes that have missing observations
-    pub fn unobserved_suffixes(
-        &self,
-        observation_row: ObservationRowId,
-    ) -> impl Iterator<Item = SuffixId> {
-        self.suffixes.keys().filter(move |suffix_id| {
-            matches!(
-                self.observation_rows[observation_row]
-                    .observations
-                    .get(*suffix_id)
-                    .unwrap_or(&Observation::Missing),
-                Observation::Missing
-            )
-        })
-    }
-
-    pub fn state_observation_rows(
-        &self,
-        state: NodeIndex,
-    ) -> impl Iterator<Item = ObservationRowId> {
-        self.graph
-            .node_weight(state)
-            .into_iter()
-            .map(|set| set.iter())
-            .flatten()
-            .copied()
-    }
-
-    pub fn rows_with_missing_observations(&self) -> impl Iterator<Item = ObservationRowId> {
-        self.observation_rows
-            .keys()
-            .filter(|row| self.unobserved_suffixes(*row).next().is_some())
-    }
-
     fn add_missing_candidates(&mut self) {
         let new_candidates = self
             .words
@@ -475,36 +495,16 @@ impl<T> StateLearner<T> {
             .collect::<Vec<_>>();
 
         for new_candidate in new_candidates.into_iter() {
-            self.observation_rows.insert_with_key(|row_id| {
+            let new_row_id = self.observation_rows.insert_with_key(|row_id| {
                 let pred = new_candidate.predecessor_row.unwrap();
-                let word = new_candidate.transition_word;
+                let word = new_candidate.transition_word.unwrap();
                 self.candidate_transitions.insert((pred, word), row_id);
-
                 new_candidate
             });
+            self.update_graph_for_new_observation(new_row_id);
         }
     }
 
-    pub fn export(
-        &self,
-        file: &Path,
-    ) {
-        let dot = Dot::with_config(&self.graph, &[]);
-        let mut file = File::options()
-            .truncate(true)
-            .write(true)
-            .create(true)
-            .open(file)
-            .unwrap();
-        use std::io::Write;
-        file.write_fmt(format_args!("{:?}", dot)).unwrap();
-    }
-}
-
-impl<T> StateLearner<T>
-where
-    T: ObservationValue,
-{
     pub fn add_observation(
         &mut self,
         observation_row: ObservationRowId,
@@ -692,12 +692,11 @@ where
         // Move the candidate from the candidate_transitions table into the
         // state_transitions table
         self.state_transitions
-            .insert((predecessor_row, row.transition_word), candidate_id);
+            .insert((predecessor_row, row.transition_word.unwrap()), candidate_id);
         self.candidate_transitions
-            .remove(&(predecessor_row, row.transition_word));
+            .remove(&(predecessor_row, row.transition_word.unwrap()));
         row.is_state = true;
 
-        self.row_to_state.insert(candidate_id, Default::default());
         self.update_graph_for_new_observation(candidate_id);
 
         // Add the new candidates that are now possible due to the new state.
@@ -708,6 +707,7 @@ where
         &mut self,
         modified: ObservationRowId,
     ) {
+        self.row_to_state.entry(modified).or_insert(BTreeSet::new());
         // We want to find all graph nodes that contain a row that is equal to the candidate's row.
         // We can then add the candidate's row to the rows in the node.
         let mut added_to_existing = false;
@@ -734,7 +734,7 @@ where
                 if let Some(predecessor_row) = modified_row.predecessor_row {
                     self.update_graph_for_new_transition(
                         state,
-                        (predecessor_row, modified_row.transition_word, modified),
+                        (predecessor_row, modified_row.transition_word.unwrap(), modified),
                     );
                 }
             } else {
@@ -742,7 +742,12 @@ where
                     let predecessor_states = &self.row_to_state[&predecessor_row];
                     for predecessor_state in predecessor_states.iter() {
                         if let Some(edge) = self.graph.find_edge(*predecessor_state, state) {
-                            self.graph.remove_edge(edge);
+                            let edge_set = self.graph.edge_weight_mut(edge).unwrap();
+                            edge_set.remove(&modified_row.transition_word.unwrap());
+                            let is_empty = edge_set.is_empty();
+                            if is_empty {
+                                self.graph.remove_edge(edge);
+                            }
                         }
                     }
                 }
@@ -760,7 +765,10 @@ where
             let row = &self.observation_rows[modified];
             let new_state = self.graph.add_node(BTreeSet::from([modified]));
             if let Some(predecessor_row) = row.predecessor_row {
-                self.update_graph_for_new_transition(new_state, (predecessor_row, row.transition_word, modified));
+                self.update_graph_for_new_transition(
+                    new_state,
+                    (predecessor_row, row.transition_word.unwrap(), modified),
+                );
             }
         }
     }
@@ -781,7 +789,13 @@ where
             .expect("This must have been inserted before");
 
         for predecessor in predecessors.iter().copied() {
-            self.graph.add_edge(predecessor, target_state, word);
+            let edge = self.graph.find_edge(predecessor, target_state);
+            if let Some(edge) = edge {
+                self.graph.edge_weight_mut(edge).unwrap().insert(word);
+            } else {
+                self.graph
+                    .add_edge(predecessor, target_state, BTreeSet::from([word]));
+            }
         }
     }
 }
@@ -842,19 +856,18 @@ mod test {
     #[test]
     fn it_works() {
         let mut words = SlotMap::<WordId, String>::default();
-        let epsilon = words.insert(String::from(""));
         let word_ids = ["A", "B"]
             .into_iter()
             .map(|word| words.insert(String::from(word)))
             .collect::<Vec<_>>();
         let a = word_ids[0];
         let b = word_ids[1];
-        let mut learner = StateLearner::<String>::new(epsilon);
+        let mut learner = StateLearner::<String>::new();
 
         let initial_row = learner.initial_row();
 
         learner.add_suffixes(word_ids.iter().copied().map(|word_id| [word_id]));
-        learner.add_suffixes([vec![word_ids[0], word_ids[1]]]);
+        // learner.add_suffixes([vec![word_ids[0], word_ids[1]]]);
 
         println!("{}", learner);
 
@@ -866,12 +879,6 @@ mod test {
         learner
             .add_observation(initial_row, unobserved[1], String::from("test2"))
             .unwrap();
-        learner
-            .add_observation(initial_row, unobserved[2], String::from("test"))
-            .unwrap();
-        learner
-            .add_observation(initial_row, unobserved[3], String::from("test"))
-            .unwrap();
 
         let candidate_row = learner
             .get_candidate_row_id(initial_row, word_ids[0])
@@ -882,12 +889,6 @@ mod test {
             .unwrap();
         learner
             .add_observation(candidate_row, unobserved[1], String::from("test"))
-            .unwrap();
-        learner
-            .add_observation(candidate_row, unobserved[2], String::from("test2"))
-            .unwrap();
-        learner
-            .add_observation(candidate_row, unobserved[3], String::from("test"))
             .unwrap();
 
         println!("{}", learner);
@@ -910,10 +911,26 @@ mod test {
         println!("{}", learner);
 
         let row = learner.get_state_row_id_from_prefix([a, b, a]).unwrap();
-        let suffix = learner.unobserved_suffixes(row).skip(1).next().unwrap();
+        let suffixes = learner.unobserved_suffixes(row).collect::<Vec<_>>();
         learner
-            .add_observation(row, suffix, String::from("test4"))
+            .add_observation(row, suffixes[0], String::from("test4"))
             .unwrap();
+        learner
+            .add_observation(row, suffixes[1], String::from("test4"))
+            .unwrap();
+        println!("{}", learner);
+
+        for row in learner.rows_with_missing_observations().collect::<Vec<_>>() {
+            let suffixes = learner.unobserved_suffixes(row).collect::<Vec<_>>();
+            for suffix in suffixes {
+                learner
+                    .add_observation(row, suffix, String::from("test"))
+                    .unwrap();
+            }
+        }
+
+        learner.make_closed();
+        learner.make_consistent();
         println!("{}", learner);
 
         // learner.add_suffixes([vec![word_ids[1], word_ids[0]]]);
