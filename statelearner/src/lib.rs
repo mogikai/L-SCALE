@@ -49,6 +49,7 @@ pub enum StateLearnerError {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug)]
 pub struct StateLearner<T> {
     /// Contains a row of observations for each state or candidate state.
     observation_rows: SlotMap<ObservationRowId, ObservationRow<T>>,
