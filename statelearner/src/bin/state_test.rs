@@ -1,30 +1,22 @@
-use mogi_statelearner::graph::{
+use mogi_statelearner::{
     ObservationValue,
     StateLearner,
     WordId,
 };
-use petgraph::dot::{
-    Config,
-    Dot,
-};
+use petgraph::dot::Dot;
 use petgraph::graph::{
     DiGraph,
     NodeIndex,
 };
 use petgraph::prelude::EdgeRef;
 use slotmap::{
-    SlotMap,
     new_key_type,
+    SlotMap,
 };
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
-use std::path::{
-    Path,
-    PathBuf,
-};
-use std::thread::sleep;
-use std::time::Duration;
+use std::path::PathBuf;
 
 new_key_type! { struct StateKey; }
 

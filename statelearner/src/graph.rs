@@ -1,21 +1,25 @@
-use fnv::{
-    FnvHashMap,
-    FnvHashSet,
+use crate::ovservation::Observation;
+use crate::row::{
+    ObservationRowComparison,
+    ObservationRowId,
 };
+use crate::{
+    ObservationValue,
+    StateLearner,
+    SuffixId,
+    WordId,
+};
+use fnv::FnvHashSet;
 use itertools::Itertools;
 use petgraph::dot::Dot;
 use petgraph::graph::{
-    DiGraph,
     EdgeReference,
     NodeIndex,
 };
 use slotmap::{
     Key,
-    SecondaryMap,
     SlotMap,
-    new_key_type,
 };
-use std::collections::hash_map::Entry;
 use std::fmt::{
     Debug,
     Display,
@@ -33,65 +37,6 @@ pub enum StateLearnerError {
     #[error("Unknown error")]
     Unknown,
 }
-
-pub type StateLearnerResult<T = ()> = Result<T, StateLearnerError>;
-
-pub trait ObservationValue: PartialEq + Clone {}
-
-#[derive(Default, Debug, Clone)]
-enum Observation<T> {
-    #[default]
-    Missing,
-    Observed(T),
-}
-
-enum ObservationComparison {
-    Equal,
-    NotEqual,
-    Undetermined,
-}
-
-enum ObservationRowComparison {
-    Equal,
-    /// The two observations are not equal.
-    /// The provided suffix is the first witness of the inequality.
-    NotEqual(SuffixId),
-    Undetermined,
-}
-
-impl<T> Observation<T>
-where
-    T: ObservationValue,
-{
-    fn unwrap(&self) -> &T {
-        match self {
-            Observation::Missing => {
-                panic!("unwrap on missing observation")
-            }
-            Observation::Observed(observation) => observation,
-        }
-    }
-
-    fn compare(
-        &self,
-        other: &Self,
-    ) -> ObservationComparison {
-        // If all observations are equal, then the comparison returns equal.
-        // If one or more differences are found, then the comparison is not equal.
-        // If one or both observations are missing, then the comparison is undetermined.
-        match (self, other) {
-            (Observation::Observed(a), Observation::Observed(b)) if a == b => ObservationComparison::Equal,
-            (Observation::Observed(a), Observation::Observed(b)) if a != b => ObservationComparison::NotEqual,
-            _ => ObservationComparison::Undetermined,
-        }
-    }
-}
-
-impl ObservationValue for String {}
-
-new_key_type! { pub struct ObservationRowId; }
-new_key_type! { pub struct SuffixId; }
-new_key_type! { pub struct WordId; }
 
 impl Display for ObservationRowId {
     fn fmt(
@@ -118,178 +63,6 @@ impl Display for WordId {
     ) -> std::fmt::Result {
         write!(f, "Word({:?})", self.data())
     }
-}
-
-/// A row of observations for a state or candidate state.
-/// By default, values in columns that have not been filled are defined as [Observation::Missing].
-#[derive(Debug)]
-struct ObservationRow<T> {
-    /// The observation row that is the predecessor of this row.
-    /// This new row is arrived at by applying the transition word to the predecessor row.
-    predecessor_row: Option<ObservationRowId>,
-    /// The word that is applied to the predecessor row to arrive at this row.
-    transition_word: Option<WordId>,
-    /// The observations when applying the corresponding suffix to the
-    /// target in the state represented by this row.
-    observations: SecondaryMap<SuffixId, Observation<T>>,
-    /// Is this a candidate or a state?
-    is_state: bool,
-}
-
-impl<T> ObservationRow<T> {
-    pub fn new_candidate(
-        predecessor: ObservationRowId,
-        word: WordId,
-    ) -> Self {
-        Self {
-            predecessor_row: Some(predecessor),
-            transition_word: Some(word),
-            observations: Default::default(),
-            is_state: false,
-        }
-    }
-
-    pub fn get_observation(
-        &self,
-        suffix: SuffixId,
-    ) -> &Observation<T> {
-        self.observations
-            .get(suffix)
-            .unwrap_or(&Observation::Missing)
-    }
-
-    pub fn predecessor_transition(&self) -> Option<(ObservationRowId, WordId)> {
-        match (self.predecessor_row, self.transition_word) {
-            (Some(row), Some(word)) => Some((row, word)),
-            _ => None,
-        }
-    }
-}
-
-impl<T> ObservationRow<T>
-where
-    T: ObservationValue,
-{
-    pub fn compare_observations(
-        &self,
-        other: &Self,
-    ) -> ObservationRowComparison {
-        let result = if self.observations.len() != other.observations.len() {
-            // If the lengths are not equal, then the comparison is undetermined, since one observation
-            // row is missing observations.
-            // We cannot shortcut here, since it might still be possible that the rows can be determined
-            // to not be equal.
-            ObservationRowComparison::Undetermined
-        } else {
-            // Otherwise we set the result to equal for now.
-            ObservationRowComparison::Equal
-        };
-
-        for (suffix, observation) in self.observations.iter() {
-            let other_observation = other
-                .observations
-                .get(suffix)
-                .unwrap_or(&Observation::Missing);
-            if let ObservationComparison::NotEqual = observation.compare(other_observation) {
-                // If one of the observations is not equal, then the comparison is not equal.
-                // Even if some observations are still missing, we can already say for certain
-                // that the rows will never be equal.
-                return ObservationRowComparison::NotEqual(suffix);
-            }
-        }
-
-        // If we did not determine the rows to be not equal, then the result must be undetermined or equal.
-        result
-    }
-}
-
-impl<T> ObservationRow<T>
-where
-    T: Debug,
-{
-    fn fmt_debug_row(
-        &self,
-        self_name: &str,
-        f: &mut impl Write,
-        suffixes: &SlotMap<SuffixId, Vec<WordId>>,
-    ) -> std::fmt::Result {
-        let pred_str = self
-            .predecessor_row
-            .map(|pred| format!("{}", pred))
-            .unwrap_or("n/a".into());
-        write!(
-            f,
-            "{:<40}",
-            format!(
-                "({:<10} --[{:^12}]--> {:>10}) ",
-                pred_str,
-                self.transition_word
-                    .map_or("n/a".to_string(), |word| word.to_string()),
-                self_name
-            )
-        )?;
-        write!(f, "")?;
-        for suffix_id in suffixes.keys() {
-            if let Some(observation) = self.observations.get(suffix_id)
-                && let Observation::Observed(observation) = observation
-            {
-                write!(f, "{:^20} ", format!("{:?}", observation))?;
-            } else {
-                write!(f, "{:^20} ", "n/a")?;
-            }
-        }
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-struct ConsistencyViolation {
-    rows: (ObservationRowId, ObservationRowId),
-    word_id: WordId,
-    suffix_id: SuffixId,
-}
-
-impl ConsistencyViolation {
-    fn new(
-        rows: (ObservationRowId, ObservationRowId),
-        word_id: WordId,
-        suffix_id: SuffixId,
-    ) -> Self {
-        Self {
-            rows,
-            word_id,
-            suffix_id,
-        }
-    }
-}
-
-pub struct StateLearner<T> {
-    /// Contains a row of observations for each state or candidate state.
-    observation_rows: SlotMap<ObservationRowId, ObservationRow<T>>,
-    /// The graph that contains the states and the edges between them.
-    /// The node 'weights' are the corresponding observation rows (or rather their ids)
-    /// and the edge 'weights' are the corresponding words (or rather their ids) that trigger the transition.
-    graph: DiGraph<FnvHashSet<ObservationRowId>, FnvHashSet<WordId>>,
-
-    /// A reverse lookup map for states.
-    row_to_state: FnvHashMap<ObservationRowId, FnvHashSet<NodeIndex>>,
-
-    state_transitions: FnvHashMap<(ObservationRowId, WordId), ObservationRowId>,
-
-    /// A set of candidate states. A candidate state is a state that can be arrived at
-    /// by applying a word to an existing state. The number of candidates is thus at most
-    /// |V| * |W| where |V| is the number of states and |W| is the number of words.
-    /// A candidate state is identified by its corresponding observation row.
-    candidate_transitions: FnvHashMap<(ObservationRowId, WordId), ObservationRowId>,
-
-    words: SecondaryMap<WordId, ()>,
-
-    /// All suffixes that we have seen so far. A suffix is a list of words applied in a certain state.
-    suffixes: SlotMap<SuffixId, Vec<WordId>>,
-    /// Reverse lookup map for suffixes. This is used to check if a suffix was already added to the learner.
-    suffix_lookup: FnvHashMap<Vec<WordId>, SuffixId>,
-
-    initial_row: ObservationRowId,
 }
 
 impl<T> StateLearner<T> {
@@ -367,13 +140,7 @@ impl<T> StateLearner<T> {
         observation_row: ObservationRowId,
     ) -> impl Iterator<Item = SuffixId> {
         self.suffixes.keys().filter(move |suffix_id| {
-            matches!(
-                self.observation_rows[observation_row]
-                    .observations
-                    .get(*suffix_id)
-                    .unwrap_or(&Observation::Missing),
-                Observation::Missing
-            )
+            matches!(self.observation_rows[observation_row].observation(*suffix_id), Observation::Missing)
         })
     }
 
@@ -436,270 +203,6 @@ impl<T> StateLearner<T>
 where
     T: ObservationValue,
 {
-    pub fn new() -> Self {
-        let mut graph = DiGraph::<FnvHashSet<ObservationRowId>, FnvHashSet<WordId>>::default();
-        let mut observation_rows = SlotMap::<ObservationRowId, ObservationRow<T>>::default();
-        let initial_row = observation_rows.insert(ObservationRow {
-            predecessor_row: None,
-            transition_word: None,
-            observations: Default::default(),
-            is_state: true,
-        });
-
-        let mut row_to_state = FnvHashMap::<ObservationRowId, FnvHashSet<NodeIndex>>::default();
-        let initial_state = graph.add_node(FnvHashSet::from_iter([initial_row]));
-        row_to_state.insert(initial_row, FnvHashSet::from_iter([initial_state]));
-
-        let mut slf = Self {
-            observation_rows,
-            graph,
-            row_to_state,
-            state_transitions: Default::default(),
-            candidate_transitions: Default::default(),
-            words: Default::default(),
-            suffixes: Default::default(),
-            suffix_lookup: Default::default(),
-            initial_row,
-        };
-        slf.add_missing_candidates();
-        slf
-    }
-
-    /// Add the provided suffix into the state learner. Return the
-    /// new suffix id or the old suffix id if suffix already exists.
-    pub fn add_suffix(
-        &mut self,
-        suffix: impl IntoIterator<Item = WordId>,
-    ) -> SuffixId {
-        let suffix = suffix.into_iter().collect::<Vec<_>>();
-
-        let new_suffix = match self.suffix_lookup.entry(suffix.clone()) {
-            Entry::Occupied(entry) => {
-                /* The suffix was already added. */
-                *entry.get()
-            }
-            Entry::Vacant(entry) => {
-                for word in suffix.iter() {
-                    self.words.insert(*word, ());
-                }
-                let new_suffix = self.suffixes.insert(suffix);
-                entry.insert(new_suffix);
-                new_suffix
-            }
-        };
-
-        // Add the new candidates that are now possible due to the new suffixes.
-        self.add_missing_candidates();
-
-        new_suffix
-    }
-
-    /// Add the provided suffixes into the state learner.
-    /// Any existing suffixes will be skipped.
-    pub fn add_suffixes(
-        &mut self,
-        suffixes: impl IntoIterator<Item = impl IntoIterator<Item = WordId>>,
-    ) {
-        suffixes.into_iter().for_each(|suffix| {
-            let suffix = suffix.into_iter().collect::<Vec<_>>();
-            match self.suffix_lookup.entry(suffix.clone()) {
-                Entry::Occupied(_) => { /* The suffix was already added. */ }
-                Entry::Vacant(entry) => {
-                    for word in suffix.iter() {
-                        self.words.insert(*word, ());
-                    }
-                    entry.insert(self.suffixes.insert(suffix));
-                }
-            }
-        });
-
-        // Add the new candidates that are now possible due to the new suffixes.
-        self.add_missing_candidates();
-    }
-
-    pub fn get_row_prefix(
-        &self,
-        mut row_id: ObservationRowId,
-    ) -> impl Iterator<Item = WordId> {
-        let mut words = Vec::new();
-        while let Some(predecessor) = self.observation_rows[row_id].predecessor_row {
-            words.push(self.observation_rows[row_id].transition_word.unwrap());
-            row_id = predecessor;
-        }
-
-        words.into_iter().rev()
-    }
-
-    fn add_missing_candidates(&mut self) {
-        let new_candidates = self
-            .words
-            .keys()
-            .cartesian_product(
-                self.observation_rows
-                    .iter()
-                    .filter_map(|(row_id, row)| row.is_state.then_some(row_id)),
-            )
-            .filter_map(|(word, row_id)| {
-                if !self.candidate_transitions.contains_key(&(row_id, word))
-                    && !self.state_transitions.contains_key(&(row_id, word))
-                {
-                    // If neither table contains a row for (prefix, word) then we need to add a new candidate.
-                    Some(ObservationRow::<T>::new_candidate(row_id, word))
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
-
-        for new_candidate in new_candidates.into_iter() {
-            let new_row_id = self.observation_rows.insert_with_key(|row_id| {
-                let pred = new_candidate.predecessor_row.unwrap();
-                let word = new_candidate.transition_word.unwrap();
-                self.candidate_transitions.insert((pred, word), row_id);
-                new_candidate
-            });
-            self.update_graph_for_new_observation(new_row_id);
-        }
-    }
-
-    pub fn add_observation(
-        &mut self,
-        observation_row: ObservationRowId,
-        suffix_id: SuffixId,
-        observation: T,
-    ) -> StateLearnerResult {
-        let observations = &mut self.observation_rows[observation_row].observations;
-        if let Some(old_observation) = observations.get(suffix_id) {
-            if let Observation::Observed(old_observation) = old_observation {
-                if old_observation != &observation {
-                    Err(StateLearnerError::ConflictingObservation)?
-                }
-            }
-        }
-        observations.insert(suffix_id, Observation::Observed(observation));
-
-        if self.row_to_state.contains_key(&observation_row) {
-            self.update_graph_for_new_observation(observation_row);
-        }
-
-        // TODO: We need to update the graph here if the observation lead to rows now being distinct.
-        //       If two rows were equal and are now distinct, this means that we discovered a new
-        //       state.
-        Ok(())
-    }
-
-    pub fn make_closed(&mut self) {
-        while let Some(candidate_id) = self.find_closed_property_violation() {
-            println!("Found closed property violation: {:?}", candidate_id);
-            self.promote_candidate_to_state(candidate_id);
-        }
-    }
-
-    /// The consistent property is violated if two equal rows exhibit different behavior under a
-    /// certain (word, suffix)-pair. This can be fixed by including the pair as a new suffix and
-    /// adding more measurements to distinguish the offending rows.
-    pub fn make_consistent(&mut self) {
-        while let Some(violation) = self.find_consistent_property_violation() {
-            println!("Found consistent property violation: {:?}", violation);
-            self.fix_consistent_property_violation(violation);
-        }
-    }
-
-    fn find_consistent_property_violation(&mut self) -> Option<ConsistencyViolation> {
-        // offending rows must be in the same graph node
-        for state_id in self.graph.node_indices() {
-            let state_rows = self.graph.node_weight(state_id).unwrap();
-            for rows in state_rows.iter().cartesian_product(state_rows.iter()) {
-                // find mismatching observation in candidate rows
-                for word_id in self.words.keys() {
-                    // find successors when applying the word and compare suffix observation
-                    let target_row_ids = match (
-                        self.candidate_transitions.get(&(*rows.0, word_id)).copied(),
-                        self.candidate_transitions.get(&(*rows.1, word_id)).copied(),
-                    ) {
-                        (Some(id_0), Some(id_1)) => (id_0, id_1),
-                        _ => continue,
-                    };
-
-                    let target_rows =
-                        (&self.observation_rows[target_row_ids.0], &self.observation_rows[target_row_ids.1]);
-
-                    if let ObservationRowComparison::NotEqual(witness) =
-                        target_rows.0.compare_observations(target_rows.1)
-                    {
-                        // contradiction found
-                        return Some(ConsistencyViolation::new((target_row_ids.0, target_row_ids.1), word_id, witness));
-                    }
-                }
-            }
-        }
-
-        None
-    }
-
-    fn fix_consistent_property_violation(
-        &mut self,
-        violation: ConsistencyViolation,
-    ) {
-        // we add the offending word to the suffix list
-        let offending_suffix = &self.suffixes[violation.suffix_id];
-        let mut new_suffix = Vec::with_capacity(offending_suffix.len() + 1);
-        new_suffix.push(violation.word_id);
-        new_suffix.extend(offending_suffix.iter());
-        let new_suffix_id = self.add_suffix(new_suffix);
-
-        for violation_row in [violation.rows.0, violation.rows.1] {
-            let predecessor = self.observation_rows[violation_row]
-                .predecessor_row
-                .unwrap();
-
-            self.add_observation(
-                predecessor,
-                new_suffix_id,
-                self.observation_rows[violation_row]
-                    .get_observation(violation.suffix_id)
-                    .unwrap()
-                    .clone(),
-            )
-            .unwrap();
-        }
-    }
-
-    fn find_closed_property_violation(&self) -> Option<ObservationRowId> {
-        for candidate_id in self.candidate_transitions.values() {
-            if self.candidate_violates_closed_property(*candidate_id) {
-                return Some(*candidate_id);
-            }
-        }
-        None
-    }
-
-    fn candidate_violates_closed_property(
-        &self,
-        candidate_id: ObservationRowId,
-    ) -> bool {
-        // Closed property: For a given row in the candidate_transitions table, there must exist a row in
-        // the state_transitions table that is equal to the candidate. This effectively means that when
-        // applying a word to an existing prefix, we cannot "walk out of the state space".
-        // For our case, since there may be missing observations, rows are considered equal if they have
-        // missing observations. They may only be considered unequal if they have at least one differing position.
-        let candidate_row = &self.observation_rows[candidate_id];
-        for row in self.observation_rows.values().filter(|row| row.is_state) {
-            if matches!(
-                row.compare_observations(candidate_row),
-                ObservationRowComparison::Equal | ObservationRowComparison::Undetermined
-            ) {
-                // The candidate does not violate the closed property, since it is equal (or maybe equal) to
-                // an existing state. If maybe equal, then we must wait for further observations to determine
-                // if the closed property is violated or not.
-                return false;
-            }
-        }
-        // We found no state that is equal or undetermined when comparing to the candidate.
-        // Therefore, the candidate violates the closed property, since it is not equal to any state.
-        true
-    }
-
     /// Insert the given prefix into the state learner.
     /// This potentially adds multiple new states and
     /// state candidates to the observation table
@@ -724,31 +227,7 @@ where
         }
     }
 
-    fn promote_candidate_to_state(
-        &mut self,
-        candidate_id: ObservationRowId,
-    ) {
-        let row = &mut self.observation_rows[candidate_id];
-        let Some(predecessor_row) = row.predecessor_row else {
-            panic!("Candidate states must have a predecessor state.")
-        };
-
-        // move up ^~^
-        // Move the candidate from the candidate_transitions table into the
-        // state_transitions table
-        self.state_transitions
-            .insert((predecessor_row, row.transition_word.unwrap()), candidate_id);
-        self.candidate_transitions
-            .remove(&(predecessor_row, row.transition_word.unwrap()));
-        row.is_state = true;
-
-        self.update_graph_for_new_observation(candidate_id);
-
-        // Add the new candidates that are now possible due to the new state.
-        self.add_missing_candidates();
-    }
-
-    fn update_graph_for_new_observation(
+    pub fn update_graph_for_new_observation(
         &mut self,
         modified: ObservationRowId,
     ) {
@@ -764,14 +243,14 @@ where
         }
     }
 
-    fn create_new_state(
+    pub fn create_new_state(
         &mut self,
         modified: ObservationRowId,
     ) {
         let row = &self.observation_rows[modified];
         let new_state = self.graph.add_node(FnvHashSet::from_iter([modified]));
-        if let Some(predecessor_row) = row.predecessor_row {
-            self.update_graph_for_new_transition(new_state, (predecessor_row, row.transition_word.unwrap(), modified));
+        if let Some((predecessor_row, transition_word)) = row.predecessor_transition() {
+            self.update_graph_for_new_transition(new_state, (predecessor_row, transition_word, modified));
         }
     }
 
@@ -912,7 +391,7 @@ where
         write!(f, "\nRows:\n")?;
         for (row_id, row) in self.observation_rows.iter() {
             let mut row_string = String::new();
-            if row.is_state {
+            if row.is_state() {
                 if let Some(states) = self.row_to_state.get(&row_id)
                     && let Some(first_state) = states.iter().next()
                 {
@@ -924,7 +403,7 @@ where
                 write!(row_string, "{:<16}", "<candidate>")?;
             }
             row.fmt_debug_row(&format!("{}", row_id), &mut row_string, &self.suffixes)?;
-            if row.is_state {
+            if row.is_state() {
                 writeln!(f, "{}", ansi_term::Colour::Green.paint(row_string))?;
                 if let Some(states) = self.row_to_state.get(&row_id) {
                     for state in states.iter().skip(1) {
@@ -942,12 +421,13 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::graph::{
-        StateLearner,
-        WordId,
-    };
+    use crate::graph::WordId;
+    use crate::ovservation::ObservationValue;
+    use crate::StateLearner;
     use slotmap::SlotMap;
     use std::path::Path;
+
+    impl ObservationValue for String {}
 
     #[test]
     fn it_works() {

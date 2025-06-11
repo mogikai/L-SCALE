@@ -1,9 +1,9 @@
 use itertools::Itertools;
 use mogi_statelearner::graph::{
     ObservationValue,
-    StateLearner,
     WordId,
 };
+use mogi_statelearner::StateLearner;
 use petgraph::dot::{
     Config,
     Dot,
@@ -13,10 +13,7 @@ use petgraph::visit::NodeRef;
 use rand::prelude::*;
 use slotmap::SlotMap;
 use std::collections::HashMap;
-use std::path::{
-    Path,
-    PathBuf,
-};
+use std::path::Path;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum State {
