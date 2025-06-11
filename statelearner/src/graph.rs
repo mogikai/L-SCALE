@@ -1,9 +1,12 @@
-use fnv::{FnvHashMap, FnvHashSet};
+use fnv::{
+    FnvHashMap,
+    FnvHashSet,
+};
 use itertools::Itertools;
-use petgraph::graph::EdgeReference;
 use petgraph::dot::Dot;
 use petgraph::graph::{
     DiGraph,
+    EdgeReference,
     NodeIndex,
 };
 use slotmap::{
@@ -19,7 +22,7 @@ use std::fmt::{
     Write,
 };
 use std::fs::File;
-use std::iter::once;
+use std::ops::Index;
 use std::path::Path;
 use thiserror::Error;
 
@@ -45,6 +48,14 @@ enum Observation<T> {
 enum ObservationComparison {
     Equal,
     NotEqual,
+    Undetermined,
+}
+
+enum ObservationRowComparison {
+    Equal,
+    /// The two observations are not equal.
+    /// The provided suffix is the first witness of the inequality.
+    NotEqual(SuffixId),
     Undetermined,
 }
 
@@ -146,6 +157,13 @@ impl<T> ObservationRow<T> {
             .get(suffix)
             .unwrap_or(&Observation::Missing)
     }
+
+    pub fn predecessor_transition(&self) -> Option<(ObservationRowId, WordId)> {
+        match (self.predecessor_row, self.transition_word) {
+            (Some(row), Some(word)) => Some((row, word)),
+            _ => None,
+        }
+    }
 }
 
 impl<T> ObservationRow<T>
@@ -155,16 +173,16 @@ where
     pub fn compare_observations(
         &self,
         other: &Self,
-    ) -> ObservationComparison {
+    ) -> ObservationRowComparison {
         let result = if self.observations.len() != other.observations.len() {
             // If the lengths are not equal, then the comparison is undetermined, since one observation
             // row is missing observations.
             // We cannot shortcut here, since it might still be possible that the rows can be determined
             // to not be equal.
-            ObservationComparison::Undetermined
+            ObservationRowComparison::Undetermined
         } else {
             // Otherwise we set the result to equal for now.
-            ObservationComparison::Equal
+            ObservationRowComparison::Equal
         };
 
         for (suffix, observation) in self.observations.iter() {
@@ -176,7 +194,7 @@ where
                 // If one of the observations is not equal, then the comparison is not equal.
                 // Even if some observations are still missing, we can already say for certain
                 // that the rows will never be equal.
-                return ObservationComparison::NotEqual;
+                return ObservationRowComparison::NotEqual(suffix);
             }
         }
 
@@ -326,7 +344,10 @@ impl<T> StateLearner<T> {
         }
     }
 
-    pub fn get_suffix_words(&self, suffix_id: SuffixId) -> impl Iterator<Item = WordId> {
+    pub fn get_suffix_words(
+        &self,
+        suffix_id: SuffixId,
+    ) -> impl Iterator<Item = WordId> {
         self.suffixes[suffix_id].iter().copied()
     }
 
@@ -496,7 +517,10 @@ where
         self.add_missing_candidates();
     }
 
-    pub fn get_row_prefix(&self, mut row_id: ObservationRowId) -> impl Iterator<Item = WordId> {
+    pub fn get_row_prefix(
+        &self,
+        mut row_id: ObservationRowId,
+    ) -> impl Iterator<Item = WordId> {
         let mut words = Vec::new();
         while let Some(predecessor) = self.observation_rows[row_id].predecessor_row {
             words.push(self.observation_rows[row_id].transition_word.unwrap());
@@ -587,7 +611,7 @@ where
             let state_rows = self.graph.node_weight(state_id).unwrap();
             for rows in state_rows.iter().cartesian_product(state_rows.iter()) {
                 // find mismatching observation in candidate rows
-                for (word_id, suffix_id) in self.words.keys().cartesian_product(self.suffixes.keys()) {
+                for word_id in self.words.keys() {
                     // find successors when applying the word and compare suffix observation
                     let target_row_ids = match (
                         self.candidate_transitions.get(&(*rows.0, word_id)).copied(),
@@ -600,23 +624,11 @@ where
                     let target_rows =
                         (&self.observation_rows[target_row_ids.0], &self.observation_rows[target_row_ids.1]);
 
-                    match target_rows
-                        .0
-                        .get_observation(suffix_id)
-                        .compare(&target_rows.1.get_observation(suffix_id))
+                    if let ObservationRowComparison::NotEqual(witness) =
+                        target_rows.0.compare_observations(target_rows.1)
                     {
-                        ObservationComparison::NotEqual => {
-                            // contradiction found
-                            return Some(ConsistencyViolation::new(
-                                (target_row_ids.0, target_row_ids.1),
-                                word_id,
-                                suffix_id,
-                            ));
-                        }
-                        ObservationComparison::Equal | ObservationComparison::Undetermined => {
-                            // if we don't know for sure whether they are contradicting we
-                            // do nothing
-                        }
+                        // contradiction found
+                        return Some(ConsistencyViolation::new((target_row_ids.0, target_row_ids.1), word_id, witness));
                     }
                 }
             }
@@ -675,7 +687,7 @@ where
         for row in self.observation_rows.values().filter(|row| row.is_state) {
             if matches!(
                 row.compare_observations(candidate_row),
-                ObservationComparison::Equal | ObservationComparison::Undetermined
+                ObservationRowComparison::Equal | ObservationRowComparison::Undetermined
             ) {
                 // The candidate does not violate the closed property, since it is equal (or maybe equal) to
                 // an existing state. If maybe equal, then we must wait for further observations to determine
@@ -740,46 +752,30 @@ where
         &mut self,
         modified: ObservationRowId,
     ) {
-        self.row_to_state.entry(modified).or_insert(FnvHashSet::default());
-        // We want to find all graph nodes that contain a row that is equal to the candidate's row.
-        // We can then add the candidate's row to the rows in the node.
-        let mut added_to_existing = false;
-        for state in self.graph.node_indices() {
-            let modified_row = &self.observation_rows[modified];
-            let state_rows = self
-                .graph
-                .node_weight(state)
-                .expect("We got the key from the graph");
-            let all_rows_similar = state_rows.iter().all(|row_id| {
-                match self.observation_rows[*row_id].compare_observations(&modified_row) {
-                    ObservationComparison::Equal | ObservationComparison::Undetermined => true,
-                    _ => false,
-                }
-            });
-            if all_rows_similar {
-                added_to_existing = true;
-                let state_rows = self
-                    .graph
-                    .node_weight_mut(state)
-                    .expect("We got the key from the graph");
-                state_rows.insert(modified);
-                // Add the state we found to the row_to_state map entry for this row.
-                if let Some(predecessor_row) = modified_row.predecessor_row {
-                    self.update_graph_for_new_transition(
-                        state,
-                        (predecessor_row, modified_row.transition_word.unwrap(), modified),
-                    );
-                }
-            } else {
-                let state_rows = self
-                    .graph
-                    .node_weight_mut(state)
-                    .expect("We got the key from the graph");
-                state_rows.remove(&modified);
-                self.row_to_state.get_mut(&modified).unwrap().remove(&state);
-            }
-        }
+        self.row_to_state
+            .entry(modified)
+            .or_insert(FnvHashSet::default());
+        let added_to_existing = self.update_existing_states(modified);
 
+        self.prune_eliminated_transitions();
+
+        if !added_to_existing {
+            self.create_new_state(modified);
+        }
+    }
+
+    fn create_new_state(
+        &mut self,
+        modified: ObservationRowId,
+    ) {
+        let row = &self.observation_rows[modified];
+        let new_state = self.graph.add_node(FnvHashSet::from_iter([modified]));
+        if let Some(predecessor_row) = row.predecessor_row {
+            self.update_graph_for_new_transition(new_state, (predecessor_row, row.transition_word.unwrap(), modified));
+        }
+    }
+
+    fn prune_eliminated_transitions(&mut self) {
         // remove all eliminated transition words
         for edge_index in self.graph.edge_indices() {
             let (start, end) = self.graph.edge_endpoints(edge_index).unwrap();
@@ -802,10 +798,10 @@ where
             edge_words.retain(|transition_word| {
                 for start_row in start_rows.iter().copied() {
                     for transitions in [&self.state_transitions, &self.candidate_transitions] {
-                        if let Some(target) = transitions.get(&(start_row, *transition_word)) {
-                            if end_rows.contains(target) {
-                                return true;
-                            }
+                        if let Some(target) = transitions.get(&(start_row, *transition_word))
+                            && end_rows.contains(target)
+                        {
+                            return true;
                         }
                     }
                 }
@@ -819,17 +815,58 @@ where
             let transition_words = graph.edge_weight(edge_index).unwrap();
             !transition_words.is_empty()
         });
+    }
 
-        if !added_to_existing {
-            let row = &self.observation_rows[modified];
-            let new_state = self.graph.add_node(FnvHashSet::from_iter([modified]));
-            if let Some(predecessor_row) = row.predecessor_row {
-                self.update_graph_for_new_transition(
-                    new_state,
-                    (predecessor_row, row.transition_word.unwrap(), modified),
-                );
+    fn update_existing_states(
+        &mut self,
+        modified: ObservationRowId,
+    ) -> bool {
+        // We want to find all graph nodes that contain a row that is equal to the candidate's row.
+        // We can then add the candidate's row to the rows in the node.
+        let mut added_to_existing = false;
+        for state in self.graph.node_indices() {
+            if self.all_rows_similar(state, modified) {
+                added_to_existing = true;
+                self.graph
+                    .node_weight_mut(state)
+                    .expect("We got the key from the graph")
+                    .insert(modified);
+                // Add the state we found to the row_to_state map entry for this row.
+                let modified_row = &self.observation_rows[modified];
+                if let Some((predecessor_row, transition_word)) = modified_row.predecessor_transition() {
+                    self.update_graph_for_new_transition(state, (predecessor_row, transition_word, modified));
+                }
+            } else {
+                self.graph
+                    .node_weight_mut(state)
+                    .expect("We got the key from the graph")
+                    .remove(&modified);
+                self.row_to_state.get_mut(&modified).unwrap().remove(&state);
             }
         }
+        added_to_existing
+    }
+
+    /// Compares all rows in the state against the modified row.
+    /// If the modified row can be determined to be not equal to at
+    /// least one row in the state, then this function returns false.
+    /// In all other cases it returns true.
+    fn all_rows_similar(
+        &self,
+        state: NodeIndex,
+        modified_row: ObservationRowId,
+    ) -> bool {
+        self.graph
+            .node_weight(state)
+            .expect("We got the key from the graph")
+            .iter()
+            .copied()
+            .all(|row_id| {
+                match self.observation_rows[row_id].compare_observations(&self.observation_rows[modified_row]) {
+                    ObservationRowComparison::Equal | ObservationRowComparison::Undetermined => true,
+                    _ => false,
+                }
+            })
     }
 
     fn update_graph_for_new_transition(
@@ -947,12 +984,14 @@ mod test {
             .add_observation(candidate_row, unobserved[0], String::from("test"))
             .unwrap();
         learner
-            .add_observation(candidate_row, unobserved[1], String::from("test"))
+            .add_observation(candidate_row, unobserved[1], String::from("test2"))
             .unwrap();
 
         println!("{}", learner);
 
         learner.make_closed();
+        learner.make_consistent();
+        learner.add_prefix([a, a]);
         println!("{}", learner);
 
         let row_id = learner
@@ -966,6 +1005,7 @@ mod test {
 
         println!("{}", learner);
         learner.make_closed();
+        learner.make_consistent();
         learner.add_prefix([a, b, a, b]);
         println!("{}", learner);
 
@@ -979,6 +1019,8 @@ mod test {
             .unwrap();
         println!("{}", learner);
 
+        learner.make_closed();
+        learner.make_consistent();
         for row in learner.rows_with_missing_observations().collect::<Vec<_>>() {
             let suffixes = learner.unobserved_suffixes(row).collect::<Vec<_>>();
             for suffix in suffixes {
@@ -987,15 +1029,12 @@ mod test {
                     .unwrap();
             }
         }
-
-        learner.make_closed();
-        learner.make_consistent();
         println!("{}", learner);
 
         // learner.add_suffixes([vec![word_ids[1], word_ids[0]]]);
 
         // println!("{}", learner);
 
-        learner.export(Path::new("test.dot"));
+        learner.export(Path::new("test.dot"), &words);
     }
 }

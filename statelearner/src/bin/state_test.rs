@@ -23,6 +23,8 @@ use std::path::{
     Path,
     PathBuf,
 };
+use std::thread::sleep;
+use std::time::Duration;
 
 new_key_type! { struct StateKey; }
 
@@ -256,7 +258,7 @@ fn main() {
         }
 
         println!("{}", learner);
-        learner.export(&PathBuf::from("state_test.dot"), &word_map);
+        learner.export(&PathBuf::from("statelearner/state_test.dot"), &word_map);
     }
 
     let dot = Dot::with_config(&machine.states, &[]);
@@ -264,9 +266,8 @@ fn main() {
         .truncate(true)
         .write(true)
         .create(true)
-        .open("state_machine.dot")
+        .open("statelearner/state_machine.dot")
         .unwrap();
     file.write_fmt(format_args!("{:?}", dot)).unwrap();
-    learner.export(&PathBuf::from("state_test.dot"), &word_map);
+    learner.export(&PathBuf::from("statelearner/state_test.dot"), &word_map);
 }
-
