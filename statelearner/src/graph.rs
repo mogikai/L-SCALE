@@ -1,12 +1,11 @@
-use crate::ovservation::Observation;
 use crate::row::{
     ObservationRowComparison,
     ObservationRowId,
 };
 use crate::{
     ObservationValue,
-    StateLearner,
-    SuffixId,
+    StateLearner
+    ,
     WordId,
 };
 use fnv::FnvHashSet;
@@ -28,146 +27,8 @@ use std::fmt::{
 use std::fs::File;
 use std::ops::Index;
 use std::path::Path;
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum StateLearnerError {
-    #[error("Conflicting observations. Setting an observation to a different value for a suffix is not allowed.")]
-    ConflictingObservation,
-    #[error("Unknown error")]
-    Unknown,
-}
-
-impl Display for ObservationRowId {
-    fn fmt(
-        &self,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> std::fmt::Result {
-        write!(f, "Row({:?})", self.data())
-    }
-}
-
-impl Display for SuffixId {
-    fn fmt(
-        &self,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> std::fmt::Result {
-        write!(f, "Suffix({:?})", self.data())
-    }
-}
-
-impl Display for WordId {
-    fn fmt(
-        &self,
-        f: &mut std::fmt::Formatter<'_>,
-    ) -> std::fmt::Result {
-        write!(f, "Word({:?})", self.data())
-    }
-}
 
 impl<T> StateLearner<T> {
-    pub fn initial_row(&self) -> ObservationRowId {
-        self.initial_row
-    }
-
-    pub fn get_state_row_id_from_prefix(
-        &self,
-        prefix: impl IntoIterator<Item = WordId>,
-    ) -> Option<ObservationRowId> {
-        let mut row_id = self.initial_row;
-        for prefix_word in prefix {
-            match self.state_transitions.get(&(row_id, prefix_word)) {
-                Some(next_row_id) => {
-                    row_id = *next_row_id;
-                }
-                None => {
-                    return None;
-                }
-            }
-        }
-
-        Some(row_id)
-    }
-
-    pub fn get_candidate_row_id_from_prefix(
-        &self,
-        prefix: impl IntoIterator<Item = WordId>,
-    ) -> Option<ObservationRowId> {
-        let mut prefix = prefix.into_iter().peekable();
-
-        let mut row_id = self.initial_row;
-        loop {
-            let prefix_word = prefix.next().unwrap();
-
-            if prefix.peek().is_none() {
-                break self
-                    .candidate_transitions
-                    .get(&(row_id, prefix_word))
-                    .copied();
-            } else {
-                match self.state_transitions.get(&(row_id, prefix_word)) {
-                    Some(next_row_id) => {
-                        row_id = *next_row_id;
-                    }
-                    None => {
-                        break None;
-                    }
-                }
-            }
-        }
-    }
-
-    pub fn get_suffix_words(
-        &self,
-        suffix_id: SuffixId,
-    ) -> impl Iterator<Item = WordId> {
-        self.suffixes[suffix_id].iter().copied()
-    }
-
-    pub fn get_candidate_row_id(
-        &self,
-        predecessor: ObservationRowId,
-        word: WordId,
-    ) -> Option<ObservationRowId> {
-        self.candidate_transitions
-            .get(&(predecessor, word))
-            .copied()
-    }
-
-    /// Returns an iterator over all suffixes that have missing observations
-    pub fn unobserved_suffixes(
-        &self,
-        observation_row: ObservationRowId,
-    ) -> impl Iterator<Item = SuffixId> {
-        self.suffixes.keys().filter(move |suffix_id| {
-            matches!(self.observation_rows[observation_row].observation(*suffix_id), Observation::Missing)
-        })
-    }
-
-    pub fn state_observation_rows(
-        &self,
-        state: NodeIndex,
-    ) -> impl Iterator<Item = ObservationRowId> {
-        self.graph
-            .node_weight(state)
-            .into_iter()
-            .map(|set| set.iter())
-            .flatten()
-            .copied()
-    }
-
-    pub fn rows_with_missing_observations(&self) -> impl Iterator<Item = ObservationRowId> {
-        self.observation_rows
-            .keys()
-            .filter(|row| self.unobserved_suffixes(*row).next().is_some())
-    }
-
-    pub fn next_row_with_missing_observations(&self) -> Option<ObservationRowId> {
-        self.observation_rows
-            .keys()
-            .find(|row| self.unobserved_suffixes(*row).next().is_some())
-    }
-
     pub fn export<W>(
         &self,
         file: &Path,
@@ -203,30 +64,6 @@ impl<T> StateLearner<T>
 where
     T: ObservationValue,
 {
-    /// Insert the given prefix into the state learner.
-    /// This potentially adds multiple new states and
-    /// state candidates to the observation table
-    pub fn add_prefix(
-        &mut self,
-        prefix: impl IntoIterator<Item = WordId>,
-    ) {
-        let mut prefix = prefix.into_iter().peekable();
-        let mut current_row = self.initial_row;
-        while let Some(word) = prefix.next() {
-            if let Some(nex_row) = self.state_transitions.get(&(current_row, word)) {
-                current_row = *nex_row;
-            } else {
-                if prefix.peek().is_none() {
-                    // If this is the last word in the prefix we don't want to promote the candidate.
-                    break;
-                }
-                // We want to promote all intermediate candidates to states.
-                let candidate = self.candidate_transitions[&(current_row, word)];
-                self.promote_candidate_to_state(candidate);
-            }
-        }
-    }
-
     pub fn update_graph_for_new_observation(
         &mut self,
         modified: ObservationRowId,
@@ -375,55 +212,13 @@ where
     }
 }
 
-impl<T> Display for StateLearner<T>
-where
-    T: Debug,
-{
-    fn fmt(
-        &self,
-        f: &mut std::fmt::Formatter,
-    ) -> std::fmt::Result {
-        writeln!(f, "StateLearner:")?;
-        write!(f, "Suffixes:")?;
-        for suffix in self.suffixes.values() {
-            write!(f, " {:?}, ", suffix)?;
-        }
-        write!(f, "\nRows:\n")?;
-        for (row_id, row) in self.observation_rows.iter() {
-            let mut row_string = String::new();
-            if row.is_state() {
-                if let Some(states) = self.row_to_state.get(&row_id)
-                    && let Some(first_state) = states.iter().next()
-                {
-                    write!(row_string, "{:<16}", format!("<{first_state:?}>"))?;
-                } else {
-                    write!(row_string, "{:<16}", "<state>")?;
-                }
-            } else {
-                write!(row_string, "{:<16}", "<candidate>")?;
-            }
-            row.fmt_debug_row(&format!("{}", row_id), &mut row_string, &self.suffixes)?;
-            if row.is_state() {
-                writeln!(f, "{}", ansi_term::Colour::Green.paint(row_string))?;
-                if let Some(states) = self.row_to_state.get(&row_id) {
-                    for state in states.iter().skip(1) {
-                        writeln!(f, "{:<16}", ansi_term::Colour::Green.paint(format!("<{state:?}>")))?;
-                    }
-                }
-            } else {
-                writeln!(f, "{}", row_string)?;
-            }
-        }
-
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod test {
     use crate::graph::WordId;
-    use crate::ovservation::ObservationValue;
-    use crate::StateLearner;
+    use crate::{
+        ObservationValue,
+        StateLearner,
+    };
     use slotmap::SlotMap;
     use std::path::Path;
 

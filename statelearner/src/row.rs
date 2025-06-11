@@ -1,10 +1,10 @@
-use crate::graph::StateLearnerError;
 use crate::ovservation::{
     Observation,
     ObservationComparison,
 };
 use crate::{
     ObservationValue,
+    StateLearnerError,
     StateLearnerResult,
     SuffixId,
     WordId,
