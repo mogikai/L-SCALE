@@ -39,11 +39,11 @@ struct Args {
     #[arg(long, default_value = "emulator/systems/ubuntu2310")]
     system_root: String,
 
-    #[arg(long, default_value = "fuzzer/assets/darkhttpd")]
+    #[arg(long, default_value = "fuzzer/assets/ocupa")]
     context: String,
 
     /// The path on the emulated system to the binary that will be emulated initially.
-    #[arg(long, default_value = "/home/user/darkhttpd")]
+    #[arg(long, default_value = "/home/user/open62541_server_fuzzing_fixed")]
     binary: String,
 
     /// If set to true, the entire execution will be traced and a disassembly is printed for each instruction that is executed.
