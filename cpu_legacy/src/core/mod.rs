@@ -648,7 +648,7 @@ impl CpuCore {
         // touched by the hook we are calling. (e.g., consider using a `Lens` type?).
         unsafe {
             let hooks = self.trace.hooks.get();
-            (*hooks)[id as usize].call(self, addr);
+            (&mut (*hooks))[id as usize].call(self, addr);
         }
     }
 }
