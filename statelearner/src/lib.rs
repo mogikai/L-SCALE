@@ -48,6 +48,7 @@ pub enum StateLearnerError {
     Unknown,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StateLearner<T> {
     /// Contains a row of observations for each state or candidate state.
     observation_rows: SlotMap<ObservationRowId, ObservationRow<T>>,
@@ -366,49 +367,5 @@ where
                 self.promote_candidate_to_state(candidate);
             }
         }
-    }
-}
-
-impl<T> Display for StateLearner<T>
-where
-    T: Debug,
-{
-    fn fmt(
-        &self,
-        f: &mut std::fmt::Formatter,
-    ) -> std::fmt::Result {
-        writeln!(f, "StateLearner:")?;
-        write!(f, "Suffixes:")?;
-        for suffix in self.suffixes.values() {
-            write!(f, " {:?}, ", suffix)?;
-        }
-        write!(f, "\nRows:\n")?;
-        for (row_id, row) in self.observation_rows.iter() {
-            let mut row_string = String::new();
-            if row.is_state() {
-                if let Some(states) = self.row_to_state.get(&row_id)
-                    && let Some(first_state) = states.iter().next()
-                {
-                    write!(row_string, "{:<16}", format!("<{first_state:?}>"))?;
-                } else {
-                    write!(row_string, "{:<16}", "<state>")?;
-                }
-            } else {
-                write!(row_string, "{:<16}", "<candidate>")?;
-            }
-            row.fmt_debug_row(&format!("{}", row_id), &mut row_string, &self.suffixes)?;
-            if row.is_state() {
-                writeln!(f, "{}", ansi_term::Colour::Green.paint(row_string))?;
-                if let Some(states) = self.row_to_state.get(&row_id) {
-                    for state in states.iter().skip(1) {
-                        writeln!(f, "{:<16}", ansi_term::Colour::Green.paint(format!("<{state:?}>")))?;
-                    }
-                }
-            } else {
-                writeln!(f, "{}", row_string)?;
-            }
-        }
-
-        Ok(())
     }
 }

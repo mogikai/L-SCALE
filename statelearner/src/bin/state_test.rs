@@ -247,6 +247,7 @@ fn main() {
                 .unwrap();
             learner.make_closed();
             learner.make_consistent();
+            std::thread::sleep_ms(10);
         }
 
         println!("{}", learner);

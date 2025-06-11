@@ -15,6 +15,10 @@ use petgraph::graph::{
     EdgeReference,
     NodeIndex,
 };
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use slotmap::{
     Key,
     SlotMap,
@@ -214,14 +218,7 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::graph::WordId;
-    use crate::{
-        ObservationValue,
-        StateLearner,
-    };
-    use slotmap::SlotMap;
-    use std::path::Path;
-
+    use super::*;
     impl ObservationValue for String {}
 
     #[test]

@@ -24,6 +24,7 @@ new_key_type! { pub struct ObservationRowId; }
 /// A row of observations for a state or candidate state.
 /// By default, values in columns that have not been filled are defined as [Observation::Missing].
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ObservationRow<T> {
     /// The observation row that is the predecessor of this row.
     /// This new row is arrived at by applying the transition word to the predecessor row.
