@@ -1,12 +1,16 @@
 use crate::row::ObservationRowId;
 use crate::{
-    StateLearner, SuffixId, WordId
+    StateLearner,
+    SuffixId,
+    WordId,
 };
 use itertools::Itertools;
 use slotmap::Key;
-use std::fmt::Display;
-use std::fmt::Debug;
-use std::fmt::Write;
+use std::fmt::{
+    Debug,
+    Display,
+    Write,
+};
 
 impl Display for ObservationRowId {
     fn fmt(
@@ -69,6 +73,7 @@ where
 
         let header_str = header_rows.into_iter().rev().join("\n");
         writeln!(f, "{}", header_str)?;
+        writeln!(f, "{}", std::iter::repeat("").take(header_str.len()).join("-"));
 
         for (row_id, row) in self.observation_rows.iter() {
             let mut row_string = String::new();

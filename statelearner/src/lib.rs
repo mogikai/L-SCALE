@@ -12,9 +12,9 @@ use petgraph::graph::{
     NodeIndex,
 };
 use slotmap::{
-    new_key_type,
     SecondaryMap,
     SlotMap,
+    new_key_type,
 };
 use std::collections::hash_map::Entry;
 use std::fmt::{
@@ -229,10 +229,10 @@ where
             .remove(&(predecessor_row, transition_word));
         row.make_state();
 
-        self.update_graph_for_new_observation(candidate_id);
-
         // Add the new candidates that are now possible due to the new state.
         self.add_missing_candidates();
+
+        self.update_graph_for_new_observation(candidate_id);
     }
 
     /// Add the provided suffix into the state learner. Return the
@@ -242,21 +242,28 @@ where
         suffix: impl IntoIterator<Item = WordId>,
     ) -> SuffixId {
         let suffix = suffix.into_iter().collect::<Vec<_>>();
+        let new_suffix = (0..suffix.len())
+            .rev()
+            .map(|suffix_end| {
+                let suffix = suffix[suffix_end..].to_vec();
 
-        let new_suffix = match self.suffix_lookup.entry(suffix.clone()) {
-            Entry::Occupied(entry) => {
-                /* The suffix was already added. */
-                *entry.get()
-            }
-            Entry::Vacant(entry) => {
-                for word in suffix.iter() {
-                    self.words.insert(*word, ());
+                match self.suffix_lookup.entry(suffix.clone()) {
+                    Entry::Occupied(entry) => {
+                        /* The suffix was already added. */
+                        *entry.get()
+                    }
+                    Entry::Vacant(entry) => {
+                        for word in suffix.iter() {
+                            self.words.insert(*word, ());
+                        }
+                        let new_suffix = self.suffixes.insert(suffix);
+                        entry.insert(new_suffix);
+                        new_suffix
+                    }
                 }
-                let new_suffix = self.suffixes.insert(suffix);
-                entry.insert(new_suffix);
-                new_suffix
-            }
-        };
+            })
+            .last()
+            .unwrap();
 
         // Add the new candidates that are now possible due to the new suffixes.
         self.add_missing_candidates();
@@ -271,16 +278,7 @@ where
         suffixes: impl IntoIterator<Item = impl IntoIterator<Item = WordId>>,
     ) {
         suffixes.into_iter().for_each(|suffix| {
-            let suffix = suffix.into_iter().collect::<Vec<_>>();
-            match self.suffix_lookup.entry(suffix.clone()) {
-                Entry::Occupied(_) => { /* The suffix was already added. */ }
-                Entry::Vacant(entry) => {
-                    for word in suffix.iter() {
-                        self.words.insert(*word, ());
-                    }
-                    entry.insert(self.suffixes.insert(suffix));
-                }
-            }
+            self.add_suffix(suffix);
         });
 
         // Add the new candidates that are now possible due to the new suffixes.
@@ -356,16 +354,18 @@ where
         let mut prefix = prefix.into_iter().peekable();
         let mut current_row = self.initial_row;
         while let Some(word) = prefix.next() {
-            if let Some(nex_row) = self.state_transitions.get(&(current_row, word)) {
-                current_row = *nex_row;
+            if let Some(next_row) = self.state_transitions.get(&(current_row, word)) {
+                current_row = *next_row;
             } else {
                 if prefix.peek().is_none() {
                     // If this is the last word in the prefix we don't want to promote the candidate.
                     break;
                 }
+
                 // We want to promote all intermediate candidates to states.
                 let candidate = self.candidate_transitions[&(current_row, word)];
                 self.promote_candidate_to_state(candidate);
+                current_row = candidate;
             }
         }
     }

@@ -4,8 +4,7 @@ use crate::row::{
 };
 use crate::{
     ObservationValue,
-    StateLearner
-    ,
+    StateLearner,
     WordId,
 };
 use fnv::FnvHashSet;
