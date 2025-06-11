@@ -1,0 +1,4 @@
+digraph {
+    0 [ label = "{ObservationRowId(1v1), ObservationRowId(2v1), ObservationRowId(3v1)}" label = "Node 0 (3)"]
+    0 -> 0 [ label = "{SymbolId(1v1), SymbolId(2v1)}" label = "TC: [opn, ] TC: [hel, ] "]
+}
