@@ -150,6 +150,7 @@ where
         SOCKET => do_syscall!(3, system, kernel::socket, debug_str),
         CONNECT => do_syscall!(3, system, kernel::connect, debug_str),
         ACCEPT => do_syscall!(3, system, kernel::accept, debug_str),
+        ACCEPT4 => do_syscall!(4, system, kernel::accept4, debug_str),
         SENDTO => do_syscall!(6, system, kernel::sendto, debug_str),
         RECVFROM => do_syscall!(6, system, kernel::recvfrom, debug_str),
         SENDMSG => do_syscall!(3, system, kernel::sendmsg, debug_str),

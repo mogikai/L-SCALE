@@ -1,6 +1,6 @@
-use std::cmp::min;
-
+use bitflags::bitflags;
 use byteorder::ByteOrder;
+use std::cmp::min;
 use tracing::{
     debug,
     error,
@@ -393,11 +393,22 @@ where
     pub fn accept4(
         &mut self,
         fd: FD,
-        upeer_sockaddr: EVAddr, // sockaddr*
-        upeer_addrlen: EVAddr,  // int*
+        upeer_sockaddr: EVAddr<Sockaddr>, // sockaddr*
+        upeer_addrlen: EVAddr<i32>,       // int*
         flags: u64,
     ) -> SyscallResult {
-        todo!()
+        let flags = ACCEPT4_FLAGS::from_bits(flags).ok_or(LinuxKernelError::EINVAL)?;
+        self.accept(fd, upeer_sockaddr, upeer_addrlen).map(|fd| {
+            let mut fd_map = sys_component_mut!(self, fd_map);
+            let mut file = fd_map.get_mut(&self.task_id, &FD::from(fd)).unwrap();
+            if flags.intersects(ACCEPT4_FLAGS::SOCK_NONBLOCK) {
+                file.data.flags |= FileDescriptorFlags::O_NONBLOCK;
+            }
+            if flags.intersects(ACCEPT4_FLAGS::SOCK_CLOEXEC) {
+                todo!()
+            }
+            fd
+        })
     }
 
     pub fn recvmmsg(
@@ -476,4 +487,12 @@ struct iovec {
     /* BSD uses caddr_t (1003.1g requires void *) */ // void*
     iov_len: u64,
     /* Must be size_t (1003.1g) */
+}
+
+bitflags! {
+#[repr(C)]
+pub struct ACCEPT4_FLAGS : u64 {
+        const SOCK_NONBLOCK = 4000;
+        const SOCK_CLOEXEC = 2000000;
+    }
 }
