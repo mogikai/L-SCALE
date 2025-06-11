@@ -298,7 +298,7 @@ impl FileDescriptorOps for StdOutputOps {
         &self,
         fd: &mut Self::D,
     ) -> bool {
-       false
+        todo!()
     }
 
     fn close(
