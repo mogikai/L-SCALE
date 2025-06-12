@@ -80,7 +80,7 @@ where
     T: ObservationValue,
 {
     fn default() -> Self {
-        let mut graph = DiGraph::<FnvHashSet<ObservationRowId>, FnvHashSet<WordId>>::default();
+        let mut graph = DiGraph::<FnvHashSet<ObservationRowId>, FnvHashSet<SymbolId>>::default();
         let mut observation_rows = SlotMap::<ObservationRowId, ObservationRow<T>>::default();
         let initial_row = observation_rows.insert(ObservationRow::new_initial());
 

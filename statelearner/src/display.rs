@@ -71,9 +71,10 @@ where
             header_rows.push(format!("{:<60}{}", "", row_string));
         }
 
+        let header_width = header_rows.last().unwrap().len();
         let header_str = header_rows.into_iter().rev().join("\n");
         writeln!(f, "{}", header_str)?;
-        writeln!(f, "{}", std::iter::repeat("").take(header_str.len()).join("-"));
+        writeln!(f, "{}", std::iter::repeat("-").take(header_width).join(""))?;
 
         for (row_id, row) in self.observation_rows.iter() {
             let mut row_string = String::new();
