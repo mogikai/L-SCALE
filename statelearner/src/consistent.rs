@@ -133,19 +133,27 @@ mod test {
         let rows = learner.observation_rows.keys().collect::<Vec<_>>();
         let suffixes = learner.suffixes.keys().collect::<Vec<_>>();
 
-        learner.add_observation(rows[0], suffixes[0], "test0".into());
-        learner.add_observation(rows[1], suffixes[0], "test0".into());
+        learner
+            .add_observation(rows[0], suffixes[0], "test0".into())
+            .unwrap();
+        learner
+            .add_observation(rows[1], suffixes[0], "test0".into())
+            .unwrap();
         learner.promote_candidate_to_state(rows[1]);
         let rows = learner.observation_rows.keys().collect::<Vec<_>>();
 
         // break consistency
-        learner.add_observation(rows[2], suffixes[1], "test1".into());
-        learner.add_observation(rows[6], suffixes[1], "test2".into());
+        learner
+            .add_observation(rows[2], suffixes[1], "test1".into())
+            .unwrap();
+        learner
+            .add_observation(rows[6], suffixes[1], "test2".into())
+            .unwrap();
 
         let violation = learner.find_consistent_property_violation().unwrap();
-        assert!(violation.rows == (rows[2], rows[6]));
-        assert!(violation.word_id == word_ids[1]);
-        assert!(violation.suffix_id == suffixes[1]);
+        assert_eq!(violation.rows, (rows[2], rows[6]));
+        assert_eq!(violation.word_id, word_ids[1]);
+        assert_eq!(violation.suffix_id, suffixes[1]);
     }
 
     #[test]
@@ -169,33 +177,43 @@ mod test {
         let rows = learner.observation_rows.keys().collect::<Vec<_>>();
         let suffixes = learner.suffixes.keys().collect::<Vec<_>>();
 
-        learner.add_observation(rows[0], suffixes[0], "test0".into());
-        learner.add_observation(rows[1], suffixes[0], "test0".into());
+        learner
+            .add_observation(rows[0], suffixes[0], "test0".into())
+            .unwrap();
+        learner
+            .add_observation(rows[1], suffixes[0], "test0".into())
+            .unwrap();
         learner.promote_candidate_to_state(rows[1]);
         let rows = learner.observation_rows.keys().collect::<Vec<_>>();
 
         // break consistency
-        learner.add_observation(rows[2], suffixes[2], "test1".into());
-        learner.add_observation(rows[6], suffixes[2], "test2".into());
+        learner
+            .add_observation(rows[2], suffixes[2], "test1".into())
+            .unwrap();
+        learner
+            .add_observation(rows[6], suffixes[2], "test2".into())
+            .unwrap();
 
         let violation = learner.find_consistent_property_violation().unwrap();
-        assert!(violation.rows == (rows[2], rows[6]));
-        assert!(violation.word_id == word_ids[1]);
-        assert!(violation.suffix_id == suffixes[2]);
+        assert_eq!(violation.rows, (rows[2], rows[6]));
+        assert_eq!(violation.word_id, word_ids[1]);
+        assert_eq!(violation.suffix_id, suffixes[2]);
 
         // fix it
         learner.fix_consistent_property_violation(violation);
 
         let new_suffix = learner.suffixes.values().last().unwrap();
-        assert!(new_suffix[0] == word_ids[1]);
-        assert!(new_suffix[1] == word_ids[2]);
+        assert_eq!(new_suffix[0], word_ids[1]);
+        assert_eq!(new_suffix[1], word_ids[2]);
 
-        let observation_0 =
-            learner.observation_rows[rows[0]].observation(learner.suffixes.keys().last().unwrap()).unwrap();
-        let observation_1 =
-            learner.observation_rows[rows[1]].observation(learner.suffixes.keys().last().unwrap()).unwrap();
+        let observation_0 = learner.observation_rows[rows[0]]
+            .observation(learner.suffixes.keys().last().unwrap())
+            .unwrap();
+        let observation_1 = learner.observation_rows[rows[1]]
+            .observation(learner.suffixes.keys().last().unwrap())
+            .unwrap();
 
-        assert!(observation_0 == "test1");
-        assert!(observation_1 == "test2");
+        assert_eq!(observation_0, "test1");
+        assert_eq!(observation_1, "test2");
     }
 }
