@@ -27,7 +27,7 @@ mod consistent;
 mod display;
 pub mod graph;
 mod observation;
-mod row;
+pub mod row;
 
 new_key_type! { pub struct SuffixId; }
 new_key_type! { pub struct SymbolId; }
@@ -111,6 +111,11 @@ impl<T> StateLearner<T> {
         let mut prefix = prefix.into_iter().peekable();
 
         let mut row_id = self.initial_row;
+
+        if prefix.peek().is_none() {
+            return Some(self.initial_row);
+        }
+
         loop {
             let prefix_symbol = prefix.next().unwrap();
 
@@ -152,6 +157,18 @@ impl<T> StateLearner<T> {
         self.suffixes.keys().filter(move |suffix_id| {
             matches!(self.observation_rows[observation_row].observation(*suffix_id), Observation::Missing)
         })
+    }
+
+    pub fn next_unobserved_suffix(
+        &self,
+        observation_row: ObservationRowId,
+    ) -> Option<SuffixId> {
+        self.suffixes
+            .keys()
+            .filter(move |suffix_id| {
+                matches!(self.observation_rows[observation_row].observation(*suffix_id), Observation::Missing)
+            })
+            .next()
     }
 
     pub fn state_observation_rows(

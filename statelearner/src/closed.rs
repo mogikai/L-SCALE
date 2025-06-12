@@ -23,7 +23,7 @@ where
             .transitions
             .values()
             .copied()
-            .filter(|&row| self.observation_rows[row].is_state())
+            .filter(|&row| !self.observation_rows[row].is_state())
         {
             if self.candidate_violates_closed_property(candidate_id) {
                 return Some(candidate_id);

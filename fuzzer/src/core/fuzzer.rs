@@ -885,74 +885,74 @@ impl<EmulatorT> Fuzzer<EmulatorT>
 where
     EmulatorT: Emulator,
 {
-    pub fn new(
-        mut emulator: EmulatorT,
-        context_path: PathBuf,
-    ) -> Self {
-        let memory = emulator.system().memory().borrow();
-        let exe_mappings = memory
-            .mappings(&TaskId { pid: 1337, tid: 1 })
-            .filter_map(|mapping| {
-                mapping
-                    .label
-                    .as_ref()
-                    .and_then(|label| label.contains("open62541").then_some(mapping))
-            })
-            .collect::<Vec<_>>();
-        let start = exe_mappings
-            .iter()
-            .min_by_key(|m| &m.v_start)
-            .unwrap()
-            .v_start;
-        let end = exe_mappings
-            .iter()
-            .max_by_key(|m| m.v_end())
-            .unwrap()
-            .v_end();
-        drop(memory);
-        let edge_observer = Rc::new(RefCell::new(EdgeHitCountObserver::new()));
-        let edge_reducer = Rc::new(RefCell::new(InterestingEdgesReducer::new(edge_observer.clone())));
-        let behavior_observer = BlockHitObserver::new();
-        let bb_collector = Rc::new(RefCell::new(BasicBlockCollector::new(
-            emulator.system().cpu(),
-            start,
-            end,
-            [
-                &behavior_observer.shared_observe(),
-                &edge_observer.borrow().shared_observe(),
-            ]
-            .into_iter(),
-        )));
-        emulator.register_meter(bb_collector);
-        let behavior_observer = Rc::new(RefCell::new(behavior_observer));
-        let behavior_reducer = Rc::new(RefCell::new(BasicBlockBehaviorReducer::new(behavior_observer.clone())));
+    // pub fn new(
+    //     mut emulator: EmulatorT,
+    //     context_path: PathBuf,
+    // ) -> Self {
+    //     let memory = emulator.system().memory().borrow();
+    //     let exe_mappings = memory
+    //         .mappings(&TaskId { pid: 1337, tid: 1 })
+    //         .filter_map(|mapping| {
+    //             mapping
+    //                 .label
+    //                 .as_ref()
+    //                 .and_then(|label| label.contains("open62541").then_some(mapping))
+    //         })
+    //         .collect::<Vec<_>>();
+    //     let start = exe_mappings
+    //         .iter()
+    //         .min_by_key(|m| &m.v_start)
+    //         .unwrap()
+    //         .v_start;
+    //     let end = exe_mappings
+    //         .iter()
+    //         .max_by_key(|m| m.v_end())
+    //         .unwrap()
+    //         .v_end();
+    //     drop(memory);
+    //     let edge_observer = Rc::new(RefCell::new(EdgeHitCountObserver::new()));
+    //     let edge_reducer = Rc::new(RefCell::new(InterestingEdgesReducer::new(edge_observer.clone())));
+    //     let behavior_observer = BlockHitObserver::new();
+    //     let bb_collector = Rc::new(RefCell::new(BasicBlockCollector::new(
+    //         emulator.system().cpu(),
+    //         start,
+    //         end,
+    //         [
+    //             &behavior_observer.shared_observe(),
+    //             &edge_observer.borrow().shared_observe(),
+    //         ]
+    //         .into_iter(),
+    //     )));
+    //     emulator.register_meter(bb_collector);
+    //     let behavior_observer = Rc::new(RefCell::new(behavior_observer));
+    //     let behavior_reducer = Rc::new(RefCell::new(BasicBlockBehaviorReducer::new(behavior_observer.clone())));
+    //
+    //     Self {
+    //         state: Default::default(),
+    //         state_builder: Default::default(),
+    //         observers: vec![edge_observer],
+    //         block_observer: behavior_observer.clone(),
+    //         suffix_behavior_observer: behavior_observer,
+    //         is_interesting_reducers: vec![edge_reducer],
+    //         suffix_behavior_reducer: behavior_reducer,
+    //         is_crash_reducers: Default::default(),
+    //         emulator,
+    //         context_path,
+    //         input_info: Default::default(),
+    //     }
+    // }
 
-        Self {
-            state: Default::default(),
-            state_builder: Default::default(),
-            observers: vec![edge_observer],
-            block_observer: behavior_observer.clone(),
-            suffix_behavior_observer: behavior_observer,
-            is_interesting_reducers: vec![edge_reducer],
-            suffix_behavior_reducer: behavior_reducer,
-            is_crash_reducers: Default::default(),
-            emulator,
-            context_path,
-            input_info: Default::default(),
-        }
-    }
-
-    pub fn from_serialized_state(
-        emulator: EmulatorT,
-        context_path: PathBuf,
-        state_path: &Path,
-    ) -> Self {
-        let mut slf = Self::new(emulator, context_path);
-        let file = File::options().read(true).open(state_path).unwrap();
-        slf.state = serde_json::from_reader(&file).unwrap();
-        slf.state.state_path.truncate(1);
-        slf
-    }
+    // pub fn from_serialized_state(
+    //     emulator: EmulatorT,
+    //     context_path: PathBuf,
+    //     state_path: &Path,
+    // ) -> Self {
+    //     let mut slf = Self::new(emulator, context_path);
+    //     let file = File::options().read(true).open(state_path).unwrap();
+    //     slf.state = serde_json::from_reader(&file).unwrap();
+    //     slf.state.state_path.truncate(1);
+    //     slf
+    // }
 
     pub fn run(&mut self) {
         let do_fuzzing = Arc::new(AtomicBool::new(true));

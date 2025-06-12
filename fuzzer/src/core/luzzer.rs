@@ -16,6 +16,14 @@ use std::sync::atomic::{
     Ordering,
 };
 
+use crate::api::observer::DebuggableObserver;
+use crate::api::reducer::Reducer;
+use crate::core::fuzzer::SuffixBehavior;
+use crate::observers::bb_based::bb::BlockHitObserver;
+use crate::observers::bb_based::edge::EdgeHitCountObserver;
+use crate::observers::emulator::basic_block::BasicBlockCollector;
+use crate::reducers::bb::behavior::BasicBlockBehaviorReducer;
+use crate::reducers::edge::InterestingEdgesReducer;
 use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
 use mogi_emulator::emulator::abstractions::network::{
     IPAddress,
@@ -32,6 +40,7 @@ use mogi_emulator::emulator::interface::network::tcp::{
     TCPSystemControl,
 };
 use mogi_emulator::emulator::platform::linux::kernel::task_id::TaskId;
+use mogi_statelearner::row::ObservationRowId;
 use mogi_statelearner::{
     ObservationValue,
     StateLearner,
@@ -51,17 +60,16 @@ use tracing::{
     trace,
 };
 
-use crate::api::observer::DebuggableObserver;
-use crate::api::reducer::Reducer;
-use crate::core::fuzzer::SuffixBehavior;
-use crate::observers::bb_based::bb::BlockHitObserver;
-use crate::observers::bb_based::edge::EdgeHitCountObserver;
-use crate::observers::emulator::basic_block::BasicBlockCollector;
-use crate::reducers::bb::behavior::BasicBlockBehaviorReducer;
-use crate::reducers::edge::InterestingEdgesReducer;
-
 #[derive(Debug, PartialEq, Clone, Copy)]
-struct Observation;
+pub struct Observation {
+    edge_hash_map: u64,
+}
+
+impl Observation {
+    pub fn new(edge_hash_map: u64) -> Self {
+        Self { edge_hash_map }
+    }
+}
 
 impl ObservationValue for Observation {}
 
@@ -125,6 +133,7 @@ impl Display for TestCase {
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
         write!(f, "TestCase(exe: {}, tcp: {:?})", self.executions, self.tcp_streams)
+        // write!(f, ":)")
     }
 }
 
@@ -146,7 +155,7 @@ pub struct Luzzer<EmulatorT> {
     block_observer: Rc<RefCell<BlockHitObserver>>,
     is_interesting_reducers: Vec<Rc<RefCell<dyn DebuggableReducer<Output = bool>>>>,
     suffix_behavior_observer: Rc<RefCell<dyn DebuggableObserver>>,
-    suffix_behavior_reducer: Rc<RefCell<dyn DebuggableReducer<Output = SuffixBehavior>>>,
+    suffix_behavior_reducer: Rc<RefCell<dyn DebuggableReducer<Output = Observation>>>,
     is_crash_reducers: Vec<Rc<RefCell<dyn DebuggableReducer<Output = bool>>>>,
     emulator: EmulatorT,
     context_path: PathBuf,
@@ -224,9 +233,9 @@ where
         }
         self.setup();
         self.build_state_model();
-        while do_fuzzing.load(Ordering::SeqCst) {
-            self.fuzz();
-        }
+        // while do_fuzzing.load(Ordering::SeqCst) {
+        self.fuzz();
+        // }
     }
 
     fn setup(&mut self) {
@@ -253,6 +262,11 @@ where
         Self::clear_observers(&mut self.observers);
         Self::update_input_info(&self.emulator, &mut self.input_info);
         self.load_initial_state();
+        self.emulator.run(None, None).unwrap();
+        Self::gather_observations(&mut self.observers);
+        Self::reduce_is_interesting(&mut self.is_interesting_reducers);
+        Self::clear_observers(&mut self.observers);
+        Self::update_input_info(&self.emulator, &mut self.input_info);
 
         self.emulator.take_snapshot().unwrap();
     }
@@ -313,18 +327,62 @@ where
             .learner
             .next_row_with_missing_observations(Some(current_row))
         {
+            let mut depth = 0;
             for symbol in path_from_current {
+                depth += 1;
                 self.advance_symbol(symbol);
             }
 
-            // TODO: Do the discovery steps
-
-            self.state.learner.unobserved_suffixes(row_id);
+            self.perform_observations_for_current_state(row_id);
 
             self.state.learner.make_closed();
             self.state.learner.make_consistent();
             trace!("{}", self.state.learner);
             self.state.learner.export(&dot_path, &self.state.test_cases);
+            for _ in 0..depth {
+                self.emulator
+                    .discard_current_and_restore_previous_snapshot()
+                    .unwrap();
+                self.state.current_prefix.pop();
+            }
+        }
+    }
+
+    fn perform_observations_for_current_state(
+        &mut self,
+        row_id: ObservationRowId,
+    ) {
+        while let Some(suffix) = self.state.learner.next_unobserved_suffix(row_id) {
+            let mut symbols = self
+                .state
+                .learner
+                .get_suffix_symbols(suffix)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .peekable();
+            while let Some(symbol) = symbols.next() {
+                if symbols.peek().is_none() {
+                    // gather observations
+                    Self::clear_observers(&mut self.observers);
+                    self.suffix_behavior_observer.borrow_mut().clear();
+                    self.apply_symbol(symbol);
+                    Self::gather_observations(&mut self.observers);
+                    self.suffix_behavior_observer.borrow_mut().gather();
+                    if Self::reduce_is_interesting(&mut self.is_interesting_reducers) {
+                        debug!("Found interesting input !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                    }
+                    // last
+                } else {
+                    // not last
+                    self.apply_symbol(symbol);
+                }
+            }
+            let behavior = self.suffix_behavior_reducer.borrow_mut().reduce().unwrap();
+            self.state
+                .learner
+                .add_observation(row_id, suffix, behavior)
+                .unwrap();
+            self.emulator.restore_snapshot().unwrap();
         }
     }
 
@@ -334,10 +392,21 @@ where
         symbol: SymbolId,
     ) {
         self.state.current_prefix.push(symbol);
+        println!("Learner before advancing symbol to prefix: {:?} {}", self.state.current_prefix, self.state.learner);
         self.state
             .learner
             .add_prefix(self.state.current_prefix.iter().copied());
+        println!("Learner after advancing symbol to prefix: {:?} {}", self.state.current_prefix, self.state.learner);
 
+        self.apply_symbol(symbol);
+
+        self.emulator.take_snapshot().unwrap();
+    }
+
+    fn apply_symbol(
+        &mut self,
+        symbol: SymbolId,
+    ) {
         Self::update_input_info(&self.emulator, &mut self.input_info);
 
         let testcase = self.state.test_cases.get_mut(symbol).unwrap();
@@ -390,11 +459,12 @@ where
         let status = self.emulator.run(None, None).unwrap();
         assert!(matches!(status, ExitReason::Yielded));
         testcase.executions += 1;
-        self.emulator.take_snapshot().unwrap();
     }
 
     fn fuzz(&mut self) {
-        todo!()
+        for (input_data_id, input_data) in self.state.input_data.iter() {
+            println!("{:?}, {:?}", input_data_id, input_data.source);
+        }
     }
 
     fn gather_observations(observers: &mut [Rc<RefCell<dyn DebuggableObserver>>]) {

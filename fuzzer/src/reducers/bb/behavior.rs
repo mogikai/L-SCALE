@@ -2,6 +2,7 @@ use crate::api::error::FuzzerError;
 use crate::api::observer::HasObservation;
 use crate::api::reducer::Reducer;
 use crate::core::fuzzer::SuffixBehavior;
+use crate::core::luzzer::Observation;
 use crate::observers::bb_based::bb::BlockHitObserver;
 use std::cell::RefCell;
 use std::fmt::Debug;
@@ -27,7 +28,7 @@ impl BasicBlockBehaviorReducer {
 }
 
 impl Reducer for BasicBlockBehaviorReducer {
-    type Output = SuffixBehavior;
+    type Output = Observation;
 
     fn reduce(&mut self) -> Result<Self::Output, FuzzerError> {
         let observer = self.observer.borrow();
@@ -41,6 +42,6 @@ impl Reducer for BasicBlockBehaviorReducer {
         // );
         let mut hasher = DefaultHasher::new();
         current_edge_hits.hash(&mut hasher);
-        Ok(SuffixBehavior::new(hasher.finish()))
+        Ok(Observation::new(hasher.finish()))
     }
 }
