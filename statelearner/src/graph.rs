@@ -229,7 +229,7 @@ mod test {
             .collect::<Vec<_>>();
         let a = word_ids[0];
         let b = word_ids[1];
-        let mut learner = StateLearner::<String>::new();
+        let mut learner = StateLearner::<String>::default();
 
         let initial_row = learner.initial_row();
 

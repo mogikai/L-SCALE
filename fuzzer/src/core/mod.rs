@@ -1,2 +1,2 @@
 pub mod fuzzer;
-mod luzzer;
+pub mod luzzer;

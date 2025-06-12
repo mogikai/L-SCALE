@@ -79,6 +79,35 @@ pub struct StateLearner<T> {
     initial_row: ObservationRowId,
 }
 
+impl<T> Default for StateLearner<T>
+where
+    T: ObservationValue,
+{
+    fn default() -> Self {
+        let mut graph = DiGraph::<FnvHashSet<ObservationRowId>, FnvHashSet<WordId>>::default();
+        let mut observation_rows = SlotMap::<ObservationRowId, ObservationRow<T>>::default();
+        let initial_row = observation_rows.insert(ObservationRow::new_initial());
+
+        let mut row_to_state = FnvHashMap::<ObservationRowId, FnvHashSet<NodeIndex>>::default();
+        let initial_state = graph.add_node(FnvHashSet::from_iter([initial_row]));
+        row_to_state.insert(initial_row, FnvHashSet::from_iter([initial_state]));
+
+        let mut slf = Self {
+            observation_rows,
+            graph,
+            row_to_state,
+            state_transitions: Default::default(),
+            candidate_transitions: Default::default(),
+            words: Default::default(),
+            suffixes: Default::default(),
+            suffix_lookup: Default::default(),
+            initial_row,
+        };
+        slf.add_missing_candidates();
+        slf
+    }
+}
+
 impl<T> StateLearner<T> {
     pub fn initial_row(&self) -> ObservationRowId {
         self.initial_row
@@ -187,30 +216,6 @@ impl<T> StateLearner<T>
 where
     T: ObservationValue,
 {
-    pub fn new() -> Self {
-        let mut graph = DiGraph::<FnvHashSet<ObservationRowId>, FnvHashSet<WordId>>::default();
-        let mut observation_rows = SlotMap::<ObservationRowId, ObservationRow<T>>::default();
-        let initial_row = observation_rows.insert(ObservationRow::new_initial());
-
-        let mut row_to_state = FnvHashMap::<ObservationRowId, FnvHashSet<NodeIndex>>::default();
-        let initial_state = graph.add_node(FnvHashSet::from_iter([initial_row]));
-        row_to_state.insert(initial_row, FnvHashSet::from_iter([initial_state]));
-
-        let mut slf = Self {
-            observation_rows,
-            graph,
-            row_to_state,
-            state_transitions: Default::default(),
-            candidate_transitions: Default::default(),
-            words: Default::default(),
-            suffixes: Default::default(),
-            suffix_lookup: Default::default(),
-            initial_row,
-        };
-        slf.add_missing_candidates();
-        slf
-    }
-
     fn promote_candidate_to_state(
         &mut self,
         candidate_id: ObservationRowId,

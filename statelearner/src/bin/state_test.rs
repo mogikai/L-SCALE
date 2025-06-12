@@ -217,7 +217,7 @@ fn main() {
 
     let word_ids = word_map.keys().collect::<Vec<_>>();
 
-    let mut learner = StateLearner::<MyI32>::new();
+    let mut learner = StateLearner::<MyI32>::default();
     for word in word_ids.iter().copied() {
         learner.add_prefix([word]);
         learner.add_suffix([word]);

@@ -124,7 +124,7 @@ mod test {
 
         let word_ids = word_map.keys().collect::<Vec<_>>();
 
-        let mut learner = StateLearner::<String>::new();
+        let mut learner = StateLearner::<String>::default();
         for word in word_ids.iter().copied() {
             learner.add_prefix([word]);
             learner.add_suffix([word]);
@@ -168,7 +168,7 @@ mod test {
 
         let word_ids = word_map.keys().collect::<Vec<_>>();
 
-        let mut learner = StateLearner::<String>::new();
+        let mut learner = StateLearner::<String>::default();
         for word in word_ids.iter().copied() {
             learner.add_prefix([word]);
             learner.add_suffix([word]);
