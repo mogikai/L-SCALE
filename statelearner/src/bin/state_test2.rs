@@ -1,9 +1,9 @@
 use itertools::Itertools;
+use mogi_statelearner::StateLearner;
 use mogi_statelearner::graph::{
     ObservationValue,
-    WordId,
+    SymbolId,
 };
-use mogi_statelearner::StateLearner;
 use petgraph::dot::{
     Config,
     Dot,
@@ -224,7 +224,7 @@ impl StateMachine {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut sm = StateMachine::new();
 
-    let mut words = SlotMap::<WordId, String>::default();
+    let mut words = SlotMap::<SymbolId, String>::default();
     let epsilon = words.insert("".to_string());
 
     for transition in sm.transition_table.iter() {
@@ -245,7 +245,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rng = rand::thread_rng();
     for _ in 0..5 {
         let prefix_len = rng.random_range(1..=5);
-        let prefix_vec: Vec<WordId> = (1..prefix_len)
+        let prefix_vec: Vec<SymbolId> = (1..prefix_len)
             .map(|_| word_ids[rng.random_range(1..word_ids.len())])
             .collect();
 

@@ -22,7 +22,7 @@ use mogi_emulator::emulator::platform::linux::kernel::task_id::TaskId;
 use mogi_statelearner::{
     ObservationValue,
     StateLearner,
-    WordId,
+    SymbolId,
 };
 use mogi_utilities::error::memory::MemoryError;
 use serde::{Deserialize, Serialize};
@@ -102,7 +102,7 @@ pub struct TestCase {
 
 #[derive(Debug, Default)]
 pub struct LuzzerState {
-    test_cases: SlotMap<WordId, TestCase>,
+    test_cases: SlotMap<SymbolId, TestCase>,
     input_data: SlotMap<InputDataId, InputData>,
     learner: StateLearner<Observation>,
 }

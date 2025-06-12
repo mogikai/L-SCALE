@@ -33,7 +33,7 @@ where
     ) -> bool {
         // Closed property: For a given row in the candidate_transitions table, there must exist a row in
         // the state_transitions table that is equal to the candidate. This effectively means that when
-        // applying a word to an existing prefix, we cannot "walk out of the state space".
+        // applying a symbol to an existing prefix, we cannot "walk out of the state space".
         // For our case, since there may be missing observations, rows are considered equal if they have
         // missing observations. They may only be considered unequal if they have at least one differing position.
         let candidate_row = &self.observation_rows[candidate_id];

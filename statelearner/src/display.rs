@@ -2,7 +2,7 @@ use crate::row::ObservationRowId;
 use crate::{
     StateLearner,
     SuffixId,
-    WordId,
+    SymbolId,
 };
 use itertools::Itertools;
 use slotmap::Key;
@@ -30,7 +30,7 @@ impl Display for SuffixId {
     }
 }
 
-impl Display for WordId {
+impl Display for SymbolId {
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>,

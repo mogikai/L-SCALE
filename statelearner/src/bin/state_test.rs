@@ -1,7 +1,7 @@
 use mogi_statelearner::{
     ObservationValue,
     StateLearner,
-    WordId,
+    SymbolId,
 };
 use petgraph::dot::Dot;
 use petgraph::graph::{
@@ -10,8 +10,8 @@ use petgraph::graph::{
 };
 use petgraph::prelude::EdgeRef;
 use slotmap::{
-    new_key_type,
     SlotMap,
+    new_key_type,
 };
 use std::collections::HashMap;
 use std::fs::File;
@@ -210,7 +210,7 @@ fn main() {
         "return", "jump",
     ];
 
-    let mut word_map = SlotMap::<WordId, String>::default();
+    let mut word_map = SlotMap::<SymbolId, String>::default();
     for word in words.iter() {
         word_map.insert(word.to_string());
     }
@@ -237,7 +237,7 @@ fn main() {
             }
 
             let mut observation = 1;
-            for suffix_word_id in learner.get_suffix_words(suffix_id) {
+            for suffix_word_id in learner.get_suffix_symbols(suffix_id) {
                 let suffix_word = &word_map[suffix_word_id];
                 observation *= machine.process_input(suffix_word).unwrap();
             }

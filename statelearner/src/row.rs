@@ -1,4 +1,4 @@
-use crate::ovservation::{
+use crate::observation::{
     Observation,
     ObservationComparison,
 };
@@ -7,12 +7,12 @@ use crate::{
     StateLearnerError,
     StateLearnerResult,
     SuffixId,
-    WordId,
+    SymbolId,
 };
 use slotmap::{
-    new_key_type,
     SecondaryMap,
     SlotMap,
+    new_key_type,
 };
 use std::fmt::{
     Debug,
@@ -27,10 +27,10 @@ new_key_type! { pub struct ObservationRowId; }
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ObservationRow<T> {
     /// The observation row that is the predecessor of this row.
-    /// This new row is arrived at by applying the transition word to the predecessor row.
+    /// This new row is arrived at by applying the transition symbol to the predecessor row.
     predecessor_row: Option<ObservationRowId>,
-    /// The word that is applied to the predecessor row to arrive at this row.
-    transition_word: Option<WordId>,
+    /// The symbol that is applied to the predecessor row to arrive at this row.
+    transition_symbol: Option<SymbolId>,
     /// The observations when applying the corresponding suffix to the
     /// target in the state represented by this row.
     observations: SecondaryMap<SuffixId, Observation<T>>,
@@ -50,7 +50,7 @@ impl<T> ObservationRow<T> {
     pub fn new_initial() -> Self {
         Self {
             predecessor_row: None,
-            transition_word: None,
+            transition_symbol: None,
             observations: Default::default(),
             is_state: true,
         }
@@ -58,11 +58,11 @@ impl<T> ObservationRow<T> {
 
     pub fn new_candidate(
         predecessor: ObservationRowId,
-        word: WordId,
+        symbol: SymbolId,
     ) -> Self {
         Self {
             predecessor_row: Some(predecessor),
-            transition_word: Some(word),
+            transition_symbol: Some(symbol),
             observations: Default::default(),
             is_state: false,
         }
@@ -77,9 +77,9 @@ impl<T> ObservationRow<T> {
             .unwrap_or(&Observation::Missing)
     }
 
-    pub fn predecessor_transition(&self) -> Option<(ObservationRowId, WordId)> {
-        match (self.predecessor_row, self.transition_word) {
-            (Some(row), Some(word)) => Some((row, word)),
+    pub fn predecessor_transition(&self) -> Option<(ObservationRowId, SymbolId)> {
+        match (self.predecessor_row, self.transition_symbol) {
+            (Some(row), Some(symbol)) => Some((row, symbol)),
             _ => None,
         }
     }
@@ -156,7 +156,7 @@ where
         &self,
         self_name: &str,
         f: &mut impl Write,
-        suffixes: &SlotMap<SuffixId, Vec<WordId>>,
+        suffixes: &SlotMap<SuffixId, Vec<SymbolId>>,
     ) -> std::fmt::Result {
         let pred_str = self
             .predecessor_row
@@ -168,8 +168,8 @@ where
             format!(
                 "({:<10} --[{:^12}]--> {:>10}) ",
                 pred_str,
-                self.transition_word
-                    .map_or("n/a".to_string(), |word| word.to_string()),
+                self.transition_symbol
+                    .map_or("n/a".to_string(), |symbol| symbol.to_string()),
                 self_name
             )
         )?;

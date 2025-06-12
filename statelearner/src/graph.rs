@@ -5,7 +5,7 @@ use crate::row::{
 use crate::{
     ObservationValue,
     StateLearner,
-    WordId,
+    SymbolId,
 };
 use fnv::FnvHashSet;
 use itertools::Itertools;
@@ -35,14 +35,14 @@ impl<T> StateLearner<T> {
     pub fn export<W>(
         &self,
         file: &Path,
-        words: &SlotMap<WordId, W>,
+        symbols: &SlotMap<SymbolId, W>,
     ) where
         W: Display,
     {
-        let format_edge = &|_, edge: EdgeReference<FnvHashSet<WordId>, _>| {
+        let format_edge = &|_, edge: EdgeReference<FnvHashSet<SymbolId>, _>| {
             let mut label = String::new();
-            for word_id in edge.weight().iter().copied() {
-                write!(label, "{}, ", words[word_id]).unwrap();
+            for symbol_id in edge.weight().iter().copied() {
+                write!(label, "{}, ", symbols[symbol_id]).unwrap();
             }
             format!("label = \"{}\"", label)
         };
@@ -89,13 +89,13 @@ where
     ) {
         let row = &self.observation_rows[modified];
         let new_state = self.graph.add_node(FnvHashSet::from_iter([modified]));
-        if let Some((predecessor_row, transition_word)) = row.predecessor_transition() {
-            self.update_graph_for_new_transition(new_state, (predecessor_row, transition_word, modified));
+        if let Some((predecessor_row, transition_symbol)) = row.predecessor_transition() {
+            self.update_graph_for_new_transition(new_state, (predecessor_row, transition_symbol, modified));
         }
     }
 
     fn prune_eliminated_transitions(&mut self) {
-        // remove all eliminated transition words
+        // remove all eliminated transition symbols
         for edge_index in self.graph.edge_indices() {
             let (start, end) = self.graph.edge_endpoints(edge_index).unwrap();
             let start_rows = self
@@ -113,11 +113,11 @@ where
                 .copied()
                 .collect::<Vec<_>>();
 
-            let edge_words = self.graph.edge_weight_mut(edge_index).unwrap();
-            edge_words.retain(|transition_word| {
+            let edge_symbols = self.graph.edge_weight_mut(edge_index).unwrap();
+            edge_symbols.retain(|transition_symbol| {
                 for start_row in start_rows.iter().copied() {
                     for transitions in [&self.state_transitions, &self.candidate_transitions] {
-                        if let Some(target) = transitions.get(&(start_row, *transition_word))
+                        if let Some(target) = transitions.get(&(start_row, *transition_symbol))
                             && end_rows.contains(target)
                         {
                             return true;
@@ -129,10 +129,10 @@ where
             });
         }
 
-        // remove all edges for which there are no transition words
+        // remove all edges for which there are no transition symbols
         self.graph.retain_edges(|graph, edge_index| {
-            let transition_words = graph.edge_weight(edge_index).unwrap();
-            !transition_words.is_empty()
+            let transition_symbols = graph.edge_weight(edge_index).unwrap();
+            !transition_symbols.is_empty()
         });
     }
 
@@ -152,8 +152,8 @@ where
                     .insert(modified);
                 // Add the state we found to the row_to_state map entry for this row.
                 let modified_row = &self.observation_rows[modified];
-                if let Some((predecessor_row, transition_word)) = modified_row.predecessor_transition() {
-                    self.update_graph_for_new_transition(state, (predecessor_row, transition_word, modified));
+                if let Some((predecessor_row, transition_symbol)) = modified_row.predecessor_transition() {
+                    self.update_graph_for_new_transition(state, (predecessor_row, transition_symbol, modified));
                 }
             } else {
                 self.graph
@@ -191,9 +191,9 @@ where
     fn update_graph_for_new_transition(
         &mut self,
         target_state: NodeIndex,
-        transition: (ObservationRowId, WordId, ObservationRowId),
+        transition: (ObservationRowId, SymbolId, ObservationRowId),
     ) {
-        let (predecessor_row, word, target_row) = transition;
+        let (predecessor_row, symbol, target_row) = transition;
         self.row_to_state
             .get_mut(&target_row)
             .unwrap()
@@ -206,10 +206,10 @@ where
         for predecessor in predecessors.iter().copied() {
             let edge = self.graph.find_edge(predecessor, target_state);
             if let Some(edge) = edge {
-                self.graph.edge_weight_mut(edge).unwrap().insert(word);
+                self.graph.edge_weight_mut(edge).unwrap().insert(symbol);
             } else {
                 self.graph
-                    .add_edge(predecessor, target_state, FnvHashSet::from_iter([word]));
+                    .add_edge(predecessor, target_state, FnvHashSet::from_iter([symbol]));
             }
         }
     }
@@ -222,19 +222,18 @@ mod test {
 
     #[test]
     fn it_works() {
-        let mut words = SlotMap::<WordId, String>::default();
-        let word_ids = ["A", "B"]
+        let mut symbols = SlotMap::<SymbolId, String>::default();
+        let symbol_ids = ["A", "B"]
             .into_iter()
-            .map(|word| words.insert(String::from(word)))
+            .map(|symbol| symbols.insert(String::from(symbol)))
             .collect::<Vec<_>>();
-        let a = word_ids[0];
-        let b = word_ids[1];
+        let a = symbol_ids[0];
+        let b = symbol_ids[1];
         let mut learner = StateLearner::<String>::default();
 
         let initial_row = learner.initial_row();
 
-        learner.add_suffixes(word_ids.iter().copied().map(|word_id| [word_id]));
-        // learner.add_suffixes([vec![word_ids[0], word_ids[1]]]);
+        learner.add_suffixes(symbol_ids.iter().copied().map(|symbol_ids| [symbol_ids]));
 
         println!("{}", learner);
 
@@ -248,7 +247,7 @@ mod test {
             .unwrap();
 
         let candidate_row = learner
-            .get_candidate_row_id(initial_row, word_ids[0])
+            .get_candidate_row_id(initial_row, symbol_ids[0])
             .unwrap();
 
         learner
@@ -266,7 +265,7 @@ mod test {
         println!("{}", learner);
 
         let row_id = learner
-            .get_candidate_row_id(candidate_row, word_ids[1])
+            .get_candidate_row_id(candidate_row, symbol_ids[1])
             .unwrap();
         learner
             .add_observation(row_id, unobserved[1], String::from("test3"))
@@ -302,10 +301,6 @@ mod test {
         }
         println!("{}", learner);
 
-        // learner.add_suffixes([vec![word_ids[1], word_ids[0]]]);
-
-        // println!("{}", learner);
-
-        learner.export(Path::new("test.dot"), &words);
+        learner.export(Path::new("test.dot"), &symbols);
     }
 }

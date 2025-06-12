@@ -6,26 +6,26 @@ use crate::{
     ObservationValue,
     StateLearner,
     SuffixId,
-    WordId,
+    SymbolId,
 };
 use itertools::Itertools;
 
 #[derive(Debug)]
 struct ConsistencyViolation {
     rows: (ObservationRowId, ObservationRowId),
-    word_id: WordId,
+    symbol_id: SymbolId,
     suffix_id: SuffixId,
 }
 
 impl ConsistencyViolation {
     fn new(
         rows: (ObservationRowId, ObservationRowId),
-        word_id: WordId,
+        symbol_id: SymbolId,
         suffix_id: SuffixId,
     ) -> Self {
         Self {
             rows,
-            word_id,
+            symbol_id,
             suffix_id,
         }
     }
@@ -36,7 +36,7 @@ where
     T: ObservationValue,
 {
     /// The consistent property is violated if two equal rows exhibit different behavior under a
-    /// certain (word, suffix)-pair. This can be fixed by including the pair as a new suffix and
+    /// certain (symbol, suffix)-pair. This can be fixed by including the pair as a new suffix and
     /// adding more measurements to distinguish the offending rows.
     pub fn make_consistent(&mut self) {
         while let Some(violation) = self.find_consistent_property_violation() {
@@ -51,11 +51,15 @@ where
             let state_rows = self.graph.node_weight(state_id).unwrap();
             for rows in state_rows.iter().cartesian_product(state_rows.iter()) {
                 // find mismatching observation in candidate rows
-                for word_id in self.words.keys() {
-                    // find successors when applying the word and compare suffix observation
+                for symbol_id in self.symbols.keys() {
+                    // find successors when applying the symbol and compare suffix observation
                     let target_row_ids = match (
-                        self.candidate_transitions.get(&(*rows.0, word_id)).copied(),
-                        self.candidate_transitions.get(&(*rows.1, word_id)).copied(),
+                        self.candidate_transitions
+                            .get(&(*rows.0, symbol_id))
+                            .copied(),
+                        self.candidate_transitions
+                            .get(&(*rows.1, symbol_id))
+                            .copied(),
                     ) {
                         (Some(id_0), Some(id_1)) => (id_0, id_1),
                         _ => continue,
@@ -68,7 +72,11 @@ where
                         target_rows.0.compare_observations(target_rows.1)
                     {
                         // contradiction found
-                        return Some(ConsistencyViolation::new((target_row_ids.0, target_row_ids.1), word_id, witness));
+                        return Some(ConsistencyViolation::new(
+                            (target_row_ids.0, target_row_ids.1),
+                            symbol_id,
+                            witness,
+                        ));
                     }
                 }
             }
@@ -81,10 +89,10 @@ where
         &mut self,
         violation: ConsistencyViolation,
     ) {
-        // we add the offending word to the suffix list
+        // we add the offending symbol to the suffix list
         let offending_suffix = &self.suffixes[violation.suffix_id];
         let mut new_suffix = Vec::with_capacity(offending_suffix.len() + 1);
-        new_suffix.push(violation.word_id);
+        new_suffix.push(violation.symbol_id);
         new_suffix.extend(offending_suffix.iter());
         let new_suffix_id = self.add_suffix(new_suffix);
 
@@ -114,20 +122,18 @@ mod test {
 
     #[test]
     fn find_consistency_violations() {
-        let words = ["A", "B", "C", "D"];
+        let symbols = ["A", "B", "C", "D"];
 
-        let mut word_map = SlotMap::<WordId, String>::default();
-        let mut word_ids = Vec::new();
-        for word in words.iter() {
-            word_ids.push(word_map.insert(word.to_string()));
-        }
-
-        let word_ids = word_map.keys().collect::<Vec<_>>();
+        let mut symbol_map = SlotMap::<SymbolId, String>::default();
+        let symbol_ids = symbols
+            .iter()
+            .map(|symbol| symbol_map.insert(symbol.to_string()))
+            .collect::<Vec<_>>();
 
         let mut learner = StateLearner::<String>::default();
-        for word in word_ids.iter().copied() {
-            learner.add_prefix([word]);
-            learner.add_suffix([word]);
+        for symbol in symbol_ids.iter().copied() {
+            learner.add_prefix([symbol]);
+            learner.add_suffix([symbol]);
         }
 
         let rows = learner.observation_rows.keys().collect::<Vec<_>>();
@@ -152,26 +158,24 @@ mod test {
 
         let violation = learner.find_consistent_property_violation().unwrap();
         assert_eq!(violation.rows, (rows[2], rows[6]));
-        assert_eq!(violation.word_id, word_ids[1]);
+        assert_eq!(violation.symbol_id, symbol_ids[1]);
         assert_eq!(violation.suffix_id, suffixes[1]);
     }
 
     #[test]
     fn fix_consistency_violations() {
-        let words = ["A", "B", "C", "D"];
+        let symbols = ["A", "B", "C", "D"];
 
-        let mut word_map = SlotMap::<WordId, String>::default();
-        let mut word_ids = Vec::new();
-        for word in words.iter() {
-            word_ids.push(word_map.insert(word.to_string()));
-        }
-
-        let word_ids = word_map.keys().collect::<Vec<_>>();
+        let mut symbol_map = SlotMap::<SymbolId, String>::default();
+        let symbol_ids = symbols
+            .iter()
+            .map(|symbol| symbol_map.insert(symbol.to_string()))
+            .collect::<Vec<_>>();
 
         let mut learner = StateLearner::<String>::default();
-        for word in word_ids.iter().copied() {
-            learner.add_prefix([word]);
-            learner.add_suffix([word]);
+        for symbol in symbol_ids.iter().copied() {
+            learner.add_prefix([symbol]);
+            learner.add_suffix([symbol]);
         }
 
         let rows = learner.observation_rows.keys().collect::<Vec<_>>();
@@ -196,15 +200,15 @@ mod test {
 
         let violation = learner.find_consistent_property_violation().unwrap();
         assert_eq!(violation.rows, (rows[2], rows[6]));
-        assert_eq!(violation.word_id, word_ids[1]);
+        assert_eq!(violation.symbol_id, symbol_ids[1]);
         assert_eq!(violation.suffix_id, suffixes[2]);
 
         // fix it
         learner.fix_consistent_property_violation(violation);
 
         let new_suffix = learner.suffixes.values().last().unwrap();
-        assert_eq!(new_suffix[0], word_ids[1]);
-        assert_eq!(new_suffix[1], word_ids[2]);
+        assert_eq!(new_suffix[0], symbol_ids[1]);
+        assert_eq!(new_suffix[1], symbol_ids[2]);
 
         let observation_0 = learner.observation_rows[rows[0]]
             .observation(learner.suffixes.keys().last().unwrap())
