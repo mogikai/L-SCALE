@@ -647,8 +647,8 @@ impl CpuCore {
         // @fixme(Safety): we need a mechanism to ensure that that the `hooks` field is never
         // touched by the hook we are calling. (e.g., consider using a `Lens` type?).
         unsafe {
-            let hooks = self.trace.hooks.get();
-            (&mut (*hooks))[id as usize].call(self, addr);
+            let hooks = &mut *self.trace.hooks.get();
+            hooks[id as usize].call(self, addr);
         }
     }
 }

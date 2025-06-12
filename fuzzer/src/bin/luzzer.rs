@@ -56,28 +56,10 @@ fn main() {
     core_affinity::set_for_current(CoreId { id: 0 });
     tracing_subscriber::registry()
         .with(fmt::layer())
-        .with(EnvFilter::from_env("FUZE_LOG"))
+        .with(EnvFilter::from_env("MOGI_LOG"))
         .init();
     let luzzer_args = Args::parse();
-    #[cfg(not(feature = "unicorn"))]
-    let mmu = Rc::new(RefCell::new(MogiMMU::new()));
-    #[cfg(not(feature = "unicorn"))]
-    let cpu = Rc::new(RefCell::new(
-        CpuBuilder::new(mmu.clone())
-            .optimize_block(false)
-            .optimize_instructions(false)
-            .enable_shadow_stack(false)
-            .target_triple(Triple::host())
-            .cpu_id(
-                CpuId::from_file(PathBuf::from("../../../cpu_legacy/data/cpuid/intel/haswell.json5").as_path())
-                    .unwrap(),
-            )
-            .build()
-            .unwrap(),
-    ));
-    #[cfg(feature = "unicorn")]
     let cpu = UCWrapper::new();
-    #[cfg(feature = "unicorn")]
     let mmu = cpu.clone();
     let task_manager = TaskManager::new();
     let filesystem = Filesystem::from_disk(1_073_741_824, Path::new(&luzzer_args.system_root)).unwrap();

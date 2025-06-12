@@ -36,6 +36,7 @@ fn main() {
         .collect::<Vec<_>>();
 
     let mut learner = StateLearner::default();
+    println!("{}", learner);
     for symbol in symbol_ids.iter().copied() {
         learner.add_prefix([symbol]);
         learner.add_suffix([symbol]);
@@ -52,18 +53,13 @@ fn main() {
 
     println!("{}", learner);
 
-    while let Some(row_id) = learner.next_row_with_missing_observations() {
-        let prefix = learner.get_row_prefix(row_id).collect::<Vec<_>>();
+    while let Some((row_id, prefix)) = learner.next_row_with_missing_observations(None) {
         let unobserved_suffixes = learner.unobserved_suffixes(row_id).collect::<Vec<_>>();
 
         for suffix_id in unobserved_suffixes.iter().copied() {
             let mut num_as = 0;
             let mut num_bs = 0;
-            for symbol_id in prefix
-                .iter()
-                .copied()
-                .chain(learner.get_suffix_symbols(suffix_id))
-            {
+            for symbol_id in prefix.clone().chain(learner.get_suffix_symbols(suffix_id)) {
                 let symbol = word_map[symbol_id].as_str();
                 match symbol {
                     "A" => num_as += 1,

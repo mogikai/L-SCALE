@@ -1,13 +1,20 @@
 use std::cell::RefCell;
-use std::fmt::Debug;
+use std::fmt::{
+    Debug,
+    Display,
+    Formatter,
+};
 use std::fs;
 use std::path::{
     Path,
     PathBuf,
 };
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{
+    AtomicBool,
+    Ordering,
+};
 
 use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
 use mogi_emulator::emulator::abstractions::network::{
@@ -16,8 +23,14 @@ use mogi_emulator::emulator::abstractions::network::{
     SocketId,
 };
 use mogi_emulator::emulator::abstractions::system::SystemControl;
-use mogi_emulator::emulator::interface::emulator::{Emulator, ExitReason};
-use mogi_emulator::emulator::interface::network::tcp::{TCPSocket, TCPSystemControl};
+use mogi_emulator::emulator::interface::emulator::{
+    Emulator,
+    ExitReason,
+};
+use mogi_emulator::emulator::interface::network::tcp::{
+    TCPSocket,
+    TCPSystemControl,
+};
 use mogi_emulator::emulator::platform::linux::kernel::task_id::TaskId;
 use mogi_statelearner::{
     ObservationValue,
@@ -25,12 +38,18 @@ use mogi_statelearner::{
     SymbolId,
 };
 use mogi_utilities::error::memory::MemoryError;
-use serde::{Deserialize, Serialize};
+use serde::{
+    Deserialize,
+    Serialize,
+};
 use slotmap::{
     SlotMap,
     new_key_type,
 };
-use tracing::{debug, trace};
+use tracing::{
+    debug,
+    trace,
+};
 
 use crate::api::observer::DebuggableObserver;
 use crate::api::reducer::Reducer;
@@ -100,11 +119,24 @@ pub struct TestCase {
     tcp_streams: Vec<InputDataId>,
 }
 
+impl Display for TestCase {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "TestCase(exe: {}, tcp: {:?})", self.executions, self.tcp_streams)
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct LuzzerState {
     test_cases: SlotMap<SymbolId, TestCase>,
     input_data: SlotMap<InputDataId, InputData>,
     learner: StateLearner<Observation>,
+    /// The current prefix the learner has taken through the target.
+    /// There exists a snapshot of the emulator for each prefix symbol.
+    /// If the prefix is popped, the state of the emulator has to be reset.
+    current_prefix: Vec<SymbolId>,
 }
 
 #[derive(Debug)]
@@ -220,6 +252,7 @@ where
         Self::reduce_is_interesting(&mut self.is_interesting_reducers);
         Self::clear_observers(&mut self.observers);
         Self::update_input_info(&self.emulator, &mut self.input_info);
+        self.load_initial_state();
 
         self.emulator.take_snapshot().unwrap();
     }
@@ -266,9 +299,98 @@ where
     }
 
     fn build_state_model(&mut self) {
-        while let Some(missing_row_id) = self.state.learner.next_row_with_missing_observations() {
+        let mut dot_path = self.context_path.clone();
+        dot_path.push("states.dot");
 
+        let current_row = self
+            .state
+            .learner
+            .get_row_from_prefix(self.state.current_prefix.iter().copied())
+            .unwrap();
+
+        while let Some((row_id, path_from_current)) = self
+            .state
+            .learner
+            .next_row_with_missing_observations(Some(current_row))
+        {
+            for symbol in path_from_current {
+                self.advance_symbol(symbol);
+            }
+
+            // TODO: Do the discovery steps
+
+            self.state.learner.unobserved_suffixes(row_id);
+
+            self.state.learner.make_closed();
+            self.state.learner.make_consistent();
+            trace!("{}", self.state.learner);
+            self.state.learner.export(&dot_path, &self.state.test_cases);
         }
+    }
+
+    /// Advances the current emulator state into the one represented by applying the provided symbol.
+    fn advance_symbol(
+        &mut self,
+        symbol: SymbolId,
+    ) {
+        self.state.current_prefix.push(symbol);
+        self.state
+            .learner
+            .add_prefix(self.state.current_prefix.iter().copied());
+
+        Self::update_input_info(&self.emulator, &mut self.input_info);
+
+        let testcase = self.state.test_cases.get_mut(symbol).unwrap();
+        let mut tcp = self.emulator.system().tcp().borrow_mut();
+        // TODO: Make this configurable or adjustable by the fuzzer. For now only create streams if none are already available
+        if self.input_info.tcp.streams_writable.is_empty() {
+            for marker in &testcase.component_markers {
+                if let ComponentMarker::NewTcpStream = marker {
+                    // TODO: How to decide which one of the listeners to use? The fuzzer most likely needs to factor
+                    //       in this knowledge into its fuzzing strategy, i.e. it needs to keep track of streams?
+                    //       For now we just pick the first one we find.
+                    let listener_id = tcp.sockets().find(|(_, sock)| sock.is_listener());
+                    if listener_id.is_some() {
+                        let listener_id = *listener_id.unwrap().0;
+                        tcp.new_connection(
+                            &listener_id,
+                            SocketAddress::IP(IPAddress::V6 {
+                                port: 1337,
+                                flowinfo: 0,
+                                addr: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+                                scope_id: 0,
+                            }),
+                        )
+                        .unwrap();
+                    }
+                }
+            }
+        }
+        // Apply all the inputs, skipping over empty streams
+        for (input_data_id, socket_id) in testcase
+            .tcp_streams
+            .iter()
+            .copied()
+            .zip(self.input_info.tcp.streams_writable.iter().copied())
+        {
+            let data = self.state.input_data.get(input_data_id).unwrap();
+            let sock = tcp.socket_mut(socket_id).unwrap();
+            trace!("Applying data from {:?}", data.source);
+            let _ = sock.push_data(&data.data);
+        }
+        drop(tcp);
+        // TODO: Wake up the correct tasks. Might make sense to put this feature into the fuzzer and that
+        // TODO: The system components register the wake up request in some list?
+        self.emulator
+            .system()
+            .task_manager()
+            .borrow_mut()
+            .tasks_mut()
+            .for_each(|task| task.wake_up());
+        let status = self.emulator.run(None, None).unwrap();
+        assert!(matches!(status, ExitReason::Yielded));
+        testcase.executions += 1;
+        self.emulator.take_snapshot().unwrap();
     }
 
     fn fuzz(&mut self) {

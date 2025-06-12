@@ -35,7 +35,7 @@ impl Display for SymbolId {
         &self,
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
-        write!(f, "Word({:?})", self.data())
+        write!(f, "Sym({:?})", self.data())
     }
 }
 
@@ -56,22 +56,22 @@ where
 
         let mut header_rows = Vec::new();
 
-        for word_id in 0..self.suffixes.values().map(Vec::len).max().unwrap() {
+        for symbol_id in 0..self.suffixes.values().map(Vec::len).max().unwrap_or(0) {
             let mut row_string = String::new();
 
-            for suffix_words in self.suffixes.values() {
-                let suffix_word = match suffix_words.get(word_id) {
+            for suffix_symbols in self.suffixes.values() {
+                let suffix_symbol = match suffix_symbols.get(symbol_id) {
                     None => "".into(),
-                    Some(suffix_word) => format!("{}", suffix_word),
+                    Some(suffix_symbol) => format!("{}", suffix_symbol),
                 };
 
-                write!(row_string, "{:^21}", suffix_word)?;
+                write!(row_string, "{:^21}", suffix_symbol)?;
             }
 
             header_rows.push(format!("{:<60}{}", "", row_string));
         }
 
-        let header_width = header_rows.last().unwrap().len();
+        let header_width = header_rows.last().map(|row| row.len()).unwrap_or(0);
         let header_str = header_rows.into_iter().rev().join("\n");
         writeln!(f, "{}", header_str)?;
         writeln!(f, "{}", std::iter::repeat("-").take(header_width).join(""))?;

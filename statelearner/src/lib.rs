@@ -57,13 +57,9 @@ pub struct StateLearner<T> {
     /// A reverse lookup map for states.
     row_to_state: FnvHashMap<ObservationRowId, FnvHashSet<NodeIndex>>,
 
-    state_transitions: FnvHashMap<(ObservationRowId, SymbolId), ObservationRowId>,
-
-    /// A set of candidate states. A candidate state is a state that can be arrived at
-    /// by applying a symbol to an existing state. The number of candidates is thus at most
-    /// |V| * |W| where |V| is the number of states and |W| is the number of symbols.
-    /// A candidate state is identified by its corresponding observation row.
-    candidate_transitions: FnvHashMap<(ObservationRowId, SymbolId), ObservationRowId>,
+    /// The set of transitions from a prefix represented by an observation row
+    /// to an extension of that prefix by a given a symbol.
+    transitions: FnvHashMap<(ObservationRowId, SymbolId), ObservationRowId>,
 
     symbols: SecondaryMap<SymbolId, ()>,
 
@@ -92,8 +88,7 @@ where
             observation_rows,
             graph,
             row_to_state,
-            state_transitions: Default::default(),
-            candidate_transitions: Default::default(),
+            transitions: Default::default(),
             symbols: Default::default(),
             suffixes: Default::default(),
             suffix_lookup: Default::default(),
@@ -109,26 +104,7 @@ impl<T> StateLearner<T> {
         self.initial_row
     }
 
-    pub fn get_state_row_id_from_prefix(
-        &self,
-        prefix: impl IntoIterator<Item = SymbolId>,
-    ) -> Option<ObservationRowId> {
-        let mut row_id = self.initial_row;
-        for prefix_symbol in prefix {
-            match self.state_transitions.get(&(row_id, prefix_symbol)) {
-                Some(next_row_id) => {
-                    row_id = *next_row_id;
-                }
-                None => {
-                    return None;
-                }
-            }
-        }
-
-        Some(row_id)
-    }
-
-    pub fn get_candidate_row_id_from_prefix(
+    pub fn get_row_from_prefix(
         &self,
         prefix: impl IntoIterator<Item = SymbolId>,
     ) -> Option<ObservationRowId> {
@@ -139,12 +115,9 @@ impl<T> StateLearner<T> {
             let prefix_symbol = prefix.next().unwrap();
 
             if prefix.peek().is_none() {
-                break self
-                    .candidate_transitions
-                    .get(&(row_id, prefix_symbol))
-                    .copied();
+                break self.transitions.get(&(row_id, prefix_symbol)).copied();
             } else {
-                match self.state_transitions.get(&(row_id, prefix_symbol)) {
+                match self.transitions.get(&(row_id, prefix_symbol)) {
                     Some(next_row_id) => {
                         row_id = *next_row_id;
                     }
@@ -168,9 +141,7 @@ impl<T> StateLearner<T> {
         predecessor: ObservationRowId,
         symbol: SymbolId,
     ) -> Option<ObservationRowId> {
-        self.candidate_transitions
-            .get(&(predecessor, symbol))
-            .copied()
+        self.transitions.get(&(predecessor, symbol)).copied()
     }
 
     /// Returns an iterator over all suffixes that have missing observations
@@ -201,10 +172,62 @@ impl<T> StateLearner<T> {
             .filter(|row| self.unobserved_suffixes(*row).next().is_some())
     }
 
-    pub fn next_row_with_missing_observations(&self) -> Option<ObservationRowId> {
-        self.observation_rows
-            .keys()
-            .find(|row| self.unobserved_suffixes(*row).next().is_some())
+    /// Get the prefix required to transition to the provided row
+    pub fn get_row_prefix(
+        &self,
+        mut row_id: ObservationRowId,
+    ) -> impl Iterator<Item = SymbolId> {
+        let mut prefix = Vec::new();
+        while let Some((predecessor, transition_symbol)) = self.observation_rows[row_id].predecessor_transition() {
+            prefix.push(transition_symbol);
+            row_id = predecessor;
+        }
+
+        prefix.into_iter().rev()
+    }
+
+    /// Find the next [ObservationRow] that has missing observations.
+    /// If `start_row` is provided, the search will start at that row.
+    /// Otherwise, the search will start at the first row that has missing observations.
+    /// If no row has missing observations, None is returned.
+    pub fn next_row_with_missing_observations(
+        &self,
+        start_row: Option<ObservationRowId>,
+    ) -> Option<(ObservationRowId, impl Iterator<Item = SymbolId> + Clone + use<T>)> {
+        let start_row = start_row.unwrap_or(self.initial_row);
+
+        let mut frontier = vec![start_row];
+        while let Some(current_row) = frontier.pop() {
+            // check if current_row has missing observations
+            if let Some(unobserved_suffix) = self.unobserved_suffixes(current_row).next() {
+                // reconstruct partial prefix and return
+                let mut prefix = Vec::new();
+                let mut row = current_row;
+                while row != start_row
+                    && let Some((predecessor_row, transition_symbol)) =
+                        self.observation_rows[row].predecessor_transition()
+                {
+                    prefix.push(transition_symbol);
+                    row = predecessor_row;
+                }
+
+                return Some((current_row, prefix.into_iter().rev()));
+            }
+
+            // process all potential successors
+            for symbol_id in self.symbols.keys() {
+                match self.transitions.get(&(current_row, symbol_id)).copied() {
+                    None => {
+                        // end of path
+                    }
+                    Some(next_row) => {
+                        frontier.push(next_row);
+                    }
+                }
+            }
+        }
+
+        None
     }
 }
 
@@ -222,12 +245,7 @@ where
         };
 
         // move up ^~^
-        // Move the candidate from the candidate_transitions table into the
-        // state_transitions table
-        self.state_transitions
-            .insert((predecessor_row, transition_symbol), candidate_id);
-        self.candidate_transitions
-            .remove(&(predecessor_row, transition_symbol));
+        // make the row great again by making it a state
         row.make_state();
 
         // Add the new candidates that are now possible due to the new state.
@@ -247,6 +265,7 @@ where
             .rev()
             .map(|suffix_end| {
                 let suffix = suffix[suffix_end..].to_vec();
+                self.add_symbols(suffix.iter().copied());
 
                 match self.suffix_lookup.entry(suffix.clone()) {
                     Entry::Occupied(entry) => {
@@ -254,9 +273,6 @@ where
                         *entry.get()
                     }
                     Entry::Vacant(entry) => {
-                        for symbol in suffix.iter() {
-                            self.symbols.insert(*symbol, ());
-                        }
                         let new_suffix = self.suffixes.insert(suffix);
                         entry.insert(new_suffix);
                         new_suffix
@@ -266,10 +282,17 @@ where
             .last()
             .unwrap();
 
-        // Add the new candidates that are now possible due to the new suffixes.
-        self.add_missing_candidates();
-
         new_suffix
+    }
+
+    fn add_symbols(
+        &mut self,
+        symbols: impl IntoIterator<Item = SymbolId>,
+    ) {
+        for symbol in symbols {
+            self.symbols.insert(symbol, ());
+        }
+        self.add_missing_candidates();
     }
 
     /// Add the provided suffixes into the state learner.
@@ -286,19 +309,6 @@ where
         self.add_missing_candidates();
     }
 
-    pub fn get_row_prefix(
-        &self,
-        mut row_id: ObservationRowId,
-    ) -> impl Iterator<Item = SymbolId> {
-        let mut prefix = Vec::new();
-        while let Some((predecessor, transition_symbol)) = self.observation_rows[row_id].predecessor_transition() {
-            prefix.push(transition_symbol);
-            row_id = predecessor;
-        }
-
-        prefix.into_iter().rev()
-    }
-
     fn add_missing_candidates(&mut self) {
         let new_candidates = self
             .symbols
@@ -309,9 +319,7 @@ where
                     .filter_map(|(row_id, row)| row.is_state().then_some(row_id)),
             )
             .filter_map(|(symbol, row_id)| {
-                if !self.candidate_transitions.contains_key(&(row_id, symbol))
-                    && !self.state_transitions.contains_key(&(row_id, symbol))
-                {
+                if !self.transitions.contains_key(&(row_id, symbol)) {
                     // If neither table contains a row for (prefix, symbol) then we need to add a new candidate.
                     Some(ObservationRow::<T>::new_candidate(row_id, symbol))
                 } else {
@@ -323,7 +331,7 @@ where
         for new_candidate in new_candidates.into_iter() {
             let new_row_id = self.observation_rows.insert_with_key(|row_id| {
                 let transition = new_candidate.predecessor_transition().unwrap();
-                self.candidate_transitions.insert(transition, row_id);
+                self.transitions.insert(transition, row_id);
                 new_candidate
             });
             self.update_graph_for_new_observation(new_row_id);
@@ -348,15 +356,22 @@ where
     /// Insert the given prefix into the state learner.
     /// This potentially adds multiple new states and
     /// state candidates to the observation table
-    pub fn add_prefix(
+    pub fn add_prefix<I>(
         &mut self,
-        prefix: impl IntoIterator<Item = SymbolId>,
-    ) {
-        let mut prefix = prefix.into_iter().peekable();
+        prefix: I,
+    ) where
+        I: IntoIterator<Item = SymbolId>,
+        <I as IntoIterator>::IntoIter: Clone,
+    {
+        let prefix = prefix.into_iter();
+        self.add_symbols(prefix.clone());
+        let mut prefix = prefix.peekable();
         let mut current_row = self.initial_row;
+        // add words and make candidates
         while let Some(symbol) = prefix.next() {
-            if let Some(next_row) = self.state_transitions.get(&(current_row, symbol)) {
-                current_row = *next_row;
+            let row_id = self.transitions[&(current_row, symbol)];
+            if self.observation_rows[row_id].is_state() {
+                current_row = row_id;
             } else {
                 if prefix.peek().is_none() {
                     // If this is the last symbol in the prefix we don't want to promote the candidate.
@@ -364,9 +379,8 @@ where
                 }
 
                 // We want to promote all intermediate candidates to states.
-                let candidate = self.candidate_transitions[&(current_row, symbol)];
-                self.promote_candidate_to_state(candidate);
-                current_row = candidate;
+                self.promote_candidate_to_state(row_id);
+                current_row = row_id;
             }
         }
     }

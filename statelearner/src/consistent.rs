@@ -54,12 +54,8 @@ where
                 for symbol_id in self.symbols.keys() {
                     // find successors when applying the symbol and compare suffix observation
                     let target_row_ids = match (
-                        self.candidate_transitions
-                            .get(&(*rows.0, symbol_id))
-                            .copied(),
-                        self.candidate_transitions
-                            .get(&(*rows.1, symbol_id))
-                            .copied(),
+                        self.transitions.get(&(*rows.0, symbol_id)).copied(),
+                        self.transitions.get(&(*rows.1, symbol_id)).copied(),
                     ) {
                         (Some(id_0), Some(id_1)) => (id_0, id_1),
                         _ => continue,

@@ -8,27 +8,17 @@ use crate::{
     SymbolId,
 };
 use fnv::FnvHashSet;
-use itertools::Itertools;
 use petgraph::dot::Dot;
 use petgraph::graph::{
     EdgeReference,
     NodeIndex,
 };
-use serde::{
-    Deserialize,
-    Serialize,
-};
-use slotmap::{
-    Key,
-    SlotMap,
-};
+use slotmap::SlotMap;
 use std::fmt::{
-    Debug,
     Display,
     Write,
 };
 use std::fs::File;
-use std::ops::Index;
 use std::path::Path;
 
 impl<T> StateLearner<T> {
@@ -116,12 +106,10 @@ where
             let edge_symbols = self.graph.edge_weight_mut(edge_index).unwrap();
             edge_symbols.retain(|transition_symbol| {
                 for start_row in start_rows.iter().copied() {
-                    for transitions in [&self.state_transitions, &self.candidate_transitions] {
-                        if let Some(target) = transitions.get(&(start_row, *transition_symbol))
-                            && end_rows.contains(target)
-                        {
-                            return true;
-                        }
+                    if let Some(target) = self.transitions.get(&(start_row, *transition_symbol))
+                        && end_rows.contains(target)
+                    {
+                        return true;
                     }
                 }
 
@@ -279,7 +267,7 @@ mod test {
         learner.add_prefix([a, b, a, b]);
         println!("{}", learner);
 
-        let row = learner.get_state_row_id_from_prefix([a, b, a]).unwrap();
+        let row = learner.get_row_from_prefix([a, b, a]).unwrap();
         let suffixes = learner.unobserved_suffixes(row).collect::<Vec<_>>();
         learner
             .add_observation(row, suffixes[0], String::from("test4"))

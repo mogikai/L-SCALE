@@ -19,9 +19,14 @@ where
     }
 
     fn find_closed_property_violation(&self) -> Option<ObservationRowId> {
-        for candidate_id in self.candidate_transitions.values() {
-            if self.candidate_violates_closed_property(*candidate_id) {
-                return Some(*candidate_id);
+        for candidate_id in self
+            .transitions
+            .values()
+            .copied()
+            .filter(|&row| self.observation_rows[row].is_state())
+        {
+            if self.candidate_violates_closed_property(candidate_id) {
+                return Some(candidate_id);
             }
         }
         None

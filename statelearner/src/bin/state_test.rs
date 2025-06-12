@@ -225,13 +225,12 @@ fn main() {
 
     println!("{}", learner);
 
-    while let Some(row_id) = learner.next_row_with_missing_observations() {
-        let prefix = learner.get_row_prefix(row_id).collect::<Vec<_>>();
+    while let Some((row_id, prefix)) = learner.next_row_with_missing_observations(None) {
         let unobserved_suffixes = learner.unobserved_suffixes(row_id).collect::<Vec<_>>();
 
         for suffix_id in unobserved_suffixes.iter().copied() {
             machine.reset();
-            for prefix_word_id in prefix.iter().copied() {
+            for prefix_word_id in prefix.clone() {
                 let prefix_word = &word_map[prefix_word_id];
                 machine.process_input(prefix_word);
             }
