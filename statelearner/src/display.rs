@@ -41,7 +41,7 @@ impl Display for SymbolId {
 
 impl<T> Display for StateLearner<T>
 where
-    T: Debug,
+    T: Display,
 {
     fn fmt(
         &self,

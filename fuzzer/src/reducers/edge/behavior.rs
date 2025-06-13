@@ -39,8 +39,9 @@ impl Reducer for EdgeBehaviorReducer {
         //         .flat_map(|v| if *v { "1".chars() } else { "0".chars() })
         //         .collect::<String>()
         // );
-        let mut hasher = DefaultHasher::new();
-        current_edge_hits.hash(&mut hasher);
-        Ok(Observation::new(hasher.finish()))
+        // let mut hasher = DefaultHasher::new();
+        // current_edge_hits.hash(&mut hasher);
+        // Ok(Observation::new(hasher.finish()))
+        todo!()
     }
 }

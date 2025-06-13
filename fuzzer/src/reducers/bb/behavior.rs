@@ -1,7 +1,6 @@
 use crate::api::error::FuzzerError;
 use crate::api::observer::HasObservation;
 use crate::api::reducer::Reducer;
-use crate::core::fuzzer::SuffixBehavior;
 use crate::core::luzzer::Observation;
 use crate::observers::bb_based::bb::BlockHitObserver;
 use std::cell::RefCell;
@@ -12,6 +11,8 @@ use std::hash::{
     Hasher,
 };
 use std::rc::Rc;
+use tlsh::GeneratorType;
+use zerocopy::IntoBytes;
 
 /// This reducer reduces an edge observation to a testcase behavior. In the future it might be necessary
 /// to split this up into a `TestCaseEdgeBehavior` that is then consumed by a `TestCaseBehaviorReducer`
@@ -32,7 +33,7 @@ impl Reducer for BasicBlockBehaviorReducer {
 
     fn reduce(&mut self) -> Result<Self::Output, FuzzerError> {
         let observer = self.observer.borrow();
-        let current_edge_hits = &*observer.observation();
+        let block_hits = &*observer.observation();
         // debug!(
         //     "Edge hits: {:?}",
         //     current_edge_hits
@@ -40,8 +41,13 @@ impl Reducer for BasicBlockBehaviorReducer {
         //         .flat_map(|v| if *v { "1".chars() } else { "0".chars() })
         //         .collect::<String>()
         // );
-        let mut hasher = DefaultHasher::new();
-        current_edge_hits.hash(&mut hasher);
-        Ok(Observation::new(hasher.finish()))
+        // let mut hasher = DefaultHasher::new();
+        let mut generator = tlsh::prelude::TlshGenerator::new();
+        for block_addr in block_hits.iter() {
+            generator.update(block_addr.as_bytes())
+        }
+        Ok(Observation::new(generator.finalize().unwrap()))
+        // block_hits.hash(&mut hasher);
+        // Ok(Observation::new(hasher.finish()))
     }
 }

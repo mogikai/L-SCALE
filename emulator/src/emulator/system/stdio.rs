@@ -126,7 +126,7 @@ impl Stdio {
         output_type: StdOutputType,
     ) {
         if !self.buffered {
-            print!("\n({:?}) {:}", output_type, String::from_utf8_lossy(data));
+            // print!("\n({:?}) {:}", output_type, String::from_utf8_lossy(data));
             return;
         }
         let buffer = match output_type {
@@ -134,7 +134,7 @@ impl Stdio {
             StdOutputType::STDERR => &mut self.data.err_buf,
         };
         if data.ends_with("\n".as_bytes()) {
-            print!("\n({:?}) {:}{:}", output_type, String::from_utf8_lossy(buffer), String::from_utf8_lossy(data));
+            // print!("\n({:?}) {:}{:}", output_type, String::from_utf8_lossy(buffer), String::from_utf8_lossy(data));
             buffer.clear();
         } else {
             buffer.extend_from_slice(data);

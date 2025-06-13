@@ -16,6 +16,7 @@ use slotmap::{
 };
 use std::fmt::{
     Debug,
+    Display,
     Write,
 };
 
@@ -150,7 +151,7 @@ where
 
 impl<T> ObservationRow<T>
 where
-    T: Debug,
+    T: Display,
 {
     pub fn fmt_debug_row(
         &self,
@@ -178,7 +179,7 @@ where
             if let Some(observation) = self.observations.get(suffix_id)
                 && let Observation::Observed(observation) = observation
             {
-                write!(f, "{:^20} ", format!("{:?}", observation))?;
+                write!(f, "{:^20} ", format!("{}", observation))?;
             } else {
                 write!(f, "{:^20} ", "n/a")?;
             }

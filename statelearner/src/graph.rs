@@ -22,17 +22,30 @@ use std::fs::File;
 use std::path::Path;
 
 impl<T> StateLearner<T> {
-    pub fn export<W>(
+    pub fn export<S>(
         &self,
         file: &Path,
-        symbols: &SlotMap<SymbolId, W>,
+        symbols: &SlotMap<SymbolId, S>,
     ) where
-        W: Display,
+        S: Display,
+    {
+        self.export_with_formatter(file, symbols, |out, symbol| write!(out, "{}", symbol).unwrap());
+    }
+
+    pub fn export_with_formatter<S, F>(
+        &self,
+        file: &Path,
+        symbols: &SlotMap<SymbolId, S>,
+        symbol_formatter: F,
+    ) where
+        S: Display,
+        F: Fn(&mut dyn Write, &S),
     {
         let format_edge = &|_, edge: EdgeReference<FnvHashSet<SymbolId>, _>| {
             let mut label = String::new();
             for symbol_id in edge.weight().iter().copied() {
-                write!(label, "{}, ", symbols[symbol_id]).unwrap();
+                symbol_formatter(&mut label, &symbols[symbol_id]);
+                write!(label, " ").unwrap();
             }
             format!("label = \"{}\"", label)
         };

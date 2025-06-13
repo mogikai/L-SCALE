@@ -16,13 +16,18 @@ use std::sync::atomic::{
     Ordering,
 };
 
-use crate::api::observer::DebuggableObserver;
+use crate::api::observer::{
+    DebuggableObserver,
+    Observe,
+};
 use crate::api::reducer::Reducer;
 use crate::core::fuzzer::SuffixBehavior;
 use crate::observers::bb_based::bb::BlockHitObserver;
 use crate::observers::bb_based::edge::EdgeHitCountObserver;
 use crate::observers::emulator::basic_block::BasicBlockCollector;
+use crate::observers::new::bb::BasicBlockObserver;
 use crate::reducers::bb::behavior::BasicBlockBehaviorReducer;
+use crate::reducers::bb::lsh::BlockHitLshReducer;
 use crate::reducers::edge::InterestingEdgesReducer;
 use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
 use mogi_emulator::emulator::abstractions::network::{
@@ -46,27 +51,57 @@ use mogi_statelearner::{
     StateLearner,
     SymbolId,
 };
+use mogi_system::components::cpu::hooks::Hooks;
+use mogi_system::components::mmu::Permission;
 use mogi_utilities::error::memory::MemoryError;
 use serde::{
     Deserialize,
     Serialize,
 };
 use slotmap::{
+    Key,
     SlotMap,
     new_key_type,
+};
+use tlsh::{
+    FuzzyHashType,
+    Tlsh,
+    hashes,
 };
 use tracing::{
     debug,
     trace,
 };
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Observation {
-    edge_hash_map: u64,
+    edge_hash_map: hashes::Normal,
+}
+
+impl Display for Observation {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "{}", self.edge_hash_map)
+    }
+}
+
+impl PartialEq for Observation {
+    fn eq(
+        &self,
+        other: &Self,
+    ) -> bool {
+        if self.edge_hash_map.compare(&other.edge_hash_map) < 8 {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl Observation {
-    pub fn new(edge_hash_map: u64) -> Self {
+    pub fn new(edge_hash_map: hashes::Normal) -> Self {
         Self { edge_hash_map }
     }
 }
@@ -89,6 +124,15 @@ struct EmulatorInputInfo {
 }
 
 new_key_type! { pub struct InputDataId; }
+
+impl Display for InputDataId {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "{:?}", self.data())
+    }
+}
 
 #[derive(Debug)]
 enum ComponentMarker {
@@ -132,8 +176,16 @@ impl Display for TestCase {
         &self,
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
-        write!(f, "TestCase(exe: {}, tcp: {:?})", self.executions, self.tcp_streams)
-        // write!(f, ":)")
+        write!(f, "TC(exe: {}, tcp: ", self.executions)?;
+        write!(f, "[")?;
+        for (i, id) in self.tcp_streams.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", id)?;
+        }
+        write!(f, "]")?;
+        write!(f, ")")
     }
 }
 
@@ -152,9 +204,8 @@ pub struct LuzzerState {
 pub struct Luzzer<EmulatorT> {
     state: LuzzerState,
     observers: Vec<Rc<RefCell<dyn DebuggableObserver>>>,
-    block_observer: Rc<RefCell<BlockHitObserver>>,
     is_interesting_reducers: Vec<Rc<RefCell<dyn DebuggableReducer<Output = bool>>>>,
-    suffix_behavior_observer: Rc<RefCell<dyn DebuggableObserver>>,
+    behavior_observer: Rc<RefCell<dyn DebuggableObserver>>,
     suffix_behavior_reducer: Rc<RefCell<dyn DebuggableReducer<Output = Observation>>>,
     is_crash_reducers: Vec<Rc<RefCell<dyn DebuggableReducer<Output = bool>>>>,
     emulator: EmulatorT,
@@ -174,10 +225,13 @@ where
         let exe_mappings = memory
             .mappings(&TaskId { pid: 1337, tid: 1 })
             .filter_map(|mapping| {
-                mapping
-                    .label
-                    .as_ref()
-                    .and_then(|label| label.contains("open62541").then_some(mapping))
+                mapping.label.as_ref().and_then(|label| {
+                    if label.contains("open62541") && mapping.permissions.contains(Permission::EXEC) {
+                        Some(mapping)
+                    } else {
+                        None
+                    }
+                })
             })
             .collect::<Vec<_>>();
         let start = exe_mappings
@@ -191,29 +245,47 @@ where
             .unwrap()
             .v_end();
         drop(memory);
-        let edge_observer = Rc::new(RefCell::new(EdgeHitCountObserver::new()));
-        let edge_reducer = Rc::new(RefCell::new(InterestingEdgesReducer::new(edge_observer.clone())));
-        let behavior_observer = BlockHitObserver::new();
-        let bb_collector = Rc::new(RefCell::new(BasicBlockCollector::new(
-            emulator.system().cpu(),
-            start,
-            end,
-            [
-                &behavior_observer.shared_observe(),
-                &edge_observer.borrow().shared_observe(),
-            ]
-            .into_iter(),
-        )));
-        emulator.register_meter(bb_collector);
-        let behavior_observer = Rc::new(RefCell::new(behavior_observer));
-        let behavior_reducer = Rc::new(RefCell::new(BasicBlockBehaviorReducer::new(behavior_observer.clone())));
+        // let edge_observer = Rc::new(RefCell::new(EdgeHitCountObserver::new()));
+        // let edge_reducer = Rc::new(RefCell::new(InterestingEdgesReducer::new(edge_observer.clone())));
+        // let behavior_observer = BlockHitObserver::new();
+        let block_observer = Rc::new(RefCell::new(BasicBlockObserver::new(start, end)));
+        let behavior_observer = Rc::new(RefCell::new(BasicBlockObserver::new(start, end)));
+        let behavior_reducer = Rc::new(RefCell::new(BlockHitLshReducer::new(behavior_observer.clone())));
+
+        {
+            let mut cpu = emulator.system().cpu().borrow_mut();
+            let hook_block_observer = block_observer.clone();
+            let hook_behavior_observer = behavior_observer.clone();
+            cpu.add_block_hook(
+                start,
+                end,
+                Box::new(move |cpu, addr, _| {
+                    hook_block_observer.borrow_mut().observe(&addr);
+                    hook_behavior_observer.borrow_mut().observe(&addr);
+                }),
+            )
+            .unwrap();
+        }
+
+        // let bb_collector = Rc::new(RefCell::new(BasicBlockCollector::new(
+        //     emulator.system().cpu(),
+        //     start,
+        //     end,
+        //     [
+        //         // &behavior_observer.shared_observe(),
+        //         // &edge_observer.borrow().shared_observe(),
+        //     ]
+        //     .into_iter(),
+        // )));
+        // emulator.register_meter(bb_collector);
+        // let behavior_observer = Rc::new(RefCell::new(behavior_observer));
+        // let behavior_reducer = Rc::new(RefCell::new(BasicBlockBehaviorReducer::new(behavior_observer.clone())));
 
         Self {
             state: Default::default(),
-            observers: vec![edge_observer],
-            block_observer: behavior_observer.clone(),
-            suffix_behavior_observer: behavior_observer,
-            is_interesting_reducers: vec![edge_reducer],
+            observers: vec![block_observer],
+            behavior_observer,
+            is_interesting_reducers: vec![],
             suffix_behavior_reducer: behavior_reducer,
             is_crash_reducers: Default::default(),
             emulator,
@@ -261,8 +333,11 @@ where
         Self::reduce_is_interesting(&mut self.is_interesting_reducers);
         Self::clear_observers(&mut self.observers);
         Self::update_input_info(&self.emulator, &mut self.input_info);
+
         self.load_initial_state();
-        self.emulator.run(None, None).unwrap();
+
+        let status = self.emulator.run(None, None).unwrap();
+        assert!(matches!(status, ExitReason::Yielded));
         Self::gather_observations(&mut self.observers);
         Self::reduce_is_interesting(&mut self.is_interesting_reducers);
         Self::clear_observers(&mut self.observers);
@@ -337,8 +412,24 @@ where
 
             self.state.learner.make_closed();
             self.state.learner.make_consistent();
-            trace!("{}", self.state.learner);
-            self.state.learner.export(&dot_path, &self.state.test_cases);
+            debug!("{}", self.state.learner);
+            self.state
+                .learner
+                .export_with_formatter(&dot_path, &self.state.test_cases, |out, symbol| {
+                    write!(out, "TC: [").unwrap();
+                    symbol
+                        .tcp_streams
+                        .iter()
+                        .map(|data_id| &self.state.input_data[*data_id].source)
+                        .map(|source| match source {
+                            InputDataSource::File(file) => file.file_name().unwrap().to_str().unwrap(),
+                            InputDataSource::Unknown => "Unknown",
+                        })
+                        .for_each(|source| {
+                            write!(out, "{}, ", source).unwrap();
+                        });
+                    write!(out, "]").unwrap();
+                });
             for _ in 0..depth {
                 self.emulator
                     .discard_current_and_restore_previous_snapshot()
@@ -364,10 +455,10 @@ where
                 if symbols.peek().is_none() {
                     // gather observations
                     Self::clear_observers(&mut self.observers);
-                    self.suffix_behavior_observer.borrow_mut().clear();
+                    self.behavior_observer.borrow_mut().clear();
                     self.apply_symbol(symbol);
                     Self::gather_observations(&mut self.observers);
-                    self.suffix_behavior_observer.borrow_mut().gather();
+                    self.behavior_observer.borrow_mut().gather();
                     if Self::reduce_is_interesting(&mut self.is_interesting_reducers) {
                         debug!("Found interesting input !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
                     }
@@ -392,11 +483,9 @@ where
         symbol: SymbolId,
     ) {
         self.state.current_prefix.push(symbol);
-        println!("Learner before advancing symbol to prefix: {:?} {}", self.state.current_prefix, self.state.learner);
         self.state
             .learner
             .add_prefix(self.state.current_prefix.iter().copied());
-        println!("Learner after advancing symbol to prefix: {:?} {}", self.state.current_prefix, self.state.learner);
 
         self.apply_symbol(symbol);
 
@@ -478,7 +567,7 @@ where
             .iter_mut()
             .map(|r| r.borrow_mut().reduce().unwrap())
             .reduce(|acc, interesting| acc | interesting)
-            .unwrap()
+            .unwrap_or(false)
     }
 
     fn clear_observers(observers: &mut [Rc<RefCell<dyn DebuggableObserver>>]) {

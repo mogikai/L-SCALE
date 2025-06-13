@@ -10,6 +10,9 @@ macro_rules! addr_impl {
             Default,
             derive_more::Into,
             derive_more::UpperHex,
+            zerocopy::IntoBytes,
+            zerocopy::FromBytes,
+            zerocopy::Immutable,
         )]
         #[rustfmt::skip]
         #[upper_hex("{:X}", _0)]
