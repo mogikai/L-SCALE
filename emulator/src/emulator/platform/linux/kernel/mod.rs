@@ -858,6 +858,32 @@ where
         // TODO: Implement users and permissions properly
         Ok(0)
     }
+
+    pub fn sched_set_affinity(
+        &mut self,
+        pid: u64,
+        cpusetsize: u64,
+        mask: EVAddr,
+    ) -> SyscallResult {
+        Err(LinuxKernelError::EINVAL.into())
+    }
+
+    pub fn sched_get_affinity(
+        &mut self,
+        pid: u64,
+        cpusetsize: u64,
+        mask: EVAddr,
+    ) -> SyscallResult {
+        Err(LinuxKernelError::EINVAL.into())
+    }
+
+    pub fn pipe2(
+        &mut self,
+        pipefd: EVAddr,
+        flags: u64,
+    ) -> SyscallResult {
+        Err(LinuxKernelError::EINVAL.into())
+    }
 }
 
 #[repr(u64)]

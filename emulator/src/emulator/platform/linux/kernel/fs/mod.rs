@@ -1,6 +1,3 @@
-use std::cell::RefMut;
-use std::os::unix::ffi::OsStrExt;
-
 use bitflags::{
     bitflags,
     Flags,
@@ -10,6 +7,8 @@ use libc::dirname;
 use mogi_derive::unfinished;
 use mogi_system::components::cpu::CPU;
 use num_enum::TryFromPrimitive;
+use std::cell::RefMut;
+use std::os::unix::ffi::OsStrExt;
 
 use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
 use crate::emulator::abstractions::filesystem::FileId;
@@ -220,6 +219,15 @@ where
         Ok(0)
     }
 
+    pub fn open(
+        &mut self,
+        filename: EVAddr,
+        flags: u64,
+        mode: u64,
+    ) -> SyscallResult {
+        Err(LinuxKernelError::EINVAL.into())
+    }
+
     #[unfinished]
     pub fn openat(
         &mut self,
@@ -320,6 +328,24 @@ where
         Ok(memory
             .write_bounded_slice(buf, "/home/user/open62541_server_release".as_bytes(), bufsize)?
             .0 as u64)
+    }
+
+    pub fn readlink(
+        &mut self,
+        pathname: EVAddr,
+        buf: EVAddr,
+        bufsize: usize,
+    ) -> SyscallResult {
+        Err(LinuxKernelError::ENOENT.into())
+    }
+
+    pub fn madvise(
+        &self,
+        addr: EVAddr,
+        length: usize,
+        advice: u64,
+    ) -> SyscallResult {
+        Ok(0)
     }
 
     pub fn close(
@@ -449,6 +475,13 @@ where
         }
         sys_component_mut!(self, fd_map).insert_cwd(&self.task_id, cwd_fd)?;
         Ok(0)
+    }
+
+    pub fn umask(
+        &mut self,
+        mask: u64,
+    ) -> SyscallResult {
+        Ok(0o022) // return default value
     }
 
     pub fn fchdir(

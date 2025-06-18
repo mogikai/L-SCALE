@@ -228,6 +228,13 @@ where
         FCHDIR => do_syscall!(1, system, kernel::fchdir, debug_str),
         GETUID => do_syscall!(0, system, kernel::getuid, debug_str),
         SENDFILE => do_syscall!(4, system, kernel::sendfile, debug_str),
+        READLINK => do_syscall!(3, system, kernel::readlink, debug_str),
+        MADVISE => do_syscall!(3, system, kernel::madvise, debug_str),
+        OPEN => do_syscall!(3, system, kernel::open, debug_str),
+        SCHED_SETAFFINITY => do_syscall!(3, system, kernel::sched_set_affinity, debug_str),
+        SCHED_GETAFFINITY => do_syscall!(3, system, kernel::sched_get_affinity, debug_str),
+        UMASK => do_syscall!(1, system, kernel::umask, debug_str),
+        PIPE2 => do_syscall!(2, system, kernel::pipe2, debug_str),
         _ => Err(SyscallError::NotImplemented),
     }
 }
