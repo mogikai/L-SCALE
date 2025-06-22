@@ -882,7 +882,8 @@ where
         pipefd: EVAddr,
         flags: u64,
     ) -> SyscallResult {
-        Err(LinuxKernelError::EINVAL.into())
+        Ok(0)
+        // Err(LinuxKernelError::EINVAL.into())
     }
 }
 
