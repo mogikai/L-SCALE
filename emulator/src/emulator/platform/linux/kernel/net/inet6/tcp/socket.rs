@@ -67,6 +67,27 @@ impl FileDescriptorOps for TcpSocketOps {
         Ok(())
     }
 
+    fn read(
+        &self,
+        fd: &mut Self::D,
+        count: u64,
+    ) -> Result<Option<Vec<u8>>, FileDescriptorError> {
+        let tcp = fd.tcp.as_mut().ok_or(FileDescriptorError::NotASocket)?;
+        let (data, addr) = tcp
+            .tcp_system
+            .borrow_mut()
+            .recvfrom(tcp.id, count as usize)?;
+        Ok(Some(data))
+    }
+
+    fn write(
+        &self,
+        fd: &mut Self::D,
+        data: &[u8],
+    ) -> Result<usize, FileDescriptorError> {
+        Ok(data.len())
+    }
+
     fn bind(
         &self,
         fd: &mut Self::D,
