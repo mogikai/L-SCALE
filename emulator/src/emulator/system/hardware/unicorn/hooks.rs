@@ -1,21 +1,25 @@
-use mogi_system::components::mmu::MemoryAction;
-use mogi_system::components::mmu::tlb_entry::TLBEntry;
-use mogi_utilities::addresses::EVAddr;
-use mogi_utilities::error::memory::MemoryError;
-use unicorn_engine::unicorn_const::HookType;
-use unicorn_engine::{
-    InsnSysX86,
-    MemType,
-    Permission,
-    TlbEntry,
-    Unicorn,
-};
-
 use crate::emulator::system::hardware::unicorn::UCWrapper;
 use crate::emulator::system::hardware::unicorn::cpu::cpu_error_from_uc_error;
 use mogi_system::components::cpu::hooks::Hooks;
+use mogi_system::components::mmu::tlb_entry::TLBEntry;
+use mogi_system::components::mmu::{
+    MemoryAction,
+    Permission,
+};
 use mogi_system::errors::cpu::CPUError;
 use mogi_system::errors::generic::GenericError;
+use mogi_utilities::addresses::EVAddr;
+use mogi_utilities::error::memory::MemoryError;
+use unicorn_engine::{
+    HookType,
+    TlbEntry,
+    Unicorn,
+};
+use unicorn_engine_sys::{
+    MemType,
+    Prot,
+    X86Insn,
+};
 
 impl<'a> Hooks for UCWrapper<'a> {
     fn add_syscall_hook(
@@ -32,7 +36,7 @@ impl<'a> Hooks for UCWrapper<'a> {
         // TODO: Store hook id so we can remove it?
         let _hook = self
             .uc_mut()
-            .add_insn_sys_hook(InsnSysX86::SYSCALL, start.into(), end.into(), trampoline)
+            .add_insn_sys_hook(X86Insn::SYSCALL, start.into(), end.into(), trampoline)
             .map_err(cpu_error_from_uc_error)?;
         Ok(())
     }
@@ -103,9 +107,19 @@ impl<'a> Hooks for UCWrapper<'a> {
 }
 
 fn transform_tlb_entry_to_uc_tlb_entry(value: TLBEntry) -> TlbEntry {
+    let mut perms = Prot::NONE;
+    if value.permissions.contains(Permission::READ) {
+        perms |= Prot::READ;
+    }
+    if value.permissions.contains(Permission::WRITE) {
+        perms |= Prot::WRITE;
+    }
+    if value.permissions.contains(Permission::EXEC) {
+        perms |= Prot::EXEC;
+    }
     TlbEntry {
         paddr: value.physical_address.into(),
-        perms: Permission::from_bits(value.permissions.bits().into()).unwrap(),
+        perms,
     }
 }
 

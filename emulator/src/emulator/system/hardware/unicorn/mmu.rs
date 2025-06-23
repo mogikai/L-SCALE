@@ -151,7 +151,7 @@ impl MMU for UCWrapper<'_> {
     ) -> MmuResult<()> {
         Ok(self
             .uc_mut()
-            .mem_map(addr.into(), size, unicorn_engine::Permission::all())
+            .mem_map(addr.into(), size as u64, unicorn_engine::Prot::ALL)
             .map_err(|_| MemoryError::Unknown)?)
     }
 

@@ -45,8 +45,8 @@ impl<'a> UCWrapper<'a> {
     pub fn new() -> Rc<RefCell<Self>> {
         let wrapper = Rc::new(RefCell::new(UCWrapper { ..Default::default() }));
         wrapper.borrow_mut().uc = Some(Unicorn::new_with_data(Arch::X86, Mode::MODE_64, wrapper.as_ptr()).unwrap());
-        if let Some(uc) = wrapper.borrow_mut().uc.as_ref() {
-            uc.ctl_tlb_type(TlbType::VIRTUAL).unwrap()
+        if let Some(uc) = wrapper.borrow_mut().uc.as_mut() {
+            uc.ctl_set_tlb_type(TlbType::VIRTUAL).unwrap()
         }
         wrapper
     }

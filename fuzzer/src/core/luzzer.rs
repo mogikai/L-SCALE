@@ -1,21 +1,3 @@
-use std::cell::RefCell;
-use std::fmt::{
-    Debug,
-    Display,
-    Formatter,
-};
-use std::fs;
-use std::path::{
-    Path,
-    PathBuf,
-};
-use std::rc::Rc;
-use std::sync::Arc;
-use std::sync::atomic::{
-    AtomicBool,
-    Ordering,
-};
-
 use crate::api::observer::{
     DebuggableObserver,
     Observe,
@@ -63,6 +45,24 @@ use slotmap::{
     SlotMap,
     new_key_type,
 };
+use std::cell::RefCell;
+use std::fmt::{
+    Debug,
+    Display,
+    Formatter,
+};
+use std::fs;
+use std::path::{
+    Path,
+    PathBuf,
+};
+use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::{
+    AtomicBool,
+    Ordering,
+};
+use std::time::Instant;
 use tlsh::{
     FuzzyHashType,
     Tlsh,
@@ -70,6 +70,7 @@ use tlsh::{
 };
 use tracing::{
     debug,
+    info,
     trace,
 };
 
@@ -200,6 +201,7 @@ pub struct LuzzerState {
     /// There exists a snapshot of the emulator for each prefix symbol.
     /// If the prefix is popped, the state of the emulator has to be reset.
     current_prefix: Vec<SymbolId>,
+    symbols_applied: usize,
 }
 
 #[derive(Debug)]
@@ -213,6 +215,7 @@ pub struct Luzzer<EmulatorT> {
     emulator: EmulatorT,
     context_path: PathBuf,
     input_info: EmulatorInputInfo,
+    start_time: Instant,
 }
 
 impl<EmulatorT> Luzzer<EmulatorT>
@@ -293,6 +296,7 @@ where
             emulator,
             context_path,
             input_info: Default::default(),
+            start_time: Instant::now(),
         }
     }
 
@@ -380,6 +384,7 @@ where
     }
 
     fn build_state_model(&mut self) {
+        self.start_time = Instant::now();
         let mut dot_path = self.context_path.clone();
         dot_path.push("states.dot");
 
@@ -425,6 +430,12 @@ where
                         });
                     write!(out, "]").unwrap();
                 });
+            info!("Symbols applied: {}", self.state.symbols_applied);
+            info!(
+                "Symbols per second: {}",
+                self.state.symbols_applied as f64 / self.start_time.elapsed().as_secs_f64()
+            );
+            info!("Time elapsed: {:?}", self.start_time.elapsed());
             for _ in 0..depth {
                 self.emulator
                     .discard_current_and_restore_previous_snapshot()
@@ -543,6 +554,7 @@ where
         let status = self.emulator.run(None, None).unwrap();
         assert!(matches!(status, ExitReason::Yielded));
         testcase.executions += 1;
+        self.state.symbols_applied += 1;
     }
 
     fn fuzz(&mut self) {

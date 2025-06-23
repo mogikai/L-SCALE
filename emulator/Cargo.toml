@@ -21,12 +21,12 @@ samples = { path = "../samples" }
 [dependencies]
 addr_align = "0.1.0"
 mogi_system = { path = "../system", version = "0.1.0" }
-mogi_cpu_legacy = { path = "../cpu_legacy", version = "0.1.0" }
 mogi_derive = { path = "../derive", version = "0.1.0" }
 mogi_utilities = { path = "../utilities", version = "0.1.0" }
 itertools = "0.12.*"
 static_assertions = "1.*"
-unicorn-engine = { path = "../deps/unicorn" }
+unicorn-engine = { path = "../deps/unicorn/bindings/rust" }
+unicorn-engine-sys = { path = "../deps/unicorn/bindings/rust/sys" }
 byteorder = "1.*"
 num_enum = "0.7.*"
 goblin = "0.*"
@@ -35,7 +35,6 @@ iced-x86 = "1.20.*"
 tracing = "*"
 bitflags = "2.*"
 enumset = "1.1.*"
-hexdump = "0.1.*"
 thiserror = "1.*"
 generational-arena = "0.2.8"
 imbl = "2.0.*"
@@ -44,7 +43,6 @@ hex = "0.4.*"
 size_format = "1.0.*"
 serde = { version = "1.0.189", features = ["derive"], optional = true }
 bitvec = "1.0.1"
-im-rc = "15.1.0"
 rand = "0.8.5"
 rand_pcg = "0.3.1"
 

@@ -29,13 +29,13 @@ impl Restorable for UCWrapper<'_> {
             next_key: self.next_key,
         });
         self.uc_mut()
-            .ctl_context_mode(ContextMode::CPU | ContextMode::Memory);
+            .ctl_set_context_mode(ContextMode::CPU | ContextMode::MEMORY);
         self.uc
             .as_mut()
             .unwrap()
             .context_save(&mut self.snapshots.last_mut().unwrap().uc_context)
             .map_err(|_| GenericError::unknown())?;
-        self.uc_mut().ctl_context_mode(ContextMode::CPU);
+        self.uc_mut().ctl_set_context_mode(ContextMode::CPU);
         Ok(())
     }
 
@@ -56,13 +56,13 @@ impl Restorable for UCWrapper<'_> {
         self.uc
             .as_mut()
             .unwrap()
-            .ctl_context_mode(ContextMode::CPU | ContextMode::Memory)
+            .ctl_set_context_mode(ContextMode::CPU | ContextMode::MEMORY)
             .map_err(|_| GenericError::unknown())?;
         let result = restore_helper(self.uc.as_mut().unwrap(), snapshot);
         self.uc
             .as_mut()
             .unwrap()
-            .ctl_context_mode(ContextMode::CPU)
+            .ctl_set_context_mode(ContextMode::CPU)
             .map_err(|_| GenericError::unknown())?;
         result?;
         self.next_key = snapshot.next_key;
