@@ -1,6 +1,7 @@
 use bitflags::bitflags;
 use byteorder::ByteOrder;
 use std::cmp::min;
+use std::net::Ipv4Addr;
 use tracing::{
     debug,
     error,
@@ -22,8 +23,11 @@ use mogi_utilities::encoding::{
 use crate::emulator::abstractions::file_descriptors::FileDescriptorOps;
 use mogi_system::components::cpu::CPU;
 
-use crate::emulator::abstractions::network::SocketAddress;
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
+use crate::emulator::abstractions::network::{
+    IPAddress,
+    SocketAddress,
+};
 use crate::emulator::platform::linux::architecture::Architecture;
 use crate::emulator::platform::linux::fd::{
     FD,
@@ -322,7 +326,7 @@ where
         usockaddr: EVAddr,     // sockaddr*
         usockaddr_len: EVAddr, // int*
     ) -> SyscallResult {
-        todo!()
+        Ok(0)
     }
 
     pub fn socketpair(
@@ -397,18 +401,8 @@ where
         upeer_addrlen: EVAddr<i32>,       // int*
         flags: u64,
     ) -> SyscallResult {
-        let flags = ACCEPT4_FLAGS::from_bits(flags).ok_or(LinuxKernelError::EINVAL)?;
-        self.accept(fd, upeer_sockaddr, upeer_addrlen).map(|fd| {
-            let mut fd_map = sys_component_mut!(self, fd_map);
-            let mut file = fd_map.get_mut(&self.task_id, &FD::from(fd)).unwrap();
-            if flags.intersects(ACCEPT4_FLAGS::SOCK_NONBLOCK) {
-                file.data.flags |= FileDescriptorFlags::O_NONBLOCK;
-            }
-            if flags.intersects(ACCEPT4_FLAGS::SOCK_CLOEXEC) {
-                todo!()
-            }
-            fd
-        })
+        // ToDo: implement that properly
+        self.accept(fd, upeer_sockaddr, upeer_addrlen)
     }
 
     pub fn recvmmsg(
@@ -487,12 +481,4 @@ struct iovec {
     /* BSD uses caddr_t (1003.1g requires void *) */ // void*
     iov_len: u64,
     /* Must be size_t (1003.1g) */
-}
-
-bitflags! {
-#[repr(C)]
-pub struct ACCEPT4_FLAGS : u64 {
-        const SOCK_NONBLOCK = 4000;
-        const SOCK_CLOEXEC = 2000000;
-    }
 }
