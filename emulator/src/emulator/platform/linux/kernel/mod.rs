@@ -528,6 +528,15 @@ where
         Ok(0)
     }
 
+    pub fn setitimer(
+        &mut self,
+        which: u64,
+        new: EVAddr,
+        old: EVAddr,
+    ) -> SyscallResult {
+        Ok(0)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn futex(
         &mut self,
@@ -884,6 +893,31 @@ where
     ) -> SyscallResult {
         Ok(0)
         // Err(LinuxKernelError::EINVAL.into())
+    }
+
+    pub fn sysinfo(
+        &mut self,
+        info: EVAddr,
+    ) -> SyscallResult {
+        let mut mmu = sys_component_mut!(self, mmu);
+        let mut memory = sys_component_mut!(self, memory);
+        let mut memory = memory.accessor(&mut mmu, self.task_id);
+
+        memory.write_bytes(info, &1362u64.to_le_bytes()); // uptime
+        memory.write_bytes(info + 8, &418368u64.to_le_bytes()); // loads[0]
+        memory.write_bytes(info + 16, &339200u64.to_le_bytes()); // loads[1]
+        memory.write_bytes(info + 24, &190688u64.to_le_bytes()); // loads[2]
+        memory.write_bytes(info + 32, &32763359232u64.to_le_bytes()); // totalram
+        memory.write_bytes(info + 40, &14997143552u64.to_le_bytes()); // freeram
+        memory.write_bytes(info + 48, &1258500096u64.to_le_bytes()); // sharedram
+        memory.write_bytes(info + 56, &216948736u64.to_le_bytes()); // bufferram
+        memory.write_bytes(info + 64, &8589930496u64.to_le_bytes()); // totalswap
+        memory.write_bytes(info + 72, &8589930496u64.to_le_bytes()); // freeswap
+        memory.write_bytes(info + 80, &6u16.to_le_bytes()); // procs (short)
+        memory.write_bytes(info + 82, &0u64.to_le_bytes()); // totalhigh
+        memory.write_bytes(info + 90, &0u64.to_le_bytes()); // freehigh
+        memory.write_bytes(info + 98, &1u32.to_le_bytes()); // mem_unit
+        Ok(0)
     }
 }
 
