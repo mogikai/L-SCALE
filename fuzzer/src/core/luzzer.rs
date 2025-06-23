@@ -3,14 +3,8 @@ use crate::api::observer::{
     Observe,
 };
 use crate::api::reducer::Reducer;
-use crate::core::fuzzer::SuffixBehavior;
-use crate::observers::bb_based::bb::BlockHitObserver;
-use crate::observers::bb_based::edge::EdgeHitCountObserver;
-use crate::observers::emulator::basic_block::BasicBlockCollector;
 use crate::observers::new::bb::BasicBlockObserver;
-use crate::reducers::bb::behavior::BasicBlockBehaviorReducer;
 use crate::reducers::bb::lsh::BlockHitLshReducer;
-use crate::reducers::edge::InterestingEdgesReducer;
 use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
 use mogi_emulator::emulator::abstractions::network::{
     IPAddress,
@@ -65,7 +59,6 @@ use std::sync::atomic::{
 use std::time::Instant;
 use tlsh::{
     FuzzyHashType,
-    Tlsh,
     hashes,
 };
 use tracing::{
@@ -95,7 +88,7 @@ impl PartialEq for Observation {
     ) -> bool {
         // TODO: Make this threshold value configurable. It is most likely a hyper parameter that needs tuning
         //       depending on the target. It may make sense to have the learner auto-tune this somehow?
-        if self.edge_hash_map.compare(&other.edge_hash_map) < 10 {
+        if self.edge_hash_map.compare(&other.edge_hash_map) < 12 {
             true
         } else {
             false
@@ -388,61 +381,71 @@ where
         let mut dot_path = self.context_path.clone();
         dot_path.push("states.dot");
 
-        let current_row = self
-            .state
-            .learner
-            .get_row_from_prefix(self.state.current_prefix.iter().copied())
-            .unwrap();
-
-        while let Some((row_id, path_from_current)) = self
-            .state
-            .learner
-            .next_row_with_missing_observations(Some(current_row))
-        {
-            let mut depth = 0;
-            for symbol in path_from_current {
-                depth += 1;
-                self.advance_symbol(symbol);
-            }
-
-            self.perform_observations_for_current_state(row_id);
-
-            self.state.learner.make_closed();
-            self.state.learner.make_consistent();
-            debug!("{}", self.state.learner);
-            self.state
+        while self.state.learner.has_missing_observations() {
+            let mut current_row = self
+                .state
                 .learner
-                .export_with_formatter(&dot_path, &self.state.test_cases, |out, symbol| {
-                    write!(out, "[").unwrap();
-                    symbol.component_markers.iter().for_each(|marker| {
-                        write!(out, "{:?}", marker).unwrap();
-                    });
-                    symbol
-                        .tcp_streams
-                        .iter()
-                        .map(|data_id| &self.state.input_data[*data_id].source)
-                        .map(|source| match source {
-                            InputDataSource::File(file) => file.file_name().unwrap().to_str().unwrap(),
-                            InputDataSource::Unknown => "Unknown",
-                        })
-                        .for_each(|source| {
-                            write!(out, "{}, ", source).unwrap();
-                        });
-                    write!(out, "]").unwrap();
-                });
+                .get_row_from_prefix(self.state.current_prefix.iter().copied())
+                .unwrap();
+            // there are still some missing observations somewhere.
+            while let Some((row_id, path_from_current)) = self
+                .state
+                .learner
+                .next_row_with_missing_observations(Some(current_row))
+            {
+                for symbol in path_from_current {
+                    self.advance_symbol(symbol);
+                }
+
+                self.perform_observations_for_current_state(row_id);
+
+                self.state.learner.make_closed();
+                self.state.learner.make_consistent();
+                info!("Symbols applied: {}", self.state.symbols_applied);
+                current_row = row_id;
+            }
+            debug!("{}", self.state.learner);
             info!("Symbols applied: {}", self.state.symbols_applied);
             info!(
                 "Symbols per second: {}",
                 self.state.symbols_applied as f64 / self.start_time.elapsed().as_secs_f64()
             );
             info!("Time elapsed: {:?}", self.start_time.elapsed());
-            for _ in 0..depth {
+            self.export_learned_statemachine(&mut dot_path);
+            // Go back one level
+            if !self.state.current_prefix.is_empty() {
                 self.emulator
                     .discard_current_and_restore_previous_snapshot()
                     .unwrap();
                 self.state.current_prefix.pop();
             }
         }
+    }
+
+    fn export_learned_statemachine(
+        &mut self,
+        dot_path: &mut PathBuf,
+    ) {
+        self.state
+            .learner
+            .export_with_formatter(&dot_path, &self.state.test_cases, |out, symbol| {
+                write!(out, "[").unwrap();
+                symbol.component_markers.iter().for_each(|marker| {
+                    write!(out, "{:?}", marker).unwrap();
+                });
+                symbol
+                    .tcp_streams
+                    .iter()
+                    .map(|data_id| &self.state.input_data[*data_id].source)
+                    .map(|source| match source {
+                        InputDataSource::File(file) => file.file_name().unwrap().to_str().unwrap(),
+                        InputDataSource::Unknown => "Unknown",
+                    })
+                    .for_each(|source| {
+                        write!(out, "{}, ", source).unwrap();
+                    });
+                write!(out, "]").unwrap();
+            });
     }
 
     fn perform_observations_for_current_state(

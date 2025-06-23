@@ -189,6 +189,10 @@ impl<T> StateLearner<T> {
             .filter(|row| self.unobserved_suffixes(*row).next().is_some())
     }
 
+    pub fn has_missing_observations(&self) -> bool {
+        self.rows_with_missing_observations().next().is_some()
+    }
+
     /// Get the prefix required to transition to the provided row
     pub fn get_row_prefix(
         &self,
