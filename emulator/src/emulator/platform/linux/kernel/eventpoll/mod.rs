@@ -64,7 +64,11 @@ where
         &mut self,
         size: u64,
     ) -> SyscallResult {
-        todo!()
+        let mut fd = FileDescriptor::new(Box::new(EpollOps::new()));
+        fd.data.epoll = Some(EpollData::new());
+        Ok(sys_component_mut!(self, fd_map)
+            .insert(&self.task_id, fd)?
+            .into())
     }
 
     // #[unfinished]
