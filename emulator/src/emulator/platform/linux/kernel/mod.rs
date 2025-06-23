@@ -759,7 +759,7 @@ where
             RLIMIT::CORE => todo!(),
             RLIMIT::RSS => todo!(),
             RLIMIT::NPROC => todo!(),
-            RLIMIT::NOFILE => todo!(),
+            RLIMIT::NOFILE => return Err(LinuxKernelError::EINVAL.into()),
             RLIMIT::MEMLOCK => todo!(),
             RLIMIT::AS => todo!(),
             RLIMIT::LOCKS => todo!(),
