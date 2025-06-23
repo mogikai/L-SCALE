@@ -180,7 +180,7 @@ impl FileDescriptorOps for StdInputOps {
         fd: &mut Self::D,
         interest: FileOperationsReady,
     ) -> Option<FileOperationsReady> {
-        todo!()
+        Some(FileOperationsReady::Invalid)
     }
 
     fn supports_poll(
