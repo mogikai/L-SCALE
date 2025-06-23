@@ -92,7 +92,9 @@ impl PartialEq for Observation {
         &self,
         other: &Self,
     ) -> bool {
-        if self.edge_hash_map.compare(&other.edge_hash_map) < 8 {
+        // TODO: Make this threshold value configurable. It is most likely a hyper parameter that needs tuning
+        //       depending on the target. It may make sense to have the learner auto-tune this somehow?
+        if self.edge_hash_map.compare(&other.edge_hash_map) < 10 {
             true
         } else {
             false
@@ -347,25 +349,14 @@ where
     }
 
     fn load_initial_state(&mut self) {
-        // self.create_component_marker_inputs();
-        // FIXME: For now, we simply create one tcp stream in the beginning. The fuzzer is not allowed to create
-        //        any new streams at the moment (during fuzzing)
-        let mut tcp = self.emulator.system().tcp().borrow_mut();
-        let listener_id = tcp.sockets().find(|(_, sock)| sock.is_listener());
-        if listener_id.is_some() {
-            let listener_id = *listener_id.unwrap().0;
-            tcp.new_connection(
-                &listener_id,
-                SocketAddress::IP(IPAddress::V6 {
-                    port: 1337,
-                    flowinfo: 0,
-                    addr: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-                    scope_id: 0,
-                }),
-            )
-            .unwrap();
-        }
+        // Create one component marker input such that the learner can create new tcp streams.
+        let mut new_tcp_stream_testcase = TestCase::default();
+        new_tcp_stream_testcase
+            .component_markers
+            .push(ComponentMarker::NewTcpStream);
+        self.state.test_cases.insert(new_tcp_stream_testcase);
 
+        // load all the inputs in the corpus
         let mut corpus_dir = self.context_path.clone();
         corpus_dir.push("corpus");
         for file in corpus_dir.read_dir().unwrap().flatten() {
@@ -381,6 +372,7 @@ where
             }
         }
 
+        // We need to make sure that the learner has each input as prefix and suffix.
         for test_case_id in self.state.test_cases.keys() {
             self.state.learner.add_prefix([test_case_id]);
             self.state.learner.add_suffix([test_case_id]);
@@ -416,7 +408,10 @@ where
             self.state
                 .learner
                 .export_with_formatter(&dot_path, &self.state.test_cases, |out, symbol| {
-                    write!(out, "TC: [").unwrap();
+                    write!(out, "[").unwrap();
+                    symbol.component_markers.iter().for_each(|marker| {
+                        write!(out, "{:?}", marker).unwrap();
+                    });
                     symbol
                         .tcp_streams
                         .iter()

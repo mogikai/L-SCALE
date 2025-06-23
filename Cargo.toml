@@ -26,6 +26,10 @@ exclude = [
 
 resolver = "2"
 
+[profile.dev.package.unicorn-engine]
+opt-level = 3
+debug = false
+
 [profile.dev.package.cranelift]
 opt-level = 3
 debug = false
