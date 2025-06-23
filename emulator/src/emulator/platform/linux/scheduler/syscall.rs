@@ -235,6 +235,8 @@ where
         SCHED_GETAFFINITY => do_syscall!(3, system, kernel::sched_get_affinity, debug_str),
         UMASK => do_syscall!(1, system, kernel::umask, debug_str),
         PIPE2 => do_syscall!(2, system, kernel::pipe2, debug_str),
+        SYSINFO => do_syscall!(1, system, kernel::sysinfo, debug_str),
+        SETITIMER => do_syscall!(3, system, kernel::setitimer, debug_str),
         _ => Err(SyscallError::NotImplemented),
     }
 }
