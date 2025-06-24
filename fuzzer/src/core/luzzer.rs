@@ -5,6 +5,7 @@ use crate::api::observer::{
 use crate::api::reducer::Reducer;
 use crate::observers::new::bb::BasicBlockObserver;
 use crate::reducers::bb::lsh::BlockHitLshReducer;
+use bon::Builder;
 use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
 use mogi_emulator::emulator::abstractions::network::{
     IPAddress,
@@ -30,6 +31,12 @@ use mogi_statelearner::{
 use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::components::mmu::Permission;
 use mogi_utilities::error::memory::MemoryError;
+use rand::prelude::IndexedRandom;
+use rand::{
+    Rng,
+    SeedableRng,
+};
+use rand_chacha::ChaCha8Rng;
 use serde::{
     Deserialize,
     Serialize,
@@ -44,6 +51,7 @@ use std::fmt::{
     Debug,
     Display,
     Formatter,
+    Write,
 };
 use std::fs;
 use std::path::{
@@ -185,6 +193,23 @@ impl Display for TestCase {
     }
 }
 
+enum SequenceMutation {
+    Insert,
+    Replace,
+    Swap,
+}
+
+impl SequenceMutation {
+    pub fn random(rng: &mut impl Rng) -> Self {
+        match rng.random_range(0..=6) {
+            0..5 => Self::Insert,
+            5 => Self::Replace,
+            6 => Self::Swap,
+            _ => unreachable!(),
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct LuzzerState {
     test_cases: SlotMap<SymbolId, TestCase>,
@@ -197,6 +222,14 @@ pub struct LuzzerState {
     symbols_applied: usize,
 }
 
+#[derive(Debug, Builder)]
+pub struct LuzzerConfig {
+    #[builder(default = false)]
+    do_refinement: bool,
+    context_path: PathBuf,
+    executable_path: PathBuf,
+}
+
 #[derive(Debug)]
 pub struct Luzzer<EmulatorT> {
     state: LuzzerState,
@@ -206,9 +239,9 @@ pub struct Luzzer<EmulatorT> {
     suffix_behavior_reducer: Rc<RefCell<dyn DebuggableReducer<Output = Observation>>>,
     is_crash_reducers: Vec<Rc<RefCell<dyn DebuggableReducer<Output = bool>>>>,
     emulator: EmulatorT,
-    context_path: PathBuf,
     input_info: EmulatorInputInfo,
     start_time: Instant,
+    config: LuzzerConfig,
 }
 
 impl<EmulatorT> Luzzer<EmulatorT>
@@ -217,14 +250,20 @@ where
 {
     pub fn new(
         mut emulator: EmulatorT,
-        context_path: PathBuf,
+        config: LuzzerConfig,
     ) -> Self {
         let memory = emulator.system().memory().borrow();
+        let exe_name = config
+            .executable_path
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap();
         let exe_mappings = memory
             .mappings(&TaskId { pid: 1337, tid: 1 })
             .filter_map(|mapping| {
                 mapping.label.as_ref().and_then(|label| {
-                    if label.contains("open62541") && mapping.permissions.contains(Permission::EXEC) {
+                    if label.contains(exe_name) && mapping.permissions.contains(Permission::EXEC) {
                         Some(mapping)
                     } else {
                         None
@@ -287,26 +326,98 @@ where
             suffix_behavior_reducer: behavior_reducer,
             is_crash_reducers: Default::default(),
             emulator,
-            context_path,
             input_info: Default::default(),
             start_time: Instant::now(),
+            config,
         }
     }
 
     pub fn run(&mut self) {
-        let do_fuzzing = Arc::new(AtomicBool::new(true));
-        {
-            let do_fuzzing = do_fuzzing.clone();
-            ctrlc::set_handler(move || {
-                do_fuzzing.store(false, Ordering::SeqCst);
-            })
-            .expect("Error setting handler");
-        }
+        // let do_fuzzing = Arc::new(AtomicBool::new(true));
+        // {
+        //     let do_fuzzing = do_fuzzing.clone();
+        //     ctrlc::set_handler(move || {
+        //         do_fuzzing.store(false, Ordering::SeqCst);
+        //     })
+        //     .expect("Error setting handler");
+        // }
+        let mut rng = ChaCha8Rng::seed_from_u64(5);
         self.setup();
-        self.build_state_model();
+        self.start_time = Instant::now();
+        self.build_state_model(0, &mut rng);
+        if self.config.do_refinement {
+            for i in 0..5 {
+                info!("-------------------------------------------------------------------------");
+                info!("Doing Sequence mutation phase");
+                self.do_sequence_mutations(&mut rng);
+                info!("Rebuilding state model after sequence mutations");
+                self.build_state_model(1 + i, &mut rng);
+            }
+            info!("--------------------------------------------------");
+            info!("Building final state model.");
+            self.build_state_model(0, &mut rng);
+        }
         // while do_fuzzing.load(Ordering::SeqCst) {
         self.fuzz();
         // }
+    }
+
+    fn do_sequence_mutations(
+        &mut self,
+        rng: &mut impl Rng,
+    ) {
+        let mut new_prefixes = vec![];
+        let symbols = self.state.test_cases.keys().collect::<Vec<_>>();
+        for prefix in self.state.learner.prefixes() {
+            if prefix.len() == 0 {
+                continue;
+            }
+            if rng.random_range(0.0..1.0) < 0.6 {
+                continue;
+            }
+            if new_prefixes.len() > 50 {
+                break;
+            }
+            // We picked the prefix. Mutate now.
+            // Collect the prefix to be able to mutate it.
+            let mut new_prefix = prefix.collect::<Vec<_>>();
+
+            // Do between one and 10 random mutations.
+            for _ in 0..rng.random_range(1..=10) {
+                match SequenceMutation::random(rng) {
+                    SequenceMutation::Insert => {
+                        let index = if new_prefix.len() > 1 {
+                            rng.random_range(0..new_prefix.len())
+                        } else {
+                            0
+                        };
+                        let symbol = *symbols.choose(rng).unwrap();
+                        new_prefix.insert(index, symbol);
+                    }
+                    SequenceMutation::Replace => {
+                        let index = if new_prefix.len() > 1 {
+                            rng.random_range(0..new_prefix.len())
+                        } else {
+                            0
+                        };
+                        let symbol = *symbols.choose(rng).unwrap();
+                        new_prefix[index] = symbol;
+                    }
+                    SequenceMutation::Swap => {
+                        if new_prefix.len() > 1 {
+                            let index_a = rng.random_range(0..new_prefix.len());
+                            let index_b = rng.random_range(0..new_prefix.len());
+                            new_prefix.swap(index_a, index_b);
+                        }
+                    }
+                }
+            }
+
+            new_prefixes.push(new_prefix);
+        }
+        new_prefixes.into_iter().for_each(|prefix| {
+            self.state.learner.add_prefix(prefix);
+        })
     }
 
     fn setup(&mut self) {
@@ -354,7 +465,7 @@ where
         self.state.test_cases.insert(new_tcp_stream_testcase);
 
         // load all the inputs in the corpus
-        let mut corpus_dir = self.context_path.clone();
+        let mut corpus_dir = self.config.context_path.clone();
         corpus_dir.push("corpus");
         for file in corpus_dir.read_dir().unwrap().flatten() {
             if file.file_type().unwrap().is_file() {
@@ -376,12 +487,25 @@ where
         }
     }
 
-    fn build_state_model(&mut self) {
-        self.start_time = Instant::now();
-        let mut dot_path = self.context_path.clone();
+    fn build_state_model(
+        &mut self,
+        iteration: usize,
+        rng: &mut impl Rng,
+    ) {
+        let threshold = if iteration == 0 {
+            0.0
+        } else {
+            0.75 - 0.75 * 0.8f64.powi(iteration as i32)
+        };
+        let mut dot_path = self.config.context_path.clone();
         dot_path.push("states.dot");
 
-        while self.state.learner.has_missing_observations() {
+        while self.state.learner.missing_observation_percentage() > threshold {
+            info!(
+                "Current observation percentage: {} (Threshold: {})",
+                self.state.learner.missing_observation_percentage(),
+                threshold
+            );
             let mut current_row = self
                 .state
                 .learner
@@ -391,7 +515,7 @@ where
             while let Some((row_id, path_from_current)) = self
                 .state
                 .learner
-                .next_row_with_missing_observations(Some(current_row))
+                .random_row_with_missing_observations(Some(current_row), rng)
             {
                 for symbol in path_from_current {
                     self.advance_symbol(symbol);
@@ -399,25 +523,27 @@ where
 
                 self.perform_observations_for_current_state(row_id);
 
-                self.state.learner.make_closed();
-                self.state.learner.make_consistent();
-                info!("Symbols applied: {}", self.state.symbols_applied);
                 current_row = row_id;
             }
-            debug!("{}", self.state.learner);
-            info!("Symbols applied: {}", self.state.symbols_applied);
-            info!(
-                "Symbols per second: {}",
-                self.state.symbols_applied as f64 / self.start_time.elapsed().as_secs_f64()
-            );
-            info!("Time elapsed: {:?}", self.start_time.elapsed());
-            self.export_learned_statemachine(&mut dot_path);
             // Go back one level
             if !self.state.current_prefix.is_empty() {
                 self.emulator
                     .discard_current_and_restore_previous_snapshot()
                     .unwrap();
                 self.state.current_prefix.pop();
+            }
+
+            if self.state.learner.missing_observation_percentage() <= threshold {
+                self.state.learner.make_closed();
+                self.state.learner.make_consistent();
+                trace!("{}", self.state.learner);
+                info!("Symbols applied: {}", self.state.symbols_applied);
+                info!(
+                    "Symbols per second: {}",
+                    self.state.symbols_applied as f64 / self.start_time.elapsed().as_secs_f64()
+                );
+                info!("Time elapsed: {:?}", self.start_time.elapsed());
+                self.export_learned_statemachine(&mut dot_path);
             }
         }
     }

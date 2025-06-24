@@ -119,9 +119,9 @@ where
             },
         };
         let elapsed = start.elapsed();
-        let _span = span!(Level::DEBUG, "elapsed");
+        let _span = span!(Level::TRACE, "elapsed");
         let _span = _span.enter();
-        event!(Level::DEBUG, "Emulation took {} milliseconds", elapsed.as_millis());
+        event!(Level::TRACE, "Emulation took {} milliseconds", elapsed.as_millis());
         self.meters.iter().rev().for_each(|m| m.borrow_mut().stop());
         result
     }

@@ -8,7 +8,10 @@ use crate::{
     SymbolId,
 };
 use fnv::FnvHashSet;
-use petgraph::dot::Dot;
+use petgraph::dot::{
+    Config,
+    Dot,
+};
 use petgraph::graph::{
     EdgeReference,
     NodeIndex,
@@ -54,7 +57,8 @@ impl<T> StateLearner<T> {
             format!("label = \"Node {} ({})\"", node_index.index(), node_rows.len())
         };
 
-        let dot = Dot::with_attr_getters(&self.graph, &[], format_edge, format_node);
+        let dot =
+            Dot::with_attr_getters(&self.graph, &[Config::NodeNoLabel, Config::EdgeNoLabel], format_edge, format_node);
         let mut file = File::options()
             .truncate(true)
             .write(true)

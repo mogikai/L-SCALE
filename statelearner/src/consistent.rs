@@ -9,6 +9,10 @@ use crate::{
     SymbolId,
 };
 use itertools::Itertools;
+use log::{
+    debug,
+    info,
+};
 
 #[derive(Debug)]
 struct ConsistencyViolation {
@@ -40,7 +44,7 @@ where
     /// adding more measurements to distinguish the offending rows.
     pub fn make_consistent(&mut self) {
         while let Some(violation) = self.find_consistent_property_violation() {
-            println!("Found consistent property violation: {:?}", violation);
+            debug!("Found consistency violation: {violation:?}");
             self.fix_consistent_property_violation(violation);
         }
     }
@@ -49,7 +53,10 @@ where
         // offending rows must be in the same graph node
         for state_id in self.graph.node_indices() {
             let state_rows = self.graph.node_weight(state_id).unwrap();
-            for rows in state_rows.iter().cartesian_product(state_rows.iter()) {
+            let state_rows_iter = state_rows
+                .iter()
+                .filter(|rid| self.observation_rows[**rid].is_state());
+            for rows in state_rows_iter.clone().cartesian_product(state_rows_iter) {
                 // find mismatching observation in candidate rows
                 for symbol_id in self.symbols.keys() {
                     // find successors when applying the symbol and compare suffix observation
@@ -68,11 +75,9 @@ where
                         target_rows.0.compare_observations(target_rows.1)
                     {
                         // contradiction found
-                        return Some(ConsistencyViolation::new(
-                            (target_row_ids.0, target_row_ids.1),
-                            symbol_id,
-                            witness,
-                        ));
+                        let violation =
+                            ConsistencyViolation::new((target_row_ids.0, target_row_ids.1), symbol_id, witness);
+                        return Some(violation);
                     }
                 }
             }

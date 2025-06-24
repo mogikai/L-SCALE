@@ -78,6 +78,13 @@ impl<T> ObservationRow<T> {
             .unwrap_or(&Observation::Missing)
     }
 
+    pub fn observation_count(&self) -> usize {
+        self.observations
+            .values()
+            .filter(|observation| !matches!(observation, Observation::Missing))
+            .count()
+    }
+
     pub fn predecessor_transition(&self) -> Option<(ObservationRowId, SymbolId)> {
         match (self.predecessor_row, self.transition_symbol) {
             (Some(row), Some(symbol)) => Some((row, symbol)),

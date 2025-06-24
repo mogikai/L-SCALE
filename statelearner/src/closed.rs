@@ -6,6 +6,10 @@ use crate::{
     ObservationValue,
     StateLearner,
 };
+use log::{
+    debug,
+    info,
+};
 
 impl<T> StateLearner<T>
 where
@@ -13,7 +17,7 @@ where
 {
     pub fn make_closed(&mut self) {
         while let Some(candidate_id) = self.find_closed_property_violation() {
-            println!("Found closed property violation: {:?}", candidate_id);
+            debug!("Found closed property violation: {:?}", candidate_id);
             self.promote_candidate_to_state(candidate_id);
         }
     }

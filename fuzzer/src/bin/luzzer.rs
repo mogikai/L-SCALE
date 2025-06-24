@@ -24,7 +24,10 @@ use mogi_emulator::emulator::system::prng::SeedablePrngMap;
 use mogi_emulator::emulator::system::stdio::Stdio;
 use mogi_emulator::emulator::system::task_manager::TaskManager;
 use mogi_fuzzer::core::fuzzer::Fuzzer;
-use mogi_fuzzer::core::luzzer::Luzzer;
+use mogi_fuzzer::core::luzzer::{
+    Luzzer,
+    LuzzerConfig,
+};
 use mogi_fuzzer::io::tcp::TCP;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -112,6 +115,9 @@ fn setup_luzzer<EmulatorT>(
 ) where
     EmulatorT: Emulator,
 {
-    let mut luzzer = Luzzer::new(emulator, PathBuf::from(args.context));
+    let config = LuzzerConfig::builder()
+        .context_path(PathBuf::from(args.context))
+        .executable_path(PathBuf::from(args.binary));
+    let mut luzzer = Luzzer::new(emulator, config.build());
     luzzer.run();
 }

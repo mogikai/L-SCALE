@@ -4,7 +4,10 @@ use num_enum::{
     IntoPrimitive,
     TryFromPrimitive,
 };
-use tracing::error;
+use tracing::{
+    error,
+    trace,
+};
 
 #[derive(Debug)]
 pub enum Sockopt {
@@ -19,7 +22,7 @@ impl TryFrom<(u64, u64)> for Sockopt {
         Ok(match value.0 {
             1 => Sockopt::Socket(Socket_Sockopt::try_from(value.1).map_err(|_| LinuxKernelError::EINVAL)?),
             _ => {
-                error!("Sockopt {value:?} currently not supported");
+                trace!("Sockopt {value:?} currently not supported");
                 Sockopt::Unknown
             }
         })

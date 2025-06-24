@@ -1,3 +1,4 @@
+use crate::observation::Observation;
 use crate::row::{
     ObservationRow,
     ObservationRowId,
@@ -7,10 +8,12 @@ use fnv::{
     FnvHashSet,
 };
 use itertools::Itertools;
+use log::debug;
 use petgraph::graph::{
     DiGraph,
     NodeIndex,
 };
+use rand::Rng;
 use slotmap::{
     SecondaryMap,
     SlotMap,
@@ -18,8 +21,7 @@ use slotmap::{
 };
 use std::collections::hash_map::Entry;
 use std::fmt::Debug;
-
-use crate::observation::Observation;
+use std::ops::Not;
 use thiserror::Error;
 
 mod closed;
@@ -193,11 +195,21 @@ impl<T> StateLearner<T> {
         self.rows_with_missing_observations().next().is_some()
     }
 
+    pub fn missing_observation_percentage(&self) -> f64 {
+        let total_observations = self.observation_rows.len() * self.suffixes.len();
+        let observation_count: usize = self
+            .observation_rows
+            .values()
+            .map(|row| row.observation_count())
+            .sum();
+        (total_observations - observation_count) as f64 / total_observations as f64
+    }
+
     /// Get the prefix required to transition to the provided row
     pub fn get_row_prefix(
         &self,
         mut row_id: ObservationRowId,
-    ) -> impl Iterator<Item = SymbolId> {
+    ) -> impl ExactSizeIterator<Item = SymbolId> {
         let mut prefix = Vec::new();
         while let Some((predecessor, transition_symbol)) = self.observation_rows[row_id].predecessor_transition() {
             prefix.push(transition_symbol);
@@ -205,6 +217,12 @@ impl<T> StateLearner<T> {
         }
 
         prefix.into_iter().rev()
+    }
+
+    pub fn prefixes(&self) -> impl ExactSizeIterator<Item = impl ExactSizeIterator<Item = SymbolId>> {
+        self.observation_rows
+            .keys()
+            .map(|row_id| self.get_row_prefix(row_id))
     }
 
     /// Find the next [ObservationRow] that has missing observations.
@@ -220,7 +238,52 @@ impl<T> StateLearner<T> {
         let mut frontier = vec![start_row];
         while let Some(current_row) = frontier.pop() {
             // check if current_row has missing observations
-            if let Some(unobserved_suffix) = self.unobserved_suffixes(current_row).next() {
+            if self.unobserved_suffixes(current_row).next().is_some() {
+                // reconstruct partial prefix and return
+                let mut prefix = Vec::new();
+                let mut row = current_row;
+                while row != start_row
+                    && let Some((predecessor_row, transition_symbol)) =
+                        self.observation_rows[row].predecessor_transition()
+                {
+                    prefix.push(transition_symbol);
+                    row = predecessor_row;
+                }
+
+                return Some((current_row, prefix.into_iter().rev()));
+            }
+
+            // process all potential successors
+            for symbol_id in self.symbols.keys() {
+                match self.transitions.get(&(current_row, symbol_id)).copied() {
+                    None => {
+                        // end of path
+                    }
+                    Some(next_row) => {
+                        frontier.push(next_row);
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    pub fn random_row_with_missing_observations<RngT: rand::Rng>(
+        &self,
+        start_row: Option<ObservationRowId>,
+        rng: &mut RngT,
+    ) -> Option<(ObservationRowId, impl Iterator<Item = SymbolId> + Clone + use<T, RngT>)> {
+        let start_row = start_row.unwrap_or(self.initial_row);
+
+        let mut frontier = vec![start_row];
+        while let Some(current_row) = frontier
+            .is_empty()
+            .not()
+            .then(|| frontier.swap_remove(rng.random_range(0..frontier.len())))
+        {
+            // check if current_row has missing observations
+            if self.unobserved_suffixes(current_row).next().is_some() {
                 // reconstruct partial prefix and return
                 let mut prefix = Vec::new();
                 let mut row = current_row;

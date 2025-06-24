@@ -4,6 +4,7 @@ use byteorder::ByteOrder;
 use tracing::{
     debug,
     error,
+    trace,
 };
 
 use mogi_derive::{
@@ -353,7 +354,7 @@ where
             .get_mut(&self.task_id, &fd)
             .ok_or(LinuxKernelError::EBADFD)?;
         let fd = &mut *fd;
-        error!("setsockopt currently not implemented correctly");
+        trace!("setsockopt currently not implemented correctly");
         fd.setsockopt(Sockopt::try_from((level, optname))?)?;
         Ok(0)
     }
