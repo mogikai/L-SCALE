@@ -94,12 +94,12 @@ where
     ) {
         self.graph.clear_edges();
         for ((from_row_id, symbol), to_row_id) in self.transitions.iter() {
-            if exclude_undetermined && from_row_id != to_row_id {
+            if exclude_undetermined {
                 // exclude undetermined, non-self transitions
                 let from_row = &self.observation_rows[*from_row_id];
                 let to_row = &self.observation_rows[*to_row_id];
                 match from_row.compare_observations(&to_row) {
-                    ObservationRowComparison::Equal | ObservationRowComparison::Undetermined => {
+                    ObservationRowComparison::Undetermined => {
                         continue;
                     }
                     _ => {}
