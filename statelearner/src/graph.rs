@@ -24,9 +24,12 @@ use std::fmt::{
 use std::fs::File;
 use std::path::Path;
 
-impl<T> StateLearner<T> {
+impl<T> StateLearner<T>
+where
+    T: ObservationValue,
+{
     pub fn export<S>(
-        &self,
+        &mut self,
         file: &Path,
         symbols: &SlotMap<SymbolId, S>,
     ) where
@@ -36,7 +39,7 @@ impl<T> StateLearner<T> {
     }
 
     pub fn export_with_formatter<S, F>(
-        &self,
+        &mut self,
         file: &Path,
         symbols: &SlotMap<SymbolId, S>,
         symbol_formatter: F,
@@ -44,6 +47,8 @@ impl<T> StateLearner<T> {
         S: Display,
         F: Fn(&mut dyn Write, &S),
     {
+        self.rebuild_graph_transitions(true);
+
         let format_edge = &|_, edge: EdgeReference<FnvHashSet<SymbolId>, _>| {
             let mut label = String::new();
             for symbol_id in edge.weight().iter().copied() {
@@ -68,12 +73,7 @@ impl<T> StateLearner<T> {
         use std::io::Write;
         file.write_fmt(format_args!("{:?}", dot)).unwrap();
     }
-}
 
-impl<T> StateLearner<T>
-where
-    T: ObservationValue,
-{
     pub fn update_graph_for_new_observation(
         &mut self,
         modified: ObservationRowId,
@@ -83,62 +83,44 @@ where
             .or_insert(FnvHashSet::default());
         let added_to_existing = self.update_existing_states(modified);
 
-        self.prune_eliminated_transitions();
-
         if !added_to_existing {
-            self.create_new_state(modified);
+            self.graph.add_node(FnvHashSet::from_iter([modified]));
         }
     }
 
-    pub fn create_new_state(
+    fn rebuild_graph_transitions(
         &mut self,
-        modified: ObservationRowId,
+        exclude_undetermined: bool,
     ) {
-        let row = &self.observation_rows[modified];
-        let new_state = self.graph.add_node(FnvHashSet::from_iter([modified]));
-        if let Some((predecessor_row, transition_symbol)) = row.predecessor_transition() {
-            self.update_graph_for_new_transition(new_state, (predecessor_row, transition_symbol, modified));
-        }
-    }
+        self.graph.clear_edges();
+        for ((from_row_id, symbol), to_row_id) in self.transitions.iter() {
+            if exclude_undetermined {
+                // exclude undetermined transitions
+                let from_row = &self.observation_rows[*from_row_id];
+                let to_row = &self.observation_rows[*to_row_id];
+                match from_row.compare_observations(&to_row) {
+                    ObservationRowComparison::Equal | ObservationRowComparison::Undetermined => {
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
 
-    fn prune_eliminated_transitions(&mut self) {
-        // remove all eliminated transition symbols
-        for edge_index in self.graph.edge_indices() {
-            let (start, end) = self.graph.edge_endpoints(edge_index).unwrap();
-            let start_rows = self
-                .graph
-                .node_weight(start)
-                .unwrap()
-                .iter()
-                .copied()
-                .collect::<Vec<_>>();
-            let end_rows = self
-                .graph
-                .node_weight(end)
-                .unwrap()
-                .iter()
-                .copied()
-                .collect::<Vec<_>>();
-
-            let edge_symbols = self.graph.edge_weight_mut(edge_index).unwrap();
-            edge_symbols.retain(|transition_symbol| {
-                for start_row in start_rows.iter().copied() {
-                    if let Some(target) = self.transitions.get(&(start_row, *transition_symbol))
-                        && end_rows.contains(target)
-                    {
-                        return true;
+            for from_state in self.row_to_state[from_row_id].iter() {
+                for to_state in self.row_to_state[to_row_id].iter() {
+                    match self.graph.find_edge(*from_state, *to_state) {
+                        Some(edge) => {
+                            self.graph.edge_weight_mut(edge).unwrap().insert(*symbol);
+                        }
+                        None => {
+                            let mut symbols: FnvHashSet<SymbolId> = Default::default();
+                            symbols.insert(*symbol);
+                            self.graph.add_edge(*from_state, *to_state, symbols);
+                        }
                     }
                 }
-
-                false
-            });
+            }
         }
-
-        // remove all edges for which there are no transition symbols
-        self.graph.retain_edges(|graph, edge_index| {
-            let transition_symbols = graph.edge_weight(edge_index).unwrap();
-            !transition_symbols.is_empty()
-        });
     }
 
     fn update_existing_states(
@@ -156,10 +138,7 @@ where
                     .expect("We got the key from the graph")
                     .insert(modified);
                 // Add the state we found to the row_to_state map entry for this row.
-                let modified_row = &self.observation_rows[modified];
-                if let Some((predecessor_row, transition_symbol)) = modified_row.predecessor_transition() {
-                    self.update_graph_for_new_transition(state, (predecessor_row, transition_symbol, modified));
-                }
+                self.row_to_state.get_mut(&modified).unwrap().insert(state);
             } else {
                 self.graph
                     .node_weight_mut(state)
@@ -191,32 +170,6 @@ where
                     _ => false,
                 }
             })
-    }
-
-    fn update_graph_for_new_transition(
-        &mut self,
-        target_state: NodeIndex,
-        transition: (ObservationRowId, SymbolId, ObservationRowId),
-    ) {
-        let (predecessor_row, symbol, target_row) = transition;
-        self.row_to_state
-            .get_mut(&target_row)
-            .unwrap()
-            .insert(target_state);
-        let predecessors = self
-            .row_to_state
-            .get(&predecessor_row)
-            .expect("This must have been inserted before");
-
-        for predecessor in predecessors.iter().copied() {
-            let edge = self.graph.find_edge(predecessor, target_state);
-            if let Some(edge) = edge {
-                self.graph.edge_weight_mut(edge).unwrap().insert(symbol);
-            } else {
-                self.graph
-                    .add_edge(predecessor, target_state, FnvHashSet::from_iter([symbol]));
-            }
-        }
     }
 }
 
