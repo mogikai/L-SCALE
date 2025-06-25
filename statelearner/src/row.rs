@@ -110,7 +110,9 @@ where
         &self,
         other: &Self,
     ) -> ObservationRowComparison {
-        let result = if self.observations.len() != other.observations.len() {
+        let mut result = if self.observations.len() != other.observations.len()
+            || (self.observations.is_empty() && other.observations.is_empty())
+        {
             // If the lengths are not equal, then the comparison is undetermined, since one observation
             // row is missing observations.
             // We cannot shortcut here, since it might still be possible that the rows can be determined
@@ -126,12 +128,21 @@ where
                 .observations
                 .get(suffix)
                 .unwrap_or(&Observation::Missing);
-            if let ObservationComparison::NotEqual = observation.compare(other_observation) {
-                // If one of the observations is not equal, then the comparison is not equal.
-                // Even if some observations are still missing, we can already say for certain
-                // that the rows will never be equal.
-                return ObservationRowComparison::NotEqual(suffix);
-            }
+            match observation.compare(other_observation) {
+                ObservationComparison::NotEqual => {
+                    // If one of the observations is not equal, then the comparison is not equal.
+                    // Even if some observations are still missing, we can already say for certain
+                    // that the rows will never be equal.
+                    return ObservationRowComparison::NotEqual(suffix);
+                }
+                ObservationComparison::Undetermined => {
+                    // If one of the observations is undetermined, then the comparison might be
+                    // undetermined. This can only be decided after we have looked at every
+                    // observation.
+                    result = ObservationRowComparison::Undetermined;
+                }
+                _ => {}
+            };
         }
 
         // If we did not determine the rows to be not equal, then the result must be undetermined or equal.
