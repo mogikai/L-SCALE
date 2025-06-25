@@ -9,12 +9,9 @@ use std::time::Duration;
 
 use clap::Parser;
 use core_affinity::CoreId;
-use mogi_emulator::LittleEndian;
-use mogi_emulator::emulator::GenericEmulator;
 use mogi_emulator::emulator::interface::emulator::Emulator;
 use mogi_emulator::emulator::platform::linux::kernel::LinuxKernelTask;
 use mogi_emulator::emulator::platform::linux::scheduler::LinuxX86Scheduler;
-use mogi_emulator::emulator::system::System;
 use mogi_emulator::emulator::system::clock::Clock;
 use mogi_emulator::emulator::system::fd_map::FileDescriptorMap;
 use mogi_emulator::emulator::system::filesystem::Filesystem;
@@ -23,7 +20,9 @@ use mogi_emulator::emulator::system::memory::Memory;
 use mogi_emulator::emulator::system::prng::SeedablePrngMap;
 use mogi_emulator::emulator::system::stdio::Stdio;
 use mogi_emulator::emulator::system::task_manager::TaskManager;
-use mogi_fuzzer::core::fuzzer::Fuzzer;
+use mogi_emulator::emulator::system::System;
+use mogi_emulator::emulator::GenericEmulator;
+use mogi_emulator::LittleEndian;
 use mogi_fuzzer::core::luzzer::{
     Luzzer,
     LuzzerConfig,
@@ -32,8 +31,8 @@ use mogi_fuzzer::io::tcp::TCP;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{
-    EnvFilter,
     fmt,
+    EnvFilter,
 };
 
 #[derive(Parser, Debug)]
@@ -49,6 +48,9 @@ struct Args {
     /// The path on the emulated system to the binary that will be emulated initially.
     #[arg(long, default_value = "/home/user/open62541_server_fuzzing_fixed")]
     binary: String,
+
+    #[arg(long, default_value_t = false)]
+    do_refinement: bool,
 
     /// If set to true, the entire execution will be traced and a disassembly is printed for each instruction that is executed.
     #[arg(short, long, default_value_t = false)]
@@ -117,6 +119,7 @@ fn setup_luzzer<EmulatorT>(
 {
     let config = LuzzerConfig::builder()
         .context_path(PathBuf::from(args.context))
+        .do_refinement(args.do_refinement)
         .executable_path(PathBuf::from(args.binary));
     let mut luzzer = Luzzer::new(emulator, config.build());
     luzzer.run();
