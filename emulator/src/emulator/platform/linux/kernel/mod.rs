@@ -621,7 +621,8 @@ where
                 trace!("Set file descriptor flags {:?}", fd.data.flags);
                 Ok(0)
             }
-            _ => todo!("fcntl operation {} not yet implemented", stringify!(cmd)),
+            _ => Err(LinuxKernelError::EINVAL.into()),
+            // _ => todo!("fcntl operation {} not yet implemented", stringify!(cmd)),
         }
     }
 

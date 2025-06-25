@@ -80,14 +80,6 @@ impl FileDescriptorOps for TcpSocketOps {
         Ok(Some(data))
     }
 
-    fn write(
-        &self,
-        fd: &mut Self::D,
-        data: &[u8],
-    ) -> Result<usize, FileDescriptorError> {
-        Ok(data.len())
-    }
-
     fn bind(
         &self,
         fd: &mut Self::D,
