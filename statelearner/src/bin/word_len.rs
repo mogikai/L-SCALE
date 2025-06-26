@@ -1,5 +1,6 @@
 use itertools::Itertools;
 use mogi_statelearner::{
+    ObservationComparisonResult,
     ObservationValue,
     StateLearner,
     SymbolId,
@@ -34,7 +35,18 @@ impl Display for MyI32 {
     }
 }
 
-impl ObservationValue for MyI32 {}
+impl ObservationValue for MyI32 {
+    fn compare(
+        &self,
+        other: &Self,
+    ) -> ObservationComparisonResult {
+        if self.0.eq(&other.0) {
+            ObservationComparisonResult::equal()
+        } else {
+            ObservationComparisonResult::not_equal()
+        }
+    }
+}
 
 fn main() {
     let symbols = ["A", "B"];

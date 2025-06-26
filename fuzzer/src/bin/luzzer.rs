@@ -28,6 +28,7 @@ use mogi_fuzzer::core::luzzer::{
     LuzzerConfig,
 };
 use mogi_fuzzer::io::tcp::TCP;
+use mogi_statelearner::ObservationEqualityThreshold;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{
@@ -58,6 +59,10 @@ struct Args {
 
     #[arg(long)]
     pin_core: Option<usize>,
+
+    /// The threshold for the observation equality check. Observations are considered equal if their difference is less than the threshold.
+    #[arg(short, long)]
+    threshold: u64,
 }
 
 fn main() {
@@ -125,6 +130,7 @@ fn setup_luzzer<EmulatorT>(
     let config = LuzzerConfig::builder()
         .context_path(PathBuf::from(args.context))
         .do_refinement(args.do_refinement)
+        .threshold(args.threshold.into())
         .executable_path(PathBuf::from(args.binary));
     let mut luzzer = Luzzer::new(emulator, config.build());
     luzzer.run();

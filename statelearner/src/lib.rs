@@ -8,17 +8,16 @@ use fnv::{
     FnvHashSet,
 };
 use itertools::Itertools;
-use log::debug;
 use petgraph::graph::{
     DiGraph,
     NodeIndex,
 };
-use rand::Rng;
 use slotmap::{
     SecondaryMap,
     SlotMap,
     new_key_type,
 };
+use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::fmt::Debug;
 use std::ops::Not;
@@ -34,7 +33,75 @@ pub mod row;
 new_key_type! { pub struct SuffixId; }
 new_key_type! { pub struct SymbolId; }
 
-pub trait ObservationValue: PartialEq + Clone {}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ObservationComparisonResult(u64);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ObservationEqualityThreshold(u64);
+
+impl From<u64> for ObservationEqualityThreshold {
+    fn from(value: u64) -> Self {
+        ObservationEqualityThreshold(value)
+    }
+}
+
+impl ObservationComparisonResult {
+    pub fn equal() -> Self {
+        ObservationComparisonResult(0)
+    }
+
+    pub fn not_equal() -> Self {
+        ObservationComparisonResult(1)
+    }
+
+    pub fn distance(distance: u64) -> Self {
+        ObservationComparisonResult(distance)
+    }
+}
+
+pub trait ObservationValue: Clone {
+    fn compare(
+        &self,
+        other: &Self,
+    ) -> ObservationComparisonResult;
+}
+
+impl PartialEq<ObservationComparisonResult> for ObservationEqualityThreshold {
+    fn eq(
+        &self,
+        other: &ObservationComparisonResult,
+    ) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl PartialEq<ObservationEqualityThreshold> for ObservationComparisonResult {
+    fn eq(
+        &self,
+        other: &ObservationEqualityThreshold,
+    ) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl PartialOrd<ObservationEqualityThreshold> for ObservationComparisonResult {
+    fn partial_cmp(
+        &self,
+        other: &ObservationEqualityThreshold,
+    ) -> Option<Ordering> {
+        self.0.partial_cmp(&other.0)
+    }
+}
+
+impl PartialOrd<ObservationComparisonResult> for ObservationEqualityThreshold {
+    fn partial_cmp(
+        &self,
+        other: &ObservationComparisonResult,
+    ) -> Option<Ordering> {
+        Some(self.0.cmp(&other.0))
+    }
+}
 
 pub type StateLearnerResult<T = ()> = Result<T, StateLearnerError>;
 
@@ -71,6 +138,8 @@ pub struct StateLearner<T> {
     suffix_lookup: FnvHashMap<Vec<SymbolId>, SuffixId>,
 
     initial_row: ObservationRowId,
+
+    threshold: ObservationEqualityThreshold,
 }
 
 impl<T> Default for StateLearner<T>
@@ -95,6 +164,7 @@ where
             suffixes: Default::default(),
             suffix_lookup: Default::default(),
             initial_row,
+            threshold: ObservationEqualityThreshold(0),
         };
         slf.add_missing_candidates();
         slf
@@ -319,12 +389,18 @@ impl<T> StateLearner<T>
 where
     T: ObservationValue,
 {
+    pub fn new_with_threshold(threshold: ObservationEqualityThreshold) -> Self {
+        let mut slf = Self::default();
+        slf.threshold = threshold;
+        slf
+    }
+
     fn promote_candidate_to_state(
         &mut self,
         candidate_id: ObservationRowId,
     ) {
         let row = &mut self.observation_rows[candidate_id];
-        let Some((predecessor_row, transition_symbol)) = row.predecessor_transition() else {
+        if row.predecessor_transition().is_none() {
             panic!("Candidate states must have a predecessor state.")
         };
 
@@ -428,7 +504,7 @@ where
         suffix_id: SuffixId,
         observation: T,
     ) -> StateLearnerResult {
-        self.observation_rows[observation_row].set_observation(suffix_id, observation)?;
+        self.observation_rows[observation_row].set_observation(suffix_id, observation, self.threshold)?;
 
         if self.row_to_state.contains_key(&observation_row) {
             self.update_graph_for_new_observation(observation_row);

@@ -1,4 +1,11 @@
-use crate::ObservationValue;
+use crate::{
+    ObservationEqualityThreshold,
+    ObservationValue,
+};
+use std::cmp::{
+    Ordering,
+    PartialOrd,
+};
 
 #[derive(Default, Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -30,13 +37,18 @@ where
     pub fn compare(
         &self,
         other: &Self,
+        threshold: ObservationEqualityThreshold,
     ) -> ObservationComparison {
         // If all observations are equal, then the comparison returns equal.
         // If one or more differences are found, then the comparison is not equal.
         // If one or both observations are missing, then the comparison is undetermined.
         match (self, other) {
-            (Observation::Observed(a), Observation::Observed(b)) if a == b => ObservationComparison::Equal,
-            (Observation::Observed(a), Observation::Observed(b)) if a != b => ObservationComparison::NotEqual,
+            (Observation::Observed(a), Observation::Observed(b)) if a.compare(b) <= threshold => {
+                ObservationComparison::Equal
+            }
+            (Observation::Observed(a), Observation::Observed(b)) if a.compare(b) > threshold => {
+                ObservationComparison::NotEqual
+            }
             _ => ObservationComparison::Undetermined,
         }
     }

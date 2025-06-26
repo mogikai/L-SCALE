@@ -6,10 +6,7 @@ use crate::{
     ObservationValue,
     StateLearner,
 };
-use log::{
-    debug,
-    info,
-};
+use log::debug;
 
 impl<T> StateLearner<T>
 where
@@ -48,7 +45,7 @@ where
         let candidate_row = &self.observation_rows[candidate_id];
         for row in self.observation_rows.values().filter(|row| row.is_state()) {
             if matches!(
-                row.compare_observations(candidate_row),
+                row.compare_observations(candidate_row, self.threshold),
                 ObservationRowComparison::Equal | ObservationRowComparison::Undetermined
             ) {
                 // The candidate does not violate the closed property, since it is equal (or maybe equal) to

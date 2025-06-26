@@ -24,6 +24,8 @@ use mogi_emulator::emulator::interface::network::tcp::{
 use mogi_emulator::emulator::platform::linux::kernel::task_id::TaskId;
 use mogi_statelearner::row::ObservationRowId;
 use mogi_statelearner::{
+    ObservationComparisonResult,
+    ObservationEqualityThreshold,
     ObservationValue,
     StateLearner,
     SymbolId,
@@ -89,28 +91,20 @@ impl Display for Observation {
     }
 }
 
-impl PartialEq for Observation {
-    fn eq(
-        &self,
-        other: &Self,
-    ) -> bool {
-        // TODO: Make this threshold value configurable. It is most likely a hyper parameter that needs tuning
-        //       depending on the target. It may make sense to have the learner auto-tune this somehow?
-        if self.edge_hash_map.compare(&other.edge_hash_map) < 12 {
-            true
-        } else {
-            false
-        }
-    }
-}
-
 impl Observation {
     pub fn new(edge_hash_map: hashes::Normal) -> Self {
         Self { edge_hash_map }
     }
 }
 
-impl ObservationValue for Observation {}
+impl ObservationValue for Observation {
+    fn compare(
+        &self,
+        other: &Self,
+    ) -> ObservationComparisonResult {
+        ObservationComparisonResult::distance(self.edge_hash_map.compare(&other.edge_hash_map) as u64)
+    }
+}
 
 trait DebuggableReducer: Reducer + Debug {}
 impl<T> DebuggableReducer for T where T: Reducer + Debug {}
@@ -222,12 +216,26 @@ pub struct LuzzerState {
     symbols_applied: usize,
 }
 
+impl LuzzerState {
+    pub fn new_with_threshold(threshold: ObservationEqualityThreshold) -> Self {
+        Self {
+            test_cases: Default::default(),
+            input_data: Default::default(),
+            learner: StateLearner::new_with_threshold(threshold),
+            current_prefix: vec![],
+            symbols_applied: 0,
+        }
+    }
+}
+
 #[derive(Debug, Builder)]
 pub struct LuzzerConfig {
     #[builder(default = false)]
     do_refinement: bool,
     context_path: PathBuf,
     executable_path: PathBuf,
+    #[builder(default = 0.into())]
+    threshold: ObservationEqualityThreshold,
 }
 
 #[derive(Debug)]
@@ -319,7 +327,7 @@ where
         // let behavior_reducer = Rc::new(RefCell::new(BasicBlockBehaviorReducer::new(behavior_observer.clone())));
 
         Self {
-            state: Default::default(),
+            state: LuzzerState::new_with_threshold(config.threshold),
             observers: vec![block_observer],
             behavior_observer,
             is_interesting_reducers: vec![],
@@ -524,6 +532,9 @@ where
                 self.perform_observations_for_current_state(row_id);
 
                 current_row = row_id;
+                self.state.learner.make_closed();
+                self.state.learner.make_consistent();
+                self.export_learned_statemachine(&mut dot_path);
             }
             // Go back one level
             if !self.state.current_prefix.is_empty() {
@@ -536,6 +547,7 @@ where
             if self.state.learner.missing_observation_percentage() <= threshold {
                 self.state.learner.make_closed();
                 self.state.learner.make_consistent();
+                self.export_learned_statemachine(&mut dot_path);
                 trace!("{}", self.state.learner);
                 info!("Symbols applied: {}", self.state.symbols_applied);
                 info!(
@@ -543,7 +555,6 @@ where
                     self.state.symbols_applied as f64 / self.start_time.elapsed().as_secs_f64()
                 );
                 info!("Time elapsed: {:?}", self.start_time.elapsed());
-                self.export_learned_statemachine(&mut dot_path);
             }
         }
     }

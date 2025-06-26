@@ -71,8 +71,9 @@ where
                     let target_rows =
                         (&self.observation_rows[target_row_ids.0], &self.observation_rows[target_row_ids.1]);
 
-                    if let ObservationRowComparison::NotEqual(witness) =
-                        target_rows.0.compare_observations(target_rows.1)
+                    if let ObservationRowComparison::NotEqual(witness) = target_rows
+                        .0
+                        .compare_observations(target_rows.1, self.threshold)
                     {
                         // contradiction found
                         let violation =
