@@ -71,7 +71,6 @@ impl From<FD> for u64 {
 bitflags! {
     #[repr(C)]
     #[derive(Debug, Copy, Clone, Default)]
-    #[unfinished]
     pub struct FileDescriptorFlags: u64 {
         const O_RDONLY = 0;
         const O_WRONLY = 1;

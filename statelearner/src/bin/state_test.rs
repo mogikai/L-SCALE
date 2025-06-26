@@ -14,6 +14,7 @@ use slotmap::{
     new_key_type,
 };
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -166,6 +167,15 @@ impl StateMachine {
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct MyI32(i32);
+
+impl Display for MyI32 {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 impl ObservationValue for MyI32 {}
 

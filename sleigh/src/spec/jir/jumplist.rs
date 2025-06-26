@@ -3,7 +3,6 @@
 //! Match patterns are broken down into simple mask-value checks which we can arrange
 //! hierarchically to avoid having to linearly scan through all cases.
 
-
 use super::context_stack::ContextStack;
 use super::local_resolver::JIRResolver;
 use crate::compiler::InternalCompilerResult;
@@ -359,9 +358,6 @@ impl<'a> MatchContext<'a> {
             consumed_so_far,
         );
 
-        trace_match!("Sublists: {:#?}", sublists);
-        trace_match!("Field extractors: {:#?}", field_extractors);
-
         // the resolver with all local values is needed for the actions so we
         // instantiate it here
         let mut resolver = JIRResolver::new(constructor, constructor_entry.cid);
@@ -394,8 +390,6 @@ impl<'a> MatchContext<'a> {
             );
             resolver.define_field(field_extractor.field_id(), extracted_value);
         }
-
-        trace_match!("Context fields: {:#?}", context_fields);
 
         for (subtable, subresolver) in &state.subresolvers {
             resolver.define_subtable_resolver(*subtable, subresolver.clone())?;
@@ -534,18 +528,14 @@ impl<'a> MatchContext<'a> {
                     .push((consumed_so_far, &entry.field_extractors));
 
                 let result = match &entry.next_entry {
-                    NextJumplistEntry::Constructor(constructor_entry) => {
-                        trace_match!("Reached leaf; cid={cid:?}, tid={tid:?}");
-
-                        self.process_local_matching(
-                            bytes,
-                            addr_offset,
-                            consumed_total,
-                            context_stack,
-                            state,
-                            constructor_entry,
-                        )?
-                    }
+                    NextJumplistEntry::Constructor(constructor_entry) => self.process_local_matching(
+                        bytes,
+                        addr_offset,
+                        consumed_total,
+                        context_stack,
+                        state,
+                        constructor_entry,
+                    )?,
                     NextJumplistEntry::TrailingNext(jlid) => {
                         let jumplist = self
                             .jumplist_cache
