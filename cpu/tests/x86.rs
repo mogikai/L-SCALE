@@ -14,8 +14,6 @@ use mogi_system::components::mmu::{
 };
 use mogi_utilities::addresses::EVAddr;
 use std::num::NonZeroUsize;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
 use zerocopy::IntoBytes;
 
 use crate::common::load_test_object;

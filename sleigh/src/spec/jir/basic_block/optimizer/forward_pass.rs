@@ -174,11 +174,7 @@ mod test {
         OptimizerOptions,
     };
     use crate::spec::jir::common::JIRSize;
-    use crate::spec::jir::jcode::{
-        BinaryArgs,
-        JIRInstruction,
-        UnaryArgs,
-    };
+    use crate::spec::jir::jcode::JIRInstruction;
     use crate::spec::jir::jir_block::JIRBlockId;
     use crate::spec::jir::values::{
         GroupId,
@@ -186,7 +182,6 @@ mod test {
         JIRGroup,
         JIRSlice,
         JIRValue,
-        TempGroupId,
         VarnodeGroupId,
     };
     use crate::spec::{
@@ -227,7 +222,6 @@ mod test {
     #[test]
     fn test_propagate_const_noelim() {
         let space_id = SpaceId::try_from_index(1).unwrap();
-        let group_id = GroupId::try_from_index(1).unwrap();
 
         let mut jir_groups: PrimaryMap<GroupId, JIRGroup> = Default::default();
         jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(0).unwrap()));
@@ -255,7 +249,7 @@ mod test {
             .push_jir_instruction(JIRInstruction::InstructionEnd(0u64.into()))
             .unwrap();
 
-        let block_id = block_builder.finish_block().unwrap();
+        block_builder.finish_block().unwrap();
         let mut block = block_builder.finish(None).unwrap();
         let spec = Rc::new(RefCell::new(SPEC.read().unwrap().clone()));
 
@@ -284,7 +278,6 @@ mod test {
     #[test]
     fn test_propagate_const_elim() {
         let space_id = SpaceId::try_from_index(1).unwrap();
-        let group_id = GroupId::try_from_index(1).unwrap();
 
         let mut jir_groups: PrimaryMap<GroupId, JIRGroup> = Default::default();
         jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(0).unwrap()));
@@ -316,7 +309,7 @@ mod test {
             .push_jir_instruction(JIRInstruction::InstructionEnd(0u64.into()))
             .unwrap();
 
-        let block_id = block_builder.finish_block().unwrap();
+        block_builder.finish_block().unwrap();
         let mut block = block_builder.finish(None).unwrap();
         let spec = Rc::new(RefCell::new(SPEC.read().unwrap().clone()));
 
@@ -345,7 +338,6 @@ mod test {
     #[test]
     fn test_propagate_slice_noelim() {
         let space_id = SpaceId::try_from_index(1).unwrap();
-        let group_id = GroupId::try_from_index(1).unwrap();
 
         let mut jir_groups: PrimaryMap<GroupId, JIRGroup> = Default::default();
         jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(0).unwrap()));
@@ -374,7 +366,7 @@ mod test {
             .push_jir_instruction(JIRInstruction::InstructionEnd(0u64.into()))
             .unwrap();
 
-        let block_id = block_builder.finish_block().unwrap();
+        block_builder.finish_block().unwrap();
         let mut block = block_builder.finish(None).unwrap();
         let spec = Rc::new(RefCell::new(SPEC.read().unwrap().clone()));
 
@@ -403,7 +395,6 @@ mod test {
     #[test]
     fn test_propagate_slice_elim() {
         let space_id = SpaceId::try_from_index(1).unwrap();
-        let group_id = GroupId::try_from_index(1).unwrap();
 
         let mut jir_groups: PrimaryMap<GroupId, JIRGroup> = Default::default();
         jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(0).unwrap()));
@@ -437,7 +428,7 @@ mod test {
             .push_jir_instruction(JIRInstruction::InstructionEnd(0u64.into()))
             .unwrap();
 
-        let block_id = block_builder.finish_block().unwrap();
+        block_builder.finish_block().unwrap();
         let mut block = block_builder.finish(None).unwrap();
         let spec = Rc::new(RefCell::new(SPEC.read().unwrap().clone()));
 

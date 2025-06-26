@@ -46,7 +46,7 @@ fn test_add_overflow_slice_slice() {
 
 #[test]
 fn test_add_overflow_slice_subslice() {
-    let (mut jit, processor_spec, mut context) = setup(false);
+    let (jit, processor_spec, context) = setup(false);
     let r8w_slice = get_reg_slice(&processor_spec, "R8W");
     let r8d_slice = get_reg_slice(&processor_spec, "R8D");
     let result_slice = get_reg_slice(&processor_spec, "EAX");

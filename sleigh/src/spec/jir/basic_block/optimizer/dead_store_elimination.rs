@@ -27,12 +27,17 @@ mod test {
     use crate::compiler::SleighCompilerResult;
     use crate::compiler::builder::SleighCompilerBuilder;
     use crate::jinst;
-    use crate::spec::jir::jcode::BinaryArgs;
     use crate::spec::jir::jir_block::JIRBlockId;
-    use crate::spec::jir::values::{JIRGroup, JIRValue, TempGroupId, VarnodeGroupId};
+    use crate::spec::jir::values::{
+        JIRGroup,
+        TempGroupId,
+        VarnodeGroupId,
+    };
     use mogi_sleigh_parser::preprocessor::SleighPreprocessorFactory;
-    use mogi_utilities::addresses::EVAddr;
-    use mogi_utilities::index_map::{MapKey, PrimaryMap, SecondaryMap};
+    use mogi_utilities::index_map::{
+        MapKey,
+        PrimaryMap,
+    };
     use std::cell::RefCell;
     use std::path::{
         Path,
@@ -116,7 +121,7 @@ mod test {
             .push_jir_instruction(JIRInstruction::InstructionEnd(0u64.into()))
             .unwrap();
 
-        let block_id = block_builder.finish_block().unwrap();
+        block_builder.finish_block().unwrap();
         let mut block = block_builder.finish(None).unwrap();
         let spec = Rc::new(RefCell::new(SPEC.read().unwrap().clone()));
 
@@ -125,51 +130,28 @@ mod test {
             .run_optimization_passes(
                 &spec.borrow(),
                 &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
-                &OptimizerOptions::default().with_enable_dse(true).with_enable_nop_elimination(true),
+                &OptimizerOptions::default()
+                    .with_enable_dse(true)
+                    .with_enable_nop_elimination(true),
             )
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();
 
         assert_eq!(instructions.len(), 8);
-        assert_eq!(
-            instructions[0],
-            &JIRInstruction::BlockStart(JIRBlockId::try_from_index(0).unwrap())
-        );
-        assert_eq!(
-            instructions[1],
-            &JIRInstruction::InstructionStart(0u64.into())
-        );
-        assert_eq!(
-            instructions[2],
-            &jinst! { slice_0 = slice_3 + slice_3 }
-        );
-        assert_eq!(
-            instructions[3],
-            &jinst! { slice_2 = slice_0 + slice_1 }
-        );
-        assert_eq!(
-            instructions[4],
-            &jinst! { slice_0 = slice_3 + slice_4 }
-        );
-        assert_eq!(
-            instructions[5],
-            &jinst! { slice_1 = slice_0 + slice_2 }
-        );
-        assert_eq!(
-            instructions[6],
-            &JIRInstruction::InstructionEnd(0u64.into())
-        );
-        assert_eq!(
-            instructions[7],
-            &JIRInstruction::BlockEnd(JIRBlockId::try_from_index(0).unwrap())
-        );
+        assert_eq!(instructions[0], &JIRInstruction::BlockStart(JIRBlockId::try_from_index(0).unwrap()));
+        assert_eq!(instructions[1], &JIRInstruction::InstructionStart(0u64.into()));
+        assert_eq!(instructions[2], &jinst! { slice_0 = slice_3 + slice_3 });
+        assert_eq!(instructions[3], &jinst! { slice_2 = slice_0 + slice_1 });
+        assert_eq!(instructions[4], &jinst! { slice_0 = slice_3 + slice_4 });
+        assert_eq!(instructions[5], &jinst! { slice_1 = slice_0 + slice_2 });
+        assert_eq!(instructions[6], &JIRInstruction::InstructionEnd(0u64.into()));
+        assert_eq!(instructions[7], &JIRInstruction::BlockEnd(JIRBlockId::try_from_index(0).unwrap()));
     }
 
     #[test]
     fn test_remove_dead_store_spill() {
         let space_id = SpaceId::try_from_index(1).unwrap();
-        let group_id = GroupId::try_from_index(1).unwrap();
 
         let mut jir_groups: PrimaryMap<GroupId, JIRGroup> = Default::default();
         jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(0).unwrap()));
@@ -206,7 +188,7 @@ mod test {
             .push_jir_instruction(JIRInstruction::InstructionEnd(0u64.into()))
             .unwrap();
 
-        let block_id = block_builder.finish_block().unwrap();
+        block_builder.finish_block().unwrap();
         let mut block = block_builder.finish(None).unwrap();
         let spec = Rc::new(RefCell::new(SPEC.read().unwrap().clone()));
 
@@ -215,7 +197,9 @@ mod test {
             .run_optimization_passes(
                 &spec.borrow(),
                 &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
-                &OptimizerOptions::default().with_enable_dse(true).with_enable_nop_elimination(true),
+                &OptimizerOptions::default()
+                    .with_enable_dse(true)
+                    .with_enable_nop_elimination(true),
             )
             .unwrap();
 
@@ -223,40 +207,18 @@ mod test {
 
         // instructions[3] has been eliminated (the slice_0 = slice_1 + slice_2 operation)
         assert_eq!(instructions.len(), 7);
-        assert_eq!(
-            instructions[0],
-            &JIRInstruction::BlockStart(JIRBlockId::try_from_index(0).unwrap())
-        );
-        assert_eq!(
-            instructions[1],
-            &JIRInstruction::InstructionStart(0u64.into())
-        );
-        assert_eq!(
-            instructions[2],
-            &jinst! { slice_0 = slice_3 + slice_3 }
-        );
-        assert_eq!(
-            instructions[3],
-            &jinst! { slice_2 = slice_0 + slice_1 }
-        );
-        assert_eq!(
-            instructions[4],
-            &jinst! { slice_0 = slice_3 + slice_4 }
-        );
-        assert_eq!(
-            instructions[5],
-            &JIRInstruction::InstructionEnd(0u64.into())
-        );
-        assert_eq!(
-            instructions[6],
-            &JIRInstruction::BlockEnd(JIRBlockId::try_from_index(0).unwrap())
-        );
+        assert_eq!(instructions[0], &JIRInstruction::BlockStart(JIRBlockId::try_from_index(0).unwrap()));
+        assert_eq!(instructions[1], &JIRInstruction::InstructionStart(0u64.into()));
+        assert_eq!(instructions[2], &jinst! { slice_0 = slice_3 + slice_3 });
+        assert_eq!(instructions[3], &jinst! { slice_2 = slice_0 + slice_1 });
+        assert_eq!(instructions[4], &jinst! { slice_0 = slice_3 + slice_4 });
+        assert_eq!(instructions[5], &JIRInstruction::InstructionEnd(0u64.into()));
+        assert_eq!(instructions[6], &JIRInstruction::BlockEnd(JIRBlockId::try_from_index(0).unwrap()));
     }
 
     #[test]
     fn test_keep_live_stores() {
         let space_id = SpaceId::try_from_index(1).unwrap();
-        let group_id = GroupId::try_from_index(1).unwrap();
 
         let mut jir_groups: PrimaryMap<GroupId, JIRGroup> = Default::default();
         jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(0).unwrap()));
@@ -294,7 +256,7 @@ mod test {
             .push_jir_instruction(JIRInstruction::InstructionEnd(0u64.into()))
             .unwrap();
 
-        let block_id = block_builder.finish_block().unwrap();
+        block_builder.finish_block().unwrap();
         let mut block = block_builder.finish(None).unwrap();
         let spec = Rc::new(RefCell::new(SPEC.read().unwrap().clone()));
 
@@ -303,55 +265,29 @@ mod test {
             .run_optimization_passes(
                 &spec.borrow(),
                 &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
-                &OptimizerOptions::default().with_enable_dse(true).with_enable_nop_elimination(true),
+                &OptimizerOptions::default()
+                    .with_enable_dse(true)
+                    .with_enable_nop_elimination(true),
             )
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();
 
         assert_eq!(instructions.len(), 9);
-        assert_eq!(
-            instructions[0],
-            &JIRInstruction::BlockStart(JIRBlockId::try_from_index(0).unwrap())
-        );
-        assert_eq!(
-            instructions[1],
-            &JIRInstruction::InstructionStart(0u64.into())
-        );
-        assert_eq!(
-            instructions[2],
-            &jinst! { slice_3 = slice_3 + slice_3 }
-        );
-        assert_eq!(
-            instructions[3],
-            &jinst! { slice_0 = slice_3 + slice_3 }
-        );
-        assert_eq!(
-            instructions[4],
-            &jinst! { slice_1 = slice_0 + slice_2 }
-        );
-        assert_eq!(
-            instructions[5],
-            &jinst! { slice_1 = slice_1 + slice_2 }
-        );
-        assert_eq!(
-            instructions[6],
-            &jinst! { slice_2 = slice_1 + slice_0 }
-        );
-        assert_eq!(
-            instructions[7],
-            &JIRInstruction::InstructionEnd(0u64.into())
-        );
-        assert_eq!(
-            instructions[8],
-            &JIRInstruction::BlockEnd(JIRBlockId::try_from_index(0).unwrap())
-        );
+        assert_eq!(instructions[0], &JIRInstruction::BlockStart(JIRBlockId::try_from_index(0).unwrap()));
+        assert_eq!(instructions[1], &JIRInstruction::InstructionStart(0u64.into()));
+        assert_eq!(instructions[2], &jinst! { slice_3 = slice_3 + slice_3 });
+        assert_eq!(instructions[3], &jinst! { slice_0 = slice_3 + slice_3 });
+        assert_eq!(instructions[4], &jinst! { slice_1 = slice_0 + slice_2 });
+        assert_eq!(instructions[5], &jinst! { slice_1 = slice_1 + slice_2 });
+        assert_eq!(instructions[6], &jinst! { slice_2 = slice_1 + slice_0 });
+        assert_eq!(instructions[7], &JIRInstruction::InstructionEnd(0u64.into()));
+        assert_eq!(instructions[8], &JIRInstruction::BlockEnd(JIRBlockId::try_from_index(0).unwrap()));
     }
 
     #[test]
     fn test_keep_live_stores_overlap() {
         let space_id = SpaceId::try_from_index(1).unwrap();
-        let group_id = GroupId::try_from_index(1).unwrap();
 
         let mut jir_groups: PrimaryMap<GroupId, JIRGroup> = Default::default();
         jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(0).unwrap()));
@@ -383,7 +319,7 @@ mod test {
             .push_jir_instruction(JIRInstruction::InstructionEnd(0u64.into()))
             .unwrap();
 
-        let block_id = block_builder.finish_block().unwrap();
+        block_builder.finish_block().unwrap();
         let mut block = block_builder.finish(None).unwrap();
         let spec = Rc::new(RefCell::new(SPEC.read().unwrap().clone()));
 
@@ -392,47 +328,27 @@ mod test {
             .run_optimization_passes(
                 &spec.borrow(),
                 &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
-                &OptimizerOptions::default().with_enable_dse(true).with_enable_nop_elimination(true),
+                &OptimizerOptions::default()
+                    .with_enable_dse(true)
+                    .with_enable_nop_elimination(true),
             )
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();
 
         assert_eq!(instructions.len(), 7);
-        assert_eq!(
-            instructions[0],
-            &JIRInstruction::BlockStart(JIRBlockId::try_from_index(0).unwrap())
-        );
-        assert_eq!(
-            instructions[1],
-            &JIRInstruction::InstructionStart(0u64.into())
-        );
-        assert_eq!(
-            instructions[2],
-            &jinst! { slice_1 = slice_1 + slice_1 }
-        );
-        assert_eq!(
-            instructions[3],
-            &jinst! { slice_2 = slice_0 + slice_0 }
-        );
-        assert_eq!(
-            instructions[4],
-            &jinst! { slice_1 = slice_3 + slice_3 }
-        );
-        assert_eq!(
-            instructions[5],
-            &JIRInstruction::InstructionEnd(0u64.into())
-        );
-        assert_eq!(
-            instructions[6],
-            &JIRInstruction::BlockEnd(JIRBlockId::try_from_index(0).unwrap())
-        );
+        assert_eq!(instructions[0], &JIRInstruction::BlockStart(JIRBlockId::try_from_index(0).unwrap()));
+        assert_eq!(instructions[1], &JIRInstruction::InstructionStart(0u64.into()));
+        assert_eq!(instructions[2], &jinst! { slice_1 = slice_1 + slice_1 });
+        assert_eq!(instructions[3], &jinst! { slice_2 = slice_0 + slice_0 });
+        assert_eq!(instructions[4], &jinst! { slice_1 = slice_3 + slice_3 });
+        assert_eq!(instructions[5], &JIRInstruction::InstructionEnd(0u64.into()));
+        assert_eq!(instructions[6], &JIRInstruction::BlockEnd(JIRBlockId::try_from_index(0).unwrap()));
     }
 
     #[test]
     fn test_keep_load() {
         let space_id = SpaceId::try_from_index(1).unwrap();
-        let group_id = GroupId::try_from_index(1).unwrap();
 
         let mut jir_groups: PrimaryMap<GroupId, JIRGroup> = Default::default();
         jir_groups.insert(JIRGroup::TempGroup(TempGroupId::try_from_index(0).unwrap()));
@@ -467,7 +383,7 @@ mod test {
             .push_jir_instruction(JIRInstruction::InstructionEnd(0u64.into()))
             .unwrap();
 
-        let block_id = block_builder.finish_block().unwrap();
+        block_builder.finish_block().unwrap();
         let mut block = block_builder.finish(None).unwrap();
         let spec = Rc::new(RefCell::new(SPEC.read().unwrap().clone()));
 
@@ -476,51 +392,28 @@ mod test {
             .run_optimization_passes(
                 &spec.borrow(),
                 &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
-                &OptimizerOptions::default().with_enable_dse(true).with_enable_nop_elimination(true),
+                &OptimizerOptions::default()
+                    .with_enable_dse(true)
+                    .with_enable_nop_elimination(true),
             )
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();
 
         assert_eq!(instructions.len(), 8);
-        assert_eq!(
-            instructions[0],
-            &JIRInstruction::BlockStart(JIRBlockId::try_from_index(0).unwrap())
-        );
-        assert_eq!(
-            instructions[1],
-            &JIRInstruction::InstructionStart(0u64.into())
-        );
-        assert_eq!(
-            instructions[2],
-            &jinst! { slice_0 = slice_0 + slice_0 }
-        );
-        assert_eq!(
-            instructions[3],
-            &jinst! { slice_1 = slice_1 + slice_1 }
-        );
-        assert_eq!(
-            instructions[4],
-            &jinst! { slice_2 = *[space_id]slice_0 }
-        );
-        assert_eq!(
-            instructions[5],
-            &jinst! { slice_3 = *[space_id]slice_1 }
-        );
-        assert_eq!(
-            instructions[6],
-            &JIRInstruction::InstructionEnd(0u64.into())
-        );
-        assert_eq!(
-            instructions[7],
-            &JIRInstruction::BlockEnd(JIRBlockId::try_from_index(0).unwrap())
-        );
+        assert_eq!(instructions[0], &JIRInstruction::BlockStart(JIRBlockId::try_from_index(0).unwrap()));
+        assert_eq!(instructions[1], &JIRInstruction::InstructionStart(0u64.into()));
+        assert_eq!(instructions[2], &jinst! { slice_0 = slice_0 + slice_0 });
+        assert_eq!(instructions[3], &jinst! { slice_1 = slice_1 + slice_1 });
+        assert_eq!(instructions[4], &jinst! { slice_2 = *[space_id]slice_0 });
+        assert_eq!(instructions[5], &jinst! { slice_3 = *[space_id]slice_1 });
+        assert_eq!(instructions[6], &JIRInstruction::InstructionEnd(0u64.into()));
+        assert_eq!(instructions[7], &JIRInstruction::BlockEnd(JIRBlockId::try_from_index(0).unwrap()));
     }
 
     #[test]
     fn test_keep_store() {
         let space_id = SpaceId::try_from_index(1).unwrap();
-        let group_id = GroupId::try_from_index(1).unwrap();
 
         let mut jir_groups: PrimaryMap<GroupId, JIRGroup> = Default::default();
         jir_groups.insert(JIRGroup::VarnodeGroup(VarnodeGroupId::try_from_index(0).unwrap()));
@@ -561,7 +454,7 @@ mod test {
             .push_jir_instruction(JIRInstruction::InstructionEnd(0u64.into()))
             .unwrap();
 
-        let block_id = block_builder.finish_block().unwrap();
+        block_builder.finish_block().unwrap();
         let mut block = block_builder.finish(None).unwrap();
         let spec = Rc::new(RefCell::new(SPEC.read().unwrap().clone()));
 
@@ -570,52 +463,24 @@ mod test {
             .run_optimization_passes(
                 &spec.borrow(),
                 &OptimizerContext::new(SpaceId::try_from_index(0).unwrap(), SpaceId::try_from_index(2).unwrap()),
-                &OptimizerOptions::default().with_enable_dse(true).with_enable_nop_elimination(true),
+                &OptimizerOptions::default()
+                    .with_enable_dse(true)
+                    .with_enable_nop_elimination(true),
             )
             .unwrap();
 
         let instructions = block.instructions().collect::<Vec<_>>();
 
         assert_eq!(instructions.len(), 10);
-        assert_eq!(
-            instructions[0],
-            &JIRInstruction::BlockStart(JIRBlockId::try_from_index(0).unwrap())
-        );
-        assert_eq!(
-            instructions[1],
-            &JIRInstruction::InstructionStart(0u64.into())
-        );
-        assert_eq!(
-            instructions[2],
-            &jinst! { slice_0 = slice_0 + slice_0 }
-        );
-        assert_eq!(
-            instructions[3],
-            &jinst! { slice_1 = slice_1 + slice_1 }
-        );
-        assert_eq!(
-            instructions[4],
-            &jinst! { slice_2 = slice_2 + slice_2 }
-        );
-        assert_eq!(
-            instructions[5],
-            &jinst! { slice_3 = slice_3 + slice_3 }
-        );
-        assert_eq!(
-            instructions[6],
-            &jinst! { *[space_id]slice_0 = slice_2 }
-        );
-        assert_eq!(
-            instructions[7],
-            &jinst! { *[space_id]slice_1 = slice_3 }
-        );
-        assert_eq!(
-            instructions[8],
-            &JIRInstruction::InstructionEnd(0u64.into())
-        );
-        assert_eq!(
-            instructions[9],
-            &JIRInstruction::BlockEnd(JIRBlockId::try_from_index(0).unwrap())
-        );
+        assert_eq!(instructions[0], &JIRInstruction::BlockStart(JIRBlockId::try_from_index(0).unwrap()));
+        assert_eq!(instructions[1], &JIRInstruction::InstructionStart(0u64.into()));
+        assert_eq!(instructions[2], &jinst! { slice_0 = slice_0 + slice_0 });
+        assert_eq!(instructions[3], &jinst! { slice_1 = slice_1 + slice_1 });
+        assert_eq!(instructions[4], &jinst! { slice_2 = slice_2 + slice_2 });
+        assert_eq!(instructions[5], &jinst! { slice_3 = slice_3 + slice_3 });
+        assert_eq!(instructions[6], &jinst! { *[space_id]slice_0 = slice_2 });
+        assert_eq!(instructions[7], &jinst! { *[space_id]slice_1 = slice_3 });
+        assert_eq!(instructions[8], &JIRInstruction::InstructionEnd(0u64.into()));
+        assert_eq!(instructions[9], &JIRInstruction::BlockEnd(JIRBlockId::try_from_index(0).unwrap()));
     }
 }

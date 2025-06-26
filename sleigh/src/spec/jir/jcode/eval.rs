@@ -720,7 +720,6 @@ mod tests {
         JIRConst,
         JIRSlice,
         JIRValue,
-        VarnodeGroupId,
     };
     use mogi_utilities::index_map::MapKey;
     use std::{

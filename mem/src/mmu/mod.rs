@@ -405,13 +405,13 @@ impl MMU for MogiMMU {
                 let entry_ptr = page.tlb_entry_ptr();
                 tlb.insert_read(addr, entry_ptr);
                 Ok(entry_ptr)
-            },
+            }
             MemoryAction::WRITE => {
                 let entry_ptr = page.tlb_entry_ptr_mut();
                 tlb.insert_write(addr, entry_ptr);
                 tlb.insert_read(addr, entry_ptr);
                 Ok(entry_ptr)
-            },
+            }
             MemoryAction::FETCH => todo!(),
             _ => todo!(),
         }
@@ -472,7 +472,7 @@ mod test {
         mmu.alloc_physical(0x8000u64.into(), 10000.align_up(PAGE_SIZE))
             .unwrap();
         // 1 to 1 mapping
-        mmu.set_page_fault_callback(Box::new(|addr, action| {
+        mmu.set_page_fault_callback(Box::new(|addr, _action| {
             Some(TLBEntry::new(addr, EPAddr::from(u64::from(addr)), Permission::ALL, PAGE_SIZE))
         }))
         .unwrap();

@@ -1,3 +1,4 @@
+#![allow(unused_braces)]
 mod and;
 mod bitand;
 mod bitnegate;

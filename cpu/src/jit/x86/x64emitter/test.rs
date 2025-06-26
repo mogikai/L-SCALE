@@ -1,3 +1,4 @@
+#![allow(unused_braces)]
 mod flags;
 mod flow;
 mod load;

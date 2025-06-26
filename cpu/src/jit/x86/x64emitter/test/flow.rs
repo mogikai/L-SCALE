@@ -57,7 +57,7 @@ fn test_goto_direct_if_true() {
 #[test]
 fn test_goto_indirect() {
     let stack_addr = EVAddr::from(0xffff_ffff_ffff_0000u64);
-    let (mut jit, spec, mut context, mut mmu) = setup_with_memory(stack_addr);
+    let (mut jit, spec, mut context, mmu) = setup_with_memory(stack_addr);
     let reg_out = "EAX";
     let reg_addr = "RDX";
     let reg_a = "EBX";
@@ -109,7 +109,7 @@ fn test_goto_direct_if_false() {
 #[test]
 fn test_goto_indirect_if_false() {
     let stack_addr = EVAddr::from(0xffff_ffff_ffff_0000u64);
-    let (mut jit, spec, mut context, mut mmu) = setup_with_memory(stack_addr);
+    let (mut jit, spec, mut context, mmu) = setup_with_memory(stack_addr);
     let reg_out = "EAX";
     let reg_addr = "RDX";
     let reg_a = "EBX";
@@ -163,7 +163,7 @@ fn test_goto_direct_if_true_chained() {
 #[test]
 fn test_goto_indirect_if_true() {
     let stack_addr = EVAddr::from(0xffff_ffff_ffff_0000u64);
-    let (mut jit, spec, mut context, mut mmu) = setup_with_memory(stack_addr);
+    let (mut jit, spec, mut context, mmu) = setup_with_memory(stack_addr);
     let reg_out = "EAX";
     let reg_addr = "RDX";
     let reg_cond = "EBX";

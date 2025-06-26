@@ -19,7 +19,6 @@ use mogi_system::components::mmu::{
 };
 use mogi_utilities::addresses::EVAddr;
 use std::cell::RefCell;
-use std::error;
 use std::path::{
     Path,
     PathBuf,
@@ -29,8 +28,6 @@ use std::sync::{
     LazyLock,
     RwLock,
 };
-use tracing::trace;
-use zerocopy::IntoBytes;
 
 static SPEC: LazyLock<RwLock<ProcessorSpecification>> = LazyLock::new(|| {
     let mut spec_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -47,6 +44,7 @@ fn build(spec_path: &Path) -> SleighCompilerResult<ProcessorSpecification> {
     compiler.compile(spec_path)
 }
 
+#[allow(dead_code)]
 pub(crate) fn dump_registers(cpu: &MogiCPU<X86MogiJit, MogiMMU>) {
     let register_names = [
         "RIP", "RAX", "RBX", "RCX", "RDX", "RDI", "RSI", "RBP", "RSP", "R8", "R9", "R10", "R11", "R12", "R13", "R14",
@@ -75,6 +73,7 @@ pub(crate) fn dump_registers(cpu: &MogiCPU<X86MogiJit, MogiMMU>) {
     eprintln!("");
 }
 
+#[allow(dead_code)]
 pub(crate) fn dump_memory(
     cpu: &MogiCPU<X86MogiJit, MogiMMU>,
     mmu: &Rc<RefCell<MogiMMU>>,
@@ -86,7 +85,7 @@ pub(crate) fn dump_memory(
 
         if offset % 16 == 0 {
             if offset > 0 {
-                eprintln!("");
+                eprintln!();
             }
 
             eprint!("{:#018X}: ", addr);
@@ -98,7 +97,7 @@ pub(crate) fn dump_memory(
         eprint!("{:#010X} ", word);
     }
 
-    eprintln!("");
+    eprintln!();
 }
 
 pub(crate) fn setup_with_bytes(bytes: &[u8]) -> (MogiCPU<X86MogiJit, MogiMMU>, Rc<RefCell<MogiMMU>>) {
@@ -190,17 +189,20 @@ pub(crate) fn load_test_object(
     let content = std::fs::read(&object_path).unwrap();
 
     let elf = Elf::parse(&content).unwrap();
-    let fn_addr = elf.syms.iter().find_map(|sym| {
-        if sym.is_function() && sym.st_value != 0 {
-            let sym_name = elf.strtab.get_at(sym.st_name).unwrap_or("<invalid>");
-            if sym_name == fn_name {
-                return Some(sym.st_value);
+    let fn_addr = elf
+        .syms
+        .iter()
+        .find_map(|sym| {
+            if sym.is_function() && sym.st_value != 0 {
+                let sym_name = elf.strtab.get_at(sym.st_name).unwrap_or("<invalid>");
+                if sym_name == fn_name {
+                    return Some(sym.st_value);
+                }
             }
-        }
 
-        None
-    }).expect(&format!("Couldn't find function '{fn_name}'"));
+            None
+        })
+        .expect(&format!("Couldn't find function '{fn_name}'"));
 
     (content, fn_addr.into())
 }
-

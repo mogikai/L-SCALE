@@ -609,6 +609,7 @@ new_map_key! { pub struct JumplistId; "JMPLST"; }
 
 #[cfg(test)]
 mod test {
+    #![allow(unused)]
     use std::path::Path;
 
     use crate::compiler::SleighCompilerResult;
@@ -857,7 +858,7 @@ mod test {
         let path = ASSETS_PATH.to_string() + "backtrack.sinc";
         let spec = build(path).unwrap();
 
-        let mut context_provider = SimpleContextProvider::default();
+        let context_provider = SimpleContextProvider::default();
 
         let bytes = b"\x01\x01";
         let mut context_stack = ContextStack::new(&spec, &context_provider).unwrap();
