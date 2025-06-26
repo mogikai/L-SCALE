@@ -36,8 +36,8 @@ pub struct ObservationRow<T> {
     /// The observations when applying the corresponding suffix to the
     /// target in the state represented by this row.
     observations: SecondaryMap<SuffixId, Observation<T>>,
-    /// Is this a candidate or a state?
-    is_state: bool,
+    /// Is this row part of the upper or lower table?
+    is_upper: bool,
 }
 
 pub enum ObservationRowComparison {
@@ -48,13 +48,27 @@ pub enum ObservationRowComparison {
     Undetermined,
 }
 
+impl ObservationRowComparison {
+    pub fn not_equal(&self) -> bool {
+        matches!(self, ObservationRowComparison::NotEqual(_))
+    }
+
+    pub fn equal(&self) -> bool {
+        matches!(self, ObservationRowComparison::Equal)
+    }
+
+    pub fn undetermined(&self) -> bool {
+        matches!(self, ObservationRowComparison::Undetermined)
+    }
+}
+
 impl<T> ObservationRow<T> {
     pub fn new_initial() -> Self {
         Self {
             predecessor_row: None,
             transition_symbol: None,
             observations: Default::default(),
-            is_state: true,
+            is_upper: true,
         }
     }
 
@@ -66,7 +80,7 @@ impl<T> ObservationRow<T> {
             predecessor_row: Some(predecessor),
             transition_symbol: Some(symbol),
             observations: Default::default(),
-            is_state: false,
+            is_upper: false,
         }
     }
 
@@ -94,12 +108,12 @@ impl<T> ObservationRow<T> {
     }
 
     #[inline]
-    pub fn is_state(&self) -> bool {
-        self.is_state
+    pub fn is_upper(&self) -> bool {
+        self.is_upper
     }
 
-    pub fn make_state(&mut self) {
-        self.is_state = true;
+    pub fn make_upper(&mut self) {
+        self.is_upper = true;
     }
 }
 

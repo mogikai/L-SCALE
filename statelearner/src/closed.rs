@@ -24,7 +24,7 @@ where
             .transitions
             .values()
             .copied()
-            .filter(|&row| !self.observation_rows[row].is_state())
+            .filter(|&row| !self.observation_rows[row].is_upper())
         {
             if self.candidate_violates_closed_property(candidate_id) {
                 return Some(candidate_id);
@@ -43,7 +43,7 @@ where
         // For our case, since there may be missing observations, rows are considered equal if they have
         // missing observations. They may only be considered unequal if they have at least one differing position.
         let candidate_row = &self.observation_rows[candidate_id];
-        for row in self.observation_rows.values().filter(|row| row.is_state()) {
+        for row in self.observation_rows.values().filter(|row| row.is_upper()) {
             if matches!(
                 row.compare_observations(candidate_row, self.threshold),
                 ObservationRowComparison::Equal | ObservationRowComparison::Undetermined

@@ -78,7 +78,7 @@ where
 
         for (row_id, row) in self.observation_rows.iter() {
             let mut row_string = String::new();
-            if row.is_state() {
+            if row.is_upper() {
                 if let Some(states) = self.row_to_state.get(&row_id)
                     && let Some(first_state) = states.iter().next()
                 {
@@ -90,7 +90,7 @@ where
                 write!(row_string, "{:<16}", "<candidate>")?;
             }
             row.fmt_debug_row(&format!("{}", row_id), &mut row_string, &self.suffixes)?;
-            if row.is_state() {
+            if row.is_upper() {
                 writeln!(f, "{}", ansi_term::Colour::Green.paint(row_string))?;
                 if let Some(states) = self.row_to_state.get(&row_id) {
                     for state in states.iter().skip(1) {

@@ -1,4 +1,5 @@
 use crate::row::{
+    ObservationRow,
     ObservationRowComparison,
     ObservationRowId,
 };
@@ -13,6 +14,8 @@ use log::{
     debug,
     info,
 };
+use slotmap::basic::Iter;
+use std::iter::Filter;
 
 #[derive(Debug)]
 struct ConsistencyViolation {
@@ -51,40 +54,52 @@ where
 
     fn find_consistent_property_violation(&mut self) -> Option<ConsistencyViolation> {
         // offending rows must be in the same graph node
-        for state_id in self.graph.node_indices() {
-            let state_rows = self.graph.node_weight(state_id).unwrap();
-            let state_rows_iter = state_rows
-                .iter()
-                .filter(|rid| self.observation_rows[**rid].is_state());
-            for rows in state_rows_iter.clone().cartesian_product(state_rows_iter) {
-                // find mismatching observation in candidate rows
-                for symbol_id in self.symbols.keys() {
-                    // find successors when applying the symbol and compare suffix observation
-                    let target_row_ids = match (
-                        self.transitions.get(&(*rows.0, symbol_id)).copied(),
-                        self.transitions.get(&(*rows.1, symbol_id)).copied(),
-                    ) {
-                        (Some(id_0), Some(id_1)) => (id_0, id_1),
-                        _ => continue,
-                    };
-
-                    let target_rows =
-                        (&self.observation_rows[target_row_ids.0], &self.observation_rows[target_row_ids.1]);
-
-                    if let ObservationRowComparison::NotEqual(witness) = target_rows
-                        .0
-                        .compare_observations(target_rows.1, self.threshold)
-                    {
-                        // contradiction found
-                        let violation =
-                            ConsistencyViolation::new((target_row_ids.0, target_row_ids.1), symbol_id, witness);
-                        return Some(violation);
-                    }
+        for row_0 in self.lower_rows() {
+            let Some(transition) = row_0.1.predecessor_transition() else {
+                continue;
+            };
+            for row_1 in self.distinct_lower_rows_with_same_symbol(transition) {
+                // row_0 and row_1 are two rows reachable by the same symbol but from a different predecessor
+                let (predecessor_row_id_1, _) = row_1.1.predecessor_transition().unwrap();
+                let predecessor_0 = &self.observation_rows[transition.0];
+                let predecessor_1 = &self.observation_rows[predecessor_row_id_1];
+                assert!(predecessor_0.is_upper() && predecessor_1.is_upper());
+                // Skip not equal predecessors, since we do not have to check for any inconsistencies here.
+                // Unequal predecessors cannot be further distinguished by the suffix.
+                if predecessor_0
+                    .compare_observations(predecessor_1, self.threshold)
+                    .not_equal()
+                {
+                    continue;
+                }
+                // Now we can look for a conflict in the observations of row_0 and row_1
+                if let ObservationRowComparison::NotEqual(witness) =
+                    row_0.1.compare_observations(row_1.1, self.threshold)
+                {
+                    let violation = ConsistencyViolation::new((row_0.0, row_1.0), transition.1, witness);
+                    return Some(violation);
                 }
             }
         }
-
         None
+    }
+
+    fn distinct_lower_rows_with_same_symbol(
+        &self,
+        transition: (ObservationRowId, SymbolId),
+    ) -> impl Iterator<Item = (ObservationRowId, &ObservationRow<T>)> {
+        self.observation_rows.iter().filter(move |(_, row)| {
+            let Some((predecessor_row_id_1, transition_symbol_1)) = row.predecessor_transition() else {
+                return false;
+            };
+            !row.is_upper() && transition.0 != predecessor_row_id_1 && transition.1 == transition_symbol_1
+        })
+    }
+
+    fn lower_rows(&self) -> impl Iterator<Item = (ObservationRowId, &ObservationRow<T>)> {
+        self.observation_rows
+            .iter()
+            .filter(|(_, row)| !row.is_upper())
     }
 
     fn fix_consistent_property_violation(

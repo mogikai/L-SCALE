@@ -406,7 +406,7 @@ where
 
         // move up ^~^
         // make the row great again by making it a state
-        row.make_state();
+        row.make_upper();
 
         // Add the new candidates that are now possible due to the new state.
         self.add_missing_candidates();
@@ -476,7 +476,7 @@ where
             .cartesian_product(
                 self.observation_rows
                     .iter()
-                    .filter_map(|(row_id, row)| row.is_state().then_some(row_id)),
+                    .filter_map(|(row_id, row)| row.is_upper().then_some(row_id)),
             )
             .filter_map(|(symbol, row_id)| {
                 if !self.transitions.contains_key(&(row_id, symbol)) {
@@ -530,7 +530,7 @@ where
         // add words and make candidates
         while let Some(symbol) = prefix.next() {
             let row_id = self.transitions[&(current_row, symbol)];
-            if self.observation_rows[row_id].is_state() {
+            if self.observation_rows[row_id].is_upper() {
                 current_row = row_id;
             } else {
                 if prefix.peek().is_none() {
