@@ -5,6 +5,7 @@ use self::matcher::{
 };
 use crate::compiler::build::constructor::matcher::MatcherReference;
 use crate::compiler::build::trace_build;
+use crate::compiler::error::InternalError;
 use crate::compiler::{
     InternalCompilerResult,
     SleighCompiler,
@@ -113,7 +114,7 @@ impl SleighCompiler {
 
         // if we are in the root table, the first fragment is always interpreted as a mnemonic,
         // i.e. literal
-        let is_root_table = table_id == TableId::try_from_index(0).unwrap();
+        let is_root_table = table_id == self.spec_builder.root_table();
         let display = self.pc_process_display_section(display_section, &mut scope, is_root_table)?;
 
         let actions = self.pc_process_actions(&mut scope, constructor.disassembly_section)?;
@@ -248,7 +249,9 @@ impl SleighCompiler {
                 used_locals.push(local_id);
                 MOIRPatternExpression::Local(local_id)
             }
-            SASTPatternExpression::Integer(value) => MOIRPatternExpression::Integer(value.try_into().unwrap()),
+            SASTPatternExpression::Integer(value) => {
+                MOIRPatternExpression::Integer(value.try_into().map_err(|_| -> InternalError { todo!() })?)
+            }
         })
     }
 
@@ -294,7 +297,6 @@ impl SleighCompiler {
                                             end: MOIRMaybeSize::Undetermined,
                                         };
 
-                                        
                                         scope.declare_local(ident.into_value().into(), slice)
                                     }
                                 }
@@ -397,8 +399,7 @@ impl SleighCompiler {
                         match bytes_consumed {
                             Some(bytes_consumed) => {
                                 // field used and fixed offset
-                                let fe =
-                                    FieldExtractor::new(*field_id, bytes_consumed, field.bits, field.signed);
+                                let fe = FieldExtractor::new(*field_id, bytes_consumed, field.bits, field.signed);
                                 matcher.static_field_extractors.push(fe);
                             }
                             None => {
@@ -672,7 +673,12 @@ impl SleighCompiler {
 
         // TODO where to get this from at this point?
         let addr_bytes = EVAddr::<u8>::bits() / 8;
-        let mut scope = MOIRScope::new(inst_start, inst_next, inst_next2, addr_bytes.try_into().unwrap());
+        let mut scope = MOIRScope::new(
+            inst_start,
+            inst_next,
+            inst_next2,
+            addr_bytes.try_into().expect("addr_bytes must fit in u8"),
+        );
 
         self.resolve_references_to_local_scope(&mut scope, references)?;
         trace_build!("display_identifiers={:?}", display_identifiers);

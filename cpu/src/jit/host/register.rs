@@ -452,15 +452,13 @@ pub struct HostRegClassIter {
 impl Iterator for HostRegClassIter {
     type Item = HostReg;
     fn next(&mut self) -> Option<HostReg> {
-        loop {
-            if self.bits == 0 {
-                return None;
-            }
-            let bit = self.bits.trailing_zeros();
-            self.bits &= !(1 << bit);
-            let hw_enc = bit as u8;
-            return Some(HostReg::new(hw_enc, self.reg_class));
+        if self.bits == 0 {
+            return None;
         }
+        let bit = self.bits.trailing_zeros();
+        self.bits &= !(1 << bit);
+        let hw_enc = bit as u8;
+        Some(HostReg::new(hw_enc, self.reg_class))
     }
 }
 

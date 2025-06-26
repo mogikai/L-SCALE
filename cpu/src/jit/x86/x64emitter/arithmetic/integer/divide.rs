@@ -524,7 +524,7 @@ unsafe extern "sysv64" fn div128(
         // SAFETY: The error variable in the runtime is checked. In case of an error, the emulation will exit
         //         and the unsafe value is not used.
         // We can allow uninitialized values here since they are never used.
-        #[allow(invalid_value)]
+        #[allow(invalid_value, clippy::uninit_assumed_init)]
         return unsafe { std::mem::MaybeUninit::<U128>::uninit().assume_init() };
     };
     U128 {
@@ -554,7 +554,7 @@ unsafe extern "sysv64" fn sdiv128(
         //         and the unsafe value is not used.
 
         // We can allow uninitialized values here since they are never used.
-        #[allow(invalid_value)]
+        #[allow(invalid_value, clippy::uninit_assumed_init)]
         return unsafe { std::mem::MaybeUninit::<U128>::uninit().assume_init() };
     };
     let result = result as u128;
@@ -585,7 +585,7 @@ unsafe extern "sysv64" fn rem128(
         //         and the unsafe value is not used.
 
         // We can allow uninitialized values here since they are never used.
-        #[allow(invalid_value)]
+        #[allow(invalid_value, clippy::uninit_assumed_init)]
         return unsafe { std::mem::MaybeUninit::<U128>::uninit().assume_init() };
     };
     U128 {
@@ -616,7 +616,7 @@ unsafe extern "sysv64" fn srem128(
         //         and the unsafe value is not used.
 
         // We can allow uninitialized values here since they are never used.
-        #[allow(invalid_value)]
+        #[allow(invalid_value, clippy::uninit_assumed_init)]
         return unsafe { std::mem::MaybeUninit::<U128>::uninit().assume_init() };
     };
     let result = result as u128;

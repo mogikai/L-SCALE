@@ -1,8 +1,5 @@
+#![allow(unused_variables)]
 use addr_align::Align;
-use common::{
-    dump_memory,
-    dump_registers,
-};
 use itertools::Itertools;
 use mogi_cpu::cpu::StopReason;
 use mogi_cpu::jit::api::RuntimeError;
@@ -17,14 +14,8 @@ use mogi_system::components::mmu::{
 };
 use mogi_utilities::addresses::EVAddr;
 use std::num::NonZeroUsize;
-use std::path::PathBuf;
-use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{
-    EnvFilter,
-    fmt,
-};
 use zerocopy::IntoBytes;
 
 use crate::common::load_test_object;
@@ -907,7 +898,7 @@ fn test_misc_partition_o0() {
 
     // write input to memory
     let numbers_addr = 0xFFFF_FFFF_FF00_0000u64;
-    const numbers: [i32; 32] = [
+    const NUMBERS: [i32; 32] = [
         -13935, 17471, -23649, 20073, 18135, 11677, 28681, 7075, -31766, 27292, 32352, -13904, 8405, -1462, -10314,
         -19981, 692, 22985, -7727, -28196, -11245, -30707, 31868, 20361, -1579, 28034, -22596, 23481, 20717, -6840,
         15357, 7076,
@@ -920,10 +911,10 @@ fn test_misc_partition_o0() {
         .set_page_table_entry(numbers_addr.into(), numbers_addr.into(), Permission::ALL)
         .unwrap();
     mmu.borrow_mut()
-        .write(numbers_addr.into(), &numbers)
+        .write(numbers_addr.into(), &NUMBERS)
         .unwrap();
 
-    let mut numbers_sorted = numbers.clone();
+    let mut numbers_sorted = NUMBERS.clone();
     numbers_sorted.sort();
 
     // set registers and run
@@ -931,15 +922,15 @@ fn test_misc_partition_o0() {
     *cpu.register_mut("RSP").unwrap() = stack_addr;
     *cpu.register_mut("RDI").unwrap() = numbers_addr;
     *cpu.register_mut("RSI").unwrap() = 0u64;
-    *cpu.register_mut("RDX").unwrap() = numbers.len() as u64 - 1;
+    *cpu.register_mut("RDX").unwrap() = NUMBERS.len() as u64 - 1;
     cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
         .unwrap();
 
     let pi = 16usize;
-    let pivot = *numbers.last().unwrap();
+    let pivot = *NUMBERS.last().unwrap();
 
     // assert correct output
-    let mut output = [0i32; numbers.len()];
+    let mut output = [0i32; NUMBERS.len()];
     mmu.borrow_mut()
         .read(numbers_addr.into(), &mut output)
         .unwrap();
@@ -970,7 +961,7 @@ fn test_misc_partition_o3() {
 
     // write input to memory
     let numbers_addr = 0xFFFF_FFFF_FF00_0000u64;
-    const numbers: [i32; 32] = [
+    const NUMBERS: [i32; 32] = [
         -13935, 17471, -23649, 20073, 18135, 11677, 28681, 7075, -31766, 27292, 32352, -13904, 8405, -1462, -10314,
         -19981, 692, 22985, -7727, -28196, -11245, -30707, 31868, 20361, -1579, 28034, -22596, 23481, 20717, -6840,
         15357, 7076,
@@ -983,10 +974,10 @@ fn test_misc_partition_o3() {
         .set_page_table_entry(numbers_addr.into(), numbers_addr.into(), Permission::ALL)
         .unwrap();
     mmu.borrow_mut()
-        .write(numbers_addr.into(), &numbers)
+        .write(numbers_addr.into(), &NUMBERS)
         .unwrap();
 
-    let mut numbers_sorted = numbers.clone();
+    let mut numbers_sorted = NUMBERS.clone();
     numbers_sorted.sort();
 
     // set registers and run
@@ -994,15 +985,15 @@ fn test_misc_partition_o3() {
     *cpu.register_mut("RSP").unwrap() = stack_addr;
     *cpu.register_mut("RDI").unwrap() = numbers_addr;
     *cpu.register_mut("RSI").unwrap() = 0u64;
-    *cpu.register_mut("RDX").unwrap() = numbers.len() as u64 - 1;
+    *cpu.register_mut("RDX").unwrap() = NUMBERS.len() as u64 - 1;
     cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
         .unwrap();
 
     let pi = 16usize;
-    let pivot = *numbers.last().unwrap();
+    let pivot = *NUMBERS.last().unwrap();
 
     // assert correct output
-    let mut output = [0; numbers.len()];
+    let mut output = [0; NUMBERS.len()];
     mmu.borrow_mut()
         .read(numbers_addr.into(), &mut output)
         .unwrap();
@@ -1033,7 +1024,7 @@ fn test_misc_quicksort_o0() {
 
     // write input to memory
     let numbers_addr = 0xFFFF_FFFF_FF00_0000u64;
-    const numbers: [i32; 32] = [
+    const NUMBERS: [i32; 32] = [
         -13935, 17471, -23649, 20073, 18135, 11677, 28681, 7075, -31766, 27292, 32352, -13904, 8405, -1462, -10314,
         -19981, 692, 22985, -7727, -28196, -11245, -30707, 31868, 20361, -1579, 28034, -22596, 23481, 20717, -6840,
         15357, 7076,
@@ -1046,21 +1037,21 @@ fn test_misc_quicksort_o0() {
         .set_page_table_entry(numbers_addr.into(), numbers_addr.into(), Permission::ALL)
         .unwrap();
     mmu.borrow_mut()
-        .write(numbers_addr.into(), &numbers)
+        .write(numbers_addr.into(), &NUMBERS)
         .unwrap();
 
-    let mut bytes_sorted = numbers.clone();
+    let mut bytes_sorted = NUMBERS.clone();
     bytes_sorted.sort();
 
     *cpu.register_mut("RIP").unwrap() = u64::from(entry);
     *cpu.register_mut("RSP").unwrap() = stack_addr;
     *cpu.register_mut("RDI").unwrap() = numbers_addr;
     *cpu.register_mut("RSI").unwrap() = 0u64;
-    *cpu.register_mut("RDX").unwrap() = numbers.len() as u64 - 1;
+    *cpu.register_mut("RDX").unwrap() = NUMBERS.len() as u64 - 1;
     cpu.run(RunLimit::Address(0xFFFF_FFFF_D34D_0000u64.into()))
         .unwrap();
 
-    let mut output = vec![0i32; numbers.len()];
+    let mut output = vec![0i32; NUMBERS.len()];
     mmu.borrow_mut()
         .read_bytes(numbers_addr.into(), output.as_mut_bytes())
         .unwrap();
@@ -1361,5 +1352,3 @@ fn test_math_multiply_o3() {
     let product: u64 = *cpu.register("RAX").unwrap();
     assert_eq!(product, factor_0 * factor_1);
 }
-
-

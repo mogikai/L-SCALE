@@ -157,6 +157,11 @@ pub struct ProcessorSpecificationBuilder {
 }
 
 impl ProcessorSpecificationBuilder {
+    pub(crate) fn root_table(&self) -> TableId {
+        self.table_id_by_ident(&self.root_table)
+            .expect("The root table must be defined")
+    }
+
     pub(crate) fn interner(&self) -> &SleighInterner {
         &self.interner
     }
@@ -564,9 +569,7 @@ impl ProcessorSpecificationBuilder {
         let space_id = space
             .map(|id| self.space_id_by_ident(&id))
             .transpose()?
-            .or_else(|| {
-                self.default_space.as_ref().map(|default| *default.value())
-            })
+            .or_else(|| self.default_space.as_ref().map(|default| *default.value()))
             .ok_or(InternalErrorType::UndeclaredSymbol)?;
 
         Ok(space_id)

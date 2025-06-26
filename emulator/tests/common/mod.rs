@@ -36,10 +36,10 @@ pub fn setup_test() {
 pub fn get_sysdir() -> PathBuf {
     let mut r = PathBuf::from(samples::systemdir());
     r.push(Path::new("ubuntu_23.04"));
-    return r;
+    r
 }
 
-pub fn prepare_binary(bin: &str) -> Result<(), BuildError>{
+pub fn prepare_binary(bin: &str) -> Result<(), BuildError> {
     let sysdir = get_sysdir();
     let homedir = sysdir.join(Path::new("home/user"));
     let pwd = env::current_dir()?;
@@ -70,6 +70,7 @@ pub fn prepare_binary(bin: &str) -> Result<(), BuildError>{
 }
 
 #[derive(Debug)]
+#[allow(unused)]
 pub enum BuildError {
     IO(std::io::Error),
     RetCode(i32),
@@ -78,12 +79,12 @@ pub enum BuildError {
 
 impl From<std::io::Error> for BuildError {
     fn from(item: std::io::Error) -> Self {
-        Self::IO ( item )
+        Self::IO(item)
     }
 }
 
-
 #[derive(Debug)]
+#[allow(unused)]
 pub enum TestFailure {
     ProcessFailure(StopReason),
     SchedulerFailure(SchedulerError),

@@ -531,7 +531,7 @@ where
                 current_row = row_id;
                 self.state.learner.make_closed();
                 self.state.learner.make_consistent();
-                self.export_learned_statemachine(&mut dot_path);
+                self.export_learned_statemachine(&dot_path);
             }
             // Go back one level
             if !self.state.current_prefix.is_empty() {
@@ -558,7 +558,7 @@ where
 
     fn export_learned_statemachine(
         &mut self,
-        dot_path: &mut PathBuf,
+        dot_path: &Path,
     ) {
         self.state
             .learner

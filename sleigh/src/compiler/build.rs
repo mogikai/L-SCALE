@@ -268,7 +268,7 @@ impl SleighCompiler {
             r#type: r#type.map(|t| t.0).unwrap_or(MOIRSpaceType::Ram),
             address_size: address_size
                 .map(|t| t.0.try_into().expect("The size must fit into MOIRSize"))
-                .unwrap(),
+                .ok_or_else(|| -> InternalError { todo!() })?,
             wordsize: word_size
                 .map(|t| t.0.try_into().expect("The size must fit into MOIRSize"))
                 .unwrap_or(1),

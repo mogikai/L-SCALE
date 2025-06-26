@@ -15,12 +15,11 @@ use mogi_emulator::emulator::system::filesystem::Filesystem;
 use mogi_emulator::emulator::system::hardware::unicorn::UCWrapper;
 use mogi_emulator::emulator::system::memory::Memory;
 use mogi_emulator::emulator::system::prng::SeedablePrngMap;
-use mogi_emulator::emulator::system::task_manager::TaskManager;
 use mogi_emulator::emulator::system::stdio::Stdio;
+use mogi_emulator::emulator::system::task_manager::TaskManager;
 
 use crate::common::TestFailure;
 use crate::common::mocks::tcp_system::MockTCPSystem;
-use mogi_emulator::emulator::abstractions::kernel_task::KernelTask;
 use mogi_system::errors::SchedulerError;
 use mogi_system::errors::cpu::StopReason;
 
@@ -42,7 +41,6 @@ pub fn emulate(
     let system = System::new(cpu, mmu, memory, filesystem, clock, prng_map, fd_map, task_manager, tcp, stdio);
 
     let initial_task = LinuxKernelTask::new(system.clone(), 1337, 1);
-    let task_id = initial_task.task_id();
 
     let args = [];
     let env = ["SHELL=/bin/sh", "LD_BIND_NOW=true"];
@@ -52,7 +50,7 @@ pub fn emulate(
         target_path.to_path_buf(),
         &args,
         &env,
-        target_path.parent().unwrap().to_path_buf()
+        target_path.parent().unwrap().to_path_buf(),
     )?;
     match scheduler.run(None, None) {
         Err(SchedulerError::Stopped(StopReason::ProcessExit(0))) => Ok(()),

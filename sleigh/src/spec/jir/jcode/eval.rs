@@ -1,14 +1,18 @@
+use crate::spec::SpaceId;
 use crate::spec::jir::common::JIRSize;
 use crate::spec::jir::values::{
     JIRConst,
     JIRValue,
 };
-use crate::spec::SpaceId;
 
 use super::JIRInstruction;
 
 impl JIRInstruction {
-    pub fn evaluate(&self, const_space_id: SpaceId) -> Option<JIRConst> {
+    #[allow(clippy::cognitive_complexity)]
+    pub fn evaluate(
+        &self,
+        const_space_id: SpaceId,
+    ) -> Option<JIRConst> {
         // Closure to safely apply size-based masking
         let apply_mask = |value: u128, size: JIRSize| {
             let mask = if size as u32 >= 16 {
@@ -712,7 +716,11 @@ mod tests {
         UnaryArgs,
     };
     use crate::spec::jir::values::{
-        GroupId, JIRConst, JIRSlice, JIRValue, VarnodeGroupId
+        GroupId,
+        JIRConst,
+        JIRSlice,
+        JIRValue,
+        VarnodeGroupId,
     };
     use mogi_utilities::index_map::MapKey;
     use std::{

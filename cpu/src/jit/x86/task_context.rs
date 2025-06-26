@@ -28,7 +28,6 @@ use std::ptr::NonNull;
 /// or tlb pointer.
 #[derive(Debug)]
 #[repr(C, align(4096))]
-
 pub struct X86TaskContext {
     /// Each task has its own TLB, hence this is in the task context.
     /// The TLB facilitates fast [EVAddr] to [HVAddr](mogi_utilities::addresses::HVAddr) translation.
@@ -141,7 +140,9 @@ impl ContextProvider for X86TaskContext {
         name: &str,
         value: u128,
     ) {
-        if let Some(field_id) = processor_spec.field_id_by_string(name) { self.context_values.insert(field_id, value); }
+        if let Some(field_id) = processor_spec.field_id_by_string(name) {
+            self.context_values.insert(field_id, value);
+        }
     }
 
     fn get_by_string(

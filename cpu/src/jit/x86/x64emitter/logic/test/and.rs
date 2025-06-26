@@ -28,6 +28,7 @@ fn test_and_slice_slice() {
 }
 
 #[test]
+#[allow(unused_braces)]
 fn test_and_slice_const_byte() {
     let (mut jit, processor_spec, mut context) = setup(false);
     test_multiple_binary_instruction_generic(

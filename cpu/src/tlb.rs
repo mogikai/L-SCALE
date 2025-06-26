@@ -219,7 +219,7 @@ impl TLB {
     /// Get the page data containing the requested address from the TLB.
     /// If the TLB contains no such entry, None is returned.
     pub unsafe fn page_mut(
-        &self,
+        &mut self,
         addr: EVAddr,
     ) -> Option<&mut PageData> {
         let entry = self.write_entries[addr.index::<PageData>() as usize];
