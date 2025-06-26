@@ -12,7 +12,7 @@ use crate::spec::jir::values::{
 };
 use crate::spec::moir::scope::LabelId;
 use crate::spec::{
-    self, ProcessorSpecResult, ProcessorSpecification, SpaceId
+    ProcessorSpecResult, ProcessorSpecification, SpaceId
 };
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::SecondaryMap;

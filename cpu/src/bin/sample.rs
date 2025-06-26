@@ -24,7 +24,6 @@ use std::fs::{
     File,
     OpenOptions,
 };
-use std::num::NonZeroUsize;
 use std::path::{
     Path,
     PathBuf,
@@ -39,7 +38,6 @@ use tracing_subscriber::{
     EnvFilter,
     fmt,
 };
-use zerocopy::IntoBytes;
 
 fn setup_with_bytes(
     bytes: &[u8],

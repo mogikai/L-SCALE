@@ -1,31 +1,14 @@
 use std::collections::hash_map::Entry;
 
-use fnv::{
-    FnvHashMap,
-    FnvHashSet,
-};
 use itertools::Itertools;
-use mogi_utilities::index_map::{
-    MapKey,
-    PrimaryMap,
-    SecondaryMap,
-};
-use mogi_utilities::{
-    new_map_key,
-    overlap,
-};
+use mogi_utilities::index_map::SecondaryMap;
+use mogi_utilities::new_map_key;
 
 use crate::spec::jir::basic_block::{
     InstId,
     TargetBasicBlockInner,
 };
-use crate::spec::jir::jcode::JIRInstruction;
-use crate::spec::jir::values::{
-    GroupId,
-    JIRGroup,
-    JIRSlice,
-    JIRValue,
-};
+use crate::spec::jir::values::JIRValue;
 use crate::spec::{
     ProcessorSpecResult,
     ProcessorSpecification,

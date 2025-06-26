@@ -61,11 +61,6 @@ use std::path::{
     PathBuf,
 };
 use std::rc::Rc;
-use std::sync::Arc;
-use std::sync::atomic::{
-    AtomicBool,
-    Ordering,
-};
 use std::time::Instant;
 use tlsh::{
     FuzzyHashType,
@@ -257,7 +252,7 @@ where
     EmulatorT: Emulator,
 {
     pub fn new(
-        mut emulator: EmulatorT,
+        emulator: EmulatorT,
         config: LuzzerConfig,
     ) -> Self {
         let memory = emulator.system().memory().borrow();

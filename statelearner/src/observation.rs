@@ -2,10 +2,6 @@ use crate::{
     ObservationEqualityThreshold,
     ObservationValue,
 };
-use std::cmp::{
-    Ordering,
-    PartialOrd,
-};
 
 #[derive(Default, Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

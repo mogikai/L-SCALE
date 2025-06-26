@@ -5,34 +5,22 @@
 //! by the value those slices are initialized with, i.e. either constants or other slices.
 //! Non-copies or const loads (i.e. memory loads or operation results) cannot be optimized.
 
-use mogi_utilities::index_map::{
-    MapKey,
-    SecondaryMap,
-};
+use mogi_utilities::index_map::SecondaryMap;
 
 use crate::jinst;
 use crate::spec::jir::basic_block::{
     InstId,
     TargetBasicBlockInner,
 };
-use crate::spec::jir::jcode::{
-    JIRInstruction,
-    UnaryArgs,
-};
-use crate::spec::jir::values::{
-    JIRConst,
-    JIRGroup,
-    JIRValue,
-};
+use crate::spec::jir::jcode::JIRInstruction;
+use crate::spec::jir::values::JIRValue;
 use crate::spec::{
     ProcessorSpecResult,
     ProcessorSpecification,
-    SpaceId,
 };
 
 use super::{
     LocalSliceId,
-    OptimizerAncillary,
     OptimizerContext,
     OptimizerOptions,
 };

@@ -1,39 +1,7 @@
-use std::cell::RefCell;
 use std::fmt::Debug;
-use std::path::{
-    Path,
-    PathBuf,
-};
-use std::rc::Rc;
-use std::time::Duration;
 
 use clap::Parser;
-use core_affinity::CoreId;
-use petgraph::matrix_graph::NodeIndex;
-use tracing::debug;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{
-    EnvFilter,
-    fmt,
-};
 
-use mogi_emulator::LittleEndian;
-use mogi_emulator::emulator::GenericEmulator;
-use mogi_emulator::emulator::interface::emulator::Emulator;
-use mogi_emulator::emulator::platform::linux::kernel::LinuxKernelTask;
-use mogi_emulator::emulator::platform::linux::scheduler::LinuxX86Scheduler;
-use mogi_emulator::emulator::system::System;
-use mogi_emulator::emulator::system::clock::Clock;
-use mogi_emulator::emulator::system::fd_map::FileDescriptorMap;
-use mogi_emulator::emulator::system::filesystem::Filesystem;
-use mogi_emulator::emulator::system::hardware::unicorn::UCWrapper;
-use mogi_emulator::emulator::system::memory::Memory;
-use mogi_emulator::emulator::system::prng::SeedablePrngMap;
-use mogi_emulator::emulator::system::stdio::Stdio;
-use mogi_emulator::emulator::system::task_manager::TaskManager;
-use mogi_fuzzer::core::fuzzer::Fuzzer;
-use mogi_fuzzer::io::tcp::TCP;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

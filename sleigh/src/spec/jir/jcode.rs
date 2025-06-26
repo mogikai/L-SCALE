@@ -2,7 +2,6 @@ pub mod display;
 pub mod eval;
 mod inline_code;
 
-use std::iter::empty;
 use crate::spec::jir::jir_block::JIRBlockId;
 use crate::spec::jir::values::{
     JIRSlice,
@@ -12,8 +11,6 @@ use crate::spec::moir::address_space::SpaceId;
 use crate::spec::moir::custom_op::CustomOpId;
 pub use inline_code::*;
 use mogi_utilities::addresses::EVAddr;
-use std::marker::PhantomData;
-use std::ptr::NonNull;
 use std::rc::Rc;
 
 /// This enum is used to specify the instructions that may follow the current instruction.

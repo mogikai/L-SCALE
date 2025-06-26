@@ -8,9 +8,7 @@ use super::local_resolver::JIRResolver;
 use crate::compiler::InternalCompilerResult;
 use crate::compiler::error::InternalError;
 use crate::spec::FieldId;
-use crate::spec::jir::common::JIRSize;
 use crate::spec::jir::trace_match;
-use crate::spec::jir::values::JIRConst;
 use crate::spec::moir::common::MOIRSize;
 use crate::spec::moir::constructor::{
     ConstructorId,

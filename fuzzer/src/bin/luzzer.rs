@@ -28,7 +28,6 @@ use mogi_fuzzer::core::luzzer::{
     LuzzerConfig,
 };
 use mogi_fuzzer::io::tcp::TCP;
-use mogi_statelearner::ObservationEqualityThreshold;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{

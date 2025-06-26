@@ -12,17 +12,15 @@ use crate::spec::jir::jir_block::{
     JIRBlockId,
 };
 use crate::spec::jir::values::JIRVarNode;
-use itertools::Either;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::{
     PrimaryMap, PrimaryOffsetMap, SecondaryMap
 };
-use mogi_utilities::new_map_key;
 use optimizer::OptimizerAncillary;
 use std::ops::{Deref, Range};
 use std::rc::Rc;
 
-use super::values::{GroupId, JIRGroup, TempGroupId, VarnodeGroupId};
+use super::values::{GroupId, JIRGroup, TempGroupId};
 
 pub type InstId = usize;
 

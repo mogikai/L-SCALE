@@ -34,13 +34,7 @@ use std::fmt::{
     Formatter,
 };
 use std::rc::Rc;
-use tracing::{debug, trace};
-use zerocopy::{
-    FromBytes,
-    Immutable,
-    IntoBytes,
-    KnownLayout,
-};
+use tracing::trace;
 
 pub type MemResult<T> = Result<T, MemoryError>;
 

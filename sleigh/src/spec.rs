@@ -28,10 +28,9 @@ use crate::spec::moir::token::TokenId;
 use crate::spec::moir::varnode::VarNodeId;
 use brotli::Decompressor;
 use fnv::FnvHashMap;
-use itertools::Either;
 use jir::jumplist::MatchContext;
 use jir::values::{
-    GroupId, JIRGroup, TempGroupId, VarnodeGroup, VarnodeGroupId
+    GroupId, JIRGroup, VarnodeGroup, VarnodeGroupId
 };
 use mogi_sleigh_parser::{
     ParserContext,

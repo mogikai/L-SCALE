@@ -5,11 +5,6 @@ use crate::core::luzzer::Observation;
 use crate::observers::bb_based::edge::EdgeHitObserver;
 use std::cell::RefCell;
 use std::fmt::Debug;
-use std::hash::{
-    DefaultHasher,
-    Hash,
-    Hasher,
-};
 use std::rc::Rc;
 
 /// This reducer reduces an edge observation to a testcase behavior. In the future it might be necessary

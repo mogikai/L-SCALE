@@ -8,9 +8,8 @@ use mogi_utilities::new_map_key;
 use crate::spec::jir::jir_block::{
     JIRBlockId,
 };
-use crate::spec::jir::trace_jir;
 use crate::spec::jir::values::{
-    GroupId, JIRSlice, JIRValue, TempGroupId, VarnodeGroupId
+    GroupId, JIRSlice
 };
 use crate::spec::{
     ProcessorSpecResult,

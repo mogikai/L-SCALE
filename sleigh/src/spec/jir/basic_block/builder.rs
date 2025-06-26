@@ -23,21 +23,17 @@ use crate::spec::jir::values::{
     JIRSlice,
     JIRValue,
     JIRVarNode,
-    TempGroupId,
 };
 use crate::spec::{
     ProcessorSpecResult,
     ProcessorSpecification,
-    ProcessorSpecificationError,
     SpaceId,
 };
 use addr_align::Align;
-use itertools::Either;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::index_map::{
-    MapKey, PrimaryMap, PrimaryOffsetMap, SecondaryMap
+    MapKey, PrimaryOffsetMap
 };
-use std::num::NonZeroU16;
 use std::ops::Range;
 use std::rc::Rc;
 

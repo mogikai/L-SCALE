@@ -89,10 +89,6 @@ use crate::api::observer::{
 };
 use crate::api::reducer::Reducer;
 use crate::observers::bb_based::bb::BlockHitObserver;
-use crate::observers::bb_based::edge::EdgeHitCountObserver;
-use crate::observers::emulator::basic_block::BasicBlockCollector;
-use crate::reducers::bb::behavior::BasicBlockBehaviorReducer;
-use crate::reducers::edge::InterestingEdgesReducer;
 
 /// Testcases have an associated input and some metadata.
 /// The input data may be shared across testcases.

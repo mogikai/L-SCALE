@@ -1,3 +1,0 @@
-[submodule "Ghidra"]
-	path = Ghidra
-	url = git@github.com:icicle-emu/ghidra.git

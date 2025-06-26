@@ -9,13 +9,7 @@ use crate::{
     SuffixId,
     SymbolId,
 };
-use itertools::Itertools;
-use log::{
-    debug,
-    info,
-};
-use slotmap::basic::Iter;
-use std::iter::Filter;
+use log::debug;
 
 #[derive(Debug)]
 struct ConsistencyViolation {

@@ -5,19 +5,8 @@ use mogi_statelearner::{
     StateLearner,
     SymbolId,
 };
-use petgraph::dot::Dot;
-use petgraph::graph::{
-    DiGraph,
-    NodeIndex,
-};
-use petgraph::prelude::EdgeRef;
-use slotmap::{
-    SlotMap,
-    new_key_type,
-};
-use std::collections::HashMap;
+use slotmap::SlotMap;
 use std::fmt::Display;
-use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 use std::thread::sleep;

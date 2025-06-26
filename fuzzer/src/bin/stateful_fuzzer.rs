@@ -132,3 +132,5 @@
 //     let mut fuzzer = Fuzzer::new(emulator, PathBuf::from(args.context));
 //     fuzzer.run();
 // }
+
+fn main() {}

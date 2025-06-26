@@ -7,8 +7,6 @@ edition = "2024"
 
 [dependencies]
 mogi_system = { path = "../system", version = "0.1.0" }
-mogi_cpu_legacy = { path = "../cpu_legacy", version = "0.1.0" }
-mogi_mem_legacy = { path = "../mem_legacy", version = "0.1.0" }
 mogi_utilities = { path = "../utilities", features = ["serde"] }
 mogi_emulator = { path = "../emulator", features = ["serde"] }
 bon = "3.6.4"

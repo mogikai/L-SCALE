@@ -8,8 +8,6 @@ members = [
     "fuzzer",
     #    "gui",
     "samples",
-    "cpu_legacy",
-    "mem_legacy",
     "mem",
     "utilities",
     "system",
@@ -21,30 +19,9 @@ members = [
 
 exclude = [
     "deps",
-    "cpu_legacy/Ghidra"
 ]
 
 resolver = "2"
-
-[profile.dev.package.cranelift]
-opt-level = 3
-debug = false
-
-[profile.dev.package.cranelift-codegen]
-opt-level = 3
-debug = false
-
-[profile.dev.package.cranelift-jit]
-opt-level = 3
-debug = false
-
-[profile.dev.package.cranelift-module]
-opt-level = 3
-debug = false
-
-[profile.dev.package.cranelift-native]
-opt-level = 3
-debug = false
 
 [profile.dev.package.mogi_sleigh]
 opt-level = 0

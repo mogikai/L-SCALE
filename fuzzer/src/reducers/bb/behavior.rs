@@ -5,11 +5,6 @@ use crate::core::luzzer::Observation;
 use crate::observers::bb_based::bb::BlockHitObserver;
 use std::cell::RefCell;
 use std::fmt::Debug;
-use std::hash::{
-    DefaultHasher,
-    Hash,
-    Hasher,
-};
 use std::rc::Rc;
 use tlsh::GeneratorType;
 use zerocopy::IntoBytes;

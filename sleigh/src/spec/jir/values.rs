@@ -10,11 +10,7 @@ use crate::spec::moir::varnode::MOIRVarNode;
 pub use crate::spec::moir::varnode::VarNodeId;
 use mogi_utilities::addresses::EVAddr;
 use mogi_utilities::overlap::overlaps_generic;
-use mogi_utilities::{
-    new_map_key_8,
-    new_map_key_16,
-};
-use serde::de::Error;
+use mogi_utilities::new_map_key_16;
 use serde_derive::{
     Deserialize,
     Serialize,
@@ -24,7 +20,6 @@ use std::fmt::{
     Display,
     Formatter,
 };
-use std::num::NonZeroU8;
 use std::ops::Range;
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]

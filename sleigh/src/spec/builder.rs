@@ -24,9 +24,6 @@ use crate::compiler::error::{
     UndefinedIdentifier,
 };
 use crate::spec::builder::transform::MOIRToJIRTransformer;
-use crate::spec::jir::values::{
-    GroupId, JIRGroup, JIRVarNode, TempGroupId
-};
 use crate::spec::moir::address_space::{
     MOIRSpace,
     MOIRSpaceIsDefault,
@@ -79,7 +76,6 @@ use mogi_utilities::index_map::{
 };
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
-use std::default;
 use std::fs::OpenOptions;
 use std::io::{
     BufWriter,
@@ -734,7 +730,7 @@ impl ProcessorSpecificationBuilder {
         );
 
         let jir = context.transform()?;
-        let mut jir_groups = jir.jir_groups;
+        let jir_groups = jir.jir_groups;
 
         // TODO: Generate more helpful error reports during final build step
         let spec = ProcessorSpecification {

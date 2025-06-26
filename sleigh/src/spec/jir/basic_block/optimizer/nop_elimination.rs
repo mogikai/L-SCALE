@@ -1,10 +1,7 @@
 use crate::spec::ProcessorSpecResult;
 use crate::spec::jir::basic_block::TargetBasicBlockInner;
 use crate::spec::jir::jcode::JIRInstruction;
-use crate::spec::jir::jir_block::{
-    JIRBlock,
-    JIRBlockFallthrough,
-};
+use crate::spec::jir::jir_block::JIRBlockFallthrough;
 
 impl TargetBasicBlockInner {
     pub(super) fn eliminate_nop(&mut self) -> ProcessorSpecResult<u64> {

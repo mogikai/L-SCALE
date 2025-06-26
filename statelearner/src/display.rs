@@ -7,7 +7,6 @@ use crate::{
 use itertools::Itertools;
 use slotmap::Key;
 use std::fmt::{
-    Debug,
     Display,
     Write,
 };
