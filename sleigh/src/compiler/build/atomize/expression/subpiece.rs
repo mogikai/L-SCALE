@@ -63,6 +63,5 @@ impl SleighCompiler {
         // TODO: Generate error when slice fails because of too large sizes.
         value
             .slice(scope, offset, offset + size)
-            .map_err(|e| e.into())
     }
 }

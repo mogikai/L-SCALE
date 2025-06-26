@@ -44,14 +44,13 @@ impl SleighCompiler {
         // If out is not specified we allocate our own out variable to store the result in.
         let out = out.unwrap_or_else(|| scope.allocate_temporary(out_size.or(value_size)));
         // If a value size is specified, then out must be constrained to this size.
-        if let MOIRMaybeSize::Determined(value_size) = value_size {
-            if scope.size_of_local(out).is_undetermined() {
+        if let MOIRMaybeSize::Determined(value_size) = value_size
+            && scope.size_of_local(out).is_undetermined() {
                 // We only want to constrain the size if it is undetermined.
                 // The spec does some wonky stuff here, and allows implicit
                 // zero extends. See below...
                 scope.constrain_local_size(&mut MOIRLocal::from(out), value_size)?;
             }
-        }
         let MOIRMaybeSize::Determined(out_size) = scope.size_of_local(out) else {
             todo!("Generate error for missing size constraint for load")
         };

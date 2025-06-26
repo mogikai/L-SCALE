@@ -148,7 +148,7 @@ impl JIRInstruction {
                     let size = a.size();
                     let a_val = a.value();
                     let b_val = b.value();
-                    assert!(b_val < (size as u128 * 8), "Shift amount {} is too large for {}-byte value", b_val, size);
+                    assert!(b_val < (size as u128 * 8), "Shift amount {b_val} is too large for {size}-byte value");
                     let shift = b_val as u32;
                     Some(JIRConst::new(apply_mask(a_val << shift, size), size))
                 } else {
@@ -160,7 +160,7 @@ impl JIRInstruction {
                     let size = a.size();
                     let a_val = a.value();
                     let b_val = b.value();
-                    assert!(b_val < (size as u128 * 8), "Shift amount {} is too large for {}-byte value", b_val, size);
+                    assert!(b_val < (size as u128 * 8), "Shift amount {b_val} is too large for {size}-byte value");
                     let shift = b_val as u32;
                     Some(JIRConst::new(apply_mask(a_val >> shift, size), size))
                 } else {
@@ -174,7 +174,7 @@ impl JIRInstruction {
                     let a_val = a.value();
                     let b_val = b.value();
 
-                    assert!(b_val < bit_size as u128, "Shift amount {} is too large for {}-byte value", b_val, size);
+                    assert!(b_val < bit_size as u128, "Shift amount {b_val} is too large for {size}-byte value");
                     let shift = b_val as u32;
 
                     // Check if sign bit is set

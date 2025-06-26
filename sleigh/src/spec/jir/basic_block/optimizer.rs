@@ -1,15 +1,20 @@
 use std::fmt::Display;
 use std::ops::Range;
 
-use fnv::{FnvHashMap, FnvHashSet};
-use mogi_utilities::index_map::{PrimaryMap, SecondaryMap};
+use fnv::{
+    FnvHashMap,
+    FnvHashSet,
+};
+use mogi_utilities::index_map::{
+    PrimaryMap,
+    SecondaryMap,
+};
 use mogi_utilities::new_map_key;
 
-use crate::spec::jir::jir_block::{
-    JIRBlockId,
-};
+use crate::spec::jir::jir_block::JIRBlockId;
 use crate::spec::jir::values::{
-    GroupId, JIRSlice
+    GroupId,
+    JIRSlice,
 };
 use crate::spec::{
     ProcessorSpecResult,
@@ -135,23 +140,23 @@ impl Display for OptimizerAncillary {
     ) -> std::fmt::Result {
         writeln!(f, "Optimizer ancillary:")?;
         for (slice, slice_id) in self.slice_to_id.iter() {
-            writeln!(f, "slice[{:6}] = {slice}", slice_id)?;
+            writeln!(f, "slice[{slice_id:6}] = {slice}")?;
         }
 
         for (group_id, group_slices) in self.group_slices.items() {
-            writeln!(f, "group[{group_id}] slices: {:?}", group_slices)?;
+            writeln!(f, "group[{group_id}] slices: {group_slices:?}")?;
         }
 
         for (block_id, block_writes) in self.block_writes.items() {
-            writeln!(f, "block[{block_id}] writes: {:?}", block_writes)?;
+            writeln!(f, "block[{block_id}] writes: {block_writes:?}")?;
         }
 
         for (block_id, block_reads) in self.block_reads.items() {
-            writeln!(f, "block[{block_id}] reads: {:?}", block_reads)?;
+            writeln!(f, "block[{block_id}] reads: {block_reads:?}")?;
         }
 
         for (block_id, dead_stores) in self.dead_stores.items() {
-            writeln!(f, "block[{block_id}] dead stores: {:?}", dead_stores)?;
+            writeln!(f, "block[{block_id}] dead stores: {dead_stores:?}")?;
         }
 
         Ok(())
@@ -195,14 +200,17 @@ impl TargetBasicBlockInner {
         options: &OptimizerOptions,
     ) -> ProcessorSpecResult {
         self.populate_ancillary(spec)?;
+        #[allow(unused)]
         let prev_count = self.jir_instructions.len();
 
         if options.enable_dse {
+            #[allow(unused)]
             let elim_count = self.eliminate_dead_stores()?;
             trace_opt!("Dead-store elimination eliminated {} instructions", elim_count);
         }
 
         if options.enable_copy_coalescing {
+            #[allow(unused)]
             let (elim_count, const_fold_count) = self.forward_pass(spec, context, options)?;
             trace_opt!("Copy coalescion eliminated {} instructions, folded {} constants", elim_count, const_fold_count);
         }
@@ -210,11 +218,13 @@ impl TargetBasicBlockInner {
         // other passes don't delete instructions but rather replace them by NOPs
         // which are all deleted in this final pass
         if options.enable_nop_elimination {
+            #[allow(unused)]
             let elim_count = self.eliminate_nop()?;
             trace_opt!("NOP elimination eliminated {} instructions", elim_count);
         }
 
         let after_count = self.jir_instructions.len();
+        #[allow(unused)]
         let total_elim_count = prev_count - after_count;
         trace_opt!(
             "Optimization eliminated {}/{} instructions ({}%)",

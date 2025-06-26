@@ -15,7 +15,6 @@ use crate::spec::jir::jcode::ContinueLifting;
 use crate::spec::jir::jumplist::MatcherResult;
 use crate::spec::jir::trace_jir;
 use mogi_utilities::addresses::EVAddr;
-use std::time::Instant;
 
 use super::jir::jumplist::MatchContext;
 
@@ -41,10 +40,10 @@ impl Lifter for ProcessorSpecification {
         block_builder.start_block().unwrap();
         let mut instruction_count = 0usize;
         loop {
-            if let Some(stop_addr) = config.stop_addr {
-                if stop_addr == addr {
-                    break;
-                }
+            if let Some(stop_addr) = config.stop_addr
+                && stop_addr == addr
+            {
+                break;
             }
 
             trace_jir!("Loading instruction bytes at {:?}", addr);
@@ -59,14 +58,13 @@ impl Lifter for ProcessorSpecification {
             let match_context = MatchContext::new(addr, &self.jumplist_cache, &self.symbol_tables.constructors);
             let matching_result = match_context.r#match(&buffer, &mut context_stack).unwrap();
 
-            let now = Instant::now();
             match matching_result {
                 MatcherResult::EndOfByteStream => Err(LifterError::EndOfBytes)?,
                 MatcherResult::None => Err(LifterError::NoMatch(buffer.to_vec()))?,
                 MatcherResult::Some {
                     table: _,
                     resolver,
-                    bytes_consumed,
+                    bytes_consumed: _,
                 } => {
                     trace_jir!("Found match and consumed {} bytes", bytes_consumed);
                     trace_jir!("{}", resolver.hierarchy_debug_string().unwrap());
@@ -94,8 +92,8 @@ impl Lifter for ProcessorSpecification {
         block_builder.finish_block().unwrap();
 
         let range = start_addr..addr;
-        Ok(block_builder
+        block_builder
             .finish(Some(range))
-            .map_err(|_| -> LifterError { todo!() })?)
+            .map_err(|_| -> LifterError { todo!() })
     }
 }

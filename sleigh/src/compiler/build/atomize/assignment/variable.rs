@@ -35,11 +35,10 @@ impl SleighCompiler {
             // This can for example happen, if rhs can be folded into a const, in which case
             // we simply copy the const into the lhs here.
             // We can additionally constrain the lhs size to the rhs size if it is determined.
-            if scope.size_of_local(lhs).is_undetermined() {
-                if let MOIRMaybeSize::Determined(size) = rhs.size(scope) {
+            if scope.size_of_local(lhs).is_undetermined()
+                && let MOIRMaybeSize::Determined(size) = rhs.size(scope) {
                     scope.constrain_local_id_size(lhs, size)?;
                 }
-            }
             instructions.push(moir_instruction!(lhs = rhs));
         }
         Ok(())
@@ -54,7 +53,7 @@ fn resolve_lhs(
 ) -> InternalCompilerResult<MOIRLocalId> {
     let lhs = if local.into_value() {
         // The variable is not declared yet. We allocate it now.
-        scope.allocate_named_temporary(var.clone().transmute(), MOIRMaybeSize::Undetermined)?
+        scope.allocate_named_temporary(var.transmute(), MOIRMaybeSize::Undetermined)?
     } else {
         // The variable must already be declared.
         scope.resolve_ident(spec_builder, var.transmute())?

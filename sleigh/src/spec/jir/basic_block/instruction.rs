@@ -146,7 +146,7 @@ impl<'a> TargetInstructionBuilder<'a> {
             block_builder.end_instruction(
                 start,
                 fallthrough,
-                branch_targets.as_ref().and_then(|_| Some(fallthrough)),
+                branch_targets.as_ref().map(|_| fallthrough),
                 branch_targets,
             )?;
         }

@@ -67,7 +67,7 @@ impl SleighCompiler {
         }
         .try_into()
         .expect("The size must fit into u8");
-        let lhs = resolve_lhs(&self.spec_builder, scope, local.clone(), ident.clone(), size)?;
+        let lhs = resolve_lhs(&self.spec_builder, scope, local, ident, size)?;
         ensure_valid_subpiece_size(scope, lhs, size)?;
         let lhs = truncate_lhs(&self.spec_builder, scope, local, ident, lhs, size)?;
         // The variable is not declared yet. First resolve the rhs and try to determine a size.

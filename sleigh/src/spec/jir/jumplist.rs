@@ -462,11 +462,11 @@ impl<'a> MatchContext<'a> {
             context_stack.push_state();
         }
 
-        return Ok(MatcherResult::Some {
+        Ok(MatcherResult::Some {
             table: constructor_entry.tid,
             resolver,
             bytes_consumed: consumed_so_far_max,
-        });
+        })
     }
 
     /// Match the bit pattern while descending into partially constrained sublists and continuing

@@ -599,29 +599,26 @@ where
                     if existing_slice.offset != operand.slice.offset {
                         // We already allocated something to `reg` and it has a different offset.
                         todo!("Different offset aliasing in the same instruction currently unsupported")
-                    } else {
-                        if let OperandKind::Write = operand.kind {
-                            /*
-                             * ADD EAX, EBX
-                             * MOVZX EAX(HW1), AH(HW1)  [(HW0: EDX), (HW1: AH)]
-                             * SPILL(EAX, HW1)
-                             * ADD EDX(HW0), EAX(HW1)   [(HW1: EAX)]
-                             * SPILL(EDX, HW0)
-                             * ADD ESI(HW1), EDX(HW0)   [(EDX: HW0)]
-                             * SPILL(ESX, HW1)
-                             */
+                    } else if let OperandKind::Write = operand.kind {
+                        /*
+                         * ADD EAX, EBX
+                         * MOVZX EAX(HW1), AH(HW1)  [(HW0: EDX), (HW1: AH)]
+                         * SPILL(EAX, HW1)
+                         * ADD EDX(HW0), EAX(HW1)   [(HW1: EAX)]
+                         * SPILL(EDX, HW0)
+                         * ADD ESI(HW1), EDX(HW0)   [(EDX: HW0)]
+                         * SPILL(ESX, HW1)
+                         */
 
-                            todo!()
-                        } else {
-                            // Offsets are the same and we already allocated a different size for this instruction.
-                            // Overwrite the old allocation if the new one has larger size.
-                            // This way we request a larger slice than we need, which is fine because we only use
-                            // the smaller size.
-                            if operand.slice.size > existing_slice.size {
-                                self.loaded_slices.insert(reg, operand.slice);
-                            }
+                        todo!()
+                    } else {
+                        // Offsets are the same and we already allocated a different size for this instruction.
+                        // Overwrite the old allocation if the new one has larger size.
+                        // This way we request a larger slice than we need, which is fine because we only use
+                        // the smaller size.
+                        if operand.slice.size > existing_slice.size {
+                            self.loaded_slices.insert(reg, operand.slice);
                         }
-                        // And remove it from the available registers for current allocations.
                     }
                 } else {
                     // The register has not been allocated for this instruction yet. Insert an adjust directive.
@@ -648,13 +645,11 @@ where
                 // Unload if it was previously allocated to a register and then allocate to memory.
                 self.unload_reg(reg);
                 self.alloc_unloaded_operand(operand)?
+            } else if let OperandKind::ReadReload = operand.kind {
+                self.unload_reg(reg);
+                self.alloc_unloaded_operand(operand)?
             } else {
-                if let OperandKind::ReadReload = operand.kind {
-                    self.unload_reg(reg);
-                    self.alloc_unloaded_operand(operand)?
-                } else {
-                    Allocation::Register(self.ensure_valid_reg_allocation(reg, existing_slice, operand)?)
-                }
+                Allocation::Register(self.ensure_valid_reg_allocation(reg, existing_slice, operand)?)
             }
         } else {
             // Slice group is not in any register. We can allocate one from the free regs.

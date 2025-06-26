@@ -182,7 +182,7 @@ impl MOIRConstructor {
         for fragment in self.display.fragments.iter() {
             match fragment {
                 MOIRDisplayFragment::Literal(string) => {
-                    write!(display_string, "{}", string).unwrap();
+                    write!(display_string, "{string}").unwrap();
                 }
                 MOIRDisplayFragment::Local(local_id) => {
                     let reference = self.local_scope.resolve_local(*local_id).reference;
@@ -190,7 +190,7 @@ impl MOIRConstructor {
                     match reference {
                         MOIRReference::Field(field_id) => {
                             let field_string = build_field_display(spec, resolver, *local_id, field_id);
-                            write!(display_string, "{}", field_string).unwrap();
+                            write!(display_string, "{field_string}").unwrap();
                         }
                         MOIRReference::SubTable(table_id) => {
                             let table_resolver = resolver
@@ -200,17 +200,17 @@ impl MOIRConstructor {
                             let table_string = table_resolver
                                 .constructor()
                                 .generate_display(spec, table_resolver)?;
-                            write!(display_string, "{}", table_string).unwrap();
+                            write!(display_string, "{table_string}").unwrap();
                         }
                         MOIRReference::VarNode(vnid) => {
                             let varnode_string = build_varnode_display(spec, vnid);
-                            write!(display_string, "{}", varnode_string).unwrap();
+                            write!(display_string, "{varnode_string}").unwrap();
                         }
                         MOIRReference::Const(_) => {
                             let value = resolver
                                 .resolve_local_id_to_const(*local_id)
                                 .expect("The const must be set");
-                            write!(display_string, "{}", value).unwrap();
+                            write!(display_string, "{value}").unwrap();
                         }
                         _ => panic!("There are no other cases"),
                     }
@@ -490,19 +490,19 @@ impl MOIRConstructor {
             .map(|input| {
                 resolver
                     .resolve_local(spec, instruction_builder, input)
-                    .and_then(|resolved| match resolved {
-                        JIRResolvedValue::Value(value) => Ok(value),
+                    .map(|resolved| match resolved {
+                        JIRResolvedValue::Value(value) => value,
                         JIRResolvedValue::Reference {
                             address,
                             space: _,
                             size,
                         } => match address {
-                            JIRValue::Slice(slice) => Ok(slice.into()),
+                            JIRValue::Slice(slice) => slice.into(),
                             JIRValue::Const(value) => {
                                 // We construct a new const with the size provided in the reference, since this
                                 // is the actual size used for the load.
                                 // TODO: Why is the size of `value` zero here?
-                                Ok(JIRConst::new(value.value(), size).into())
+                                JIRConst::new(value.value(), size).into()
                             }
                         },
                     })
@@ -552,7 +552,7 @@ impl MOIRConstructor {
         writeln!(&mut instructions_str, "Scope:\n{}", self.local_scope.detailed_scope_display(interner)).expect("");
         writeln!(&mut instructions_str, "Instructions:").expect("");
         for instruction in &self.instructions {
-            writeln!(&mut instructions_str, "{}", instruction).expect("");
+            writeln!(&mut instructions_str, "{instruction}").expect("");
         }
         instructions_str
     }
@@ -610,12 +610,10 @@ fn build_field_value_display(
         } else {
             format!("{}", value as i128)
         }
+    } else if field.hex {
+        format!("{value:x}")
     } else {
-        if field.hex {
-            format!("{:x}", value)
-        } else {
-            format!("{}", value)
-        }
+        format!("{value}")
     }
 }
 
@@ -640,7 +638,7 @@ fn build_field_display(
     if let Ok(index) = usize::try_from(field_value) {
         if let Some(attached_varnode) = field.variables.get(index) {
             let varnode_string = build_varnode_display(spec, *attached_varnode);
-            format!("{}", varnode_string)
+            varnode_string.to_string()
         } else if let Some(attached_value) = field.values.get(index) {
             attached_value.to_string()
         } else if let Some(attached_string_id) = field.strings.get(index) {

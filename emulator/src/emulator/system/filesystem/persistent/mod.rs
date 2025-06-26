@@ -97,15 +97,14 @@ impl Mountpoint for PersistendFS {
     ) -> Result<OsString, FSError> {
         let parent = self.inodes.most_recent_entry(parent)?;
 
-        if let Some(content) = &parent.content {
-            if let FSContent::Dir { entries } = content {
+        if let Some(content) = &parent.content
+            && let FSContent::Dir { entries } = content {
                 for (key, value) in entries {
                     if *value == entry {
                         return Ok(key.clone());
                     }
                 }
             }
-        }
 
         Err(FSError::NotFound)
     }
@@ -116,11 +115,10 @@ impl Mountpoint for PersistendFS {
     ) -> Result<Vec<FSEntryId>, FSError> {
         let entry = self.inodes.most_recent_entry(parent)?;
 
-        if let Some(content) = &entry.content {
-            if let FSContent::Dir { entries } = content {
-                return Ok(entries.values().map(|x| *x).collect_vec());
+        if let Some(content) = &entry.content
+            && let FSContent::Dir { entries } = content {
+                return Ok(entries.values().copied().collect_vec());
             }
-        }
 
         Err(FSError::NotFound)
     }
@@ -187,8 +185,8 @@ impl Mountpoint for PersistendFS {
 
             let start_block = blocks.range(..=pos).last();
             let mut written = 0;
-            if let Some(start_block) = start_block {
-                if start_block.contains(pos) {
+            if let Some(start_block) = start_block
+                && start_block.contains(pos) {
                     for block_start in blocks
                         .range(start_block.start..pos + data.len())
                         .map(|b| b.start)
@@ -199,7 +197,6 @@ impl Mountpoint for PersistendFS {
                                 .write_to_block_cow(pos + written, &data[written..], blocks, block_start)?;
                     }
                 }
-            }
 
             // Write the remaining data to a new block.
             if data.len() > written {

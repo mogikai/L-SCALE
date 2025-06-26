@@ -64,17 +64,16 @@ impl SleighCompiler {
         info!("Parsing the abstract syntax tree.");
         let ast = self
             .parser
-            .parse(&mut self.input_cache, &mut self.spec_builder.interner_mut(), tokens)
-            .map_err(|e| SleighCompilerError::from(e))?;
+            .parse(&mut self.input_cache, self.spec_builder.interner_mut(), tokens)
+            .map_err(SleighCompilerError::from)?;
         info!("Building the specification from the AST.");
         let result = self.build(ast);
         // result should not be an error except StopOnFirstError, if result is an error
         // we failed to handle this error properly.
-        if let Err(e) = result {
-            if !matches!(e.error, InternalErrorType::StopOnFirstError) {
+        if let Err(e) = result
+            && !matches!(e.error, InternalErrorType::StopOnFirstError) {
                 return Err(SleighCompilerError::ErrorHandlingFailure);
             }
-        }
         if self.errors.is_empty() {
             Ok(self
                 .spec_builder
@@ -87,8 +86,7 @@ impl SleighCompiler {
                 error_description += &error.create_string(&mut self.input_cache)
             }
             error_description += &format!(
-                "───────────────────────────────\nFound a total of {} errors.\n───────────────────────────────",
-                error_count
+                "───────────────────────────────\nFound a total of {error_count} errors.\n───────────────────────────────"
             );
             Err(SleighCompilerError::SemanticError(error_description))
         }
@@ -114,8 +112,8 @@ impl SleighCompiler {
                 // If the input was already tokenized, we can continue, otherwise tokenize now.
                 let tokens = self
                     .lexer
-                    .tokenize(&mut self.input_cache, &mut self.spec_builder.interner_mut(), input_id)
-                    .map_err(|e| SleighCompilerError::from(e))?;
+                    .tokenize(&mut self.input_cache, self.spec_builder.interner_mut(), input_id)
+                    .map_err(SleighCompilerError::from)?;
                 debug!("Tokenized input {input_id:?}");
                 self.input_cache
                     .attach_tokens(input_id, tokens)
@@ -126,7 +124,7 @@ impl SleighCompiler {
                 .parse_input(&mut self.input_cache, input_id)
                 .map_err(|e| SleighCompilerError::LexerError(e.to_string()))?;
             // Continue preprocessing
-            match preprocessor.preprocess(&mut self.input_cache, &mut self.spec_builder.interner_mut()) {
+            match preprocessor.preprocess(&mut self.input_cache, self.spec_builder.interner_mut()) {
                 Ok(tokens) => break tokens,
                 Err(PreprocessorError::LoadingRequired(id)) => input_id = id,
                 Err(e) => Err(SleighCompilerError::LexerError(e.to_string()))?,

@@ -50,7 +50,7 @@ impl FieldExtractor {
         &self,
         bytes: &[u8],
     ) -> InternalCompilerResult<u128> {
-        if bytes.len() <= self.byte_index + usize::from(self.bits.bits().checked_sub(1).unwrap_or(0) / 8) {
+        if bytes.len() <= self.byte_index + usize::from(self.bits.bits().saturating_sub(1) / 8) {
             todo!("Generate error report for out of bounds token index");
         }
 

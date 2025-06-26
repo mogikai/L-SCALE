@@ -166,7 +166,7 @@ fn infer_shift(
         MOIRLocal::Local(_) => {}
         MOIRLocal::Const(value) => {
             if let MOIRConst::Undetermined(value) = value {
-                let size = ((value.checked_ilog2().unwrap_or(1) + 7) / 8)
+                let size = value.checked_ilog2().unwrap_or(1).div_ceil(8)
                     .try_into()
                     .expect("The maximum size of 128 bit integers is 128 bit which fits into a u8");
                 trace_build!("Constraining size of input_b to {size}");
@@ -207,13 +207,11 @@ fn infer_special(
         MOIROperation::ZeroExtend | MOIROperation::SignExtend => {
             // We cannot do any size inference, but we can make sure that the
             // sizes are valid, i.e. that output_size >= input_size
-            if let Determined(output_size) = output_size {
-                if let Determined(input_a_size) = input_a_size {
-                    if output_size < input_a_size {
+            if let Determined(output_size) = output_size
+                && let Determined(input_a_size) = input_a_size
+                    && output_size < input_a_size {
                         todo!("Generate error report for invalid sizes for (z/s)ext")
                     }
-                }
-            }
         }
         MOIROperation::Carry | MOIROperation::SignCarry | MOIROperation::SignBorrow => {
             let Some(output) = instruction.output else {
@@ -281,11 +279,11 @@ fn infer_regular(
         instruction
             .input_a
             .as_ref()
-            .map_or(Undetermined, |input_a| get_minimum_const_size(input_a))
+            .map_or(Undetermined, get_minimum_const_size)
             .or(instruction
                 .input_b
                 .as_ref()
-                .map_or(Undetermined, |input_b| get_minimum_const_size(input_b)))
+                .map_or(Undetermined, get_minimum_const_size))
     });
     if let Determined(size) = size {
         // If we have a size, we can constrain all values to this size.
@@ -327,7 +325,7 @@ fn get_minimum_const_size(value: &MOIRLocal) -> MOIRMaybeSize {
     match value {
         MOIRLocal::Local(_) => Undetermined,
         MOIRLocal::Const(value) => match value {
-            MOIRConst::Undetermined(value) => MOIRSize::try_from((value.checked_ilog2().unwrap_or(1) + 7) / 8)
+            MOIRConst::Undetermined(value) => MOIRSize::try_from(value.checked_ilog2().unwrap_or(1).div_ceil(8))
                 .expect("The maximum size of 128 bit integers is 128 bit which fits into a u8")
                 .into(),
             _ => value.size(),

@@ -29,7 +29,7 @@ struct NonEndingCustomOps {}
 impl BlockEndingOpDecider for NonEndingCustomOps {
     fn is_block_ending_custom_op(
         &self,
-        custom_op_id: CustomOpId,
+        _custom_op_id: CustomOpId,
     ) -> bool {
         false
     }

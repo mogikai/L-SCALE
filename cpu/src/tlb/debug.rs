@@ -23,7 +23,7 @@ impl Debug for TLB {
             color: ansi_term::Colour,
         ) -> std::fmt::Result {
             if i % 10 == 0 {
-                writeln!(f, "")?;
+                writeln!(f)?;
             }
             let str = if entry.target.is_some() {
                 format!(

@@ -250,7 +250,7 @@ pub(super) fn syscall<Endianness, CpuT, MmuT, TcpT>(
     let result = do_syscall(SYSCALL::from(rax), system, &mut debug_str, task.kernel_mut());
     let rax = match result {
         Ok(rax) => {
-            debug_str = format!("SYSCALL: {:?} {} -> 0x{:X}", syscall, debug_str, rax);
+            debug_str = format!("SYSCALL: {syscall:?} {debug_str} -> 0x{rax:X}");
             trace!("{debug_str}");
             Some(rax)
         }

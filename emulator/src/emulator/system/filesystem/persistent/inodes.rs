@@ -150,11 +150,10 @@ impl Inodes {
         trace!("add entry: content: {:?}", self.content);
         let result = self.fse_ids.borrow_mut()[self.current_snap]
             .insert(fse_id, Index::new(self.content.len() - 1, self.current_snap));
-        if let Some(result) = result {
-            if result.historical_or(FSError::Unknown)?.snap_id == self.current_snap {
+        if let Some(result) = result
+            && result.historical_or(FSError::Unknown)?.snap_id == self.current_snap {
                 panic!("Index reused. This must never happen");
             }
-        }
         Ok(())
     }
 
@@ -230,7 +229,7 @@ impl Inodes {
         if remain.is_some() {
             return Err(FSError::Unknown);
         }
-        return Ok(*ids.last().expect("Empty paths cannot occur"));
+        Ok(*ids.last().expect("Empty paths cannot occur"))
     }
 
     fn most_recent_historical_index(

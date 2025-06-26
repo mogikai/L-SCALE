@@ -94,9 +94,9 @@ impl Display for MOIRInstruction {
             }
             MOIROperation::CustomOp { op_id, extra_args } => {
                 if let Some(output) = self.output {
-                    write!(f, "{} = {}(", output, op_id)?
+                    write!(f, "{output} = {op_id}(")?
                 } else {
-                    write!(f, "{}(", op_id)?
+                    write!(f, "{op_id}(")?
                 }
                 let mut inputs = vec![];
                 if let Some(input) = self.input_a {
@@ -109,7 +109,7 @@ impl Display for MOIRInstruction {
                 let len = inputs.len();
                 if len >= 2 {
                     for input in inputs[..(len - 1)].iter() {
-                        write!(f, "{}, ", input)?;
+                        write!(f, "{input}, ")?;
                     }
                 }
                 if len >= 1 {
@@ -133,7 +133,7 @@ impl Display for MOIRInstruction {
             }
             MOIROperation::GotoDirect(ty) => write!(f, "{ty} [{}]", self.input_a.expect("Goto has to have input_a")),
             MOIROperation::GotoIndirect(ty) => write!(f, "{ty} {}", self.input_a.expect("Goto has to have input_a")),
-            MOIROperation::GotoLabel(ty, label) => write!(f, "{ty} <{:?}>", label),
+            MOIROperation::GotoLabel(ty, label) => write!(f, "{ty} <{label:?}>"),
             MOIROperation::GotoDirectIf => write!(
                 f,
                 "if ({}) goto [{}]",

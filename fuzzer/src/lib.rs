@@ -1,6 +1,4 @@
-#![feature(return_position_impl_trait_in_trait)]
 #![feature(iterator_try_collect)]
-#![feature(isqrt)]
 
 pub mod api;
 pub mod core;

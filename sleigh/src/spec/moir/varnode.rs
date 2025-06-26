@@ -255,8 +255,8 @@ impl Display for MOIRLocal {
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
-            MOIRLocal::Local(local) => write!(f, "{}", local),
-            MOIRLocal::Const(value) => write!(f, "{}", value),
+            MOIRLocal::Local(local) => write!(f, "{local}"),
+            MOIRLocal::Const(value) => write!(f, "{value}"),
         }
     }
 }
@@ -355,8 +355,8 @@ impl Display for MOIRConst {
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
-            MOIRConst::Undetermined(value) => write!(f, "{:#0x}", value),
-            MOIRConst::Determined(value, _) => write!(f, "{:#0x}", value),
+            MOIRConst::Undetermined(value) => write!(f, "{value:#0x}"),
+            MOIRConst::Determined(value, _) => write!(f, "{value:#0x}"),
         }
     }
 }

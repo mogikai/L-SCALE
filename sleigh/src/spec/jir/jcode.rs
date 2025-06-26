@@ -1008,7 +1008,7 @@ impl JIRInstruction {
     ) -> Self {
         JIRInstruction::CustomOp {
             output: output.map(Into::into),
-            input_a: args.get(0).copied(),
+            input_a: args.first().copied(),
             input_b: args.get(1).copied(),
             op_id,
             extra_args: Rc::new(args.into_iter().skip(2).collect()),
@@ -1160,7 +1160,8 @@ impl JIRInstruction {
             | JIRInstruction::SignBorrow(BinaryArgs { output, .. }) => Some(output),
             JIRInstruction::CustomOp { output, .. } => output.as_ref(),
             _ => None,
-        }).copied()
+        })
+        .copied()
     }
 }
 
@@ -1319,9 +1320,7 @@ struct OperandIterator<'a> {
 }
 
 impl<'a> OperandIterator<'a> {
-    fn new(
-        instruction: &'a JIRInstruction,
-    ) -> Self {
+    fn new(instruction: &'a JIRInstruction) -> Self {
         Self {
             instruction,
             next_index: 0,
@@ -1335,9 +1334,7 @@ struct OperandIteratorMut<'a> {
 }
 
 impl<'a> OperandIteratorMut<'a> {
-    fn new(
-        instruction: &'a mut JIRInstruction,
-    ) -> Self {
+    fn new(instruction: &'a mut JIRInstruction) -> Self {
         Self {
             instruction,
             next_index: 0,
@@ -1449,8 +1446,8 @@ impl<'a> Iterator for OperandIterator<'a> {
                     input_a.as_ref()
                 } else if self.next_index == 1 {
                     input_b.as_ref()
-                } else if (self.next_index as usize) < extra_args.len() + 2 {
-                    Some(&extra_args[(self.next_index - 2) as usize])
+                } else if self.next_index < extra_args.len() + 2 {
+                    Some(&extra_args[self.next_index - 2])
                 } else {
                     None
                 }
@@ -1566,8 +1563,8 @@ impl<'a> Iterator for OperandIteratorMut<'a> {
                     input_a.as_mut()
                 } else if self.next_index == 1 {
                     input_b.as_mut()
-                } else if (self.next_index as usize) < extra_args.len() + 2 {
-                    Some(&mut Rc::make_mut(extra_args)[(self.next_index - 2) as usize])
+                } else if self.next_index < extra_args.len() + 2 {
+                    Some(&mut Rc::make_mut(extra_args)[self.next_index - 2])
                 } else {
                     None
                 }

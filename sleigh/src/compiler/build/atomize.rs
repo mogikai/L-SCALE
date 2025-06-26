@@ -76,7 +76,7 @@ impl SleighCompiler {
             if let Some(export) = export {
                 let e = InternalErrorType::InstructionAfterExport;
                 return Err(Into::<InternalError>::into(e)
-                    .span("export", export.span().clone())
+                    .span("export", *export.span())
                     .span("instr", statement.into_span()));
             }
             let (statement, _) = statement.into_tuple();
@@ -97,7 +97,7 @@ impl SleighCompiler {
                 }
                 SASTPCodeStatement::Build(table) => self.atomize_build(scope, instructions, table.transmute()),
                 SASTPCodeStatement::Export(expression) => {
-                    let span = expression.span().clone();
+                    let span = *expression.span();
                     self.atomize_export(scope, instructions, expression)
                         .map(|local| export = Some(Spanned::new(local, span)))
                 }
@@ -138,14 +138,13 @@ impl SleighCompiler {
                 instructions[label_id].label = Some(label);
             }
 
-            if let Some(last_instruction) = instructions.last() {
-                if matches!(
+            if let Some(last_instruction) = instructions.last()
+                && matches!(
                     last_instruction.operation.op_category(),
                     MOIROpCategory::Branch(MOIRBranchCategory::External)
                 ) {
                     block_end = true;
                 }
-            }
         }
         Ok((export, block_end))
     }

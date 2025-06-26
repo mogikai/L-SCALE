@@ -201,7 +201,7 @@ pub struct CodeBuffer<R: Relocation> {
 
 impl<R: Relocation + Clone> CodeBuffer<R> {
     pub fn new() -> Result<Self, CodeBufferError> {
-        let size = 1 * GiB;
+        let size = GiB;
         // This is safe, since we return an error on failure.
         let buf = unsafe {
             let buf =

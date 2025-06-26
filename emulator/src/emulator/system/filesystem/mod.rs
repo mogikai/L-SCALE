@@ -260,7 +260,7 @@ impl Filesystem {
         trace!("open at: {:?} {:?} follow_symlink: {}", dir, path, follow_symlink);
         let mut loopcount = 30u8;
 
-        let mut result = vec![dir.unwrap_or(FileId::default())];
+        let mut result = vec![dir.unwrap_or_default()];
         let mut remain = Some(path.to_path_buf());
         let mut last_was_symlink = false;
 

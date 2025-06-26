@@ -277,7 +277,7 @@ impl SleighCompiler {
         table_id: TableId,
         constructor_id: ConstructorId,
     ) -> InternalCompilerResult<Vec<Matcher>> {
-        let lhs_field_id = match self.spec_builder.get_symbol(&lhs.clone().transmute())? {
+        let lhs_field_id = match self.spec_builder.get_symbol(&lhs.transmute())? {
             MOIRSymbolId::Field(fid) => *fid,
             _ => todo!("Generate error report for invalid lhs of advanced constraint"),
         };

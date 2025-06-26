@@ -14,14 +14,14 @@ impl Display for TargetBasicBlock {
         writeln!(f, "JCode:")?;
         for (inst_id, inst) in self.0.jir_instructions.iter().enumerate() {
             match inst {
-                JIRInstruction::BlockStart(block_id) => writeln!(f, "    +++ [{}]{} +++", inst_id, block_id)?,
-                JIRInstruction::BlockEnd(block_id) => writeln!(f, "    --- [{}]{} ---", inst_id, block_id)?,
-                JIRInstruction::InstructionStart(addr) => writeln!(f, "+++ INST[{}]({:?}) +++", inst_id, addr)?,
-                JIRInstruction::InstructionEnd(addr) => writeln!(f, "--- INST[{}]({:?}) ---", inst_id, addr)?,
-                _ => writeln!(f, "        [{}]{}", inst_id, inst)?,
+                JIRInstruction::BlockStart(block_id) => writeln!(f, "    +++ [{inst_id}]{block_id} +++")?,
+                JIRInstruction::BlockEnd(block_id) => writeln!(f, "    --- [{inst_id}]{block_id} ---")?,
+                JIRInstruction::InstructionStart(addr) => writeln!(f, "+++ INST[{inst_id}]({addr:?}) +++")?,
+                JIRInstruction::InstructionEnd(addr) => writeln!(f, "--- INST[{inst_id}]({addr:?}) ---")?,
+                _ => writeln!(f, "        [{inst_id}]{inst}")?,
             }
         }
-        writeln!(f, "")
+        writeln!(f)
         // for (block_id, block) in self.0.jir_blocks.items() {
         //     if let Some(block) = block {
         //         writeln!(f, "{} ---", block_id)?;

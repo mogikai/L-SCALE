@@ -58,13 +58,11 @@ impl<'a> ContextStack<'a> {
     /// Get all stored `(FieldId, u128)` key-value pairs.
     pub(crate) fn values(&self) -> impl Iterator<Item = (FieldId, u128)> {
         self.context_fields.items().filter_map(|(field_id, field)| {
-            field.as_ref().and_then(|_| {
-                Some((
+            field.as_ref().map(|_| (
                     field_id,
                     self.field_value(field_id)
                         .expect("If we store the field we store the context"),
                 ))
-            })
         })
     }
 

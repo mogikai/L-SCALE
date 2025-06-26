@@ -84,8 +84,7 @@ impl TargetBasicBlock {
         self.0
             .jir_blocks
             .get(block)
-            .map(|block| block.as_ref().map(|b| b.range.clone()))
-            .flatten()
+            .and_then(|block| block.as_ref().map(|b| b.range.clone()))
             // Return an empty iterator if there is no corresponding block.
             .unwrap_or(0..0)
     }
@@ -98,8 +97,7 @@ impl TargetBasicBlock {
             .0
             .jir_blocks
             .get(block)
-            .map(|block| block.as_ref().map(|block| block.range.clone()))
-            .flatten();
+            .and_then(|block| block.as_ref().map(|block| block.range.clone()));
         self.0.jir_instructions[range.unwrap_or(0..0)]
             .iter()
             .enumerate()

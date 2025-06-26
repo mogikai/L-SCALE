@@ -13,6 +13,7 @@ use mogi_emulator::emulator::interface::network::tcp::TCPSystemControl;
 pub struct TCPStreamObservation {
     /// Contains a double ended queue of outputs for each tcp stream.
     /// New outputs are added to the back of the Deque.
+    #[allow(unused)]
     outgoing_data: BTreeMap<SocketId, VecDeque<Vec<u8>>>,
 }
 
@@ -21,7 +22,9 @@ pub struct TCPStreamObserver<TcpT>
 where
     TcpT: TCPSystemControl,
 {
+    #[allow(unused)]
     tcp: Rc<RefCell<TcpT>>,
+    #[allow(unused)]
     observation: TCPStreamObservation,
 }
 

@@ -185,7 +185,7 @@ impl TryFrom<Vec<SpannedToken>> for SleighTokens {
 pub type ParserInput<'tokens> =
     MappedInput<SleighToken, InputSpan, &'tokens [SpannedToken], fn(&SpannedToken) -> (&SleighToken, &InputSpan)>;
 impl SleighTokens {
-    pub fn spanned(&self) -> ParserInput {
+    pub fn spanned(&self) -> ParserInput<'_> {
         self.0.map(
             InputSpan::new(
                 self.0

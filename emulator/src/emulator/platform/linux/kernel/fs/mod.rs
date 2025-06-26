@@ -60,7 +60,7 @@ where
         trace!(
             "Process write {:?}",
             str::from_utf8(
-                &*memory
+                &memory
                     .accessor(&mut mmu, self.task_id)
                     .read_bytes(buf, size as usize)?
             )
@@ -552,12 +552,13 @@ impl FileData {
     }
 
     pub fn get_path(&self) -> Option<&Path> {
-        self.path.as_ref().map(|p| p.as_path())
+        self.path.as_deref()
     }
 }
 
 #[derive(Debug, Copy, Clone, TryFromPrimitive)]
 #[repr(u64)]
+#[allow(non_camel_case_types)]
 pub enum Whence {
     SEEK_SET,
     SEEK_CUR,

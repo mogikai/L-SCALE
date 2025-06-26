@@ -1,62 +1,9 @@
 extern crate core;
 
-use std::cell::RefCell;
-use std::collections::{
-    HashMap,
-    HashSet,
-};
 use std::fmt::Debug;
-use std::path::{
-    Path,
-    PathBuf,
-};
-use std::rc::Rc;
-use std::time::{
-    Duration,
-    Instant,
-};
 
 use clap::Parser;
-use mogi_emulator::LittleEndian;
-use mogi_emulator::emulator::GenericEmulator;
-use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
-use mogi_emulator::emulator::abstractions::kernel_task::KernelTask;
-use mogi_emulator::emulator::abstractions::network::{
-    IPAddress,
-    SocketAddress,
-};
-use mogi_emulator::emulator::interface::emulator::{
-    Emulator,
-    ExitReason,
-};
-use mogi_emulator::emulator::interface::network::tcp::{
-    TCPSocket,
-    TCPSystemControl,
-};
-use mogi_emulator::emulator::platform::linux::kernel::LinuxKernelTask;
-use mogi_emulator::emulator::platform::linux::scheduler::LinuxX86Scheduler;
-use mogi_emulator::emulator::system::System;
-use mogi_emulator::emulator::system::clock::Clock;
-use mogi_emulator::emulator::system::fd_map::FileDescriptorMap;
-use mogi_emulator::emulator::system::filesystem::Filesystem;
-use mogi_emulator::emulator::system::hardware::unicorn::UCWrapper;
-use mogi_emulator::emulator::system::memory::Memory;
-use mogi_emulator::emulator::system::prng::SeedablePrngMap;
-use mogi_emulator::emulator::system::stdio::Stdio;
-use mogi_emulator::emulator::system::task_manager::TaskManager;
-use mogi_fuzzer::io::tcp::TCP;
-use mogi_system::components::cpu::CPU;
-use mogi_system::components::restore::Restorable;
 use mogi_system::errors::generic::GenericError;
-use mogi_utilities::error::memory::MemoryError;
-use rand::prelude::IndexedRandom;
-use tracing::debug;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{
-    EnvFilter,
-    fmt,
-};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

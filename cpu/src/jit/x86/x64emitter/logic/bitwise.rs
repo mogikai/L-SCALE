@@ -271,7 +271,7 @@ impl X64Emitter<'_> {
                         self.load_const(scratch, input_const_upper)?;
                         op_reg_reg(self, output_reg_upper, scratch, 8)?;
                     }
-                    size => todo!("Unsupported size {size}")
+                    size => todo!("Unsupported size {size}"),
                 }
             }
             (JIRValue::Slice(input_a), JIRValue::Slice(input_b)) if input_a.size() <= 8 => {
@@ -362,7 +362,7 @@ impl X64Emitter<'_> {
                     let input_reg = reg!(self.allocations, inst, 1);
 
                     // Copy into output, since neg uses the same register for input and output
-                    self.copy_reg(output_reg, input_reg, output.size(), CopyExtendMode::None);
+                    self.copy_reg(output_reg, input_reg, output.size(), CopyExtendMode::None)?;
                     assemble!(self.block.assembler();
                     ; not Rq(output_reg.hw_enc())
                     );
@@ -374,8 +374,8 @@ impl X64Emitter<'_> {
                     let input_reg_upper = reg!(self.allocations, inst, 3);
 
                     // Copy into output, since neg uses the same register for input and output
-                    self.copy_reg(output_reg_lower, input_reg_lower, 8, CopyExtendMode::None);
-                    self.copy_reg(output_reg_upper, input_reg_upper, 8, CopyExtendMode::None);
+                    self.copy_reg(output_reg_lower, input_reg_lower, 8, CopyExtendMode::None)?;
+                    self.copy_reg(output_reg_upper, input_reg_upper, 8, CopyExtendMode::None)?;
                     assemble!(self.block.assembler();
                     ; not Rq(output_reg_lower.hw_enc())
                     ; not Rq(output_reg_upper.hw_enc())

@@ -31,7 +31,7 @@ impl<'a> From<*const c_void> for JitCode<'a> {
 }
 
 pub trait AsJitCode {
-    fn as_jit_code(&self) -> JitCode;
+    fn as_jit_code(&self) -> JitCode<'_>;
 }
 
 #[derive(Default)]

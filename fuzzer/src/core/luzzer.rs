@@ -53,7 +53,6 @@ use std::fmt::{
     Debug,
     Display,
     Formatter,
-    Write,
 };
 use std::fs;
 use std::path::{
@@ -130,6 +129,8 @@ impl Display for InputDataId {
 #[derive(Debug)]
 enum ComponentMarker {
     NewTcpStream,
+    #[allow(unused)]
+    CloseTcpStream,
 }
 
 /// An object that contains arbitrary bytes that can be used in any kind of input component.
@@ -175,7 +176,7 @@ impl Display for TestCase {
             if i > 0 {
                 write!(f, ", ")?;
             }
-            write!(f, "{}", id)?;
+            write!(f, "{id}")?;
         }
         write!(f, "]")?;
         write!(f, ")")
@@ -240,6 +241,7 @@ pub struct Luzzer<EmulatorT> {
     is_interesting_reducers: Vec<Rc<RefCell<dyn DebuggableReducer<Output = bool>>>>,
     behavior_observer: Rc<RefCell<dyn DebuggableObserver>>,
     suffix_behavior_reducer: Rc<RefCell<dyn DebuggableReducer<Output = Observation>>>,
+    #[allow(dead_code)]
     is_crash_reducers: Vec<Rc<RefCell<dyn DebuggableReducer<Output = bool>>>>,
     emulator: EmulatorT,
     input_info: EmulatorInputInfo,
@@ -299,7 +301,7 @@ where
             cpu.add_block_hook(
                 start,
                 end,
-                Box::new(move |cpu, addr, _| {
+                Box::new(move |_cpu, addr, _| {
                     hook_block_observer.borrow_mut().observe(&addr);
                     hook_behavior_observer.borrow_mut().observe(&addr);
                 }),
@@ -560,10 +562,10 @@ where
     ) {
         self.state
             .learner
-            .export_with_formatter(&dot_path, &self.state.test_cases, |out, symbol| {
+            .export_with_formatter(dot_path, &self.state.test_cases, |out, symbol| {
                 write!(out, "[").unwrap();
                 symbol.component_markers.iter().for_each(|marker| {
-                    write!(out, "{:?}", marker).unwrap();
+                    write!(out, "{marker:?}").unwrap();
                 });
                 symbol
                     .tcp_streams
@@ -574,7 +576,7 @@ where
                         InputDataSource::Unknown => "Unknown",
                     })
                     .for_each(|source| {
-                        write!(out, "{}, ", source).unwrap();
+                        write!(out, "{source}, ").unwrap();
                     });
                 write!(out, "]").unwrap();
             });

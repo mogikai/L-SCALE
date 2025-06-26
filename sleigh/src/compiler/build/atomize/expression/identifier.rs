@@ -28,7 +28,7 @@ impl SleighCompiler {
                 // The size constraint is determined. Update the size in the scope.
                 // TODO map error here to add new information? See generate functions before this commit
                 scope
-                    .resolve_ident_sized(&self.spec_builder, ident.clone(), size)
+                    .resolve_ident_sized(&self.spec_builder, ident, size)
                     .map(MOIRLocal::from)
             }
             MOIRMaybeSize::Undetermined => {

@@ -108,9 +108,9 @@ impl Stdio {
             Whence::SEEK_SET => self.data.in_pos = offset as usize,
             Whence::SEEK_CUR => {
                 self.data.in_pos = if offset.is_negative() {
-                    self.data.in_pos.wrapping_sub(offset.abs() as usize)
+                    self.data.in_pos.wrapping_sub(offset.unsigned_abs() as usize)
                 } else {
-                    self.data.in_pos.wrapping_add(offset.abs() as usize)
+                    self.data.in_pos.wrapping_add(offset.unsigned_abs() as usize)
                 }
             }
             Whence::SEEK_END => {
@@ -156,6 +156,12 @@ impl StdioData {
 #[derive(Debug)]
 pub struct StdInputOps {
     stat: RefCell<Stat>,
+}
+
+impl Default for StdInputOps {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl StdInputOps {

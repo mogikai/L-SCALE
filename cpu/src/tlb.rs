@@ -141,6 +141,12 @@ impl mogi_system::components::mmu::TLB for TLB {
     }
 }
 
+impl Default for TLB {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TLB {
     pub fn new() -> Self {
         Self {

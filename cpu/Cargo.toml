@@ -31,6 +31,8 @@ goblin = "0.10.0"
 [features]
 default = ["trace_jit"]
 trace_jit = []
+trace_emit = []
+trace_lru = []
 trace_tlb = []
 trace_regalloc = []
 trace_opt = ["mogi_sleigh/trace_opt"]

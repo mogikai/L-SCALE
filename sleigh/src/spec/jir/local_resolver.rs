@@ -152,13 +152,13 @@ impl<'a> JIRResolver<'a> {
         let addr_bytes = EVAddr::<u8>::bits() / 8;
 
         self.values[local_inst_start] =
-            Some(JIRValue::Const(JIRConst::new(inst_start.try_into().unwrap(), addr_bytes.try_into().unwrap())));
+            Some(JIRValue::Const(JIRConst::new(inst_start.into(), addr_bytes.try_into().unwrap())));
         self.values[local_inst_next] =
-            Some(JIRValue::Const(JIRConst::new(inst_next.try_into().unwrap(), addr_bytes.try_into().unwrap())));
+            Some(JIRValue::Const(JIRConst::new(inst_next.into(), addr_bytes.try_into().unwrap())));
 
         if let Some(inst_next2) = inst_next2 {
             self.values[local_inst_next2] =
-                Some(JIRValue::Const(JIRConst::new(inst_next2.try_into().unwrap(), addr_bytes.try_into().unwrap())));
+                Some(JIRValue::Const(JIRConst::new(inst_next2.into(), addr_bytes.try_into().unwrap())));
         }
     }
 
@@ -225,7 +225,7 @@ impl<'a> JIRResolver<'a> {
             };
             let tmp_slice =
                 instruction_builder.alloc_temporary(spec, size.try_into().expect("The size must fit into JIRSize"))?;
-            self.temporaries[temp_id] = Some(tmp_slice.into());
+            self.temporaries[temp_id] = Some(tmp_slice);
         }
         Ok(())
     }

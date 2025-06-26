@@ -247,7 +247,7 @@ impl<'a> OperandRequirements<'a> {
         })
     }
 
-    pub fn all(&self) -> impl Iterator<Item = (usize, &OperandRequest)> + ExactSizeIterator {
+    pub fn all(&self) -> impl ExactSizeIterator<Item = (usize, &OperandRequest)> {
         self.0.iter().enumerate()
     }
 
@@ -271,7 +271,7 @@ pub trait EmitterAllocRequirements {
     fn operands(
         &self,
         inst_id: InstId,
-    ) -> OperandRequirements;
+    ) -> OperandRequirements<'_>;
 
     /// The instruction can request a number of temps where the instruction doesn't care which register
     /// this temp is located in. This is similar to clobbers, but we don't require a specific register.

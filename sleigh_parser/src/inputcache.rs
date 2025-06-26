@@ -49,19 +49,21 @@ impl Cache<InputId> for CompilerInputCache {
     fn fetch(
         &mut self,
         id: &InputId,
-    ) -> Result<&Source<Self::Storage>, Box<dyn Debug + '_>> {
+    ) -> Result<&Source<Self::Storage>, impl Debug> {
         self.input_sources
             .get(*id)
-            .ok_or(Box::new("Could not find input") as _)
+            .ok_or::<Box<dyn Debug>>(Box::new("Could not find input") as _)
     }
 
     fn display<'a>(
         &self,
         id: &'a InputId,
-    ) -> Option<Box<dyn Display + 'a>> {
-        self.input_paths
-            .get(*id)
-            .and_then(|input| input.to_str().map(|s| Box::new(s.to_string()) as _))
+    ) -> Option<impl Display + 'a> {
+        self.input_paths.get(*id).and_then(|input| {
+            input
+                .to_str()
+                .map(|s| -> Box<dyn Display> { Box::new(s.to_string()) })
+        })
     }
 }
 

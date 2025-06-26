@@ -22,7 +22,7 @@ impl TargetBasicBlockInner {
 
             let new_block_start = jir_instructions.len();
 
-            for block_instruction in self.jir_instructions[block_range].into_iter() {
+            for block_instruction in self.jir_instructions[block_range].iter() {
                 if matches!(block_instruction, JIRInstruction::Nop) {
                     elim_count += 1;
                     continue;

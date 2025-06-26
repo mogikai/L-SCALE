@@ -90,8 +90,8 @@ impl SleighCompiler {
         let rhs = scope.allocate_temporary(rhs_size);
         let rhs = self.atomize_expression(scope, instructions, Some(rhs), ast_rhs)?;
 
-        if let MOIRLocal::Const(lhs) = lhs {
-            if let MOIRLocal::Const(rhs) = rhs {
+        if let MOIRLocal::Const(lhs) = lhs
+            && let MOIRLocal::Const(rhs) = rhs {
                 trace_build!("Performing const optimization since lhs and rhs are const");
                 // Constant folding. We can calculate this at compile time.
                 // TODO better error variant for const eval
@@ -100,7 +100,6 @@ impl SleighCompiler {
                     // TODO ues span_err!
                     .map_err(|e| InternalError::from_error(e.into()));
             }
-        }
 
         // If out is not yet determined, try to constrain its size now.
         if let MOIRMaybeSize::Undetermined = scope.size_of_local(out) {

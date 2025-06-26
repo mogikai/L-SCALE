@@ -113,6 +113,12 @@ impl<R: Relocation> CustomRelocation for PatchLoc<R> {
     }
 }
 
+impl<R: Relocation + Clone> Default for MogiAssembler<R> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<R: Relocation + Clone> MogiAssembler<R> {
     /// Creates a new VecAssembler with the specified base address
     /// and the offset at which the assembled block will live.
@@ -202,7 +208,7 @@ impl<R: Relocation + Clone> MogiAssembler<R> {
                 loc.global_patch(&mut buff[loc.range(0)], code_ptr_usize, global_offset)
                     .is_err()
             } else {
-                let target = self.labels.resolve_static(&label)?;
+                let target = self.labels.resolve_static(label)?;
                 loc.patch(&mut buff[loc.range(0)], code_ptr_usize, target.0)
                     .is_err()
             };

@@ -49,13 +49,13 @@ impl<T: Clone> Buffer<T> {
         self.open = false;
     }
 
-    fn open(&mut self) {
-        self.open = true;
-    }
-
-    fn is_open(&self) -> bool {
-        self.open
-    }
+    // fn open(&mut self) {
+    //     self.open = true;
+    // }
+    //
+    // fn is_open(&self) -> bool {
+    //     self.open
+    // }
 
     fn write(
         &mut self,
@@ -64,7 +64,8 @@ impl<T: Clone> Buffer<T> {
         if !self.open {
             Err(NetworkError::Closed)?
         }
-        Ok(self.buffer.extend(values.iter().cloned()))
+        let _: () = self.buffer.extend(values.iter().cloned());
+        Ok(())
     }
 
     fn write_one(
@@ -74,7 +75,8 @@ impl<T: Clone> Buffer<T> {
         if !self.open {
             Err(NetworkError::Closed)?
         }
-        Ok(self.buffer.push_back(value))
+        self.buffer.push_back(value);
+        Ok(())
     }
 
     fn read(
@@ -88,9 +90,9 @@ impl<T: Clone> Buffer<T> {
         Ok(self.buffer.drain(0..n).collect())
     }
 
-    fn len(&self) -> usize {
-        self.buffer.len()
-    }
+    // fn len(&self) -> usize {
+    //     self.buffer.len()
+    // }
 
     fn is_empty(&self) -> bool {
         self.buffer.is_empty()
@@ -157,10 +159,10 @@ impl TCPSocketImpl {
         if !self.incoming.is_empty() {
             ops_ready |= FileOperationsReady::Read;
         }
-        if let Some(pending) = self.pending_connections.as_ref() {
-            if !pending.is_empty() {
-                ops_ready |= FileOperationsReady::Read;
-            }
+        if let Some(pending) = self.pending_connections.as_ref()
+            && !pending.is_empty()
+        {
+            ops_ready |= FileOperationsReady::Read;
         }
         // Save the interest bits that cannot already be satisfied.
         *self.unfulfilled_interest = (interest | *self.unfulfilled_interest).difference(ops_ready);
@@ -399,8 +401,7 @@ impl TCPSystem for TCP {
     ) -> Result<SocketAddress, NetworkError> {
         self.sockets
             .get(&id)
-            .map(|socket| *socket.local_address)
-            .flatten()
+            .and_then(|socket| *socket.local_address)
             .ok_or(NetworkError::Unknown)
     }
 }

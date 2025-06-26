@@ -199,7 +199,7 @@ impl InternalError {
     pub fn from_error(error: InternalErrorType) -> Self {
         InternalError {
             spans: HashMap::new(),
-            error: error.into(),
+            error,
             cause: None,
         }
     }
@@ -213,7 +213,7 @@ impl InternalError {
         spans.insert(key, span);
         InternalError {
             spans,
-            error: error.into(),
+            error,
             cause: None,
         }
     }
@@ -224,7 +224,7 @@ impl InternalError {
     ) -> Self {
         InternalError {
             spans,
-            error: error.into(),
+            error,
             cause: None,
         }
     }
@@ -253,10 +253,9 @@ impl InternalError {
         &self,
         key: &'static str,
     ) -> InputSpan {
-        self.spans
+        *self.spans
             .get(key)
-            .expect(format!("key '{key}' should exist in error spans").as_str())
-            .clone()
+            .unwrap_or_else(|| panic!("key '{key}' should exist in error spans"))
     }
 }
 
@@ -283,26 +282,26 @@ impl InternalError {
         (match &self.error {
             InternalErrorType::DuplicatedDefine(_) | InternalErrorType::DuplicatedSpaceAttribute(_) => {
                 let first = self.get_span("first");
-                Report::build(ReportKind::Error, first.clone())
+                Report::build(ReportKind::Error, first)
                     .with_label(Label::new(first).with_message("first definition"))
                     .with_label(Label::new(self.get_span("second")).with_message("second definition"))
             }
             InternalErrorType::InstructionAfterExport => {
                 let instr = self.get_span("instr");
-                Report::build(ReportKind::Error, instr.clone())
+                Report::build(ReportKind::Error, instr)
                     .with_label(Label::new(self.get_span("export")).with_message("export is here"))
                     .with_label(Label::new(instr).with_message("instruction should be before export"))
             }
             InternalErrorType::InvalidFieldRange(invalid) => {
                 let field = self.get_span("field");
                 match invalid {
-                    InvalidFieldRange::EndBeforeStart(range) => Report::build(ReportKind::Error, field.clone())
+                    InvalidFieldRange::EndBeforeStart(range) => Report::build(ReportKind::Error, field)
                         .with_label(
-                            Label::new(field.clone())
+                            Label::new(field)
                                 .with_message(format!("range ends at {} but starts at {}", range.end, range.start)),
                         ),
-                    InvalidFieldRange::TooLargeRange(bits, range) => Report::build(ReportKind::Error, field.clone())
-                        .with_label(Label::new(field.clone()).with_message(format!(
+                    InvalidFieldRange::TooLargeRange(bits, range) => Report::build(ReportKind::Error, field)
+                        .with_label(Label::new(field).with_message(format!(
                             "range fits {} bits, but there are only {} bits",
                             range.end - range.start,
                             bits
@@ -312,28 +311,28 @@ impl InternalError {
             InternalErrorType::SliceError(slice) => {
                 let expr = self.get_span("expr");
                 match slice {
-                    SliceError::UndeterminedSize => Report::build(ReportKind::Error, expr.clone())
-                        .with_label(Label::new(expr.clone()).with_message("size is undetermined")),
-                    SliceError::InvalidSliceSize { .. } => Report::build(ReportKind::Error, expr.clone())
-                        .with_label(Label::new(expr.clone()).with_message("invalid slice size")),
+                    SliceError::UndeterminedSize => Report::build(ReportKind::Error, expr)
+                        .with_label(Label::new(expr).with_message("size is undetermined")),
+                    SliceError::InvalidSliceSize { .. } => Report::build(ReportKind::Error, expr)
+                        .with_label(Label::new(expr).with_message("invalid slice size")),
                     _ => todo!("add more slice error reports"),
                 }
             }
             InternalErrorType::UndeclaredSymbol => {
                 let ident = self.get_span("ident");
-                Report::build(ReportKind::Error, ident.clone())
-                    .with_label(Label::new(ident.clone()).with_message("Symbol is undeclared"))
+                Report::build(ReportKind::Error, ident)
+                    .with_label(Label::new(ident).with_message("Symbol is undeclared"))
             }
             InternalErrorType::UndefinedSymbol(symbol) => {
                 let sym = self.get_span("symbol");
-                Report::build(ReportKind::Error, sym.clone()).with_label(
-                    Label::new(sym.clone()).with_message(format!("Symbol {:?} is undefined", symbol.symbol)),
+                Report::build(ReportKind::Error, sym).with_label(
+                    Label::new(sym).with_message(format!("Symbol {:?} is undefined", symbol.symbol)),
                 )
             }
             InternalErrorType::UndefinedIdentifier(identifier) => {
                 let sym = self.get_span("ident");
-                Report::build(ReportKind::Error, sym.clone()).with_label(
-                    Label::new(sym.clone()).with_message(format!("Symbol {:?} is undefined", identifier.identifier)),
+                Report::build(ReportKind::Error, sym).with_label(
+                    Label::new(sym).with_message(format!("Symbol {:?} is undefined", identifier.identifier)),
                 )
             }
             InternalErrorType::InvalidSymbolType(invalid) => {
@@ -342,7 +341,7 @@ impl InternalError {
                 let color_b = colors.next();
                 let ref_span = self.get_span("reference");
                 let def_span = self.get_span("defined");
-                Report::build(ReportKind::Error, ref_span.clone())
+                Report::build(ReportKind::Error, ref_span)
                     .with_message("Invalid symbol type.")
                     .with_label(
                         Label::new(def_span)
@@ -350,7 +349,7 @@ impl InternalError {
                             .with_color(color_a),
                     )
                     .with_label(
-                        Label::new(ref_span.clone())
+                        Label::new(ref_span)
                             .with_message(format!(
                                 "The symbol referenced by {} has type {}, expected {}.",
                                 invalid.symbol_reference.clone().fg(color_a),

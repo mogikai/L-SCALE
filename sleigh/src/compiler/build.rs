@@ -297,7 +297,7 @@ impl SleighCompiler {
         );
         if let Some(token_id) = self.report_error_or_unwrap(result)? {
             for field in token.fields.into_iter() {
-                let name = field.name.clone().transmute();
+                let name = field.name.transmute();
                 // +1 since end is inclusive, but `MOIRBitRange` is exclusive
                 let range = MOIRBitRange::new(
                     MOIRSize::try_from(*field.start.value()).unwrap(),
@@ -316,7 +316,7 @@ impl SleighCompiler {
 
                 if let Some(field) = self
                     .make_field(MOIRFieldParent::Token(token_id), bits, range, signed, hex)
-                    .map_err(|e| e.span("field", field.span().clone()))?
+                    .map_err(|e| e.span("field", *field.span()))?
                 {
                     let result = self.spec_builder.define_field(name, field);
                     self.report_error_or_unwrap(result)?;
@@ -332,7 +332,7 @@ impl SleighCompiler {
     ) -> InternalCompilerResult {
         let (context_id, bits) = self
             .spec_builder
-            .define_context(context.varnode.clone().transmute())?;
+            .define_context(context.varnode.transmute())?;
         for field in &context.fields {
             // +1 since end is inclusive, but `MOIRBitRange` is exclusive
             let range = MOIRBitRange::new(
@@ -354,11 +354,11 @@ impl SleighCompiler {
 
             if let Some(moir_field) = self
                 .make_field(MOIRFieldParent::Context(context_id), bits, range, signed, hex)
-                .map_err(|e| e.span("field", field.span().clone()))?
+                .map_err(|e| e.span("field", *field.span()))?
             {
                 let result = self
                     .spec_builder
-                    .define_field(field.name.clone().transmute(), moir_field);
+                    .define_field(field.name.transmute(), moir_field);
                 self.report_error_or_unwrap(result)?;
             }
         }

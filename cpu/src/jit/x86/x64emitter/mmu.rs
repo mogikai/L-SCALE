@@ -437,7 +437,7 @@ impl X64Emitter<'_> {
         //       For JIRConsts this can be done with immediate values.
         let (value_reg_lower, value_reg_upper) = match value {
             JIRValue::Slice(_) => {
-                (reg!(self.allocations, inst, value_index + 0), reg!(self.allocations, inst, value_index + 1))
+                (reg!(self.allocations, inst, value_index), reg!(self.allocations, inst, value_index + 1))
             }
             JIRValue::Const(value) => {
                 let (value_lower, value_upper) = value.split(8);
@@ -507,11 +507,10 @@ where
 {
     let callback = callback as *mut CB;
     unsafe { (*callback)(context, addr, size, space_id) }
-        .map_err(|e| {
+        .inspect_err(|&e| {
             // Set the error in the runtime context so that it can be retrieved upon exiting
             // the jited code. The JIT will then return the error, instead of continuing execution.
             context.set_runtime_error(e);
-            e
         })
         .ok()
 }

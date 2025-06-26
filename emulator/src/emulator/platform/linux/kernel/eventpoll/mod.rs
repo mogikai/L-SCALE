@@ -291,7 +291,7 @@ impl EpollData {
 #[derive(Decode, Encode, RequiredMem, Copy, Clone)]
 #[repr(C)]
 #[allow(non_camel_case_types)]
-pub(crate) struct epoll_event {
+pub struct epoll_event {
     events: EPOLL_EVENTS,
     data: u64,
 }

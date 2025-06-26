@@ -551,7 +551,7 @@ where
         task_id: &TaskId,
     ) -> Result<FileDescriptor<D>, FileDescriptorMapError> {
         self.cwds
-            .get(&task_id)
+            .get(task_id)
             .ok_or(FileDescriptorMapError::InvalidTaskId)
             .map(|fd| fd.to_owned())
     }

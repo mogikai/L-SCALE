@@ -29,14 +29,10 @@ use crate::spec::{
     ProcessorSpecification,
     SpaceId,
 };
-use addr_align::Align;
 use mogi_utilities::addresses::EVAddr;
-use mogi_utilities::index_map::{
-    MapKey, PrimaryOffsetMap
-};
+use mogi_utilities::index_map::PrimaryOffsetMap;
 use std::ops::Range;
 use std::rc::Rc;
-
 
 /// A builder for constructing `TargetBasicBlock` structures.
 ///
@@ -164,7 +160,7 @@ impl TargetBasicBlockBuilder {
         &mut self,
         start: EVAddr,
         next: EVAddr,
-    ) -> ProcessorSpecResult<TargetInstructionBuilder> {
+    ) -> ProcessorSpecResult<TargetInstructionBuilder<'_>> {
         if let Some(previous_next) = self.next_instruction
             && previous_next != start
         {

@@ -45,13 +45,13 @@ impl SleighCompiler {
         let shift_amount = bitrange.lsb.into_value();
         let bits = bitrange.bits.into_value();
 
-        let minimum_value_size = ((bits + 7) / 8).try_into().expect("bits must fit into u8");
+        let minimum_value_size = bits.div_ceil(8).try_into().expect("bits must fit into u8");
         let target = resolve_target(&self.spec_builder, scope, local, bitrange.ident)?;
         let target_size = scope
             .size_of_local(target)
             .determined_or(minimum_value_size);
 
-        let expr_span = expression.span().clone();
+        let expr_span = *expression.span();
         let value = self.aab_resolve_value(scope, instructions, minimum_value_size, target_size, expression)?;
         let mask =
             create_mask(scope, instructions, shift_amount, bits, target_size).map_err(|e| e.span("expr", expr_span))?;
@@ -119,7 +119,7 @@ fn resolve_target(
     ident: Spanned<SASTIdent>,
 ) -> InternalCompilerResult<MOIRLocalId> {
     if local.into_value() {
-        scope.allocate_named_temporary(ident.clone().transmute(), MOIRMaybeSize::Undetermined)
+        scope.allocate_named_temporary(ident.transmute(), MOIRMaybeSize::Undetermined)
     } else {
         scope.resolve_ident(spec_builder, ident.transmute())
     }

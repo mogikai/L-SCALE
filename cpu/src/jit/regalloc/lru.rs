@@ -206,7 +206,7 @@ impl Lru {
                     continue;
                 }
                 if self.data[i].prev == u8::MAX || self.data[i].next == u8::MAX {
-                    panic!("Invalid LRU. p{} next or previous is an invalid value, but not both", i);
+                    panic!("Invalid LRU. p{i} next or previous is an invalid value, but not both");
                 }
                 if self.data[self.data[i].prev as usize].next != i as u8 {
                     panic!(
@@ -245,7 +245,7 @@ impl Debug for Lru {
                     );
                 }
                 seen.insert(node);
-                data_str += &format!(" -> p{}", node);
+                data_str += &format!(" -> p{node}");
                 node = self.data[node as usize].next;
             }
             data_str

@@ -127,6 +127,7 @@ struct X86ExtraEmitterInfo {
 }
 
 /// The global jit context. Each task context contains a pointer to this context.
+#[derive(Default)]
 pub struct X86GlobalContext {
     custom_op_impls: SecondaryMap<CustomOpId, CustomOpImplKind>,
     tlb_miss_read_callback: Option<TlbMissCallback<X86TaskContext>>,
@@ -176,16 +177,6 @@ impl Space {
         varnode: &JIRVarNode,
     ) -> &mut [u8] {
         &mut self.0[varnode.offset as usize..varnode.end() as usize]
-    }
-}
-
-impl Default for X86GlobalContext {
-    fn default() -> Self {
-        Self {
-            custom_op_impls: Default::default(),
-            tlb_miss_read_callback: Default::default(),
-            tlb_miss_write_callback: Default::default(),
-        }
     }
 }
 
@@ -386,7 +377,7 @@ impl MogiJit for X86MogiJit {
 
         // And then start the register allocator for the block and target architecture.
         let regalloc = RegisterAllocator::new(
-            &target_block,
+            target_block,
             &alloc_requirements,
             RegAllocHostConstraints::new(preferred_registers, non_preferred_registers)
                 .with_scratch(GPRegister::R15.into_host_reg())

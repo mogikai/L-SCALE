@@ -200,7 +200,6 @@ where
         element: V,
     ) -> Option<V> {
         self.0
-            .get_mut(usize::from(key))
-            .and_then(|prev| Some(std::mem::replace(prev, element)))
+            .get_mut(usize::from(key)).map(|prev| std::mem::replace(prev, element))
     }
 }

@@ -348,12 +348,11 @@ impl<Endianness: ByteOrder> Memory<Endianness> {
             MappingType::PrivateAnonymous,
             Some("Heap".to_string()),
         );
-        result.map_err(|e| {
+        result.inspect_err(|e| {
             self.unused_physical_sets
                 .get_mut(&layout.unused_physical_memory)
                 .expect("Emulator Error! The unused physical set must exist")
                 .insert(physical_region);
-            e
         })?;
 
         layout.heap_end += size;

@@ -154,7 +154,7 @@ impl SleighCompiler {
         // Define the constructor and insert it into the corresponding table.
         self.spec_builder.define_constructor(moir_constructor)?;
 
-        self.register_matchers(constructor.table.clone().transpose(), matchers)?;
+        self.register_matchers(constructor.table.transpose(), matchers)?;
 
         let table = self
             .spec_builder
@@ -294,8 +294,8 @@ impl SleighCompiler {
                                             end: MOIRMaybeSize::Undetermined,
                                         };
 
-                                        let id = scope.declare_local(ident.into_value().into(), slice);
-                                        id
+                                        
+                                        scope.declare_local(ident.into_value().into(), slice)
                                     }
                                 }
                             }
@@ -398,7 +398,7 @@ impl SleighCompiler {
                             Some(bytes_consumed) => {
                                 // field used and fixed offset
                                 let fe =
-                                    FieldExtractor::new(*field_id, bytes_consumed.into(), field.bits, field.signed);
+                                    FieldExtractor::new(*field_id, bytes_consumed, field.bits, field.signed);
                                 matcher.static_field_extractors.push(fe);
                             }
                             None => {
@@ -455,7 +455,7 @@ impl SleighCompiler {
         // remove empty
         matcher
             .conjunctions
-            .retain(|conjunction| conjunction.token.parent != None || !conjunction.atoms.is_empty());
+            .retain(|conjunction| conjunction.token.parent.is_some() || !conjunction.atoms.is_empty());
     }
 
     /// Populate matcher conjunctions with dynamic-offset sublists and field extractors
@@ -686,7 +686,7 @@ impl SleighCompiler {
                 trace_build!("Local scope is missing identifier {str}. Allocating it now.");
 
                 // display identifiers don't have a known size
-                scope.allocate_named_const(ident.clone(), MOIRMaybeSize::Undetermined)?;
+                scope.allocate_named_const(ident, MOIRMaybeSize::Undetermined)?;
             }
         }
         Ok(scope)
@@ -753,7 +753,7 @@ impl SleighCompiler {
 
             let ident = self.spec_builder.get_string(MOIRSymbolId::from(reference));
             if let Some(value) = value {
-                scope.declare_local(ident.clone().into_value(), value);
+                scope.declare_local(ident.into_value(), value);
             }
         }
         Ok(())

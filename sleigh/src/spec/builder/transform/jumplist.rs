@@ -352,7 +352,7 @@ impl<'a> JumplistBuilder<'a> {
         for row in &rows {
             debug_assert_eq!(
                 row.data_provider,
-                rows.get(0).expect("We just checked this").data_provider,
+                rows.first().expect("We just checked this").data_provider,
                 "Data providers must be equal"
             );
         }
@@ -425,7 +425,7 @@ impl<'a> JumplistBuilder<'a> {
         for row in &rows {
             debug_assert_eq!(
                 row.data_provider,
-                rows.get(0).expect("We just checked this").data_provider,
+                rows.first().expect("We just checked this").data_provider,
                 "Data providers must be equal"
             );
         }
@@ -451,8 +451,7 @@ impl<'a> JumplistBuilder<'a> {
             let mut jumplist_child = Jumplist::new(
                 set_mask,
                 size_delta,
-                set_rows_child
-                    .get(0)
+                set_rows_child.first()
                     .expect("We just checked this")
                     .data_provider,
             );
@@ -768,11 +767,10 @@ fn extract_from_conjunction(conjunction: &MatcherConjunction) -> (u128, u128) {
         .atoms
         .iter()
         .fold((0, 0), |(acc_mask, acc_value), atom| {
-            if let MatcherAtom::Field { field_id: _, matcher } = atom {
-                if let FieldMatcher::Value { mask, value } = matcher {
+            if let MatcherAtom::Field { field_id: _, matcher } = atom
+                && let FieldMatcher::Value { mask, value } = matcher {
                     return (acc_mask | mask, acc_value | value);
                 }
-            }
 
             (acc_mask, acc_value)
         })
@@ -884,7 +882,7 @@ fn save_graph(
                     graph.add_node(entry_node_weight)
                 });
 
-                graph.add_edge(list_node, entry_node, format!("NE{:#x}", value));
+                graph.add_edge(list_node, entry_node, format!("NE{value:#x}"));
 
                 entry_sublists.extend(entry.sublists.iter());
 
@@ -899,7 +897,7 @@ fn save_graph(
                             graph.add_node(sublist_node_weight)
                         });
 
-                    graph.add_edge(list_node, sublist_node, format!("SL{:#x}", value));
+                    graph.add_edge(list_node, sublist_node, format!("SL{value:#x}"));
                 }
             }
         }
@@ -907,5 +905,5 @@ fn save_graph(
 
     let dot = Dot::with_config(&graph, &[]);
     let mut file = File::create("jumplist_graph.gv").unwrap();
-    writeln!(file, "{:?}", dot).unwrap();
+    writeln!(file, "{dot:?}").unwrap();
 }

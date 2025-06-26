@@ -271,8 +271,7 @@ impl X64Emitter<'_> {
         let output_reg = reg!(self.allocations, inst, 0);
         debug_assert!(
             output_reg == GPRegister::AX.into_host_reg() || output_reg == GPRegister::DX.into_host_reg(),
-            "Expected the output to be in AX or DX, not in {}",
-            output_reg
+            "Expected the output to be in AX or DX, not in {output_reg}"
         );
 
         // Fetch the divisor register and load the value.
@@ -524,7 +523,9 @@ unsafe extern "sysv64" fn div128(
         unsafe { &mut (*cpu_context) }.set_runtime_error(RuntimeError::DivisionError);
         // SAFETY: The error variable in the runtime is checked. In case of an error, the emulation will exit
         //         and the unsafe value is not used.
-        return unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+        // We can allow uninitialized values here since they are never used.
+        #[allow(invalid_value)]
+        return unsafe { std::mem::MaybeUninit::<U128>::uninit().assume_init() };
     };
     U128 {
         low: result as u64,
@@ -551,7 +552,10 @@ unsafe extern "sysv64" fn sdiv128(
         unsafe { &mut (*cpu_context) }.set_runtime_error(RuntimeError::DivisionError);
         // SAFETY: The error variable in the runtime is checked. In case of an error, the emulation will exit
         //         and the unsafe value is not used.
-        return unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+
+        // We can allow uninitialized values here since they are never used.
+        #[allow(invalid_value)]
+        return unsafe { std::mem::MaybeUninit::<U128>::uninit().assume_init() };
     };
     let result = result as u128;
     U128 {
@@ -579,7 +583,10 @@ unsafe extern "sysv64" fn rem128(
         unsafe { &mut (*cpu_context) }.set_runtime_error(RuntimeError::DivisionError);
         // SAFETY: The error variable in the runtime is checked. In case of an error, the emulation will exit
         //         and the unsafe value is not used.
-        return unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+
+        // We can allow uninitialized values here since they are never used.
+        #[allow(invalid_value)]
+        return unsafe { std::mem::MaybeUninit::<U128>::uninit().assume_init() };
     };
     U128 {
         low: result as u64,
@@ -607,7 +614,10 @@ unsafe extern "sysv64" fn srem128(
         unsafe { &mut (*cpu_context) }.set_runtime_error(RuntimeError::DivisionError);
         // SAFETY: The error variable in the runtime is checked. In case of an error, the emulation will exit
         //         and the unsafe value is not used.
-        return unsafe { std::mem::MaybeUninit::uninit().assume_init() };
+
+        // We can allow uninitialized values here since they are never used.
+        #[allow(invalid_value)]
+        return unsafe { std::mem::MaybeUninit::<U128>::uninit().assume_init() };
     };
     let result = result as u128;
 

@@ -148,7 +148,7 @@ impl FileDescriptorOps for TcpSocketOps {
         let mut new_fd = FileDescriptor::new(Box::new(TcpSocketOps::new()));
         new_fd.data.tcp = Some(TCPData::new(fd.tcp_system.clone(), new_id));
 
-        Ok((new_fd, sockaddr.into()))
+        Ok((new_fd, sockaddr))
     }
 
     fn listen(

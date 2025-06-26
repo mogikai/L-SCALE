@@ -179,8 +179,8 @@ impl Display for JIRVarNodeId {
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
-            JIRVarNodeId::VarNode(varnode) => write!(f, "{}", varnode),
-            JIRVarNodeId::Temp(temp) => write!(f, "{}", temp),
+            JIRVarNodeId::VarNode(varnode) => write!(f, "{varnode}"),
+            JIRVarNodeId::Temp(temp) => write!(f, "{temp}"),
         }
     }
 }

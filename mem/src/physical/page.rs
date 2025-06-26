@@ -23,6 +23,12 @@ pub struct Page {
     permission: Permission,
 }
 
+impl Default for Page {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Page {
     pub fn new() -> Self {
         Self {
@@ -105,9 +111,9 @@ impl Debug for PageData {
         for i in 0..self.data.len() {
             let str = format!("{:02X} ", self.data[i]);
             if i % 16 == 0 {
-                write!(f, "\noffset: {:03X}     ", i)?;
+                write!(f, "\noffset: {i:03X}     ")?;
             }
-            write!(f, "{}", str)?;
+            write!(f, "{str}")?;
         }
         write!(f, "\n}}")?;
         Ok(())

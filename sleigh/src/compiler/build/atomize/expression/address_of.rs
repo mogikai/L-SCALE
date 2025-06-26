@@ -54,11 +54,10 @@ impl SleighCompiler {
         {
             // If out has a size and the address_of operator also specifies
             // a size, they have to match.
-            if let MOIRMaybeSize::Determined(size) = size {
-                if size != size_constraint {
+            if let MOIRMaybeSize::Determined(size) = size
+                && size != size_constraint {
                     todo!("Generate error report for mismatched sizes")
                 }
-            }
         }
         // The size of rhs is not relevant, so we leave it up to the atomization to allocate if necessary.
         let rhs = self.atomize_expression(scope, instructions, None, *address_of.expression)?;

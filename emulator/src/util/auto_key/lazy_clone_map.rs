@@ -125,8 +125,7 @@ where
         key: &AutoKey,
     ) -> Option<RemovedElement<T>> {
         self.data
-            .remove(key)
-            .and_then(|element| Some(RemovedElement { element, index: *key }))
+            .remove(key).map(|element| RemovedElement { element, index: *key })
     }
 
     pub fn reinsert(

@@ -83,6 +83,12 @@ impl Debug for MogiMMU {
     }
 }
 
+impl Default for MogiMMU {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MogiMMU {
     pub fn new() -> Self {
         Self {

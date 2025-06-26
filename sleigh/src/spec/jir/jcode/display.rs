@@ -11,10 +11,10 @@ impl Display for JIRInstruction {
     ) -> std::fmt::Result {
         use JIRInstruction as OP;
         match &self {
-            OP::BlockStart(label) => write!(f, "block_start <{}>", label),
-            OP::BlockEnd(label) => write!(f, "block_end <{}>", label),
-            OP::InstructionStart(addr) => write!(f, "instruction_start <{:?}>", addr),
-            OP::InstructionEnd(addr) => write!(f, "instruction_end <{:?}>", addr),
+            OP::BlockStart(label) => write!(f, "block_start <{label}>"),
+            OP::BlockEnd(label) => write!(f, "block_end <{label}>"),
+            OP::InstructionStart(addr) => write!(f, "instruction_start <{addr:?}>"),
+            OP::InstructionEnd(addr) => write!(f, "instruction_end <{addr:?}>"),
             OP::PopCount(args)
             | OP::LZCount(args)
             | OP::ZeroExtend(args)
@@ -34,10 +34,10 @@ impl Display for JIRInstruction {
                 write!(f, "{} = {}({}, {})", args.output, self.op_display(), args.input_a, args.input_b)
             }
             OP::Load { target, address, space } => {
-                write!(f, "{} = *[{:?}]{}", target, space, address)
+                write!(f, "{target} = *[{space:?}]{address}")
             }
             OP::Store { address, value, space } => {
-                write!(f, "*[{:?}]{} = {}", space, address, value)
+                write!(f, "*[{space:?}]{address} = {value}")
             }
             OP::Copy(args) => {
                 write!(f, "{} = {}", args.output, args.input)
@@ -50,9 +50,9 @@ impl Display for JIRInstruction {
                 extra_args,
             } => {
                 if let Some(output) = output {
-                    write!(f, "{} = {}(", output, op_id)?
+                    write!(f, "{output} = {op_id}(")?
                 } else {
-                    write!(f, "{}(", op_id)?
+                    write!(f, "{op_id}(")?
                 }
                 let mut inputs = vec![];
                 if let Some(input) = input_a {
@@ -65,7 +65,7 @@ impl Display for JIRInstruction {
                 let len = inputs.len();
                 if len >= 2 {
                     for input in inputs[..(len - 1)].iter() {
-                        write!(f, "{}, ", input)?;
+                        write!(f, "{input}, ")?;
                     }
                 }
                 if len >= 1 {
@@ -77,21 +77,21 @@ impl Display for JIRInstruction {
             OP::BoolNegate(args) | OP::BitNegate(args) | OP::IntNegate(args) | OP::FloatNegate(args) => {
                 write!(f, "{} = {}{}", args.output, self.op_display(), args.input)
             }
-            OP::ReturnDirect(target) => write!(f, "return {}", target),
-            OP::ReturnIndirect(target) => write!(f, "return [{}]", target),
-            OP::CallDirect(target, retaddr) => write!(f, "call {} (returning to {retaddr:?})", target),
-            OP::CallIndirect(target, retaddr) => write!(f, "call [{}] (returning to {retaddr:?}", target),
-            OP::GotoDirect(target) => write!(f, "goto {}", target),
-            OP::GotoIndirect(target) => write!(f, "goto [{}]", target),
-            OP::JCodeGoto(label) => write!(f, "goto <{}>", label),
+            OP::ReturnDirect(target) => write!(f, "return {target}"),
+            OP::ReturnIndirect(target) => write!(f, "return [{target}]"),
+            OP::CallDirect(target, retaddr) => write!(f, "call {target} (returning to {retaddr:?})"),
+            OP::CallIndirect(target, retaddr) => write!(f, "call [{target}] (returning to {retaddr:?}"),
+            OP::GotoDirect(target) => write!(f, "goto {target}"),
+            OP::GotoIndirect(target) => write!(f, "goto [{target}]"),
+            OP::JCodeGoto(label) => write!(f, "goto <{label}>"),
             OP::JCodeGotoIf {
                 condition,
                 target_block,
             } => {
-                write!(f, "if ({}) goto <{}>", condition, target_block)
+                write!(f, "if ({condition}) goto <{target_block}>")
             }
-            OP::GotoDirectIf { condition, target } => write!(f, "if ({}) goto [{}]", condition, target),
-            OP::GotoIndirectIf { condition, target } => write!(f, "if ({}) goto {}", condition, target),
+            OP::GotoDirectIf { condition, target } => write!(f, "if ({condition}) goto [{target}]"),
+            OP::GotoIndirectIf { condition, target } => write!(f, "if ({condition}) goto {target}"),
             JIRInstruction::IntAdd(args)
             | JIRInstruction::IntSubtract(args)
             | JIRInstruction::IntMul(args)

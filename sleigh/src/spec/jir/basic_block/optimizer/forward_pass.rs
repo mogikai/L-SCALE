@@ -67,13 +67,13 @@ impl TargetBasicBlockInner {
     /// constant input, replacing them by a single copy
     pub(super) fn forward_pass(
         &mut self,
-        spec: &ProcessorSpecification,
+        _spec: &ProcessorSpecification,
         context: &OptimizerContext,
         options: &OptimizerOptions,
     ) -> ProcessorSpecResult<(u64, u64)> {
         let (mut elim_count, mut const_fold_count) = (0, 0);
 
-        for (block_id, block) in self.jir_blocks.items() {
+        for block in self.jir_blocks.values() {
             let block = block.as_ref().expect("This must be some");
 
             let mut coalescions = SecondaryMap::<LocalSliceId, Option<CopyCoalescion>>::default();
@@ -147,14 +147,14 @@ impl TargetBasicBlockInner {
                     }
                 }
 
-                if options.enable_copy_coalescing {
-                    if let JIRInstruction::Copy(args) = &self.jir_instructions[inst_id] {
-                        // a copy is stored for later optimization
+                if options.enable_copy_coalescing
+                    && let JIRInstruction::Copy(args) = &self.jir_instructions[inst_id]
+                {
+                    // a copy is stored for later optimization
 
-                        let copy_output_id = self.optimizer_ancillary.slice_to_id[&args.output];
-                        let new_coalescion = CopyCoalescion::new(inst_id, args.input.clone());
-                        coalescions[copy_output_id] = Some(new_coalescion);
-                    }
+                    let copy_output_id = self.optimizer_ancillary.slice_to_id[&args.output];
+                    let new_coalescion = CopyCoalescion::new(inst_id, args.input);
+                    coalescions[copy_output_id] = Some(new_coalescion);
                 }
             }
         }

@@ -141,9 +141,7 @@ impl ContextProvider for X86TaskContext {
         name: &str,
         value: u128,
     ) {
-        processor_spec.field_id_by_string(name).map(|field_id| {
-            self.context_values.insert(field_id, value);
-        });
+        if let Some(field_id) = processor_spec.field_id_by_string(name) { self.context_values.insert(field_id, value); }
     }
 
     fn get_by_string(

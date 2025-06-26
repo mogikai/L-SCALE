@@ -47,7 +47,7 @@ impl Display for Mapping {
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
         let label = if let Some(label) = &self.label {
-            format!(" [{}] ", label)
+            format!(" [{label}] ")
         } else {
             "".to_string()
         };

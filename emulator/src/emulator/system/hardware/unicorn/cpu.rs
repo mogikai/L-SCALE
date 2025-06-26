@@ -61,7 +61,7 @@ impl CPU for UCWrapper<'_> {
         stop_reason: StopReason,
     ) -> Result<(), CPUError> {
         self.stop_reason = Some(stop_reason);
-        Ok(self.uc_mut().emu_stop().map_err(cpu_error_from_uc_error)?)
+        self.uc_mut().emu_stop().map_err(cpu_error_from_uc_error)
     }
 
     fn reg_write(
@@ -70,10 +70,10 @@ impl CPU for UCWrapper<'_> {
         value: u64,
     ) -> Result<(), CPUError> {
         let register = try_register_to_uc_register_x86(register)?;
-        Ok(self
+        self
             .uc_mut()
             .reg_write(register, value)
-            .map_err(cpu_error_from_uc_error)?)
+            .map_err(cpu_error_from_uc_error)
     }
 
     fn reg_read(
@@ -81,10 +81,10 @@ impl CPU for UCWrapper<'_> {
         register: Register,
     ) -> Result<u64, CPUError> {
         let register = try_register_to_uc_register_x86(register)?;
-        Ok(self
+        self
             .uc()
             .reg_read(register)
-            .map_err(cpu_error_from_uc_error)?)
+            .map_err(cpu_error_from_uc_error)
     }
 
     fn add_breakpoint(
@@ -149,12 +149,12 @@ impl CPU for UCWrapper<'_> {
             .contexts
             .get_mut(&context_handle)
             .ok_or(CPUError::Unknown)?;
-        Ok(self
+        self
             .uc
             .as_mut()
             .unwrap()
             .context_save(context)
-            .map_err(cpu_error_from_uc_error)?)
+            .map_err(cpu_error_from_uc_error)
     }
 
     fn restore_context(
@@ -162,12 +162,12 @@ impl CPU for UCWrapper<'_> {
         context_handle: ContextHandle,
     ) -> Result<(), CPUError> {
         let context = &self.contexts[&context_handle];
-        Ok(self
+        self
             .uc
             .as_mut()
             .unwrap()
             .context_restore(context)
-            .map_err(cpu_error_from_uc_error)?)
+            .map_err(cpu_error_from_uc_error)
     }
 
     fn remove_context(

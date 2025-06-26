@@ -30,7 +30,10 @@ use brotli::Decompressor;
 use fnv::FnvHashMap;
 use jir::jumplist::MatchContext;
 use jir::values::{
-    GroupId, JIRGroup, VarnodeGroup, VarnodeGroupId
+    GroupId,
+    JIRGroup,
+    VarnodeGroup,
+    VarnodeGroupId,
 };
 use mogi_sleigh_parser::{
     ParserContext,
@@ -183,7 +186,7 @@ impl ProcessorSpecification {
     pub fn new_match_context(
         &self,
         addr: EVAddr,
-    ) -> ProcessorSpecResult<MatchContext> {
+    ) -> ProcessorSpecResult<MatchContext<'_>> {
         Ok(MatchContext::new(addr, &self.jumplist_cache, &self.symbol_tables.constructors))
     }
 
@@ -348,7 +351,7 @@ impl ProcessorSpecification {
                     .get(&JIRSymbolId::VarNode(*varnode_id))
                     .expect("Every defined symbol must have come from somewhere in the spec")
                     .value();
-                write!(group_dbg, "{} ", str).unwrap();
+                write!(group_dbg, "{str} ").unwrap();
             }
             writeln!(group_dbg, "]").unwrap();
             prev_end = group.end();

@@ -1,5 +1,4 @@
 use crate::api::error::FuzzerError;
-use crate::api::observer::HasObservation;
 use crate::api::reducer::Reducer;
 use crate::core::luzzer::Observation;
 use crate::observers::bb_based::edge::EdgeHitObserver;
@@ -12,6 +11,7 @@ use std::rc::Rc;
 /// that consumes multiple different TestCaseXBehaviors
 #[derive(Debug, Default)]
 pub struct EdgeBehaviorReducer {
+    #[allow(unused)]
     observer: Rc<RefCell<EdgeHitObserver>>,
 }
 
@@ -25,8 +25,8 @@ impl Reducer for EdgeBehaviorReducer {
     type Output = Observation;
 
     fn reduce(&mut self) -> Result<Self::Output, FuzzerError> {
-        let observer = self.observer.borrow();
-        let current_edge_hits = observer.observation();
+        // let observer = self.observer.borrow();
+        // let current_edge_hits = observer.observation();
         // debug!(
         //     "Edge hits: {:?}",
         //     current_edge_hits

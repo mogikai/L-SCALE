@@ -1,6 +1,5 @@
 use std::collections::hash_map::Entry;
 
-use itertools::Itertools;
 use mogi_utilities::index_map::SecondaryMap;
 use mogi_utilities::new_map_key;
 
@@ -20,7 +19,7 @@ impl TargetBasicBlockInner {
     /// Store a unique id for each slice and populate `self.group_slices`.
     pub(super) fn collect_slices(
         &mut self,
-        spec: &ProcessorSpecification,
+        _spec: &ProcessorSpecification,
     ) -> ProcessorSpecResult {
         for inst in &self.jir_instructions {
             if let Some(write_slice) = inst.get_output() {
@@ -58,7 +57,7 @@ impl TargetBasicBlockInner {
     /// Populate `block_reads` and `block_writes` and  mark dead-store instructions.
     pub(super) fn calculate_block_reads_and_writes(
         &mut self,
-        spec: &ProcessorSpecification,
+        _spec: &ProcessorSpecification,
     ) -> ProcessorSpecResult {
         // this is a two-phase algorithm:
         // 1. calculate reads and writes for each block locally
@@ -82,7 +81,6 @@ impl TargetBasicBlockInner {
 
             for inst_id in block.range.clone().rev() {
                 // process written slices (mark spills and check if current inst is dead store)
-                let a = 3;
                 self.mark_spills_and_dead_stores(inst_id, &mut spilled_slices, &mut read_slices, &mut dead_stores);
 
                 // process read groups (add to set)
@@ -138,7 +136,7 @@ impl TargetBasicBlockInner {
                             continue;
                         };
 
-                        let ds_read_slice_id = self.optimizer_ancillary.slice_to_id[&ds_read_slice];
+                        let ds_read_slice_id = self.optimizer_ancillary.slice_to_id[ds_read_slice];
                         // care: overlaps can only be removed
                         // if they are a strict subset of ds_read
                         // TODO is it worth removing those kinds of reads?

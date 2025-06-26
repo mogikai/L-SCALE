@@ -23,21 +23,6 @@ use std::marker::PhantomData;
 use std::ops::Range;
 use tracing::trace;
 
-/// Emit a 64 bit mov instruction, but only if the registers differ.
-macro_rules! mov64 {
-    ($asm:expr; $dest_reg:expr, $src_reg:expr) => {
-        use dynasmrt::DynasmApi;
-        use dynasmrt::dynasm;
-        if $dest_reg != $src_reg {
-            assemble!($asm;
-                ; mov Rq($dest_reg), Rq($src_reg)
-            );
-        }
-    };
-}
-
-use mov64;
-
 use crate::jit::api::{
     JITResult,
     RuntimeError,
@@ -412,7 +397,7 @@ impl EmitterAllocRequirements for X64AllocRequirements {
     fn operands(
         &self,
         inst_id: InstId,
-    ) -> OperandRequirements {
+    ) -> OperandRequirements<'_> {
         OperandRequirements::new(&self.operand_requests[self.alloc_requirements[inst_id].operand_range.clone()])
     }
 

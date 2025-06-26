@@ -145,7 +145,7 @@ impl<'a> MOIRToJIRTransformer<'a> {
             &self.moir.symbol_tables.tables,
             &self.moir.symbol_tables.fields,
             &self.moir.symbol_tables.tokens,
-            &self.moir.context,
+            self.moir.context,
             &self.moir.symbol_tables.varnodes,
             &self.moir.symbol_tables.constructors,
         )

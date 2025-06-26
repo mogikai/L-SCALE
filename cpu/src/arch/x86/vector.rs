@@ -83,7 +83,7 @@ pub unsafe extern "sysv64" fn paddsb_slice(
     in_a: *const u8,
     in_a_len: usize,
     in_b: *const u8,
-    in_b_len: usize,
+    _in_b_len: usize,
 ) {
     slice_op!(out, out_len, in_a, in_a_len, in_b, in_b_len, i8, i8::saturating_add);
 }
@@ -129,7 +129,7 @@ pub unsafe extern "sysv64" fn psubsw_slice(
     in_a: *const u8,
     in_a_len: usize,
     in_b: *const u8,
-    in_b_len: usize,
+    _in_b_len: usize,
 ) {
     slice_op!(out, out_len, in_a, in_a_len, in_b, in_b_len, i16, i16::saturating_sub);
 }
@@ -149,7 +149,7 @@ pub unsafe extern "sysv64" fn paddusw_slice(
     in_a: *const u8,
     in_a_len: usize,
     in_b: *const u8,
-    in_b_len: usize,
+    _in_b_len: usize,
 ) {
     slice_op!(out, out_len, in_a, in_a_len, in_b, in_b_len, u16, u16::saturating_add);
 }
@@ -169,7 +169,7 @@ pub unsafe extern "sysv64" fn psubusw_slice(
     in_a: *const u8,
     in_a_len: usize,
     in_b: *const u8,
-    in_b_len: usize,
+    _in_b_len: usize,
 ) {
     slice_op!(out, out_len, in_a, in_a_len, in_b, in_b_len, u16, u16::saturating_sub);
 }
@@ -189,7 +189,7 @@ pub unsafe extern "sysv64" fn pavgw_slice(
     in_a: *const u8,
     in_a_len: usize,
     in_b: *const u8,
-    in_b_len: usize,
+    _in_b_len: usize,
 ) {
     let avg = |a: u16, b: u16| {
         let sum = a.saturating_add(b.saturating_add(1));

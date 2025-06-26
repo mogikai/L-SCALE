@@ -175,7 +175,7 @@ impl ProcessorSpecificationBuilder {
                 dupe_type: DuplicateDefineType::Endianness,
             };
             let mut spans = HashMap::new();
-            spans.insert("first", old_endianness.span().clone());
+            spans.insert("first", *old_endianness.span());
             spans.insert("second", endianness.into_span());
             Err(InternalError::with_spans(e.into(), spans))
         } else {
@@ -194,7 +194,7 @@ impl ProcessorSpecificationBuilder {
                 dupe_type: DuplicateDefineType::Alignment,
             };
             let mut spans = HashMap::new();
-            spans.insert("first", old_alignment.span().clone());
+            spans.insert("first", *old_alignment.span());
             spans.insert("second", alignment.into_span());
             Err(InternalError::with_spans(e.into(), spans))
         } else {
@@ -256,7 +256,7 @@ impl ProcessorSpecificationBuilder {
         }
         // We take the span of the identifier to later add it to the symbol so we can find out where
         // the default was previously defined.
-        let span = ident.span().clone();
+        let span = *ident.span();
         let space_id = self.symbol_tables.spaces.insert(space);
         self.define_symbol(ident, MOIRSymbolId::Space(space_id))?;
         if matches!(default, MOIRSpaceIsDefault::Default) {
@@ -445,7 +445,7 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         ident: Option<Spanned<StringId>>,
     ) -> InternalCompilerResult<TableId> {
-        let ident = ident.unwrap_or(self.root_table.clone());
+        let ident = ident.unwrap_or(self.root_table);
         if let Ok(symbol) = self.get_symbol(&ident) {
             // Symbol is defined. Do stuff with it.
             if let MOIRSymbolId::Table(table_id) = symbol {
@@ -482,9 +482,9 @@ impl ProcessorSpecificationBuilder {
         trace_build!("Resolving symbol {}", self.resolve_string_id(*ident.value()));
         self.symbol_ids.get(ident).ok_or_else(|| {
             let e = UndefinedIdentifier {
-                identifier: self.resolve_string_id(ident.value().clone()).to_string(),
+                identifier: self.resolve_string_id(*ident.value()).to_string(),
             };
-            InternalError::with_span(e.into(), "ident", ident.span().clone())
+            InternalError::with_span(e.into(), "ident", *ident.span())
         })
     }
 
@@ -518,7 +518,7 @@ impl ProcessorSpecificationBuilder {
                     name: self.resolve_string_id(*symbol_id.value()).to_string(),
                 };
 
-                Err(InternalError::with_span(e.into(), "ident", symbol_id.span().clone()))?;
+                Err(InternalError::with_span(e.into(), "ident", *symbol_id.span()))?;
             }
             Entry::Vacant(vacant_entry) => {
                 vacant_entry.insert(symbol);
@@ -565,11 +565,7 @@ impl ProcessorSpecificationBuilder {
             .map(|id| self.space_id_by_ident(&id))
             .transpose()?
             .or_else(|| {
-                if let Some(default) = &self.default_space {
-                    Some(*default.value())
-                } else {
-                    None
-                }
+                self.default_space.as_ref().map(|default| *default.value())
             })
             .ok_or(InternalErrorType::UndeclaredSymbol)?;
 
@@ -581,7 +577,7 @@ impl ProcessorSpecificationBuilder {
         &self,
         ident: Option<Spanned<StringId>>,
     ) -> InternalCompilerResult<&MOIRTable> {
-        let ident = ident.unwrap_or(self.root_table.clone());
+        let ident = ident.unwrap_or(self.root_table);
         self.non_root_table_by_ident(&ident)
     }
 
@@ -590,7 +586,7 @@ impl ProcessorSpecificationBuilder {
         &mut self,
         ident: Option<Spanned<StringId>>,
     ) -> InternalCompilerResult<&mut MOIRTable> {
-        let ident = ident.unwrap_or(self.root_table.clone());
+        let ident = ident.unwrap_or(self.root_table);
         self.non_root_table_by_ident_mut(&ident)
     }
 
@@ -692,11 +688,11 @@ impl ProcessorSpecificationBuilder {
 
         for (string_id, symbol_id) in self.symbol_ids.iter() {
             let string = self.resolve_string_id(*string_id);
-            write!(writer, "{:?} <=> {}\n", symbol_id, string).unwrap();
+            writeln!(writer, "{symbol_id:?} <=> {string}").unwrap();
         }
 
         for (cid, c) in self.symbol_tables.constructors.items() {
-            write!(writer, "{:?} <=> {}\n", cid, c.display_string).unwrap();
+            writeln!(writer, "{:?} <=> {}", cid, c.display_string).unwrap();
         }
     }
 

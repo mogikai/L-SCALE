@@ -111,7 +111,7 @@ fn setup_with_bytes(
         let tlb = ctx.tlb_mut();
         unsafe {
             mmu.populate_tlb(tlb, addr, MemoryAction::READ)
-                .map_err(|e| todo!())
+                .map_err(|_| todo!())
         }
     })
     .unwrap();
@@ -123,7 +123,7 @@ fn setup_with_bytes(
         let tlb = ctx.tlb_mut();
         unsafe {
             mmu.populate_tlb(tlb, addr, MemoryAction::WRITE)
-                .map_err(|e| todo!())
+                .map_err(|_| todo!())
         }
     })
     .unwrap();
@@ -161,7 +161,7 @@ fn main() {
     //     b"\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\x48\x01\xd8\xc3";
 
     // let (mut cpu, mmu, spec) = setup_with_bytes(&testelf_content, 0x1750u64);
-    let (mut cpu, mmu, spec) = setup_with_bytes(&testelf_content, 0x1620u64);
+    let (mut cpu, mmu, _) = setup_with_bytes(&testelf_content, 0x1620u64);
     // let (mut cpu, mmu, spec) = setup_with_bytes(testelf_content, 0x0u64);
 
     // write numbers to memory

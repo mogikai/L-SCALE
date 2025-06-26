@@ -274,10 +274,10 @@ where
             .ok_or(LinuxKernelError::EBADF)?;
         let fd = &mut *fd;
         let mut sockaddr = memory.read(umyaddr)?;
-        if let Sockaddr::NL { nl_pid, .. } = &mut sockaddr {
-            if *nl_pid == 0 {
-                *nl_pid = self.task_id.pid;
-            }
+        if let Sockaddr::NL { nl_pid, .. } = &mut sockaddr
+            && *nl_pid == 0
+        {
+            *nl_pid = self.task_id.pid;
         }
         fd.bind(sockaddr.into())?;
         Ok(0)
@@ -450,9 +450,9 @@ impl Encode for Optval {
     }
 }
 
-#[derive(Encode, Decode, RequiredMem)]
+#[derive(Encode, Decode, RequiredMem, Debug)]
 #[repr(C)]
-pub(crate) struct user_msghdr {
+pub struct user_msghdr {
     msg_name: EVAddr<Sockaddr>,
     /* ptr to socket address structure */ // void*
     msg_namelen: u64,

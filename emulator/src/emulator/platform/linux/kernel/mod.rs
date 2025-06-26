@@ -863,7 +863,7 @@ where
 
 #[repr(u64)]
 #[derive(FromPrimitive, Debug)]
-#[allow(clippy::style)]
+#[allow(clippy::style, non_camel_case_types)]
 pub enum FNCTL_OPS {
     F_DUPFD = 0, /* Duplicate file descriptor.  */
     F_GETFD = 1, /* Get file descriptor flags.  */
@@ -887,9 +887,9 @@ pub struct Timespec {
 }
 
 // TODO: Make types architecture dependant
-#[derive(Encode, Decode, RequiredMem)]
+#[derive(Encode, Decode, RequiredMem, Debug)]
 #[repr(C)]
-pub(crate) struct Rlimit {
+pub struct Rlimit {
     rlim_cur: u64,
     rlim_max: u64,
 }

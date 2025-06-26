@@ -158,9 +158,9 @@ where
         let runtime_context = {
             let spec = processor_specification.borrow();
             let mut runtime_context = Box::new(jit.new_runtime_context());
-            runtime_context.set(&*spec, "longMode", 1);
-            runtime_context.set(&*spec, "addrsize", 2);
-            runtime_context.set(&*spec, "opsize", 1);
+            runtime_context.set(&spec, "longMode", 1);
+            runtime_context.set(&spec, "addrsize", 2);
+            runtime_context.set(&spec, "opsize", 1);
             runtime_context
         };
 
@@ -359,7 +359,7 @@ where
                 TranslationLimit::Unlimited => {}
                 // we only translate as much as necessary so we can break here
                 TranslationLimit::BlockCount(block_limit) => {
-                    eprintln!("executed_blocks = {:#?}", executed_blocks);
+                    eprintln!("executed_blocks = {executed_blocks:#?}");
                     if executed_blocks >= block_limit.into() {
                         break;
                     }
@@ -527,11 +527,11 @@ where
             }
         }
 
-        let total_instr_count: usize = self
-            .block_cache
-            .values()
-            .map(|block| block.target_instruction_count())
-            .sum();
+        // let total_instr_count: usize = self
+        //     .block_cache
+        //     .values()
+        //     .map(|block| block.target_instruction_count())
+        //     .sum();
 
         if translated_instr_count > 0 {
             trace_jit!("Translated {}/{} blocks/instructions in total", translated_block_count, translated_instr_count);
@@ -558,7 +558,7 @@ fn add_target_address(
 /// * `target_addresses` - Vector to store discovered target addresses
 /// * `block` - Basic block to process branch targets from
 fn process_branch_targets(
-    mut target_addresses: &mut Vec<EVAddr>,
+    target_addresses: &mut Vec<EVAddr>,
     block: &TargetBasicBlock,
     translation_limit: TranslationLimit,
 ) {
@@ -566,23 +566,20 @@ fn process_branch_targets(
     if let Some(branch_targets) = block.branch_targets() {
         for branch_target in branch_targets {
             if let NextBlockTarget::Direct(addr) | NextBlockTarget::Return(addr) = branch_target {
-                add_target_address(&mut target_addresses, *addr, translation_limit);
+                add_target_address(target_addresses, *addr, translation_limit);
             }
         }
     }
 }
 
 fn process_block_fallthrough(
-    mut target_addresses: &mut Vec<EVAddr>,
+    target_addresses: &mut Vec<EVAddr>,
     block: &TargetBasicBlock,
     translation_limit: TranslationLimit,
 ) {
     // add fallthrough
-    match block.fallthrough() {
-        Some(fallthrough_addr) => {
-            add_target_address(&mut target_addresses, fallthrough_addr, translation_limit);
-        }
-        None => {}
+    if let Some(fallthrough_addr) = block.fallthrough() {
+        add_target_address(target_addresses, fallthrough_addr, translation_limit);
     }
 }
 
@@ -609,7 +606,7 @@ fn compile<JitT: MogiJit>(
         .unwrap();
 
     trace_jit!("optimized: {}", block);
-    jit.compile_target_block(&block)?;
+    jit.compile_target_block(block)?;
     Ok(())
 }
 

@@ -124,7 +124,7 @@ where
 
 #[allow(non_camel_case_types)]
 #[derive(Debug)]
-pub(crate) struct fd_set(pub bitvec::array::BitArray<[u8; 128]>);
+pub struct fd_set(pub bitvec::array::BitArray<[u8; 128]>);
 
 impl fd_set {
     /// Iterate over the requested fds.

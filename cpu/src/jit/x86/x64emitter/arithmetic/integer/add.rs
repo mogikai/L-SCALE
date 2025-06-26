@@ -14,7 +14,6 @@ use crate::jit::x86::x64emitter::helpers::reg;
 use crate::jit::x86::x64emitter::{
     X64AllocRequirements,
     X64Emitter,
-    mov64,
 };
 use crate::jit::x86::{
     X86MogiJit,

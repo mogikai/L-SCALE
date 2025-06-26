@@ -149,10 +149,10 @@ impl MMU for UCWrapper<'_> {
         addr: EPAddr,
         size: usize,
     ) -> MmuResult<()> {
-        Ok(self
+        self
             .uc_mut()
             .mem_map(addr.into(), size as u64, unicorn_engine::Prot::ALL)
-            .map_err(|_| MemoryError::Unknown)?)
+            .map_err(|_| MemoryError::Unknown)
     }
 
     fn free_physical(

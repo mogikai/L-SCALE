@@ -350,7 +350,7 @@ impl MOIRScope {
         let (ident, span) = ident.into_tuple();
         match self.locals.entry(ident) {
             Entry::Occupied(_) => {
-                Err(InternalError::with_span(InternalErrorType::RedefinedSymbol, "dupe", span.clone()))?
+                Err(InternalError::with_span(InternalErrorType::RedefinedSymbol, "dupe", span))?
             }
             Entry::Vacant(entry) => entry.insert(local),
         };
@@ -473,17 +473,16 @@ impl MOIRScope {
                 HashMap::from([
                     (
                         "first",
-                        self.local_spans
+                        *self.local_spans
                             .get(&ident)
-                            .expect("This must exist, since the locals entry is occupied")
-                            .clone(),
+                            .expect("This must exist, since the locals entry is occupied"),
                     ),
                     ("second", ident_span),
                 ]),
             ))?,
             Entry::Vacant(entry) => {
                 self.local_spans.insert(ident, ident_span);
-                let id = self.slices.insert(MOIRSlice::temporary(id, 0, size.into()));
+                let id = self.slices.insert(MOIRSlice::temporary(id, 0, size));
                 entry.insert(id);
                 Ok(id)
             }
@@ -578,14 +577,13 @@ impl MOIRScope {
             // We can return early, since the size is already determined and the same as the current slice.
             return Ok(local);
         }
-        if let MOIRReference::Field(field_id) = slice.reference {
-            if slice.size().is_undetermined() {
+        if let MOIRReference::Field(field_id) = slice.reference
+            && slice.size().is_undetermined() {
                 // This is the first time we are dealing with the size of this field.
                 // Set it in the size tracking map
                 self.field_sizes[field_id] = size.into();
                 slice.set_size(size)?;
             }
-        }
         let slice = *slice;
         Ok(self.slices.insert(slice.truncate(size)?))
     }
@@ -823,12 +821,11 @@ fn internal_allocate_named_const(
             HashMap::from([
                 (
                     "first",
-                    local_spans
+                    *local_spans
                         .get(&ident)
-                        .expect("This must exist, since the locals entry is occupied")
-                        .clone(),
+                        .expect("This must exist, since the locals entry is occupied"),
                 ),
-                ("second", ident_span.clone()),
+                ("second", ident_span),
             ]),
         )),
         Entry::Vacant(entry) => {

@@ -372,5 +372,5 @@ fn const_multiply(
 }
 
 fn immediate_size(value: &JIRConst) -> u32 {
-    min((u128::BITS - value.value().leading_zeros() + 7) / 8, value.size().into())
+    min((u128::BITS - value.value().leading_zeros()).div_ceil(8), value.size().into())
 }

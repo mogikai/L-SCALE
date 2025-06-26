@@ -7,7 +7,6 @@ use mogi_statelearner::{
 };
 use slotmap::SlotMap;
 use std::fmt::Display;
-use std::io::Write;
 use std::path::PathBuf;
 use std::thread::sleep;
 use std::time::Duration;
@@ -69,6 +68,7 @@ fn main() {
 
         for suffix_id in unobserved_suffixes.iter().copied() {
             let mut num_as = 0;
+            #[allow(unused_variables)]
             let mut num_bs = 0;
             for symbol_id in prefix.clone().chain(learner.get_suffix_symbols(suffix_id)) {
                 let symbol = word_map[symbol_id].as_str();

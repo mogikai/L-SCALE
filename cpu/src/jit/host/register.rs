@@ -493,7 +493,7 @@ impl Display for HostRegSet {
         write!(f, "HostRegSet[")?;
         let mut iter = self.into_iter().peekable();
         while let Some(reg) = iter.next() {
-            write!(f, "{}", reg)?;
+            write!(f, "{reg}")?;
             if iter.peek().is_some() {
                 write!(f, ", ")?;
             }

@@ -1,3 +1,3 @@
 pub fn systemdir() -> String {
-    return format!("{}/systems", env!("OUT_DIR"));
+    format!("{}/systems", env!("OUT_DIR"))
 }

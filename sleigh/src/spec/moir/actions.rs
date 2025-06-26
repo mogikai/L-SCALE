@@ -60,7 +60,7 @@ impl MOIRAction {
         let value = self.expression.evaluate(resolver)?;
 
         trace_jir!("Action is setting local {} := {}", self.local_id, value);
-        resolver.define_id(self.local_id, JIRValue::Const(JIRConst::new(value.into(), 0)));
+        resolver.define_id(self.local_id, JIRValue::Const(JIRConst::new(value, 0)));
 
         if let Some(context_field) = self.context_field {
             trace_jir!("Action is setting context field {} := {}", context_field, value);
