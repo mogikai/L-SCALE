@@ -12,14 +12,7 @@ impl<T> StateLearner<T>
 where
     T: ObservationValue,
 {
-    pub fn make_closed(&mut self) {
-        while let Some(candidate_id) = self.find_closed_property_violation() {
-            debug!("Found closed property violation: {:?}", candidate_id);
-            self.promote_candidate_to_upper(candidate_id);
-        }
-    }
-
-    fn find_closed_property_violation(&self) -> Option<ObservationRowId> {
+    pub fn find_closed_property_violation(&self) -> Option<ObservationRowId> {
         for candidate_id in self
             .transitions
             .values()

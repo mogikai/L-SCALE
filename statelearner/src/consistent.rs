@@ -12,7 +12,7 @@ use crate::{
 use log::debug;
 
 #[derive(Debug)]
-struct ConsistencyViolation {
+pub struct ConsistencyViolation {
     rows: (ObservationRowId, ObservationRowId),
     symbol_id: SymbolId,
     suffix_id: SuffixId,
@@ -39,14 +39,7 @@ where
     /// The consistent property is violated if two equal rows exhibit different behavior under a
     /// certain (symbol, suffix)-pair. This can be fixed by including the pair as a new suffix and
     /// adding more measurements to distinguish the offending rows.
-    pub fn make_consistent(&mut self) {
-        while let Some(violation) = self.find_consistent_property_violation() {
-            debug!("Found consistency violation: {violation:?}");
-            self.fix_consistent_property_violation(violation);
-        }
-    }
-
-    fn find_consistent_property_violation(&mut self) -> Option<ConsistencyViolation> {
+    pub(crate) fn find_consistent_property_violation(&mut self) -> Option<ConsistencyViolation> {
         // offending rows must be in the same graph node
         for row_0 in self.lower_rows() {
             let Some(transition) = row_0.1.predecessor_transition() else {
@@ -94,7 +87,7 @@ where
             .filter(|(_, row)| !row.is_upper())
     }
 
-    fn fix_consistent_property_violation(
+    pub(crate) fn fix_consistent_property_violation(
         &mut self,
         violation: ConsistencyViolation,
     ) {
@@ -110,15 +103,13 @@ where
                 .predecessor_transition()
                 .unwrap();
 
-            self.add_observation(
-                predecessor,
-                new_suffix_id,
-                self.observation_rows[violation_row]
-                    .observation(violation.suffix_id)
-                    .unwrap()
-                    .clone(),
-            )
-            .unwrap();
+            let observation = self.observation_rows[violation_row]
+                .observation(violation.suffix_id)
+                .unwrap()
+                .clone();
+            debug!("Fixing consistency property by copying observation from {violation_row:?} to {predecessor:?}");
+            self.add_observation(predecessor, new_suffix_id, observation)
+                .unwrap();
         }
     }
 }

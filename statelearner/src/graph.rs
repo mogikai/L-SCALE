@@ -7,7 +7,11 @@ use crate::{
     StateLearner,
     SymbolId,
 };
-use fnv::FnvHashSet;
+use fnv::{
+    FnvHashMap,
+    FnvHashSet,
+};
+use log::info;
 use petgraph::dot::{
     Config,
     Dot,
@@ -17,6 +21,7 @@ use petgraph::graph::{
     NodeIndex,
 };
 use slotmap::SlotMap;
+use std::collections::VecDeque;
 use std::fmt::{
     Display,
     Write,
@@ -48,7 +53,9 @@ where
         S: Display,
         F: Fn(&mut dyn Write, &S),
     {
-        self.rebuild_graph_transitions(true);
+        // self.rebuild_graph_transitions(true);
+        self.rebuild_graph();
+        info!("Current nodes in graph: {}", self.graph.node_count());
 
         let format_edge = &|_, edge: EdgeReference<FnvHashSet<SymbolId>, _>| {
             let mut label = String::new();
@@ -75,48 +82,78 @@ where
         file.write_fmt(format_args!("{:?}", dot)).unwrap();
     }
 
-    pub fn update_graph_for_new_observation(
-        &mut self,
-        modified: ObservationRowId,
-    ) {
-        self.row_to_state
-            .entry(modified)
-            .or_insert(FnvHashSet::default());
-        let added_to_existing = self.update_existing_states(modified);
-
-        if !added_to_existing {
-            self.graph.add_node(FnvHashSet::from_iter([modified]));
-        }
-    }
-
-    fn rebuild_graph_transitions(
-        &mut self,
-        exclude_undetermined: bool,
-    ) {
-        self.graph.clear_edges();
-        for ((from_row_id, symbol), to_row_id) in self.transitions.iter() {
-            if exclude_undetermined {
-                // exclude undetermined, non-self transitions
-                let from_row = &self.observation_rows[*from_row_id];
-                let to_row = &self.observation_rows[*to_row_id];
-                match from_row.compare_observations(&to_row) {
-                    ObservationRowComparison::Undetermined => {
-                        continue;
-                    }
-                    _ => {}
+    pub fn rebuild_graph(&mut self) {
+        self.graph.clear();
+        let mut row_to_state = FnvHashMap::<ObservationRowId, FnvHashSet<NodeIndex>>::default();
+        // Only upper rows create states.
+        for (row_id, row) in self
+            .observation_rows
+            .iter()
+            .filter(|(_, row)| row.is_upper())
+        {
+            let existing_states = self.collect_existing_states(row_id);
+            if existing_states.is_empty() {
+                // There are no existing states that match this row. Create a new one.
+                let mut row_set = FnvHashSet::default();
+                row_set.insert(row_id);
+                let state = self.graph.add_node(row_set);
+                row_to_state.entry(row_id).or_default().insert(state);
+            } else {
+                // There are existing states for this row. Add it to all states that match.
+                for existing_state in existing_states {
+                    self.graph
+                        .node_weight_mut(existing_state)
+                        .unwrap()
+                        .insert(row_id);
+                    row_to_state
+                        .entry(row_id)
+                        .or_default()
+                        .insert(existing_state);
                 }
             }
+        }
 
-            for from_state in self.row_to_state[from_row_id].iter() {
-                for to_state in self.row_to_state[to_row_id].iter() {
-                    match self.graph.find_edge(*from_state, *to_state) {
+        let remaining_rows = self
+            .observation_rows
+            .iter()
+            .filter(|(_, row)| !row.is_upper())
+            .map(|(row_id, _)| row_id);
+
+        for row_id in remaining_rows {
+            let existing_states = self.collect_existing_states(row_id);
+
+            for existing_state in existing_states {
+                self.graph
+                    .node_weight_mut(existing_state)
+                    .unwrap()
+                    .insert(row_id);
+                row_to_state
+                    .entry(row_id)
+                    .or_default()
+                    .insert(existing_state);
+            }
+        }
+
+        for ((from_row_id, symbol), to_row_id) in self.transitions.iter() {
+            // exclude undetermined, non-self transitions
+            let from_row = &self.observation_rows[*from_row_id];
+            let to_row = &self.observation_rows[*to_row_id];
+            if matches!(from_row.compare_observations(&to_row), ObservationRowComparison::Undetermined) {
+                continue;
+            }
+            if !row_to_state.contains_key(from_row_id) || !row_to_state.contains_key(to_row_id) {
+                continue;
+            }
+            for from_state in row_to_state[from_row_id].iter().copied() {
+                for to_state in row_to_state[to_row_id].iter().copied() {
+                    match self.graph.find_edge(from_state, to_state) {
                         Some(edge) => {
                             self.graph.edge_weight_mut(edge).unwrap().insert(*symbol);
                         }
                         None => {
-                            let mut symbols: FnvHashSet<SymbolId> = Default::default();
+                            let mut symbols = FnvHashSet::<SymbolId>::default();
                             symbols.insert(*symbol);
-                            self.graph.add_edge(*from_state, *to_state, symbols);
+                            self.graph.add_edge(from_state, to_state, symbols);
                         }
                     }
                 }
@@ -124,72 +161,30 @@ where
         }
     }
 
-    fn update_existing_states(
-        &mut self,
-        modified: ObservationRowId,
-    ) -> bool {
-        // We want to find all graph nodes that contain a row that is equal to the candidate's row.
-        // We can then add the candidate's row to the rows in the node.
-        let mut added_to_existing = false;
-        for state in self.graph.node_indices() {
-            if self.all_rows_similar(state, modified) {
-                added_to_existing = true;
-                self.graph
-                    .node_weight_mut(state)
-                    .expect("We got the key from the graph")
-                    .insert(modified);
-                // Add the state we found to the row_to_state map entry for this row.
-                self.row_to_state.get_mut(&modified).unwrap().insert(state);
-            } else {
-                self.graph
-                    .node_weight_mut(state)
-                    .expect("We got the key from the graph")
-                    .remove(&modified);
-                self.row_to_state.get_mut(&modified).unwrap().remove(&state);
-            }
-        }
-        added_to_existing
-    }
-
-    /// Compares all rows in the state against the modified row.
-    /// If the modified row can be determined to be not equal to at
-    /// least one row in the state, then this function returns false.
-    /// In all other cases it returns true.
-    fn all_rows_similar(
+    fn collect_existing_states(
         &self,
-        state: NodeIndex,
-        modified_row: ObservationRowId,
-    ) -> bool {
+        row_id: ObservationRowId,
+    ) -> Vec<NodeIndex> {
+        // We want all states where the provided row is equal or undetermined to all other rows.
         self.graph
-            .node_weight(state)
-            .expect("We got the key from the graph")
-            .iter()
-            .copied()
-            .all(|row_id| {
-                match self.observation_rows[row_id].compare_observations(&self.observation_rows[modified_row]) {
-                    ObservationRowComparison::Equal | ObservationRowComparison::Undetermined => true,
-                    _ => false,
-                }
+            .node_indices()
+            .filter(|index| {
+                let rows = self.graph.node_weight(*index).unwrap();
+                rows.iter().all(|&state_row| {
+                    !matches!(
+                        &self.observation_rows[state_row].compare_observations(&self.observation_rows[row_id]),
+                        ObservationRowComparison::NotEqual(_)
+                    )
+                })
             })
+            .collect::<Vec<_>>()
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::ObservationComparisonResult;
-    impl ObservationValue for String {
-        fn compare(
-            &self,
-            other: &Self,
-        ) -> ObservationComparisonResult {
-            if self.eq(other) {
-                ObservationComparisonResult(0)
-            } else {
-                ObservationComparisonResult(1)
-            }
-        }
-    }
+    impl ObservationValue for String {}
 
     #[test]
     fn it_works() {

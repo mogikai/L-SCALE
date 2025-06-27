@@ -8,6 +8,7 @@ use fnv::{
     FnvHashSet,
 };
 use itertools::Itertools;
+use log::debug;
 use petgraph::graph::{
     DiGraph,
     NodeIndex,
@@ -117,6 +118,10 @@ impl<T> StateLearner<T> {
             .iter()
             .filter(|(_, row)| !row.is_upper())
             .count()
+    }
+
+    pub fn table_width(&self) -> usize {
+        self.suffixes.len()
     }
 
     pub fn get_row_from_prefix(
@@ -332,6 +337,23 @@ impl<T> StateLearner<T>
 where
     T: ObservationValue,
 {
+    pub fn make_consistent_and_closed(&mut self) {
+        let mut needs_check = true;
+        while needs_check {
+            needs_check = false;
+            if let Some(violation) = self.find_consistent_property_violation() {
+                debug!("Found consistency violation: {violation:?}");
+                self.fix_consistent_property_violation(violation);
+                needs_check = true;
+            }
+            if let Some(candidate_id) = self.find_closed_property_violation() {
+                debug!("Found closed property violation: {:?}", candidate_id);
+                self.promote_candidate_to_upper(candidate_id);
+                needs_check = true;
+            }
+        }
+    }
+
     fn promote_candidate_to_upper(
         &mut self,
         candidate_id: ObservationRowId,
@@ -348,7 +370,7 @@ where
         // Add the new candidates that are now possible due to the new state.
         self.add_missing_candidates();
 
-        self.update_graph_for_new_observation(candidate_id);
+        // self.update_graph_for_new_observation(candidate_id);
     }
 
     /// Add the provided suffix into the state learner. Return the
@@ -431,7 +453,7 @@ where
                 self.transitions.insert(transition, row_id);
                 new_candidate
             });
-            self.update_graph_for_new_observation(new_row_id);
+            // self.update_graph_for_new_observation(new_row_id);
         }
     }
 
@@ -443,9 +465,9 @@ where
     ) -> StateLearnerResult {
         self.observation_rows[observation_row].set_observation(suffix_id, observation)?;
 
-        if self.row_to_state.contains_key(&observation_row) {
-            self.update_graph_for_new_observation(observation_row);
-        }
+        // if self.row_to_state.contains_key(&observation_row) {
+        // self.update_graph_for_new_observation(observation_row);
+        // }
 
         Ok(())
     }

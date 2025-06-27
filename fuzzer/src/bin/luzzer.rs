@@ -49,8 +49,8 @@ struct Args {
     #[arg(long, default_value = "/home/user/open62541_server_fuzzing_fixed")]
     binary: String,
 
-    #[arg(long, default_value_t = false)]
-    do_refinement: bool,
+    #[arg(long)]
+    do_refinement: Option<usize>,
 
     /// If set to true, the entire execution will be traced and a disassembly is printed for each instruction that is executed.
     #[arg(short, long, default_value_t = false)]
@@ -128,7 +128,7 @@ fn setup_luzzer<EmulatorT>(
 {
     let config = LuzzerConfig::builder()
         .context_path(PathBuf::from(args.context))
-        .do_refinement(args.do_refinement)
+        .maybe_do_refinement(args.do_refinement)
         .threshold(args.threshold.into())
         .executable_path(PathBuf::from(args.binary));
     let mut luzzer = Luzzer::new(emulator, config.build());

@@ -234,7 +234,7 @@ impl SequenceMutation {
 pub struct LuzzerState {
     test_cases: SlotMap<SymbolId, TestCase>,
     input_data: SlotMap<InputDataId, InputData>,
-    learner: StateLearner<FuzzyObservation>,
+    learner: StateLearner<ObservationId>,
     /// The current prefix the learner has taken through the target.
     /// There exists a snapshot of the emulator for each prefix symbol.
     /// If the prefix is popped, the state of the emulator has to be reset.
@@ -245,8 +245,7 @@ pub struct LuzzerState {
 
 #[derive(Debug, Builder)]
 pub struct LuzzerConfig {
-    #[builder(default = false)]
-    do_refinement: bool,
+    do_refinement: Option<usize>,
     context_path: PathBuf,
     executable_path: PathBuf,
     #[builder(default = 0)]
@@ -369,13 +368,13 @@ where
         self.setup();
         self.start_time = Instant::now();
         self.build_state_model(0, &mut rng);
-        if self.config.do_refinement {
-            for i in 0..5 {
+        if let Some(count) = self.config.do_refinement {
+            for i in 0..count {
                 info!("-------------------------------------------------------------------------");
                 info!("Doing Sequence mutation phase");
                 self.do_sequence_mutations(&mut rng);
                 info!("Rebuilding state model after sequence mutations");
-                self.build_state_model(1 + i, &mut rng);
+                self.build_state_model(0, &mut rng);
             }
             info!("--------------------------------------------------");
             info!("Building final state model.");
@@ -548,9 +547,14 @@ where
                 self.perform_observations_for_current_state(row_id);
 
                 current_row = row_id;
-                // self.state.learner.make_closed();
-                // self.state.learner.make_consistent();
-                // self.export_learned_statemachine(&dot_path);
+                self.state.learner.make_consistent_and_closed();
+                self.export_learned_statemachine(&dot_path);
+                info!(
+                    "Table size: U{} | L{} x {}",
+                    self.state.learner.upper_size(),
+                    self.state.learner.lower_size(),
+                    self.state.learner.table_width()
+                );
             }
             // Go back one level
             if !self.state.current_prefix.is_empty() {
@@ -561,8 +565,7 @@ where
             }
 
             if self.state.learner.missing_observation_percentage() <= threshold {
-                self.state.learner.make_closed();
-                self.state.learner.make_consistent();
+                self.state.learner.make_consistent_and_closed();
                 self.export_learned_statemachine(&mut dot_path);
                 info!("Symbols applied: {}", self.state.symbols_applied);
                 info!(
@@ -642,15 +645,15 @@ where
                         .then_some(observation_id)
                 })
                 .unwrap_or_else(|| self.state.observations.insert(behavior));
-            // self.state
-            //     .learner
-            //     .add_observation(row_id, suffix, observation_id)
-            //     .unwrap();
-            self.state.learner.add_observation(
-                row_id,
-                suffix,
-                FuzzyObservation::new(behavior, self.config.threshold as u8),
-            );
+            self.state
+                .learner
+                .add_observation(row_id, suffix, observation_id)
+                .unwrap();
+            // self.state.learner.add_observation(
+            //     row_id,
+            //     suffix,
+            //     FuzzyObservation::new(behavior, self.config.threshold as u8),
+            // );
             self.emulator.restore_snapshot().unwrap();
         }
     }
