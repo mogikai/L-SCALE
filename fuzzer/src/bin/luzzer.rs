@@ -59,6 +59,9 @@ struct Args {
     #[arg(long)]
     pin_core: Option<usize>,
 
+    #[arg(short, long, default_value_t = false)]
+    detailed_graph_building: bool,
+
     /// The threshold for the observation equality check. Observations are considered equal if their difference is less than the threshold.
     #[arg(short, long)]
     threshold: u64,
@@ -130,6 +133,7 @@ fn setup_luzzer<EmulatorT>(
         .context_path(PathBuf::from(args.context))
         .maybe_do_refinement(args.do_refinement)
         .threshold(args.threshold.into())
+        .detailed_graph_building(args.detailed_graph_building)
         .executable_path(PathBuf::from(args.binary));
     let mut luzzer = Luzzer::new(emulator, config.build());
     luzzer.run();

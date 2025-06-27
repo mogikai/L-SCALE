@@ -246,6 +246,8 @@ pub struct LuzzerState {
 #[derive(Debug, Builder)]
 pub struct LuzzerConfig {
     do_refinement: Option<usize>,
+    #[builder(default = false)]
+    detailed_graph_building: bool,
     context_path: PathBuf,
     executable_path: PathBuf,
     #[builder(default = 0)]
@@ -547,14 +549,16 @@ where
                 self.perform_observations_for_current_state(row_id);
 
                 current_row = row_id;
-                self.state.learner.make_consistent_and_closed();
-                self.export_learned_statemachine(&dot_path);
-                info!(
-                    "Table size: U{} | L{} x {}",
-                    self.state.learner.upper_size(),
-                    self.state.learner.lower_size(),
-                    self.state.learner.table_width()
-                );
+                if self.config.detailed_graph_building {
+                    self.state.learner.make_consistent_and_closed();
+                    self.export_learned_statemachine(&dot_path);
+                    debug!(
+                        "Table size: U{} | L{} x {}",
+                        self.state.learner.upper_size(),
+                        self.state.learner.lower_size(),
+                        self.state.learner.table_width()
+                    );
+                }
             }
             // Go back one level
             if !self.state.current_prefix.is_empty() {
