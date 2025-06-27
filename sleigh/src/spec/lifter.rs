@@ -58,13 +58,14 @@ impl Lifter for ProcessorSpecification {
             let match_context = MatchContext::new(addr, &self.jumplist_cache, &self.symbol_tables.constructors);
             let matching_result = match_context.r#match(&buffer, &mut context_stack).unwrap();
 
+            #[allow(unused_variables)]
             match matching_result {
                 MatcherResult::EndOfByteStream => Err(LifterError::EndOfBytes)?,
                 MatcherResult::None => Err(LifterError::NoMatch(buffer.to_vec()))?,
                 MatcherResult::Some {
                     table: _,
                     resolver,
-                    bytes_consumed: _,
+                    bytes_consumed,
                 } => {
                     trace_jir!("Found match and consumed {} bytes", bytes_consumed);
                     trace_jir!("{}", resolver.hierarchy_debug_string().unwrap());

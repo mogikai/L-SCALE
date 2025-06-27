@@ -1,6 +1,5 @@
 use itertools::Itertools;
 use mogi_statelearner::{
-    ObservationComparisonResult,
     ObservationValue,
     StateLearner,
     SymbolId,
@@ -23,18 +22,7 @@ impl Display for MyI32 {
     }
 }
 
-impl ObservationValue for MyI32 {
-    fn compare(
-        &self,
-        other: &Self,
-    ) -> ObservationComparisonResult {
-        if self.0.eq(&other.0) {
-            ObservationComparisonResult::equal()
-        } else {
-            ObservationComparisonResult::not_equal()
-        }
-    }
-}
+impl ObservationValue for MyI32 {}
 
 fn main() {
     let symbols = ["A", "B"];
@@ -82,8 +70,7 @@ fn main() {
             learner
                 .add_observation(row_id, suffix_id, MyI32((num_as % 4 == 3) as i32))
                 .unwrap();
-            learner.make_closed();
-            learner.make_consistent();
+            learner.make_consistent_and_closed();
             sleep(Duration::from_millis(10));
         }
 

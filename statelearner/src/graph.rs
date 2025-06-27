@@ -225,8 +225,7 @@ mod test {
 
         println!("{}", learner);
 
-        learner.make_closed();
-        learner.make_consistent();
+        learner.make_consistent_and_closed();
         learner.add_prefix([a, a]);
         println!("{}", learner);
 
@@ -240,8 +239,7 @@ mod test {
         println!("Rows with missing observations: {:?}", learner.rows_with_missing_observations().collect::<Vec<_>>());
 
         println!("{}", learner);
-        learner.make_closed();
-        learner.make_consistent();
+        learner.make_consistent_and_closed();
         learner.add_prefix([a, b, a, b]);
         println!("{}", learner);
 
@@ -255,8 +253,7 @@ mod test {
             .unwrap();
         println!("{}", learner);
 
-        learner.make_closed();
-        learner.make_consistent();
+        learner.make_consistent_and_closed();
         for row in learner.rows_with_missing_observations().collect::<Vec<_>>() {
             let suffixes = learner.unobserved_suffixes(row).collect::<Vec<_>>();
             for suffix in suffixes {
