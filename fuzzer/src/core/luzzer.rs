@@ -24,8 +24,6 @@ use mogi_emulator::emulator::interface::network::tcp::{
 use mogi_emulator::emulator::platform::linux::kernel::task_id::TaskId;
 use mogi_statelearner::row::ObservationRowId;
 use mogi_statelearner::{
-    ObservationComparisonResult,
-    ObservationEqualityThreshold,
     ObservationValue,
     StateLearner,
     SymbolId,
@@ -71,10 +69,49 @@ use tracing::{
     trace,
 };
 
+new_key_type! { pub struct ObservationId; }
+impl Display for ObservationId {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
+        write!(f, "{:?}", self.data())
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Observation {
     edge_hash_map: hashes::Normal,
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct FuzzyObservation {
+    observation: Observation,
+    thresold: u8,
+}
+
+impl FuzzyObservation {
+    pub fn new(
+        observation: Observation,
+        thresold: u8,
+    ) -> Self {
+        Self { observation, thresold }
+    }
+}
+
+impl PartialEq for FuzzyObservation {
+    fn eq(
+        &self,
+        other: &Self,
+    ) -> bool {
+        self.observation
+            .edge_hash_map
+            .compare(&other.observation.edge_hash_map)
+            <= self.thresold as u32
+    }
+}
+
+impl ObservationValue for FuzzyObservation {}
 
 impl Display for Observation {
     fn fmt(
@@ -91,14 +128,7 @@ impl Observation {
     }
 }
 
-impl ObservationValue for Observation {
-    fn compare(
-        &self,
-        other: &Self,
-    ) -> ObservationComparisonResult {
-        ObservationComparisonResult::distance(self.edge_hash_map.compare(&other.edge_hash_map) as u64)
-    }
-}
+impl ObservationValue for ObservationId {}
 
 trait DebuggableReducer: Reducer + Debug {}
 impl<T> DebuggableReducer for T where T: Reducer + Debug {}
@@ -204,24 +234,13 @@ impl SequenceMutation {
 pub struct LuzzerState {
     test_cases: SlotMap<SymbolId, TestCase>,
     input_data: SlotMap<InputDataId, InputData>,
-    learner: StateLearner<Observation>,
+    learner: StateLearner<FuzzyObservation>,
     /// The current prefix the learner has taken through the target.
     /// There exists a snapshot of the emulator for each prefix symbol.
     /// If the prefix is popped, the state of the emulator has to be reset.
     current_prefix: Vec<SymbolId>,
     symbols_applied: usize,
-}
-
-impl LuzzerState {
-    pub fn new_with_threshold(threshold: ObservationEqualityThreshold) -> Self {
-        Self {
-            test_cases: Default::default(),
-            input_data: Default::default(),
-            learner: StateLearner::new_with_threshold(threshold),
-            current_prefix: vec![],
-            symbols_applied: 0,
-        }
-    }
+    observations: SlotMap<ObservationId, Observation>,
 }
 
 #[derive(Debug, Builder)]
@@ -230,8 +249,8 @@ pub struct LuzzerConfig {
     do_refinement: bool,
     context_path: PathBuf,
     executable_path: PathBuf,
-    #[builder(default = 0.into())]
-    threshold: ObservationEqualityThreshold,
+    #[builder(default = 0)]
+    threshold: u64,
 }
 
 #[derive(Debug)]
@@ -324,7 +343,7 @@ where
         // let behavior_reducer = Rc::new(RefCell::new(BasicBlockBehaviorReducer::new(behavior_observer.clone())));
 
         Self {
-            state: LuzzerState::new_with_threshold(config.threshold),
+            state: LuzzerState::default(),
             observers: vec![block_observer],
             behavior_observer,
             is_interesting_reducers: vec![],
@@ -529,9 +548,9 @@ where
                 self.perform_observations_for_current_state(row_id);
 
                 current_row = row_id;
-                self.state.learner.make_closed();
-                self.state.learner.make_consistent();
-                self.export_learned_statemachine(&dot_path);
+                // self.state.learner.make_closed();
+                // self.state.learner.make_consistent();
+                // self.export_learned_statemachine(&dot_path);
             }
             // Go back one level
             if !self.state.current_prefix.is_empty() {
@@ -545,13 +564,15 @@ where
                 self.state.learner.make_closed();
                 self.state.learner.make_consistent();
                 self.export_learned_statemachine(&mut dot_path);
-                trace!("{}", self.state.learner);
                 info!("Symbols applied: {}", self.state.symbols_applied);
                 info!(
                     "Symbols per second: {}",
                     self.state.symbols_applied as f64 / self.start_time.elapsed().as_secs_f64()
                 );
                 info!("Time elapsed: {:?}", self.start_time.elapsed());
+                info!("Upper table size: {}", self.state.learner.upper_size());
+                info!("Lower table size: {}", self.state.learner.lower_size());
+                info!("Total distinct observations: {}", self.state.observations.len())
             }
         }
     }
@@ -612,10 +633,24 @@ where
                 }
             }
             let behavior = self.suffix_behavior_reducer.borrow_mut().reduce().unwrap();
-            self.state
-                .learner
-                .add_observation(row_id, suffix, behavior)
-                .unwrap();
+            let observation_id = self
+                .state
+                .observations
+                .iter()
+                .find_map(|(observation_id, observation)| {
+                    ((observation.edge_hash_map.compare(&behavior.edge_hash_map) as u64) < self.config.threshold)
+                        .then_some(observation_id)
+                })
+                .unwrap_or_else(|| self.state.observations.insert(behavior));
+            // self.state
+            //     .learner
+            //     .add_observation(row_id, suffix, observation_id)
+            //     .unwrap();
+            self.state.learner.add_observation(
+                row_id,
+                suffix,
+                FuzzyObservation::new(behavior, self.config.threshold as u8),
+            );
             self.emulator.restore_snapshot().unwrap();
         }
     }

@@ -15,7 +15,7 @@ where
     pub fn make_closed(&mut self) {
         while let Some(candidate_id) = self.find_closed_property_violation() {
             debug!("Found closed property violation: {:?}", candidate_id);
-            self.promote_candidate_to_state(candidate_id);
+            self.promote_candidate_to_upper(candidate_id);
         }
     }
 
@@ -45,7 +45,7 @@ where
         let candidate_row = &self.observation_rows[candidate_id];
         for row in self.observation_rows.values().filter(|row| row.is_upper()) {
             if matches!(
-                row.compare_observations(candidate_row, self.threshold),
+                row.compare_observations(candidate_row),
                 ObservationRowComparison::Equal | ObservationRowComparison::Undetermined
             ) {
                 // The candidate does not violate the closed property, since it is equal (or maybe equal) to

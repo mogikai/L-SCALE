@@ -3,7 +3,6 @@ use crate::observation::{
     ObservationComparison,
 };
 use crate::{
-    ObservationEqualityThreshold,
     ObservationValue,
     StateLearnerError,
     StateLearnerResult,
@@ -124,7 +123,6 @@ where
     pub fn compare_observations(
         &self,
         other: &Self,
-        threshold: ObservationEqualityThreshold,
     ) -> ObservationRowComparison {
         let mut result = if self.observations.len() != other.observations.len()
             || (self.observations.is_empty() && other.observations.is_empty())
@@ -144,7 +142,7 @@ where
                 .observations
                 .get(suffix)
                 .unwrap_or(&Observation::Missing);
-            match observation.compare(other_observation, threshold) {
+            match observation.compare(other_observation) {
                 ObservationComparison::NotEqual => {
                     // If one of the observations is not equal, then the comparison is not equal.
                     // Even if some observations are still missing, we can already say for certain
@@ -169,11 +167,10 @@ where
         &mut self,
         suffix: SuffixId,
         observation: T,
-        threshold: ObservationEqualityThreshold,
     ) -> StateLearnerResult {
         if let Some(old_observation) = self.observations.get(suffix) {
             if let Observation::Observed(old_observation) = old_observation {
-                if old_observation.compare(&observation) > threshold {
+                if old_observation != &observation {
                     Err(StateLearnerError::ConflictingObservation)?
                 }
             }

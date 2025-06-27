@@ -61,15 +61,13 @@ where
                 // Skip not equal predecessors, since we do not have to check for any inconsistencies here.
                 // Unequal predecessors cannot be further distinguished by the suffix.
                 if predecessor_0
-                    .compare_observations(predecessor_1, self.threshold)
+                    .compare_observations(predecessor_1)
                     .not_equal()
                 {
                     continue;
                 }
                 // Now we can look for a conflict in the observations of row_0 and row_1
-                if let ObservationRowComparison::NotEqual(witness) =
-                    row_0.1.compare_observations(row_1.1, self.threshold)
-                {
+                if let ObservationRowComparison::NotEqual(witness) = row_0.1.compare_observations(row_1.1) {
                     let violation = ConsistencyViolation::new((row_0.0, row_1.0), transition.1, witness);
                     return Some(violation);
                 }
@@ -156,7 +154,7 @@ mod test {
         learner
             .add_observation(rows[1], suffixes[0], "test0".into())
             .unwrap();
-        learner.promote_candidate_to_state(rows[1]);
+        learner.promote_candidate_to_upper(rows[1]);
         let rows = learner.observation_rows.keys().collect::<Vec<_>>();
 
         // break consistency
@@ -198,7 +196,7 @@ mod test {
         learner
             .add_observation(rows[1], suffixes[0], "test0".into())
             .unwrap();
-        learner.promote_candidate_to_state(rows[1]);
+        learner.promote_candidate_to_upper(rows[1]);
         let rows = learner.observation_rows.keys().collect::<Vec<_>>();
 
         // break consistency

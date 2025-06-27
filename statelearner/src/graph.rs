@@ -22,6 +22,7 @@ use std::fmt::{
     Write,
 };
 use std::fs::File;
+use std::ops::Not;
 use std::path::Path;
 
 impl<T> StateLearner<T>
@@ -98,7 +99,7 @@ where
                 // exclude undetermined, non-self transitions
                 let from_row = &self.observation_rows[*from_row_id];
                 let to_row = &self.observation_rows[*to_row_id];
-                match from_row.compare_observations(&to_row, self.threshold) {
+                match from_row.compare_observations(&to_row) {
                     ObservationRowComparison::Undetermined => {
                         continue;
                     }
@@ -165,9 +166,7 @@ where
             .iter()
             .copied()
             .all(|row_id| {
-                match self.observation_rows[row_id]
-                    .compare_observations(&self.observation_rows[modified_row], self.threshold)
-                {
+                match self.observation_rows[row_id].compare_observations(&self.observation_rows[modified_row]) {
                     ObservationRowComparison::Equal | ObservationRowComparison::Undetermined => true,
                     _ => false,
                 }
