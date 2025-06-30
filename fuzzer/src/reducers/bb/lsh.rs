@@ -7,6 +7,7 @@ use std::rc::Rc;
 use tlsh::{
     GeneratorType,
     TlshGenerator,
+    TlshGeneratorFor,
 };
 
 #[derive(Debug)]
@@ -29,7 +30,7 @@ where
     fn reduce(&mut self) -> Result<Self::Output, FuzzerError> {
         let observer = self.observer.borrow();
         let observation = &*observer.observation();
-        let mut generator = TlshGenerator::new();
+        let mut generator = TlshGeneratorFor::<tlsh::hashes::Long>::new();
         generator.update(observation);
         Ok(Observation::new(generator.finalize().unwrap()))
     }

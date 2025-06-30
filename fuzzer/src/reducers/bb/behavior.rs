@@ -37,7 +37,7 @@ impl Reducer for BasicBlockBehaviorReducer {
         //         .collect::<String>()
         // );
         // let mut hasher = DefaultHasher::new();
-        let mut generator = tlsh::prelude::TlshGenerator::new();
+        let mut generator = tlsh::prelude::TlshGeneratorFor::<tlsh::hashes::Long>::new();
         for block_addr in block_hits.iter() {
             generator.update(block_addr.as_bytes())
         }

@@ -6,6 +6,7 @@ use crate::api::reducer::Reducer;
 use crate::observers::new::bb::BasicBlockObserver;
 use crate::reducers::bb::lsh::BlockHitLshReducer;
 use bon::Builder;
+use fnv::FnvHashMap;
 use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
 use mogi_emulator::emulator::abstractions::network::{
     IPAddress,
@@ -47,12 +48,17 @@ use slotmap::{
     new_key_type,
 };
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt::{
     Debug,
     Display,
     Formatter,
 };
 use std::fs;
+use std::hash::{
+    Hash,
+    Hasher,
+};
 use std::path::{
     Path,
     PathBuf,
@@ -79,9 +85,18 @@ impl Display for ObservationId {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct Observation {
-    edge_hash_map: hashes::Normal,
+    edge_hash_map: hashes::Long,
+}
+
+impl Hash for Observation {
+    fn hash<H: Hasher>(
+        &self,
+        state: &mut H,
+    ) {
+        state.write(self.edge_hash_map.to_string().as_bytes());
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -123,7 +138,7 @@ impl Display for Observation {
 }
 
 impl Observation {
-    pub fn new(edge_hash_map: hashes::Normal) -> Self {
+    pub fn new(edge_hash_map: hashes::Long) -> Self {
         Self { edge_hash_map }
     }
 }
@@ -241,6 +256,7 @@ pub struct LuzzerState {
     current_prefix: Vec<SymbolId>,
     symbols_applied: usize,
     observations: SlotMap<ObservationId, Observation>,
+    observation_mapping: HashMap<Observation, ObservationId>,
 }
 
 #[derive(Debug, Builder)]
@@ -640,18 +656,29 @@ where
                 }
             }
             let behavior = self.suffix_behavior_reducer.borrow_mut().reduce().unwrap();
+
             let observation_id = self
                 .state
-                .observations
-                .iter()
-                .find_map(|(observation_id, observation)| {
-                    ((observation.edge_hash_map.compare(&behavior.edge_hash_map) as u64) < self.config.threshold)
-                        .then_some(observation_id)
-                })
-                .unwrap_or_else(|| self.state.observations.insert(behavior));
+                .observation_mapping
+                .entry(behavior)
+                .or_insert_with(|| {
+                    self.state
+                        .observations
+                        .iter()
+                        // Find all observations that are closer than a threshold
+                        .filter_map(|(observation_id, observation)| {
+                            let distance = observation.edge_hash_map.compare(&behavior.edge_hash_map) as u64;
+                            (distance <= self.config.threshold).then_some((observation_id, distance))
+                        })
+                        // Get the minimally distant one
+                        .min_by_key(|(_, distance)| *distance)
+                        .map(|(observation_id, _)| observation_id)
+                        // or create a new id if no observation in the threshold could be found
+                        .unwrap_or_else(|| self.state.observations.insert(behavior))
+                });
             self.state
                 .learner
-                .add_observation(row_id, suffix, observation_id)
+                .add_observation(row_id, suffix, *observation_id)
                 .unwrap();
             // self.state.learner.add_observation(
             //     row_id,
