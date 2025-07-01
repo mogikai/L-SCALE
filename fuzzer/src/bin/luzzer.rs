@@ -5,6 +5,8 @@ use std::path::{
     PathBuf,
 };
 use std::rc::Rc;
+use std::thread;
+use std::thread::Thread;
 use std::time::Duration;
 
 use clap::Parser;
@@ -71,6 +73,10 @@ struct Args {
 
     #[arg(long)]
     backtracking_chance: Option<f64>,
+
+    /// If set, terminate the execution after the given amount of seconds
+    #[arg(long)]
+    timeout: Option<u64>,
 }
 
 fn main() {
@@ -124,6 +130,14 @@ fn main() {
 
     if luzzer_args.decode {
         emulator.enable_trace().unwrap();
+    }
+
+    if let Some(timeout) = luzzer_args.timeout {
+        let timeout_handler = thread::spawn(move || {
+            thread::sleep(Duration::from_secs(timeout));
+            tracing::info!("Timeout reached, terminating execution.");
+            std::process::exit(0);
+        });
     }
 
     setup_luzzer(luzzer_args, emulator);
