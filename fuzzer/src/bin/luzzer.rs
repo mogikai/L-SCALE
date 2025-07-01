@@ -42,14 +42,18 @@ use tracing_subscriber::{
 struct Args {
     /// The path on the host system to the root of the system directory that is used for emulation.
     #[arg(long, default_value = "emulator/systems/ubuntu2310")]
-    system_root: String,
+    system_root: PathBuf,
 
     #[arg(long, default_value = "fuzzer/assets/opcua")]
-    context: String,
+    context: PathBuf,
+
+    /// The path where the state learner puts its output files
+    #[arg(long, default_value = ".output/opcua/")]
+    output: PathBuf,
 
     /// The path on the emulated system to the binary that will be emulated initially.
     #[arg(long, default_value = "/home/user/open62541_server_fuzzing_fixed")]
-    binary: String,
+    binary: PathBuf,
 
     #[arg(long)]
     do_refinement: Option<usize>,
@@ -133,7 +137,7 @@ fn main() {
     }
 
     if let Some(timeout) = luzzer_args.timeout {
-        let timeout_handler = thread::spawn(move || {
+        thread::spawn(move || {
             thread::sleep(Duration::from_secs(timeout));
             tracing::info!("Timeout reached, terminating execution.");
             std::process::exit(0);
@@ -150,13 +154,14 @@ fn setup_luzzer<EmulatorT>(
     EmulatorT: Emulator,
 {
     let config = LuzzerConfig::builder()
-        .context_path(PathBuf::from(args.context))
+        .context_path(args.context)
         .maybe_do_refinement(args.do_refinement)
         .threshold(args.threshold.into())
+        .output_path(args.output)
         .detailed_graph_building(args.detailed_graph_building)
         .fuzzy_learning(args.fuzzy_learning)
         .maybe_backtracking_chance(args.backtracking_chance)
-        .executable_path(PathBuf::from(args.binary));
+        .executable_path(args.binary);
     let mut luzzer = Luzzer::new(emulator, config.build());
     luzzer.run();
 }

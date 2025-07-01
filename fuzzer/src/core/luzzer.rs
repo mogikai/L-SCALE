@@ -41,6 +41,7 @@ use rand_chacha::ChaCha8Rng;
 use serde::{
     Deserialize,
     Serialize,
+    Serializer,
 };
 use slotmap::{
     Key,
@@ -55,6 +56,11 @@ use std::fmt::{
     Formatter,
 };
 use std::fs;
+use std::fs::{
+    File,
+    OpenOptions,
+    create_dir_all,
+};
 use std::hash::{
     Hash,
     Hasher,
@@ -64,7 +70,11 @@ use std::path::{
     PathBuf,
 };
 use std::rc::Rc;
-use std::time::Instant;
+use std::str::FromStr;
+use std::time::{
+    Duration,
+    Instant,
+};
 use tlsh::{
     FuzzyHashType,
     hashes,
@@ -88,6 +98,31 @@ impl Display for ObservationId {
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct Observation {
     edge_hash_map: hashes::Long,
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Observation {
+    fn serialize<S>(
+        &self,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.edge_hash_map.to_string())
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Observation {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        let edge_hash_map = hashes::Long::from_str(&s).unwrap();
+        Ok(Self { edge_hash_map })
+    }
 }
 
 impl Hash for Observation {
@@ -171,6 +206,7 @@ impl Display for InputDataId {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug)]
 enum ComponentMarker {
     NewTcpStream,
@@ -202,6 +238,7 @@ pub enum InputDataSource {
     Unknown,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Default)]
 pub struct TestCase {
     /// The number of times this test case was applied to the target
@@ -245,6 +282,7 @@ impl SequenceMutation {
     }
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Default)]
 pub struct LuzzerState {
     test_cases: SlotMap<SymbolId, TestCase>,
@@ -259,12 +297,14 @@ pub struct LuzzerState {
     observation_mapping: HashMap<Observation, ObservationId>,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Builder)]
 pub struct LuzzerConfig {
     do_refinement: Option<usize>,
     #[builder(default = false)]
     detailed_graph_building: bool,
     context_path: PathBuf,
+    output_path: PathBuf,
     executable_path: PathBuf,
     #[builder(default = 0)]
     threshold: u64,
@@ -273,9 +313,22 @@ pub struct LuzzerConfig {
     backtracking_chance: Option<f64>,
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Default)]
+pub struct LuzzerStatistics {
+    total_executions: usize,
+    total_observations: usize,
+    upper_table_size: usize,
+    lower_table_size: usize,
+    table_width: usize,
+    reduced_observations: usize,
+    execution_time: Duration,
+}
+
 #[derive(Debug)]
 pub struct Luzzer<EmulatorT> {
     state: LuzzerState,
+    statistics: LuzzerStatistics,
     observers: Vec<Rc<RefCell<dyn DebuggableObserver>>>,
     is_interesting_reducers: Vec<Rc<RefCell<dyn DebuggableReducer<Output = bool>>>>,
     behavior_observer: Rc<RefCell<dyn DebuggableObserver>>,
@@ -364,6 +417,7 @@ where
 
         Self {
             state: LuzzerState::default(),
+            statistics: Default::default(),
             observers: vec![block_observer],
             behavior_observer,
             is_interesting_reducers: vec![],
@@ -403,10 +457,8 @@ where
     }
 
     fn build_state_model(&mut self) -> bool {
-        let mut dot_path = self.config.context_path.clone();
-        dot_path.push("states.dot");
         let was_fixed = self.state.learner.make_consistent_and_closed();
-        self.export_learned_statemachine(&mut dot_path);
+        self.export_learned_statemachine();
         info!("Symbols applied: {}", self.state.symbols_applied);
         info!(
             "Symbols per second: {}",
@@ -435,7 +487,7 @@ where
         self.perform_initial_state_learning(&mut rng);
         self.perform_state_refinement(&mut rng);
         // while do_fuzzing.load(Ordering::SeqCst) {
-        self.fuzz();
+        // self.fuzz();
         // }
     }
 
@@ -547,6 +599,16 @@ where
     }
 
     fn setup(&mut self) {
+        let mut config_path = self.config.output_path.clone();
+        create_dir_all(&config_path).unwrap();
+        config_path.push("used_config.json");
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&config_path)
+            .unwrap();
+        serde_json::to_writer_pretty(file, &self.config).unwrap();
         let task_id = TaskId { pid: 1337, tid: 1 };
         // Do setup stuff
         // Run emulator without inputs until an input is requested.
@@ -617,8 +679,6 @@ where
         &mut self,
         rng: &mut impl Rng,
     ) {
-        let mut dot_path = self.config.context_path.clone();
-        dot_path.push("states.dot");
         let mut current_row = self
             .state
             .learner
@@ -640,7 +700,7 @@ where
                 current_row = row_id;
                 if self.config.detailed_graph_building {
                     self.state.learner.make_consistent_and_closed();
-                    self.export_learned_statemachine(&dot_path);
+                    self.export_learned_statemachine();
                     debug!(
                         "Table size: U{} | L{} x {}",
                         self.state.learner.upper_size(),
@@ -659,13 +719,32 @@ where
         }
     }
 
-    fn export_learned_statemachine(
-        &mut self,
-        dot_path: &Path,
-    ) {
+    fn export_statistics(&mut self) {
+        self.statistics.table_width = self.state.learner.table_width();
+        self.statistics.upper_table_size = self.state.learner.upper_size();
+        self.statistics.lower_table_size = self.state.learner.lower_size();
+        self.statistics.total_observations = self.state.observation_mapping.len();
+        self.statistics.reduced_observations = self.state.observations.len();
+        self.statistics.execution_time = self.start_time.elapsed();
+        self.statistics.total_executions = self.state.symbols_applied;
+        let mut statistics_path = self.config.output_path.clone();
+        statistics_path.push("statistics.json");
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&statistics_path)
+            .unwrap();
+        serde_json::to_writer_pretty(file, &self.statistics).unwrap();
+    }
+
+    fn export_learned_statemachine(&mut self) {
+        self.export_statistics();
+        let mut dot_path = self.config.output_path.clone();
+        dot_path.push("states.dot");
         self.state
             .learner
-            .export_with_formatter(dot_path, &self.state.test_cases, |out, symbol| {
+            .export_with_formatter(&dot_path, &self.state.test_cases, |out, symbol| {
                 write!(out, "[").unwrap();
                 symbol.component_markers.iter().for_each(|marker| {
                     write!(out, "{marker:?}").unwrap();
