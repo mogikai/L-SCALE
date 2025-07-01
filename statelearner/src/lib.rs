@@ -337,21 +337,25 @@ impl<T> StateLearner<T>
 where
     T: ObservationValue,
 {
-    pub fn make_consistent_and_closed(&mut self) {
+    pub fn make_consistent_and_closed(&mut self) -> bool {
         let mut needs_check = true;
+        let mut was_fixed = false;
         while needs_check {
             needs_check = false;
             if let Some(violation) = self.find_consistent_property_violation() {
                 debug!("Found consistency violation: {violation:?}");
                 self.fix_consistent_property_violation(violation);
                 needs_check = true;
+                was_fixed = true;
             }
             if let Some(candidate_id) = self.find_closed_property_violation() {
                 debug!("Found closed property violation: {:?}", candidate_id);
                 self.promote_candidate_to_upper(candidate_id);
                 needs_check = true;
+                was_fixed = true;
             }
         }
+        was_fixed
     }
 
     fn promote_candidate_to_upper(

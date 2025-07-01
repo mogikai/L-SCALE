@@ -268,6 +268,9 @@ pub struct LuzzerConfig {
     executable_path: PathBuf,
     #[builder(default = 0)]
     threshold: u64,
+    #[builder(default = false)]
+    fuzzy_learning: bool,
+    backtracking_chance: Option<f64>,
 }
 
 #[derive(Debug)]
@@ -373,6 +376,50 @@ where
         }
     }
 
+    fn proceed(
+        &self,
+        i: u64,
+    ) -> bool {
+        let threshold = if self.config.fuzzy_learning {
+            let threshold = if i == 0 {
+                0.0
+            } else {
+                0.9 - 0.9 * 0.995f64.powi(i as i32)
+            };
+            debug!(
+                "Current observation percentage: {} (Threshold: {})",
+                self.state.learner.missing_observation_percentage(),
+                threshold
+            );
+            threshold
+        } else {
+            0f64
+        };
+        if self.state.learner.missing_observation_percentage() <= threshold {
+            false
+        } else {
+            true
+        }
+    }
+
+    fn build_state_model(&mut self) -> bool {
+        let mut dot_path = self.config.context_path.clone();
+        dot_path.push("states.dot");
+        let was_fixed = self.state.learner.make_consistent_and_closed();
+        self.export_learned_statemachine(&mut dot_path);
+        info!("Symbols applied: {}", self.state.symbols_applied);
+        info!(
+            "Symbols per second: {}",
+            self.state.symbols_applied as f64 / self.start_time.elapsed().as_secs_f64()
+        );
+        info!("Time elapsed: {:?}", self.start_time.elapsed());
+        info!("Upper table size: {}", self.state.learner.upper_size());
+        info!("Lower table size: {}", self.state.learner.lower_size());
+        info!("Total distinct observations: {}", self.state.observations.len());
+        info!("Total observations: {}", self.state.observation_mapping.len());
+        was_fixed
+    }
+
     pub fn run(&mut self) {
         // let do_fuzzing = Arc::new(AtomicBool::new(true));
         // {
@@ -385,22 +432,60 @@ where
         let mut rng = ChaCha8Rng::seed_from_u64(5);
         self.setup();
         self.start_time = Instant::now();
-        self.build_state_model(0, &mut rng);
+        self.perform_initial_state_learning(&mut rng);
+        self.perform_state_refinement(&mut rng);
+        // while do_fuzzing.load(Ordering::SeqCst) {
+        self.fuzz();
+        // }
+    }
+
+    fn perform_state_refinement(
+        &mut self,
+        mut rng: &mut ChaCha8Rng,
+    ) {
         if let Some(count) = self.config.do_refinement {
-            for i in 0..count {
+            let mut proceed = true;
+            let mut i = 0;
+            for _ in 0..count {
                 info!("-------------------------------------------------------------------------");
                 info!("Doing Sequence mutation phase");
                 self.do_sequence_mutations(&mut rng);
                 info!("Rebuilding state model after sequence mutations");
-                self.build_state_model(0, &mut rng);
+                proceed = true;
+                while proceed {
+                    proceed = self.proceed(i);
+                    self.fill_observations(&mut rng);
+                    if !proceed {
+                        proceed = self.build_state_model();
+                        if proceed {
+                            i = i / 2;
+                        } else {
+                            proceed = self.proceed(i);
+                        }
+                    }
+                    i += 1;
+                }
             }
-            info!("--------------------------------------------------");
-            info!("Building final state model.");
-            self.build_state_model(0, &mut rng);
+            // info!("--------------------------------------------------");
+            // info!("Building final state model.");
+            // self.build_state_model(0, &mut rng);
         }
-        // while do_fuzzing.load(Ordering::SeqCst) {
-        self.fuzz();
-        // }
+    }
+
+    fn perform_initial_state_learning(
+        &mut self,
+        mut rng: &mut ChaCha8Rng,
+    ) {
+        let mut i = 0;
+        let mut proceed = true;
+        while proceed {
+            proceed = self.proceed(i);
+            self.fill_observations(&mut rng);
+            if !proceed {
+                proceed = self.build_state_model() || self.proceed(i);
+            }
+            i += 1;
+        }
     }
 
     fn do_sequence_mutations(
@@ -528,30 +613,18 @@ where
         }
     }
 
-    fn build_state_model(
+    fn fill_observations(
         &mut self,
-        iteration: usize,
         rng: &mut impl Rng,
     ) {
-        let threshold = if iteration == 0 {
-            0.0
-        } else {
-            0.75 - 0.75 * 0.8f64.powi(iteration as i32)
-        };
         let mut dot_path = self.config.context_path.clone();
         dot_path.push("states.dot");
-
-        while self.state.learner.missing_observation_percentage() > threshold {
-            info!(
-                "Current observation percentage: {} (Threshold: {})",
-                self.state.learner.missing_observation_percentage(),
-                threshold
-            );
-            let mut current_row = self
-                .state
-                .learner
-                .get_row_from_prefix(self.state.current_prefix.iter().copied())
-                .unwrap();
+        let mut current_row = self
+            .state
+            .learner
+            .get_row_from_prefix(self.state.current_prefix.iter().copied())
+            .unwrap();
+        if rng.random_range(0.0..=1.0) >= self.config.backtracking_chance.unwrap_or(0.0) {
             // there are still some missing observations somewhere.
             while let Some((row_id, path_from_current)) = self
                 .state
@@ -576,27 +649,13 @@ where
                     );
                 }
             }
-            // Go back one level
-            if !self.state.current_prefix.is_empty() {
-                self.emulator
-                    .discard_current_and_restore_previous_snapshot()
-                    .unwrap();
-                self.state.current_prefix.pop();
-            }
-
-            if self.state.learner.missing_observation_percentage() <= threshold {
-                self.state.learner.make_consistent_and_closed();
-                self.export_learned_statemachine(&mut dot_path);
-                info!("Symbols applied: {}", self.state.symbols_applied);
-                info!(
-                    "Symbols per second: {}",
-                    self.state.symbols_applied as f64 / self.start_time.elapsed().as_secs_f64()
-                );
-                info!("Time elapsed: {:?}", self.start_time.elapsed());
-                info!("Upper table size: {}", self.state.learner.upper_size());
-                info!("Lower table size: {}", self.state.learner.lower_size());
-                info!("Total distinct observations: {}", self.state.observations.len())
-            }
+        }
+        // Go back one level
+        if !self.state.current_prefix.is_empty() {
+            self.emulator
+                .discard_current_and_restore_previous_snapshot()
+                .unwrap();
+            self.state.current_prefix.pop();
         }
     }
 

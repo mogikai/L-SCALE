@@ -53,7 +53,7 @@ struct Args {
     do_refinement: Option<usize>,
 
     /// If set to true, the entire execution will be traced and a disassembly is printed for each instruction that is executed.
-    #[arg(short, long, default_value_t = false)]
+    #[arg(long, default_value_t = false)]
     decode: bool,
 
     #[arg(long)]
@@ -65,6 +65,12 @@ struct Args {
     /// The threshold for the observation equality check. Observations are considered equal if their difference is less than the threshold.
     #[arg(short, long)]
     threshold: u64,
+
+    #[arg(long, default_value_t = false)]
+    fuzzy_learning: bool,
+
+    #[arg(long)]
+    backtracking_chance: Option<f64>,
 }
 
 fn main() {
@@ -134,6 +140,8 @@ fn setup_luzzer<EmulatorT>(
         .maybe_do_refinement(args.do_refinement)
         .threshold(args.threshold.into())
         .detailed_graph_building(args.detailed_graph_building)
+        .fuzzy_learning(args.fuzzy_learning)
+        .maybe_backtracking_chance(args.backtracking_chance)
         .executable_path(PathBuf::from(args.binary));
     let mut luzzer = Luzzer::new(emulator, config.build());
     luzzer.run();
