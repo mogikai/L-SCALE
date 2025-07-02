@@ -1,8 +1,0 @@
-digraph {
-    0 [ label = "Node 0 (9)"]
-    1 [ label = "Node 1 (8)"]
-    0 -> 0 [ label = "[get, ] [auth_test, ] [create_user, ] [acl_users, ] [auth_default, ] [increase, ] [quit, ] "]
-    1 -> 0 [ label = "[quit, ] "]
-    0 -> 1 [ label = "[NewTcpStream] "]
-    1 -> 1 [ label = "[get, ] [auth_test, ] [create_user, ] [acl_users, ] [auth_default, ] [NewTcpStream] [increase, ] "]
-}
