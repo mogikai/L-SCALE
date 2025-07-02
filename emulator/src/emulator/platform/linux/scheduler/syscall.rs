@@ -14,7 +14,6 @@ use mogi_system::components::cpu::RegisterX86;
 use mogi_system::errors::cpu::StopReason;
 
 use crate::emulator::abstractions::network::tcp_system::TCPSystem;
-use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::platform::linux::architecture::x86::X86;
 use crate::emulator::platform::linux::kernel::error::SyscallError;
 use crate::emulator::platform::linux::kernel::task_id::TaskId;
@@ -22,6 +21,7 @@ use crate::emulator::platform::linux::kernel::{
     LinuxKernelError,
     LinuxKernelTask,
 };
+use crate::emulator::platform::linux::LinuxSystem;
 use crate::emulator::system::task_manager::Task;
 
 macro_rules! do_syscall {

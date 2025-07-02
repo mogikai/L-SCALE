@@ -25,10 +25,6 @@ use std::cell::{
 use std::cmp::min;
 use std::default::Default;
 use std::rc::Rc;
-use tracing::{
-    info,
-    trace,
-};
 
 #[derive(Debug, Default, Clone)]
 pub struct StdioSnapshot {
@@ -108,9 +104,13 @@ impl Stdio {
             Whence::SEEK_SET => self.data.in_pos = offset as usize,
             Whence::SEEK_CUR => {
                 self.data.in_pos = if offset.is_negative() {
-                    self.data.in_pos.wrapping_sub(offset.unsigned_abs() as usize)
+                    self.data
+                        .in_pos
+                        .wrapping_sub(offset.unsigned_abs() as usize)
                 } else {
-                    self.data.in_pos.wrapping_add(offset.unsigned_abs() as usize)
+                    self.data
+                        .in_pos
+                        .wrapping_add(offset.unsigned_abs() as usize)
                 }
             }
             Whence::SEEK_END => {

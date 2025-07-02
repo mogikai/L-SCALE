@@ -2,8 +2,8 @@ use std::cell::RefMut;
 use std::os::unix::ffi::OsStrExt;
 
 use bitflags::{
-    Flags,
     bitflags,
+    Flags,
 };
 use byteorder::ByteOrder;
 use libc::dirname;
@@ -15,9 +15,9 @@ use crate::emulator::abstractions::file_descriptors::FileDescriptorError;
 use crate::emulator::abstractions::filesystem::FileId;
 use crate::emulator::macros::*;
 use crate::emulator::platform::linux::fd::{
-    FD,
     FileDescriptorData,
     FileDescriptorFlags,
+    FD,
 };
 use crate::emulator::platform::linux::kernel::error::SyscallError::KernelError;
 use crate::emulator::platform::linux::kernel::fs::fd_ops::FileOps;
