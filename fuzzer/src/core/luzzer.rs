@@ -6,7 +6,6 @@ use crate::api::reducer::Reducer;
 use crate::observers::new::bb::BasicBlockObserver;
 use crate::reducers::bb::lsh::BlockHitLshReducer;
 use bon::Builder;
-use fnv::FnvHashMap;
 use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
 use mogi_emulator::emulator::abstractions::network::{
     IPAddress,
@@ -298,6 +297,13 @@ pub struct LuzzerState {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, clap::ValueEnum, Clone)]
+pub enum BucketingMode {
+    Closest,
+    Cutoff,
+}
+
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Builder)]
 pub struct LuzzerConfig {
     do_refinement: Option<usize>,
@@ -311,6 +317,9 @@ pub struct LuzzerConfig {
     #[builder(default = false)]
     fuzzy_learning: bool,
     backtracking_chance: Option<f64>,
+    bucketing_mode: BucketingMode,
+    #[builder(default = true)]
+    sparse_behavior: bool,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -382,8 +391,8 @@ where
         // let edge_observer = Rc::new(RefCell::new(EdgeHitCountObserver::new()));
         // let edge_reducer = Rc::new(RefCell::new(InterestingEdgesReducer::new(edge_observer.clone())));
         // let behavior_observer = BlockHitObserver::new();
-        let block_observer = Rc::new(RefCell::new(BasicBlockObserver::new(start, end)));
-        let behavior_observer = Rc::new(RefCell::new(BasicBlockObserver::new(start, end)));
+        let block_observer = Rc::new(RefCell::new(BasicBlockObserver::new(start, end, true)));
+        let behavior_observer = Rc::new(RefCell::new(BasicBlockObserver::new(start, end, config.sparse_behavior)));
         let behavior_reducer = Rc::new(RefCell::new(BlockHitLshReducer::new(behavior_observer.clone())));
 
         {
@@ -393,9 +402,13 @@ where
             cpu.add_block_hook(
                 start,
                 end,
-                Box::new(move |_cpu, addr, _| {
-                    hook_block_observer.borrow_mut().observe(&addr);
-                    hook_behavior_observer.borrow_mut().observe(&addr);
+                Box::new(move |_cpu, addr, size| {
+                    hook_block_observer
+                        .borrow_mut()
+                        .observe(&(addr, size as usize));
+                    hook_behavior_observer
+                        .borrow_mut()
+                        .observe(&(addr, size as usize));
                 }),
             )
             .unwrap();
@@ -795,25 +808,45 @@ where
             }
             let behavior = self.suffix_behavior_reducer.borrow_mut().reduce().unwrap();
 
-            let observation_id = self
-                .state
-                .observation_mapping
-                .entry(behavior)
-                .or_insert_with(|| {
+            let observation_id = match self.config.bucketing_mode {
+                BucketingMode::Closest => {
                     self.state
-                        .observations
-                        .iter()
-                        // Find all observations that are closer than a threshold
-                        .filter_map(|(observation_id, observation)| {
-                            let distance = observation.edge_hash_map.compare(&behavior.edge_hash_map) as u64;
-                            (distance <= self.config.threshold).then_some((observation_id, distance))
+                        .observation_mapping
+                        .entry(behavior)
+                        .or_insert_with(|| {
+                            self.state
+                                .observations
+                                .iter()
+                                // Find all observations that are closer than a threshold
+                                .filter_map(|(observation_id, observation)| {
+                                    let distance = observation.edge_hash_map.compare(&behavior.edge_hash_map) as u64;
+                                    (distance <= self.config.threshold).then_some((observation_id, distance))
+                                })
+                                // Get the minimally distant one
+                                .min_by_key(|(_, distance)| *distance)
+                                .map(|(observation_id, _)| observation_id)
+                                // or create a new id if no observation in the threshold could be found
+                                .unwrap_or_else(|| self.state.observations.insert(behavior))
                         })
-                        // Get the minimally distant one
-                        .min_by_key(|(_, distance)| *distance)
-                        .map(|(observation_id, _)| observation_id)
-                        // or create a new id if no observation in the threshold could be found
-                        .unwrap_or_else(|| self.state.observations.insert(behavior))
-                });
+                }
+                BucketingMode::Cutoff => {
+                    self.state
+                        .observation_mapping
+                        .entry(behavior)
+                        .or_insert_with(|| {
+                            self.state
+                                .observations
+                                .iter()
+                                // Find all observations that are closer than a threshold
+                                .find_map(|(observation_id, observation)| {
+                                    let distance = observation.edge_hash_map.compare(&behavior.edge_hash_map) as u64;
+                                    (distance <= self.config.threshold).then_some(observation_id)
+                                })
+                                // or create a new id if no observation in the threshold could be found
+                                .unwrap_or_else(|| self.state.observations.insert(behavior))
+                        })
+                }
+            };
             self.state
                 .learner
                 .add_observation(row_id, suffix, *observation_id)

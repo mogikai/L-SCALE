@@ -10,16 +10,19 @@ use std::ops::Deref;
 pub struct BasicBlockObserver {
     start: EVAddr,
     hitcounts: Vec<u8>,
+    sparse: bool,
 }
 
 impl BasicBlockObserver {
     pub fn new(
         start: EVAddr,
         end: EVAddr,
+        sparse: bool,
     ) -> Self {
         Self {
             start,
             hitcounts: (0..end - start).map(|i| (i % 256) as u8).collect(),
+            sparse,
         }
     }
 }
@@ -35,14 +38,21 @@ impl Observer for BasicBlockObserver {
 }
 
 impl Observe for BasicBlockObserver {
-    type RawObservation = EVAddr;
+    type RawObservation = (EVAddr, usize);
 
     fn observe(
         &mut self,
         observation: &Self::RawObservation,
     ) {
-        let entry = unsafe { self.hitcounts.get_unchecked_mut(*observation - self.start) };
-        *entry = entry.wrapping_add(1);
+        // If sparse is configured we only mark the first address of the executed basic block.
+        let bb_size = if self.sparse { 1 } else { observation.1 };
+        for offset in 0..bb_size {
+            let entry = unsafe {
+                self.hitcounts
+                    .get_unchecked_mut(observation.0 - self.start + offset)
+            };
+            *entry = entry.wrapping_add(1);
+        }
     }
 }
 

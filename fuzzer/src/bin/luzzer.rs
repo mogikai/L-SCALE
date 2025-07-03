@@ -4,15 +4,28 @@ use std::path::{
     Path,
     PathBuf,
 };
+use std::process::exit;
 use std::rc::Rc;
 use std::thread;
 use std::time::Duration;
 
-use clap::Parser;
+use clap::{
+    Args,
+    CommandFactory,
+    Parser,
+    Subcommand,
+};
+use clap_complete::{
+    Shell,
+    generate,
+};
 use core_affinity::CoreId;
+use mogi_emulator::LittleEndian;
+use mogi_emulator::emulator::GenericEmulator;
 use mogi_emulator::emulator::interface::emulator::Emulator;
 use mogi_emulator::emulator::platform::linux::kernel::LinuxKernelTask;
 use mogi_emulator::emulator::platform::linux::scheduler::LinuxX86Scheduler;
+use mogi_emulator::emulator::system::System;
 use mogi_emulator::emulator::system::clock::Clock;
 use mogi_emulator::emulator::system::fd_map::FileDescriptorMap;
 use mogi_emulator::emulator::system::filesystem::Filesystem;
@@ -21,10 +34,8 @@ use mogi_emulator::emulator::system::memory::Memory;
 use mogi_emulator::emulator::system::prng::SeedablePrngMap;
 use mogi_emulator::emulator::system::stdio::Stdio;
 use mogi_emulator::emulator::system::task_manager::TaskManager;
-use mogi_emulator::emulator::system::System;
-use mogi_emulator::emulator::GenericEmulator;
-use mogi_emulator::LittleEndian;
 use mogi_fuzzer::core::luzzer::{
+    BucketingMode,
     Luzzer,
     LuzzerConfig,
 };
@@ -32,26 +43,43 @@ use mogi_fuzzer::io::tcp::TCP;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{
-    fmt,
     EnvFilter,
+    fmt,
 };
 
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Args {
+#[derive(Parser)]
+#[command(author, version, about, long_about = None, name = "luzzer")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Start the learner
+    Learn(Learn),
+    Completions {
+        #[arg(long)]
+        shell: Shell,
+    },
+}
+
+#[derive(Args, Debug)]
+struct Learn {
     /// The path on the host system to the root of the system directory that is used for emulation.
-    #[arg(long, default_value = "emulator/systems/ubuntu2310")]
+    #[arg(long)]
     system_root: PathBuf,
 
-    #[arg(long, default_value = "fuzzer/assets/opcua")]
+    /// The path to the context folder where the corpus lives
+    #[arg(long)]
     context: PathBuf,
 
     /// The path where the state learner puts its output files
-    #[arg(long, default_value = ".output/opcua/")]
+    #[arg(long)]
     output: PathBuf,
 
     /// The path on the emulated system to the binary that will be emulated initially.
-    #[arg(long, default_value = "/home/user/open62541_server_fuzzing_fixed")]
+    #[arg(long)]
     binary: PathBuf,
 
     #[arg(long)]
@@ -77,9 +105,21 @@ struct Args {
     #[arg(long)]
     backtracking_chance: Option<f64>,
 
-    /// If set, terminate the execution after the given amount of seconds
+    /// If set, terminate the execution after the given number of seconds
     #[arg(long)]
     timeout: Option<u64>,
+
+    /// The mode to use for observation bucketing.
+    /// If using Closest, then for two observations A, B where the threshold area overlaps, for an Observation C
+    /// the closest one is chosen as representative.
+    /// Example: |----A---|C--B----|
+    /// If using Cutoff, then the observation threshold is cut off on the left for overlapping threshold areas.
+    /// Example: |----A---C-|-B----|
+    #[arg(long)]
+    bucketing_mode: BucketingMode,
+
+    #[arg(long, default_value_t = false)]
+    sparse_behavior: bool,
 }
 
 fn main() {
@@ -87,7 +127,15 @@ fn main() {
         .with(fmt::layer())
         .with(EnvFilter::from_env("MOGI_LOG"))
         .init();
-    let luzzer_args = Args::parse();
+    let luzzer_args = match Cli::parse().command {
+        Commands::Learn(learn_args) => learn_args,
+        Commands::Completions { shell } => {
+            let mut command = Cli::command();
+            let name = command.get_name().to_string();
+            generate(shell, &mut command, name, &mut std::io::stdout());
+            exit(0);
+        }
+    };
     if let Some(id) = luzzer_args.pin_core {
         core_affinity::set_for_current(CoreId { id });
     }
@@ -147,7 +195,7 @@ fn main() {
 }
 
 fn setup_luzzer<EmulatorT>(
-    args: Args,
+    args: Learn,
     emulator: EmulatorT,
 ) where
     EmulatorT: Emulator,
@@ -160,6 +208,8 @@ fn setup_luzzer<EmulatorT>(
         .detailed_graph_building(args.detailed_graph_building)
         .fuzzy_learning(args.fuzzy_learning)
         .maybe_backtracking_chance(args.backtracking_chance)
+        .bucketing_mode(args.bucketing_mode)
+        .sparse_behavior(args.sparse_behavior)
         .executable_path(args.binary);
     let mut luzzer = Luzzer::new(emulator, config.build());
     luzzer.run();
