@@ -267,7 +267,7 @@ fn evaluate(args: Evaluate) {
             .copied();
         let Some(core) = core else {
             // If no core is available we just wait for a second and try again.
-            sleep(Duration::from_secs(100));
+            sleep(Duration::from_millis(100));
             continue;
         };
 
