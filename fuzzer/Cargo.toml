@@ -31,6 +31,7 @@ zerocopy = "0.9.0-alpha.0"
 rand_chacha = "0.9.0"
 fnv = "1.0.7"
 clap_complete = "4.5.54"
+strum_macros = "0.27.1"
 
 [features]
 default = ["unicorn", "serde"]

@@ -74,6 +74,7 @@ use std::time::{
     Duration,
     Instant,
 };
+use strum_macros::Display;
 use tlsh::{
     FuzzyHashType,
     hashes,
@@ -297,7 +298,7 @@ pub struct LuzzerState {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, clap::ValueEnum, Clone)]
+#[derive(Debug, clap::ValueEnum, Clone, Display)]
 pub enum BucketingMode {
     Closest,
     Cutoff,
@@ -310,6 +311,7 @@ pub struct LuzzerConfig {
     #[builder(default = false)]
     detailed_graph_building: bool,
     context_path: PathBuf,
+    corpus: String,
     output_path: PathBuf,
     executable_path: PathBuf,
     #[builder(default = 0)]
@@ -356,8 +358,14 @@ where
 {
     pub fn new(
         emulator: EmulatorT,
-        config: LuzzerConfig,
+        mut config: LuzzerConfig,
     ) -> Self {
+        config.output_path.push(&config.corpus);
+        config.output_path.push(config.bucketing_mode.to_string());
+        config
+            .output_path
+            .push(if config.sparse_behavior { "sparse" } else { "dense" });
+        config.output_path.push(config.threshold.to_string());
         let memory = emulator.system().memory().borrow();
         let exe_name = config
             .executable_path
@@ -668,6 +676,7 @@ where
         // load all the inputs in the corpus
         let mut corpus_dir = self.config.context_path.clone();
         corpus_dir.push("corpus");
+        corpus_dir.push(&self.config.corpus);
         for file in corpus_dir.read_dir().unwrap().flatten() {
             if file.file_type().unwrap().is_file() {
                 let input_data_id = self

@@ -74,6 +74,10 @@ struct Learn {
     #[arg(long)]
     context: PathBuf,
 
+    /// The name of the corpus to use. The corpus is located inside the <context>/corpus directory.
+    #[arg(long)]
+    corpus: String,
+
     /// The path where the state learner puts its output files
     #[arg(long)]
     output: PathBuf,
@@ -82,6 +86,7 @@ struct Learn {
     #[arg(long)]
     binary: PathBuf,
 
+    /// Do refinement rounds for the number of times provided.
     #[arg(long)]
     do_refinement: Option<usize>,
 
@@ -89,9 +94,13 @@ struct Learn {
     #[arg(long, default_value_t = false)]
     decode: bool,
 
+    /// Pin the execution of the learner to the provided core number.
     #[arg(long)]
     pin_core: Option<usize>,
 
+    /// Perform detailed graph building. I.e., check closed and consistent properties after each gathering step
+    /// and dump the resulting statemachine. This is a lot less efficient and should only be used for demonstration
+    /// or debugging purposes.
     #[arg(short, long, default_value_t = false)]
     detailed_graph_building: bool,
 
@@ -99,9 +108,12 @@ struct Learn {
     #[arg(short, long)]
     threshold: u64,
 
+    /// Enable fuzzy learning. This leaves out observations based on a threshold value and can be faster but is less
+    /// accurate.
     #[arg(long, default_value_t = false)]
     fuzzy_learning: bool,
 
+    /// The chance to backtrack when doing random walk through the prefix set. Must be between 0 and 1
     #[arg(long)]
     backtracking_chance: Option<f64>,
 
@@ -118,6 +130,10 @@ struct Learn {
     #[arg(long)]
     bucketing_mode: BucketingMode,
 
+    /// If provided, the coverage collection mechanism will only set the first address of each basic block
+    /// as visited. This can be more efficient but is less accurate than setting every address visited.
+    /// In some cases it might also be desirable to have less accurate measurements to tackle the state
+    /// explosion problem.
     #[arg(long, default_value_t = false)]
     sparse_behavior: bool,
 }
@@ -202,6 +218,7 @@ fn setup_luzzer<EmulatorT>(
 {
     let config = LuzzerConfig::builder()
         .context_path(args.context)
+        .corpus(args.corpus)
         .maybe_do_refinement(args.do_refinement)
         .threshold(args.threshold.into())
         .output_path(args.output)
