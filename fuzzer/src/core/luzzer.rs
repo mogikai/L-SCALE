@@ -74,7 +74,10 @@ use std::time::{
     Duration,
     Instant,
 };
-use strum_macros::Display;
+use strum_macros::{
+    Display,
+    EnumIter,
+};
 use tlsh::{
     FuzzyHashType,
     hashes,
@@ -298,7 +301,7 @@ pub struct LuzzerState {
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, clap::ValueEnum, Clone, Display)]
+#[derive(Debug, clap::ValueEnum, Clone, Display, EnumIter)]
 pub enum BucketingMode {
     Closest,
     Cutoff,

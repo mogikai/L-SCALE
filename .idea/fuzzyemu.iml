@@ -36,6 +36,7 @@
       <sourceFolder url="file://$MODULE_DIR$/sleigh_parser/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/cpu/benches" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/statelearner/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/tools/eval-helpers/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/tools/graph/graph-tools/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/deps/LibAFL/fuzzers/baby_fuzzer/target" />
       <excludeFolder url="file://$MODULE_DIR$/deps/LibAFL/fuzzers/qemu_coverage/target" />
