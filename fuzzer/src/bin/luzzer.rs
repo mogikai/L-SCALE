@@ -214,20 +214,32 @@ fn evaluate(args: Evaluate) {
     ));
 
     let mut commands = Vec::new();
+    let mut base_path = PathBuf::from(&args.general.output);
+    base_path.push(&args.general.corpus);
+
+    let mut output_paths = Vec::new();
 
     let combinations = BucketingMode::iter()
         .cartesian_product([true, false].into_iter())
         .cartesian_product(args.threshold_start..=args.threshold_end);
     for ((mode, sparse), threshold) in combinations {
+        let mut output_path = base_path.clone();
         let mut args_vec = args_vec.clone();
-        args_vec.push(format!("--bucketing-mode={}", mode.to_string().to_lowercase()));
+        let mode_str = mode.to_string().to_lowercase();
+        args_vec.push(format!("--bucketing-mode={}", mode_str));
+        output_path.push(mode_str);
         if sparse {
             args_vec.push("--sparse-behavior".to_string());
+            output_path.push("sparse");
+        } else {
+            output_path.push("dense");
         }
         args_vec.push(format!("--threshold={}", threshold));
+        output_path.push(format!("{}", threshold));
         let mut cmd = Command::new("./luzzer");
         cmd.arg("learn").args(args_vec);
         commands.push(cmd);
+        output_paths.push(output_path);
     }
 
     let cores_clone = cores.clone();
@@ -287,6 +299,26 @@ fn evaluate(args: Evaluate) {
         if let Some(child) = child {
             child.wait().unwrap();
         }
+    }
+
+    // output pdfs
+    output_paths.iter().for_each(generate_state_pdf);
+}
+
+fn generate_state_pdf(output_path: &PathBuf) {
+    let mut output_pdf = output_path.clone();
+    output_pdf.push("states.pdf");
+    let mut dot_path = output_path.clone();
+    dot_path.push("states.dot");
+    let output = Command::new("dot")
+        .arg("-Tpdf")
+        .arg(dot_path)
+        .arg("-o")
+        .arg(output_pdf)
+        .output()
+        .expect("Failed to execute command");
+    if !output.status.success() {
+        info!("Failed to build state graph pdf {}", String::from_utf8_lossy(&output.stderr));
     }
 }
 

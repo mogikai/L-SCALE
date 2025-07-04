@@ -6,6 +6,7 @@ use crate::api::reducer::Reducer;
 use crate::observers::new::bb::BasicBlockObserver;
 use crate::reducers::bb::lsh::BlockHitLshReducer;
 use bon::Builder;
+use crossbeam::channel::ReadyTimeoutError;
 use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
 use mogi_emulator::emulator::abstractions::network::{
     IPAddress,
@@ -364,7 +365,9 @@ where
         mut config: LuzzerConfig,
     ) -> Self {
         config.output_path.push(&config.corpus);
-        config.output_path.push(config.bucketing_mode.to_string());
+        config
+            .output_path
+            .push(config.bucketing_mode.to_string().to_lowercase());
         config
             .output_path
             .push(if config.sparse_behavior { "sparse" } else { "dense" });
