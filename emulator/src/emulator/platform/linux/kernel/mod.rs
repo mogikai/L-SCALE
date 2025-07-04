@@ -540,7 +540,7 @@ where
         val3: u64,
     ) -> SyscallResult {
         // FIXME TODO
-        error!("Futex syscall not implemented. Currently only returning 0");
+        debug!("Futex syscall not implemented. Currently only returning 0");
         Ok(0)
     }
 
@@ -601,7 +601,7 @@ where
         arg: u64,
     ) -> SyscallResult {
         // TODO: Implement correctly
-        error!("FCNTL not implemented fully yet");
+        debug!("FCNTL not implemented fully yet");
         let mut fd_map = sys_component_mut!(self, fd_map);
         let mut fd = fd_map
             .get_mut(&self.task_id, &fd)

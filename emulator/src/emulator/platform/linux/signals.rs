@@ -52,7 +52,7 @@ impl<Flags: Debug + Clone + Copy> SignalHandler<Flags> {
         &mut self,
         fd: FD,
     ) {
-        error!("add signalfd");
+        debug!("add signalfd");
     }
 
     pub fn insert(

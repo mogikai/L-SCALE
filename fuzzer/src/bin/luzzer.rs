@@ -54,6 +54,7 @@ use mogi_fuzzer::core::luzzer::{
 };
 use mogi_fuzzer::io::tcp::TCP;
 use strum::IntoEnumIterator;
+use tracing::info;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{
@@ -250,7 +251,12 @@ fn evaluate(args: Evaluate) {
             .find_map(|(core, child)| {
                 if let Some(child) = child {
                     if let Ok(result) = child.try_wait() {
-                        if result.is_some() { Some(core) } else { None }
+                        if result.is_some() {
+                            info!("Child exited. Releasing core");
+                            Some(core)
+                        } else {
+                            None
+                        }
                     } else {
                         None
                     }
@@ -266,11 +272,13 @@ fn evaluate(args: Evaluate) {
         };
 
         command.arg(format!("--pin-core={}", core.id));
-        // println!("Spawning command {:?}", command);
+        let args_string = command.get_args().map(|s| s.to_str().unwrap()).join(" ");
+        info!("Spawning {:?}", args_string);
         let child = command.spawn().unwrap();
-        println!("Spawned command on core {:?}", core);
         cores.lock().unwrap().insert(core, Some(child));
     }
+
+    info!("No more remaining tasks to spawn. Waiting for rest to finish");
 
     // Wait for all remaining tasks
     for (_, child) in cores.lock().unwrap().iter_mut() {
