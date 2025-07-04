@@ -19,7 +19,10 @@ use std::sync::{
 };
 use std::thread;
 use std::thread::sleep;
-use std::time::Duration;
+use std::time::{
+    Duration,
+    Instant,
+};
 
 use clap::{
     Args,
@@ -301,8 +304,17 @@ fn evaluate(args: Evaluate) {
         }
     }
 
-    // output pdfs
-    output_paths.iter().for_each(generate_state_pdf);
+    info!("Generating pdf files");
+
+    let mut handles = Vec::new();
+    for output_path in output_paths {
+        handles.push(thread::spawn(move || {
+            generate_state_pdf(&output_path.clone());
+        }));
+    }
+    for join_handle in handles {
+        join_handle.join().unwrap();
+    }
 }
 
 fn generate_state_pdf(output_path: &PathBuf) {
@@ -310,15 +322,30 @@ fn generate_state_pdf(output_path: &PathBuf) {
     output_pdf.push("states.pdf");
     let mut dot_path = output_path.clone();
     dot_path.push("states.dot");
-    let output = Command::new("dot")
+
+    let mut child = Command::new("dot")
         .arg("-Tpdf")
         .arg(dot_path)
         .arg("-o")
         .arg(output_pdf)
-        .output()
-        .expect("Failed to execute command");
-    if !output.status.success() {
-        info!("Failed to build state graph pdf {}", String::from_utf8_lossy(&output.stderr));
+        .spawn()
+        .expect("failed to start dot");
+
+    let start = Instant::now();
+    let timeout = Duration::from_secs(30);
+    loop {
+        match child.try_wait().unwrap() {
+            Some(status) => {
+                break;
+            }
+            None => {
+                if start.elapsed() >= timeout {
+                    child.kill().expect("failed to kill dot");
+                    break;
+                }
+                sleep(Duration::from_millis(100));
+            }
+        }
     }
 }
 
