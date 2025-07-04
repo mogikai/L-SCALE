@@ -459,7 +459,7 @@ where
             let threshold = if i == 0 {
                 0.0
             } else {
-                0.9 - 0.9 * 0.995f64.powi(i as i32)
+                0.9 - 0.9 * 0.999f64.powi(i as i32)
             };
             debug!(
                 "Current observation percentage: {} (Threshold: {})",
@@ -713,23 +713,8 @@ where
                 .learner
                 .random_row_with_missing_observations(Some(current_row), rng)
             {
-                for symbol in path_from_current {
-                    self.advance_symbol(symbol);
-                }
-
-                self.perform_observations_for_current_state(row_id);
-
+                self.go_to_row_and_fill(&mut current_row, row_id, path_from_current);
                 current_row = row_id;
-                if self.config.detailed_graph_building {
-                    self.state.learner.make_consistent_and_closed();
-                    self.export_learned_statemachine();
-                    debug!(
-                        "Table size: U{} | L{} x {}",
-                        self.state.learner.upper_size(),
-                        self.state.learner.lower_size(),
-                        self.state.learner.table_width()
-                    );
-                }
             }
         }
         // Go back one level
@@ -738,6 +723,30 @@ where
                 .discard_current_and_restore_previous_snapshot()
                 .unwrap();
             self.state.current_prefix.pop();
+        }
+    }
+
+    fn go_to_row_and_fill(
+        &mut self,
+        current_row: &mut ObservationRowId,
+        row_id: ObservationRowId,
+        path_from_current: impl Iterator<Item = SymbolId> + Clone,
+    ) {
+        for symbol in path_from_current {
+            self.advance_symbol(symbol);
+        }
+
+        self.perform_observations_for_current_state(row_id);
+
+        if self.config.detailed_graph_building {
+            self.state.learner.make_consistent_and_closed();
+            self.export_learned_statemachine();
+            debug!(
+                "Table size: U{} | L{} x {}",
+                self.state.learner.upper_size(),
+                self.state.learner.lower_size(),
+                self.state.learner.table_width()
+            );
         }
     }
 
