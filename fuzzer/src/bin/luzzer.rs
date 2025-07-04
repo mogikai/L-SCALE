@@ -244,31 +244,33 @@ fn evaluate(args: Evaluate) {
 
     for mut command in commands {
         // Find a free core to spawn a command
-        let core = cores
-            .lock()
-            .unwrap()
-            .iter_mut()
-            .find_map(|(core, child)| {
-                if let Some(child) = child {
-                    if let Ok(result) = child.try_wait() {
-                        if result.is_some() {
-                            info!("Child exited. Releasing core");
-                            Some(core)
+        let core = loop {
+            let core = cores
+                .lock()
+                .unwrap()
+                .iter_mut()
+                .find_map(|(core, child)| {
+                    if let Some(child) = child {
+                        if let Ok(result) = child.try_wait() {
+                            if result.is_some() {
+                                info!("Child exited. Releasing core");
+                                Some(core)
+                            } else {
+                                None
+                            }
                         } else {
                             None
                         }
                     } else {
-                        None
+                        Some(core)
                     }
-                } else {
-                    Some(core)
-                }
-            })
-            .copied();
-        let Some(core) = core else {
+                })
+                .copied();
+            if let Some(core) = core {
+                break core;
+            };
             // If no core is available we just wait for a second and try again.
             sleep(Duration::from_millis(100));
-            continue;
         };
 
         command.arg(format!("--pin-core={}", core.id));
