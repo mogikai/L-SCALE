@@ -1,0 +1,6 @@
+LOGIN /users/0 HTTP/1.1
+Host: localhost:8080
+User-Agent: mogi/state_learning
+Accept: */*
+Content-Length: 9
+malicious
