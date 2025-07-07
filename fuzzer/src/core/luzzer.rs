@@ -365,7 +365,14 @@ where
         emulator: EmulatorT,
         mut config: LuzzerConfig,
     ) -> Self {
-        config.output_path.push(&config.corpus);
+        let mut output_folder = config.corpus.clone();
+        if let Some(refinement_rounds) = config.do_refinement {
+            output_folder.push_str(format!("-refined{}", refinement_rounds).as_str())
+        }
+        if config.fuzzy_learning {
+            output_folder.push_str("-fuzzy");
+        }
+        config.output_path.push(&output_folder);
         config
             .output_path
             .push(config.bucketing_mode.to_string().to_lowercase());

@@ -203,6 +203,9 @@ fn evaluate(args: Evaluate) {
     if let Some(timeout) = args.general.timeout {
         args_vec.push(format!("--timeout={}", timeout));
     }
+    if let Some(do_refinement) = args.general.do_refinement {
+        args_vec.push(format!("--do-refinement={}", do_refinement));
+    }
 
     let cores = core_affinity::get_core_ids().unwrap_or_else(|| {
         thread::available_parallelism()
