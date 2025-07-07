@@ -326,6 +326,7 @@ pub struct LuzzerConfig {
     bucketing_mode: BucketingMode,
     #[builder(default = true)]
     sparse_behavior: bool,
+    timeout: Option<Duration>,
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -469,6 +470,11 @@ where
         &self,
         i: u64,
     ) -> bool {
+        if let Some(timeout) = self.config.timeout
+            && self.start_time.elapsed() >= timeout
+        {
+            return false;
+        }
         let threshold = if self.config.fuzzy_learning {
             let threshold = if i == 0 {
                 0.0
@@ -521,6 +527,8 @@ where
         self.start_time = Instant::now();
         self.perform_initial_state_learning(&mut rng);
         self.perform_state_refinement(&mut rng);
+        // Do a final build before exiting.
+        self.build_state_model();
         // while do_fuzzing.load(Ordering::SeqCst) {
         // self.fuzz();
         // }
@@ -541,7 +549,7 @@ where
                 proceed = true;
                 while proceed {
                     proceed = self.proceed(i);
-                    self.fill_observations(&mut rng);
+                    self.fill_observations(i, &mut rng);
                     if !proceed {
                         proceed = self.build_state_model();
                         if proceed {
@@ -567,7 +575,7 @@ where
         let mut proceed = true;
         while proceed {
             proceed = self.proceed(i);
-            self.fill_observations(&mut rng);
+            self.fill_observations(i, &mut rng);
             if !proceed {
                 proceed = self.build_state_model() || self.proceed(i);
             }
@@ -713,6 +721,7 @@ where
 
     fn fill_observations(
         &mut self,
+        i: u64,
         rng: &mut impl Rng,
     ) {
         let mut current_row = self
@@ -726,6 +735,7 @@ where
                 .state
                 .learner
                 .random_row_with_missing_observations(Some(current_row), rng)
+                && self.proceed(i)
             {
                 self.go_to_row_and_fill(&mut current_row, row_id, path_from_current);
                 current_row = row_id;

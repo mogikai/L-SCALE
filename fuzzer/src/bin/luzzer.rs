@@ -400,14 +400,6 @@ fn learn(luzzer_args: Learn) {
         emulator.enable_trace().unwrap();
     }
 
-    if let Some(timeout) = luzzer_args.general.timeout {
-        thread::spawn(move || {
-            thread::sleep(Duration::from_secs(timeout));
-            tracing::info!("Timeout reached, terminating execution.");
-            std::process::exit(0);
-        });
-    }
-
     setup_luzzer(luzzer_args, emulator);
 }
 
@@ -428,6 +420,7 @@ fn setup_luzzer<EmulatorT>(
         .maybe_backtracking_chance(args.backtracking_chance)
         .bucketing_mode(args.bucketing_mode)
         .sparse_behavior(args.sparse_behavior)
+        .maybe_timeout(args.general.timeout.map(Duration::from_secs))
         .executable_path(args.general.binary);
     let mut luzzer = Luzzer::new(emulator, config.build());
     luzzer.run();
