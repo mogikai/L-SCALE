@@ -331,6 +331,7 @@ pub struct LuzzerConfig {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Default)]
 pub struct LuzzerStatistics {
+    total_states: usize,
     total_executions: usize,
     total_observations: usize,
     upper_table_size: usize,
@@ -764,6 +765,7 @@ where
         self.statistics.reduced_observations = self.state.observations.len();
         self.statistics.execution_time = self.start_time.elapsed();
         self.statistics.total_executions = self.state.symbols_applied;
+        self.statistics.total_states = self.state.learner.state_count();
         let mut statistics_path = self.config.output_path.clone();
         statistics_path.push("statistics.json");
         let file = OpenOptions::new()
@@ -776,7 +778,6 @@ where
     }
 
     fn export_learned_statemachine(&mut self) {
-        self.export_statistics();
         let mut dot_path = self.config.output_path.clone();
         dot_path.push("states.dot");
         self.state
@@ -799,6 +800,9 @@ where
                     });
                 write!(out, "]").unwrap();
             });
+        // We need to export here, since exporting the graph rebuilds it. Exporting statistics beforehand would
+        // export invalid results.
+        self.export_statistics();
     }
 
     fn perform_observations_for_current_state(

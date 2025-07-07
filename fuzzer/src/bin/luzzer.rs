@@ -108,6 +108,10 @@ struct GeneralLearnerArgs {
     /// If set, terminate the execution after the given number of seconds
     #[arg(long)]
     timeout: Option<u64>,
+
+    /// Do refinement rounds for the number of times provided.
+    #[arg(long)]
+    do_refinement: Option<usize>,
 }
 
 #[derive(Args, Debug)]
@@ -126,10 +130,6 @@ struct Evaluate {
 struct Learn {
     #[command(flatten)]
     general: GeneralLearnerArgs,
-
-    /// Do refinement rounds for the number of times provided.
-    #[arg(long)]
-    do_refinement: Option<usize>,
 
     /// If set to true, the entire execution will be traced and a disassembly is printed for each instruction that is executed.
     #[arg(long, default_value_t = false)]
@@ -417,7 +417,7 @@ fn setup_luzzer<EmulatorT>(
     let config = LuzzerConfig::builder()
         .context_path(args.general.context)
         .corpus(args.general.corpus)
-        .maybe_do_refinement(args.do_refinement)
+        .maybe_do_refinement(args.general.do_refinement)
         .threshold(args.threshold.into())
         .output_path(args.general.output)
         .detailed_graph_building(args.detailed_graph_building)

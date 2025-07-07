@@ -124,6 +124,10 @@ impl<T> StateLearner<T> {
         self.suffixes.len()
     }
 
+    pub fn state_count(&self) -> usize {
+        self.graph.node_count()
+    }
+
     pub fn get_row_from_prefix(
         &self,
         prefix: impl IntoIterator<Item = SymbolId>,
