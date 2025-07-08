@@ -343,14 +343,14 @@ where
 {
     pub fn make_consistent_and_closed<F>(
         &mut self,
-        proceed: F,
+        mut proceed: F,
     ) -> bool
     where
         F: FnMut() -> bool,
     {
         let mut needs_check = true;
         let mut was_fixed = false;
-        while needs_check {
+        while needs_check && proceed() {
             needs_check = false;
             if let Some(violation) = self.find_consistent_property_violation() {
                 debug!("Found consistency violation: {violation:?}");
