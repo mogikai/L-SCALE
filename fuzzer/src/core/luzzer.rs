@@ -498,7 +498,12 @@ where
     }
 
     fn build_state_model(&mut self) -> bool {
-        let was_fixed = self.state.learner.make_consistent_and_closed();
+        let was_fixed = self.state.learner.make_consistent_and_closed(|| {
+            self.config
+                .timeout
+                .map(|timeout| self.start_time.elapsed() <= timeout)
+                .unwrap_or(true)
+        });
         self.export_learned_statemachine();
         info!("Symbols applied: {}", self.state.symbols_applied);
         info!(
@@ -527,8 +532,8 @@ where
         self.start_time = Instant::now();
         self.perform_initial_state_learning(&mut rng);
         self.perform_state_refinement(&mut rng);
-        // Do a final build before exiting.
-        self.build_state_model();
+        // Export the state machine before exiting
+        self.export_learned_statemachine();
         // while do_fuzzing.load(Ordering::SeqCst) {
         // self.fuzz();
         // }
@@ -763,7 +768,12 @@ where
         self.perform_observations_for_current_state(row_id);
 
         if self.config.detailed_graph_building {
-            self.state.learner.make_consistent_and_closed();
+            self.state.learner.make_consistent_and_closed(|| {
+                self.config
+                    .timeout
+                    .map(|timeout| self.start_time.elapsed() <= timeout)
+                    .unwrap_or(true)
+            });
             self.export_learned_statemachine();
             debug!(
                 "Table size: U{} | L{} x {}",

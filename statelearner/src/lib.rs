@@ -341,7 +341,13 @@ impl<T> StateLearner<T>
 where
     T: ObservationValue,
 {
-    pub fn make_consistent_and_closed(&mut self) -> bool {
+    pub fn make_consistent_and_closed<F>(
+        &mut self,
+        proceed: F,
+    ) -> bool
+    where
+        F: FnMut() -> bool,
+    {
         let mut needs_check = true;
         let mut was_fixed = false;
         while needs_check {
