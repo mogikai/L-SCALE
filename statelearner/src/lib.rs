@@ -341,16 +341,10 @@ impl<T> StateLearner<T>
 where
     T: ObservationValue,
 {
-    pub fn make_consistent_and_closed<F>(
-        &mut self,
-        mut proceed: F,
-    ) -> bool
-    where
-        F: FnMut() -> bool,
-    {
+    pub fn make_consistent_and_closed(&mut self) -> bool {
         let mut needs_check = true;
         let mut was_fixed = false;
-        while needs_check && proceed() {
+        while needs_check {
             needs_check = false;
             if let Some(violation) = self.find_consistent_property_violation() {
                 debug!("Found consistency violation: {violation:?}");

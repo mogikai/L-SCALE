@@ -70,7 +70,7 @@ fn main() {
             learner
                 .add_observation(row_id, suffix_id, MyI32((num_as % 4 == 3) as i32))
                 .unwrap();
-            learner.make_consistent_and_closed(|| true);
+            learner.make_consistent_and_closed();
             sleep(Duration::from_millis(10));
         }
 

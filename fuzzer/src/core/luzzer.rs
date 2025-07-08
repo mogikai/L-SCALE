@@ -6,7 +6,6 @@ use crate::api::reducer::Reducer;
 use crate::observers::new::bb::BasicBlockObserver;
 use crate::reducers::bb::lsh::BlockHitLshReducer;
 use bon::Builder;
-use crossbeam::channel::ReadyTimeoutError;
 use mogi_emulator::emulator::abstractions::file_descriptors::FileOperationsReady;
 use mogi_emulator::emulator::abstractions::network::{
     IPAddress,
@@ -55,7 +54,6 @@ use std::fmt::{
     Display,
     Formatter,
 };
-use std::fs;
 use std::fs::{
     File,
     OpenOptions,
@@ -69,11 +67,17 @@ use std::path::{
     Path,
     PathBuf,
 };
+use std::process::exit;
 use std::rc::Rc;
 use std::str::FromStr;
+use std::thread::sleep;
 use std::time::{
     Duration,
     Instant,
+};
+use std::{
+    fs,
+    thread,
 };
 use strum_macros::{
     Display,
@@ -87,6 +91,7 @@ use tracing::{
     debug,
     info,
     trace,
+    warn,
 };
 
 new_key_type! { pub struct ObservationId; }
@@ -355,6 +360,7 @@ pub struct Luzzer<EmulatorT> {
     emulator: EmulatorT,
     input_info: EmulatorInputInfo,
     start_time: Instant,
+    last_export: Instant,
     config: LuzzerConfig,
 }
 
@@ -462,6 +468,7 @@ where
             emulator,
             input_info: Default::default(),
             start_time: Instant::now(),
+            last_export: Instant::now(),
             config,
         }
     }
@@ -470,11 +477,6 @@ where
         &self,
         i: u64,
     ) -> bool {
-        if let Some(timeout) = self.config.timeout
-            && self.start_time.elapsed() >= timeout
-        {
-            return false;
-        }
         let threshold = if self.config.fuzzy_learning {
             let threshold = if i == 0 {
                 0.0
@@ -498,12 +500,7 @@ where
     }
 
     fn build_state_model(&mut self) -> bool {
-        let was_fixed = self.state.learner.make_consistent_and_closed(|| {
-            self.config
-                .timeout
-                .map(|timeout| self.start_time.elapsed() <= timeout)
-                .unwrap_or(true)
-        });
+        let was_fixed = self.state.learner.make_consistent_and_closed();
         self.export_learned_statemachine();
         info!("Symbols applied: {}", self.state.symbols_applied);
         info!(
@@ -519,6 +516,13 @@ where
     }
 
     pub fn run(&mut self) {
+        if let Some(timeout) = self.config.timeout {
+            thread::spawn(move || {
+                sleep(Duration::from_secs(timeout.as_secs()));
+                warn!("Timeout reached. Exiting.");
+                exit(0);
+            });
+        }
         // let do_fuzzing = Arc::new(AtomicBool::new(true));
         // {
         //     let do_fuzzing = do_fuzzing.clone();
@@ -767,13 +771,10 @@ where
 
         self.perform_observations_for_current_state(row_id);
 
-        if self.config.detailed_graph_building {
-            self.state.learner.make_consistent_and_closed(|| {
-                self.config
-                    .timeout
-                    .map(|timeout| self.start_time.elapsed() <= timeout)
-                    .unwrap_or(true)
-            });
+        if self.config.detailed_graph_building || self.last_export.elapsed() >= Duration::from_secs(60) {
+            self.last_export = Instant::now();
+            info!("Exporting state machine du to detailed building or timer");
+            self.state.learner.make_consistent_and_closed();
             self.export_learned_statemachine();
             debug!(
                 "Table size: U{} | L{} x {}",
