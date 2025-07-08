@@ -1,7 +1,0 @@
-digraph {
-    0 [ label = "Node 0 (209)"]
-    1 [ label = "Node 1 (260)"]
-    0 -> 0 [ label = "[exit, ] [garbage, ] [reset, ] [process, ] [done, ] [password, ] [start, ] [error, ] "]
-    1 -> 1 [ label = "[exit, ] [garbage, ] [reset, ] [process, ] [NewTcpStream] [done, ] [password, ] [start, ] [error, ] "]
-    0 -> 1 [ label = "[NewTcpStream] "]
-}
