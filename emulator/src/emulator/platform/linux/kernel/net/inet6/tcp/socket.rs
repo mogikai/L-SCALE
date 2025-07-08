@@ -201,17 +201,4 @@ impl FileDescriptorOps for TcpSocketOps {
         let tcp = fd.tcp.as_mut().ok_or(FileDescriptorError::NotASocket)?;
         Ok(tcp.tcp_system.borrow_mut().send(tcp.id, data)?)
     }
-
-    fn read(
-        &self,
-        fd: &mut Self::D,
-        count: u64,
-    ) -> Result<Option<Vec<u8>>, FileDescriptorError> {
-        let tcp = fd.tcp.as_mut().ok_or(FileDescriptorError::NotASocket)?;
-        let (data, addr) = tcp
-            .tcp_system
-            .borrow_mut()
-            .recvfrom(tcp.id, count as usize)?;
-        Ok(Some(data))
-    }
 }
