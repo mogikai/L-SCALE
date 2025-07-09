@@ -112,6 +112,11 @@ struct GeneralLearnerArgs {
     /// Do refinement rounds for the number of times provided.
     #[arg(long)]
     do_refinement: Option<usize>,
+
+    /// Enable fuzzy learning. This leaves out observations based on a threshold value and can be faster but is less
+    /// accurate.
+    #[arg(long, default_value_t = false)]
+    fuzzy_learning: bool,
 }
 
 #[derive(Args, Debug)]
@@ -148,11 +153,6 @@ struct Learn {
     /// The threshold for the observation equality check. Observations are considered equal if their difference is less than the threshold.
     #[arg(short, long)]
     threshold: u64,
-
-    /// Enable fuzzy learning. This leaves out observations based on a threshold value and can be faster but is less
-    /// accurate.
-    #[arg(long, default_value_t = false)]
-    fuzzy_learning: bool,
 
     /// The chance to backtrack when doing random walk through the prefix set. Must be between 0 and 1
     #[arg(long)]
@@ -205,6 +205,9 @@ fn evaluate(args: Evaluate) {
     }
     if let Some(do_refinement) = args.general.do_refinement {
         args_vec.push(format!("--do-refinement={}", do_refinement));
+    }
+    if args.general.fuzzy_learning {
+        args_vec.push("--fuzzy-learning".to_string());
     }
 
     let cores = core_affinity::get_core_ids().unwrap_or_else(|| {
@@ -416,7 +419,7 @@ fn setup_luzzer<EmulatorT>(
         .threshold(args.threshold.into())
         .output_path(args.general.output)
         .detailed_graph_building(args.detailed_graph_building)
-        .fuzzy_learning(args.fuzzy_learning)
+        .fuzzy_learning(args.general.fuzzy_learning)
         .maybe_backtracking_chance(args.backtracking_chance)
         .bucketing_mode(args.bucketing_mode)
         .sparse_behavior(args.sparse_behavior)
