@@ -8,12 +8,12 @@ use mogi_emulator::emulator::system::System;
 use mogi_emulator::emulator::system::clock::Clock;
 use mogi_emulator::emulator::system::fd_map::FileDescriptorMap;
 use mogi_emulator::emulator::system::filesystem::Filesystem;
-use mogi_emulator::emulator::system::hardware::unicorn::UCWrapper;
 use mogi_emulator::emulator::system::memory::Memory;
 use mogi_emulator::emulator::system::prng::SeedablePrngMap;
 use mogi_emulator::emulator::system::stdio::Stdio;
 use mogi_emulator::emulator::system::task_manager::TaskManager;
 use mogi_fuzzer::io::tcp::TCP;
+use mogi_unicorn::UCWrapper;
 use std::cell::RefCell;
 use std::path::{
     Path,

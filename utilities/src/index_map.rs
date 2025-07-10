@@ -1,5 +1,6 @@
 use bitvec::prelude::BitVec;
 use itertools::Itertools;
+#[cfg(feature = "serde")]
 use serde::{
     Deserialize,
     Serialize,
@@ -565,7 +566,8 @@ impl<K: MapKey, V> IndexMut<Range<K>> for PrimaryOffsetMap<K, V> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(Debug)]
 pub struct SecondaryMap<K: MapKey, V> {
     data: Vec<V>,
     default: V,
@@ -678,7 +680,8 @@ where
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(Debug, Clone)]
 pub struct SecondarySet<K: MapKey> {
     data: BitVec,
     phantom_data: PhantomData<K>,

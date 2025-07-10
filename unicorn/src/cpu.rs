@@ -1,5 +1,3 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::time::Duration;
 use tracing::trace;
 
@@ -14,16 +12,11 @@ use mogi_system::errors::cpu::{
     CPUError,
     StopReason,
 };
-use mogi_system::errors::generic::{
-    GenericError,
-    GenericErrorKind,
-};
 use mogi_utilities::addresses::EVAddr;
 use unicorn_engine::RegisterX86;
 use unicorn_engine::unicorn_const::uc_error;
 
-use crate::emulator::system::hardware::unicorn::UCWrapper;
-use mogi_system::components::restore::Restorable;
+use crate::UCWrapper;
 
 pub(super) fn cpu_error_from_uc_error(e: uc_error) -> CPUError {
     trace!("UC ERROR: {:?}", e);
@@ -70,8 +63,7 @@ impl CPU for UCWrapper<'_> {
         value: u64,
     ) -> Result<(), CPUError> {
         let register = try_register_to_uc_register_x86(register)?;
-        self
-            .uc_mut()
+        self.uc_mut()
             .reg_write(register, value)
             .map_err(cpu_error_from_uc_error)
     }
@@ -81,8 +73,7 @@ impl CPU for UCWrapper<'_> {
         register: Register,
     ) -> Result<u64, CPUError> {
         let register = try_register_to_uc_register_x86(register)?;
-        self
-            .uc()
+        self.uc()
             .reg_read(register)
             .map_err(cpu_error_from_uc_error)
     }
@@ -149,8 +140,7 @@ impl CPU for UCWrapper<'_> {
             .contexts
             .get_mut(&context_handle)
             .ok_or(CPUError::Unknown)?;
-        self
-            .uc
+        self.uc
             .as_mut()
             .unwrap()
             .context_save(context)
@@ -162,8 +152,7 @@ impl CPU for UCWrapper<'_> {
         context_handle: ContextHandle,
     ) -> Result<(), CPUError> {
         let context = &self.contexts[&context_handle];
-        self
-            .uc
+        self.uc
             .as_mut()
             .unwrap()
             .context_restore(context)

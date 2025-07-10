@@ -1,0 +1,13 @@
+[package]
+name = "mogi_unicorn"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-2"
+
+[dependencies]
+iced-x86 = "1.21.0"
+unicorn-engine = { git = "https://github.com/unicorn-engine/unicorn", rev = "3ad58e17c5f781c4e0857d60750d311304c89800" }
+unicorn-engine-sys = { git = "https://github.com/unicorn-engine/unicorn", rev = "3ad58e17c5f781c4e0857d60750d311304c89800" }
+mogi_system = { path = "../system", version = "0.1.0" }
+mogi_utilities = { path = "../utilities", version = "0.1.0" }
+tracing = "0.1.41"

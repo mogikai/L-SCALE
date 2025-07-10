@@ -93,7 +93,6 @@ macro_rules! sys_component_mut {
 }
 
 use crate::emulator::platform::linux::kernel::fs::fd_ops::FileOps;
-use crate::emulator::system::hardware::unicorn::UCWrapper;
 use crate::emulator::system::memory::Memory;
 use crate::emulator::system::stdio::{
     StdInputOps,

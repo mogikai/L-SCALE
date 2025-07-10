@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::ops::Range;
 use std::option::Option;
 use std::path::{
     Path,
@@ -17,11 +16,14 @@ use std::sync::{
     Arc,
     Mutex,
 };
-use std::thread;
 use std::thread::sleep;
 use std::time::{
     Duration,
     Instant,
+};
+use std::{
+    env,
+    thread,
 };
 
 use clap::{
@@ -45,7 +47,6 @@ use mogi_emulator::emulator::system::System;
 use mogi_emulator::emulator::system::clock::Clock;
 use mogi_emulator::emulator::system::fd_map::FileDescriptorMap;
 use mogi_emulator::emulator::system::filesystem::Filesystem;
-use mogi_emulator::emulator::system::hardware::unicorn::UCWrapper;
 use mogi_emulator::emulator::system::memory::Memory;
 use mogi_emulator::emulator::system::prng::SeedablePrngMap;
 use mogi_emulator::emulator::system::stdio::Stdio;
@@ -56,6 +57,7 @@ use mogi_fuzzer::core::luzzer::{
     LuzzerConfig,
 };
 use mogi_fuzzer::io::tcp::TCP;
+use mogi_unicorn::UCWrapper;
 use strum::IntoEnumIterator;
 use tracing::info;
 use tracing_subscriber::layer::SubscriberExt;
@@ -66,7 +68,7 @@ use tracing_subscriber::{
 };
 
 #[derive(Parser)]
-#[command(author, version, about, long_about = None, name = "luzzer")]
+#[command(author, version, about, long_about = None, name = "lscale")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -245,7 +247,8 @@ fn evaluate(args: Evaluate) {
         }
         args_vec.push(format!("--threshold={}", threshold));
         output_path.push(format!("{}", threshold));
-        let mut cmd = Command::new("./luzzer");
+        let exe = env::current_exe().unwrap();
+        let mut cmd = Command::new(exe);
         cmd.arg("learn").args(args_vec);
         commands.push(cmd);
         output_paths.push(output_path);

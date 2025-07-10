@@ -1,8 +1,5 @@
-use crate::emulator::system::hardware::unicorn::UCWrapper;
-use crate::emulator::system::hardware::unicorn::cpu::cpu_error_from_uc_error;
-use crate::emulator::system::hardware::unicorn::hooks::mem_type_to_memory_action;
+use crate::UCWrapper;
 use mogi_system::components::cpu::hooks::Hooks;
-use mogi_system::components::mmu::tlb_entry::TLBEntry;
 use mogi_system::components::mmu::{
     MMU,
     MemoryAction,
@@ -18,18 +15,6 @@ use mogi_utilities::addresses::{
     HVAddr,
 };
 use mogi_utilities::error::memory::MemoryError;
-use std::cell::RefCell;
-use std::rc::Rc;
-use tracing::trace;
-use unicorn_engine::unicorn_const::{
-    MemType,
-    uc_error,
-};
-use unicorn_engine::{
-    HookType,
-    Unicorn,
-    unicorn_const as uc_const,
-};
 
 #[derive(Debug)]
 pub struct DummyData;
@@ -149,8 +134,7 @@ impl MMU for UCWrapper<'_> {
         addr: EPAddr,
         size: usize,
     ) -> MmuResult<()> {
-        self
-            .uc_mut()
+        self.uc_mut()
             .mem_map(addr.into(), size as u64, unicorn_engine::Prot::ALL)
             .map_err(|_| MemoryError::Unknown)
     }

@@ -1,0 +1,12 @@
+[package]
+name = "mogi_run_program"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.5.41", features = ["derive"] }
+tracing = "0.1.41"
+tracing-subscriber = "0.3.19"
+mogi_emulator = { path = "../../emulator", version = "0.1.0" }
+mogi_unicorn = { path = "../../unicorn", version = "0.1.0" }
+mogi_fuzzer = { path = "../../fuzzer", version = "0.1.0" }

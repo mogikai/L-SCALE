@@ -2,9 +2,8 @@
 name = "mogi_derive"
 version = "0.1.0"
 edition = "2024"
-authors = ["The Mogi Project Developers"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/mlgiraud/mogi"
+repository = "https://github.com/mogikai/mogi"
 description = "A set of utilities used by different parts of the FUZE emuator"
 readme = "README.md"
 keywords = ["emulation", "derive", "mogi"]

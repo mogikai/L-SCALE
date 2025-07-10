@@ -123,12 +123,12 @@ fn load_file_contents() -> Result<(), GenericError> {
 
 #[test]
 fn load_fs() -> Result<(), FSError> {
-    let reference = include_bytes!("../../../../tests/assets/mremap_private_anon.c");
+    let reference = include_bytes!("tests.rs");
     let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    dir.push(Path::new("tests"));
+    dir.push(Path::new("src/emulator/system/filesystem"));
     let fs = Filesystem::from_disk(1_073_741_824, dir.as_path())?;
     // fs.print_tree();
-    let lib_id = fs.resolve_last(Path::new("/assets/mremap_private_anon.c"), false)?;
+    let lib_id = fs.resolve_last(Path::new("/tests.rs"), false)?;
     let data = fs.read(lib_id, 0, 100000)?.unwrap();
     assert_eq!(data.as_slice(), reference.as_slice());
     Ok(())

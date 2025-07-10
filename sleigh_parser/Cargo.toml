@@ -2,6 +2,7 @@
 name = "mogi_sleigh_parser"
 version = "0.1.0"
 edition = "2024"
+license = "MIT or Apache-2.0"
 
 [dependencies]
 serde = "1.0.217"

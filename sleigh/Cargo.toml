@@ -2,6 +2,7 @@
 name = "mogi_sleigh"
 version = "0.1.0"
 edition = "2024"
+license = "MIT or Apache-2.0"
 
 [dependencies]
 tracing = { version = "0.1.40", features = ["release_max_level_trace"] }

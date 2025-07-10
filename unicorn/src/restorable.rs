@@ -10,7 +10,7 @@ use unicorn_engine::{
     Unicorn,
 };
 
-use crate::emulator::system::hardware::unicorn::{
+use crate::{
     Snapshot,
     UCWrapper,
 };

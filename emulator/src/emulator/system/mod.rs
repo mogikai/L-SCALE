@@ -35,7 +35,6 @@ pub mod clock;
 pub mod default_handles;
 pub mod fd_map;
 pub mod filesystem;
-pub mod hardware;
 pub mod memory;
 pub mod prng;
 pub mod stdio;

@@ -1,8 +1,9 @@
+#![feature(map_try_insert)]
+
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use iced_x86::Formatter;
 use unicorn_engine::unicorn_const::{
     Arch,
     Mode,
