@@ -39,7 +39,6 @@
       <sourceFolder url="file://$MODULE_DIR$/apps/lscale/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/apps/lscale/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/apps/run_program/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/tools/graph/graph-tools/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/unicorn/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/deps/LibAFL/fuzzers/baby_fuzzer/target" />
       <excludeFolder url="file://$MODULE_DIR$/deps/LibAFL/fuzzers/qemu_coverage/target" />

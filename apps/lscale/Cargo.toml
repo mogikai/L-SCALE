@@ -6,6 +6,7 @@ license = "GPL-2"
 
 [[bin]]
 name = "lscale"
+path = "src/main.rs"
 
 [dependencies]
 mockall = "0.13.1"
