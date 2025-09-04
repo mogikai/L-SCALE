@@ -152,6 +152,10 @@ struct Learn {
     #[arg(short, long, default_value_t = false)]
     detailed_graph_building: bool,
 
+    /// Wait `detailed_delay` milliseconds before continuing after exporting the state graph during detailed_graph_building.
+    #[arg(long)]
+    detailed_delay: Option<u64>,
+
     /// The threshold for the observation equality check. Observations are considered equal if their difference is less than the threshold.
     #[arg(short, long)]
     threshold: u64,
@@ -422,6 +426,7 @@ fn setup_luzzer<EmulatorT>(
         .threshold(args.threshold.into())
         .output_path(args.general.output)
         .detailed_graph_building(args.detailed_graph_building)
+        .maybe_detailed_delay(args.detailed_delay)
         .fuzzy_learning(args.general.fuzzy_learning)
         .maybe_backtracking_chance(args.backtracking_chance)
         .bucketing_mode(args.bucketing_mode)

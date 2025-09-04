@@ -319,6 +319,7 @@ pub struct LuzzerConfig {
     do_refinement: Option<usize>,
     #[builder(default = false)]
     detailed_graph_building: bool,
+    detailed_delay: Option<u64>,
     context_path: PathBuf,
     corpus: String,
     output_path: PathBuf,
@@ -773,7 +774,7 @@ where
 
         if self.config.detailed_graph_building || self.last_export.elapsed() >= Duration::from_secs(60) {
             self.last_export = Instant::now();
-            info!("Exporting state machine du to detailed building or timer");
+            info!("Exporting state machine due to detailed building or timer");
             self.state.learner.make_consistent_and_closed();
             self.export_learned_statemachine();
             debug!(
@@ -782,6 +783,9 @@ where
                 self.state.learner.lower_size(),
                 self.state.learner.table_width()
             );
+            if let Some(delay) = self.config.detailed_delay {
+                sleep(Duration::from_millis(delay));
+            }
         }
     }
 
