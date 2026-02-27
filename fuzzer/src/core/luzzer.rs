@@ -32,11 +32,7 @@ use mogi_system::components::cpu::hooks::Hooks;
 use mogi_system::components::mmu::Permission;
 use mogi_utilities::error::memory::MemoryError;
 use rand::prelude::IndexedRandom;
-use rand::{
-    Rng,
-    SeedableRng,
-};
-use rand_chacha::ChaCha8Rng;
+use rand::{Rng, RngExt, SeedableRng};
 use serde::{
     Deserialize,
     Serialize,
@@ -79,6 +75,7 @@ use std::{
     fs,
     thread,
 };
+use rand::rngs::ChaCha8Rng;
 use strum_macros::{
     Display,
     EnumIter,

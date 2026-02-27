@@ -14,7 +14,7 @@ mogi_emulator = { path = "../emulator", features = ["serde"] }
 bon = "3.6.4"
 tracing = "*"
 clap = { version = "4.5.40", features = ["derive"] }
-rand = "*"
+rand = { version = "0.10.0",features = ["chacha"] }
 serde = { version = "1.0.*", features = ["derive"] }
 serde_json = { version = "1.*" }
 thiserror = "*"
@@ -25,7 +25,6 @@ crossbeam = "0.*"
 mogi_statelearner = { path = "../statelearner", version = "0.1.0" }
 fast-tlsh = "0.1.8"
 zerocopy = "0.9.0-alpha.0"
-rand_chacha = "0.9.0"
 strum_macros = "0.27.1"
 strum = "0.27.1"
 clap_complete = "4.5.55"

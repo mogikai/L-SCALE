@@ -22,6 +22,7 @@ use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::fmt::Debug;
 use std::ops::Not;
+use rand::RngExt;
 use thiserror::Error;
 
 mod closed;
